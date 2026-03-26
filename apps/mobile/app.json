@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "StrawBoss",
+    "slug": "strawboss",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "strawboss",
+    "platforms": ["ios", "android"],
+    "plugins": [
+      "expo-router",
+      ["expo-camera", { "cameraPermission": "StrawBoss needs camera for QR scanning and photos" }],
+      ["expo-image-picker", { "photosPermission": "StrawBoss needs photos for weight tickets" }]
+    ]
+  }
+}
