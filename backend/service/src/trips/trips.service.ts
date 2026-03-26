@@ -1,0 +1,304 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { sql } from 'drizzle-orm';
+import { DrizzleProvider } from '../database/drizzle.provider';
+import { TripStatus } from '@strawboss/types';
+import type {
+  TripCreateDto,
+  StartLoadingDto,
+  CompleteLoadingDto,
+  DepartDto,
+  ArriveDto,
+  StartDeliveryDto,
+  ConfirmDeliveryDto,
+  CompleteDto,
+  CancelDto,
+  DisputeDto,
+  ResolveDisputeDto,
+} from '@strawboss/types';
+import { getAvailableTransitions } from '@strawboss/domain';
+
+@Injectable()
+export class TripsService {
+  constructor(private readonly drizzleProvider: DrizzleProvider) {}
+
+  async list(filters?: {
+    status?: string;
+    driverId?: string;
+    truckId?: string;
+    sourceParcelId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
+    const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
+
+    if (filters?.status) {
+      conditions.push(sql`status = ${filters.status}`);
+    }
+    if (filters?.driverId) {
+      conditions.push(sql`driver_id = ${filters.driverId}`);
+    }
+    if (filters?.truckId) {
+      conditions.push(sql`truck_id = ${filters.truckId}`);
+    }
+    if (filters?.sourceParcelId) {
+      conditions.push(sql`source_parcel_id = ${filters.sourceParcelId}`);
+    }
+    if (filters?.dateFrom) {
+      conditions.push(sql`created_at >= ${filters.dateFrom}`);
+    }
+    if (filters?.dateTo) {
+      conditions.push(sql`created_at <= ${filters.dateTo}`);
+    }
+
+    const where = sql.join(conditions, sql` AND `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`SELECT * FROM trips WHERE ${where} ORDER BY created_at DESC`,
+    );
+    return result;
+  }
+
+  async findById(id: string) {
+    const result = await this.drizzleProvider.db.execute(
+      sql`SELECT * FROM trips WHERE id = ${id} AND deleted_at IS NULL LIMIT 1`,
+    );
+    const rows = result as unknown as Record<string, unknown>[];
+    if (!rows.length) {
+      throw new NotFoundException(`Trip ${id} not found`);
+    }
+    return rows[0];
+  }
+
+  async create(dto: TripCreateDto) {
+    const tripNumber = await this.generateTripNumber();
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`INSERT INTO trips (
+        trip_number, status, source_parcel_id, truck_id, driver_id,
+        loader_id, loader_operator_id, destination_name,
+        destination_address, destination_coords,
+        bale_count, source_parcel_auto, sync_version
+      ) VALUES (
+        ${tripNumber}, ${TripStatus.planned}, ${dto.sourceParcelId},
+        ${dto.truckId}, ${dto.driverId},
+        ${dto.loaderId ?? null}, ${dto.loaderOperatorId ?? null},
+        ${dto.destinationName ?? null}, ${dto.destinationAddress ?? null},
+        ${dto.destinationCoords ? JSON.stringify(dto.destinationCoords) : null},
+        0, false, 1
+      ) RETURNING *`,
+    );
+    return result;
+  }
+
+  private async generateTripNumber(): Promise<string> {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `TR-${dateStr}-`;
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`SELECT COUNT(*)::int as count FROM trips WHERE trip_number LIKE ${prefix + '%'}`,
+    );
+    const rows = result as unknown as { count: number }[];
+    const count = (rows[0]?.count ?? 0) + 1;
+    const seq = String(count).padStart(3, '0');
+    return `${prefix}${seq}`;
+  }
+
+  private validateTransition(currentStatus: TripStatus, event: string): void {
+    const available = getAvailableTransitions(currentStatus);
+    if (!available.includes(event)) {
+      throw new BadRequestException(
+        `Transition '${event}' is not allowed from status '${currentStatus}'. Available: ${available.join(', ')}`,
+      );
+    }
+  }
+
+  async startLoading(id: string, dto: StartLoadingDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'START_LOADING');
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.loading},
+        loader_operator_id = ${dto.loaderOperatorId},
+        loader_id = ${dto.loaderId ?? (trip.loader_id as string | null)},
+        loading_started_at = NOW(),
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async completeLoading(id: string, _dto: CompleteLoadingDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'COMPLETE_LOADING');
+
+    const baleResult = await this.drizzleProvider.db.execute(
+      sql`SELECT COALESCE(SUM(bale_count), 0)::int as total FROM bale_loads WHERE trip_id = ${id} AND deleted_at IS NULL`,
+    );
+    const baleRows = baleResult as unknown as { total: number }[];
+    const totalBales = baleRows[0]?.total ?? 0;
+
+    if (totalBales === 0) {
+      throw new BadRequestException(
+        'Cannot complete loading without any bale loads recorded',
+      );
+    }
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.loaded},
+        loading_completed_at = NOW(),
+        bale_count = ${totalBales},
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async depart(id: string, dto: DepartDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'DEPART');
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.in_transit},
+        departure_odometer_km = ${dto.departureOdometerKm},
+        departure_at = NOW(),
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async arrive(id: string, dto: ArriveDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'ARRIVE');
+
+    const departureOdometer = trip.departure_odometer_km as number | null;
+    const odometerDistance =
+      departureOdometer !== null
+        ? dto.arrivalOdometerKm - departureOdometer
+        : null;
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.arrived},
+        arrival_odometer_km = ${dto.arrivalOdometerKm},
+        arrival_at = NOW(),
+        odometer_distance_km = ${odometerDistance},
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async startDelivery(id: string, dto: StartDeliveryDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'START_DELIVERY');
+
+    const setClauses: ReturnType<typeof sql>[] = [
+      sql`status = ${TripStatus.delivering}`,
+      sql`updated_at = NOW()`,
+    ];
+
+    if (dto.destinationName) {
+      setClauses.push(sql`destination_name = ${dto.destinationName}`);
+    }
+
+    const setClause = sql.join(setClauses, sql`, `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET ${setClause} WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async confirmDelivery(id: string, dto: ConfirmDeliveryDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'CONFIRM_DELIVERY');
+
+    // Fetch tare weight from the truck
+    const truckResult = await this.drizzleProvider.db.execute(
+      sql`SELECT tare_weight_kg FROM machines WHERE id = ${trip.truck_id as string} LIMIT 1`,
+    );
+    const truckRows = truckResult as unknown as { tare_weight_kg: number | null }[];
+    const tareWeightKg = truckRows[0]?.tare_weight_kg ?? null;
+    const netWeightKg =
+      tareWeightKg !== null ? dto.grossWeightKg - tareWeightKg : null;
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.delivered},
+        gross_weight_kg = ${dto.grossWeightKg},
+        tare_weight_kg = ${tareWeightKg},
+        net_weight_kg = ${netWeightKg},
+        weight_ticket_number = ${dto.weightTicketNumber ?? null},
+        delivered_at = NOW(),
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async complete(id: string, dto: CompleteDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'COMPLETE');
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.completed},
+        receiver_name = ${dto.receiverName},
+        receiver_signature_url = ${dto.receiverSignature},
+        receiver_signed_at = NOW(),
+        completed_at = NOW(),
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async cancel(id: string, dto: CancelDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'CANCEL');
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.cancelled},
+        cancelled_at = NOW(),
+        cancellation_reason = ${dto.cancellationReason},
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async dispute(id: string, _dto: DisputeDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'DISPUTE');
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.disputed},
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+
+  async resolveDispute(id: string, _dto: ResolveDisputeDto) {
+    const trip = await this.findById(id);
+    this.validateTransition(trip.status as TripStatus, 'RESOLVE_DISPUTE');
+
+    // Resolve back to delivered status (admin can then complete if needed)
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.delivered},
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *`,
+    );
+    return result;
+  }
+}
