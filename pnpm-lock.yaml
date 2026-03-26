@@ -30,6 +30,19 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/domain:
+    dependencies:
+      '@strawboss/types':
+        specifier: workspace:*
+        version: link:../types
+      xstate:
+        specifier: ^5.19.0
+        version: 5.29.0
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/types:
     devDependencies:
       typescript:
@@ -589,6 +602,9 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
+  xstate@5.29.0:
+    resolution: {integrity: sha512-p0hiOPhhBgXn29t18zDScaN95+y1MAu1Pz5Z2IduCuOUh+d3RqJO7fmexbuQ6rlwFNgYFeXvFsFeiuiAiH3mhg==}
+
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
@@ -1126,6 +1142,8 @@ snapshots:
   word-wrap@1.2.5: {}
 
   wrappy@1.0.2: {}
+
+  xstate@5.29.0: {}
 
   yocto-queue@0.1.0: {}
 

@@ -1,0 +1,26 @@
+{
+  "name": "@strawboss/domain",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@strawboss/types": "workspace:*",
+    "xstate": "^5.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
