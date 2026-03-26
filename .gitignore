@@ -4,5 +4,6 @@ dist
 .next
 .expo
 .env*
+!.env.example
 coverage
 *.tsbuildinfo

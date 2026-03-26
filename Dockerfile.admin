@@ -1,0 +1,44 @@
+FROM node:22-alpine AS base
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/types/package.json packages/types/
+COPY packages/validation/package.json packages/validation/
+COPY packages/api/package.json packages/api/
+COPY packages/ui-tokens/package.json packages/ui-tokens/
+COPY apps/admin-web/package.json apps/admin-web/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/types/node_modules ./packages/types/node_modules
+COPY --from=deps /app/packages/validation/node_modules ./packages/validation/node_modules
+COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
+COPY --from=deps /app/packages/ui-tokens/node_modules ./packages/ui-tokens/node_modules
+COPY --from=deps /app/apps/admin-web/node_modules ./apps/admin-web/node_modules
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
+COPY packages/types/ packages/types/
+COPY packages/validation/ packages/validation/
+COPY packages/api/ packages/api/
+COPY packages/ui-tokens/ packages/ui-tokens/
+COPY apps/admin-web/ apps/admin-web/
+# Build dependencies first
+RUN pnpm --filter @strawboss/types build
+RUN pnpm --filter @strawboss/validation build
+RUN pnpm --filter @strawboss/ui-tokens build
+RUN pnpm --filter @strawboss/api build
+# Build Next.js
+RUN pnpm --filter @strawboss/admin-web build
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+# Next.js standalone mode copies what's needed
+COPY --from=builder /app/apps/admin-web/.next/standalone ./
+COPY --from=builder /app/apps/admin-web/.next/static ./apps/admin-web/.next/static
+COPY --from=builder /app/apps/admin-web/public ./apps/admin-web/public
+
+EXPOSE 3000
+CMD ["node", "apps/admin-web/server.js"]
