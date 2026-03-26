@@ -9,6 +9,15 @@ import { TripsModule } from './trips/trips.module';
 import { BaleLoadsModule } from './bale-loads/bale-loads.module';
 import { FuelLogsModule } from './fuel-logs/fuel-logs.module';
 import { ConsumableLogsModule } from './consumable-logs/consumable-logs.module';
+import { DocumentsModule } from './documents/documents.module';
+import { AlertsModule } from './alerts/alerts.module';
+import { AuditModule } from './audit/audit.module';
+import { SyncModule } from './sync/sync.module';
+import { FarmTrackModule } from './farmtrack/farmtrack.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { JobsModule } from './jobs/jobs.module';
+import { TrpcModule } from './trpc/trpc.module';
 
 @Module({
   imports: [
@@ -22,6 +31,15 @@ import { ConsumableLogsModule } from './consumable-logs/consumable-logs.module';
     BaleLoadsModule,
     FuelLogsModule,
     ConsumableLogsModule,
+    DocumentsModule,
+    AlertsModule,
+    AuditModule,
+    SyncModule,
+    FarmTrackModule,
+    ReconciliationModule,
+    DashboardModule,
+    JobsModule,
+    TrpcModule,
   ],
 })
 export class AppModule {}

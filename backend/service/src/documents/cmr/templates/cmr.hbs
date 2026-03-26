@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CMR Consignment Note — {{tripNumber}}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; }
+    h1 { font-size: 18px; text-align: center; margin-bottom: 4px; }
+    .subtitle { text-align: center; font-size: 11px; color: #555; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    td, th { border: 1px solid #333; padding: 6px 8px; vertical-align: top; }
+    th { background: #f0f0f0; text-align: left; width: 30%; }
+    .section-title { background: #ddd; font-weight: bold; text-align: center; }
+    .signatures { margin-top: 40px; }
+    .sig-row { display: flex; justify-content: space-between; }
+    .sig-box { width: 30%; border-top: 1px solid #333; padding-top: 4px; text-align: center; margin-top: 60px; }
+  </style>
+</head>
+<body>
+  <h1>CMR — INTERNATIONAL CONSIGNMENT NOTE</h1>
+  <p class="subtitle">Trip {{tripNumber}} &mdash; {{date}}</p>
+
+  <!-- Section 1: Sender -->
+  <table>
+    <tr><td class="section-title" colspan="2">1. Sender (Expediteur)</td></tr>
+    <tr><th>Parcel</th><td>{{parcelName}}</td></tr>
+    <tr><th>Address</th><td>{{senderAddress}}</td></tr>
+    <tr><th>Coordinates</th><td>{{senderCoords}}</td></tr>
+  </table>
+
+  <!-- Section 2: Consignee / Receiver -->
+  <table>
+    <tr><td class="section-title" colspan="2">2. Consignee (Destinataire)</td></tr>
+    <tr><th>Name</th><td>{{destinationName}}</td></tr>
+    <tr><th>Address</th><td>{{destinationAddress}}</td></tr>
+  </table>
+
+  <!-- Section 3: Carrier -->
+  <table>
+    <tr><td class="section-title" colspan="2">3. Carrier (Transporteur)</td></tr>
+    <tr><th>Truck</th><td>{{truckName}} ({{truckPlate}})</td></tr>
+    <tr><th>Driver</th><td>{{driverName}}</td></tr>
+    <tr><th>Loader</th><td>{{loaderName}}</td></tr>
+  </table>
+
+  <!-- Section 4: Goods -->
+  <table>
+    <tr><td class="section-title" colspan="2">4. Description of Goods</td></tr>
+    <tr><th>Bale Count</th><td>{{baleCount}}</td></tr>
+    <tr><th>Gross Weight (kg)</th><td>{{grossWeightKg}}</td></tr>
+    <tr><th>Net Weight (kg)</th><td>{{netWeightKg}}</td></tr>
+    <tr><th>Weight Ticket #</th><td>{{weightTicketNumber}}</td></tr>
+  </table>
+
+  <!-- Section 5: Trip Details -->
+  <table>
+    <tr><td class="section-title" colspan="2">5. Trip Details</td></tr>
+    <tr><th>Departure Odometer (km)</th><td>{{departureOdometerKm}}</td></tr>
+    <tr><th>Arrival Odometer (km)</th><td>{{arrivalOdometerKm}}</td></tr>
+    <tr><th>Distance (km)</th><td>{{odometerDistanceKm}}</td></tr>
+  </table>
+
+  <!-- Section 6: Signatures -->
+  <div class="signatures">
+    <h3>6. Signatures</h3>
+    <div class="sig-row">
+      <div class="sig-box">
+        <p>Sender</p>
+      </div>
+      <div class="sig-box">
+        <p>Carrier / Driver</p>
+      </div>
+      <div class="sig-box">
+        <p>Receiver<br/>{{receiverName}}</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
