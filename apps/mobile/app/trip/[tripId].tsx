@@ -1,42 +1,87 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
+import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { TripProgress } from '@/components/shared/TripProgress';
+import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { StatusPill } from '@/components/ui/StatusPill';
+import { BigButton } from '@/components/ui/BigButton';
+import { ActionCard } from '@/components/ui/ActionCard';
+import { colors } from '@strawboss/ui-tokens';
 
-/**
- * Trip detail screen - placeholder structure.
- * Full implementation in Task 14.
- */
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const router = useRouter();
   const [trip, setTrip] = useState<LocalTrip | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const loadTrip = useCallback(async () => {
+    if (!tripId) return;
+    try {
+      const db = await getDatabase();
+      const repo = new TripsRepo(db);
+      const result = await repo.findById(tripId);
+      setTrip(result);
+    } catch (err) {
+      console.error('Failed to load trip:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [tripId]);
 
   useEffect(() => {
-    async function load() {
+    void loadTrip();
+  }, [loadTrip]);
+
+  const updateTripStatus = useCallback(
+    async (newStatus: string, extraData?: Partial<LocalTrip>) => {
       if (!tripId) return;
+      setActionLoading(true);
       try {
         const db = await getDatabase();
-        const repo = new TripsRepo(db);
-        const result = await repo.findById(tripId);
-        setTrip(result);
+        const tripsRepo = new TripsRepo(db);
+        const syncQueue = new SyncQueueRepo(db);
+
+        const updateData: Partial<LocalTrip> = {
+          status: newStatus,
+          ...extraData,
+        };
+
+        await tripsRepo.update(tripId, updateData);
+
+        await syncQueue.enqueue({
+          entityType: 'trip',
+          entityId: tripId,
+          action: 'update_status',
+          payload: { status: newStatus, ...extraData },
+          idempotencyKey: `status_${tripId}_${newStatus}_${Date.now()}`,
+        });
+
+        await loadTrip();
       } catch (err) {
-        console.error('Failed to load trip:', err);
+        Alert.alert(
+          'Error',
+          err instanceof Error ? err.message : 'Failed to update trip',
+        );
       } finally {
-        setLoading(false);
+        setActionLoading(false);
       }
-    }
-    void load();
-  }, [tripId]);
+    },
+    [tripId, loadTrip],
+  );
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ headerShown: true, title: 'Trip' }} />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading trip...</Text>
+        </View>
       </SafeAreaView>
     );
   }
@@ -45,11 +90,9 @@ export default function TripDetailScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ headerShown: true, title: 'Trip' }} />
-        <View style={styles.content}>
+        <View style={styles.centered}>
           <Text style={styles.errorText}>Trip not found</Text>
-          <TouchableOpacity style={styles.button} onPress={() => router.back()}>
-            <Text style={styles.buttonText}>Go Back</Text>
-          </TouchableOpacity>
+          <BigButton title="Go Back" variant="outline" onPress={() => router.back()} />
         </View>
       </SafeAreaView>
     );
@@ -60,60 +103,181 @@ export default function TripDetailScreen() {
       <Stack.Screen
         options={{ headerShown: true, title: trip.trip_number ?? 'Trip' }}
       />
+      <OfflineBanner />
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Progress Bar */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Trip Details</Text>
-          <View style={styles.row}>
-            <Text style={styles.label}>Status:</Text>
-            <Text style={styles.value}>{trip.status}</Text>
+          <TripProgress currentStatus={trip.status} />
+        </View>
+
+        {/* Trip Info */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Trip Details</Text>
+            <StatusPill status={trip.status} />
           </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Bale Count:</Text>
-            <Text style={styles.value}>{trip.bale_count ?? 0}</Text>
-          </View>
+
+          {trip.trip_number && (
+            <InfoRow label="Trip Number" value={trip.trip_number} />
+          )}
           {trip.destination_name && (
-            <View style={styles.row}>
-              <Text style={styles.label}>Destination:</Text>
-              <Text style={styles.value}>{trip.destination_name}</Text>
-            </View>
+            <InfoRow label="Destination" value={trip.destination_name} />
           )}
           {trip.destination_address && (
-            <View style={styles.row}>
-              <Text style={styles.label}>Address:</Text>
-              <Text style={styles.value}>{trip.destination_address}</Text>
+            <InfoRow label="Address" value={trip.destination_address} />
+          )}
+          <InfoRow label="Bale Count" value={String(trip.bale_count ?? 0)} />
+          {trip.gross_weight_kg != null && (
+            <InfoRow
+              label="Gross Weight"
+              value={`${trip.gross_weight_kg} kg`}
+            />
+          )}
+          {trip.departure_at && (
+            <InfoRow
+              label="Departed"
+              value={new Date(trip.departure_at).toLocaleString()}
+            />
+          )}
+          {trip.arrival_at && (
+            <InfoRow
+              label="Arrived"
+              value={new Date(trip.arrival_at).toLocaleString()}
+            />
+          )}
+          {trip.delivered_at && (
+            <InfoRow
+              label="Delivered"
+              value={new Date(trip.delivered_at).toLocaleString()}
+            />
+          )}
+        </View>
+
+        {/* Actions */}
+        <View style={styles.actionsSection}>
+          <Text style={styles.sectionTitle}>Actions</Text>
+
+          {trip.status === 'planned' && (
+            <ActionCard
+              title="Start Loading"
+              subtitle="Scan machine and count bales"
+              icon={<Text style={styles.actionIcon}>{'\u2B06'}</Text>}
+              onPress={() =>
+                router.push({
+                  pathname: '/operations/load',
+                  params: { tripId: trip.id },
+                })
+              }
+              variant="active"
+            />
+          )}
+
+          {trip.status === 'loading' && (
+            <ActionCard
+              title="Continue Loading"
+              subtitle="Resume the loading process"
+              icon={<Text style={styles.actionIcon}>{'\u2B06'}</Text>}
+              onPress={() =>
+                router.push({
+                  pathname: '/operations/load',
+                  params: { tripId: trip.id },
+                })
+              }
+              variant="active"
+            />
+          )}
+
+          {trip.status === 'loaded' && (
+            <ActionCard
+              title="Depart"
+              subtitle="Begin transit to destination"
+              icon={<Text style={styles.actionIcon}>{'\u27A1'}</Text>}
+              onPress={() =>
+                updateTripStatus('in_transit', {
+                  departure_at: new Date().toISOString(),
+                })
+              }
+              variant="active"
+            />
+          )}
+
+          {trip.status === 'in_transit' && (
+            <ActionCard
+              title="Arrive at Destination"
+              subtitle="Mark arrival at delivery point"
+              icon={<Text style={styles.actionIcon}>{'\uD83D\uDCCD'}</Text>}
+              onPress={() =>
+                updateTripStatus('arrived', {
+                  arrival_at: new Date().toISOString(),
+                })
+              }
+              variant="active"
+            />
+          )}
+
+          {trip.status === 'arrived' && (
+            <ActionCard
+              title="Start Delivery"
+              subtitle="Weigh, photograph, and sign"
+              icon={<Text style={styles.actionIcon}>{'\u2B07'}</Text>}
+              onPress={() =>
+                router.push({
+                  pathname: '/operations/deliver',
+                  params: { tripId: trip.id },
+                })
+              }
+              variant="active"
+            />
+          )}
+
+          {trip.status === 'delivered' && (
+            <ActionCard
+              title="Complete Trip"
+              subtitle="Mark this trip as finished"
+              icon={<Text style={styles.actionIcon}>{'\u2713'}</Text>}
+              onPress={() =>
+                updateTripStatus('completed', {
+                  completed_at: new Date().toISOString(),
+                })
+              }
+              variant="active"
+            />
+          )}
+
+          {(trip.status === 'completed' || trip.status === 'cancelled') && (
+            <View style={styles.doneCard}>
+              <Text style={styles.doneText}>
+                This trip is {trip.status}.
+              </Text>
             </View>
           )}
         </View>
 
-        <View style={styles.actions}>
-          {trip.status === 'planned' && (
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => router.push('/operations/load')}
-            >
-              <Text style={styles.buttonText}>Start Loading</Text>
-            </TouchableOpacity>
-          )}
-          {(trip.status === 'loaded' || trip.status === 'in_transit' || trip.status === 'arrived') && (
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => router.push('/operations/deliver')}
-            >
-              <Text style={styles.buttonText}>Deliver</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {actionLoading && (
+          <View style={styles.overlay}>
+            <ActivityIndicator size="large" color={colors.white} />
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{value}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3DED8',
+    backgroundColor: colors.background,
   },
-  content: {
+  centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -123,9 +287,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     gap: 16,
+    paddingBottom: 32,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 12,
     padding: 16,
     gap: 12,
@@ -135,48 +300,69 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   cardTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#0A5C36',
+    color: colors.primary,
   },
-  row: {
+  infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   label: {
     fontSize: 14,
-    color: '#5D4037',
+    color: colors.neutral,
   },
   value: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#000',
+    color: colors.black,
+    maxWidth: '60%',
+    textAlign: 'right',
   },
-  actions: {
+  actionsSection: {
     gap: 12,
   },
-  button: {
-    backgroundColor: '#0A5C36',
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#FFFFFF',
+  sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
+    color: colors.neutral,
+  },
+  actionIcon: {
+    fontSize: 20,
+  },
+  doneCard: {
+    backgroundColor: colors.primary50,
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  doneText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
   },
   loadingText: {
     fontSize: 16,
-    color: '#5D4037',
-    textAlign: 'center',
-    marginTop: 48,
+    color: colors.neutral,
+    marginTop: 12,
   },
   errorText: {
     fontSize: 16,
-    color: '#C62828',
+    color: colors.danger,
     textAlign: 'center',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
   },
 });

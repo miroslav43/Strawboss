@@ -1,21 +1,38 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { LoadingFlow } from '@/components/features/loading/LoadingFlow';
+import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { colors } from '@strawboss/ui-tokens';
 
-/**
- * Loading flow screen - placeholder for Task 14.
- * Will handle: bale scanning, loader assignment, loading confirmation.
- */
 export default function LoadScreen() {
+  const { tripId } = useLocalSearchParams<{ tripId: string }>();
+  const router = useRouter();
+
+  if (!tripId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ headerShown: true, title: 'Loading' }} />
+        <View style={styles.errorContent}>
+          <Text style={styles.errorText}>No trip selected</Text>
+          <Text style={styles.errorSubtext}>
+            Navigate from a trip to start loading.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ headerShown: true, title: 'Loading' }} />
-      <View style={styles.content}>
-        <Text style={styles.title}>Loading Operation</Text>
-        <Text style={styles.placeholder}>
-          This screen will be implemented in Task 14.
-        </Text>
-      </View>
+      <OfflineBanner />
+      <LoadingFlow
+        tripId={tripId}
+        onComplete={() => {
+          router.back();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -23,23 +40,23 @@ export default function LoadScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3DED8',
+    backgroundColor: colors.background,
   },
-  content: {
+  errorContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
+    gap: 8,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0A5C36',
-    marginBottom: 12,
+  errorText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.danger,
   },
-  placeholder: {
+  errorSubtext: {
     fontSize: 14,
-    color: '#8D6E63',
+    color: colors.neutral,
     textAlign: 'center',
   },
 });
