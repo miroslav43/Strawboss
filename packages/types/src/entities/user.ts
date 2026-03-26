@@ -1,0 +1,20 @@
+import type { Timestamps, SoftDelete } from "../common.js";
+
+export enum UserRole {
+  admin = "admin",
+  dispatcher = "dispatcher",
+  loader_operator = "loader_operator",
+  driver = "driver",
+}
+
+export interface User extends Timestamps, SoftDelete {
+  id: string;
+  email: string;
+  phone: string | null;
+  fullName: string;
+  role: UserRole;
+  isActive: boolean;
+  locale: string;
+  avatarUrl: string | null;
+  lastLoginAt: string | null;
+}
