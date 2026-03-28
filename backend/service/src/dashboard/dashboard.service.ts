@@ -23,7 +23,7 @@ export class DashboardService {
          WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL
         ) AS bales_today,
         (SELECT COUNT(*)::int FROM machines
-         WHERE status = 'active' AND deleted_at IS NULL
+         WHERE is_active = true AND deleted_at IS NULL
         ) AS active_machines,
         (SELECT COUNT(*)::int FROM alerts
          WHERE is_acknowledged = false
@@ -99,11 +99,11 @@ export class DashboardService {
   }
 
   async getCosts(): Promise<CostReport[]> {
-    // Costs by machine
+    // Costs by machine (machines has no 'name' column — build display name from available fields)
     const machineResult = await this.drizzleProvider.db.execute(sql`
       SELECT
         m.id AS entity_id,
-        m.name AS entity_name,
+        COALESCE(m.internal_code, m.registration_plate, m.make || ' ' || m.model, 'Machine') AS entity_name,
         'machine' AS entity_type,
         COALESCE((
           SELECT SUM(fl.total_cost)::numeric
@@ -117,7 +117,7 @@ export class DashboardService {
         ), 0) AS consumable_cost
       FROM machines m
       WHERE m.deleted_at IS NULL
-      ORDER BY m.name
+      ORDER BY entity_name
     `);
 
     const machineRows = machineResult as unknown as Record<string, unknown>[];

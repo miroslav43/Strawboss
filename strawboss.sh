@@ -40,6 +40,27 @@ require_cmd() {
   fi
 }
 
+# Kill any process listening on a given TCP port (silently ignores if nothing is there).
+kill_port() {
+  local port="$1"
+  local pids
+  pids=$(lsof -ti tcp:"$port" 2>/dev/null || true)
+  if [ -n "$pids" ]; then
+    warn "Port $port in use — killing PID(s): $pids"
+    echo "$pids" | xargs kill -9 2>/dev/null || true
+    sleep 0.4
+  fi
+}
+
+# Free all ports used by StrawBoss dev servers.
+free_dev_ports() {
+  kill_port 3000   # admin-web (Next.js)
+  kill_port 3001   # backend (NestJS)
+  kill_port 19000  # Expo dev server
+  kill_port 19001  # Expo Metro bundler
+  kill_port 8081   # Metro fallback
+}
+
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
@@ -121,6 +142,14 @@ cmd_dev() {
 
   header "Starting dev: $target"
   require_cmd pnpm
+
+  # Free ports before starting anything so stale processes never block startup.
+  case "$target" in
+    backend)        kill_port 3001 ;;
+    admin)          kill_port 3000 ;;
+    mobile)         kill_port 19000; kill_port 19001; kill_port 8081 ;;
+    all)            free_dev_ports ;;
+  esac
 
   # Build shared packages first (they don't have dev watchers that work well)
   info "Building shared packages..."
@@ -254,6 +283,9 @@ cmd_docker_up() {
   header "Starting Docker services"
   require_cmd docker
   ensure_env
+
+  # Free ports so Docker can bind them even if dev servers are still running.
+  free_dev_ports
 
   docker compose up -d "$@"
   echo ""

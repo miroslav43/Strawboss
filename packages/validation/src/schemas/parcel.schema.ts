@@ -25,17 +25,18 @@ export const parcelSchema = z
   .merge(softDeleteSchema);
 
 export const createParcelSchema = z.object({
-  code: z.string().min(1),
-  name: z.string().min(1),
-  ownerName: z.string().min(1),
-  ownerContact: z.string().nullable().optional(),
-  areaHectares: z.number().positive(),
-  boundary: z.string().nullable().optional(),
-  centroid: geoPointSchema.nullable().optional(),
-  address: z.string().min(1),
-  municipality: z.string().min(1),
+  // code and name are generated/set automatically; both optional at create time.
+  code:                z.string().min(1).optional(),
+  name:                z.string().min(1).optional(),
+  ownerName:           z.string().optional(),
+  ownerContact:        z.string().nullable().optional(),
+  areaHectares:        z.number().positive().optional(),
+  boundary:            z.string().nullable().optional(),
+  centroid:            geoPointSchema.nullable().optional(),
+  address:             z.string().optional(),
+  municipality:        z.string().optional(),
   farmtrackGeofenceId: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),
+  notes:               z.string().nullable().optional(),
 });
 
 export const updateParcelSchema = z

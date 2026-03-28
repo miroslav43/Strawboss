@@ -17,6 +17,8 @@ export {
   useParcel,
   useCreateParcel,
   useUpdateParcel,
+  useUpdateParcelBoundary,
+  useDeleteParcel,
 } from './use-parcels.js';
 
 export {
@@ -75,3 +77,14 @@ export {
 } from './use-sync.js';
 
 export type { SyncStatus } from './use-sync.js';
+
+export {
+  useAdminUsers,
+  useCreateUser,
+  useUpdateUser,
+  useDeactivateUser,
+} from './use-admin-users.js';
+export type { CreateUserPayload, UpdateUserPayload } from './use-admin-users.js';
+
+export { useMachineLocations } from './use-machine-locations.js';
+export { useProfile } from './use-profile.js';

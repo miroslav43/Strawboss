@@ -4,14 +4,17 @@ import {
   Patch,
   Param,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { AlertsService } from './alerts.service';
+import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
 
 @Controller('alerts')
+@UseGuards(AuthGuard)
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
 

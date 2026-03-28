@@ -11,7 +11,12 @@ async function bootstrap() {
     new FastifyAdapter(),
   );
   app.setGlobalPrefix('api/v1');
-  app.enableCors();
+  app.enableCors({
+    origin: true, // reflect the request origin (dev-friendly; lock down in production)
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  });
   const port = process.env.PORT ?? 3001;
   await app.listen(port, '0.0.0.0');
   console.log(`StrawBoss backend running on port ${port}`);

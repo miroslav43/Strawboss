@@ -13,11 +13,13 @@ import { DocumentsModule } from './documents/documents.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { AuditModule } from './audit/audit.module';
 import { SyncModule } from './sync/sync.module';
-import { FarmTrackModule } from './farmtrack/farmtrack.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { LocationModule } from './location/location.module';
+import { AdminUsersModule } from './admin-users/admin-users.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { JobsModule } from './jobs/jobs.module';
 import { TrpcModule } from './trpc/trpc.module';
+import { ProfileModule } from './profile/profile.module';
 
 @Module({
   imports: [
@@ -35,11 +37,13 @@ import { TrpcModule } from './trpc/trpc.module';
     AlertsModule,
     AuditModule,
     SyncModule,
-    FarmTrackModule,
     ReconciliationModule,
+    LocationModule,
+    AdminUsersModule,
     DashboardModule,
     JobsModule,
     TrpcModule,
+    ProfileModule,
   ],
 })
 export class AppModule {}

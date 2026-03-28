@@ -26,7 +26,7 @@ export class TripsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
   async list(filters?: {
-    status?: string;
+    status?: string; // single value OR comma-separated values (e.g. "planned,loading")
     driverId?: string;
     truckId?: string;
     sourceParcelId?: string;
@@ -36,7 +36,17 @@ export class TripsService {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
     if (filters?.status) {
-      conditions.push(sql`status = ${filters.status}`);
+      const statuses = filters.status.split(',').map((s) => s.trim()).filter(Boolean);
+      if (statuses.length === 1) {
+        conditions.push(sql`status = ${statuses[0]}::trip_status`);
+      } else if (statuses.length > 1) {
+        // Build IN clause with explicit cast for each value
+        const castList = sql.join(
+          statuses.map((s) => sql`${s}::trip_status`),
+          sql`, `,
+        );
+        conditions.push(sql`status IN (${castList})`);
+      }
     }
     if (filters?.driverId) {
       conditions.push(sql`driver_id = ${filters.driverId}`);

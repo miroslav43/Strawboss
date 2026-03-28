@@ -4,7 +4,6 @@ import {
   QUEUE_ALERT_EVALUATION,
   QUEUE_RECONCILIATION,
   QUEUE_CMR_GENERATION,
-  QUEUE_FARMTRACK_SYNC,
   QUEUE_SYNC_CLEANUP,
 } from './queues';
 
@@ -17,7 +16,6 @@ import {
       { name: QUEUE_ALERT_EVALUATION },
       { name: QUEUE_RECONCILIATION },
       { name: QUEUE_CMR_GENERATION },
-      { name: QUEUE_FARMTRACK_SYNC },
       { name: QUEUE_SYNC_CLEANUP },
     ),
   ],

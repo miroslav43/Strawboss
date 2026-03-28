@@ -22,7 +22,7 @@ export class ReconciliationProcessor extends WorkerHost {
   async process(_job: Job): Promise<void> {
     // Reconcile bales for all active parcels
     const parcelsResult = await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM parcels WHERE status = 'active' AND deleted_at IS NULL`,
+      sql`SELECT id FROM parcels WHERE is_active = true AND deleted_at IS NULL`,
     );
     const parcels = parcelsResult as unknown as { id: string }[];
 
@@ -40,7 +40,7 @@ export class ReconciliationProcessor extends WorkerHost {
     // Reconcile fuel for all active machines (trucks)
     const machinesResult = await this.drizzleProvider.db.execute(
       sql`SELECT id FROM machines
-          WHERE machine_type = 'truck' AND status = 'active' AND deleted_at IS NULL`,
+          WHERE machine_type = 'truck' AND is_active = true AND deleted_at IS NULL`,
     );
     const machines = machinesResult as unknown as { id: string }[];
 

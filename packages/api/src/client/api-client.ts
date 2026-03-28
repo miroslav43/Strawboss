@@ -9,13 +9,16 @@ export class ApiClient {
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = await this.config.getToken();
+    const hasBody = body !== undefined;
     const res = await fetch(`${this.config.baseUrl}${path}`, {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        // Only send Content-Type when there is a body — Fastify rejects
+        // Content-Type: application/json with an empty body (e.g. DELETE).
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: hasBody ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: res.statusText }));

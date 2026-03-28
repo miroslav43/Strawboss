@@ -20,6 +20,9 @@ export interface RequestUser {
 
 @Injectable()
 export class AuthGuard implements CanActivate {
+  /** Cached JWKS fetcher for the current Supabase project (ECC / RS256 keys). */
+  private jwks: ReturnType<typeof jose.createRemoteJWKSet> | null = null;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly reflector: Reflector,
@@ -44,21 +47,47 @@ export class AuthGuard implements CanActivate {
 
     const token = authHeader.slice(7);
 
+    // Peek at the header to determine algorithm without full verification.
+    const [headerB64] = token.split('.');
+    const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString());
+
     try {
-      const secret = this.configService.getOrThrow<string>('SUPABASE_JWT_SECRET');
-      const encodedSecret = new TextEncoder().encode(secret);
+      let payload: jose.JWTPayload;
 
-      const { payload } = await jose.jwtVerify(token, encodedSecret, {
-        algorithms: ['HS256'],
-      });
+      if (header.alg === 'HS256') {
+        // Legacy JWT signed with the shared HS256 secret (service_role / anon keys).
+        const secret = this.configService.getOrThrow<string>('SUPABASE_JWT_SECRET');
+        const encodedSecret = new TextEncoder().encode(secret);
+        ({ payload } = await jose.jwtVerify(token, encodedSecret, {
+          algorithms: ['HS256'],
+        }));
+      } else {
+        // Modern asymmetric JWT (ECC P-256 / RS256) — verify via Supabase JWKS.
+        if (!this.jwks) {
+          const supabaseUrl = this.configService.getOrThrow<string>('SUPABASE_URL');
+          this.jwks = jose.createRemoteJWKSet(
+            new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`),
+          );
+        }
+        ({ payload } = await jose.jwtVerify(token, this.jwks, {
+          algorithms: ['ES256', 'RS256'],
+        }));
+      }
 
-      const user: RequestUser = {
+      // Role lives in app_metadata for ECC tokens, or at the root for legacy tokens.
+      const appMeta = payload.app_metadata as Record<string, unknown> | undefined;
+      const role =
+        (appMeta?.role as string | undefined) ??
+        (payload.user_role as string | undefined) ??
+        (payload.role as string | undefined) ??
+        '';
+
+      request.user = {
         id: (payload.sub as string) ?? '',
         email: (payload.email as string) ?? '',
-        role: (payload.user_role as string) ?? (payload.role as string) ?? '',
-      };
+        role,
+      } satisfies RequestUser;
 
-      request.user = user;
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

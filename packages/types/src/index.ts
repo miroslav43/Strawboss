@@ -13,8 +13,10 @@ export * from "./entities/document.js";
 export * from "./entities/alert.js";
 export * from "./entities/audit-log.js";
 export * from "./entities/task-assignment.js";
+export * from "./entities/machine-location-event.js";
 
 export * from "./dtos/trip-create.dto.js";
 export * from "./dtos/trip-transition.dto.js";
 export * from "./dtos/sync-payload.dto.js";
 export * from "./dtos/dashboard.dto.js";
+export * from "./dtos/location-report.dto.js";

@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { Truck, Package, Cog, AlertTriangle } from 'lucide-react';
 import { useDashboardOverview, useTrips } from '@strawboss/api';
@@ -35,7 +36,8 @@ function SummaryCard({ title, value, icon: Icon, color }: SummaryCardProps) {
 
 export default function OperationsPage() {
   const overviewQuery = useDashboardOverview(apiClient);
-  const tripsQuery = useTrips(apiClient, { status: 'active' });
+  // "Active" = all in-progress states; trip_status has no 'active' value
+  const tripsQuery = useTrips(apiClient, { status: 'planned,loading,loaded,in_transit,arrived,delivering' });
 
   const overview: DashboardOverview | undefined = overviewQuery.data;
   const tripsResponse = tripsQuery.data as PaginatedResponse<Trip> | undefined;

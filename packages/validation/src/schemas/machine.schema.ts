@@ -34,7 +34,7 @@ export const machineSchema = z
 
 export const createMachineSchema = z.object({
   machineType: machineTypeSchema,
-  registrationPlate: z.string().min(1),
+  registrationPlate: z.string().min(1).optional(),
   internalCode: z.string().min(1),
   make: z.string().min(1),
   model: z.string().min(1),

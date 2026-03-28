@@ -3,20 +3,16 @@
 -- Run with: supabase db reset  (applies migrations then seed)
 
 -- ============================================================
--- Users: 1 admin, 1 dispatcher, 1 driver
+-- Users: 1 admin, 1 driver
 -- ============================================================
 INSERT INTO users (id, email, full_name, role, phone, is_active) VALUES
-  ('a0000000-0000-0000-0000-000000000001', 'admin@strawboss.local',      'Ana Admin',       'admin',      '+385911111111', true),
-  ('a0000000-0000-0000-0000-000000000002', 'dispatcher@strawboss.local', 'Darko Dispatcher', 'dispatcher', '+385922222222', true),
-  ('a0000000-0000-0000-0000-000000000003', 'driver@strawboss.local',     'Dragan Driver',    'driver',     '+385933333333', true);
+  ('a0000000-0000-0000-0000-000000000001', 'admin@strawboss.local',  'Ana Admin',    'admin',  '+385911111111', true),
+  ('a0000000-0000-0000-0000-000000000003', 'driver@strawboss.local', 'Dragan Driver','driver', '+385933333333', true);
 
 -- ============================================================
 -- Parcels
+-- (none seeded — add real fields via the Map page in the admin dashboard)
 -- ============================================================
-INSERT INTO parcels (id, code, name, owner_name, owner_contact, area_hectares, address, municipality, is_active) VALUES
-  ('b0000000-0000-0000-0000-000000000001', 'P-2026-001', 'Njiva Istok',   'Ivan Horvat',  '+385991000001', 25.50, 'Ulica polja 1, Osijek',    'Osijek',    true),
-  ('b0000000-0000-0000-0000-000000000002', 'P-2026-002', 'Parcela Zapad', 'Marko Kovac',  '+385991000002', 42.00, 'Seoska cesta 14, Vukovar', 'Vukovar',   true),
-  ('b0000000-0000-0000-0000-000000000003', 'P-2026-003', 'Veliko Polje',  'Ante Babic',   '+385991000003', 68.75, 'Poljski put 7, Vinkovci',  'Vinkovci',  true);
 
 -- ============================================================
 -- Machines: 2 trucks, 1 loader, 1 baler
@@ -40,14 +36,6 @@ INSERT INTO delivery_destinations (id, code, name, address, contact_name, contac
   ('d0000000-0000-0000-0000-000000000002', 'DD-002', 'Bio Energija Vukovar',    'Luka bb, Vukovar',          'Petra Novak',  '+385994000002', true);
 
 -- ============================================================
--- Task assignments for today
+-- Task assignments and trips
+-- (none seeded — parcels must exist first; create via the admin dashboard)
 -- ============================================================
-INSERT INTO task_assignments (id, assignment_date, machine_id, parcel_id, assigned_user_id, priority, sequence_order, estimated_start, estimated_end) VALUES
-  ('e0000000-0000-0000-0000-000000000001', CURRENT_DATE, 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000003', 'normal', 1, CURRENT_DATE + INTERVAL '7 hours', CURRENT_DATE + INTERVAL '9 hours'),
-  ('e0000000-0000-0000-0000-000000000002', CURRENT_DATE, 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000003', 'high',   2, CURRENT_DATE + INTERVAL '10 hours', CURRENT_DATE + INTERVAL '12 hours');
-
--- ============================================================
--- Trip in 'planned' status
--- ============================================================
-INSERT INTO trips (id, trip_number, status, source_parcel_id, truck_id, driver_id, loader_id, bale_count) VALUES
-  ('f0000000-0000-0000-0000-000000000001', 'TR-2026-0001', 'planned', 'b0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000003', 0);

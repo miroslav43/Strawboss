@@ -11,6 +11,9 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Map,
+  Users,
+  Wrench,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SidebarLink } from './SidebarLink';
@@ -22,6 +25,9 @@ const navItems = [
   { href: '/documents', icon: FileText, label: 'Documents' },
   { href: '/reports', icon: BarChart3, label: 'Reports' },
   { href: '/alerts', icon: Bell, label: 'Alerts' },
+  { href: '/map', icon: Map, label: 'Map' },
+  { href: '/machines', icon: Wrench, label: 'Machines' },
+  { href: '/accounts', icon: Users, label: 'Accounts' },
 ] as const;
 
 const bottomItems = [

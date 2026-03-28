@@ -5,11 +5,47 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "strawboss",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "plugins": [
       "expo-router",
-      ["expo-camera", { "cameraPermission": "StrawBoss needs camera for QR scanning and photos" }],
-      ["expo-image-picker", { "photosPermission": "StrawBoss needs photos for weight tickets" }]
-    ]
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "StrawBoss needs camera for QR scanning and photos"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "StrawBoss needs photos for weight tickets"
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "StrawBoss uses your location to track field operations.",
+          "locationAlwaysPermission": "StrawBoss uses background location to track your position while working in the field.",
+          "locationWhenInUsePermission": "StrawBoss uses your location to report your position to the farm manager."
+        }
+      ]
+    ],
+    "android": {
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
+    },
+    "ios": {
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "StrawBoss uses your location to report your position to the farm manager.",
+        "NSLocationAlwaysUsageDescription": "StrawBoss uses background location to track your position while working in the field.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "StrawBoss uses your location to track field operations."
+      }
+    }
   }
 }

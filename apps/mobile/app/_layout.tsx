@@ -54,13 +54,16 @@ export default function RootLayout() {
     getDatabase().then(() => setDbReady(true));
   }, []);
 
-  if (!dbReady) return null;
-
+  // QueryClientProvider must always be in the tree so that screens
+  // pre-rendered by expo-router have access to the query context
+  // even before the local SQLite database finishes initialising.
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthGate>
-        <Stack screenOptions={{ headerShown: false }} />
-      </AuthGate>
+      {dbReady ? (
+        <AuthGate>
+          <Stack screenOptions={{ headerShown: false }} />
+        </AuthGate>
+      ) : null}
       <StatusBar style="dark" />
     </QueryClientProvider>
   );

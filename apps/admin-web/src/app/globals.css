@@ -1,1 +1,21 @@
 @import "tailwindcss";
+
+@theme {
+  /* Primary brand color — agriculture green */
+  --color-primary:     #4f7942;
+  --color-primary-700: #3a5a30;
+}
+
+/* Parcel map labels — permanent tooltips on polygons */
+.parcel-label {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(79, 121, 66, 0.3);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  padding: 2px 6px;
+  pointer-events: none;
+  text-align: center;
+}
+.parcel-label::before {
+  display: none;
+}
