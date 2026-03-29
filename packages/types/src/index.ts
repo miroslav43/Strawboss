@@ -20,3 +20,4 @@ export * from "./dtos/trip-transition.dto.js";
 export * from "./dtos/sync-payload.dto.js";
 export * from "./dtos/dashboard.dto.js";
 export * from "./dtos/location-report.dto.js";
+export * from "./dtos/route-history.dto.js";

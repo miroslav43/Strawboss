@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Maximize2 } from 'lucide-react';
-import type { Parcel, MachineLastLocation } from '@strawboss/types';
+import type { Parcel, MachineLastLocation, RoutePoint } from '@strawboss/types';
 import { useUpdateParcelBoundary } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 
@@ -78,6 +78,11 @@ function machinePopupHtml(m: MachineLastLocation): string {
   const cfg    = getMachineCfg(m.machineType);
   const online = isOnline(m.recordedAt);
   const ago    = timeAgo(m.recordedAt);
+  const btnBase = `
+    cursor:pointer;border:1px solid #d1d5db;border-radius:6px;
+    padding:4px 10px;font-size:11px;font-family:sans-serif;
+    background:#fff;color:#374151;
+  `;
   return `
     <div style="min-width:180px;font-family:sans-serif;line-height:1.5;">
       <div style="font-weight:700;font-size:14px;margin-bottom:4px;">
@@ -87,6 +92,9 @@ function machinePopupHtml(m: MachineLastLocation): string {
       ${m.operatorName ? `<div style="font-size:12px;color:#374151;">Operator: ${m.operatorName}</div>` : ''}
       <div style="margin-top:6px;font-size:11px;color:${online ? '#16a34a' : '#9ca3af'};">
         ${online ? '● Online' : '○ Offline'} · ${ago}
+      </div>
+      <div style="margin-top:8px;">
+        <button data-show-route-machine-id="${m.machineId}" style="${btnBase}color:#3b82f6;border-color:#93c5fd;">🗺️ Arată traseu</button>
       </div>
     </div>`;
 }
@@ -103,6 +111,15 @@ export interface LeafletMapProps {
   drawingNewParcel?: boolean;
   onNewParcelDrawn?: (geometry: GeoJSON.Geometry) => void;
   onDrawCancel?: () => void;
+  /** Route history polyline points (chronological order). */
+  routePoints?: RoutePoint[];
+  /** Trigger: pan/zoom to this parcel, then reset via onNavigationComplete. */
+  navigateToParcelId?: string | null;
+  /** Trigger: pan/zoom to this machine, then reset via onNavigationComplete. */
+  navigateToMachineId?: string | null;
+  onNavigationComplete?: () => void;
+  /** Called when user clicks "Arată traseu" in a machine popup. */
+  onShowRoute?: (machineId: string) => void;
 }
 
 export function LeafletMap({
@@ -117,6 +134,11 @@ export function LeafletMap({
   drawingNewParcel,
   onNewParcelDrawn,
   onDrawCancel,
+  routePoints,
+  navigateToParcelId,
+  navigateToMachineId,
+  onNavigationComplete,
+  onShowRoute,
 }: LeafletMapProps) {
   const mapRef           = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -127,6 +149,8 @@ export function LeafletMap({
   const machineLayersRef = useRef<Map<string, any>>(new Map());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editableLayerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const routeLayerRef = useRef<any>(null);
 
   // Index parcels by id so popup button handlers can look up the full object.
   const parcelsIndexRef = useRef<Map<string, Parcel>>(new Map());
@@ -145,6 +169,9 @@ export function LeafletMap({
   useEffect(() => { onParcelDeleteRef.current   = onParcelDelete;   }, [onParcelDelete]);
   useEffect(() => { onNewParcelDrawnRef.current = onNewParcelDrawn; }, [onNewParcelDrawn]);
   useEffect(() => { onDrawCancelRef.current     = onDrawCancel;     }, [onDrawCancel]);
+
+  const onShowRouteRef = useRef(onShowRoute);
+  useEffect(() => { onShowRouteRef.current = onShowRoute; }, [onShowRoute]);
 
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [saveError,    setSaveError]    = useState<string | null>(null);
@@ -241,6 +268,16 @@ export function LeafletMap({
           deleteBtn.onclick = () => {
             if (!parcelId) return;
             onParcelDeleteRef.current(parcelId);
+            map.closePopup();
+          };
+        }
+
+        const routeBtn = container.querySelector('[data-show-route-machine-id]') as HTMLElement | null;
+        if (routeBtn) {
+          const mid = routeBtn.getAttribute('data-show-route-machine-id');
+          routeBtn.onclick = () => {
+            if (!mid) return;
+            onShowRouteRef.current?.(mid);
             map.closePopup();
           };
         }
@@ -373,6 +410,77 @@ export function LeafletMap({
       (map as any).pm.disableDraw();
     };
   }, [drawingNewParcel, mapReady]);
+
+  // ── 6. Render route history polyline ────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+
+    // Clear previous route
+    if (routeLayerRef.current) {
+      map.removeLayer(routeLayerRef.current);
+      routeLayerRef.current = null;
+    }
+
+    if (!routePoints || routePoints.length < 2) return;
+
+    const render = async () => {
+      const L = (await import('leaflet')).default;
+      const latLngs = routePoints.map((p) => [p.lat, p.lon] as [number, number]);
+
+      const polyline = L.polyline(latLngs, {
+        color: '#3b82f6',
+        weight: 3,
+        opacity: 0.8,
+        dashArray: '8 4',
+      });
+
+      const startMarker = L.circleMarker(latLngs[0], {
+        radius: 6, color: '#16a34a', fillColor: '#16a34a', fillOpacity: 1,
+      }).bindTooltip('Start', { permanent: false });
+
+      const endMarker = L.circleMarker(latLngs[latLngs.length - 1], {
+        radius: 6, color: '#dc2626', fillColor: '#dc2626', fillOpacity: 1,
+      }).bindTooltip('Ultima poziție', { permanent: false });
+
+      const group = L.layerGroup([polyline, startMarker, endMarker]).addTo(map);
+      routeLayerRef.current = group;
+
+      map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+    };
+
+    void render();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routePoints, mapReady]);
+
+  // ── 7. Navigate to parcel ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!navigateToParcelId || !mapInstanceRef.current || !mapReady) return;
+
+    const layer = parcelLayersRef.current.get(navigateToParcelId);
+    if (layer) {
+      const bounds = layer.getBounds?.();
+      if (bounds?.isValid()) {
+        mapInstanceRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+        layer.openPopup();
+      }
+    }
+    onNavigationComplete?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigateToParcelId, mapReady]);
+
+  // ── 8. Navigate to machine ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!navigateToMachineId || !mapInstanceRef.current || !mapReady) return;
+
+    const marker = machineLayersRef.current.get(navigateToMachineId);
+    if (marker) {
+      mapInstanceRef.current.setView(marker.getLatLng(), 16, { animate: true });
+      marker.openPopup();
+    }
+    onNavigationComplete?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigateToMachineId, mapReady]);
 
   // ── Edit-boundary handlers ───────────────────────────────────────────────
   const handleStartEdit = async (parcel: Parcel) => {

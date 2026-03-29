@@ -1,7 +1,12 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import type { LocationReportDto, MachineLastLocation } from '@strawboss/types';
+import type {
+  LocationReportDto,
+  MachineLastLocation,
+  RouteHistoryResponse,
+  RoutePoint,
+} from '@strawboss/types';
 
 @Injectable()
 export class LocationService {
@@ -59,5 +64,75 @@ export class LocationService {
     `);
 
     return result as unknown as MachineLastLocation[];
+  }
+
+  /**
+   * Return the GPS route history for a specific machine within a time range.
+   * Points are ordered chronologically (ASC) with a safety cap of 50 000 rows.
+   */
+  async getRouteHistory(
+    machineId: string,
+    from: string,
+    to: string,
+  ): Promise<RouteHistoryResponse> {
+    // Validate machineId is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(machineId)) {
+      throw new BadRequestException('Invalid machineId: must be a valid UUID');
+    }
+
+    // Validate from/to are valid ISO-8601 dates
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (isNaN(fromDate.getTime())) {
+      throw new BadRequestException('Invalid "from" parameter: must be a valid ISO-8601 date');
+    }
+    if (isNaN(toDate.getTime())) {
+      throw new BadRequestException('Invalid "to" parameter: must be a valid ISO-8601 date');
+    }
+    if (fromDate >= toDate) {
+      throw new BadRequestException('"from" must be before "to"');
+    }
+
+    const machineResult = await this.drizzleProvider.db.execute(sql`
+      SELECT
+        COALESCE(internal_code, registration_plate) AS "machineCode",
+        machine_type AS "machineType"
+      FROM machines
+      WHERE id = ${machineId}::uuid AND deleted_at IS NULL
+      LIMIT 1
+    `);
+    const machine = (machineResult as unknown as Array<{
+      machineCode: string | null;
+      machineType: string | null;
+    }>)[0] ?? null;
+
+    const result = await this.drizzleProvider.db.execute(sql`
+      SELECT
+        lat,
+        lon,
+        accuracy_m   AS "accuracyM",
+        heading_deg  AS "headingDeg",
+        speed_ms     AS "speedMs",
+        recorded_at  AS "recordedAt"
+      FROM machine_location_events
+      WHERE machine_id = ${machineId}::uuid
+        AND recorded_at >= ${from}::timestamptz
+        AND recorded_at <= ${to}::timestamptz
+      ORDER BY recorded_at ASC
+      LIMIT 50000
+    `);
+
+    const points = result as unknown as RoutePoint[];
+
+    return {
+      machineId,
+      machineCode: machine?.machineCode ?? null,
+      machineType: machine?.machineType ?? null,
+      from,
+      to,
+      totalPoints: points.length,
+      points,
+    };
   }
 }

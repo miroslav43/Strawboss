@@ -87,4 +87,5 @@ export {
 export type { CreateUserPayload, UpdateUserPayload } from './use-admin-users.js';
 
 export { useMachineLocations } from './use-machine-locations.js';
+export { useRouteHistory } from './use-route-history.js';
 export { useProfile } from './use-profile.js';

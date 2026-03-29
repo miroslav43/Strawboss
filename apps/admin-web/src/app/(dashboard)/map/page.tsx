@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useCallback, useMemo } from 'react';
 import dynamicImport from 'next/dynamic';
-import { MapPin, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
+import { MapPin, Plus, XCircle } from 'lucide-react';
 import area from '@turf/area';
 import { polygon as turfPolygon, multiPolygon as turfMultiPolygon } from '@turf/helpers';
 import {
@@ -13,8 +13,11 @@ import {
   useUpdateParcel,
   useDeleteParcel,
 } from '@strawboss/api';
-import type { Parcel } from '@strawboss/types';
+import type { Parcel, MachineLastLocation, RoutePoint } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { RouteHistoryPanel } from '@/components/map/RouteHistoryPanel';
+import { FilterableParcelList } from '@/components/map/FilterableParcelList';
+import { FilterableMachineList } from '@/components/map/FilterableMachineList';
 import { apiClient } from '@/lib/api';
 
 // Leaflet cannot run on the server — disable SSR for the map component.
@@ -179,6 +182,8 @@ interface EditParcelInfoModalProps {
 
 function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
   const [name,         setName]         = useState(parcel.name ?? '');
+  const [ownerName,    setOwnerName]    = useState(parcel.ownerName ?? '');
+  const [ownerContact, setOwnerContact] = useState(parcel.ownerContact ?? '');
   const [municipality, setMunicipality] = useState(parcel.municipality ?? '');
   const [areaHectares, setAreaHectares] = useState(parcel.areaHectares?.toString() ?? '');
   const [notes,        setNotes]        = useState(parcel.notes ?? '');
@@ -191,7 +196,9 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
       {
         id: parcel.id,
         data: {
-          name:         name.trim()        || undefined,
+          name:         name.trim()         || undefined,
+          ownerName:    ownerName.trim()    || undefined,
+          ownerContact: ownerContact.trim() || undefined,
           municipality: municipality.trim() || undefined,
           areaHectares: areaHectares        ? Number(areaHectares) : undefined,
           notes:        notes.trim()        || null,
@@ -211,10 +218,12 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
-          <FormField label="Nume câmp"      value={name}         onChange={setName}         placeholder="ex. Câmpul Mare (opțional)" />
-          <FormField label="Localitate"     value={municipality} onChange={setMunicipality} placeholder="ex. Deta" />
-          <FormField label="Suprafață (ha)" value={areaHectares} onChange={setAreaHectares} type="number" placeholder="12.5" />
-          <FormField label="Note"           value={notes}        onChange={setNotes}        placeholder="Observații opționale" />
+          <FormField label="Nume câmp"         value={name}         onChange={setName}         placeholder="ex. Câmpul Mare (opțional)" />
+          <FormField label="Proprietar"       value={ownerName}    onChange={setOwnerName}    placeholder="ex. Ion Popescu (opțional)" />
+          <FormField label="Contact proprietar" value={ownerContact} onChange={setOwnerContact} placeholder="ex. 0721-xxx-xxx (opțional)" />
+          <FormField label="Localitate"       value={municipality} onChange={setMunicipality} placeholder="ex. Deta" />
+          <FormField label="Suprafață (ha)"   value={areaHectares} onChange={setAreaHectares} type="number" placeholder="12.5" />
+          <FormField label="Note"             value={notes}        onChange={setNotes}        placeholder="Observații opționale" />
 
           {updateParcel.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -276,6 +285,10 @@ export default function MapPage() {
   const [drawingNewParcel,  setDrawingNewParcel]   = useState(false);
   const [drawnGeometry,     setDrawnGeometry]      = useState<GeoJSON.Geometry | null>(null);
   const [deleteError,       setDeleteError]        = useState<string | null>(null);
+  const [selectedMachineId,  setSelectedMachineId]  = useState<string | null>(null);
+  const [routePoints,        setRoutePoints]        = useState<RoutePoint[] | undefined>(undefined);
+  const [navigateToParcelId,  setNavigateToParcelId]  = useState<string | null>(null);
+  const [navigateToMachineId, setNavigateToMachineId] = useState<string | null>(null);
 
   const parcels = (
     Array.isArray(parcelsRaw) ? parcelsRaw : (parcelsRaw as { data?: Parcel[] })?.data ?? []
@@ -310,6 +323,33 @@ export default function MapPage() {
     setDrawingNewParcel(false);
   }, []);
 
+  const handleShowRoute = useCallback((machineId: string) => {
+    setSelectedMachineId(machineId);
+  }, []);
+
+  const handleCloseRoute = useCallback(() => {
+    setSelectedMachineId(null);
+    setRoutePoints(undefined);
+  }, []);
+
+  const handleParcelNavigate = useCallback((parcel: Parcel) => {
+    setSelectedParcelId(parcel.id);
+    setNavigateToParcelId(parcel.id);
+  }, []);
+
+  const handleMachineNavigate = useCallback((machine: MachineLastLocation) => {
+    setNavigateToMachineId(machine.machineId);
+  }, []);
+
+  const handleNavigationComplete = useCallback(() => {
+    setNavigateToParcelId(null);
+    setNavigateToMachineId(null);
+  }, []);
+
+  const handleParcelEditBoundary = useCallback((parcel: Parcel) => {
+    setEditParcel(parcel);
+  }, []);
+
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       <PageHeader title="Hartă câmpuri" />
@@ -321,113 +361,25 @@ export default function MapPage() {
       )}
 
       <div className="flex flex-1 overflow-hidden rounded-xl border border-neutral-200 shadow-sm">
-        {/* Left panel: parcel list */}
-        <aside className="w-64 flex-shrink-0 overflow-y-auto border-r border-neutral-200 bg-white">
-          <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-              Câmpuri / Parcele
-            </p>
-            <button
-              onClick={() => setDrawingNewParcel(true)}
-              title="Adaugă câmp nou"
-              className="flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-white hover:bg-primary/90"
-            >
-              <Plus className="h-3 w-3" />
-              Câmp nou
-            </button>
-          </div>
-
-          {parcelsLoading && (
-            <div className="px-4 py-6 text-center text-sm text-neutral-400">Se încarcă…</div>
-          )}
-
-          <ul className="divide-y divide-neutral-100">
-            {parcels.map((parcel) => (
-              <li
-                key={parcel.id}
-                className={`cursor-pointer px-4 py-3 transition-colors hover:bg-neutral-50 ${
-                  selectedParcelId === parcel.id ? 'border-l-2 border-primary bg-amber-50' : ''
-                }`}
-                onClick={() => setSelectedParcelId(parcel.id)}
-              >
-                <div className="flex items-start justify-between gap-1">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-neutral-800">
-                      {parcel.name ?? <span className="italic text-neutral-400">Câmp fără nume</span>}
-                    </p>
-                    <p className="truncate text-xs text-neutral-500">
-                      {parcel.code}{parcel.municipality ? ` · ${parcel.municipality}` : ''}
-                    </p>
-                    <p className="text-xs text-neutral-400">
-                      {parcel.areaHectares != null ? `${parcel.areaHectares} ha` : '—'}
-                    </p>
-                  </div>
-                  {/* Edit info */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingParcelInfo(parcel); }}
-                    className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-primary"
-                    title="Editează informații"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  {/* Edit boundary */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditParcel(parcel); }}
-                    className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-blue-600"
-                    title="Editează limita pe hartă"
-                  >
-                    <MapPin className="h-3.5 w-3.5" />
-                  </button>
-                  {/* Delete */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleParcelDelete(parcel.id); }}
-                    disabled={deleteParcel.isPending}
-                    className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
-                    title="Șterge câmpul"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </li>
-            ))}
-            {!parcelsLoading && parcels.length === 0 && (
-              <li className="px-4 py-8 text-center text-sm text-neutral-400">
-                Nicio parcelă. Desenează pe hartă sau apasă "+ Câmp nou".
-              </li>
-            )}
-          </ul>
-
-          {/* Machine list (compact) */}
-          {machines.length > 0 && (
-            <div className="border-t border-neutral-200">
-              <div className="px-4 py-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                  Mașini active
-                </p>
-              </div>
-              <ul className="divide-y divide-neutral-100 pb-2">
-                {machines.map((m) => {
-                  const online = (Date.now() - new Date(m.recordedAt).getTime()) < 15 * 60 * 1000;
-                  return (
-                    <li key={m.machineId} className="px-4 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 flex-shrink-0 rounded-full"
-                          style={{ background: online ? '#16a34a' : '#9ca3af' }} />
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-medium text-neutral-700">
-                            {m.machineCode ?? m.machineType ?? 'Mașină'}
-                          </p>
-                          {m.operatorName && (
-                            <p className="truncate text-xs text-neutral-400">{m.operatorName}</p>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+        {/* Left panel: parcel + machine lists with filters */}
+        <aside className="w-72 flex-shrink-0 overflow-y-auto border-r border-neutral-200 bg-white">
+          <FilterableParcelList
+            parcels={parcels}
+            isLoading={parcelsLoading}
+            selectedParcelId={selectedParcelId}
+            onParcelSelect={handleParcelSelect}
+            onParcelEdit={handleParcelEdit}
+            onParcelEditBoundary={handleParcelEditBoundary}
+            onParcelDelete={handleParcelDelete}
+            onParcelNavigate={handleParcelNavigate}
+            onAddNew={() => setDrawingNewParcel(true)}
+            deleteIsPending={deleteParcel.isPending}
+          />
+          <FilterableMachineList
+            machines={machines}
+            onMachineNavigate={handleMachineNavigate}
+            onMachineShowRoute={handleShowRoute}
+          />
         </aside>
 
         {/* Right panel: map */}
@@ -444,7 +396,21 @@ export default function MapPage() {
             drawingNewParcel={drawingNewParcel}
             onNewParcelDrawn={handleNewParcelDrawn}
             onDrawCancel={handleDrawCancel}
+            routePoints={routePoints}
+            onShowRoute={handleShowRoute}
+            navigateToParcelId={navigateToParcelId}
+            navigateToMachineId={navigateToMachineId}
+            onNavigationComplete={handleNavigationComplete}
           />
+          {selectedMachineId && (
+            <RouteHistoryPanel
+              machineId={selectedMachineId}
+              machineCode={machines.find((m) => m.machineId === selectedMachineId)?.machineCode ?? null}
+              machineType={machines.find((m) => m.machineId === selectedMachineId)?.machineType ?? null}
+              onClose={handleCloseRoute}
+              onRouteData={setRoutePoints}
+            />
+          )}
         </div>
       </div>
 

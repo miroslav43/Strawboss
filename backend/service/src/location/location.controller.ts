@@ -1,14 +1,14 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, Query, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { LocationService } from './location.service';
 import { AuthGuard } from '../auth/auth.guard';
-import { Roles } from '../auth/roles.guard';
+import { Roles, RolesGuard } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
 import type { LocationReportDto } from '@strawboss/types';
 import { UserRole } from '@strawboss/types';
 
 @Controller('location')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
 export class LocationController {
   constructor(private readonly locationService: LocationService) {}
 
@@ -33,5 +33,19 @@ export class LocationController {
   @Roles(UserRole.admin)
   getLastKnownPositions() {
     return this.locationService.getLastKnownPositions();
+  }
+
+  /**
+   * GET /api/v1/location/machines/:machineId/route?from=...&to=...
+   * Admin-only: GPS route history for a specific machine within a time range.
+   */
+  @Get('machines/:machineId/route')
+  @Roles(UserRole.admin)
+  getRouteHistory(
+    @Param('machineId') machineId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.locationService.getRouteHistory(machineId, from, to);
   }
 }
