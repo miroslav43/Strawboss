@@ -7,6 +7,14 @@ import { createConsumableLogSchema } from '@strawboss/validation';
 export class ConsumableLogsController {
   constructor(private readonly consumableLogsService: ConsumableLogsService) {}
 
+  @Get('stats')
+  getStats(
+    @Query('operatorId') operatorId?: string,
+    @Query('consumableType') consumableType?: string,
+  ) {
+    return this.consumableLogsService.getStats({ operatorId, consumableType });
+  }
+
   @Get()
   list(
     @Query('machineId') machineId?: string,

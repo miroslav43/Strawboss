@@ -33,6 +33,11 @@ export class ParcelsController {
     });
   }
 
+  @Get(':id/bale-availability')
+  getBaleAvailability(@Param('id') id: string) {
+    return this.parcelsService.getBaleAvailability(id);
+  }
+
   @Get(':id')
   findById(@Param('id') id: string) {
     return this.parcelsService.findById(id);

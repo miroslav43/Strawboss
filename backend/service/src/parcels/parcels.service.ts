@@ -39,6 +39,18 @@ export class ParcelsService {
     return result;
   }
 
+  async getBaleAvailability(id: string) {
+    const result = await this.drizzleProvider.db.execute(sql`
+      SELECT
+        COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = ${id} AND deleted_at IS NULL), 0) AS "produced",
+        COALESCE((SELECT SUM(bale_count) FROM bale_loads WHERE parcel_id = ${id} AND deleted_at IS NULL), 0) AS "loaded"
+    `);
+    const rows = result as unknown as Array<{ produced: number; loaded: number }>;
+    const { produced, loaded } = rows[0];
+    const remaining = Number(produced) - Number(loaded);
+    return { produced: Number(produced), loaded: Number(loaded), remaining };
+  }
+
   async findById(id: string) {
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT

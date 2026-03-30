@@ -335,9 +335,10 @@ export function LeafletMap({
           : `<div style="font-weight:600;font-size:11px;color:#4f7942;white-space:nowrap;">${labelLine2}</div>`;
 
         layer.bindTooltip(labelHtml, {
-          permanent: true,
+          permanent: false,
           direction: 'center',
           className: 'parcel-label',
+          sticky: false,
         });
 
         if (showParcels) layer.addTo(map);

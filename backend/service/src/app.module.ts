@@ -7,6 +7,7 @@ import { MachinesModule } from './machines/machines.module';
 import { TaskAssignmentsModule } from './task-assignments/task-assignments.module';
 import { TripsModule } from './trips/trips.module';
 import { BaleLoadsModule } from './bale-loads/bale-loads.module';
+import { BaleProductionsModule } from './bale-productions/bale-productions.module';
 import { FuelLogsModule } from './fuel-logs/fuel-logs.module';
 import { ConsumableLogsModule } from './consumable-logs/consumable-logs.module';
 import { DocumentsModule } from './documents/documents.module';
@@ -31,6 +32,7 @@ import { ProfileModule } from './profile/profile.module';
     TaskAssignmentsModule,
     TripsModule,
     BaleLoadsModule,
+    BaleProductionsModule,
     FuelLogsModule,
     ConsumableLogsModule,
     DocumentsModule,

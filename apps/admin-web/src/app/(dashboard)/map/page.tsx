@@ -19,6 +19,7 @@ import { RouteHistoryPanel } from '@/components/map/RouteHistoryPanel';
 import { FilterableParcelList } from '@/components/map/FilterableParcelList';
 import { FilterableMachineList } from '@/components/map/FilterableMachineList';
 import { apiClient } from '@/lib/api';
+import { type KmlParsedParcel } from '@/lib/kml-parser';
 
 // Leaflet cannot run on the server — disable SSR for the map component.
 const LeafletMap = dynamicImport(
@@ -173,6 +174,156 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
   );
 }
 
+// ── KML import modal ──────────────────────────────────────────────────────
+
+interface KmlImportModalProps {
+  parcels: KmlParsedParcel[];
+  onClose: () => void;
+}
+
+function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
+  const createParcel = useCreateParcel(apiClient);
+  const [progress, setProgress] = useState<{ done: number; failed: number } | null>(null);
+  const [done, setDone] = useState(false);
+
+  const handleImport = async () => {
+    let failed = 0;
+    setProgress({ done: 0, failed: 0 });
+
+    for (let i = 0; i < parcels.length; i++) {
+      const p = parcels[i];
+      await new Promise<void>((resolve) => {
+        createParcel.mutate(
+          {
+            boundary: JSON.stringify(p.boundary),
+            name: p.name || undefined,
+            municipality: p.municipality || undefined,
+          },
+          {
+            onSuccess: () => resolve(),
+            onError: () => { failed++; resolve(); },
+          },
+        );
+      });
+      setProgress({ done: i + 1, failed });
+    }
+
+    setDone(true);
+  };
+
+  const importing = progress !== null && !done;
+  const total = parcels.length;
+
+  return (
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+        {/* Header */}
+        <div className="flex items-center justify-between bg-primary px-6 py-4">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📂</span>
+            <h2 className="text-base font-semibold text-white">
+              Import KML — {total} parcel{total === 1 ? 'ă' : 'e'} găsit{total === 1 ? 'ă' : 'e'}
+            </h2>
+          </div>
+          {!importing && (
+            <button
+              onClick={onClose}
+              className="rounded-full p-1 text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+            >
+              <XCircle className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+
+        {/* Parcel list */}
+        {!done && (
+          <ul className="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
+            {parcels.map((p, i) => (
+              <li key={i} className="flex items-center justify-between px-5 py-2 text-sm">
+                <span className="truncate text-neutral-700">{p.name || `Parcelă ${i + 1}`}</span>
+                <span className="ml-4 flex-shrink-0 text-xs text-neutral-400">
+                  {p.previewHa != null ? `${p.previewHa} ha` : ''}
+                  {p.municipality ? ` · ${p.municipality}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Progress / result */}
+        {importing && progress && (
+          <div className="px-6 py-4 text-sm text-neutral-600">
+            Se importă {progress.done} / {total}…
+            <div className="mt-2 h-2 w-full rounded-full bg-neutral-100">
+              <div
+                className="h-2 rounded-full bg-primary transition-all"
+                style={{ width: `${(progress.done / total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {done && progress && (
+          <div className="px-6 py-5 text-sm">
+            <p className="font-medium text-neutral-800">Import finalizat</p>
+            <p className="mt-1 text-neutral-500">
+              ✅ {progress.done - progress.failed} importate cu succes
+              {progress.failed > 0 && (
+                <>, ⚠️ {progress.failed} eșuate</>
+              )}
+            </p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-4">
+          {done ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary/90"
+            >
+              Închide
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={importing}
+                className="rounded-lg border border-neutral-300 bg-white px-5 py-2 text-sm font-medium text-neutral-700 shadow-sm hover:bg-neutral-100 disabled:opacity-50"
+              >
+                Anulează
+              </button>
+              <button
+                type="button"
+                onClick={handleImport}
+                disabled={importing}
+                className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {importing ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Se importă…
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    Import {total} parcel{total === 1 ? 'ă' : 'e'}
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Edit-parcel-info modal ─────────────────────────────────────────────────
 
 interface EditParcelInfoModalProps {
@@ -282,13 +433,13 @@ export default function MapPage() {
   const [selectedParcelId,  setSelectedParcelId]  = useState<string | null>(null);
   const [editParcel,        setEditParcel]         = useState<Parcel | null>(null);
   const [editingParcelInfo, setEditingParcelInfo]  = useState<Parcel | null>(null);
-  const [drawingNewParcel,  setDrawingNewParcel]   = useState(false);
   const [drawnGeometry,     setDrawnGeometry]      = useState<GeoJSON.Geometry | null>(null);
   const [deleteError,       setDeleteError]        = useState<string | null>(null);
   const [selectedMachineId,  setSelectedMachineId]  = useState<string | null>(null);
   const [routePoints,        setRoutePoints]        = useState<RoutePoint[] | undefined>(undefined);
   const [navigateToParcelId,  setNavigateToParcelId]  = useState<string | null>(null);
   const [navigateToMachineId, setNavigateToMachineId] = useState<string | null>(null);
+  const [kmlParcels,         setKmlParcels]         = useState<KmlParsedParcel[] | null>(null);
 
   const parcels = (
     Array.isArray(parcelsRaw) ? parcelsRaw : (parcelsRaw as { data?: Parcel[] })?.data ?? []
@@ -315,12 +466,7 @@ export default function MapPage() {
   }, [parcels, deleteParcel]);
 
   const handleNewParcelDrawn = useCallback((geometry: GeoJSON.Geometry) => {
-    setDrawingNewParcel(false);
     setDrawnGeometry(geometry);
-  }, []);
-
-  const handleDrawCancel = useCallback(() => {
-    setDrawingNewParcel(false);
   }, []);
 
   const handleShowRoute = useCallback((machineId: string) => {
@@ -372,7 +518,7 @@ export default function MapPage() {
             onParcelEditBoundary={handleParcelEditBoundary}
             onParcelDelete={handleParcelDelete}
             onParcelNavigate={handleParcelNavigate}
-            onAddNew={() => setDrawingNewParcel(true)}
+            onKmlParsed={setKmlParcels}
             deleteIsPending={deleteParcel.isPending}
           />
           <FilterableMachineList
@@ -393,9 +539,7 @@ export default function MapPage() {
             onParcelDelete={handleParcelDelete}
             editParcel={editParcel}
             onEditDone={() => setEditParcel(null)}
-            drawingNewParcel={drawingNewParcel}
             onNewParcelDrawn={handleNewParcelDrawn}
-            onDrawCancel={handleDrawCancel}
             routePoints={routePoints}
             onShowRoute={handleShowRoute}
             navigateToParcelId={navigateToParcelId}
@@ -422,6 +566,11 @@ export default function MapPage() {
       {/* Edit-parcel-info modal */}
       {editingParcelInfo && (
         <EditParcelInfoModal parcel={editingParcelInfo} onClose={() => setEditingParcelInfo(null)} />
+      )}
+
+      {/* KML import modal */}
+      {kmlParcels && (
+        <KmlImportModal parcels={kmlParcels} onClose={() => setKmlParcels(null)} />
       )}
     </div>
   );

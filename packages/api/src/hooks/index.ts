@@ -89,3 +89,9 @@ export type { CreateUserPayload, UpdateUserPayload } from './use-admin-users.js'
 export { useMachineLocations } from './use-machine-locations.js';
 export { useRouteHistory } from './use-route-history.js';
 export { useProfile } from './use-profile.js';
+
+export {
+  useBaleProductions,
+  useCreateBaleProduction,
+} from './use-bale-productions.js';
+export type { BaleProductionFilters } from './use-bale-productions.js';

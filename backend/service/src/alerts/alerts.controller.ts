@@ -1,8 +1,10 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
+  Body,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -17,6 +19,11 @@ import type { RequestUser } from '../auth/auth.guard';
 @UseGuards(AuthGuard)
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
+
+  @Post()
+  create(@Body() dto: Record<string, unknown>) {
+    return this.alertsService.create(dto);
+  }
 
   @Get()
   list(

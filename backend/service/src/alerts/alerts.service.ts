@@ -66,6 +66,25 @@ export class AlertsService {
     return result;
   }
 
+  async create(dto: Record<string, unknown>) {
+    const result = await this.drizzleProvider.db.execute(
+      sql`INSERT INTO alerts (id, category, severity, title, description, machine_id, created_at, updated_at)
+      VALUES (
+        gen_random_uuid(),
+        ${dto.category},
+        ${(dto.severity as string) || 'medium'},
+        ${dto.title},
+        ${dto.description},
+        ${(dto.machineId as string) || null},
+        NOW(), NOW()
+      )
+      RETURNING id, category, severity, title, description,
+        machine_id AS "machineId",
+        created_at AS "createdAt"`,
+    );
+    return result;
+  }
+
   async createFromDraft(draft: AlertDraft) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO alerts (

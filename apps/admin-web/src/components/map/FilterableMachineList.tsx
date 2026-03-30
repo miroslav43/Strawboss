@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { Crosshair, Route } from 'lucide-react';
+import { Crosshair, Route, ChevronDown, ChevronUp } from 'lucide-react';
 import type { MachineLastLocation } from '@strawboss/types';
 import { SearchInput } from '@/components/shared/SearchInput';
 
@@ -57,18 +57,29 @@ export function FilterableMachineList({
     });
   }, [machines, search, typeFilter, statusFilter]);
 
+  const [open, setOpen] = useState(true);
+
   const handleSearchChange = useCallback((v: string) => setSearch(v), []);
 
   if (machines.length === 0) return null;
 
   return (
     <div className="border-t border-neutral-200">
-      <div className="px-4 py-2">
+      <div className="flex items-center justify-between px-4 py-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
           Mașini active
         </p>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          title={open ? 'Ascunde lista' : 'Arată lista'}
+          className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+        >
+          {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
       </div>
 
+      {open && (
+      <>
       {/* Filters */}
       <div className="space-y-1.5 border-b border-neutral-100 px-3 py-2">
         <SearchInput
@@ -142,6 +153,8 @@ export function FilterableMachineList({
           </li>
         )}
       </ul>
+      </>
+      )}
     </div>
   );
 }

@@ -6,6 +6,32 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class ConsumableLogsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
+  async getStats(filters?: {
+    operatorId?: string;
+    consumableType?: string;
+  }) {
+    const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
+
+    if (filters?.operatorId) {
+      conditions.push(sql`operator_id = ${filters.operatorId}`);
+    }
+    if (filters?.consumableType) {
+      conditions.push(sql`consumable_type = ${filters.consumableType}`);
+    }
+
+    const where = sql.join(conditions, sql` AND `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`SELECT
+        COALESCE(SUM(quantity), 0) AS "totalQuantity",
+        COUNT(*) AS "entryCount",
+        COALESCE(AVG(quantity), 0) AS "avgPerEntry"
+      FROM consumable_logs
+      WHERE ${where}`,
+    );
+    const rows = result as unknown as Record<string, unknown>[];
+    return rows[0];
+  }
+
   async list(filters?: { machineId?: string; parcelId?: string }) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 

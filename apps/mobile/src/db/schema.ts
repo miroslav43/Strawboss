@@ -56,4 +56,51 @@ export const TABLES = {
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
+  bale_productions: `CREATE TABLE IF NOT EXISTS bale_productions (
+    id TEXT PRIMARY KEY,
+    parcel_id TEXT NOT NULL,
+    baler_id TEXT,
+    operator_id TEXT NOT NULL,
+    production_date TEXT NOT NULL,
+    bale_count INTEGER NOT NULL DEFAULT 0,
+    avg_bale_weight_kg REAL,
+    start_time TEXT,
+    end_time TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    server_version INTEGER DEFAULT 0
+  )`,
+
+  fuel_logs: `CREATE TABLE IF NOT EXISTS fuel_logs (
+    id TEXT PRIMARY KEY,
+    machine_id TEXT,
+    operator_id TEXT NOT NULL,
+    parcel_id TEXT,
+    logged_at TEXT NOT NULL,
+    fuel_type TEXT DEFAULT 'diesel',
+    quantity_liters REAL NOT NULL,
+    odometer_km REAL,
+    hourmeter_hrs REAL,
+    is_full_tank INTEGER DEFAULT 0,
+    receipt_photo_uri TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    server_version INTEGER DEFAULT 0
+  )`,
+
+  consumable_logs: `CREATE TABLE IF NOT EXISTS consumable_logs (
+    id TEXT PRIMARY KEY,
+    machine_id TEXT,
+    operator_id TEXT NOT NULL,
+    parcel_id TEXT,
+    consumable_type TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    unit TEXT DEFAULT 'kg',
+    logged_at TEXT NOT NULL,
+    receipt_photo_uri TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    server_version INTEGER DEFAULT 0
+  )`,
 } as const;

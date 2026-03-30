@@ -49,4 +49,9 @@ export const queryKeys = {
   sync: {
     status: () => ['sync', 'status'] as const,
   },
+  baleProductions: {
+    all: ['baleProductions'] as const,
+    list: (filters?: Record<string, unknown>) => ['baleProductions', 'list', filters] as const,
+    byOperator: (operatorId: string) => ['baleProductions', 'operator', operatorId] as const,
+  },
 } as const;

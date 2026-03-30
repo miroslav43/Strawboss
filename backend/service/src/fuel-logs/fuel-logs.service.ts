@@ -6,6 +6,40 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class FuelLogsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
+  async getStats(filters?: {
+    operatorId?: string;
+    machineId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
+    const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
+
+    if (filters?.operatorId) {
+      conditions.push(sql`operator_id = ${filters.operatorId}`);
+    }
+    if (filters?.machineId) {
+      conditions.push(sql`machine_id = ${filters.machineId}`);
+    }
+    if (filters?.dateFrom) {
+      conditions.push(sql`logged_at >= ${filters.dateFrom}`);
+    }
+    if (filters?.dateTo) {
+      conditions.push(sql`logged_at <= ${filters.dateTo}`);
+    }
+
+    const where = sql.join(conditions, sql` AND `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`SELECT
+        COALESCE(SUM(quantity_liters), 0) AS "totalLiters",
+        COUNT(*) AS "entryCount",
+        COALESCE(AVG(quantity_liters), 0) AS "avgLitersPerEntry"
+      FROM fuel_logs
+      WHERE ${where}`,
+    );
+    const rows = result as unknown as Record<string, unknown>[];
+    return rows[0];
+  }
+
   async list(filters?: {
     machineId?: string;
     dateFrom?: string;

@@ -4,6 +4,9 @@ import { getDatabase } from '../lib/storage';
 import { getSupabaseClient } from '../lib/auth';
 import { SyncQueueRepo } from '../db/sync-queue-repo';
 import { TripsRepo } from '../db/trips-repo';
+import { BaleProductionsRepo } from '../db/bale-productions-repo';
+import { FuelLogsRepo } from '../db/fuel-logs-repo';
+import { ConsumableLogsRepo } from '../db/consumable-logs-repo';
 import { SyncManager } from '../sync/SyncManager';
 import { useNetworkStatus } from './useNetworkStatus';
 
@@ -50,7 +53,17 @@ export function useSync() {
 
       const syncQueueRepo = new SyncQueueRepo(db);
       const tripsRepo = new TripsRepo(db);
-      const manager = new SyncManager(syncQueueRepo, tripsRepo, apiClient);
+      const baleProductionsRepo = new BaleProductionsRepo(db);
+      const fuelLogsRepo = new FuelLogsRepo(db);
+      const consumableLogsRepo = new ConsumableLogsRepo(db);
+      const manager = new SyncManager(
+        syncQueueRepo,
+        tripsRepo,
+        apiClient,
+        baleProductionsRepo,
+        fuelLogsRepo,
+        consumableLogsRepo,
+      );
 
       const result = await manager.sync();
 
