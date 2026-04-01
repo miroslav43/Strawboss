@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -10,6 +10,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.replace('/');
+    });
+  }, [router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -27,7 +33,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push('/operations');
+    router.push('/');
   }
 
   return (

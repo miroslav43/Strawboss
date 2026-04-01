@@ -1,7 +1,8 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
-import { Menu, Bell, User } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Menu, Bell, LogOut } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 function deriveBreadcrumb(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean);
@@ -17,7 +18,13 @@ interface TopBarProps {
 
 export function TopBar({ onMenuClick }: TopBarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const breadcrumb = deriveBreadcrumb(pathname);
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.push('/login');
+  }
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-neutral-200 bg-surface px-4">
@@ -40,10 +47,13 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           <Bell className="h-5 w-5" />
         </button>
         <button
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white"
-          aria-label="User menu"
+          type="button"
+          onClick={() => void handleSignOut()}
+          className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-neutral-600 hover:bg-neutral-100"
+          aria-label="Sign out"
         >
-          <User className="h-4 w-4" />
+          <LogOut className="h-4 w-4" />
+          <span className="hidden sm:inline">Sign out</span>
         </button>
       </div>
     </header>

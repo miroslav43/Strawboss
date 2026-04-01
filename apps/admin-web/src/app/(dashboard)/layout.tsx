@@ -4,22 +4,50 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { RealtimeProvider } from '@/lib/realtime';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
+import { supabase } from '@/lib/supabase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  // Prevent React Query hooks in page children from running during SSR/static
-  // generation — they require a browser context. Set to true immediately on
-  // first client render so there is no visible delay.
-  const [mounted, setMounted] = useState(false);
+  const [ready, setReady] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    let active = true;
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active) return;
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setReady(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      if (!session) {
+        setReady(false);
+        router.replace('/login');
+        return;
+      }
+      setReady(true);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [router]);
 
   return (
     <RealtimeProvider>
-      {!mounted ? (
+      {!ready ? (
         <div className="flex h-screen items-center justify-center bg-neutral-50" />
       ) : (
         <div className="flex h-screen">
