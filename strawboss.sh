@@ -61,6 +61,24 @@ free_dev_ports() {
   kill_port 8081   # Metro fallback
 }
 
+# BullMQ on the local Nest backend expects Redis at REDIS_URL (default redis://localhost:6379).
+ensure_dev_redis() {
+  if ! command -v docker &>/dev/null; then
+    warn "Docker not found — install Redis on localhost:6379 yourself, or install Docker."
+    return
+  fi
+  if ! docker info &>/dev/null; then
+    warn "Docker daemon not running — start Redis on localhost:6379 or start Docker and re-run dev."
+    return
+  fi
+  info "Starting Redis (required by backend BullMQ)…"
+  if docker compose up -d redis; then
+    success "Redis: 127.0.0.1:6379"
+  else
+    warn "Could not run docker compose up -d redis — backend may fail until Redis is up."
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
@@ -149,6 +167,10 @@ cmd_dev() {
     admin)          kill_port 3000 ;;
     mobile)         kill_port 19000; kill_port 19001; kill_port 8081 ;;
     all)            free_dev_ports ;;
+  esac
+
+  case "$target" in
+    backend|all) ensure_dev_redis ;;
   esac
 
   # Build shared packages first (they don't have dev watchers that work well)
@@ -309,6 +331,94 @@ cmd_docker_logs() {
   docker compose logs -f "$@"
 }
 
+cmd_production() {
+  local step="${1:-all}"
+
+  require_cmd docker
+  require_cmd pnpm
+  ensure_env
+
+  # Load .env so NEXT_PUBLIC_* vars are available as build-args.
+  if [ ! -f .env ]; then
+    error "No .env file found. Create one from .env.example first."
+    exit 1
+  fi
+  # shellcheck disable=SC1091
+  source .env
+
+  # Validate required vars.
+  local missing=()
+  for var in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY DATABASE_URL \
+             NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY \
+             NEXT_PUBLIC_API_URL; do
+    [ -z "${!var:-}" ] && missing+=("$var")
+  done
+  if [ ${#missing[@]} -gt 0 ]; then
+    error "Missing required .env variables: ${missing[*]}"
+    exit 1
+  fi
+
+  _prod_install() {
+    header "Installing dependencies (frozen lockfile)"
+    pnpm install --frozen-lockfile
+    success "Dependencies installed."
+  }
+
+  _prod_build_packages() {
+    header "Building shared packages"
+    pnpm --filter @strawboss/types build
+    pnpm --filter @strawboss/validation build
+    pnpm --filter @strawboss/ui-tokens build
+    pnpm --filter @strawboss/domain build
+    pnpm --filter @strawboss/api build
+    success "Shared packages built."
+  }
+
+  _prod_docker_build() {
+    header "Building Docker images (production)"
+    docker compose build \
+      --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+      --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+      --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
+    success "Docker images built."
+  }
+
+  _prod_docker_up() {
+    header "Starting production services"
+    free_dev_ports
+    docker compose up -d
+    echo ""
+    info "Services:"
+    info "  Admin dashboard:  http://localhost:3000"
+    info "  Backend API:      http://localhost:3001/api/v1"
+    info "  Redis:            localhost:6379"
+    echo ""
+    success "Production services running."
+  }
+
+  case "$step" in
+    build)
+      _prod_install
+      _prod_build_packages
+      _prod_docker_build
+      ;;
+    up)
+      _prod_docker_up
+      ;;
+    all)
+      _prod_install
+      _prod_build_packages
+      _prod_docker_build
+      _prod_docker_up
+      ;;
+    *)
+      error "Unknown production step: $step"
+      echo "Steps: build | up | all (default)"
+      exit 1
+      ;;
+  esac
+}
+
 cmd_db_migrate() {
   header "Running database migrations"
   ensure_env
@@ -465,6 +575,7 @@ cmd_help() {
   echo -e "${BOLD}Development:${NC}"
   echo "  dev [target]                Start dev servers"
   echo "                              Targets: all (default) | backend | admin | mobile"
+  echo "                              (backend / all start Redis via Docker on :6379 for BullMQ)"
   echo "  build [target]              Build packages/apps"
   echo "                              Targets: all (default) | types | validation | ui-tokens"
   echo "                                       domain | api | backend | admin | packages"
@@ -485,15 +596,20 @@ cmd_help() {
   echo "  docker:down [services...]   Stop services"
   echo "  docker:logs [services...]   Tail service logs"
   echo ""
+  echo -e "${BOLD}Production:${NC}"
+  echo "  production [step]           Full production build + deploy"
+  echo "                              Steps: all (default) | build | up"
+  echo ""
   echo -e "${BOLD}Quick Start:${NC}"
   echo "  1. ./strawboss.sh install"
   echo "  2. cp .env.example .env     (edit with your Supabase credentials)"
   echo "  3. ./strawboss.sh build"
   echo "  4. ./strawboss.sh dev"
   echo ""
-  echo -e "${BOLD}Production:${NC}"
-  echo "  1. ./strawboss.sh docker:build"
-  echo "  2. ./strawboss.sh docker:up"
+  echo -e "${BOLD}Production deploy:${NC}"
+  echo "  ./strawboss.sh production         Full deploy (install → build → docker up)"
+  echo "  ./strawboss.sh production build   Build only (no start)"
+  echo "  ./strawboss.sh production up      Start pre-built images"
   echo ""
 }
 
@@ -515,6 +631,7 @@ case "$COMMAND" in
   docker:up)      cmd_docker_up "$@" ;;
   docker:down)    cmd_docker_down "$@" ;;
   docker:logs)    cmd_docker_logs "$@" ;;
+  production)     cmd_production "$@" ;;
   db:migrate)     cmd_db_migrate "$@" ;;
   db:seed)        cmd_db_seed "$@" ;;
   db:reset)       cmd_db_reset "$@" ;;

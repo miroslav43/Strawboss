@@ -11,10 +11,22 @@ async function bootstrap() {
     new FastifyAdapter(),
   );
   app.setGlobalPrefix('api/v1');
+
+  const corsOrigins = [
+    'https://nortiauno.com',
+    'https://www.nortiauno.com',
+  ];
+  if (process.env.NODE_ENV !== 'production') {
+    corsOrigins.push(
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+    );
+  }
+
   app.enableCors({
-    origin: true, // reflect the request origin (dev-friendly; lock down in production)
+    origin: corsOrigins,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
     credentials: true,
   });
   const port = process.env.PORT ?? 3001;

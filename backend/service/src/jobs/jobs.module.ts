@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { bullmqConnectionFromRedisUrl } from '../config/redis-bullmq';
 import {
   QUEUE_ALERT_EVALUATION,
   QUEUE_RECONCILIATION,
@@ -9,8 +11,13 @@ import {
 
 @Module({
   imports: [
-    BullModule.forRoot({
-      connection: { host: 'localhost', port: 6379 },
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL', 'redis://localhost:6379')!;
+        return { connection: bullmqConnectionFromRedisUrl(redisUrl) };
+      },
     }),
     BullModule.registerQueue(
       { name: QUEUE_ALERT_EVALUATION },

@@ -29,13 +29,22 @@ RUN pnpm --filter @strawboss/backend build
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-# Copy built output and node_modules
-COPY --from=builder /app/backend/service/dist ./dist
-COPY --from=builder /app/backend/service/node_modules ./node_modules
+# pnpm uses a virtual store: symlinks in service/node_modules point to node_modules/.pnpm
+# Copy the virtual store and service symlinks so Node.js module resolution works
+COPY --from=builder /app/node_modules/.pnpm ./node_modules/.pnpm
+COPY --from=builder /app/backend/service/node_modules ./backend/service/node_modules
+COPY --from=builder /app/backend/service/dist ./backend/service/dist
+COPY --from=builder /app/backend/service/package.json ./backend/service/package.json
 COPY --from=builder /app/packages/types/dist ./packages/types/dist
+COPY --from=builder /app/packages/types/package.json ./packages/types/package.json
+COPY --from=builder /app/packages/types/node_modules ./packages/types/node_modules
 COPY --from=builder /app/packages/validation/dist ./packages/validation/dist
+COPY --from=builder /app/packages/validation/package.json ./packages/validation/package.json
+COPY --from=builder /app/packages/validation/node_modules ./packages/validation/node_modules
 COPY --from=builder /app/packages/domain/dist ./packages/domain/dist
-COPY --from=builder /app/backend/service/package.json ./package.json
+COPY --from=builder /app/packages/domain/package.json ./packages/domain/package.json
+COPY --from=builder /app/packages/domain/node_modules ./packages/domain/node_modules
 
+WORKDIR /app/backend/service
 EXPOSE 3001
 CMD ["node", "dist/main.js"]

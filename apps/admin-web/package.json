@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@next/env": "16.2.1",
     "@dnd-kit/react": "^0.1.0",
     "@geoman-io/leaflet-geoman-free": "^2.19.2",
     "@hookform/resolvers": "^3.9.0",
