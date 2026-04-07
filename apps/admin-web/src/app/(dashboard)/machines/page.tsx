@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Plus,
   Pencil,
@@ -9,6 +9,8 @@ import {
   XCircle,
   CheckCircle2,
   Wrench,
+  AlertTriangle,
+  Gauge,
 } from 'lucide-react';
 import {
   useMachines,
@@ -19,11 +21,20 @@ import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { MachineType, FuelType } from '@strawboss/types';
 import type { Machine } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
 
-// ── Labels ────────────────────────────────────────────────────────────────
+// ── Labels / config ───────────────────────────────────────────────────────
+
+const TYPE_ORDER: MachineType[] = [MachineType.truck, MachineType.loader, MachineType.baler];
 
 const TYPE_LABELS: Record<MachineType, string> = {
+  [MachineType.loader]: 'Încărcătoare',
+  [MachineType.baler]:  'Balotiere',
+  [MachineType.truck]:  'Camioane',
+};
+
+const TYPE_LABEL_SINGULAR: Record<MachineType, string> = {
   [MachineType.loader]: 'Încărcător',
   [MachineType.baler]:  'Balotieră',
   [MachineType.truck]:  'Camion',
@@ -41,6 +52,12 @@ const TYPE_COLORS: Record<MachineType, string> = {
   [MachineType.truck]:  'bg-green-100 text-green-700',
 };
 
+const TYPE_STAT_COLORS: Record<MachineType, string> = {
+  [MachineType.loader]: 'bg-blue-50',
+  [MachineType.baler]:  'bg-amber-50',
+  [MachineType.truck]:  'bg-green-50',
+};
+
 const TYPE_PREFIX: Record<MachineType, string> = {
   [MachineType.loader]: 'L',
   [MachineType.baler]:  'B',
@@ -55,17 +72,12 @@ const FUEL_LABELS: Record<FuelType, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-/** Extract all machines from the response regardless of shape (array or paginated). */
 function toMachineList(raw: unknown): Machine[] {
   if (Array.isArray(raw)) return raw as Machine[];
   const paginated = raw as { data?: Machine[] } | null | undefined;
   return paginated?.data ?? [];
 }
 
-/**
- * Generate the next sequential internal code for a machine type.
- * e.g. existing ["L-01","L-03"] → "L-04"
- */
 function nextCode(machines: Machine[], type: MachineType): string {
   const prefix = TYPE_PREFIX[type];
   const existing = machines
@@ -96,10 +108,7 @@ interface MachineFormState {
   isActive: boolean;
 }
 
-function blankForm(
-  machines: Machine[],
-  type: MachineType = MachineType.loader,
-): MachineFormState {
+function blankForm(machines: Machine[], type: MachineType = MachineType.loader): MachineFormState {
   return {
     machineType:        type,
     internalCode:       nextCode(machines, type),
@@ -159,9 +168,11 @@ const inputCls =
   'w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm ' +
   'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
 
-function Field({
-  label, children, required,
-}: {
+const selectCls =
+  'rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 ' +
+  'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
+
+function Field({ label, children, required }: {
   label: string; children: React.ReactNode; required?: boolean;
 }) {
   return (
@@ -182,9 +193,7 @@ function ErrorBanner({ message }: { message?: string }) {
   );
 }
 
-function ModalFooter({
-  onCancel, submitLabel, disabled,
-}: {
+function ModalFooter({ onCancel, submitLabel, disabled }: {
   onCancel: () => void; submitLabel: string; disabled: boolean;
 }) {
   return (
@@ -253,7 +262,7 @@ function MachineForm({
           className={inputCls}
         >
           {Object.values(MachineType).map((t) => (
-            <option key={t} value={t}>{TYPE_EMOJI[t]} {TYPE_LABELS[t]}</option>
+            <option key={t} value={t}>{TYPE_EMOJI[t]} {TYPE_LABEL_SINGULAR[t]}</option>
           ))}
         </select>
       </Field>
@@ -360,10 +369,7 @@ function MachineForm({
 
 // ── Create modal ──────────────────────────────────────────────────────────
 
-function CreateMachineModal({
-  onClose,
-  allMachines,
-}: {
+function CreateMachineModal({ onClose, allMachines }: {
   onClose: () => void;
   allMachines: Machine[];
 }) {
@@ -395,10 +401,7 @@ function CreateMachineModal({
 
 // ── Edit modal ────────────────────────────────────────────────────────────
 
-function EditMachineModal({
-  machine,
-  onClose,
-}: {
+function EditMachineModal({ machine, onClose }: {
   machine: Machine;
   onClose: () => void;
 }) {
@@ -431,17 +434,83 @@ function EditMachineModal({
   );
 }
 
+// ── Delete dialog ─────────────────────────────────────────────────────────
+
+function DeleteDialog({
+  machine,
+  onConfirm,
+  onCancel,
+  isPending,
+}: {
+  machine: Machine;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const label = machine.internalCode || machine.id.slice(0, 8);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl">
+        <div className="p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-full bg-red-100 p-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-neutral-800">Ștergi mașina?</p>
+              <p className="text-sm text-neutral-500">
+                <span className="font-mono font-medium">{label}</span> va fi ștearsă definitiv.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <button
+              type="button" onClick={onCancel} disabled={isPending}
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Anulează
+            </button>
+            <button
+              type="button" onClick={onConfirm} disabled={isPending}
+              className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" />
+              {isPending ? 'Se șterge…' : 'Șterge'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Type badge ────────────────────────────────────────────────────────────
 
 function TypeBadge({ type }: { type: MachineType }) {
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_COLORS[type]}`}>
-      {TYPE_EMOJI[type]} {TYPE_LABELS[type]}
+      {TYPE_EMOJI[type]} {TYPE_LABEL_SINGULAR[type]}
     </span>
   );
 }
 
-// ── Delete hook (uses DELETE endpoint for true soft-delete) ───────────────
+// ── Stat card ─────────────────────────────────────────────────────────────
+
+function StatCard({ icon, value, label, color }: {
+  icon: React.ReactNode; value: number | string; label: string; color: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
+      <div className={`rounded-lg p-2 ${color}`}>{icon}</div>
+      <div>
+        <p className="text-xl font-bold text-neutral-800">{value}</p>
+        <p className="text-xs text-neutral-500">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete hook ───────────────────────────────────────────────────────────
 
 function useDeleteMachine() {
   const qc = useQueryClient();
@@ -459,21 +528,56 @@ export default function MachinesPage() {
 
   const machines = toMachineList(machinesRaw);
 
-  const [showCreate, setShowCreate]   = useState(false);
-  const [editTarget, setEditTarget]   = useState<Machine | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [showCreate,   setShowCreate]   = useState(false);
+  const [editTarget,   setEditTarget]   = useState<Machine | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Machine | null>(null);
+  const [search,       setSearch]       = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [fuelFilter,   setFuelFilter]   = useState<FuelType | 'all'>('all');
 
-  const handleDelete = (machine: Machine) => {
-    const label = machine.internalCode || machine.id;
-    if (!confirm(`Ștergi mașina "${label}"? Acțiunea nu poate fi anulată.`)) return;
-    setDeleteError(null);
-    deleteMachine.mutate(machine.id, {
-      onError: (err) => setDeleteError((err as Error)?.message ?? 'Eroare la ștergere'),
+  // ── Stats (unfiltered) ───────────────────────────────────────────────
+  const totalMachines = machines.length;
+  const activeMachines = machines.filter((m) => m.isActive).length;
+  const truckCount  = machines.filter((m) => m.machineType === MachineType.truck).length;
+  const loaderCount = machines.filter((m) => m.machineType === MachineType.loader).length;
+  const balerCount  = machines.filter((m) => m.machineType === MachineType.baler).length;
+
+  // ── Filtered + grouped ───────────────────────────────────────────────
+  const groups = useMemo(() => {
+    const q = search.toLowerCase();
+    const filtered = machines.filter((m) => {
+      const matchSearch =
+        !q ||
+        (m.internalCode ?? '').toLowerCase().includes(q) ||
+        m.make.toLowerCase().includes(q) ||
+        m.model.toLowerCase().includes(q) ||
+        (m.registrationPlate ?? '').toLowerCase().includes(q);
+      const matchStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' ? m.isActive : !m.isActive);
+      const matchFuel = fuelFilter === 'all' || m.fuelType === fuelFilter;
+      return matchSearch && matchStatus && matchFuel;
+    });
+
+    return TYPE_ORDER.map((type) => ({
+      type,
+      machines: filtered
+        .filter((m) => m.machineType === type)
+        .sort((a, b) => (a.internalCode ?? '').localeCompare(b.internalCode ?? '')),
+    })).filter((g) => g.machines.length > 0);
+  }, [machines, search, statusFilter, fuelFilter]);
+
+  const totalVisible = groups.reduce((sum, g) => sum + g.machines.length, 0);
+
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    deleteMachine.mutate(deleteTarget.id, {
+      onSuccess: () => setDeleteTarget(null),
     });
   };
 
   return (
-    <div>
+    <div className="space-y-5">
       <PageHeader
         title="Mașini"
         actions={
@@ -487,23 +591,84 @@ export default function MachinesPage() {
         }
       />
 
-      {deleteError && (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-          <span>{deleteError}</span>
-          <button onClick={() => setDeleteError(null)} className="ml-3 text-red-400 hover:text-red-600">✕</button>
-        </div>
-      )}
+      {/* Stats bar */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <StatCard
+          icon={<Wrench className="h-4 w-4 text-neutral-600" />}
+          value={totalMachines}
+          label="Total mașini"
+          color="bg-neutral-100"
+        />
+        <StatCard
+          icon={<CheckCircle2 className="h-4 w-4 text-green-600" />}
+          value={activeMachines}
+          label="Active"
+          color="bg-green-50"
+        />
+        <StatCard
+          icon={<span className="text-base leading-none">🚛</span>}
+          value={truckCount}
+          label="Camioane"
+          color={TYPE_STAT_COLORS[MachineType.truck]}
+        />
+        <StatCard
+          icon={<span className="text-base leading-none">🔧</span>}
+          value={loaderCount}
+          label="Încărcătoare"
+          color={TYPE_STAT_COLORS[MachineType.loader]}
+        />
+        <StatCard
+          icon={<span className="text-base leading-none">🌾</span>}
+          value={balerCount}
+          label="Balotiere"
+          color={TYPE_STAT_COLORS[MachineType.baler]}
+        />
+      </div>
 
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-[240px] flex-1">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Caută după cod, marcă, model, nr. înmatriculare…"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+          className={selectCls}
+        >
+          <option value="all">Toate statusurile</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <select
+          value={fuelFilter}
+          onChange={(e) => setFuelFilter(e.target.value as typeof fuelFilter)}
+          className={selectCls}
+        >
+          <option value="all">Orice combustibil</option>
+          {Object.values(FuelType).map((f) => (
+            <option key={f} value={f}>{FUEL_LABELS[f]}</option>
+          ))}
+        </select>
+        <span className="ml-auto text-xs text-neutral-400">
+          {totalVisible} {totalVisible === 1 ? 'mașină' : 'mașini'}
+        </span>
+      </div>
+
+      {/* Loading / error */}
       {isLoading && (
         <div className="py-12 text-center text-sm text-neutral-400">Se încarcă mașinile…</div>
       )}
-
       {isError && (
         <div className="py-12 text-center text-sm text-red-500">
           Eroare la încărcarea mașinilor. Verifică că backend-ul rulează.
         </div>
       )}
 
+      {/* Table */}
       {!isLoading && !isError && (
         <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm">
           <table className="w-full text-sm">
@@ -519,75 +684,106 @@ export default function MachinesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {machines.map((m) => (
-                <tr key={m.id} className={`hover:bg-neutral-50 ${!m.isActive ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3 font-mono text-sm font-semibold text-neutral-800">
-                    {m.internalCode}
-                  </td>
-                  <td className="px-4 py-3">
-                    <TypeBadge type={m.machineType} />
-                  </td>
-                  <td className="px-4 py-3 text-neutral-700">
-                    {m.make} {m.model}
-                    <span className="ml-1 text-xs text-neutral-400">({m.year})</span>
-                  </td>
-                  <td className="px-4 py-3 text-neutral-500">{m.registrationPlate ?? '—'}</td>
-                  <td className="px-4 py-3 text-neutral-500">
-                    {FUEL_LABELS[m.fuelType] ?? m.fuelType}
-                  </td>
-                  <td className="px-4 py-3">
-                    {m.isActive ? (
-                      <span className="flex items-center gap-1 text-green-600">
-                        <CheckCircle2 className="h-4 w-4" /> Activă
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-neutral-400">
-                        <XCircle className="h-4 w-4" /> Inactivă
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => setEditTarget(m)}
-                        className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-primary"
-                        title="Editează"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(m)}
-                        disabled={deleteMachine.isPending}
-                        className="rounded-md p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
-                        title="Șterge"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {machines.length === 0 && (
+              {groups.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-neutral-400">
-                    Nicio mașină înregistrată. Apasă "Mașină nouă" pentru a adăuga prima.
+                  <td colSpan={7} className="px-4 py-12 text-center">
+                    <Gauge className="mx-auto mb-2 h-8 w-8 text-neutral-300" />
+                    <p className="text-sm text-neutral-400">
+                      {search || statusFilter !== 'all' || fuelFilter !== 'all'
+                        ? 'Nicio mașină nu corespunde filtrelor selectate.'
+                        : 'Nicio mașină înregistrată. Apasă "Mașină nouă" pentru a adăuga prima.'}
+                    </p>
                   </td>
                 </tr>
               )}
+
+              {groups.map((group) => (
+                <>
+                  {/* Group header */}
+                  <tr key={`header-${group.type}`} className="border-y border-neutral-200 bg-neutral-50">
+                    <td colSpan={7} className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{TYPE_EMOJI[group.type]}</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                          {TYPE_LABELS[group.type]}
+                        </span>
+                        <span className="rounded-full bg-neutral-200 px-1.5 py-0.5 text-xs text-neutral-600">
+                          {group.machines.length}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Group rows */}
+                  {group.machines.map((m) => (
+                    <tr key={m.id} className={`hover:bg-neutral-50 ${!m.isActive ? 'opacity-50' : ''}`}>
+                      <td className="px-4 py-3 font-mono text-sm font-semibold text-neutral-800">
+                        {m.internalCode}
+                      </td>
+                      <td className="px-4 py-3">
+                        <TypeBadge type={m.machineType} />
+                      </td>
+                      <td className="px-4 py-3 text-neutral-700">
+                        {m.make} {m.model}
+                        <span className="ml-1 text-xs text-neutral-400">({m.year})</span>
+                      </td>
+                      <td className="px-4 py-3 text-neutral-500">{m.registrationPlate ?? '—'}</td>
+                      <td className="px-4 py-3 text-neutral-500">
+                        {FUEL_LABELS[m.fuelType] ?? m.fuelType}
+                      </td>
+                      <td className="px-4 py-3">
+                        {m.isActive ? (
+                          <span className="flex items-center gap-1 text-green-600">
+                            <CheckCircle2 className="h-4 w-4" /> Activă
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-neutral-400">
+                            <XCircle className="h-4 w-4" /> Inactivă
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditTarget(m)}
+                            className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-primary"
+                            title="Editează"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(m)}
+                            disabled={deleteMachine.isPending}
+                            className="rounded-md p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                            title="Șterge"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              ))}
             </tbody>
           </table>
         </div>
       )}
 
+      {/* Modals */}
       {showCreate && (
-        <CreateMachineModal
-          allMachines={machines}
-          onClose={() => setShowCreate(false)}
-        />
+        <CreateMachineModal allMachines={machines} onClose={() => setShowCreate(false)} />
       )}
       {editTarget && (
         <EditMachineModal machine={editTarget} onClose={() => setEditTarget(null)} />
+      )}
+      {deleteTarget && (
+        <DeleteDialog
+          machine={deleteTarget}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+          isPending={deleteMachine.isPending}
+        />
       )}
     </div>
   );
