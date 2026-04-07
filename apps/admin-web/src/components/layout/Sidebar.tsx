@@ -14,6 +14,8 @@ import {
   Map,
   Users,
   Wrench,
+  Tractor,
+  Wheat,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SidebarLink } from './SidebarLink';
@@ -26,6 +28,8 @@ const navItems = [
   { href: '/reports', icon: BarChart3, label: 'Reports' },
   { href: '/alerts', icon: Bell, label: 'Alerts' },
   { href: '/map', icon: Map, label: 'Map' },
+  { href: '/farms', icon: Tractor, label: 'Ferme' },
+  { href: '/parcels', icon: Wheat, label: 'Câmpuri' },
   { href: '/machines', icon: Wrench, label: 'Machines' },
   { href: '/accounts', icon: Users, label: 'Accounts' },
 ] as const;

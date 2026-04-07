@@ -6,6 +6,11 @@ export { timestampsSchema, softDeleteSchema } from "./helpers/common.js";
 
 // Entity schemas
 export {
+  createFarmSchema,
+  updateFarmSchema,
+} from "./schemas/farm.schema.js";
+
+export {
   userRoleSchema,
   userSchema,
   createUserSchema,

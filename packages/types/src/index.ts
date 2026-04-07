@@ -1,5 +1,6 @@
 export * from "./common.js";
 
+export * from "./entities/farm.js";
 export * from "./entities/user.js";
 export * from "./entities/parcel.js";
 export * from "./entities/machine.js";

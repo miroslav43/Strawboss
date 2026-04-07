@@ -54,4 +54,9 @@ export const queryKeys = {
     list: (filters?: Record<string, unknown>) => ['baleProductions', 'list', filters] as const,
     byOperator: (operatorId: string) => ['baleProductions', 'operator', operatorId] as const,
   },
+  farms: {
+    all:    ['farms'] as const,
+    list:   (filters?: Record<string, unknown>) => ['farms', 'list', filters] as const,
+    detail: (id: string) => ['farms', 'detail', id] as const,
+  },
 } as const;
