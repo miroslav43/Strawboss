@@ -1,9 +1,9 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import dynamicImport from 'next/dynamic';
-import { MapPin, Plus, XCircle } from 'lucide-react';
+import { MapPin, Plus, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import area from '@turf/area';
 import { polygon as turfPolygon, multiPolygon as turfMultiPolygon } from '@turf/helpers';
 import {
@@ -12,14 +12,20 @@ import {
   useCreateParcel,
   useUpdateParcel,
   useDeleteParcel,
+  useFarms,
+  useDeliveryDestinations,
 } from '@strawboss/api';
-import type { Parcel, MachineLastLocation, RoutePoint } from '@strawboss/types';
+import type { Parcel, MachineLastLocation, RoutePoint, DeliveryDestination } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RouteHistoryPanel } from '@/components/map/RouteHistoryPanel';
+import { DepositGeofenceModal } from '@/components/map/DepositGeofenceModal';
 import { FilterableParcelList } from '@/components/map/FilterableParcelList';
 import { FilterableMachineList } from '@/components/map/FilterableMachineList';
+import { FilterableFarmList } from '@/components/map/FilterableFarmList';
 import { apiClient } from '@/lib/api';
 import { type KmlParsedParcel } from '@/lib/kml-parser';
+import { useI18n } from '@/lib/i18n';
+import { clientLogger } from '@/lib/client-logger';
 
 // Leaflet cannot run on the server — disable SSR for the map component.
 const LeafletMap = dynamicImport(
@@ -28,11 +34,12 @@ const LeafletMap = dynamicImport(
 );
 
 function MapLoadingPlaceholder() {
+  const { t } = useI18n();
   return (
     <div className="flex h-full w-full items-center justify-center bg-neutral-100">
       <div className="text-center text-sm text-neutral-400">
         <MapPin className="mx-auto mb-2 h-8 w-8 opacity-30" />
-        Se încarcă harta…
+        {t('map.loading')}
       </div>
     </div>
   );
@@ -71,6 +78,7 @@ interface NewParcelModalProps {
  * by the backend. Name can be set later via the Edit modal.
  */
 function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
+  const { t } = useI18n();
   const createParcel = useCreateParcel(apiClient);
 
   // Preview area computed client-side with turf for instant feedback.
@@ -90,7 +98,7 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
         <div className="flex items-center justify-between bg-primary px-6 py-4">
           <div className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-white/80" />
-            <h2 className="text-base font-semibold text-white">Câmp nou desenat</h2>
+            <h2 className="text-base font-semibold text-white">{t('map.newFieldDrawn')}</h2>
           </div>
           <button
             onClick={onClose}
@@ -110,9 +118,11 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-primary/70">
-                  Suprafață estimată
+                  {t('map.estimatedArea')}
                 </p>
-                <p className="text-2xl font-bold text-primary">{previewHa} ha</p>
+                <p className="text-2xl font-bold text-primary">
+                  {t('map.estimatedAreaHa', { value: previewHa })}
+                </p>
               </div>
             </div>
           ) : (
@@ -120,20 +130,18 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
               <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xl">
                 🗺️
               </div>
-              <p className="text-sm text-neutral-600">Câmpul a fost desenat pe hartă.</p>
+              <p className="text-sm text-neutral-600">{t('map.drawnOnMap')}</p>
             </div>
           )}
 
-          <p className="text-sm text-neutral-500">
-            Codul, suprafața exactă și localitatea vor fi completate automat de server.
-            Poți seta <span className="font-medium text-neutral-700">numele câmpului</span> oricând
-            apăsând butonul <span className="font-medium text-neutral-700">✏️ Editează</span>.
-          </p>
+          <p className="text-sm text-neutral-500">{t('map.serverFillsCode')}</p>
 
           {createParcel.isError && (
             <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               <span className="flex-shrink-0">⚠️</span>
-              <span>{(createParcel.error as Error)?.message ?? 'Eroare la salvare. Încearcă din nou.'}</span>
+              <span>
+                {(createParcel.error as Error)?.message ?? t('map.saveFieldErrorFallback')}
+              </span>
             </div>
           )}
         </div>
@@ -145,7 +153,7 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
             onClick={onClose}
             className="rounded-lg border border-neutral-300 bg-white px-5 py-2 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-100"
           >
-            Anulează
+            {t('map.cancel')}
           </button>
           <button
             type="button"
@@ -159,12 +167,12 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
-                Se salvează…
+                {t('map.saving')}
               </>
             ) : (
               <>
                 <Plus className="h-4 w-4" />
-                Salvează câmpul
+                {t('map.saveField')}
               </>
             )}
           </button>
@@ -182,6 +190,7 @@ interface KmlImportModalProps {
 }
 
 function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
+  const { t } = useI18n();
   const createParcel = useCreateParcel(apiClient);
   const [progress, setProgress] = useState<{ done: number; failed: number } | null>(null);
   const [done, setDone] = useState(false);
@@ -222,7 +231,9 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
           <div className="flex items-center gap-2">
             <span className="text-lg">📂</span>
             <h2 className="text-base font-semibold text-white">
-              Import KML — {total} parcel{total === 1 ? 'ă' : 'e'} găsit{total === 1 ? 'ă' : 'e'}
+              {total === 1
+                ? t('map.importKmlTitle', { count: total })
+                : t('map.importKmlTitlePlural', { count: total })}
             </h2>
           </div>
           {!importing && (
@@ -240,7 +251,9 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
           <ul className="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
             {parcels.map((p, i) => (
               <li key={i} className="flex items-center justify-between px-5 py-2 text-sm">
-                <span className="truncate text-neutral-700">{p.name || `Parcelă ${i + 1}`}</span>
+                <span className="truncate text-neutral-700">
+                  {p.name || t('map.kmlParcelUnnamed', { n: i + 1 })}
+                </span>
                 <span className="ml-4 flex-shrink-0 text-xs text-neutral-400">
                   {p.previewHa != null ? `${p.previewHa} ha` : ''}
                   {p.municipality ? ` · ${p.municipality}` : ''}
@@ -253,7 +266,7 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
         {/* Progress / result */}
         {importing && progress && (
           <div className="px-6 py-4 text-sm text-neutral-600">
-            Se importă {progress.done} / {total}…
+            {t('map.importing', { done: progress.done, total })}
             <div className="mt-2 h-2 w-full rounded-full bg-neutral-100">
               <div
                 className="h-2 rounded-full bg-primary transition-all"
@@ -265,11 +278,11 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
 
         {done && progress && (
           <div className="px-6 py-5 text-sm">
-            <p className="font-medium text-neutral-800">Import finalizat</p>
+            <p className="font-medium text-neutral-800">{t('map.importDone')}</p>
             <p className="mt-1 text-neutral-500">
-              ✅ {progress.done - progress.failed} importate cu succes
+              ✅ {t('map.importSuccess', { ok: progress.done - progress.failed })}
               {progress.failed > 0 && (
-                <>, ⚠️ {progress.failed} eșuate</>
+                <>, ⚠️ {t('map.importFailed', { n: progress.failed })}</>
               )}
             </p>
           </div>
@@ -283,7 +296,7 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
               onClick={onClose}
               className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary/90"
             >
-              Închide
+              {t('map.close')}
             </button>
           ) : (
             <>
@@ -293,7 +306,7 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
                 disabled={importing}
                 className="rounded-lg border border-neutral-300 bg-white px-5 py-2 text-sm font-medium text-neutral-700 shadow-sm hover:bg-neutral-100 disabled:opacity-50"
               >
-                Anulează
+                {t('map.cancel')}
               </button>
               <button
                 type="button"
@@ -307,12 +320,14 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
-                    Se importă…
+                    {t('map.importingEllipsis')}
                   </>
                 ) : (
                   <>
                     <Plus className="h-4 w-4" />
-                    Import {total} parcel{total === 1 ? 'ă' : 'e'}
+                    {total === 1
+                      ? t('map.importN', { count: total })
+                      : t('map.importNPlural', { count: total })}
                   </>
                 )}
               </button>
@@ -332,6 +347,7 @@ interface EditParcelInfoModalProps {
 }
 
 function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
+  const { t } = useI18n();
   const [name,         setName]         = useState(parcel.name ?? '');
   const [ownerName,    setOwnerName]    = useState(parcel.ownerName ?? '');
   const [ownerContact, setOwnerContact] = useState(parcel.ownerContact ?? '');
@@ -363,29 +379,29 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
     <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-neutral-800">Editează câmpul</h2>
+          <h2 className="text-lg font-semibold text-neutral-800">{t('map.editField')}</h2>
           <button onClick={onClose} className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100">
             <XCircle className="h-5 w-5" />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
-          <FormField label="Nume câmp"         value={name}         onChange={setName}         placeholder="ex. Câmpul Mare (opțional)" />
-          <FormField label="Proprietar"       value={ownerName}    onChange={setOwnerName}    placeholder="ex. Ion Popescu (opțional)" />
-          <FormField label="Contact proprietar" value={ownerContact} onChange={setOwnerContact} placeholder="ex. 0721-xxx-xxx (opțional)" />
-          <FormField label="Localitate"       value={municipality} onChange={setMunicipality} placeholder="ex. Deta" />
-          <FormField label="Suprafață (ha)"   value={areaHectares} onChange={setAreaHectares} type="number" placeholder="12.5" />
-          <FormField label="Note"             value={notes}        onChange={setNotes}        placeholder="Observații opționale" />
+          <FormField label={t('map.fieldName')} value={name} onChange={setName} placeholder={t('parcels.form.placeholders.name')} />
+          <FormField label={t('map.owner')} value={ownerName} onChange={setOwnerName} placeholder={t('parcels.form.placeholders.owner')} />
+          <FormField label={t('map.ownerContact')} value={ownerContact} onChange={setOwnerContact} placeholder={t('parcels.form.placeholders.phone')} />
+          <FormField label={t('map.municipality')} value={municipality} onChange={setMunicipality} placeholder={t('parcels.form.placeholders.municipality')} />
+          <FormField label={t('map.areaHa')} value={areaHectares} onChange={setAreaHectares} type="number" placeholder={t('parcels.form.placeholders.area')} />
+          <FormField label={t('map.notes')} value={notes} onChange={setNotes} placeholder={t('parcels.form.placeholders.notes')} />
 
           {updateParcel.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {(updateParcel.error as Error)?.message ?? 'Eroare la salvare'}
+              {(updateParcel.error as Error)?.message ?? t('map.saveError')}
             </p>
           )}
           <div className="flex justify-end gap-3 pt-2">
             <ModalCancelBtn onClick={onClose} />
             <button type="submit" disabled={updateParcel.isPending}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-60">
-              {updateParcel.isPending ? 'Se salvează…' : 'Salvează'}
+              {updateParcel.isPending ? t('map.savingShort') : t('map.save')}
             </button>
           </div>
         </form>
@@ -415,10 +431,11 @@ function FormField({
 }
 
 function ModalCancelBtn({ onClick }: { onClick: () => void }) {
+  const { t } = useI18n();
   return (
     <button type="button" onClick={onClick}
       className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
-      Anulează
+      {t('map.cancel')}
     </button>
   );
 }
@@ -426,24 +443,44 @@ function ModalCancelBtn({ onClick }: { onClick: () => void }) {
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function MapPage() {
-  const { data: parcelsRaw, isLoading: parcelsLoading } = useParcels(apiClient);
-  const { data: machines = [] }                         = useMachineLocations(apiClient);
-  const deleteParcel                                    = useDeleteParcel(apiClient);
+  const { t } = useI18n();
+  const { data: parcelsRaw, isLoading: parcelsLoading }  = useParcels(apiClient);
+  const { data: machines = [] }                          = useMachineLocations(apiClient);
+  const { data: farmsRaw = [] }                          = useFarms(apiClient);
+  const { data: depositsRaw = [] }                       = useDeliveryDestinations(apiClient);
+  const deleteParcel                                     = useDeleteParcel(apiClient);
 
-  const [selectedParcelId,  setSelectedParcelId]  = useState<string | null>(null);
-  const [editParcel,        setEditParcel]         = useState<Parcel | null>(null);
-  const [editingParcelInfo, setEditingParcelInfo]  = useState<Parcel | null>(null);
-  const [drawnGeometry,     setDrawnGeometry]      = useState<GeoJSON.Geometry | null>(null);
-  const [deleteError,       setDeleteError]        = useState<string | null>(null);
+  const [selectedParcelId,   setSelectedParcelId]   = useState<string | null>(null);
+  const [editParcel,         setEditParcel]          = useState<Parcel | null>(null);
+  const [editingParcelInfo,  setEditingParcelInfo]   = useState<Parcel | null>(null);
+  const [drawnGeometry,         setDrawnGeometry]         = useState<GeoJSON.Geometry | null>(null);
+  const [drawnDepositGeometry,  setDrawnDepositGeometry] = useState<GeoJSON.Geometry | null>(null);
+  const [drawMode,              setDrawMode]              = useState<'parcel' | 'deposit' | null>(null);
+  const [deleteError,           setDeleteError]           = useState<string | null>(null);
   const [selectedMachineId,  setSelectedMachineId]  = useState<string | null>(null);
-  const [routePoints,        setRoutePoints]        = useState<RoutePoint[] | undefined>(undefined);
+  const [routePoints,        setRoutePoints]         = useState<RoutePoint[] | undefined>(undefined);
   const [navigateToParcelId,  setNavigateToParcelId]  = useState<string | null>(null);
   const [navigateToMachineId, setNavigateToMachineId] = useState<string | null>(null);
-  const [kmlParcels,         setKmlParcels]         = useState<KmlParsedParcel[] | null>(null);
+  const [kmlParcels,         setKmlParcels]          = useState<KmlParsedParcel[] | null>(null);
+
+  // Visibility toggles
+  const [hiddenFarmIds,    setHiddenFarmIds]    = useState<Set<string>>(new Set());
+  const [hiddenParcelIds,  setHiddenParcelIds]  = useState<Set<string>>(new Set());
+  const [hiddenMachineIds, setHiddenMachineIds] = useState<Set<string>>(new Set());
+  const [mapSidebarOpen,   setMapSidebarOpen]   = useState(true);
 
   const parcels = (
     Array.isArray(parcelsRaw) ? parcelsRaw : (parcelsRaw as { data?: Parcel[] })?.data ?? []
   ) as Parcel[];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const farms = (Array.isArray(farmsRaw) ? farmsRaw : (farmsRaw as any)?.data ?? []) as import('@strawboss/types').Farm[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposits = (Array.isArray(depositsRaw) ? depositsRaw : (depositsRaw as any)?.data ?? []) as DeliveryDestination[];
+
+  useEffect(() => {
+    if (editParcel) setDrawMode(null);
+  }, [editParcel]);
 
   const handleParcelSelect = useCallback((id: string) => setSelectedParcelId(id), []);
 
@@ -454,20 +491,31 @@ export default function MapPage() {
   const handleParcelDelete = useCallback((id: string) => {
     const parcel = parcels.find((p) => p.id === id);
     const label  = parcel?.name ?? parcel?.code ?? id;
-    if (!confirm(`Ștergi câmpul "${label}"? Această acțiune nu poate fi anulată.`)) return;
+    if (!confirm(t('map.deleteParcelConfirm', { label }))) return;
     setDeleteError(null);
     deleteParcel.mutate(id, {
       onError: (err) => {
-        const msg = (err as Error)?.message ?? 'Eroare la ștergere';
-        console.error('[DELETE parcel]', id, msg);
-        setDeleteError(`Eroare: ${msg}`);
+        const msg = (err as Error)?.message ?? t('map.deleteFailed');
+        clientLogger.error('Map: delete parcel failed', {
+          parcelId: id,
+          message: msg,
+        });
+        setDeleteError(t('map.deleteErrorWithMessage', { message: msg }));
       },
     });
-  }, [parcels, deleteParcel]);
+  }, [parcels, deleteParcel, t]);
 
   const handleNewParcelDrawn = useCallback((geometry: GeoJSON.Geometry) => {
+    setDrawMode(null);
     setDrawnGeometry(geometry);
   }, []);
+
+  const handleNewDepositDrawn = useCallback((geometry: GeoJSON.Geometry) => {
+    setDrawMode(null);
+    setDrawnDepositGeometry(geometry);
+  }, []);
+
+  const handleDrawCancel = useCallback(() => setDrawMode(null), []);
 
   const handleShowRoute = useCallback((machineId: string) => {
     setSelectedMachineId(machineId);
@@ -496,9 +544,49 @@ export default function MapPage() {
     setEditParcel(parcel);
   }, []);
 
+  const handleToggleFarm = useCallback((farmId: string) => {
+    const farmParcelIds = parcels
+      .filter((p) => p.farmId === farmId)
+      .map((p) => p.id);
+
+    setHiddenFarmIds((prev) => {
+      const next = new Set(prev);
+      const willHide = !prev.has(farmId);
+      if (willHide) next.add(farmId); else next.delete(farmId);
+      return next;
+    });
+
+    setHiddenParcelIds((prev) => {
+      const next = new Set(prev);
+      // Use functional form — we derive willHide from hiddenFarmIds *before* toggle
+      const willHide = !hiddenFarmIds.has(farmId);
+      farmParcelIds.forEach((id) => {
+        if (willHide) next.add(id); else next.delete(id);
+      });
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parcels, hiddenFarmIds]);
+
+  const handleToggleParcel = useCallback((parcelId: string) => {
+    setHiddenParcelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(parcelId)) next.delete(parcelId); else next.add(parcelId);
+      return next;
+    });
+  }, []);
+
+  const handleToggleMachineVisibility = useCallback((machineId: string) => {
+    setHiddenMachineIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(machineId)) next.delete(machineId); else next.add(machineId);
+      return next;
+    });
+  }, []);
+
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
-      <PageHeader title="Hartă câmpuri" />
+      <PageHeader title={t('map.title')} />
       {deleteError && (
         <div className="mx-4 mt-2 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
           <span>{deleteError}</span>
@@ -506,9 +594,15 @@ export default function MapPage() {
         </div>
       )}
 
-      <div className="flex flex-1 overflow-hidden rounded-xl border border-neutral-200 shadow-sm">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-neutral-200 shadow-sm">
         {/* Left panel: parcel + machine lists with filters */}
-        <aside className="w-72 flex-shrink-0 overflow-y-auto border-r border-neutral-200 bg-white">
+        <aside
+          className={`flex-shrink-0 overflow-y-auto border-neutral-200 bg-white transition-[width] duration-200 ease-out ${
+            mapSidebarOpen
+              ? 'w-72 border-r'
+              : 'pointer-events-none w-0 min-w-0 overflow-hidden border-0'
+          }`}
+        >
           <FilterableParcelList
             parcels={parcels}
             isLoading={parcelsLoading}
@@ -523,13 +617,39 @@ export default function MapPage() {
           />
           <FilterableMachineList
             machines={machines}
+            hiddenMachineIds={hiddenMachineIds}
+            onToggleMachineVisibility={handleToggleMachineVisibility}
             onMachineNavigate={handleMachineNavigate}
             onMachineShowRoute={handleShowRoute}
           />
+          <FilterableFarmList
+            farms={farms}
+            parcels={parcels}
+            hiddenFarmIds={hiddenFarmIds}
+            hiddenParcelIds={hiddenParcelIds}
+            onToggleFarm={handleToggleFarm}
+            onToggleParcel={handleToggleParcel}
+          />
         </aside>
 
+        <button
+          type="button"
+          onClick={() => setMapSidebarOpen((v) => !v)}
+          title={mapSidebarOpen ? t('map.hidePanel') : t('map.showPanel')}
+          aria-label={mapSidebarOpen ? t('map.hidePanel') : t('map.showPanel')}
+          className={`absolute top-1/2 z-[1000] flex h-10 w-6 -translate-y-1/2 items-center justify-center rounded-r-md border border-l-0 border-neutral-200 bg-white text-neutral-500 shadow-sm transition-[left] duration-200 ease-out hover:bg-neutral-50 hover:text-neutral-800 ${
+            mapSidebarOpen ? 'left-72' : 'left-0'
+          }`}
+        >
+          {mapSidebarOpen ? (
+            <ChevronLeft className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+        </button>
+
         {/* Right panel: map */}
-        <div className="relative flex-1">
+        <div className="relative min-w-0 flex-1">
           <LeafletMap
             parcels={parcels}
             machines={machines}
@@ -539,12 +659,19 @@ export default function MapPage() {
             onParcelDelete={handleParcelDelete}
             editParcel={editParcel}
             onEditDone={() => setEditParcel(null)}
+            drawMode={drawMode}
+            onDrawModeChange={setDrawMode}
             onNewParcelDrawn={handleNewParcelDrawn}
+            onNewDepositDrawn={handleNewDepositDrawn}
+            onDrawCancel={handleDrawCancel}
             routePoints={routePoints}
             onShowRoute={handleShowRoute}
             navigateToParcelId={navigateToParcelId}
             navigateToMachineId={navigateToMachineId}
             onNavigationComplete={handleNavigationComplete}
+            hiddenParcelIds={hiddenParcelIds}
+            hiddenMachineIds={hiddenMachineIds}
+            deposits={deposits}
           />
           {selectedMachineId && (
             <RouteHistoryPanel
@@ -561,6 +688,14 @@ export default function MapPage() {
       {/* New-parcel modal — shown after drawing */}
       {drawnGeometry && (
         <NewParcelModal geometry={drawnGeometry} onClose={() => setDrawnGeometry(null)} />
+      )}
+
+      {drawnDepositGeometry && (
+        <DepositGeofenceModal
+          geometry={drawnDepositGeometry}
+          deposits={deposits}
+          onClose={() => setDrawnDepositGeometry(null)}
+        />
       )}
 
       {/* Edit-parcel-info modal */}

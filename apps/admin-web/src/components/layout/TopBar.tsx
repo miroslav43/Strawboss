@@ -3,12 +3,34 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, Bell, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useI18n } from '@/lib/i18n';
 
-function deriveBreadcrumb(pathname: string): string {
+const BREADCRUMB_SEGMENT_KEYS: Record<string, string> = {
+  operations: 'breadcrumb.operations',
+  tasks: 'breadcrumb.tasks',
+  trips: 'breadcrumb.trips',
+  documents: 'breadcrumb.documents',
+  reports: 'breadcrumb.reports',
+  alerts: 'breadcrumb.alerts',
+  map: 'breadcrumb.map',
+  farms: 'breadcrumb.farms',
+  parcels: 'breadcrumb.parcels',
+  machines: 'breadcrumb.machines',
+  accounts: 'breadcrumb.accounts',
+  settings: 'breadcrumb.settings',
+  login: 'login.title',
+};
+
+function deriveBreadcrumb(pathname: string, t: (key: string) => string): string {
   const segments = pathname.split('/').filter(Boolean);
-  if (segments.length === 0) return 'Dashboard';
+  if (segments.length === 0) return t('topBar.dashboard');
   return segments
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, ' '))
+    .map((s) => {
+      const key = BREADCRUMB_SEGMENT_KEYS[s];
+      if (key) return t(key);
+      if (/^[0-9a-f-]{36}$/i.test(s)) return s;
+      return s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, ' ');
+    })
     .join(' / ');
 }
 
@@ -19,7 +41,8 @@ interface TopBarProps {
 export function TopBar({ onMenuClick }: TopBarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const breadcrumb = deriveBreadcrumb(pathname);
+  const { t } = useI18n();
+  const breadcrumb = deriveBreadcrumb(pathname, t);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -32,7 +55,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         <button
           onClick={onMenuClick}
           className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 lg:hidden"
-          aria-label="Toggle menu"
+          aria-label={t('topBar.toggleMenu')}
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -42,7 +65,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
       <div className="flex items-center gap-2">
         <button
           className="relative rounded-md p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
-          aria-label="Notifications"
+          aria-label={t('topBar.notifications')}
         >
           <Bell className="h-5 w-5" />
         </button>
@@ -50,10 +73,10 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           type="button"
           onClick={() => void handleSignOut()}
           className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-neutral-600 hover:bg-neutral-100"
-          aria-label="Sign out"
+          aria-label={t('topBar.signOut')}
         >
           <LogOut className="h-4 w-4" />
-          <span className="hidden sm:inline">Sign out</span>
+          <span className="hidden sm:inline">{t('topBar.signOut')}</span>
         </button>
       </div>
     </header>

@@ -8,6 +8,7 @@ import type { Alert, PaginatedResponse } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AlertList } from '@/components/features/alerts/AlertList';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 const categoryOptions = [
   { value: '', label: 'All Categories' },
@@ -32,6 +33,7 @@ const ackOptions = [
 ];
 
 export default function AlertsPage() {
+  const { t } = useI18n();
   const [categoryFilter, setCategoryFilter] = useState('');
   const [severityFilter, setSeverityFilter] = useState('');
   const [ackFilter, setAckFilter] = useState('');
@@ -64,7 +66,7 @@ export default function AlertsPage() {
 
   return (
     <div>
-      <PageHeader title="Alerts" />
+      <PageHeader title={t('alerts.title')} />
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">

@@ -28,6 +28,7 @@ import {
 import type { Farm, Parcel } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 // ── Assign Parcel Modal ────────────────────────────────────────────────────
 
@@ -284,6 +285,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
 // ── Farms Page ─────────────────────────────────────────────────────────────
 
 export default function FarmsPage() {
+  const { t } = useI18n();
   const { data: farmsRaw = [], isLoading: farmsLoading } = useFarms(apiClient);
   const { data: parcelsRaw = [] } = useParcels(apiClient);
 
@@ -343,12 +345,13 @@ export default function FarmsPage() {
 
   const handleDelete = useCallback((farm: Farm) => {
     const parcelCount = parcels.filter((p) => p.farmId === farm.id).length;
-    const msg = parcelCount > 0
-      ? `Ștergi ferma "${farm.name}"? Cele ${parcelCount} câmpuri alocate vor rămâne, dar nu vor mai fi asociate acestei ferme.`
-      : `Ștergi ferma "${farm.name}"?`;
+    const msg =
+      parcelCount > 0
+        ? t('farms.deleteConfirmWithParcels', { name: farm.name, count: parcelCount })
+        : t('farms.deleteConfirm', { name: farm.name });
     if (!confirm(msg)) return;
     deleteFarm.mutate(farm.id);
-  }, [parcels, deleteFarm]);
+  }, [parcels, deleteFarm, t]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -373,13 +376,13 @@ export default function FarmsPage() {
     <div className="flex flex-col gap-6 p-6">
       {/* Page title + create button */}
       <div className="flex items-center justify-between">
-        <PageHeader title="Ferme" />
+        <PageHeader title={t('farms.title')} />
         <button
           onClick={() => setShowCreate((v) => !v)}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
-          Fermă nouă
+          {t('farms.newFarm')}
         </button>
       </div>
 

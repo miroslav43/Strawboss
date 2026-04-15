@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { useTrips } from '@strawboss/api';
 import { TripStatus } from '@strawboss/types';
@@ -9,16 +9,20 @@ import type { Trip, PaginatedResponse } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TripList } from '@/components/features/trips/TripList';
 import { apiClient } from '@/lib/api';
-
-const statusOptions: { value: string; label: string }[] = [
-  { value: '', label: 'All Statuses' },
-  ...Object.values(TripStatus).map((s) => ({
-    value: s,
-    label: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-  })),
-];
+import { useI18n } from '@/lib/i18n';
 
 export default function TripsPage() {
+  const { t } = useI18n();
+  const statusOptions = useMemo(
+    () => [
+      { value: '', label: t('trips.allStatuses') },
+      ...Object.values(TripStatus).map((s) => ({
+        value: s,
+        label: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      })),
+    ],
+    [t],
+  );
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -37,7 +41,7 @@ export default function TripsPage() {
 
   return (
     <div>
-      <PageHeader title="Trips" />
+      <PageHeader title={t('trips.title')} />
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">

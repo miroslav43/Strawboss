@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Crosshair, Pencil, MapPin, Trash2, Upload } fro
 import type { Parcel } from '@strawboss/types';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { parseKml, type KmlParsedParcel } from '@/lib/kml-parser';
+import { useI18n } from '@/lib/i18n';
 
 interface FilterableParcelListProps {
   parcels: Parcel[];
@@ -31,6 +32,7 @@ export function FilterableParcelList({
   onKmlParsed,
   deleteIsPending,
 }: FilterableParcelListProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(true);
   const [search, setSearch] = useState('');
   const [municipalityFilter, setMunicipalityFilter] = useState('');
@@ -78,15 +80,15 @@ export function FilterableParcelList({
         const text = await file.text();
         const parsed = parseKml(text);
         if (parsed.length === 0) {
-          setKmlError('Nicio parcelă cu poligon nu a fost găsită în fișier.');
+          setKmlError(t('mapList.kmlNoPolygons'));
           return;
         }
         onKmlParsed(parsed);
       } catch (err) {
-        setKmlError((err as Error)?.message ?? 'Eroare la citirea fișierului KML.');
+        setKmlError((err as Error)?.message ?? t('mapList.kmlReadError'));
       }
     },
-    [onKmlParsed],
+    [onKmlParsed, t],
   );
 
   return (
@@ -94,17 +96,17 @@ export function FilterableParcelList({
       {/* Header */}
       <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-          Câmpuri / Parcele
+          {t('mapList.parcels')}
         </p>
         <div className="flex items-center gap-1">
           {/* Import KML button */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            title="Import parcele din fișier KML"
+            title={t('mapList.importKmlTooltip')}
             className="flex items-center gap-1 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
           >
             <Upload className="h-3 w-3" />
-            Import KML
+            {t('mapList.importKml')}
           </button>
           <input
             ref={fileInputRef}
@@ -116,7 +118,8 @@ export function FilterableParcelList({
           {/* Collapse toggle */}
           <button
             onClick={() => setOpen((v) => !v)}
-            title={open ? 'Ascunde lista' : 'Arată lista'}
+            title={open ? t('mapList.hideList') : t('mapList.showList')}
+            aria-label={open ? t('mapList.hideList') : t('mapList.showList')}
             className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           >
             {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -138,7 +141,7 @@ export function FilterableParcelList({
             <SearchInput
               value={search}
               onChange={handleSearchChange}
-              placeholder="Caută câmp…"
+              placeholder={t('mapList.searchParcel')}
             />
             <div className="flex gap-1.5">
               <select
@@ -146,7 +149,7 @@ export function FilterableParcelList({
                 onChange={(e) => setMunicipalityFilter(e.target.value)}
                 className="flex-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600 focus:border-primary focus:outline-none"
               >
-                <option value="">Toate localitățile</option>
+                <option value="">{t('mapList.allMunicipalities')}</option>
                 {municipalities.map((m) => (
                   <option key={m} value={m}>{m}</option>
                 ))}
@@ -156,7 +159,7 @@ export function FilterableParcelList({
                 onChange={(e) => setOwnerFilter(e.target.value)}
                 className="flex-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600 focus:border-primary focus:outline-none"
               >
-                <option value="">Toți proprietarii</option>
+                <option value="">{t('mapList.allOwners')}</option>
                 {owners.map((o) => (
                   <option key={o} value={o}>{o}</option>
                 ))}
@@ -165,7 +168,7 @@ export function FilterableParcelList({
           </div>
 
           {isLoading && (
-            <div className="px-4 py-6 text-center text-sm text-neutral-400">Se încarcă…</div>
+            <div className="px-4 py-6 text-center text-sm text-neutral-400">{t('common.loading')}</div>
           )}
 
           <ul className="divide-y divide-neutral-100">
@@ -180,7 +183,9 @@ export function FilterableParcelList({
                 <div className="flex items-start justify-between gap-1">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-neutral-800">
-                      {parcel.name ?? <span className="italic text-neutral-400">Câmp fără nume</span>}
+                      {parcel.name ?? (
+                        <span className="italic text-neutral-400">{t('leaflet.fieldNoName')}</span>
+                      )}
                     </p>
                     <p className="truncate text-xs text-neutral-500">
                       {parcel.code}{parcel.municipality ? ` · ${parcel.municipality}` : ''}
@@ -198,7 +203,8 @@ export function FilterableParcelList({
                   <button
                     onClick={(e) => { e.stopPropagation(); onParcelNavigate(parcel); }}
                     className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-blue-500"
-                    title="Arată pe hartă"
+                    title={t('mapList.showOnMap')}
+                    aria-label={t('mapList.showOnMap')}
                   >
                     <Crosshair className="h-3.5 w-3.5" />
                   </button>
@@ -206,7 +212,8 @@ export function FilterableParcelList({
                   <button
                     onClick={(e) => { e.stopPropagation(); onParcelEdit(parcel); }}
                     className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-primary"
-                    title="Editează informații"
+                    title={t('mapList.editParcelInfo')}
+                    aria-label={t('mapList.editParcelInfo')}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
@@ -214,7 +221,8 @@ export function FilterableParcelList({
                   <button
                     onClick={(e) => { e.stopPropagation(); onParcelEditBoundary(parcel); }}
                     className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-blue-600"
-                    title="Editează limita pe hartă"
+                    title={t('mapList.editParcelBoundary')}
+                    aria-label={t('mapList.editParcelBoundary')}
                   >
                     <MapPin className="h-3.5 w-3.5" />
                   </button>
@@ -223,7 +231,8 @@ export function FilterableParcelList({
                     onClick={(e) => { e.stopPropagation(); onParcelDelete(parcel.id); }}
                     disabled={deleteIsPending}
                     className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
-                    title="Șterge câmpul"
+                    title={t('mapList.deleteParcelField')}
+                    aria-label={t('mapList.deleteParcelField')}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -232,9 +241,7 @@ export function FilterableParcelList({
             ))}
             {!isLoading && filtered.length === 0 && (
               <li className="px-4 py-8 text-center text-sm text-neutral-400">
-                {hasFilters
-                  ? 'Niciun câmp nu corespunde filtrelor.'
-                  : 'Nicio parcelă. Desenează pe hartă sau importă un fișier KML.'}
+                {hasFilters ? t('mapList.emptyFilteredParcels') : t('mapList.emptyNoParcels')}
               </li>
             )}
           </ul>

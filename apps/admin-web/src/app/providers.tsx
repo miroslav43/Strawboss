@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { makeQueryClient } from '@/lib/query-client';
+import { LocaleProvider } from '@/lib/i18n';
+import { LoggingErrorBoundary } from '@/components/shared/LoggingErrorBoundary';
 
 /**
  * Single browser QueryClient singleton so every route (including lazy chunks from
@@ -20,5 +22,11 @@ function getQueryClient(): QueryClient {
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const queryClient = getQueryClient();
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <LocaleProvider>
+        <LoggingErrorBoundary>{children}</LoggingErrorBoundary>
+      </LocaleProvider>
+    </QueryClientProvider>
+  );
 }

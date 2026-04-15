@@ -94,7 +94,45 @@ const WEBPACK_DEDUPE = ['@tanstack/react-query', '@tanstack/query-core'] as cons
 // package directory, to prevent duplicate-context bugs.
 const ESM_ENTRY_PACKAGES = new Set(['@tanstack/react-query', '@tanstack/query-core']);
 
+/**
+ * Upstream Nest API used only by the Next.js dev-server rewrite proxy.
+ *
+ * Priority:
+ *   1. NEXT_DEV_API_PROXY_URL — explicitly override the local backend URL.
+ *   2. http://localhost:3001   — sensible default so new endpoints (e.g. /farms)
+ *                               that haven't been deployed to production yet still work.
+ *
+ * NEXT_PUBLIC_API_URL is intentionally NOT used here because it bakes the
+ * production domain into the build; using it for dev proxying would route all
+ * dev requests to the live server and break undeployed features.
+ */
+function devApiUpstreamOrigin(): string {
+  const raw = process.env.NEXT_DEV_API_PROXY_URL?.trim();
+  if (raw) {
+    try {
+      const u = new URL(raw);
+      return `${u.protocol}//${u.host}`;
+    } catch { /* fall through */ }
+  }
+  return 'http://localhost:3001';
+}
+
 const nextConfig: NextConfig = {
+  /**
+   * `next dev`: browser calls same-origin `/api/v1/...` so CORS does not apply.
+   * The dev server proxies to NEXT_PUBLIC_API_URL (e.g. https://nortiauno.com).
+   * Production uses NEXT_PUBLIC_API_URL directly in the client bundle (no rewrite).
+   */
+        async rewrites() {
+           if (process.env.NODE_ENV !== 'development') return [];
+           const upstream = devApiUpstreamOrigin();
+           return [
+             {
+               source: '/api/v1/:path*',
+               destination: `${upstream}/api/v1/:path*`,
+             },
+           ];
+         },
   /**
    * Production bundles must use webpack (`next build --webpack`) so the
    * `webpack()` aliases below run. Default `next build` uses Turbopack, which

@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 const typeLabels: Record<DocumentType, string> = {
   cmr: 'CMR',
@@ -109,6 +110,7 @@ const columns: Column<DocRow>[] = [
 ];
 
 export default function DocumentsPage() {
+  const { t } = useI18n();
   const [typeFilter, setTypeFilter] = useState('');
   const router = useRouter();
 
@@ -121,7 +123,7 @@ export default function DocumentsPage() {
 
   return (
     <div>
-      <PageHeader title="Documents" />
+      <PageHeader title={t('documents.title')} />
 
       {/* Filters */}
       <div className="mb-4 flex items-center gap-3">

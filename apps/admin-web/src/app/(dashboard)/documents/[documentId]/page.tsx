@@ -8,43 +8,45 @@ import { useDocument } from '@strawboss/api';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DocumentViewer } from '@/components/shared/DocumentViewer';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface DocumentDetailPageProps {
   params: Promise<{ documentId: string }>;
 }
 
 export default function DocumentDetailPage({ params }: DocumentDetailPageProps) {
+  const { t } = useI18n();
   const { documentId } = use(params);
   const docQuery = useDocument(apiClient, documentId);
 
   return (
     <div>
       <PageHeader
-        title="Document Detail"
+        title={t('documents.detailTitle')}
         actions={
           <Link
             href="/documents"
             className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Documents
+            {t('documents.backToDocuments')}
           </Link>
         }
       />
 
       {docQuery.isLoading ? (
         <div className="py-8 text-center text-sm text-neutral-400">
-          Loading document...
+          {t('documents.loadingDetail')}
         </div>
       ) : docQuery.isError ? (
         <div className="py-8 text-center text-sm text-red-500">
-          Failed to load document. The backend may not be running.
+          {t('documents.loadError')}
         </div>
       ) : docQuery.data ? (
         <DocumentViewer document={docQuery.data} />
       ) : (
         <div className="py-8 text-center text-sm text-neutral-400">
-          Document not found.
+          {t('documents.notFound')}
         </div>
       )}
     </div>

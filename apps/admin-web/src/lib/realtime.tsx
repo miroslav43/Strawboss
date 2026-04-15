@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { queryKeys } from '@strawboss/api';
+import { clientLogger } from '@/lib/client-logger';
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -18,7 +19,23 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.alerts.all });
       })
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parcel_daily_status' }, () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.parcelDailyStatus.all });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_destinations' }, () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.deliveryDestinations.all });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'geofence_events' }, () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
+      })
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          clientLogger.warn('Supabase Realtime subscription issue', {
+            channel: 'db-changes',
+            status,
+          });
+        }
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);

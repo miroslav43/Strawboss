@@ -8,43 +8,45 @@ import { useTrip } from '@strawboss/api';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TripDetail } from '@/components/features/trips/TripDetail';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface TripDetailPageProps {
   params: Promise<{ tripId: string }>;
 }
 
 export default function TripDetailPage({ params }: TripDetailPageProps) {
+  const { t } = useI18n();
   const { tripId } = use(params);
   const tripQuery = useTrip(apiClient, tripId);
 
   return (
     <div>
       <PageHeader
-        title="Trip Detail"
+        title={t('trips.detailTitle')}
         actions={
           <Link
             href="/trips"
             className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Trips
+            {t('trips.backToTrips')}
           </Link>
         }
       />
 
       {tripQuery.isLoading ? (
         <div className="py-8 text-center text-sm text-neutral-400">
-          Loading trip details...
+          {t('trips.loadingDetail')}
         </div>
       ) : tripQuery.isError ? (
         <div className="py-8 text-center text-sm text-red-500">
-          Failed to load trip. The backend may not be running.
+          {t('trips.loadError')}
         </div>
       ) : tripQuery.data ? (
         <TripDetail trip={tripQuery.data} />
       ) : (
         <div className="py-8 text-center text-sm text-neutral-400">
-          Trip not found.
+          {t('trips.notFound')}
         </div>
       )}
     </div>

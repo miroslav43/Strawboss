@@ -11,6 +11,7 @@ import { CostBreakdownChart } from '@/components/features/reports/CostBreakdownC
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 type Tab = 'production' | 'costs';
 
@@ -107,6 +108,7 @@ const costColumns: Column<CostRow>[] = [
 ];
 
 export default function ReportsPage() {
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>('production');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -130,7 +132,7 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <PageHeader title="Reports" />
+      <PageHeader title={t('reports.title')} />
 
       {/* Filters */}
       <div className="mb-6">

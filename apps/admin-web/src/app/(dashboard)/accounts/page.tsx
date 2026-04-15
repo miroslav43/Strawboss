@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useMemo } from 'react';
+import { Fragment, useState, useMemo } from 'react';
 import {
   UserPlus,
   Trash2,
@@ -26,6 +26,7 @@ import type { User, Machine } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 // ── Role config ───────────────────────────────────────────────────────────
 
@@ -425,6 +426,7 @@ function AssignMachineModal({
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function AccountsPage() {
+  const { t } = useI18n();
   const [showCreate,       setShowCreate]       = useState(false);
   const [assignTarget,     setAssignTarget]     = useState<User | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
@@ -486,14 +488,14 @@ export default function AccountsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Conturi"
+        title={t('accounts.title')}
         actions={
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
           >
             <UserPlus className="h-4 w-4" />
-            Cont nou
+            {t('accounts.newUser')}
           </button>
         }
       />
@@ -586,9 +588,9 @@ export default function AccountsPage() {
               )}
 
               {groups.map((group) => (
-                <>
+                <Fragment key={group.role}>
                   {/* Group header */}
-                  <tr key={`header-${group.role}`} className="border-y border-neutral-200 bg-neutral-50">
+                  <tr className="border-y border-neutral-200 bg-neutral-50">
                     <td colSpan={7} className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         {ROLE_GROUP_ICONS[group.role]}
@@ -676,7 +678,7 @@ export default function AccountsPage() {
                       </tr>
                     );
                   })}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

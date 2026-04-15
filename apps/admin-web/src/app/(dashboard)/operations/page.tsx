@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { OperationStatusGrid } from '@/components/features/operations/OperationStatusGrid';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 interface SummaryCardProps {
   title: string;
@@ -35,6 +36,7 @@ function SummaryCard({ title, value, icon: Icon, color }: SummaryCardProps) {
 }
 
 export default function OperationsPage() {
+  const { t } = useI18n();
   const overviewQuery = useDashboardOverview(apiClient);
   // "Active" = all in-progress states; trip_status has no 'active' value
   const tripsQuery = useTrips(apiClient, { status: 'planned,loading,loaded,in_transit,arrived,delivering' });
@@ -45,30 +47,30 @@ export default function OperationsPage() {
 
   return (
     <div>
-      <PageHeader title="Operations" />
+      <PageHeader title={t('operations.title')} />
 
       {/* Summary cards */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
-          title="Active Trips"
+          title={t('operations.activeTrips')}
           value={overview?.activeTrips ?? '--'}
           icon={Truck}
           color="bg-blue-100 text-blue-600"
         />
         <SummaryCard
-          title="Bales Today"
+          title={t('operations.balesToday')}
           value={overview?.balesToday ?? '--'}
           icon={Package}
           color="bg-green-100 text-green-600"
         />
         <SummaryCard
-          title="Active Machines"
+          title={t('operations.activeMachines')}
           value={overview?.activeMachines ?? '--'}
           icon={Cog}
           color="bg-amber-100 text-amber-600"
         />
         <SummaryCard
-          title="Pending Alerts"
+          title={t('operations.pendingAlerts')}
           value={overview?.pendingAlerts ?? '--'}
           icon={AlertTriangle}
           color="bg-red-100 text-red-600"
@@ -78,15 +80,15 @@ export default function OperationsPage() {
       {/* Active trips grid */}
       <div>
         <h2 className="mb-4 text-lg font-semibold text-neutral-800">
-          Active Trips
+          {t('operations.sectionActiveTrips')}
         </h2>
         {tripsQuery.isLoading ? (
           <div className="py-8 text-center text-sm text-neutral-400">
-            Loading trips...
+            {t('operations.loadingTrips')}
           </div>
         ) : tripsQuery.isError ? (
           <div className="py-8 text-center text-sm text-red-500">
-            Failed to load trips. The backend may not be running.
+            {t('operations.loadTripsError')}
           </div>
         ) : (
           <OperationStatusGrid trips={trips} />

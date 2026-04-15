@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { RealtimeProvider } from '@/lib/realtime';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
+import { ProfileLocaleHydration } from '@/components/layout/ProfileLocaleHydration';
 import { supabase } from '@/lib/supabase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -51,6 +52,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex h-screen items-center justify-center bg-neutral-50" />
       ) : (
         <div className="flex h-screen">
+          <ProfileLocaleHydration />
           <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
           <div className="flex flex-1 flex-col overflow-hidden">
             <TopBar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />

@@ -2,7 +2,10 @@
 export const dynamic = 'force-dynamic';
 
 import { User, Bell, MonitorCog } from 'lucide-react';
+import { useUpdateProfileLocale } from '@strawboss/api';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { apiClient } from '@/lib/api';
+import { useI18n, type Locale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 function SettingsSection({
@@ -100,97 +103,122 @@ function ToggleRow({
 }
 
 export default function SettingsPage() {
+  const { t, locale, setLocale } = useI18n();
+  const updateLocale = useUpdateProfileLocale(apiClient);
+
+  const handleLanguageChange = (next: Locale) => {
+    setLocale(next);
+    updateLocale.mutate(next);
+  };
+
   return (
     <div>
-      <PageHeader title="Settings" />
+      <PageHeader title={t('settings.title')} />
 
       <div className="space-y-6">
-        {/* Profile */}
         <SettingsSection
-          title="Profile"
-          description="Manage your account information"
+          title={t('settings.profile.title')}
+          description={t('settings.profile.description')}
           icon={User}
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
-              label="Full Name"
-              placeholder="Your name"
+              label={t('settings.profile.fullName')}
+              placeholder={t('settings.profile.placeholderName')}
               value="Admin User"
             />
             <FormField
-              label="Email"
+              label={t('settings.profile.email')}
               type="email"
-              placeholder="email@example.com"
+              placeholder={t('settings.profile.placeholderEmail')}
               value="admin@strawboss.com"
               disabled
             />
-            <FormField label="Phone" type="tel" placeholder="+1 234 567 890" />
             <FormField
-              label="Locale"
-              placeholder="en-US"
-              value="en-US"
+              label={t('settings.profile.phone')}
+              type="tel"
+              placeholder={t('settings.profile.placeholderPhone')}
             />
+            <div>
+              <label className="mb-1 block text-sm font-medium text-neutral-700">
+                {t('settings.profile.interfaceLanguage')}
+              </label>
+              <p className="mb-2 text-xs text-neutral-500">
+                {t('settings.profile.interfaceLanguageHint')}
+              </p>
+              <select
+                value={locale}
+                onChange={(e) => handleLanguageChange(e.target.value as Locale)}
+                disabled={updateLocale.isPending}
+                className={cn(
+                  'w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700',
+                  'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary',
+                  'disabled:cursor-not-allowed disabled:opacity-60',
+                )}
+              >
+                <option value="en">{t('settings.lang.en')}</option>
+                <option value="ro">{t('settings.lang.ro')}</option>
+              </select>
+            </div>
           </div>
           <div className="mt-4 flex justify-end">
             <button
               type="button"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
             >
-              Save Profile
+              {t('settings.profile.saveProfile')}
             </button>
           </div>
         </SettingsSection>
 
-        {/* Notifications */}
         <SettingsSection
-          title="Notifications"
-          description="Configure how you receive alerts and updates"
+          title={t('settings.notifications.title')}
+          description={t('settings.notifications.description')}
           icon={Bell}
         >
           <div className="divide-y divide-neutral-100">
             <ToggleRow
-              label="Email notifications"
-              description="Receive alert summaries via email"
+              label={t('settings.notifications.email')}
+              description={t('settings.notifications.emailDesc')}
               defaultChecked
             />
             <ToggleRow
-              label="Critical alerts"
-              description="Get notified immediately for critical severity alerts"
+              label={t('settings.notifications.critical')}
+              description={t('settings.notifications.criticalDesc')}
               defaultChecked
             />
             <ToggleRow
-              label="Trip updates"
-              description="Receive notifications when trip statuses change"
+              label={t('settings.notifications.trips')}
+              description={t('settings.notifications.tripsDesc')}
             />
             <ToggleRow
-              label="Daily digest"
-              description="Get a daily summary of all operations"
+              label={t('settings.notifications.digest')}
+              description={t('settings.notifications.digestDesc')}
               defaultChecked
             />
           </div>
         </SettingsSection>
 
-        {/* System */}
         <SettingsSection
-          title="System"
-          description="Application-wide settings"
+          title={t('settings.system.title')}
+          description={t('settings.system.description')}
           icon={MonitorCog}
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
-              label="API URL"
+              label={t('settings.system.apiUrl')}
               placeholder="http://localhost:3001"
               value="http://localhost:3001"
               disabled
             />
             <FormField
-              label="Timezone"
+              label={t('settings.system.timezone')}
               placeholder="UTC"
               value="Europe/Madrid"
             />
           </div>
           <p className="mt-4 text-xs text-neutral-400">
-            Version: 0.0.1 | Environment: development
+            {t('settings.system.version', { version: '0.0.1', env: 'development' })}
           </p>
         </SettingsSection>
       </div>

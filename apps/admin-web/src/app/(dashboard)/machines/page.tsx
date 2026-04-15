@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useMemo } from 'react';
+import { Fragment, useState, useMemo, useEffect } from 'react';
 import {
   Plus,
   Pencil,
@@ -23,6 +23,7 @@ import type { Machine } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 // ── Labels / config ───────────────────────────────────────────────────────
 
@@ -523,6 +524,7 @@ function useDeleteMachine() {
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function MachinesPage() {
+  const { t } = useI18n();
   const { data: machinesRaw, isLoading, isError } = useMachines(apiClient);
   const deleteMachine = useDeleteMachine();
 
@@ -569,6 +571,30 @@ export default function MachinesPage() {
 
   const totalVisible = groups.reduce((sum, g) => sum + g.machines.length, 0);
 
+  // #region agent log
+  useEffect(() => {
+    if (isLoading || isError) return;
+    fetch('http://localhost:7759/ingest/b10ec6be-b647-4627-becf-fa99f7450535', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7394e7' },
+      body: JSON.stringify({
+        sessionId: '7394e7',
+        location: 'machines/page.tsx:MachinesPage',
+        message: 'machines tbody: groups for map (H1=fragment key)',
+        data: {
+          hypothesisId: 'H1',
+          groupCount: groups.length,
+          groupTypes: groups.map((g) => g.type),
+          rowKeysUnique:
+            new Set(groups.flatMap((g) => g.machines.map((m) => m.id))).size ===
+            groups.reduce((n, g) => n + g.machines.length, 0),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }, [isLoading, isError, groups]);
+  // #endregion
+
   const handleDelete = () => {
     if (!deleteTarget) return;
     deleteMachine.mutate(deleteTarget.id, {
@@ -579,14 +605,14 @@ export default function MachinesPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Mașini"
+        title={t('machines.title')}
         actions={
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
-            Mașină nouă
+            {t('machines.newMachine')}
           </button>
         }
       />
@@ -698,9 +724,9 @@ export default function MachinesPage() {
               )}
 
               {groups.map((group) => (
-                <>
+                <Fragment key={group.type}>
                   {/* Group header */}
-                  <tr key={`header-${group.type}`} className="border-y border-neutral-200 bg-neutral-50">
+                  <tr className="border-y border-neutral-200 bg-neutral-50">
                     <td colSpan={7} className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <span className="text-sm">{TYPE_EMOJI[group.type]}</span>
@@ -763,7 +789,7 @@ export default function MachinesPage() {
                       </td>
                     </tr>
                   ))}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

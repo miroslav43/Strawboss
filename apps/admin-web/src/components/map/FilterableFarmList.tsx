@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Eye, EyeOff, Plus, X, Search } from 'lucide-rea
 import type { Farm, Parcel } from '@strawboss/types';
 import { useAssignParcelToFarm } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface FilterableFarmListProps {
   farms: Farm[];
@@ -24,6 +25,7 @@ interface AssignPopoverProps {
 }
 
 function AssignPopover({ farms, onAssign, onClose }: AssignPopoverProps) {
+  const { t } = useI18n();
   const [q, setQ] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +54,7 @@ function AssignPopover({ farms, onAssign, onClose }: AssignPopoverProps) {
         <input
           ref={inputRef}
           type="text"
-          placeholder="Caută fermă…"
+          placeholder={t('mapList.searchFarm')}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="w-full rounded-md bg-neutral-50 py-1 pl-7 pr-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
@@ -61,7 +63,7 @@ function AssignPopover({ farms, onAssign, onClose }: AssignPopoverProps) {
       {/* Farm list */}
       <ul className="max-h-40 overflow-y-auto py-1">
         {filtered.length === 0 ? (
-          <li className="px-3 py-2 text-xs text-neutral-400">Nicio fermă</li>
+          <li className="px-3 py-2 text-xs text-neutral-400">{t('mapList.noFarms')}</li>
         ) : (
           filtered.map((f) => (
             <li key={f.id}>
@@ -90,6 +92,7 @@ export function FilterableFarmList({
   onToggleFarm,
   onToggleParcel,
 }: FilterableFarmListProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(true);
   const [expandedFarmIds, setExpandedFarmIds] = useState<Set<string>>(new Set());
   const [expandedUnassigned, setExpandedUnassigned] = useState(false);
@@ -122,10 +125,13 @@ export function FilterableFarmList({
     <div className="border-t border-neutral-200">
       {/* Section header */}
       <div className="flex items-center justify-between px-4 py-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Ferme</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+          {t('mapList.farms')}
+        </p>
         <button
           onClick={() => setOpen((v) => !v)}
-          title={open ? 'Ascunde' : 'Arată'}
+          title={open ? t('mapList.hide') : t('mapList.show')}
+          aria-label={open ? t('mapList.hide') : t('mapList.show')}
           className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
         >
           {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -137,7 +143,7 @@ export function FilterableFarmList({
           {/* Empty state */}
           {farms.length === 0 && (
             <p className="px-4 py-3 text-center text-xs text-neutral-400">
-              Nicio fermă. Creează una din pagina Ferme.
+              {t('mapList.noFarmsHint')}
             </p>
           )}
 
@@ -159,7 +165,8 @@ export function FilterableFarmList({
                         ? 'text-red-300 hover:text-red-400'
                         : 'text-green-500 hover:text-green-600'
                     }`}
-                    title={isHidden ? 'Arată pe hartă' : 'Ascunde de pe hartă'}
+                    title={isHidden ? t('mapList.showOnMap') : t('mapList.hideFromMap')}
+                    aria-label={isHidden ? t('mapList.showOnMap') : t('mapList.hideFromMap')}
                   >
                     {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                   </button>
@@ -192,7 +199,9 @@ export function FilterableFarmList({
                 {isExpanded && (
                   <div className="bg-neutral-50 pb-1">
                     {farmParcels.length === 0 ? (
-                      <p className="px-8 py-2 text-xs text-neutral-400">Niciun câmp asignat</p>
+                      <p className="px-8 py-2 text-xs text-neutral-400">
+                        {t('mapList.noFieldsAssigned')}
+                      </p>
                     ) : (
                       farmParcels.map((parcel) => {
                         const parcelHidden = hiddenParcelIds.has(parcel.id);
@@ -206,7 +215,8 @@ export function FilterableFarmList({
                                   ? 'text-red-300 hover:text-red-400'
                                   : 'text-green-500 hover:text-green-600'
                               }`}
-                              title={parcelHidden ? 'Arată câmpul' : 'Ascunde câmpul'}
+                              title={parcelHidden ? t('mapList.showField') : t('mapList.hideField')}
+                              aria-label={parcelHidden ? t('mapList.showField') : t('mapList.hideField')}
                             >
                               {parcelHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                             </button>
@@ -215,14 +225,17 @@ export function FilterableFarmList({
                                 {parcel.name ?? parcel.code}
                               </p>
                               {parcel.areaHectares != null && (
-                                <p className="text-xs text-neutral-400">{parcel.areaHectares} ha</p>
+                                <p className="text-xs text-neutral-400">
+                                  {parcel.areaHectares} {t('parcels.haUnit')}
+                                </p>
                               )}
                             </div>
                             {/* Unassign parcel */}
                             <button
                               onClick={() => handleAssignParcel(parcel.id, null)}
                               className="flex-shrink-0 rounded p-0.5 text-neutral-300 hover:bg-neutral-200 hover:text-red-400"
-                              title="Elimină din fermă"
+                              title={t('mapList.removeFromFarm')}
+                              aria-label={t('mapList.removeFromFarm')}
                             >
                               <X className="h-3 w-3" />
                             </button>
@@ -244,7 +257,7 @@ export function FilterableFarmList({
                 className="flex w-full items-center gap-1 px-3 py-1.5 text-left hover:bg-neutral-50"
               >
                 <span className="flex-1 text-xs text-neutral-400">
-                  Câmpuri neasignate ({unassignedParcels.length})
+                  {t('mapList.unassigned', { count: unassignedParcels.length })}
                 </span>
                 {expandedUnassigned ? (
                   <ChevronUp className="h-3.5 w-3.5 text-neutral-400" />
@@ -268,7 +281,8 @@ export function FilterableFarmList({
                               ? 'text-red-300 hover:text-red-400'
                               : 'text-green-500 hover:text-green-600'
                           }`}
-                          title={parcelHidden ? 'Arată câmpul' : 'Ascunde câmpul'}
+                          title={parcelHidden ? t('mapList.showField') : t('mapList.hideField')}
+                          aria-label={parcelHidden ? t('mapList.showField') : t('mapList.hideField')}
                         >
                           {parcelHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                         </button>
@@ -291,10 +305,11 @@ export function FilterableFarmList({
                                   ? 'bg-primary/10 text-primary'
                                   : 'text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600'
                               }`}
-                              title="Asignează la fermă"
+                              title={t('mapList.assignToFarmTooltip')}
+                              aria-label={t('mapList.assignToFarmTooltip')}
                             >
                               <Plus className="h-3 w-3" />
-                              Fermă
+                              {t('mapList.assignFarm')}
                             </button>
 
                             {popoverOpen && (

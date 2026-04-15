@@ -16,27 +16,28 @@ import {
   Wrench,
   Tractor,
   Wheat,
+  Warehouse,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 import { SidebarLink } from './SidebarLink';
 
 const navItems = [
-  { href: '/operations', icon: Activity, label: 'Operations' },
-  { href: '/tasks', icon: KanbanSquare, label: 'Tasks' },
-  { href: '/trips', icon: Truck, label: 'Trips' },
-  { href: '/documents', icon: FileText, label: 'Documents' },
-  { href: '/reports', icon: BarChart3, label: 'Reports' },
-  { href: '/alerts', icon: Bell, label: 'Alerts' },
-  { href: '/map', icon: Map, label: 'Map' },
-  { href: '/farms', icon: Tractor, label: 'Ferme' },
-  { href: '/parcels', icon: Wheat, label: 'Câmpuri' },
-  { href: '/machines', icon: Wrench, label: 'Machines' },
-  { href: '/accounts', icon: Users, label: 'Accounts' },
+  { href: '/operations', icon: Activity, labelKey: 'nav.operations' as const },
+  { href: '/tasks', icon: KanbanSquare, labelKey: 'nav.tasks' as const },
+  { href: '/trips', icon: Truck, labelKey: 'nav.trips' as const },
+  { href: '/documents', icon: FileText, labelKey: 'nav.documents' as const },
+  { href: '/reports', icon: BarChart3, labelKey: 'nav.reports' as const },
+  { href: '/alerts', icon: Bell, labelKey: 'nav.alerts' as const },
+  { href: '/map', icon: Map, labelKey: 'nav.map' as const },
+  { href: '/farms', icon: Tractor, labelKey: 'nav.farms' as const },
+  { href: '/parcels', icon: Wheat, labelKey: 'nav.parcels' as const },
+  { href: '/deposits', icon: Warehouse, labelKey: 'nav.deposits' as const },
+  { href: '/machines', icon: Wrench, labelKey: 'nav.machines' as const },
+  { href: '/accounts', icon: Users, labelKey: 'nav.accounts' as const },
 ] as const;
 
-const bottomItems = [
-  { href: '/settings', icon: Settings, label: 'Settings' },
-] as const;
+const bottomItems = [{ href: '/settings', icon: Settings, labelKey: 'nav.settings' as const }] as const;
 
 interface SidebarProps {
   open: boolean;
@@ -45,6 +46,7 @@ interface SidebarProps {
 
 export function Sidebar({ open, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   return (
     <aside
@@ -61,7 +63,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
         <button
           onClick={onToggle}
           className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
-          aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-label={open ? t('nav.collapseSidebar') : t('nav.expandSidebar')}
         >
           {open ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
         </button>
@@ -74,7 +76,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
             key={item.href}
             href={item.href}
             icon={item.icon}
-            label={item.label}
+            label={t(item.labelKey)}
             active={pathname.startsWith(item.href)}
             expanded={open}
           />
@@ -88,7 +90,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
             key={item.href}
             href={item.href}
             icon={item.icon}
-            label={item.label}
+            label={t(item.labelKey)}
             active={pathname.startsWith(item.href)}
             expanded={open}
           />
