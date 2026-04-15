@@ -13,6 +13,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSync } from '@/hooks/useSync';
 import { getDatabase } from '@/lib/storage';
 import { SyncQueueRepo, type SyncQueueEntry } from '@/db/sync-queue-repo';
+import { mobileLogger } from '@/lib/logger';
 
 export default function SyncScreen() {
   const { isConnected } = useNetworkStatus();
@@ -27,7 +28,9 @@ export default function SyncScreen() {
       const entries = await repo.getFailedEntries();
       setFailedEntries(entries);
     } catch (err) {
-      console.error('Failed to load failed entries:', err);
+      mobileLogger.error('Failed to load failed sync queue entries', {
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
     }
   }, []);
 
@@ -54,7 +57,10 @@ export default function SyncScreen() {
       await triggerSync();
       await loadFailedEntries();
     } catch (err) {
-      console.error('Retry failed:', err);
+      mobileLogger.error('Sync queue retry failed', {
+        entryId: id,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
     }
   };
 

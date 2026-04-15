@@ -7,6 +7,7 @@ import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
 import { OperationsRepo } from '@/db/operations-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { mobileLogger } from '@/lib/logger';
 
 interface LoadingFlowProps {
   tripId: string;
@@ -21,13 +22,17 @@ export function LoadingFlow({ tripId, onComplete }: LoadingFlowProps) {
   const [baleCount, setBaleCount] = useState('');
 
   const handleConfirm = useCallback(async () => {
+    const count = parseInt(baleCount, 10);
+    mobileLogger.flow('Loading flow: completing load', {
+      tripId,
+      baleCount: count,
+    });
     try {
       const db = await getDatabase();
       const tripsRepo = new TripsRepo(db);
       const opsRepo = new OperationsRepo(db);
       const syncQueue = new SyncQueueRepo(db);
 
-      const count = parseInt(baleCount, 10);
       const operationId = `op_load_${tripId}_${Date.now()}`;
 
       await opsRepo.create({
@@ -61,8 +66,16 @@ export function LoadingFlow({ tripId, onComplete }: LoadingFlowProps) {
         idempotencyKey: `load_${tripId}_${Date.now()}`,
       });
 
+      mobileLogger.flow('Loading flow: saved and sync enqueued', { tripId });
       onComplete();
     } catch (err) {
+      mobileLogger.error('Loading flow: save failed', {
+        tripId,
+        err:
+          err instanceof Error
+            ? { message: err.message, stack: err.stack }
+            : err,
+      });
       Alert.alert(
         'Error',
         err instanceof Error ? err.message : 'Failed to save loading data',

@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
+import { mobileLogger } from '@/lib/logger';
 
 export default function TripsScreen() {
   const [trips, setTrips] = useState<LocalTrip[]>([]);
@@ -25,7 +26,9 @@ export default function TripsScreen() {
       const activeTrips = await repo.listActive();
       setTrips(activeTrips);
     } catch (err) {
-      console.error('Failed to load trips:', err);
+      mobileLogger.error('Failed to load active trips from local DB', {
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
     } finally {
       setLoading(false);
     }

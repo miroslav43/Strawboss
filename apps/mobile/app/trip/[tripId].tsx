@@ -11,6 +11,7 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import { BigButton } from '@/components/ui/BigButton';
 import { ActionCard } from '@/components/ui/ActionCard';
 import { colors } from '@strawboss/ui-tokens';
+import { mobileLogger } from '@/lib/logger';
 
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -27,7 +28,10 @@ export default function TripDetailScreen() {
       const result = await repo.findById(tripId);
       setTrip(result);
     } catch (err) {
-      console.error('Failed to load trip:', err);
+      mobileLogger.error('Failed to load trip from local DB', {
+        tripId,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
     } finally {
       setLoading(false);
     }
@@ -40,7 +44,13 @@ export default function TripDetailScreen() {
   const updateTripStatus = useCallback(
     async (newStatus: string, extraData?: Partial<LocalTrip>) => {
       if (!tripId) return;
+      const fromStatus = trip?.status ?? 'unknown';
       setActionLoading(true);
+      mobileLogger.flow('Trip detail: status transition start', {
+        tripId,
+        fromStatus,
+        toStatus: newStatus,
+      });
       try {
         const db = await getDatabase();
         const tripsRepo = new TripsRepo(db);
@@ -62,7 +72,21 @@ export default function TripDetailScreen() {
         });
 
         await loadTrip();
+        mobileLogger.flow('Trip detail: status transition queued', {
+          tripId,
+          fromStatus,
+          toStatus: newStatus,
+        });
       } catch (err) {
+        mobileLogger.error('Trip detail: status transition failed', {
+          tripId,
+          fromStatus,
+          toStatus: newStatus,
+          err:
+            err instanceof Error
+              ? { message: err.message, stack: err.stack }
+              : err,
+        });
         Alert.alert(
           'Error',
           err instanceof Error ? err.message : 'Failed to update trip',
@@ -71,7 +95,7 @@ export default function TripDetailScreen() {
         setActionLoading(false);
       }
     },
-    [tripId, loadTrip],
+    [tripId, trip, loadTrip],
   );
 
   if (loading) {

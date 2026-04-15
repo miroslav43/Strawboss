@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { EnhancedDeliveryFlow } from '@/components/features/delivery/EnhancedDeliveryFlow';
+import { mobileLogger } from '@/lib/logger';
 
 export default function DriverDeliveryFlowScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -18,7 +19,15 @@ export default function DriverDeliveryFlowScreen() {
         const repo = new TripsRepo(db);
         return repo.findById(tripId);
       })
-      .then((found) => setTrip(found))
+      .then((found) => {
+        setTrip(found);
+        if (found) {
+          mobileLogger.flow('Driver delivery flow: trip loaded', {
+            tripId,
+            status: found.status,
+          });
+        }
+      })
       .finally(() => setLoading(false));
   }, [tripId]);
 

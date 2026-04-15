@@ -6,6 +6,7 @@ import {
 } from '@/lib/location';
 import type { LocationSubscription } from '@/lib/location';
 import { mobileApiClient } from '@/lib/api-client';
+import { mobileLogger } from '@/lib/logger';
 
 interface UseLocationTrackingResult {
   isTracking: boolean;
@@ -39,10 +40,18 @@ export function useLocationTracking(): UseLocationTrackingResult {
         await mobileApiClient.post<void>('/api/v1/location/report', report);
         setLastReportedAt(new Date().toLocaleTimeString('ro-RO'));
         setError(null);
+        mobileLogger.debug('Location report OK', {
+          machineId,
+          lat: report.lat,
+          lon: report.lon,
+        });
       } catch (err) {
         const msg = (err as Error)?.message ?? 'Eroare la trimiterea locației';
         setError(`GPS trimis, dar serverul nu a răspuns: ${msg}`);
-        console.warn('[LocationTracking] Failed to report location:', err);
+        mobileLogger.warn('Location report failed', {
+          machineId,
+          message: msg,
+        });
       }
     });
 
@@ -53,6 +62,7 @@ export function useLocationTracking(): UseLocationTrackingResult {
 
     subscriptionRef.current = sub;
     setIsTracking(true);
+    mobileLogger.flow('Location tracking started', { machineId });
   }, []);
 
   const stopTracking = useCallback(() => {

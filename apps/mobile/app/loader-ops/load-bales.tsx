@@ -16,6 +16,7 @@ import { mobileApiClient } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { useAuthStore } from '@/stores/auth-store';
+import { mobileLogger } from '@/lib/logger';
 
 type Step = 'count' | 'confirm';
 
@@ -49,6 +50,10 @@ export default function LoadBalesScreen() {
     if (!truckId || !userId || saving) return;
 
     setSaving(true);
+    mobileLogger.flow('Loader load-bales: enqueue bale_load', {
+      truckId,
+      baleCount,
+    });
     try {
       const db = await getDatabase();
       const syncRepo = new SyncQueueRepo(db);
@@ -70,8 +75,17 @@ export default function LoadBalesScreen() {
         idempotencyKey,
       });
 
+      mobileLogger.flow('Loader load-bales: enqueued OK', { entityId });
       setSaved(true);
       setTimeout(() => router.back(), 1500);
+    } catch (err) {
+      mobileLogger.error('Loader load-bales: enqueue failed', {
+        truckId,
+        err:
+          err instanceof Error
+            ? { message: err.message, stack: err.stack }
+            : err,
+      });
     } finally {
       setSaving(false);
     }

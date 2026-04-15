@@ -6,6 +6,7 @@ import { ProductionFlow } from '@/components/features/production/ProductionFlow'
 import { ParcelSelector } from '@/components/shared/ParcelSelector';
 import { BigButton } from '@/components/ui/BigButton';
 import { useAuthStore } from '@/stores/auth-store';
+import { mobileLogger } from '@/lib/logger';
 
 export default function BalerProductionScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -44,7 +45,14 @@ export default function BalerProductionScreen() {
           <View style={styles.actions}>
             <BigButton
               title="Continuă"
-              onPress={() => setParcelConfirmed(true)}
+              onPress={() => {
+                if (selectedParcelId) {
+                  mobileLogger.flow('Baler production: parcel chosen', {
+                    parcelId: selectedParcelId,
+                  });
+                }
+                setParcelConfirmed(true);
+              }}
               disabled={!selectedParcelId}
             />
             <BigButton

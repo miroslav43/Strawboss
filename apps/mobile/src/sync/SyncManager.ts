@@ -1,5 +1,6 @@
 import type { ApiClient } from '@strawboss/api';
 import type { SyncResult as SyncResultDto } from '@strawboss/types';
+import { mobileLogger } from '../lib/logger';
 import { SyncQueueRepo } from '../db/sync-queue-repo';
 import { TripsRepo, type LocalTrip } from '../db/trips-repo';
 import { BaleProductionsRepo, type LocalBaleProduction } from '../db/bale-productions-repo';
@@ -8,6 +9,7 @@ import { ConsumableLogsRepo, type LocalConsumableLog } from '../db/consumable-lo
 import { pushMutations } from './push';
 import { pullUpdates } from './pull';
 import { mergeRecords } from './conflict';
+import { uploadTodayMobileLogs } from './mobile-log-upload';
 
 export interface SyncResult {
   pushed: number;
@@ -35,14 +37,31 @@ export class SyncManager {
    * Run a full sync cycle: push pending changes, then pull updates.
    */
   async sync(): Promise<SyncResult> {
+    mobileLogger.flow('Sync cycle started');
+
     const pushResult = await this.push();
     const pullResult = await this.pull();
 
-    return {
+    const errors = [...pushResult.errors, ...pullResult.errors];
+    const result: SyncResult = {
       pushed: pushResult.count,
       pulled: pullResult.count,
-      errors: [...pushResult.errors, ...pullResult.errors],
+      errors,
     };
+
+    if (errors.length === 0) {
+      void uploadTodayMobileLogs(this.apiClient).catch(() => {
+        /* best-effort log upload */
+      });
+    }
+
+    mobileLogger.flow('Sync cycle finished', {
+      pushed: result.pushed,
+      pulled: result.pulled,
+      errorCount: result.errors.length,
+    });
+
+    return result;
   }
 
   /**

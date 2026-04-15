@@ -7,6 +7,7 @@ import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
 import { OperationsRepo } from '@/db/operations-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { mobileLogger } from '@/lib/logger';
 
 interface DeliveryFlowProps {
   tripId: string;
@@ -28,6 +29,11 @@ export function DeliveryFlow({ tripId, onComplete }: DeliveryFlowProps) {
   const [signatures, setSignatures] = useState<Signatures>({});
 
   const handleComplete = useCallback(async () => {
+    const grossWeight = parseFloat(weight);
+    mobileLogger.flow('Delivery flow: completing local delivery', {
+      tripId,
+      grossWeightKg: grossWeight,
+    });
     try {
       const db = await getDatabase();
       const tripsRepo = new TripsRepo(db);
@@ -35,7 +41,6 @@ export function DeliveryFlow({ tripId, onComplete }: DeliveryFlowProps) {
       const syncQueue = new SyncQueueRepo(db);
 
       const operationId = `op_deliver_${tripId}_${Date.now()}`;
-      const grossWeight = parseFloat(weight);
 
       await opsRepo.create({
         id: operationId,
@@ -70,8 +75,16 @@ export function DeliveryFlow({ tripId, onComplete }: DeliveryFlowProps) {
         idempotencyKey: `deliver_${tripId}_${Date.now()}`,
       });
 
+      mobileLogger.flow('Delivery flow: saved and sync enqueued', { tripId });
       onComplete();
     } catch (err) {
+      mobileLogger.error('Delivery flow: save failed', {
+        tripId,
+        err:
+          err instanceof Error
+            ? { message: err.message, stack: err.stack }
+            : err,
+      });
       Alert.alert(
         'Error',
         err instanceof Error ? err.message : 'Failed to save delivery data',

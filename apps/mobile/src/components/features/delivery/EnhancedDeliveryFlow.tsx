@@ -7,6 +7,7 @@ import { DeterioratedBalesInput } from './DeterioratedBalesInput';
 import { CmrConfirmation } from './CmrConfirmation';
 import { WhatsAppLink } from '@/components/shared/WhatsAppLink';
 import { mobileApiClient } from '@/lib/api-client';
+import { mobileLogger } from '@/lib/logger';
 
 const BACKGROUND = '#F3DED8';
 
@@ -78,6 +79,10 @@ export function EnhancedDeliveryFlow({
 
   const handleConfirm = useCallback(async () => {
     setLoading(true);
+    mobileLogger.flow('Driver enhanced delivery: POST confirm-delivery', {
+      tripId,
+      tripNumber,
+    });
     try {
       const payload: ConfirmDeliveryPayload = {
         netWeightKg,
@@ -91,8 +96,18 @@ export function EnhancedDeliveryFlow({
         `/api/v1/trips/${tripId}/confirm-delivery`,
         payload,
       );
+      mobileLogger.flow('Driver enhanced delivery: confirm-delivery success', {
+        tripId,
+      });
       onComplete();
     } catch (err) {
+      mobileLogger.error('Driver enhanced delivery: confirm-delivery failed', {
+        tripId,
+        err:
+          err instanceof Error
+            ? { message: err.message, stack: err.stack }
+            : err,
+      });
       Alert.alert(
         'Eroare',
         err instanceof Error ? err.message : 'Nu s-a putut confirma livrarea.',
@@ -107,6 +122,7 @@ export function EnhancedDeliveryFlow({
     receiverName,
     signatureUri,
     tripId,
+    tripNumber,
     onComplete,
   ]);
 

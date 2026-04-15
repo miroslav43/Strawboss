@@ -7,6 +7,7 @@ import { getDatabase } from '@/lib/storage';
 import { BaleProductionsRepo } from '@/db/bale-productions-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { colors } from '@strawboss/ui-tokens';
+import { mobileLogger } from '@/lib/logger';
 
 interface ProductionFlowProps {
   parcelId: string;
@@ -33,6 +34,11 @@ export function ProductionFlow({
 
   const handleConfirm = useCallback(async () => {
     setSaving(true);
+    const count = parseInt(baleCount, 10);
+    mobileLogger.flow('Baler production: saving local record', {
+      parcelId,
+      baleCount: count,
+    });
     try {
       const db = await getDatabase();
       const productionsRepo = new BaleProductionsRepo(db);
@@ -40,7 +46,6 @@ export function ProductionFlow({
 
       const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
       const now = new Date().toISOString();
-      const count = parseInt(baleCount, 10);
 
       const record = {
         id,
@@ -75,8 +80,16 @@ export function ProductionFlow({
         idempotencyKey: `bale_production_${id}`,
       });
 
+      mobileLogger.flow('Baler production: queued for sync', { parcelId, id });
       onComplete();
     } catch (err) {
+      mobileLogger.error('Baler production: save failed', {
+        parcelId,
+        err:
+          err instanceof Error
+            ? { message: err.message, stack: err.stack }
+            : err,
+      });
       Alert.alert(
         'Eroare',
         err instanceof Error ? err.message : 'Nu s-a putut salva producția',
