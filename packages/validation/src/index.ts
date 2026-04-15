@@ -17,8 +17,11 @@ export {
   updateUserSchema,
 } from "./schemas/user.schema.js";
 
+export { updateProfileLocaleSchema } from "./schemas/profile.schema.js";
+
 export {
   parcelSchema,
+  harvestStatusSchema,
   createParcelSchema,
   updateParcelSchema,
 } from "./schemas/parcel.schema.js";
@@ -82,9 +85,16 @@ export {
 
 export {
   assignmentPrioritySchema,
+  assignmentStatusSchema,
   taskAssignmentSchema,
   createTaskAssignmentSchema,
+  updateAssignmentStatusSchema,
 } from "./schemas/task-assignment.schema.js";
+
+export {
+  parcelDailyStatusSchema,
+  upsertParcelDailyStatusSchema,
+} from "./schemas/parcel-daily-status.schema.js";
 
 // DTO schemas
 export { tripCreateDtoSchema } from "./dtos/trip-create.schema.js";
@@ -107,6 +117,13 @@ export {
   syncPushRequestSchema,
   syncPullRequestSchema,
 } from "./dtos/sync-payload.schema.js";
+
+export {
+  mobileLogEntrySchema,
+  mobileLogIngestSchema,
+  type MobileLogIngestDto,
+  type MobileLogEntryDto,
+} from "./schemas/mobile-log-ingest.schema.js";
 
 export {
   dashboardOverviewSchema,

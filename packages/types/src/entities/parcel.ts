@@ -5,6 +5,14 @@ export enum ParcelStatus {
   inactive = "inactive",
 }
 
+/** Field harvest / work phase (map + parcels table; synced from daily plan “done”). */
+export enum HarvestStatus {
+  planned = "planned",
+  to_harvest = "to_harvest",
+  harvesting = "harvesting",
+  harvested = "harvested",
+}
+
 export interface Parcel extends Timestamps, SoftDelete {
   id: string;
   code: string;
@@ -17,6 +25,8 @@ export interface Parcel extends Timestamps, SoftDelete {
   address: string;
   municipality: string;
   farmtrackGeofenceId: string | null;
+  farmId: string | null;
   notes: string | null;
   isActive: boolean;
+  harvestStatus: HarvestStatus;
 }

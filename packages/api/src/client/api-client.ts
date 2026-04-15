@@ -2,6 +2,14 @@
 export interface ApiClientConfig {
   baseUrl: string;
   getToken: () => Promise<string | null>;
+  /** Optional hook for structured client logging (e.g. admin-web clientLogger). */
+  onApiError?: (info: {
+    method: string;
+    path: string;
+    status: number;
+    message: string;
+    data?: unknown;
+  }) => void;
 }
 
 export class ApiClient {
@@ -22,7 +30,15 @@ export class ApiClient {
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: res.statusText }));
-      throw new ApiError(res.status, error.message ?? 'Request failed', error);
+      const message = error.message ?? 'Request failed';
+      this.config.onApiError?.({
+        method,
+        path,
+        status: res.status,
+        message,
+        data: error,
+      });
+      throw new ApiError(res.status, message, error);
     }
     // Handle 204 No Content
     if (res.status === 204) return undefined as T;
@@ -55,7 +71,15 @@ export class ApiClient {
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: res.statusText }));
-      throw new ApiError(res.status, error.message ?? 'Upload failed', error);
+      const message = error.message ?? 'Upload failed';
+      this.config.onApiError?.({
+        method: 'POST',
+        path,
+        status: res.status,
+        message,
+        data: error,
+      });
+      throw new ApiError(res.status, message, error);
     }
     return res.json() as Promise<T>;
   }

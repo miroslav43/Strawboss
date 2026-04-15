@@ -21,8 +21,12 @@ export interface MachineLastLocation {
   /** COALESCE(internal_code, registration_plate) */
   machineCode: string | null;
   operatorId: string | null;
-  /** users.full_name of the operator */
+  /** users.full_name of the operator (last GPS reporter) */
   operatorName: string | null;
+  /** users.id where users.assigned_machine_id = this machine */
+  assignedUserId: string | null;
+  /** users.full_name of the permanently assigned user */
+  assignedUserName: string | null;
   lat: number;
   lon: number;
   accuracyM: number | null;

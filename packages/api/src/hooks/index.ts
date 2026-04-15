@@ -30,10 +30,22 @@ export {
 
 export {
   useTaskAssignments,
+  useDailyPlan,
   useCreateTaskAssignment,
   useBulkCreateTaskAssignments,
   useAssignMachineToParcel,
+  useUpdateAssignmentStatus,
+  useAutoCompleteAssignments,
+  useTasksByMachineType,
+  useUpdateTaskAssignment,
+  useDeleteTaskAssignment,
 } from './use-task-assignments.js';
+
+export {
+  useParcelDailyStatuses,
+  useUpsertParcelDailyStatus,
+  useDeleteParcelDailyStatusForDate,
+} from './use-parcel-daily-status.js';
 
 export {
   useBaleLoads,
@@ -88,13 +100,21 @@ export type { CreateUserPayload, UpdateUserPayload } from './use-admin-users.js'
 
 export { useMachineLocations } from './use-machine-locations.js';
 export { useRouteHistory } from './use-route-history.js';
-export { useProfile } from './use-profile.js';
+export { useProfile, useUpdateProfileLocale } from './use-profile.js';
 
 export {
   useBaleProductions,
   useCreateBaleProduction,
 } from './use-bale-productions.js';
 export type { BaleProductionFilters } from './use-bale-productions.js';
+
+export {
+  useDeliveryDestinations,
+  useDeliveryDestination,
+  useCreateDeliveryDestination,
+  useUpdateDeliveryDestination,
+  useDeleteDeliveryDestination,
+} from './use-delivery-destinations.js';
 
 export {
   useFarms,

@@ -1,9 +1,15 @@
 import { z } from "zod";
 import { uuidSchema } from "../helpers/uuid.js";
-import { isoDateSchema } from "../helpers/iso-date.js";
 import { geoPointSchema } from "../helpers/geo.js";
 import { timestampsSchema } from "../helpers/common.js";
 import { softDeleteSchema } from "../helpers/common.js";
+
+export const harvestStatusSchema = z.enum([
+  "planned",
+  "to_harvest",
+  "harvesting",
+  "harvested",
+]);
 
 export const parcelSchema = z
   .object({
@@ -20,6 +26,7 @@ export const parcelSchema = z
     farmtrackGeofenceId: z.string().nullable(),
     notes: z.string().nullable(),
     isActive: z.boolean(),
+    harvestStatus: harvestStatusSchema,
   })
   .merge(timestampsSchema)
   .merge(softDeleteSchema);
@@ -37,6 +44,7 @@ export const createParcelSchema = z.object({
   municipality:        z.string().optional(),
   farmtrackGeofenceId: z.string().nullable().optional(),
   notes:               z.string().nullable().optional(),
+  harvestStatus:       harvestStatusSchema.optional(),
 });
 
 export const updateParcelSchema = z
@@ -51,7 +59,9 @@ export const updateParcelSchema = z
     address: z.string().min(1),
     municipality: z.string().min(1),
     farmtrackGeofenceId: z.string().nullable(),
+    farmId: z.string().uuid().nullable(),
     notes: z.string().nullable(),
     isActive: z.boolean(),
+    harvestStatus: harvestStatusSchema,
   })
   .partial();

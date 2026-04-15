@@ -18,6 +18,12 @@ export const queryKeys = {
     all: ['taskAssignments'] as const,
     list: (filters?: Record<string, unknown>) => ['taskAssignments', 'list', filters] as const,
     byDate: (date: string) => ['taskAssignments', 'date', date] as const,
+    dailyPlan: (date: string) => ['taskAssignments', 'dailyPlan', date] as const,
+    byMachineType: (date: string, machineType: string) => ['taskAssignments', 'byMachineType', date, machineType] as const,
+  },
+  parcelDailyStatus: {
+    all: ['parcelDailyStatus'] as const,
+    byDate: (date: string) => ['parcelDailyStatus', 'date', date] as const,
   },
   baleLoads: {
     all: ['baleLoads'] as const,
@@ -58,5 +64,10 @@ export const queryKeys = {
     all:    ['farms'] as const,
     list:   (filters?: Record<string, unknown>) => ['farms', 'list', filters] as const,
     detail: (id: string) => ['farms', 'detail', id] as const,
+  },
+  deliveryDestinations: {
+    all: ['deliveryDestinations'] as const,
+    list: (filters?: Record<string, unknown>) => ['deliveryDestinations', 'list', filters] as const,
+    detail: (id: string) => ['deliveryDestinations', 'detail', id] as const,
   },
 } as const;

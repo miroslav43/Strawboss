@@ -9,5 +9,6 @@ export interface DeliveryDestination extends Timestamps, SoftDelete {
   contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
+  boundary: string | null;
   isActive: boolean;
 }
