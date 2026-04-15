@@ -9,6 +9,9 @@ set -euo pipefail
 #   ./strawboss.sh dev     — start local dev servers (localhost:3000 / :3001)
 #   ./strawboss.sh prod    — build + start production (https://nortiauno.com)
 #   ./strawboss.sh stop    — stop everything (dev processes + Docker)
+#   ./strawboss.sh mobile-build       — Android APK via Expo EAS (cloud)
+#   ./strawboss.sh mobile-build-local — Android APK via local Gradle (needs SDK)
+#   ./strawboss.sh logs | logs:error | logs:flow | logs:mobile | logs:clean
 #
 # Run ./strawboss.sh help for the full command list.
 # ============================================================================
@@ -269,6 +272,128 @@ cmd_stop() {
   fi
 }
 
+# Resolve ANDROID_HOME: env, .env, then common install paths.
+_mobile_resolve_android_home() {
+  if [ -f "$SCRIPT_DIR/.env" ] && [ -z "${ANDROID_HOME:-}" ]; then
+    local line
+    line=$(grep -E '^[[:space:]]*ANDROID_HOME=' "$SCRIPT_DIR/.env" 2>/dev/null | tail -1 || true)
+    if [ -n "$line" ]; then
+      export ANDROID_HOME="${line#*=}"
+      ANDROID_HOME="${ANDROID_HOME%\"}"
+      ANDROID_HOME="${ANDROID_HOME#\"}"
+      ANDROID_HOME="${ANDROID_HOME%\'}"
+      ANDROID_HOME="${ANDROID_HOME#\'}"
+    fi
+  fi
+  if [ -n "${ANDROID_HOME:-}" ] && [ -d "$ANDROID_HOME/platform-tools" ]; then
+    return 0
+  fi
+  local candidates=(
+    "${ANDROID_SDK_ROOT:-}"
+    "$HOME/Android/Sdk"
+    "/root/Android/Sdk"
+    "/opt/android-sdk"
+    "/usr/lib/android-sdk"
+  )
+  local d
+  for d in "${candidates[@]}"; do
+    [ -z "$d" ] && continue
+    if [ -d "$d/platform-tools" ]; then
+      export ANDROID_HOME="$d"
+      info "Using Android SDK: ANDROID_HOME=$ANDROID_HOME"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# mobile-build — Android APK via Expo Application Services (cloud)
+cmd_mobile_build() {
+  header "Mobile Android APK (EAS Build)"
+  require_cmd pnpm
+
+  local mobile_dir="$SCRIPT_DIR/apps/mobile"
+  if [ ! -d "$mobile_dir" ]; then
+    error "apps/mobile not found."
+    exit 1
+  fi
+  if [ ! -f "$mobile_dir/eas.json" ]; then
+    error "Missing apps/mobile/eas.json"
+    exit 1
+  fi
+
+  info "Runs Expo EAS in the cloud (profile: apk → installable .apk)."
+  info "First time: cd apps/mobile && pnpm dlx eas-cli@latest login && pnpm dlx eas-cli@latest init"
+  info "CI: set EXPO_TOKEN (expo.dev account settings → Access tokens)."
+  echo ""
+
+  (
+    cd "$mobile_dir"
+    pnpm dlx eas-cli@latest build --platform android --profile apk "$@"
+  )
+}
+
+# mobile-build-local — Android APK on this machine (expo prebuild + Gradle)
+# Requires: JDK 17+, ANDROID_HOME, Android SDK platform-tools + build-tools.
+# Usage: mobile-build-local [debug|release]   (default: debug — no keystore needed)
+cmd_mobile_build_local() {
+  header "Mobile Android APK (local Gradle)"
+  require_cmd pnpm
+
+  local variant="${1:-debug}"
+  if [ "$variant" != "debug" ] && [ "$variant" != "release" ]; then
+    error "Invalid variant '$variant'. Use: mobile-build-local [debug|release]"
+    exit 1
+  fi
+
+  if ! _mobile_resolve_android_home; then
+    error "Android SDK not found. Install Command-line tools + platform-tools, or set ANDROID_HOME in .env"
+    info "Typical path: \$HOME/Android/Sdk (needs platform-tools/ directory)"
+    exit 1
+  fi
+  if ! command -v java &>/dev/null; then
+    error "java not found. Install JDK 17+ (e.g. temurin-17)."
+    exit 1
+  fi
+
+  local mobile_dir="$SCRIPT_DIR/apps/mobile"
+  if [ ! -d "$mobile_dir" ]; then
+    error "apps/mobile not found."
+    exit 1
+  fi
+
+  info "Building workspace packages used by mobile..."
+  pnpm --filter @strawboss/types build
+  pnpm --filter @strawboss/validation build
+  pnpm --filter @strawboss/ui-tokens build
+  pnpm --filter @strawboss/api build
+
+  info "expo prebuild --platform android (generates/updates android/)..."
+  (
+    cd "$mobile_dir"
+    pnpm exec expo prebuild --platform android
+  )
+
+  local gradle_task="assembleDebug"
+  local out_sub="debug"
+  if [ "$variant" = "release" ]; then
+    gradle_task="assembleRelease"
+    out_sub="release"
+    warn "Release builds need a signing config in android/; Gradle may fail without it."
+  fi
+
+  info "Gradle: ./gradlew $gradle_task"
+  chmod +x "$mobile_dir/android/gradlew" 2>/dev/null || true
+  (
+    cd "$mobile_dir/android"
+    ./gradlew "$gradle_task"
+  )
+
+  success "Done."
+  info "APK: $mobile_dir/android/app/build/outputs/apk/$out_sub/"
+  info "Typical file: app-${variant}.apk (name may vary)"
+}
+
 # ---------------------------------------------------------------------------
 # LOWER-LEVEL COMMANDS (power users / CI)
 # ---------------------------------------------------------------------------
@@ -499,6 +624,32 @@ cmd_status() {
     || printf "  node_modules     ${RED}missing${NC}  (run setup)\n"
 }
 
+_logs_today_path() {
+  # $1 = e.g. web/all, web/error, mobile/all
+  echo "$SCRIPT_DIR/logs/$1/$(date +%Y-%m-%d).log"
+}
+
+cmd_logs() {
+  local rel="${1:-web/all}"
+  local f
+  f="$(_logs_today_path "$rel")"
+  if [ ! -f "$f" ]; then
+    warn "No log file yet: $f"
+    info "Start the backend (or admin) to generate logs; ensure LOG_ROOT points at ./logs if needed."
+    exit 1
+  fi
+  tail -f "$f"
+}
+
+cmd_logs_clean() {
+  if [ -d "$SCRIPT_DIR/logs" ]; then
+    rm -rf "${SCRIPT_DIR:?}/logs"/*
+    success "Cleared $SCRIPT_DIR/logs/"
+  else
+    info "No logs directory yet."
+  fi
+}
+
 cmd_help() {
   echo -e "${BOLD}${CYAN}"
   echo "  _____ _                   ____                 "
@@ -518,6 +669,12 @@ cmd_help() {
   echo "  stop     Stop dev processes and all Docker services"
   echo ""
 
+  echo -e "${BOLD}── Mobile ───────────────────────────────────────────────${NC}"
+  echo "  mobile-build [args]       Android APK via Expo EAS (cloud; eas login + eas init)"
+  echo "  mobile-build-local [kind] Local APK: expo prebuild + Gradle (JDK 17, ANDROID_HOME)"
+  echo "                            kind = debug (default) | release"
+  echo ""
+
   echo -e "${BOLD}── Dev tools ────────────────────────────────────────────${NC}"
   echo "  build [target]       Build packages/apps"
   echo "                       Targets: packages | all | types | validation |"
@@ -527,6 +684,11 @@ cmd_help() {
   echo "  clean                Remove dist/ and .next/ build artifacts"
   echo "  clean:all            Remove dist/ AND node_modules/"
   echo "  status               Show build + Docker service status"
+  echo "  logs                 tail -f today's logs/web/all/YYYY-MM-DD.log"
+  echo "  logs:error           tail -f logs/web/error/ (today)"
+  echo "  logs:flow            tail -f logs/web/flow/ (today)"
+  echo "  logs:mobile          tail -f logs/mobile/all/ (today; server-ingested)"
+  echo "  logs:clean           rm -rf logs/*"
   echo ""
 
   echo -e "${BOLD}── Database ─────────────────────────────────────────────${NC}"
@@ -563,6 +725,8 @@ case "$COMMAND" in
   dev)            cmd_dev "$@" ;;
   prod)           cmd_prod "$@" ;;
   stop)           cmd_stop "$@" ;;
+  mobile-build)        cmd_mobile_build "$@" ;;
+  mobile-build-local)  cmd_mobile_build_local "$@" ;;
   # Dev tools
   install)        cmd_install "$@" ;;
   build)          cmd_build "$@" ;;
@@ -571,6 +735,11 @@ case "$COMMAND" in
   clean)          cmd_clean "$@" ;;
   clean:all)      cmd_clean_all "$@" ;;
   status)         cmd_status "$@" ;;
+  logs)           cmd_logs web/all ;;
+  logs:error)     cmd_logs web/error ;;
+  logs:flow)      cmd_logs web/flow ;;
+  logs:mobile)    cmd_logs mobile/all ;;
+  logs:clean)     cmd_logs_clean "$@" ;;
   # Database
   db:migrate)     cmd_db_migrate "$@" ;;
   db:seed)        cmd_db_seed "$@" ;;

@@ -24,6 +24,11 @@ Lower-level commands for targeted work:
 ./strawboss.sh db:seed             # Run supabase/seed.sql
 ./strawboss.sh ssl:init            # Issue Let's Encrypt cert (first prod deploy only)
 ./strawboss.sh status              # Show build + Docker status
+./strawboss.sh logs                # tail -f today's combined web log (JSON lines)
+./strawboss.sh logs:error          # tail today's logs/web/error/
+./strawboss.sh logs:flow           # tail today's logs/web/flow/ (business transitions)
+./strawboss.sh logs:mobile         # tail today's logs/mobile/all/ (uploaded from devices)
+./strawboss.sh logs:clean          # remove all files under logs/
 ```
 
 To run a script in a single package directly:
@@ -45,7 +50,7 @@ pnpm --filter @strawboss/admin-web build
 - `packages/ui-tokens` — `@strawboss/ui-tokens`: Design tokens (colors, spacing, typography). Exports a Tailwind CSS preset (`@strawboss/ui-tokens/tailwind-preset`) and React Native helpers (`@strawboss/ui-tokens/native`).
 - `backend/service` — NestJS 11 + Fastify 5. All routes under `/api/v1/`. Uses Drizzle ORM with postgres.js for database access.
 - `apps/admin-web` — Next.js 15 App Router, Tailwind CSS v4. Consumes `@strawboss/api` hooks and `@strawboss/ui-tokens` Tailwind preset.
-- `apps/mobile` — Expo SDK 52 + Expo Router. Offline-first; all writes go to local SQLite + sync queue, synced to server when online.
+- `apps/mobile` — Expo SDK 54 + Expo Router. Offline-first; all writes go to local SQLite + sync queue, synced to server when online.
 
 ### Trip State Machine
 
@@ -83,6 +88,15 @@ Local SQLite tables: `operations`, `trips`, `sync_queue`. Sync triggers: app for
 
 PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001–00008). Key design: soft deletes everywhere, generated columns for `net_weight_kg` and `odometer_distance_km`, `sync_version` bigint on trip/bale_load/fuel_log for delta sync, JSONB for `fraud_flags`/`metadata`/`payload`.
 
+### File logging (Winston + mobile NDJSON)
+
+- **Layout** (gitignored): `logs/web/{all,error,warn,info,debug,flow,http}/YYYY-MM-DD.log` and `logs/mobile/...` for payloads from the mobile app. Files rotate daily and **Winston** prunes files older than **7 days** (`maxFiles: '7d'`).
+- **Backend** (`backend/service`): `AppLoggerModule` + `nest-winston`. Nest logs go to the `web` tree; `LoggingInterceptor` writes **http** lines (with `X-Request-Id`); `AllExceptionsFilter` logs **warn/error**; domain modules use **flow** for trips, task assignments, geofence, BullMQ jobs, etc. Set **`LOG_ROOT`** to an absolute path if the process cwd is not the monorepo (Docker: `/app/logs` via `docker-compose.yml` volume `./logs:/app/logs`).
+- **Admin web**: `apps/admin-web/src/lib/server-logger.ts` writes to the same `logs/web/` tree. Browser logs are batched to **`POST /api/client-log`** (`client-logger.ts`, rate-limited). Optional **`onApiError`** on `ApiClient` (`packages/api`) records failed API calls.
+- **Mobile**: `apps/mobile/src/lib/logger.ts` appends NDJSON under `DocumentDirectory/strawboss-logs/` with local 7-day cleanup (`cleanupOldMobileLogFiles`). After a **successful sync** (no errors), today's file is uploaded via **`POST /api/v1/logs/mobile`** and local day files are removed. Device logs also include GPS / geofence / sync **flow** lines.
+
 ### Environment
 
 `NEXT_PUBLIC_*` vars are baked into the Next.js build at Docker build time (build args). In development, CORS allows `localhost:3000`; in production only `https://nortiauno.com` is allowed.
+
+Optional: **`LOG_ROOT`** — root directory for `logs/web` and `logs/mobile` on servers (see `.env.example`).

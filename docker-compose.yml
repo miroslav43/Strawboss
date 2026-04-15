@@ -8,8 +8,11 @@ services:
     # No external port binding — nginx proxies to this container via internal network.
     expose:
       - "3001"
+    volumes:
+      - ./logs:/app/logs
     environment:
       - PORT=3001
+      - LOG_ROOT=/app/logs
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
@@ -30,11 +33,14 @@ services:
     # No external port binding — nginx proxies to this container via internal network.
     expose:
       - "3000"
+    volumes:
+      - ./logs:/app/logs
     environment:
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://nortiauno.com}
       - BACKEND_URL=http://backend:3001
+      - LOG_ROOT=/app/logs
     depends_on:
       - backend
     restart: unless-stopped
