@@ -6,6 +6,7 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
     'Cursele Mele': '🚛',
     'Livrare': '📋',
     'Combustibil': '⛽',
+    'Profil': '👤',
   };
   return (
     <Text style={[styles.icon, focused && styles.iconFocused]}>
@@ -48,15 +49,18 @@ export default function DriverTabLayout() {
           tabBarIcon: ({ focused }) => <TabIcon label="Combustibil" focused={focused} />,
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profil',
+          tabBarIcon: ({ focused }) => <TabIcon label="Profil" focused={focused} />,
+        }}
+      />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  icon: {
-    fontSize: 22,
-  },
-  iconFocused: {
-    opacity: 1,
-  },
+  icon: { fontSize: 22 },
+  iconFocused: { opacity: 1 },
 });

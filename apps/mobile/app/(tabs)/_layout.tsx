@@ -7,6 +7,7 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
     Scan: '\u2316',
     Trips: '\u2708',
     Sync: '\u21BB',
+    Profil: '👤',
   };
   return (
     <Text style={[styles.icon, focused && styles.iconFocused]}>
@@ -56,16 +57,18 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => <TabIcon label="Sync" focused={focused} />,
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profil',
+          tabBarIcon: ({ focused }) => <TabIcon label="Profil" focused={focused} />,
+        }}
+      />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  icon: {
-    fontSize: 22,
-    color: '#8D6E63',
-  },
-  iconFocused: {
-    color: '#0A5C36',
-  },
+  icon: { fontSize: 22, color: '#8D6E63' },
+  iconFocused: { color: '#0A5C36' },
 });
