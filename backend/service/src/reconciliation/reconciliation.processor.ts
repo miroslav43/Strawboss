@@ -1,5 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import type { Logger } from 'winston';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import type { Job } from 'bullmq';
 import { DrizzleProvider } from '../database/drizzle.provider';
@@ -12,6 +14,7 @@ export class ReconciliationProcessor extends WorkerHost {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly reconciliationService: ReconciliationService,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {
     super();
   }
@@ -19,7 +22,12 @@ export class ReconciliationProcessor extends WorkerHost {
   /**
    * Runs periodically (hourly). Processes all active parcels and machines.
    */
-  async process(_job: Job): Promise<void> {
+  async process(job: Job): Promise<void> {
+    this.winston.log('flow', 'Reconciliation job started', {
+      context: 'ReconciliationProcessor',
+      jobId: job.id,
+    });
+
     // Reconcile bales for all active parcels
     const parcelsResult = await this.drizzleProvider.db.execute(
       sql`SELECT id FROM parcels WHERE is_active = true AND deleted_at IS NULL`,
@@ -30,9 +38,16 @@ export class ReconciliationProcessor extends WorkerHost {
       try {
         await this.reconciliationService.reconcileBalesForParcel(parcel.id);
       } catch (err: unknown) {
-        console.error(
-          `Bale reconciliation failed for parcel ${parcel.id}:`,
-          err,
+        this.winston.error(
+          `Bale reconciliation failed for parcel ${parcel.id}`,
+          {
+            context: 'ReconciliationProcessor',
+            parcelId: parcel.id,
+            err:
+              err instanceof Error
+                ? { message: err.message, stack: err.stack }
+                : err,
+          },
         );
       }
     }
@@ -48,11 +63,23 @@ export class ReconciliationProcessor extends WorkerHost {
       try {
         await this.reconciliationService.reconcileFuelForMachine(machine.id);
       } catch (err: unknown) {
-        console.error(
-          `Fuel reconciliation failed for machine ${machine.id}:`,
-          err,
+        this.winston.error(
+          `Fuel reconciliation failed for machine ${machine.id}`,
+          {
+            context: 'ReconciliationProcessor',
+            machineId: machine.id,
+            err:
+              err instanceof Error
+                ? { message: err.message, stack: err.stack }
+                : err,
+          },
         );
       }
     }
+
+    this.winston.log('flow', 'Reconciliation job finished', {
+      context: 'ReconciliationProcessor',
+      jobId: job.id,
+    });
   }
 }

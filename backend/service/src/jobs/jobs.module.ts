@@ -7,6 +7,7 @@ import {
   QUEUE_RECONCILIATION,
   QUEUE_CMR_GENERATION,
   QUEUE_SYNC_CLEANUP,
+  QUEUE_GEOFENCE_CHECK,
 } from './queues';
 
 @Module({
@@ -24,6 +25,7 @@ import {
       { name: QUEUE_RECONCILIATION },
       { name: QUEUE_CMR_GENERATION },
       { name: QUEUE_SYNC_CLEANUP },
+      { name: QUEUE_GEOFENCE_CHECK },
     ),
   ],
   exports: [BullModule],

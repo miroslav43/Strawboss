@@ -50,6 +50,8 @@ export class LocationService {
         COALESCE(m.internal_code, m.registration_plate)      AS "machineCode",
         mle.operator_id                                       AS "operatorId",
         u.full_name                                           AS "operatorName",
+        au.id                                                 AS "assignedUserId",
+        au.full_name                                          AS "assignedUserName",
         mle.lat,
         mle.lon,
         mle.accuracy_m   AS "accuracyM",
@@ -57,8 +59,10 @@ export class LocationService {
         mle.speed_ms     AS "speedMs",
         mle.recorded_at  AS "recordedAt"
       FROM machine_location_events mle
-      LEFT JOIN machines m ON m.id = mle.machine_id
-      LEFT JOIN users    u ON u.id = mle.operator_id
+      LEFT JOIN machines m  ON m.id = mle.machine_id
+      LEFT JOIN users    u  ON u.id = mle.operator_id
+      LEFT JOIN users    au ON au.assigned_machine_id = mle.machine_id
+                            AND au.deleted_at IS NULL
       WHERE mle.machine_id IS NOT NULL
       ORDER BY mle.machine_id, mle.recorded_at DESC
     `);

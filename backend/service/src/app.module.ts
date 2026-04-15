@@ -1,4 +1,8 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { AppLoggerModule } from './logger/logger.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
@@ -21,9 +25,16 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { JobsModule } from './jobs/jobs.module';
 import { TrpcModule } from './trpc/trpc.module';
 import { ProfileModule } from './profile/profile.module';
+import { FarmsModule } from './farms/farms.module';
+import { ParcelDailyStatusModule } from './parcel-daily-status/parcel-daily-status.module';
+import { DeliveryDestinationsModule } from './delivery-destinations/delivery-destinations.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { GeofenceModule } from './geofence/geofence.module';
+import { MobileLogsModule } from './mobile-logs/mobile-logs.module';
 
 @Module({
   imports: [
+    AppLoggerModule,
     ConfigModule,
     DatabaseModule,
     AuthModule,
@@ -46,6 +57,16 @@ import { ProfileModule } from './profile/profile.module';
     JobsModule,
     TrpcModule,
     ProfileModule,
+    FarmsModule,
+    ParcelDailyStatusModule,
+    DeliveryDestinationsModule,
+    NotificationsModule,
+    GeofenceModule,
+    MobileLogsModule,
+  ],
+  providers: [
+    { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })
 export class AppModule {}

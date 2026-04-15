@@ -1,5 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import type { Logger } from 'winston';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import type { Job } from 'bullmq';
 import { DrizzleProvider } from '../database/drizzle.provider';
@@ -17,11 +19,16 @@ export class AlertsProcessor extends WorkerHost {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly alertsService: AlertsService,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {
     super();
   }
 
-  async process(_job: Job): Promise<void> {
+  async process(job: Job): Promise<void> {
+    this.winston.log('flow', 'Alert evaluation job started', {
+      context: 'AlertsProcessor',
+      jobId: job.id,
+    });
     // Fetch trips completed/arrived in the last hour
     const tripsResult = await this.drizzleProvider.db.execute(
       sql`SELECT * FROM trips
@@ -83,5 +90,10 @@ export class AlertsProcessor extends WorkerHost {
         await this.alertsService.createFromDraft(draft);
       }
     }
+
+    this.winston.log('flow', 'Alert evaluation job finished', {
+      context: 'AlertsProcessor',
+      jobId: job.id,
+    });
   }
 }

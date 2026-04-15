@@ -11,7 +11,10 @@ import {
 import { TaskAssignmentsService } from './task-assignments.service';
 import { Roles } from '../auth/roles.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { createTaskAssignmentSchema } from '@strawboss/validation';
+import {
+  createTaskAssignmentSchema,
+  updateAssignmentStatusSchema,
+} from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import { z } from 'zod';
 
@@ -28,17 +31,32 @@ export class TaskAssignmentsController {
     @Query('assignmentDate') assignmentDate?: string,
     @Query('machineId') machineId?: string,
     @Query('assignedUserId') assignedUserId?: string,
+    @Query('status') status?: string,
   ) {
     return this.taskAssignmentsService.list({
       assignmentDate,
       machineId,
       assignedUserId,
+      status,
     });
   }
 
   @Get('board/:date')
   getBoard(@Param('date') date: string) {
     return this.taskAssignmentsService.getBoard(date);
+  }
+
+  @Get('daily-plan/:date')
+  getDailyPlan(@Param('date') date: string) {
+    return this.taskAssignmentsService.getDailyPlan(date);
+  }
+
+  @Get('by-machine-type/:date/:machineType')
+  getByMachineType(
+    @Param('date') date: string,
+    @Param('machineType') machineType: string,
+  ) {
+    return this.taskAssignmentsService.getByMachineType(date, machineType);
   }
 
   @Post()
@@ -59,6 +77,16 @@ export class TaskAssignmentsController {
     return this.taskAssignmentsService.bulkCreate(dtos);
   }
 
+  @Patch(':id/status')
+  @Roles('admin' as UserRole, 'dispatcher' as UserRole)
+  updateStatus(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateAssignmentStatusSchema))
+    dto: { status: string },
+  ) {
+    return this.taskAssignmentsService.updateStatus(id, dto.status);
+  }
+
   @Patch(':id')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   update(
@@ -66,6 +94,14 @@ export class TaskAssignmentsController {
     @Body() dto: Record<string, unknown>,
   ) {
     return this.taskAssignmentsService.update(id, dto);
+  }
+
+  @Post('auto-complete')
+  @Roles('admin' as UserRole, 'dispatcher' as UserRole)
+  autoComplete(@Body() dto: { beforeDate: string }) {
+    return this.taskAssignmentsService.autoCompletePastAssignments(
+      dto.beforeDate,
+    );
   }
 
   @Delete(':id')

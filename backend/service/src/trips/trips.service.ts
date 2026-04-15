@@ -2,7 +2,10 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
+import type { Logger } from 'winston';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { TripStatus } from '@strawboss/types';
@@ -23,7 +26,25 @@ import { getAvailableTransitions } from '@strawboss/domain';
 
 @Injectable()
 export class TripsService {
-  constructor(private readonly drizzleProvider: DrizzleProvider) {}
+  constructor(
+    private readonly drizzleProvider: DrizzleProvider,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
+  ) {}
+
+  private logTripFlow(
+    tripId: string,
+    event: string,
+    fromStatus: string,
+    toStatus: string,
+  ): void {
+    this.winston.log('flow', `Trip ${tripId} ${event}: ${fromStatus} → ${toStatus}`, {
+      context: 'TripsService',
+      tripId,
+      event,
+      fromStatus,
+      toStatus,
+    });
+  }
 
   async list(filters?: {
     status?: string; // single value OR comma-separated values (e.g. "planned,loading")
@@ -100,6 +121,13 @@ export class TripsService {
         0, false, 1
       ) RETURNING *`,
     );
+    const created = (result as unknown as Record<string, unknown>[])[0];
+    this.logTripFlow(
+      String(created?.id ?? 'unknown'),
+      'CREATE',
+      'new',
+      TripStatus.planned,
+    );
     return result;
   }
 
@@ -128,7 +156,8 @@ export class TripsService {
 
   async startLoading(id: string, dto: StartLoadingDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'START_LOADING');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'START_LOADING');
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
@@ -139,12 +168,14 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'START_LOADING', from, TripStatus.loading);
     return result;
   }
 
   async completeLoading(id: string, _dto: CompleteLoadingDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'COMPLETE_LOADING');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'COMPLETE_LOADING');
 
     const baleResult = await this.drizzleProvider.db.execute(
       sql`SELECT COALESCE(SUM(bale_count), 0)::int as total FROM bale_loads WHERE trip_id = ${id} AND deleted_at IS NULL`,
@@ -166,12 +197,14 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'COMPLETE_LOADING', from, TripStatus.loaded);
     return result;
   }
 
   async depart(id: string, dto: DepartDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'DEPART');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'DEPART');
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
@@ -181,12 +214,14 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'DEPART', from, TripStatus.in_transit);
     return result;
   }
 
   async arrive(id: string, dto: ArriveDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'ARRIVE');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'ARRIVE');
 
     const departureOdometer = trip.departure_odometer_km as number | null;
     const odometerDistance =
@@ -203,12 +238,14 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'ARRIVE', from, TripStatus.arrived);
     return result;
   }
 
   async startDelivery(id: string, dto: StartDeliveryDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'START_DELIVERY');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'START_DELIVERY');
 
     const setClauses: ReturnType<typeof sql>[] = [
       sql`status = ${TripStatus.delivering}`,
@@ -223,12 +260,14 @@ export class TripsService {
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET ${setClause} WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'START_DELIVERY', from, TripStatus.delivering);
     return result;
   }
 
   async confirmDelivery(id: string, dto: ConfirmDeliveryDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'CONFIRM_DELIVERY');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'CONFIRM_DELIVERY');
 
     // Fetch tare weight from the truck
     const truckResult = await this.drizzleProvider.db.execute(
@@ -250,12 +289,14 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'CONFIRM_DELIVERY', from, TripStatus.delivered);
     return result;
   }
 
   async complete(id: string, dto: CompleteDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'COMPLETE');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'COMPLETE');
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
@@ -267,12 +308,14 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'COMPLETE', from, TripStatus.completed);
     return result;
   }
 
   async cancel(id: string, dto: CancelDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'CANCEL');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'CANCEL');
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
@@ -282,12 +325,14 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'CANCEL', from, TripStatus.cancelled);
     return result;
   }
 
   async dispute(id: string, _dto: DisputeDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'DISPUTE');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'DISPUTE');
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
@@ -295,12 +340,14 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'DISPUTE', from, TripStatus.disputed);
     return result;
   }
 
   async resolveDispute(id: string, _dto: ResolveDisputeDto) {
     const trip = await this.findById(id);
-    this.validateTransition(trip.status as TripStatus, 'RESOLVE_DISPUTE');
+    const from = trip.status as TripStatus;
+    this.validateTransition(from, 'RESOLVE_DISPUTE');
 
     // Resolve back to delivered status (admin can then complete if needed)
     const result = await this.drizzleProvider.db.execute(
@@ -309,6 +356,7 @@ export class TripsService {
         updated_at = NOW()
       WHERE id = ${id} RETURNING *`,
     );
+    this.logTripFlow(id, 'RESOLVE_DISPUTE', from, TripStatus.delivered);
     return result;
   }
 }

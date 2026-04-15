@@ -7,9 +7,11 @@ import {
   Param,
   Body,
   Query,
-  Logger,
   Req,
+  Inject,
 } from '@nestjs/common';
+import type { Logger as WinstonLogger } from 'winston';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { ParcelsService } from './parcels.service';
 import { Roles } from '../auth/roles.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -18,9 +20,10 @@ import type { UserRole } from '@strawboss/types';
 
 @Controller('parcels')
 export class ParcelsController {
-  private readonly logger = new Logger(ParcelsController.name);
-
-  constructor(private readonly parcelsService: ParcelsService) {}
+  constructor(
+    private readonly parcelsService: ParcelsService,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: WinstonLogger,
+  ) {}
 
   @Get()
   list(
@@ -63,13 +66,26 @@ export class ParcelsController {
   @Delete(':id')
   @Roles('admin' as UserRole)
   async softDelete(@Param('id') id: string, @Req() req: { user?: { id: string; role: string } }) {
-    this.logger.log(`DELETE /parcels/${id} — user: ${req.user?.id ?? 'anonymous'}, role: ${req.user?.role ?? 'none'}`);
+    this.winston.info('DELETE parcel started', {
+      context: 'ParcelsController',
+      parcelId: id,
+      userId: req.user?.id ?? null,
+      role: req.user?.role ?? null,
+    });
     try {
       const result = await this.parcelsService.softDelete(id);
-      this.logger.log(`DELETE /parcels/${id} — success`);
+      this.winston.info('DELETE parcel success', {
+        context: 'ParcelsController',
+        parcelId: id,
+      });
       return result;
     } catch (err) {
-      this.logger.error(`DELETE /parcels/${id} — failed: ${(err as Error)?.message}`);
+      this.winston.error('DELETE parcel failed', {
+        context: 'ParcelsController',
+        parcelId: id,
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       throw err;
     }
   }

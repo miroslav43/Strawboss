@@ -27,8 +27,10 @@ export class ParcelsService {
         ST_AsGeoJSON(centroid)::json  AS centroid,
         address, municipality,
         farmtrack_geofence_id AS "farmtrackGeofenceId",
+        farm_id             AS "farmId",
         notes,
         is_active           AS "isActive",
+        harvest_status      AS "harvestStatus",
         created_at          AS "createdAt",
         updated_at          AS "updatedAt",
         deleted_at          AS "deletedAt"
@@ -62,8 +64,10 @@ export class ParcelsService {
         ST_AsGeoJSON(centroid)::json  AS centroid,
         address, municipality,
         farmtrack_geofence_id AS "farmtrackGeofenceId",
+        farm_id             AS "farmId",
         notes,
         is_active           AS "isActive",
+        harvest_status      AS "harvestStatus",
         created_at          AS "createdAt",
         updated_at          AS "updatedAt",
         deleted_at          AS "deletedAt"
@@ -175,11 +179,14 @@ export class ParcelsService {
     // Prefer explicitly provided centroid, fall back to computed one.
     const centroidInput = dto.centroid ?? (centroidGeoJson ? JSON.parse(centroidGeoJson) : null);
 
+    const harvestStatus =
+      (dto.harvestStatus as string | undefined) ?? 'planned';
+
     const result = await this.drizzleProvider.db.execute(sql`
       INSERT INTO parcels (
         code, name, owner_name, owner_contact, area_hectares,
         boundary, centroid, address, municipality,
-        farmtrack_geofence_id, notes, is_active
+        farmtrack_geofence_id, notes, is_active, harvest_status
       ) VALUES (
         ${code},
         ${(dto.name as string) ?? null},
@@ -192,7 +199,8 @@ export class ParcelsService {
         ${municipality},
         ${(dto.farmtrackGeofenceId as string) ?? null},
         ${(dto.notes as string) ?? null},
-        true
+        true,
+        ${harvestStatus}::harvest_status
       )
       RETURNING
         id, code, name,
@@ -202,7 +210,9 @@ export class ParcelsService {
         ST_AsGeoJSON(centroid)::json AS centroid,
         address, municipality,
         farmtrack_geofence_id AS "farmtrackGeofenceId",
+        farm_id AS "farmId",
         notes, is_active AS "isActive",
+        harvest_status AS "harvestStatus",
         created_at AS "createdAt", updated_at AS "updatedAt", deleted_at AS "deletedAt"
     `);
     return result;
@@ -223,6 +233,7 @@ export class ParcelsService {
       address: 'address',
       municipality: 'municipality',
       farmtrackGeofenceId: 'farmtrack_geofence_id',
+      farmId: 'farm_id',
       notes: 'notes',
       isActive: 'is_active',
     };
@@ -243,6 +254,12 @@ export class ParcelsService {
       }
     }
 
+    if ('harvestStatus' in dto && dto.harvestStatus != null) {
+      setClauses.push(
+        sql`harvest_status = ${dto.harvestStatus as string}::harvest_status`,
+      );
+    }
+
     if (setClauses.length === 0) {
       return this.findById(id);
     }
@@ -250,10 +267,23 @@ export class ParcelsService {
     setClauses.push(sql`updated_at = NOW()`);
     const setClause = sql.join(setClauses, sql`, `);
 
-    const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE parcels SET ${setClause} WHERE id = ${id} AND deleted_at IS NULL RETURNING *`,
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE parcels SET ${setClause} WHERE id = ${id} AND deleted_at IS NULL`,
     );
-    return result;
+    return this.findById(id);
+  }
+
+  /**
+   * When daily planning marks a parcel done / not done, mirror that into
+   * parcels.harvest_status: done → harvested; not done → to_harvest.
+   */
+  async applyHarvestStatusFromDailyPlan(parcelId: string, isDone: boolean) {
+    const status = isDone ? 'harvested' : 'to_harvest';
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE parcels
+      SET harvest_status = ${status}::harvest_status, updated_at = NOW()
+      WHERE id = ${parcelId} AND deleted_at IS NULL
+    `);
   }
 
   async softDelete(id: string) {

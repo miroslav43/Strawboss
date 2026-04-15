@@ -3,7 +3,10 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  Inject,
 } from '@nestjs/common';
+import type { Logger } from 'winston';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Observable, tap } from 'rxjs';
 import { AuditService } from './audit.service';
 
@@ -16,7 +19,10 @@ const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  */
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService: AuditService,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest();
@@ -53,7 +59,13 @@ export class AuditInterceptor implements NestInterceptor {
         void this.auditService
           .log(tableName, '', operation, null, newValues, userId, null, ipAddress)
           .catch((err: unknown) => {
-            console.error('AuditInterceptor failed to log:', err);
+            this.winston.error('AuditInterceptor failed to persist audit row', {
+              context: 'AuditInterceptor',
+              err:
+                err instanceof Error
+                  ? { message: err.message, stack: err.stack }
+                  : err,
+            });
           });
       }),
     );
