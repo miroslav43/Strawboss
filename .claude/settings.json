@@ -1,11 +1,44 @@
 {
-    "permissions": {
-        "allow": [
-            "Bash(*)",
-            "Read(*)",
-            "Write(*)",
-            "WebFetch(*)",
-            "WebSearch(*)"
-        ]
-    }
+  "permissions": {
+    "allow": [
+      "Bash(find /srv/apps/Strawboss/packages -name \"package.json\" -exec head -15 {} +)",
+      "Bash(wc -l /srv/apps/Strawboss/packages/api/src/hooks/*.ts)",
+      "Bash(ufw status:*)",
+      "Bash(nginx -T)",
+      "Read(//etc/nginx/sites-enabled/**)",
+      "Bash(systemctl is-active:*)",
+      "Bash(systemctl is-enabled:*)",
+      "Bash(caddy version:*)",
+      "Bash(caddy validate:*)",
+      "Bash(pnpm install:*)",
+      "Bash(docker compose:*)",
+      "Read(//run/systemd/resolve/**)",
+      "Bash(docker pull:*)",
+      "Bash(docker run:*)",
+      "Bash(systemctl restart:*)",
+      "Bash(systemctl status:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3001/api/v1)",
+      "Bash(journalctl -u caddy --since \"5 minutes ago\" --no-pager)",
+      "Bash(journalctl -u caddy -n 30 --no-pager)",
+      "Bash(systemctl reload:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:3000)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" -H \"Host: nortiauno.com\" http://127.0.0.1)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" -H \"Host: nortiauno.com\" http://127.0.0.1/api/v1/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" -L https://nortiauno.com)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://nortiauno.com/api/v1/health)",
+      "Bash(dig:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --resolve nortiauno.com:443:127.0.0.1 https://nortiauno.com)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --resolve nortiauno.com:443:127.0.0.1 https://nortiauno.com/api/v1/health)",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl --max-time 15 -v \"https://apcrwzrwnowzpwhgbuzq.supabase.co\")",
+      "Bash(find:*)",
+      "Bash(grep -r \"admin\\\\|dispatcher\\\\|loader\\\\|driver\\\\|baler\" /srv/apps/Strawboss/supabase/migrations/*.sql)",
+      "Bash(pnpm --filter @strawboss/mobile typecheck)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "WebFetch(*)",
+      "WebSearch(*)"
+    ]
+  }
 }

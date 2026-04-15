@@ -9,3 +9,5 @@ coverage
 *.tsbuildinfo
 .worktrees
 .superpowers
+logs/
+.cursor/
