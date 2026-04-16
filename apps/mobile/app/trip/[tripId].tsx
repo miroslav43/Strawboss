@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
-import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { mobileApiClient } from '@/lib/api-client';
 import { TripProgress } from '@/components/shared/TripProgress';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
 import { StatusPill } from '@/components/ui/StatusPill';
@@ -52,27 +52,36 @@ export default function TripDetailScreen() {
         toStatus: newStatus,
       });
       try {
+        // Map status to the correct API endpoint
+        const STATUS_ENDPOINTS: Record<string, string> = {
+          loading: 'start-loading',
+          loaded: 'complete-loading',
+          in_transit: 'depart',
+          arrived: 'arrive',
+          delivering: 'start-delivery',
+          delivered: 'confirm-delivery',
+          completed: 'complete',
+          cancelled: 'cancel',
+          disputed: 'dispute',
+        };
+        const endpoint = STATUS_ENDPOINTS[newStatus];
+        if (!endpoint) {
+          throw new Error(`Unknown target status: ${newStatus}`);
+        }
+
+        // Call the dedicated workflow endpoint (with proper state machine validation)
+        await mobileApiClient.post(
+          `/api/v1/trips/${tripId}/${endpoint}`,
+          extraData ?? {},
+        );
+
+        // Update local SQLite to reflect the new status
         const db = await getDatabase();
         const tripsRepo = new TripsRepo(db);
-        const syncQueue = new SyncQueueRepo(db);
-
-        const updateData: Partial<LocalTrip> = {
-          status: newStatus,
-          ...extraData,
-        };
-
-        await tripsRepo.update(tripId, updateData);
-
-        await syncQueue.enqueue({
-          entityType: 'trip',
-          entityId: tripId,
-          action: 'update_status',
-          payload: { status: newStatus, ...extraData },
-          idempotencyKey: `status_${tripId}_${newStatus}_${Date.now()}`,
-        });
+        await tripsRepo.update(tripId, { status: newStatus, ...extraData });
 
         await loadTrip();
-        mobileLogger.flow('Trip detail: status transition queued', {
+        mobileLogger.flow('Trip detail: status transition completed', {
           tripId,
           fromStatus,
           toStatus: newStatus,

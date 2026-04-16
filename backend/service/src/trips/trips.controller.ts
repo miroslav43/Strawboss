@@ -74,6 +74,7 @@ export class TripsController {
   }
 
   @Post(':id/start-loading')
+  @Roles('admin' as UserRole, 'loader_operator' as UserRole)
   startLoading(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(startLoadingSchema)) dto: StartLoadingDto,
@@ -82,6 +83,7 @@ export class TripsController {
   }
 
   @Post(':id/complete-loading')
+  @Roles('admin' as UserRole, 'loader_operator' as UserRole)
   completeLoading(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(completeLoadingSchema)) dto: CompleteLoadingDto,
@@ -90,6 +92,7 @@ export class TripsController {
   }
 
   @Post(':id/depart')
+  @Roles('admin' as UserRole, 'driver' as UserRole)
   depart(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(departSchema)) dto: DepartDto,
@@ -98,6 +101,7 @@ export class TripsController {
   }
 
   @Post(':id/arrive')
+  @Roles('admin' as UserRole, 'driver' as UserRole)
   arrive(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(arriveSchema)) dto: ArriveDto,
@@ -106,6 +110,7 @@ export class TripsController {
   }
 
   @Post(':id/start-delivery')
+  @Roles('admin' as UserRole, 'driver' as UserRole)
   startDelivery(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(startDeliverySchema)) dto: StartDeliveryDto,
@@ -114,6 +119,7 @@ export class TripsController {
   }
 
   @Post(':id/confirm-delivery')
+  @Roles('admin' as UserRole, 'driver' as UserRole)
   confirmDelivery(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(confirmDeliverySchema)) dto: ConfirmDeliveryDto,
@@ -122,6 +128,7 @@ export class TripsController {
   }
 
   @Post(':id/complete')
+  @Roles('admin' as UserRole, 'driver' as UserRole)
   complete(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(completeSchema)) dto: CompleteDto,
@@ -130,6 +137,7 @@ export class TripsController {
   }
 
   @Post(':id/cancel')
+  @Roles('admin' as UserRole)
   cancel(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(cancelSchema)) dto: CancelDto,
@@ -138,6 +146,7 @@ export class TripsController {
   }
 
   @Post(':id/dispute')
+  @Roles('admin' as UserRole)
   dispute(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(disputeSchema)) dto: DisputeDto,
@@ -146,6 +155,7 @@ export class TripsController {
   }
 
   @Post(':id/resolve-dispute')
+  @Roles('admin' as UserRole)
   resolveDispute(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(resolveDisputeSchema)) dto: ResolveDisputeDto,

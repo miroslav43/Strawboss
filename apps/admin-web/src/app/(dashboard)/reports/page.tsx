@@ -2,18 +2,20 @@
 export const dynamic = 'force-dynamic';
 
 import { useState } from 'react';
-import { useProductionReport, useCostReport } from '@strawboss/api';
+import { useProductionReport, useCostReport, useBaleProductionStats } from '@strawboss/api';
 import type { ProductionReport, CostReport } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ReportFilters } from '@/components/features/reports/ReportFilters';
 import { BaleCountChart } from '@/components/features/reports/BaleCountChart';
 import { CostBreakdownChart } from '@/components/features/reports/CostBreakdownChart';
+import { OperatorProductionChart } from '@/components/features/reports/OperatorProductionChart';
+import type { OperatorProductionRow } from '@/components/features/reports/OperatorProductionChart';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 
-type Tab = 'production' | 'costs';
+type Tab = 'production' | 'costs' | 'operators';
 
 interface ProductionRow extends Record<string, unknown> {
   parcelId: string;
@@ -107,6 +109,42 @@ const costColumns: Column<CostRow>[] = [
   },
 ];
 
+interface OperatorRow extends Record<string, unknown> {
+  operatorId: string;
+  operatorName: string;
+  parcelCount: number;
+  totalBales: number;
+  sessionCount: number;
+  avgPerSession: number;
+}
+
+const operatorColumns: Column<OperatorRow>[] = [
+  {
+    key: 'operatorName',
+    header: 'Operator',
+    sortable: true,
+    render: (row) => (
+      <span className="font-medium text-neutral-800">{row.operatorName}</span>
+    ),
+  },
+  { key: 'parcelCount', header: 'Parcele', sortable: true },
+  { key: 'totalBales', header: 'Total baloti', sortable: true },
+  { key: 'sessionCount', header: 'Sesiuni', sortable: true },
+  {
+    key: 'avgPerSession',
+    header: 'Media/sesiune',
+    sortable: true,
+    render: (row) => {
+      const val = Number(row.avgPerSession);
+      return (
+        <span className="text-sm font-medium text-neutral-700">
+          {Number.isFinite(val) ? val.toFixed(1) : '--'}
+        </span>
+      );
+    },
+  },
+];
+
 export default function ReportsPage() {
   const { t } = useI18n();
   const [tab, setTab] = useState<Tab>('production');
@@ -126,9 +164,15 @@ export default function ReportsPage() {
     apiClient,
     hasFilters ? filters : undefined,
   );
+  const operatorStatsQuery = useBaleProductionStats(apiClient, {
+    ...(hasFilters ? filters : {}),
+    groupBy: 'operator',
+  });
 
   const production: ProductionReport[] = productionQuery.data ?? [];
   const costs: CostReport[] = costQuery.data ?? [];
+  const operatorStatsRaw: OperatorProductionRow[] =
+    (operatorStatsQuery.data ?? []) as OperatorProductionRow[];
 
   return (
     <div>
@@ -167,6 +211,17 @@ export default function ReportsPage() {
           )}
         >
           Costs
+        </button>
+        <button
+          onClick={() => setTab('operators')}
+          className={cn(
+            'rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            tab === 'operators'
+              ? 'bg-white text-neutral-800 shadow-sm'
+              : 'text-neutral-500 hover:text-neutral-700',
+          )}
+        >
+          Operatori
         </button>
       </div>
 
@@ -217,6 +272,44 @@ export default function ReportsPage() {
                 columns={costColumns}
                 data={costs.map((c) => ({ ...c }) as CostRow)}
                 keyExtractor={(row) => row.entityId}
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'operators' && (
+        <div className="space-y-6">
+          <h2 className="text-lg font-semibold text-neutral-800">
+            Raport operatori
+          </h2>
+          {operatorStatsQuery.isLoading ? (
+            <div className="py-8 text-center text-sm text-neutral-400">
+              Se incarca datele operatorilor...
+            </div>
+          ) : operatorStatsQuery.isError ? (
+            <div className="py-8 text-center text-sm text-red-500">
+              Eroare la incarcarea datelor. Backend-ul poate fi oprit.
+            </div>
+          ) : (
+            <>
+              <OperatorProductionChart data={operatorStatsRaw} />
+              <DataTable<OperatorRow>
+                columns={operatorColumns}
+                data={operatorStatsRaw.map((o) => {
+                  const totalBales = Number(o.totalBales) || 0;
+                  const sessionCount = Number(o.sessionCount) || 0;
+                  return {
+                    operatorId: String(o.operatorId ?? ''),
+                    operatorName: String(o.operatorName ?? 'N/A'),
+                    parcelCount: Number(o.parcelCount) || 0,
+                    totalBales,
+                    sessionCount,
+                    avgPerSession:
+                      sessionCount > 0 ? totalBales / sessionCount : 0,
+                  } as OperatorRow;
+                })}
+                keyExtractor={(row) => row.operatorId}
               />
             </>
           )}

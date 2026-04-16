@@ -1,5 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '../auth/auth.guard';
+import { Body, Controller, Post } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -10,7 +9,6 @@ import {
 import { MobileLogsService } from './mobile-logs.service';
 
 @Controller('logs')
-@UseGuards(AuthGuard)
 export class MobileLogsController {
   constructor(private readonly mobileLogsService: MobileLogsService) {}
 

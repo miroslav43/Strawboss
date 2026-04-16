@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, ForbiddenException } from '@nestjs/common';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
@@ -114,9 +114,29 @@ export class NotificationsService {
 
   /**
    * Confirm a parcel is done (called from mobile notification response).
-   * Sets assignment status = done and parcel harvest_status = harvested.
+   * Sets assignment status = done, parcel harvest_status = harvested,
+   * and optionally records bale production if baleCount is provided.
    */
-  async confirmParcelDone(assignmentId: string): Promise<void> {
+  async confirmParcelDone(
+    assignmentId: string,
+    baleCount?: number,
+    callerUserId?: string,
+  ): Promise<void> {
+    // Verify ownership: caller must own the assignment (or be admin — checked at controller)
+    // Verify assignment exists and check ownership
+    const ownerCheck = await this.drizzleProvider.db.execute(sql`
+      SELECT assigned_user_id FROM task_assignments
+      WHERE id = ${assignmentId}::uuid AND deleted_at IS NULL
+      LIMIT 1
+    `);
+    const rows = ownerCheck as unknown as { assigned_user_id: string | null }[];
+    if (rows.length === 0) {
+      throw new ForbiddenException('Assignment not found');
+    }
+    if (callerUserId && rows[0].assigned_user_id && rows[0].assigned_user_id !== callerUserId) {
+      throw new ForbiddenException('You do not own this assignment');
+    }
+
     // Update the assignment status to done
     await this.drizzleProvider.db.execute(sql`
       UPDATE task_assignments
@@ -138,5 +158,30 @@ export class NotificationsService {
       )
         AND deleted_at IS NULL
     `);
+
+    // Record bale production if count was provided
+    if (baleCount != null && baleCount > 0) {
+      await this.drizzleProvider.db.execute(sql`
+        INSERT INTO bale_productions
+          (parcel_id, baler_id, operator_id, production_date, bale_count, end_time)
+        SELECT
+          ta.parcel_id,
+          ta.machine_id,
+          ta.assigned_user_id,
+          CURRENT_DATE,
+          ${baleCount},
+          now()
+        FROM task_assignments ta
+        WHERE ta.id = ${assignmentId}::uuid
+          AND ta.parcel_id IS NOT NULL
+          AND ta.assigned_user_id IS NOT NULL
+      `);
+
+      this.winston.log('flow', `Bale production recorded via geofence confirm`, {
+        context: 'NotificationsService',
+        assignmentId,
+        baleCount,
+      });
+    }
   }
 }

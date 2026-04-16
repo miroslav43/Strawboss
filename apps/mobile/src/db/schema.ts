@@ -103,4 +103,37 @@ export const TABLES = {
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     server_version INTEGER DEFAULT 0
   )`,
+  bale_loads: `CREATE TABLE IF NOT EXISTS bale_loads (
+    id TEXT PRIMARY KEY,
+    trip_id TEXT NOT NULL,
+    parcel_id TEXT NOT NULL,
+    loader_id TEXT,
+    operator_id TEXT,
+    bale_count INTEGER NOT NULL DEFAULT 0,
+    loaded_at TEXT,
+    gps_lat REAL,
+    gps_lon REAL,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    server_version INTEGER DEFAULT 0
+  )`,
+
+  task_assignments: `CREATE TABLE IF NOT EXISTS task_assignments (
+    id TEXT PRIMARY KEY,
+    assignment_date TEXT NOT NULL,
+    machine_id TEXT,
+    parcel_id TEXT,
+    assigned_user_id TEXT,
+    priority TEXT DEFAULT 'normal',
+    sequence_order INTEGER NOT NULL,
+    estimated_start TEXT,
+    estimated_end TEXT,
+    actual_start TEXT,
+    actual_end TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    server_version INTEGER DEFAULT 0
+  )`,
 } as const;

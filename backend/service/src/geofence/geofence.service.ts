@@ -164,6 +164,33 @@ export class GeofenceService {
             },
           );
         }
+
+        // Notify user when entering an assigned parcel
+        if (geofenceType === 'parcel' && assignment.assignedUserId) {
+          await this.notificationsService.sendPush(
+            assignment.assignedUserId,
+            'Ai intrat pe câmp',
+            `Ai ajuns la ${assignment.parcelName ?? 'câmpul asignat'}.`,
+            {
+              type: 'field_entry',
+              assignmentId: assignment.assignmentId,
+              parcelName: assignment.parcelName,
+            },
+          );
+        }
+
+        // Notify driver when truck enters deposit geofence
+        if (geofenceType === 'deposit' && assignment.assignedUserId) {
+          await this.notificationsService.sendPush(
+            assignment.assignedUserId,
+            'Ai ajuns la depozit',
+            'Ești în zona de livrare.',
+            {
+              type: 'deposit_entry',
+              assignmentId: assignment.assignmentId,
+            },
+          );
+        }
       } else if (!check.isInside && wasInside) {
         // EXIT event
         await this.recordEvent(

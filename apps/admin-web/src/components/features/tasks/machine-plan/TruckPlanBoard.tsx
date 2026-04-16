@@ -16,14 +16,9 @@ import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { clientLogger } from '@/lib/client-logger';
 import { cn } from '@/lib/utils';
+import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { DepositMapModal } from './DepositMapModal';
 import { LoaderPickMapModal } from './LoaderPickMapModal';
-
-function normalize<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  const r = raw as { data?: T[] } | null | undefined;
-  return r?.data ?? [];
-}
 
 interface Assignment {
   id: string;

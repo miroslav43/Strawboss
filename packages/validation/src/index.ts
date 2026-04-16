@@ -17,7 +17,11 @@ export {
   updateUserSchema,
 } from "./schemas/user.schema.js";
 
-export { updateProfileLocaleSchema } from "./schemas/profile.schema.js";
+export {
+  updateProfileLocaleSchema,
+  updateProfileSchema,
+  changePasswordSchema,
+} from "./schemas/profile.schema.js";
 
 export {
   parcelSchema,

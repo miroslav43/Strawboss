@@ -11,18 +11,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { BigButton } from '@/components/ui/BigButton';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { TaskList } from '@/components/shared/TaskList';
 import { useProfile } from '@/hooks/useProfile';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useMyTasks } from '@/hooks/useMyTasks';
 
 export default function BalerHomeScreen() {
   const { profile, isLoading } = useProfile();
-  const isConnected = useNetworkStatus();
+  const { isConnected } = useNetworkStatus();
+  const { tasks, refetch: refetchTasks } = useMyTasks();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Brief pause to allow pull-to-refresh UX
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await refetchTasks();
     setRefreshing(false);
   };
 
@@ -41,6 +43,8 @@ export default function BalerHomeScreen() {
             {profile?.fullName ?? 'Operator'}
           </Text>
         )}
+
+        <TaskList tasks={tasks} role="baler_operator" />
 
         <View style={styles.buttonGroup}>
           <BigButton

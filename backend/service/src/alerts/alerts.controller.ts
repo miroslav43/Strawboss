@@ -6,21 +6,19 @@ import {
   Param,
   Body,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { AlertsService } from './alerts.service';
-import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
 
 @Controller('alerts')
-@UseGuards(AuthGuard)
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
 
   @Post()
+  @Roles('admin' as UserRole)
   create(@Body() dto: Record<string, unknown>) {
     return this.alertsService.create(dto);
   }

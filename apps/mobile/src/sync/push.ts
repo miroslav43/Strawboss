@@ -40,17 +40,24 @@ export async function pushMutations(
     const failedEntries: Array<{ id: number; error: string }> = [];
     const errors: string[] = [];
 
-    for (const result of response.results) {
-      const matchedEntry = entries.find((e) => e.entity_id === result.recordId);
-      if (!matchedEntry) continue;
+    for (let i = 0; i < response.results.length && i < entries.length; i++) {
+      const entry = entries[i];
+      const result = response.results[i];
 
-      if (result.status === 'applied') {
-        completedIds.push(matchedEntry.id);
-      } else if (result.status === 'conflict' || result.status === 'skipped') {
+      if (result.status === 'applied' || result.status === 'skipped') {
+        completedIds.push(entry.id);
+      } else if (result.status === 'conflict') {
         const errorMsg = `${result.status}: ${result.table}/${result.recordId}`;
         errors.push(errorMsg);
-        failedEntries.push({ id: matchedEntry.id, error: errorMsg });
+        failedEntries.push({ id: entry.id, error: errorMsg });
       }
+    }
+
+    // Mark entries with no server response as failed (server truncated)
+    for (let i = response.results.length; i < entries.length; i++) {
+      const errorMsg = `No server response for entry ${entries[i].entity_type}/${entries[i].entity_id}`;
+      errors.push(errorMsg);
+      failedEntries.push({ id: entries[i].id, error: errorMsg });
     }
 
     return {

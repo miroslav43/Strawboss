@@ -1,19 +1,21 @@
-import { Controller, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Req, BadRequestException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
-import { AuthGuard, type RequestUser } from '../auth/auth.guard';
+import { Roles } from '../auth/roles.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/auth.guard';
+import type { UserRole } from '@strawboss/types';
 
 @Controller('notifications')
-@UseGuards(AuthGuard)
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Post('register-token')
   async registerToken(
-    @Req() req: { user: RequestUser },
+    @CurrentUser() user: RequestUser,
     @Body() body: { token: string; platform: string; machineId?: string },
   ) {
     await this.notificationsService.registerToken(
-      req.user.id,
+      user.id,
       body.machineId ?? null,
       body.token,
       body.platform,
@@ -22,8 +24,23 @@ export class NotificationsController {
   }
 
   @Post('confirm-parcel-done')
-  async confirmParcelDone(@Body() body: { assignmentId: string }) {
-    await this.notificationsService.confirmParcelDone(body.assignmentId);
+  @Roles('admin' as UserRole, 'baler_operator' as UserRole)
+  async confirmParcelDone(
+    @CurrentUser() user: RequestUser,
+    @Body() body: { assignmentId: string; baleCount?: number },
+  ) {
+    if (!body.assignmentId) {
+      throw new BadRequestException('assignmentId is required');
+    }
+    if (body.baleCount != null && (body.baleCount < 0 || body.baleCount > 9999)) {
+      throw new BadRequestException('baleCount must be between 0 and 9999');
+    }
+
+    await this.notificationsService.confirmParcelDone(
+      body.assignmentId,
+      body.baleCount,
+      user.id,
+    );
     return { ok: true };
   }
 }

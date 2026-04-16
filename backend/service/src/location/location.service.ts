@@ -71,6 +71,73 @@ export class LocationService {
   }
 
   /**
+   * Return the last known positions of machines related to a user via
+   * today's task assignments. This lets loaders see their trucks, etc.
+   */
+  async getRelatedMachineLocations(userId: string): Promise<MachineLastLocation[]> {
+    const today = new Date().toISOString().split('T')[0];
+    const result = await this.drizzleProvider.db.execute(sql`
+      WITH my_assignments AS (
+        SELECT machine_id FROM task_assignments
+        WHERE assigned_user_id = ${userId}::uuid
+          AND assignment_date = ${today}
+          AND deleted_at IS NULL
+      ),
+      sibling_machines AS (
+        -- All machines sharing the same parent assignment (siblings)
+        SELECT DISTINCT ta2.machine_id
+        FROM task_assignments ta1
+        JOIN task_assignments ta2 ON ta2.parent_assignment_id = ta1.parent_assignment_id
+          AND ta2.assignment_date = ${today}
+          AND ta2.deleted_at IS NULL
+        WHERE ta1.assigned_user_id = ${userId}::uuid
+          AND ta1.assignment_date = ${today}
+          AND ta1.deleted_at IS NULL
+          AND ta1.parent_assignment_id IS NOT NULL
+        UNION
+        -- Children of my assignments
+        SELECT ta3.machine_id
+        FROM task_assignments ta3
+        JOIN my_assignments ma ON ta3.parent_assignment_id IN (
+          SELECT id FROM task_assignments
+          WHERE machine_id = ma.machine_id
+            AND assignment_date = ${today}
+            AND deleted_at IS NULL
+        )
+        WHERE ta3.assignment_date = ${today}
+          AND ta3.deleted_at IS NULL
+        UNION
+        -- My own machines
+        SELECT machine_id FROM my_assignments
+      )
+      SELECT DISTINCT ON (mle.machine_id)
+        mle.machine_id                                        AS "machineId",
+        m.machine_type                                        AS "machineType",
+        COALESCE(m.internal_code, m.registration_plate)      AS "machineCode",
+        mle.operator_id                                       AS "operatorId",
+        u.full_name                                           AS "operatorName",
+        au.id                                                 AS "assignedUserId",
+        au.full_name                                          AS "assignedUserName",
+        mle.lat,
+        mle.lon,
+        mle.accuracy_m   AS "accuracyM",
+        mle.heading_deg  AS "headingDeg",
+        mle.speed_ms     AS "speedMs",
+        mle.recorded_at  AS "recordedAt"
+      FROM machine_location_events mle
+      JOIN sibling_machines sm ON sm.machine_id = mle.machine_id
+      LEFT JOIN machines m  ON m.id = mle.machine_id
+      LEFT JOIN users    u  ON u.id = mle.operator_id
+      LEFT JOIN users    au ON au.assigned_machine_id = mle.machine_id
+                            AND au.deleted_at IS NULL
+      WHERE mle.recorded_at >= NOW() - INTERVAL '30 minutes'
+      ORDER BY mle.machine_id, mle.recorded_at DESC
+    `);
+
+    return result as unknown as MachineLastLocation[];
+  }
+
+  /**
    * Return the GPS route history for a specific machine within a time range.
    * Points are ordered chronologically (ASC) with a safety cap of 50 000 rows.
    */

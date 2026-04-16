@@ -47,11 +47,11 @@ export class AuthGuard implements CanActivate {
 
     const token = authHeader.slice(7);
 
-    // Peek at the header to determine algorithm without full verification.
-    const [headerB64] = token.split('.');
-    const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString());
-
     try {
+      // Peek at the header to determine algorithm without full verification.
+      const [headerB64] = token.split('.');
+      const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString());
+
       let payload: jose.JWTPayload;
 
       if (header.alg === 'HS256') {

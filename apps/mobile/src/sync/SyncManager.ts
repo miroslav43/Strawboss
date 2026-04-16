@@ -6,6 +6,8 @@ import { TripsRepo, type LocalTrip } from '../db/trips-repo';
 import { BaleProductionsRepo, type LocalBaleProduction } from '../db/bale-productions-repo';
 import { FuelLogsRepo, type LocalFuelLog } from '../db/fuel-logs-repo';
 import { ConsumableLogsRepo, type LocalConsumableLog } from '../db/consumable-logs-repo';
+import { BaleLoadsRepo, type LocalBaleLoad } from '../db/bale-loads-repo';
+import { TaskAssignmentsRepo, type LocalTaskAssignment } from '../db/task-assignments-repo';
 import { pushMutations } from './push';
 import { pullUpdates } from './pull';
 import { mergeRecords } from './conflict';
@@ -31,6 +33,8 @@ export class SyncManager {
     private baleProductionsRepo?: BaleProductionsRepo,
     private fuelLogsRepo?: FuelLogsRepo,
     private consumableLogsRepo?: ConsumableLogsRepo,
+    private baleLoadsRepo?: BaleLoadsRepo,
+    private taskAssignmentsRepo?: TaskAssignmentsRepo,
   ) {}
 
   /**
@@ -38,6 +42,9 @@ export class SyncManager {
    */
   async sync(): Promise<SyncResult> {
     mobileLogger.flow('Sync cycle started');
+
+    // Reset any entries stuck in 'in_flight' from a previous interrupted sync
+    await this.syncQueueRepo.resetInFlight();
 
     const pushResult = await this.push();
     const pullResult = await this.pull();
@@ -135,23 +142,19 @@ export class SyncManager {
       bale_productions: 0,
       fuel_logs: 0,
       consumable_logs: 0,
+      bale_loads: 0,
+      task_assignments: 0,
     };
 
     try {
-      const trips = await this.tripsRepo.listAll();
-      if (trips.length > 0) {
-        versions['trips'] = Math.max(...trips.map((t) => t.server_version));
-      }
+      versions['trips'] = await this.tripsRepo.getMaxServerVersion();
     } catch {
       // Table might be empty
     }
 
     if (this.baleProductionsRepo) {
       try {
-        const records = await this.baleProductionsRepo.listAll();
-        if (records.length > 0) {
-          versions['bale_productions'] = Math.max(...records.map((r) => r.server_version));
-        }
+        versions['bale_productions'] = await this.baleProductionsRepo.getMaxServerVersion();
       } catch {
         // Table might be empty
       }
@@ -159,10 +162,7 @@ export class SyncManager {
 
     if (this.fuelLogsRepo) {
       try {
-        const records = await this.fuelLogsRepo.listAll();
-        if (records.length > 0) {
-          versions['fuel_logs'] = Math.max(...records.map((r) => r.server_version));
-        }
+        versions['fuel_logs'] = await this.fuelLogsRepo.getMaxServerVersion();
       } catch {
         // Table might be empty
       }
@@ -170,10 +170,23 @@ export class SyncManager {
 
     if (this.consumableLogsRepo) {
       try {
-        const records = await this.consumableLogsRepo.listAll();
-        if (records.length > 0) {
-          versions['consumable_logs'] = Math.max(...records.map((r) => r.server_version));
-        }
+        versions['consumable_logs'] = await this.consumableLogsRepo.getMaxServerVersion();
+      } catch {
+        // Table might be empty
+      }
+    }
+
+    if (this.baleLoadsRepo) {
+      try {
+        versions['bale_loads'] = await this.baleLoadsRepo.getMaxServerVersion();
+      } catch {
+        // Table might be empty
+      }
+    }
+
+    if (this.taskAssignmentsRepo) {
+      try {
+        versions['task_assignments'] = await this.taskAssignmentsRepo.getMaxServerVersion();
       } catch {
         // Table might be empty
       }
@@ -264,6 +277,46 @@ export class SyncManager {
           id: update.recordId,
           server_version: update.serverVersion,
         } as unknown as LocalConsumableLog);
+      }
+      return;
+    }
+
+    if (update.table === 'bale_loads' && this.baleLoadsRepo) {
+      const existing = await this.baleLoadsRepo.findById(update.recordId);
+      if (existing) {
+        const merged = mergeRecords(
+          update.table,
+          update.recordId,
+          existing as unknown as Record<string, unknown>,
+          { ...update.data, server_version: update.serverVersion },
+        );
+        await this.baleLoadsRepo.upsert(merged as unknown as LocalBaleLoad);
+      } else {
+        await this.baleLoadsRepo.upsert({
+          ...update.data,
+          id: update.recordId,
+          server_version: update.serverVersion,
+        } as unknown as LocalBaleLoad);
+      }
+      return;
+    }
+
+    if (update.table === 'task_assignments' && this.taskAssignmentsRepo) {
+      const existing = await this.taskAssignmentsRepo.findById(update.recordId);
+      if (existing) {
+        const merged = mergeRecords(
+          update.table,
+          update.recordId,
+          existing as unknown as Record<string, unknown>,
+          { ...update.data, server_version: update.serverVersion },
+        );
+        await this.taskAssignmentsRepo.upsert(merged as unknown as LocalTaskAssignment);
+      } else {
+        await this.taskAssignmentsRepo.upsert({
+          ...update.data,
+          id: update.recordId,
+          server_version: update.serverVersion,
+        } as unknown as LocalTaskAssignment);
       }
     }
   }

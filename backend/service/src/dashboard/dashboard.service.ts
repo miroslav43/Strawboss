@@ -164,6 +164,33 @@ export class DashboardService {
     });
   }
 
+  async getTrending() {
+    const result = await this.drizzleProvider.db.execute(sql`
+      WITH dates AS (
+        SELECT generate_series(
+          CURRENT_DATE - INTERVAL '6 days',
+          CURRENT_DATE,
+          '1 day'
+        )::date AS d
+      )
+      SELECT
+        dates.d AS "date",
+        COALESCE(SUM(bp.bale_count), 0)::int AS "bales",
+        COALESCE((
+          SELECT COUNT(*)::int FROM trips t
+          WHERE t.completed_at::date = dates.d
+            AND t.status IN ('delivered', 'completed')
+            AND t.deleted_at IS NULL
+        ), 0) AS "tripsCompleted"
+      FROM dates
+      LEFT JOIN bale_productions bp
+        ON bp.production_date = dates.d AND bp.deleted_at IS NULL
+      GROUP BY dates.d
+      ORDER BY dates.d ASC
+    `);
+    return result;
+  }
+
   async getAntiFraud(): Promise<AntiFraudReport> {
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT

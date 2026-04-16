@@ -7,8 +7,11 @@ import {
   Package,
   Clock,
   FileText,
+  Download,
 } from 'lucide-react';
-import type { Trip } from '@strawboss/types';
+import type { Trip, Document as StrawbossDocument } from '@strawboss/types';
+import { useDocuments } from '@strawboss/api';
+import { apiClient } from '@/lib/api';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { TripTimeline } from '@/components/shared/TripTimeline';
 import { SignatureDisplay } from '@/components/shared/SignatureDisplay';
@@ -55,6 +58,11 @@ function Section({
 }
 
 export function TripDetail({ trip, className }: TripDetailProps) {
+  const { data: documents } = useDocuments(apiClient, trip.id);
+  const cmrDoc = documents?.find(
+    (d: StrawbossDocument) => d.documentType === 'cmr' && d.status === 'generated',
+  );
+
   return (
     <div className={cn('space-y-6', className)}>
       {/* Header */}
@@ -266,6 +274,32 @@ export function TripDetail({ trip, className }: TripDetailProps) {
             </div>
           )}
         </Section>
+
+        {/* Documents / CMR */}
+        {(trip.status === 'delivered' || trip.status === 'completed') && (
+          <Section title="Documente" icon={Download}>
+            <div className="divide-y divide-neutral-100">
+              {cmrDoc ? (
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm text-neutral-700">CMR - {trip.tripNumber}</span>
+                  <a
+                    href={cmrDoc.fileUrl as string}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Descarcă CMR
+                  </a>
+                </div>
+              ) : (
+                <p className="py-2 text-sm text-neutral-500">
+                  CMR-ul se generează automat...
+                </p>
+              )}
+            </div>
+          </Section>
+        )}
       </div>
     </div>
   );

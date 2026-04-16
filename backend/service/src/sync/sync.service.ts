@@ -15,6 +15,69 @@ const SYNCABLE_TABLES = new Set([
   'parcels',
 ]);
 
+/** Allowed column names per syncable table to prevent SQL injection via sql.raw(). */
+const ALLOWED_COLUMNS: Record<string, Set<string>> = {
+  trips: new Set([
+    'id', 'bale_count', 'departure_odometer_km', 'arrival_odometer_km',
+    'departure_at', 'arrival_at', 'delivered_at', 'completed_at', 'cancelled_at',
+    'destination_name', 'destination_address', 'gross_weight_kg', 'tare_weight_kg',
+    'weight_ticket_number', 'weight_ticket_photo_url', 'delivery_notes',
+    'receiver_name', 'receiver_signature_url', 'receiver_signed_at',
+    'cancellation_reason', 'fraud_flags', 'gps_distance_km', 'distance_discrepancy_km',
+    'source_parcel_id', 'truck_id', 'loader_id', 'driver_id', 'loader_operator_id',
+    'loading_started_at', 'loading_completed_at', 'client_id', 'sync_version',
+  ]),
+  bale_loads: new Set([
+    'id', 'trip_id', 'parcel_id', 'loader_id', 'operator_id',
+    'bale_count', 'loaded_at', 'gps_lat', 'gps_lon', 'notes',
+    'farmtrack_event_id', 'client_id', 'sync_version',
+  ]),
+  bale_productions: new Set([
+    'id', 'parcel_id', 'baler_id', 'operator_id', 'production_date',
+    'bale_count', 'avg_bale_weight_kg', 'start_time', 'end_time',
+    'farmtrack_session_id', 'deleted_at', 'updated_at',
+  ]),
+  fuel_logs: new Set([
+    'id', 'machine_id', 'operator_id', 'parcel_id', 'logged_at',
+    'fuel_type', 'quantity_liters', 'unit_price', 'total_cost',
+    'odometer_km', 'hourmeter_hrs', 'is_full_tank', 'receipt_photo_url',
+    'notes', 'client_id', 'sync_version',
+  ]),
+  consumable_logs: new Set([
+    'id', 'machine_id', 'operator_id', 'parcel_id', 'consumable_type',
+    'description', 'quantity', 'unit', 'unit_price', 'total_cost', 'logged_at',
+    'deleted_at', 'updated_at',
+  ]),
+  task_assignments: new Set([
+    'id', 'assignment_date', 'machine_id', 'parcel_id', 'assigned_user_id',
+    'priority', 'sequence_order', 'status', 'parent_assignment_id',
+    'destination_id', 'estimated_start', 'estimated_end', 'actual_start',
+    'actual_end', 'notes', 'deleted_at', 'updated_at',
+  ]),
+  machines: new Set([
+    'id', 'machine_type', 'registration_plate', 'internal_code', 'make',
+    'model', 'year', 'fuel_type', 'tank_capacity_liters', 'is_active',
+    'current_odometer_km', 'current_hourmeter_hrs',
+    'max_payload_kg', 'max_bale_count', 'tare_weight_kg',
+    'bales_per_hour_avg', 'bale_weight_avg_kg', 'reach_meters',
+    'farmtrack_device_id',
+  ]),
+  parcels: new Set([
+    'id', 'code', 'name', 'owner_name', 'owner_contact', 'area_hectares',
+    'boundary', 'centroid', 'address', 'municipality', 'notes',
+    'is_active', 'harvest_status', 'farmtrack_geofence_id', 'farm_id',
+  ]),
+};
+
+function validateColumnName(table: string, column: string): void {
+  const allowed = ALLOWED_COLUMNS[table];
+  if (!allowed || !allowed.has(column)) {
+    throw new BadRequestException(
+      `Column '${column}' is not allowed for sync on table '${table}'`,
+    );
+  }
+}
+
 @Injectable()
 export class SyncService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
@@ -22,7 +85,7 @@ export class SyncService {
   /**
    * Process a batch of offline mutations with idempotency.
    */
-  async push(mutations: SyncMutation[]): Promise<SyncResult[]> {
+  async push(mutations: SyncMutation[], _callerId?: string): Promise<SyncResult[]> {
     const results: SyncResult[] = [];
 
     for (const mutation of mutations) {
@@ -62,6 +125,10 @@ export class SyncService {
       if (mutation.action === 'insert') {
         const dataWithVersion = { ...mutation.data, sync_version: 1 };
         const columns = Object.keys(dataWithVersion);
+        // Validate all column names before using sql.raw
+        for (const col of columns) {
+          if (col !== 'sync_version') validateColumnName(mutation.table, col);
+        }
         const values = Object.values(dataWithVersion);
 
         const colsSql = sql.raw(columns.map((c) => `"${c}"`).join(', '));
@@ -96,6 +163,7 @@ export class SyncService {
         ];
         for (const [key, value] of Object.entries(mutation.data)) {
           if (key !== 'id' && key !== 'sync_version' && key !== 'updated_at') {
+            validateColumnName(mutation.table, key);
             if (typeof value === 'object' && value !== null) {
               setClauses.push(
                 sql`${sql.raw(`"${key}"`)} = ${JSON.stringify(value)}::jsonb`,
@@ -159,7 +227,7 @@ export class SyncService {
   /**
    * Delta sync: for each table, return records with sync_version > requested version.
    */
-  async pull(tables: Record<string, number>) {
+  async pull(tables: Record<string, number>, _callerId?: string) {
     const deltas: Record<string, unknown[]> = {};
 
     for (const [table, sinceVersion] of Object.entries(tables)) {
@@ -167,10 +235,19 @@ export class SyncService {
         continue;
       }
 
+      // Add user-scoped WHERE clause for tables with ownership
+      let ownerFilter = sql``;
+      if (_callerId && table === 'trips') {
+        ownerFilter = sql` AND (driver_id = ${_callerId}::uuid OR loader_operator_id = ${_callerId}::uuid)`;
+      } else if (_callerId && (table === 'bale_productions' || table === 'fuel_logs' || table === 'consumable_logs' || table === 'bale_loads')) {
+        ownerFilter = sql` AND operator_id = ${_callerId}::uuid`;
+      }
+
       const result = await this.drizzleProvider.db.execute(
         sql`SELECT * FROM ${sql.raw(`"${table}"`)}
-            WHERE sync_version > ${sinceVersion}
-            ORDER BY sync_version ASC`,
+            WHERE sync_version > ${sinceVersion} ${ownerFilter}
+            ORDER BY sync_version ASC
+            LIMIT 1000`,
       );
       deltas[table] = result as unknown as unknown[];
     }

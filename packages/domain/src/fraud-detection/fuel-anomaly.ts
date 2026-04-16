@@ -34,7 +34,7 @@ export function detectFuelAnomaly(
   const stdDev = Math.sqrt(variance);
 
   // If stdDev is 0, all readings are the same; any deviation is anomalous
-  const zScore = stdDev > 0 ? Math.abs(currentReading - mean) / stdDev : 0;
+  const zScore = stdDev > 0 ? Math.abs(currentReading - mean) / stdDev : (currentReading !== mean ? Infinity : 0);
 
   const isAnomaly = zScore > stdDevThreshold;
 

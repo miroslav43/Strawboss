@@ -8,6 +8,10 @@ import { useUpdateParcelBoundary } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
+function esc(s: string | null | undefined): string {
+  return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // Default map center: Deta, Timiș
 const DETA_CENTER: [number, number] = [45.3883, 21.2311];
 const DEFAULT_ZOOM = 13;
@@ -117,26 +121,26 @@ function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): stri
     padding:4px 10px;font-size:11px;font-family:sans-serif;
     background:#fff;color:#374151;
   `;
-  const displayName = p.name ?? `<em style="color:#9ca3af">${s.fieldNoName}</em>`;
+  const displayName = p.name ? esc(p.name) : `<em style="color:#9ca3af">${esc(s.fieldNoName)}</em>`;
   const status = p.isActive ? s.statusActive : s.statusInactive;
   const actionRow = selectionOnly
     ? ''
     : `<div style="margin-top:8px;display:flex;gap:6px;">
-        <button data-edit-parcel-id="${p.id}" style="${btnBase}">${s.editParcelBtn}</button>
-        <button data-delete-parcel-id="${p.id}" style="${btnBase}color:#dc2626;border-color:#fca5a5;">${s.deleteParcelBtn}</button>
+        <button data-edit-parcel-id="${esc(p.id)}" style="${btnBase}">${esc(s.editParcelBtn)}</button>
+        <button data-delete-parcel-id="${esc(p.id)}" style="${btnBase}color:#dc2626;border-color:#fca5a5;">${esc(s.deleteParcelBtn)}</button>
       </div>`;
   return `
     <div style="min-width:180px;font-family:sans-serif;line-height:1.5;">
       <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${displayName}</div>
-      <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${p.code}</div>
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${esc(p.code)}</div>
       ${p.areaHectares != null ? `<div style="font-size:12px;color:#6b7280;">📐 ${p.areaHectares} ha</div>` : ''}
-      ${p.municipality  ? `<div style="font-size:12px;color:#6b7280;">📍 ${p.municipality}</div>`  : ''}
-      ${p.ownerName     ? `<div style="font-size:12px;color:#6b7280;">👤 ${p.ownerName}</div>`     : ''}
+      ${p.municipality  ? `<div style="font-size:12px;color:#6b7280;">📍 ${esc(p.municipality)}</div>`  : ''}
+      ${p.ownerName     ? `<div style="font-size:12px;color:#6b7280;">👤 ${esc(p.ownerName)}</div>`     : ''}
       <div style="margin-top:4px;font-size:11px;color:#6b7280;">
-        ${s.harvestStatusLabel}: ${s.labelHarvestStatus(p.harvestStatus)}
+        ${esc(s.harvestStatusLabel)}: ${esc(s.labelHarvestStatus(p.harvestStatus))}
       </div>
       <div style="margin-top:5px;font-size:11px;color:${p.isActive ? '#16a34a' : '#9ca3af'};">
-        ${status}
+        ${esc(status)}
       </div>
       ${actionRow}
     </div>`;
@@ -155,13 +159,13 @@ function machinePopupHtml(
     padding:4px 10px;font-size:11px;font-family:sans-serif;
     background:#fff;color:#374151;
   `;
-  const title = m.machineCode ?? typeLabel;
-  const line = `${s.typeLabel}: ${typeLabel}`;
+  const title = esc(m.machineCode ?? typeLabel);
+  const line = `${esc(s.typeLabel)}: ${esc(typeLabel)}`;
   const status = online ? s.onlineStatus : s.offlineStatus;
   const routeRow = selectionOnly
     ? ''
     : `<div style="margin-top:8px;">
-        <button data-show-route-machine-id="${m.machineId}" style="${btnBase}color:#3b82f6;border-color:#93c5fd;">🗺️ ${s.showRoute}</button>
+        <button data-show-route-machine-id="${esc(m.machineId)}" style="${btnBase}color:#3b82f6;border-color:#93c5fd;">🗺️ ${esc(s.showRoute)}</button>
       </div>`;
   return `
     <div style="min-width:180px;font-family:sans-serif;line-height:1.5;">
@@ -169,9 +173,9 @@ function machinePopupHtml(
         ${title}
       </div>
       <div style="font-size:12px;color:#374151;">${line}</div>
-      ${m.operatorName ? `<div style="font-size:12px;color:#374151;">${s.operatorLabel}: ${m.operatorName}</div>` : ''}
+      ${m.operatorName ? `<div style="font-size:12px;color:#374151;">${esc(s.operatorLabel)}: ${esc(m.operatorName)}</div>` : ''}
       <div style="margin-top:6px;font-size:11px;color:${online ? '#16a34a' : '#9ca3af'};">
-        ${status} · ${ago}
+        ${esc(status)} · ${esc(ago)}
       </div>
       ${routeRow}
     </div>`;
@@ -372,6 +376,8 @@ export function LeafletMap({
   useEffect(() => {
     if (!mapRef.current) return;
 
+    let isMounted = true;
+
     const init = async () => {
       const L = (await import('leaflet')).default;
       await import('leaflet/dist/leaflet.css');
@@ -386,7 +392,7 @@ export function LeafletMap({
         shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       });
 
-      if (mapInstanceRef.current) return;
+      if (!isMounted || mapInstanceRef.current) return;
 
       const map = L.map(mapRef.current!, { zoom: DEFAULT_ZOOM, center: DETA_CENTER });
 
@@ -480,6 +486,7 @@ export function LeafletMap({
     void init();
 
     return () => {
+      isMounted = false;
       setMapReady(false);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
@@ -546,9 +553,9 @@ export function LeafletMap({
         const labelLine1 = parcel.name ?? null;
         const labelLine2 = parcel.code;
         const labelHtml = labelLine1
-          ? `<div style="font-weight:600;font-size:12px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${labelLine1}</div>
-             <div style="font-size:10px;color:#fed7aa;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.6);">${labelLine2}</div>`
-          : `<div style="font-weight:600;font-size:11px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${labelLine2}</div>`;
+          ? `<div style="font-weight:600;font-size:12px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${esc(labelLine1)}</div>
+             <div style="font-size:10px;color:#fed7aa;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.6);">${esc(labelLine2)}</div>`
+          : `<div style="font-weight:600;font-size:11px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${esc(labelLine2)}</div>`;
 
         layer.bindTooltip(labelHtml, {
           permanent: false,
@@ -653,10 +660,10 @@ export function LeafletMap({
           }),
         }).bindPopup(
           `<div style="min-width:160px;font-family:sans-serif;line-height:1.5;">
-            <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${d.name}</div>
-            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${d.code}</div>
-            ${d.address ? `<div style="font-size:12px;color:#6b7280;">📍 ${d.address}</div>` : ''}
-            ${d.contactName ? `<div style="font-size:12px;color:#6b7280;">👤 ${d.contactName}</div>` : ''}
+            <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${esc(d.name)}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${esc(d.code)}</div>
+            ${d.address ? `<div style="font-size:12px;color:#6b7280;">📍 ${esc(d.address)}</div>` : ''}
+            ${d.contactName ? `<div style="font-size:12px;color:#6b7280;">👤 ${esc(d.contactName)}</div>` : ''}
           </div>`,
           { maxWidth: 260 },
         );
@@ -666,7 +673,7 @@ export function LeafletMap({
         });
 
         layer.bindTooltip(
-          `<div style="font-weight:600;font-size:11px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${d.name}</div>`,
+          `<div style="font-weight:600;font-size:11px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${esc(d.name)}</div>`,
           { permanent: false, direction: 'center', className: 'deposit-label', sticky: false },
         );
 

@@ -3,9 +3,10 @@ import {
   Post,
   Get,
   Body,
-  Query,
 } from '@nestjs/common';
 import { SyncService } from './sync.service';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/auth.guard';
 import type { SyncPushRequest, SyncPullRequest } from '@strawboss/types';
 
 @Controller('sync')
@@ -13,8 +14,11 @@ export class SyncController {
   constructor(private readonly syncService: SyncService) {}
 
   @Post('push')
-  async push(@Body() body: SyncPushRequest) {
-    const results = await this.syncService.push(body.mutations);
+  async push(
+    @Body() body: SyncPushRequest,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const results = await this.syncService.push(body.mutations, user.id);
     return {
       results,
       serverTime: new Date().toISOString(),
@@ -22,12 +26,15 @@ export class SyncController {
   }
 
   @Post('pull')
-  pull(@Body() body: SyncPullRequest) {
-    return this.syncService.pull(body.tables);
+  pull(
+    @Body() body: SyncPullRequest,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.syncService.pull(body.tables, user.id);
   }
 
   @Get('status')
-  status(@Query('clientId') clientId: string) {
-    return this.syncService.status(clientId);
+  status(@CurrentUser() user: RequestUser) {
+    return this.syncService.status(user.id);
   }
 }

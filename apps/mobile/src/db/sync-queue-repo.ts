@@ -105,6 +105,12 @@ export class SyncQueueRepo {
     );
   }
 
+  async resetInFlight(): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE sync_queue SET status = 'pending', updated_at = datetime('now') WHERE status = 'in_flight'`
+    );
+  }
+
   async purgeCompleted(): Promise<void> {
     await this.db.runAsync(
       `DELETE FROM sync_queue WHERE status = 'completed'`

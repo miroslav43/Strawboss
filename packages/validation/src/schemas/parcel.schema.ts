@@ -27,6 +27,7 @@ export const parcelSchema = z
     notes: z.string().nullable(),
     isActive: z.boolean(),
     harvestStatus: harvestStatusSchema,
+    farmId: z.string().uuid().nullable(),
   })
   .merge(timestampsSchema)
   .merge(softDeleteSchema);
@@ -45,6 +46,7 @@ export const createParcelSchema = z.object({
   farmtrackGeofenceId: z.string().nullable().optional(),
   notes:               z.string().nullable().optional(),
   harvestStatus:       harvestStatusSchema.optional(),
+  farmId:              z.string().uuid().nullable().optional(),
 });
 
 export const updateParcelSchema = z

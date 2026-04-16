@@ -23,3 +23,27 @@ export function useUpdateProfileLocale(client: ApiClient) {
     },
   });
 }
+
+/** Update profile fields: fullName, phone, locale, notificationPrefs. */
+export function useUpdateProfile(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      fullName?: string;
+      phone?: string | null;
+      locale?: 'en' | 'ro';
+      notificationPrefs?: Record<string, boolean>;
+    }) => client.patch<User>('/api/v1/profile', dto),
+    onSuccess: (user) => {
+      qc.setQueryData(profileKey, user);
+    },
+  });
+}
+
+/** Change user password. */
+export function useChangePassword(client: ApiClient) {
+  return useMutation({
+    mutationFn: (dto: { currentPassword: string; newPassword: string }) =>
+      client.post<{ ok: boolean }>('/api/v1/profile/change-password', dto),
+  });
+}

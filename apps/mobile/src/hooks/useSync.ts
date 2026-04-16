@@ -7,6 +7,8 @@ import { TripsRepo } from '../db/trips-repo';
 import { BaleProductionsRepo } from '../db/bale-productions-repo';
 import { FuelLogsRepo } from '../db/fuel-logs-repo';
 import { ConsumableLogsRepo } from '../db/consumable-logs-repo';
+import { BaleLoadsRepo } from '../db/bale-loads-repo';
+import { TaskAssignmentsRepo } from '../db/task-assignments-repo';
 import { SyncManager } from '../sync/SyncManager';
 import { useNetworkStatus } from './useNetworkStatus';
 
@@ -56,6 +58,8 @@ export function useSync() {
       const baleProductionsRepo = new BaleProductionsRepo(db);
       const fuelLogsRepo = new FuelLogsRepo(db);
       const consumableLogsRepo = new ConsumableLogsRepo(db);
+      const baleLoadsRepo = new BaleLoadsRepo(db);
+      const taskAssignmentsRepo = new TaskAssignmentsRepo(db);
       const manager = new SyncManager(
         syncQueueRepo,
         tripsRepo,
@@ -63,6 +67,8 @@ export function useSync() {
         baleProductionsRepo,
         fuelLogsRepo,
         consumableLogsRepo,
+        baleLoadsRepo,
+        taskAssignmentsRepo,
       );
 
       const result = await manager.sync();

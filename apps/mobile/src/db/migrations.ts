@@ -12,6 +12,8 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync(TABLES.bale_productions);
   await db.execAsync(TABLES.fuel_logs);
   await db.execAsync(TABLES.consumable_logs);
+  await db.execAsync(TABLES.bale_loads);
+  await db.execAsync(TABLES.task_assignments);
 
   // Create indexes for common queries
   await db.execAsync(
@@ -43,5 +45,17 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   );
   await db.execAsync(
     `CREATE INDEX IF NOT EXISTS idx_consumable_logs_parcel_id ON consumable_logs(parcel_id)`
+  );
+  await db.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_bale_loads_trip_id ON bale_loads(trip_id)`
+  );
+  await db.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_bale_loads_parcel_id ON bale_loads(parcel_id)`
+  );
+  await db.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_task_assignments_assigned_user_id ON task_assignments(assigned_user_id)`
+  );
+  await db.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_task_assignments_assignment_date ON task_assignments(assignment_date)`
   );
 }

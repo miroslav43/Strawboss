@@ -31,11 +31,16 @@ export async function registerForPushNotifications(): Promise<string | null> {
     return null;
   }
 
-  // Set up Android notification channel
+  // Set up Android notification channels
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'Default',
       importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+    });
+    await Notifications.setNotificationChannelAsync('geofence', {
+      name: 'Geofence',
+      importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
     });
   }

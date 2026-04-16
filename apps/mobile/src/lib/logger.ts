@@ -33,11 +33,31 @@ async function readIfExists(file: string): Promise<string> {
   return FileSystem.readAsStringAsync(file);
 }
 
+const pendingLines: Map<string, string[]> = new Map();
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
 async function appendLine(file: string, line: string): Promise<void> {
   const dir = file.slice(0, file.lastIndexOf('/'));
   await ensureDir(dir);
-  const prev = await readIfExists(file);
-  await FileSystem.writeAsStringAsync(file, prev ? `${prev}\n${line}` : line);
+
+  const pending = pendingLines.get(file) ?? [];
+  pending.push(line);
+  pendingLines.set(file, pending);
+
+  // Debounce: flush after 2 seconds of inactivity
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(flushPending, 2000);
+}
+
+export async function flushPending(): Promise<void> {
+  for (const [file, lines] of pendingLines.entries()) {
+    if (lines.length === 0) continue;
+    const batch = lines.splice(0).join('\n');
+    try {
+      const prev = await readIfExists(file);
+      await FileSystem.writeAsStringAsync(file, prev ? `${prev}\n${batch}` : batch);
+    } catch { /* ignore write errors */ }
+  }
 }
 
 async function writeRecord(

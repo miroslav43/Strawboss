@@ -33,7 +33,7 @@ export function LoadingFlow({ tripId, onComplete }: LoadingFlowProps) {
       const opsRepo = new OperationsRepo(db);
       const syncQueue = new SyncQueueRepo(db);
 
-      const operationId = `op_load_${tripId}_${Date.now()}`;
+      const operationId = `op_load_${tripId}`;
 
       await opsRepo.create({
         id: operationId,
@@ -63,7 +63,7 @@ export function LoadingFlow({ tripId, onComplete }: LoadingFlowProps) {
           machine_code: machineData,
           loading_completed_at: new Date().toISOString(),
         },
-        idempotencyKey: `load_${tripId}_${Date.now()}`,
+        idempotencyKey: `load_${tripId}`,
       });
 
       mobileLogger.flow('Loading flow: saved and sync enqueued', { tripId });

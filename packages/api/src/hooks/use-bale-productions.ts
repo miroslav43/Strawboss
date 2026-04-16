@@ -29,6 +29,30 @@ export function useBaleProductions(client: ApiClient, filters?: BaleProductionFi
   });
 }
 
+export interface BaleProductionStatsFilters {
+  operatorId?: string;
+  parcelId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  groupBy?: 'operator' | 'parcel' | 'date';
+}
+
+export function useBaleProductionStats(client: ApiClient, filters?: BaleProductionStatsFilters) {
+  const params = new URLSearchParams();
+  if (filters?.operatorId) params.set('operatorId', filters.operatorId);
+  if (filters?.parcelId) params.set('parcelId', filters.parcelId);
+  if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
+  if (filters?.dateTo) params.set('dateTo', filters.dateTo);
+  if (filters?.groupBy) params.set('groupBy', filters.groupBy);
+  const qs = params.toString();
+  const url = qs ? `/api/v1/bale-productions/stats?${qs}` : '/api/v1/bale-productions/stats';
+
+  return useQuery({
+    queryKey: queryKeys.baleProductions.stats(filters as Record<string, unknown> | undefined),
+    queryFn: () => client.get<Record<string, unknown>[]>(url),
+  });
+}
+
 export function useCreateBaleProduction(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({

@@ -34,7 +34,7 @@ export class TaskAssignmentsService {
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM task_assignments WHERE ${where} ORDER BY sequence_order ASC, created_at DESC`,
+      sql`SELECT * FROM task_assignments WHERE ${where} ORDER BY sequence_order ASC, created_at DESC LIMIT 1000`,
     );
     return result;
   }

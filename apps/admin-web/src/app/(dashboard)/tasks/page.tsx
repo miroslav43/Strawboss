@@ -6,13 +6,8 @@ import { CircleDot, Container, Truck, Loader2, Eye } from 'lucide-react';
 import { useDailyPlan } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { useTasksDate } from './tasks-date-context';
-
-function normalize<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  const r = raw as { data?: T[] } | null | undefined;
-  return r?.data ?? [];
-}
 
 interface OverviewAssignment {
   id: string;

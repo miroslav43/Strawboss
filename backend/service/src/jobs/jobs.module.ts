@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { bullmqConnectionFromRedisUrl } from '../config/redis-bullmq';
+import { JobSchedulerService } from './job-scheduler.service';
 import {
   QUEUE_ALERT_EVALUATION,
   QUEUE_RECONCILIATION,
@@ -28,6 +29,7 @@ import {
       { name: QUEUE_GEOFENCE_CHECK },
     ),
   ],
+  providers: [JobSchedulerService],
   exports: [BullModule],
 })
 export class JobsModule {}

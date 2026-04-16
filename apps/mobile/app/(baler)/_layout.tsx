@@ -1,11 +1,13 @@
 import { Tabs } from 'expo-router';
-import { Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
+import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
 
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   const icons: Record<string, string> = {
     'Acasă': '🌾',
     'Consumabile': '⛽',
+    'Hartă': '🗺️',
     'Starea Mea': '📊',
     'Profil': '👤',
   };
@@ -17,9 +19,10 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
 }
 
 export default function BalerTabLayout() {
-  useGeofenceNotifications();
+  const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
 
   return (
+    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -46,6 +49,13 @@ export default function BalerTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="map"
+        options={{
+          title: 'Hartă',
+          tabBarIcon: ({ focused }) => <TabIcon label="Hartă" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="stats"
         options={{
           title: 'Starea Mea',
@@ -60,6 +70,12 @@ export default function BalerTabLayout() {
         }}
       />
     </Tabs>
+    <GeofenceOverlay
+      alert={activeAlert}
+      onDismiss={dismissAlert}
+      onConfirmParcelDone={confirmParcelDone}
+    />
+    </View>
   );
 }
 

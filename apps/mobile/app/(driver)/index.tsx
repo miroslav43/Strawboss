@@ -11,7 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { TaskList } from '@/components/shared/TaskList';
 import { useAuthStore } from '@/stores/auth-store';
+import { useMyTasks } from '@/hooks/useMyTasks';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 
@@ -39,6 +41,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function DriverTripsScreen() {
   const userId = useAuthStore((s) => s.userId);
+  const { tasks, refetch: refetchTasks } = useMyTasks();
   const [trips, setTrips] = useState<LocalTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -62,7 +65,7 @@ export default function DriverTripsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadTrips();
+    await Promise.all([loadTrips(), refetchTasks()]);
     setRefreshing(false);
   };
 
@@ -89,6 +92,9 @@ export default function DriverTripsScreen() {
       <OfflineBanner />
       <View style={styles.header}>
         <Text style={styles.title}>Cursele Mele</Text>
+        <View style={styles.taskSection}>
+          <TaskList tasks={tasks} role="driver" />
+        </View>
       </View>
       <FlatList
         data={trips}
@@ -129,7 +135,8 @@ export default function DriverTripsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F3DED8' },
-  header: { padding: 16, paddingBottom: 8 },
+  header: { padding: 16, paddingBottom: 8, gap: 12 },
+  taskSection: { marginTop: 4 },
   title: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   list: { padding: 16, gap: 12 },

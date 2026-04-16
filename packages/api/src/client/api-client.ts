@@ -18,16 +18,40 @@ export class ApiClient {
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = await this.config.getToken();
     const hasBody = body !== undefined;
+    const buildHeaders = (t: string | null) => ({
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+    });
     const res = await fetch(`${this.config.baseUrl}${path}`, {
       method,
-      headers: {
-        // Only send Content-Type when there is a body — Fastify rejects
-        // Content-Type: application/json with an empty body (e.g. DELETE).
-        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: buildHeaders(token),
       body: hasBody ? JSON.stringify(body) : undefined,
     });
+
+    // On 401, refresh the token and retry once
+    if (res.status === 401) {
+      const newToken = await this.config.getToken();
+      const retryRes = await fetch(`${this.config.baseUrl}${path}`, {
+        method,
+        headers: buildHeaders(newToken),
+        body: hasBody ? JSON.stringify(body) : undefined,
+      });
+      if (!retryRes.ok) {
+        const error = await retryRes.json().catch(() => ({ message: retryRes.statusText }));
+        const message = error.message ?? 'Request failed';
+        this.config.onApiError?.({
+          method,
+          path,
+          status: retryRes.status,
+          message,
+          data: error,
+        });
+        throw new ApiError(retryRes.status, message, error);
+      }
+      if (retryRes.status === 204) return undefined as T;
+      return retryRes.json() as Promise<T>;
+    }
+
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: res.statusText }));
       const message = error.message ?? 'Request failed';

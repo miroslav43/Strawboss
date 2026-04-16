@@ -2,6 +2,10 @@ import { FileText, Download, ExternalLink } from 'lucide-react';
 import type { Document as DocType, DocumentType, DocumentStatus } from '@strawboss/types';
 import { cn } from '@/lib/utils';
 
+function isSafeUrl(url: string): boolean {
+  return url.startsWith('https://') || url.startsWith('http://localhost') || url.startsWith('data:');
+}
+
 const typeLabels: Record<DocumentType, string> = {
   cmr: 'CMR',
   invoice: 'Invoice',
@@ -88,11 +92,13 @@ export function DocumentViewer({ document: doc, className }: DocumentViewerProps
       {/* Actions / Viewer */}
       {doc.fileUrl ? (
         <div className="border-t border-neutral-100 p-4">
-          {doc.mimeType === 'application/pdf' ? (
+          {doc.mimeType === 'application/pdf' && isSafeUrl(doc.fileUrl) ? (
             <iframe
               src={doc.fileUrl}
               className="h-96 w-full rounded border border-neutral-200"
               title={doc.title}
+              sandbox="allow-same-origin"
+              referrerPolicy="no-referrer"
             />
           ) : (
             <div className="flex gap-2">

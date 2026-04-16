@@ -71,10 +71,12 @@ export {
 
 export {
   useDashboardOverview,
+  useDashboardTrending,
   useProductionReport,
   useCostReport,
   useAntiFraudReport,
 } from './use-dashboard.js';
+export type { TrendingDay } from './use-dashboard.js';
 
 export {
   useSession,
@@ -100,13 +102,14 @@ export type { CreateUserPayload, UpdateUserPayload } from './use-admin-users.js'
 
 export { useMachineLocations } from './use-machine-locations.js';
 export { useRouteHistory } from './use-route-history.js';
-export { useProfile, useUpdateProfileLocale } from './use-profile.js';
+export { useProfile, useUpdateProfileLocale, useUpdateProfile, useChangePassword } from './use-profile.js';
 
 export {
   useBaleProductions,
+  useBaleProductionStats,
   useCreateBaleProduction,
 } from './use-bale-productions.js';
-export type { BaleProductionFilters } from './use-bale-productions.js';
+export type { BaleProductionFilters, BaleProductionStatsFilters } from './use-bale-productions.js';
 
 export {
   useDeliveryDestinations,

@@ -20,6 +20,13 @@ interface ProductionFlowProps {
 
 type ProductionStep = 'info' | 'count' | 'confirm';
 
+function generateId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 export function ProductionFlow({
   parcelId,
   parcelName,
@@ -35,6 +42,11 @@ export function ProductionFlow({
   const handleConfirm = useCallback(async () => {
     setSaving(true);
     const count = parseInt(baleCount, 10);
+    if (isNaN(count) || count <= 0) {
+      Alert.alert('Eroare', 'Numărul de baloți trebuie să fie mai mare ca 0.');
+      setSaving(false);
+      return;
+    }
     mobileLogger.flow('Baler production: saving local record', {
       parcelId,
       baleCount: count,
@@ -44,7 +56,7 @@ export function ProductionFlow({
       const productionsRepo = new BaleProductionsRepo(db);
       const syncQueue = new SyncQueueRepo(db);
 
-      const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const id = generateId();
       const now = new Date().toISOString();
 
       const record = {

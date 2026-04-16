@@ -48,4 +48,8 @@ COPY --from=builder /app/packages/domain/node_modules ./packages/domain/node_mod
 
 WORKDIR /app/backend/service
 EXPOSE 3001
+RUN apk add --no-cache wget
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN mkdir -p /app/logs && chown -R appuser:appgroup /app/logs
+USER appuser
 CMD ["node", "dist/main.js"]

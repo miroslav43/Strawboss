@@ -35,6 +35,19 @@ export function useCostReport(client: ApiClient, filters?: Record<string, unknow
   });
 }
 
+export interface TrendingDay {
+  date: string;
+  bales: number;
+  tripsCompleted: number;
+}
+
+export function useDashboardTrending(client: ApiClient) {
+  return useQuery({
+    queryKey: queryKeys.dashboard.trending(),
+    queryFn: () => client.get<TrendingDay[]>('/api/v1/dashboard/trending'),
+  });
+}
+
 export function useAntiFraudReport(client: ApiClient) {
   return useQuery({
     queryKey: queryKeys.dashboard.antiFraud(),

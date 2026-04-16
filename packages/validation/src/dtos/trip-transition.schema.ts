@@ -40,4 +40,5 @@ export const disputeSchema = z.object({
 
 export const resolveDisputeSchema = z.object({
   resolutionNotes: z.string().min(1),
+  resolvedTo: z.enum(['delivered', 'completed']),
 });

@@ -103,6 +103,13 @@ export class TripsRepo {
     );
   }
 
+  async getMaxServerVersion(): Promise<number> {
+    const result = await this.db.getFirstAsync<{ max_ver: number }>(
+      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM trips`
+    );
+    return result?.max_ver ?? 0;
+  }
+
   async delete(id: string): Promise<void> {
     await this.db.runAsync(`DELETE FROM trips WHERE id = ?`, [id]);
   }

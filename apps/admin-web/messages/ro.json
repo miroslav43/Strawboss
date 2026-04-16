@@ -93,6 +93,26 @@
       "timezone": "Fus orar",
       "version": "Versiune: {{version}} | Mediu: {{env}}"
     },
+    "password": {
+      "title": "Parolă",
+      "description": "Schimbă parola contului",
+      "currentPassword": "Parola curentă",
+      "newPassword": "Parola nouă",
+      "confirmPassword": "Confirmă parola nouă",
+      "changePassword": "Schimbă parola",
+      "changing": "Se schimbă...",
+      "mismatch": "Parolele nu se potrivesc",
+      "tooShort": "Parola trebuie să aibă cel puțin 8 caractere",
+      "success": "Parola a fost schimbată cu succes",
+      "error": "Schimbarea parolei a eșuat"
+    },
+    "feedback": {
+      "profileSaved": "Profilul a fost salvat cu succes",
+      "profileError": "Salvarea profilului a eșuat",
+      "saving": "Se salvează...",
+      "notifSaved": "Preferințele de notificare au fost salvate",
+      "notifError": "Salvarea preferințelor de notificare a eșuat"
+    },
     "lang": {
       "en": "Engleză (English)",
       "ro": "Română"

@@ -6,9 +6,12 @@ import {
 } from '@nestjs/common';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { TripStatus } from '@strawboss/types';
+import { QUEUE_CMR_GENERATION } from '../jobs/queues';
 import type {
   TripCreateDto,
   StartLoadingDto,
@@ -29,6 +32,7 @@ export class TripsService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
+    @InjectQueue(QUEUE_CMR_GENERATION) private readonly cmrQueue: Queue,
   ) {}
 
   private logTripFlow(
@@ -87,7 +91,7 @@ export class TripsService {
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM trips WHERE ${where} ORDER BY created_at DESC`,
+      sql`SELECT * FROM trips WHERE ${where} ORDER BY created_at DESC LIMIT 1000`,
     );
     return result;
   }
@@ -166,8 +170,11 @@ export class TripsService {
         loader_id = ${dto.loaderId ?? (trip.loader_id as string | null)},
         loading_started_at = NOW(),
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'START_LOADING', from, TripStatus.loading);
     return result;
   }
@@ -195,8 +202,11 @@ export class TripsService {
         loading_completed_at = NOW(),
         bale_count = ${totalBales},
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'COMPLETE_LOADING', from, TripStatus.loaded);
     return result;
   }
@@ -212,8 +222,11 @@ export class TripsService {
         departure_odometer_km = ${dto.departureOdometerKm},
         departure_at = NOW(),
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'DEPART', from, TripStatus.in_transit);
     return result;
   }
@@ -236,8 +249,11 @@ export class TripsService {
         arrival_at = NOW(),
         odometer_distance_km = ${odometerDistance},
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'ARRIVE', from, TripStatus.arrived);
     return result;
   }
@@ -258,8 +274,11 @@ export class TripsService {
 
     const setClause = sql.join(setClauses, sql`, `);
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET ${setClause} WHERE id = ${id} RETURNING *`,
+      sql`UPDATE trips SET ${setClause} WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'START_DELIVERY', from, TripStatus.delivering);
     return result;
   }
@@ -287,8 +306,11 @@ export class TripsService {
         weight_ticket_number = ${dto.weightTicketNumber ?? null},
         delivered_at = NOW(),
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'CONFIRM_DELIVERY', from, TripStatus.delivered);
     return result;
   }
@@ -306,9 +328,20 @@ export class TripsService {
         receiver_signed_at = NOW(),
         completed_at = NOW(),
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'COMPLETE', from, TripStatus.completed);
+
+    // Auto-generate CMR document in background (after signature is captured)
+    await this.cmrQueue.add('generate', { tripId: id });
+    this.winston.log('flow', `CMR generation queued for trip ${id}`, {
+      context: 'TripsService',
+      tripId: id,
+    });
+
     return result;
   }
 
@@ -323,8 +356,11 @@ export class TripsService {
         cancelled_at = NOW(),
         cancellation_reason = ${dto.cancellationReason},
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'CANCEL', from, TripStatus.cancelled);
     return result;
   }
@@ -338,25 +374,34 @@ export class TripsService {
       sql`UPDATE trips SET
         status = ${TripStatus.disputed},
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
     this.logTripFlow(id, 'DISPUTE', from, TripStatus.disputed);
     return result;
   }
 
-  async resolveDispute(id: string, _dto: ResolveDisputeDto) {
+  async resolveDispute(id: string, dto: ResolveDisputeDto) {
     const trip = await this.findById(id);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'RESOLVE_DISPUTE');
 
-    // Resolve back to delivered status (admin can then complete if needed)
+    const targetStatus = dto.resolvedTo === 'completed'
+      ? TripStatus.completed
+      : TripStatus.delivered;
+
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
-        status = ${TripStatus.delivered},
+        status = ${targetStatus},
         updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
+      WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
-    this.logTripFlow(id, 'RESOLVE_DISPUTE', from, TripStatus.delivered);
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
+    this.logTripFlow(id, 'RESOLVE_DISPUTE', from, targetStatus);
     return result;
   }
 }

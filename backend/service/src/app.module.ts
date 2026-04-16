@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppLoggerModule } from './logger/logger.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
+import { AuthGuard } from './auth/auth.guard';
+import { RolesGuard } from './auth/roles.guard';
 import { ParcelsModule } from './parcels/parcels.module';
 import { MachinesModule } from './machines/machines.module';
 import { TaskAssignmentsModule } from './task-assignments/task-assignments.module';
@@ -31,10 +33,12 @@ import { DeliveryDestinationsModule } from './delivery-destinations/delivery-des
 import { NotificationsModule } from './notifications/notifications.module';
 import { GeofenceModule } from './geofence/geofence.module';
 import { MobileLogsModule } from './mobile-logs/mobile-logs.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
     AppLoggerModule,
+    HealthModule,
     ConfigModule,
     DatabaseModule,
     AuthModule,
@@ -65,6 +69,8 @@ import { MobileLogsModule } from './mobile-logs/mobile-logs.module';
     MobileLogsModule,
   ],
   providers: [
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],

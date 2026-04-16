@@ -18,14 +18,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-function normalize<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  const r = raw as { data?: T[] } | null | undefined;
-  return r?.data ?? [];
-}
+import { normalizeList as normalize } from '@/lib/normalize-api-list';
 
 // ─── DepositFormModal ────────────────────────────────────────────────────────
 

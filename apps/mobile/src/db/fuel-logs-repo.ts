@@ -113,4 +113,11 @@ export class FuelLogsRepo {
       `SELECT * FROM fuel_logs ORDER BY logged_at DESC`
     );
   }
+
+  async getMaxServerVersion(): Promise<number> {
+    const result = await this.db.getFirstAsync<{ max_ver: number }>(
+      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM fuel_logs`
+    );
+    return result?.max_ver ?? 0;
+  }
 }

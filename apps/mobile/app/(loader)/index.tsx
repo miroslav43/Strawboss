@@ -10,11 +10,14 @@ import { router } from 'expo-router';
 import { QRScanner } from '@/components/shared/QRScanner';
 import { BigButton } from '@/components/ui/BigButton';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { TaskList } from '@/components/shared/TaskList';
 import { ProblemReportModal } from '@/components/shared/ProblemReportModal';
 import { useAuthStore } from '@/stores/auth-store';
+import { useMyTasks } from '@/hooks/useMyTasks';
 
 export default function LoaderScanScreen() {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  const { tasks } = useMyTasks();
   const [problemModalVisible, setProblemModalVisible] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -34,6 +37,8 @@ export default function LoaderScanScreen() {
     <SafeAreaView style={styles.container}>
       <OfflineBanner />
       <ScrollView contentContainerStyle={styles.content}>
+        <TaskList tasks={tasks} role="loader_operator" />
+
         <Text style={styles.title}>Scanează Camion</Text>
         <Text style={styles.subtitle}>
           Poziționați camera pe codul QR de pe camion

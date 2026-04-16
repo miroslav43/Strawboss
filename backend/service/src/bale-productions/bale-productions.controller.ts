@@ -11,6 +11,23 @@ export class BaleProductionsController {
     private readonly baleProductionsService: BaleProductionsService,
   ) {}
 
+  @Get('stats')
+  stats(
+    @Query('operatorId') operatorId?: string,
+    @Query('parcelId') parcelId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('groupBy') groupBy?: 'operator' | 'parcel' | 'date',
+  ) {
+    return this.baleProductionsService.getStats({
+      operatorId,
+      parcelId,
+      dateFrom,
+      dateTo,
+      groupBy,
+    });
+  }
+
   @Get()
   list(
     @Query('operatorId') operatorId?: string,

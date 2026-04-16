@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { FuelLogsService } from './fuel-logs.service';
+import { Roles } from '../auth/roles.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createFuelLogSchema } from '@strawboss/validation';
+import type { UserRole } from '@strawboss/types';
 
 @Controller('fuel-logs')
 export class FuelLogsController {
@@ -27,6 +29,7 @@ export class FuelLogsController {
   }
 
   @Post()
+  @Roles('admin' as UserRole, 'baler_operator' as UserRole, 'loader_operator' as UserRole, 'driver' as UserRole)
   create(
     @Body(new ZodValidationPipe(createFuelLogSchema))
     dto: Record<string, unknown>,

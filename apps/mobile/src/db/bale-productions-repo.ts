@@ -99,4 +99,11 @@ export class BaleProductionsRepo {
       `SELECT * FROM bale_productions ORDER BY production_date DESC`
     );
   }
+
+  async getMaxServerVersion(): Promise<number> {
+    const result = await this.db.getFirstAsync<{ max_ver: number }>(
+      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM bale_productions`
+    );
+    return result?.max_ver ?? 0;
+  }
 }

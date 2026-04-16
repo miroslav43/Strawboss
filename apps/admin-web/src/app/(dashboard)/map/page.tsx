@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import dynamicImport from 'next/dynamic';
 import { MapPin, Plus, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import area from '@turf/area';
@@ -469,6 +469,9 @@ export default function MapPage() {
   const [hiddenMachineIds, setHiddenMachineIds] = useState<Set<string>>(new Set());
   const [mapSidebarOpen,   setMapSidebarOpen]   = useState(true);
 
+  const hiddenFarmIdsRef = useRef(hiddenFarmIds);
+  useEffect(() => { hiddenFarmIdsRef.current = hiddenFarmIds; }, [hiddenFarmIds]);
+
   const parcels = (
     Array.isArray(parcelsRaw) ? parcelsRaw : (parcelsRaw as { data?: Parcel[] })?.data ?? []
   ) as Parcel[];
@@ -558,15 +561,15 @@ export default function MapPage() {
 
     setHiddenParcelIds((prev) => {
       const next = new Set(prev);
-      // Use functional form — we derive willHide from hiddenFarmIds *before* toggle
-      const willHide = !hiddenFarmIds.has(farmId);
+      // Use ref to avoid stale closure over hiddenFarmIds
+      const willHide = !hiddenFarmIdsRef.current.has(farmId);
       farmParcelIds.forEach((id) => {
         if (willHide) next.add(id); else next.delete(id);
       });
       return next;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parcels, hiddenFarmIds]);
+  }, [parcels]);
 
   const handleToggleParcel = useCallback((parcelId: string) => {
     setHiddenParcelIds((prev) => {

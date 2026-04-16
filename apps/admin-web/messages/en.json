@@ -93,6 +93,26 @@
       "timezone": "Timezone",
       "version": "Version: {{version}} | Environment: {{env}}"
     },
+    "password": {
+      "title": "Password",
+      "description": "Change your account password",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm new password",
+      "changePassword": "Change password",
+      "changing": "Changing...",
+      "mismatch": "Passwords do not match",
+      "tooShort": "Password must be at least 8 characters",
+      "success": "Password changed successfully",
+      "error": "Failed to change password"
+    },
+    "feedback": {
+      "profileSaved": "Profile saved successfully",
+      "profileError": "Failed to save profile",
+      "saving": "Saving...",
+      "notifSaved": "Notification preferences saved",
+      "notifError": "Failed to save notification preferences"
+    },
     "lang": {
       "en": "English",
       "ro": "Romanian (Română)"

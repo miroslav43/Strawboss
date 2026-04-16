@@ -40,7 +40,7 @@ export function DeliveryFlow({ tripId, onComplete }: DeliveryFlowProps) {
       const opsRepo = new OperationsRepo(db);
       const syncQueue = new SyncQueueRepo(db);
 
-      const operationId = `op_deliver_${tripId}_${Date.now()}`;
+      const operationId = `op_deliver_${tripId}`;
 
       await opsRepo.create({
         id: operationId,
@@ -72,7 +72,7 @@ export function DeliveryFlow({ tripId, onComplete }: DeliveryFlowProps) {
           signatures,
           delivered_at: new Date().toISOString(),
         },
-        idempotencyKey: `deliver_${tripId}_${Date.now()}`,
+        idempotencyKey: `deliver_${tripId}`,
       });
 
       mobileLogger.flow('Delivery flow: saved and sync enqueued', { tripId });

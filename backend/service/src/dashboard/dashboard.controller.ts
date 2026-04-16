@@ -20,6 +20,11 @@ export class DashboardController {
     return this.dashboardService.getCosts();
   }
 
+  @Get('trending')
+  getTrending() {
+    return this.dashboardService.getTrending();
+  }
+
   @Get('anti-fraud')
   getAntiFraud() {
     return this.dashboardService.getAntiFraud();

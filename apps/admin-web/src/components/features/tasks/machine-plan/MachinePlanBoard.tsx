@@ -21,18 +21,13 @@ import { apiClient } from '@/lib/api';
 import { clientLogger } from '@/lib/client-logger';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { normalizeList as normalize } from '@/lib/normalize-api-list';
 
 const ParcelMapModal = dynamic(
   () =>
     import('@/components/features/tasks/daily-plan/ParcelMapModal').then((m) => m.ParcelMapModal),
   { ssr: false },
 );
-
-function normalize<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  const r = raw as { data?: T[] } | null | undefined;
-  return r?.data ?? [];
-}
 
 interface Assignment {
   id: string;
@@ -294,14 +289,8 @@ function SortableParcelRows({
   groupIdRef.current = groupId;
 
   const [insertHint, setInsertHint] = useState<ParcelInsertHint | null>(null);
-  // #region agent log
-  const parcelDragDebugCountRef = useRef(0);
-  // #endregion
 
   const handleDragStart = useCallback(() => {
-    // #region agent log
-    parcelDragDebugCountRef.current = 0;
-    // #endregion
     setInsertHint(null);
   }, []);
 
@@ -320,45 +309,11 @@ function SortableParcelRows({
       const target = event.operation.target as Droppable | null;
       const y = pointerClientY(event.nativeEvent, event.to?.y);
       if (!target || y == null) {
-        // #region agent log
-        if (parcelDragDebugCountRef.current < 30) {
-          parcelDragDebugCountRef.current += 1;
-          fetch('http://localhost:7759/ingest/b10ec6be-b647-4627-becf-fa99f7450535', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '3e4d0b' },
-            body: JSON.stringify({
-              sessionId: '3e4d0b',
-              hypothesisId: 'H1',
-              location: 'MachinePlanBoard.tsx:handleDragMove',
-              message: 'transient_miss_keep_hint',
-              data: { hasTarget: !!target, yIsNull: y == null },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-        }
-        // #endregion
         // Sticky hint: do not clear on transient missing target/y (avoids flicker vs dnd-kit).
         return;
       }
       const el = target.element;
       if (!el) {
-        // #region agent log
-        if (parcelDragDebugCountRef.current < 30) {
-          parcelDragDebugCountRef.current += 1;
-          fetch('http://localhost:7759/ingest/b10ec6be-b647-4627-becf-fa99f7450535', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '3e4d0b' },
-            body: JSON.stringify({
-              sessionId: '3e4d0b',
-              hypothesisId: 'H1',
-              location: 'MachinePlanBoard.tsx:handleDragMove',
-              message: 'no_element_keep_hint',
-              data: {},
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-        }
-        // #endregion
         return;
       }
       const rect = el.getBoundingClientRect();

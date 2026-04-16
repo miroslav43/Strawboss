@@ -18,6 +18,7 @@ export const userSchema = z
     locale: z.string(),
     avatarUrl: z.string().url().nullable(),
     lastLoginAt: isoDateSchema.nullable(),
+    assignedMachineId: z.string().uuid().nullable(),
   })
   .merge(timestampsSchema)
   .merge(softDeleteSchema);

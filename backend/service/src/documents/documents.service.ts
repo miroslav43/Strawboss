@@ -18,7 +18,7 @@ export class DocumentsService {
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM documents WHERE ${where} ORDER BY created_at DESC`,
+      sql`SELECT * FROM documents WHERE ${where} ORDER BY created_at DESC LIMIT 1000`,
     );
     return result;
   }

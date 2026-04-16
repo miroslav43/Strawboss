@@ -48,6 +48,12 @@ export const queryKeys = {
     production: (filters?: Record<string, unknown>) => ['dashboard', 'production', filters] as const,
     costs: (filters?: Record<string, unknown>) => ['dashboard', 'costs', filters] as const,
     antiFraud: () => ['dashboard', 'antiFraud'] as const,
+    trending: () => ['dashboard', 'trending'] as const,
+  },
+  location: {
+    machines: () => ['location', 'machines'] as const,
+    route: (machineId: string, from: string, to: string) => ['location', 'route', machineId, from, to] as const,
+    related: () => ['location', 'related-machines'] as const,
   },
   auth: {
     session: () => ['auth', 'session'] as const,
@@ -59,6 +65,7 @@ export const queryKeys = {
     all: ['baleProductions'] as const,
     list: (filters?: Record<string, unknown>) => ['baleProductions', 'list', filters] as const,
     byOperator: (operatorId: string) => ['baleProductions', 'operator', operatorId] as const,
+    stats: (filters?: Record<string, unknown>) => ['baleProductions', 'stats', filters] as const,
   },
   farms: {
     all:    ['farms'] as const,

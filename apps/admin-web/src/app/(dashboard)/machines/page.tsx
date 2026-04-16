@@ -571,30 +571,6 @@ export default function MachinesPage() {
 
   const totalVisible = groups.reduce((sum, g) => sum + g.machines.length, 0);
 
-  // #region agent log
-  useEffect(() => {
-    if (isLoading || isError) return;
-    fetch('http://localhost:7759/ingest/b10ec6be-b647-4627-becf-fa99f7450535', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7394e7' },
-      body: JSON.stringify({
-        sessionId: '7394e7',
-        location: 'machines/page.tsx:MachinesPage',
-        message: 'machines tbody: groups for map (H1=fragment key)',
-        data: {
-          hypothesisId: 'H1',
-          groupCount: groups.length,
-          groupTypes: groups.map((g) => g.type),
-          rowKeysUnique:
-            new Set(groups.flatMap((g) => g.machines.map((m) => m.id))).size ===
-            groups.reduce((n, g) => n + g.machines.length, 0),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  }, [isLoading, isError, groups]);
-  // #endregion
-
   const handleDelete = () => {
     if (!deleteTarget) return;
     deleteMachine.mutate(deleteTarget.id, {

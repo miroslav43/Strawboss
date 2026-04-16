@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>StrawBoss Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  onerror="document.getElementById('offline-msg').style.display='flex'" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  onerror="document.getElementById('offline-msg').style.display='flex';
+           window.LEAFLET_FAILED=true;
+           if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'MAP_READY',offline:true}))">
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body, #map { width: 100%; height: 100%; }
+  #offline-msg {
+    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 9999; background: #F3DED8;
+    flex-direction: column; justify-content: center; align-items: center;
+    font-family: -apple-system, sans-serif; color: #5D4037; gap: 12px;
+  }
+  #offline-msg .icon { font-size: 48px; }
+  #offline-msg .title { font-size: 18px; font-weight: 700; color: #0A5C36; }
+  #offline-msg .subtitle { font-size: 14px; text-align: center; padding: 0 32px; }
+  .user-marker {
+    width: 16px; height: 16px;
+    background: #2563eb;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(37,99,235,0.6);
+  }
+  .user-accuracy {
+    background: rgba(37,99,235,0.12);
+    border: 1px solid rgba(37,99,235,0.25);
+    border-radius: 50%;
+  }
+  .route-info {
+    background: #fff;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-family: -apple-system, sans-serif;
+    font-size: 13px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    color: #333;
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="offline-msg">
+  <div class="icon">&#x1F4F6;</div>
+  <div class="title">Harta necesit&#259; internet</div>
+  <div class="subtitle">Conecteaz&#259;-te la internet pentru a &#238;nc&#259;rca harta. Restul aplica&#539;iei func&#539;ioneaz&#259; offline.</div>
+</div>
+<script>
+// Fallback timeout: if Leaflet hasn't loaded in 8 seconds, show offline message
+setTimeout(function() {
+  if (typeof L === 'undefined' && !window.LEAFLET_FAILED) {
+    window.LEAFLET_FAILED = true;
+    document.getElementById('offline-msg').style.display = 'flex';
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({type: 'MAP_READY', offline: true}));
+    }
+  }
+}, 8000);
+</script>
+<script>
+(function() {
+  // Guard: skip map init if Leaflet failed to load (offline)
+  if (typeof L === 'undefined') return;
+
+  // ── Map init ──────────────────────────────────────────────────────
+  var map = L.map('map', {
+    zoomControl: false,
+    attributionControl: false
+  }).setView([45.3883, 21.2311], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+  }).addTo(map);
+
+  L.control.attribution({ position: 'bottomleft', prefix: false })
+    .addAttribution('&copy; <a href="https://osm.org/copyright">OSM</a>')
+    .addTo(map);
+
+  // ── Layer groups ──────────────────────────────────────────────────
+  var parcelsLayer = L.layerGroup().addTo(map);
+  var destinationsLayer = L.layerGroup().addTo(map);
+  var machinesLayer = L.layerGroup().addTo(map);
+  var userMarkerLayer = L.layerGroup().addTo(map);
+  var routeLayer = L.layerGroup().addTo(map);
+
+  var parcelLayers = {}; // id → L.geoJSON layer
+  var highlightedId = null;
+
+  // ── Polygon styles ────────────────────────────────────────────────
+  function getParcelStyle(harvestStatus, isHighlighted) {
+    if (isHighlighted) {
+      return { color: '#dc2626', weight: 3, fillOpacity: 0.3 };
+    }
+    switch (harvestStatus) {
+      case 'harvesting':
+        return { color: '#eab308', weight: 2, fillColor: '#facc15', fillOpacity: 0.28 };
+      case 'harvested':
+        return { color: '#b91c1c', weight: 2, fillColor: '#fecaca', fillOpacity: 0.35 };
+      case 'planned':
+      case 'to_harvest':
+      default:
+        return { color: '#f97316', weight: 2, fillOpacity: 0.18 };
+    }
+  }
+
+  var destinationStyle = {
+    color: '#1565C0',
+    weight: 2,
+    fillOpacity: 0.15,
+    dashArray: '6, 4'
+  };
+
+  // ── Command handlers ──────────────────────────────────────────────
+
+  function setParcels(parcels) {
+    parcelsLayer.clearLayers();
+    parcelLayers = {};
+    var bounds = [];
+
+    parcels.forEach(function(p) {
+      var geojson = typeof p.boundary === 'string' ? JSON.parse(p.boundary) : p.boundary;
+      if (!geojson) return;
+
+      var layer = L.geoJSON(geojson, {
+        style: function() {
+          return getParcelStyle(p.harvestStatus, p.id === highlightedId);
+        }
+      });
+
+      layer.on('click', function() {
+        sendEvent({
+          type: 'PARCEL_TAPPED',
+          parcelId: p.id,
+          parcelName: p.name || p.code || ''
+        });
+      });
+
+      // Tooltip with parcel name
+      if (p.name) {
+        layer.bindTooltip(p.name, { sticky: true, className: 'route-info' });
+      }
+
+      layer.addTo(parcelsLayer);
+      parcelLayers[p.id] = { layer: layer, data: p };
+      bounds.push(layer.getBounds());
+    });
+
+    if (bounds.length > 0) {
+      var combined = bounds[0];
+      for (var i = 1; i < bounds.length; i++) {
+        combined.extend(bounds[i]);
+      }
+      map.fitBounds(combined, { padding: [30, 30] });
+    }
+  }
+
+  function setDestinations(destinations) {
+    destinationsLayer.clearLayers();
+
+    destinations.forEach(function(d) {
+      if (d.boundary) {
+        var geojson = typeof d.boundary === 'string' ? JSON.parse(d.boundary) : d.boundary;
+        var layer = L.geoJSON(geojson, { style: function() { return destinationStyle; } });
+        layer.on('click', function() {
+          sendEvent({
+            type: 'DESTINATION_TAPPED',
+            destinationId: d.id,
+            destinationName: d.name || d.code || ''
+          });
+        });
+        if (d.name) {
+          layer.bindTooltip(d.name, { sticky: true, className: 'route-info' });
+        }
+        layer.addTo(destinationsLayer);
+      } else if (d.lat != null && d.lon != null) {
+        // Point marker for destinations without boundary
+        var marker = L.circleMarker([d.lat, d.lon], {
+          radius: 8, color: '#1565C0', fillColor: '#1565C0', fillOpacity: 0.5, weight: 2
+        });
+        marker.on('click', function() {
+          sendEvent({
+            type: 'DESTINATION_TAPPED',
+            destinationId: d.id,
+            destinationName: d.name || d.code || ''
+          });
+        });
+        if (d.name) marker.bindTooltip(d.name, { className: 'route-info' });
+        marker.addTo(destinationsLayer);
+      }
+    });
+  }
+
+  var MACHINE_ICONS = { truck: '\uD83D\uDE9B', loader: '\uD83D\uDCE6', baler: '\uD83C\uDF3E' };
+
+  function setMachines(machines) {
+    machinesLayer.clearLayers();
+    machines.forEach(function(m) {
+      var emoji = MACHINE_ICONS[m.machineType] || '\u2753';
+      var icon = L.divIcon({
+        html: '<div style="font-size:22px;text-align:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3))">' + emoji + '</div>',
+        className: '',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+      var marker = L.marker([m.lat, m.lon], { icon: icon });
+      var label = m.machineCode + (m.operatorName ? ' — ' + m.operatorName : '');
+      marker.bindTooltip(label, { className: 'route-info', direction: 'top', offset: [0, -14] });
+      marker.addTo(machinesLayer);
+    });
+  }
+
+  function setUserLocation(lat, lon, accuracy) {
+    userMarkerLayer.clearLayers();
+
+    // Accuracy circle
+    if (accuracy && accuracy > 0) {
+      L.circle([lat, lon], {
+        radius: accuracy,
+        className: 'user-accuracy',
+        interactive: false
+      }).addTo(userMarkerLayer);
+    }
+
+    // Blue dot
+    var icon = L.divIcon({ className: 'user-marker', iconSize: [16, 16], iconAnchor: [8, 8] });
+    L.marker([lat, lon], { icon: icon, interactive: false }).addTo(userMarkerLayer);
+  }
+
+  function setRoute(points, distanceKm, durationMin) {
+    routeLayer.clearLayers();
+    if (!points || points.length < 2) return;
+
+    var latlngs = points.map(function(p) { return [p.lat, p.lon]; });
+    var polyline = L.polyline(latlngs, {
+      color: '#2563eb',
+      weight: 4,
+      opacity: 0.85
+    }).addTo(routeLayer);
+
+    // Info popup at midpoint
+    if (distanceKm != null || durationMin != null) {
+      var mid = Math.floor(latlngs.length / 2);
+      var parts = [];
+      if (distanceKm != null) parts.push(distanceKm.toFixed(1) + ' km');
+      if (durationMin != null) parts.push(Math.round(durationMin) + ' min');
+      L.popup({ closeButton: false, autoClose: false, closeOnClick: false, className: 'route-info' })
+        .setLatLng(latlngs[mid])
+        .setContent('<b>' + parts.join(' · ') + '</b>')
+        .openOn(map);
+    }
+
+    map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+  }
+
+  function clearRoute() {
+    routeLayer.clearLayers();
+    map.closePopup();
+  }
+
+  function highlightParcel(parcelId) {
+    // Reset previous highlight
+    if (highlightedId && parcelLayers[highlightedId]) {
+      var prev = parcelLayers[highlightedId];
+      prev.layer.setStyle(getParcelStyle(prev.data.harvestStatus, false));
+    }
+
+    highlightedId = parcelId;
+
+    if (parcelId && parcelLayers[parcelId]) {
+      var entry = parcelLayers[parcelId];
+      entry.layer.setStyle(getParcelStyle(entry.data.harvestStatus, true));
+      entry.layer.bringToFront();
+      map.fitBounds(entry.layer.getBounds(), { padding: [50, 50], maxZoom: 15 });
+    }
+  }
+
+  function fitBounds() {
+    var allBounds = [];
+    parcelsLayer.eachLayer(function(l) {
+      if (l.getBounds) allBounds.push(l.getBounds());
+    });
+    destinationsLayer.eachLayer(function(l) {
+      if (l.getBounds) allBounds.push(l.getBounds());
+      else if (l.getLatLng) allBounds.push(L.latLngBounds(l.getLatLng(), l.getLatLng()));
+    });
+    if (allBounds.length > 0) {
+      var combined = allBounds[0];
+      for (var i = 1; i < allBounds.length; i++) combined.extend(allBounds[i]);
+      map.fitBounds(combined, { padding: [30, 30] });
+    }
+  }
+
+  function centerOn(lat, lon, zoom) {
+    map.setView([lat, lon], zoom || 15);
+  }
+
+  // ── Message bridge ────────────────────────────────────────────────
+
+  function sendEvent(event) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify(event));
+    }
+  }
+
+  window.handleCommand = function(cmd) {
+    switch (cmd.type) {
+      case 'SET_PARCELS':       setParcels(cmd.parcels); break;
+      case 'SET_DESTINATIONS':  setDestinations(cmd.destinations); break;
+      case 'SET_MACHINES':      setMachines(cmd.machines); break;
+      case 'SET_USER_LOCATION': setUserLocation(cmd.lat, cmd.lon, cmd.accuracy); break;
+      case 'SET_ROUTE':         setRoute(cmd.points, cmd.distanceKm, cmd.durationMin); break;
+      case 'CLEAR_ROUTE':       clearRoute(); break;
+      case 'HIGHLIGHT_PARCEL':  highlightParcel(cmd.parcelId); break;
+      case 'FIT_BOUNDS':        fitBounds(); break;
+      case 'CENTER_ON':         centerOn(cmd.lat, cmd.lon, cmd.zoom); break;
+    }
+  };
+
+  // Listen for messages from React Native
+  window.addEventListener('message', function(e) {
+    if (e.data) {
+      try {
+        var cmd = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        window.handleCommand(cmd);
+      } catch (err) { /* ignore non-JSON */ }
+    }
+  });
+
+  // Also listen on document for Android WebView
+  document.addEventListener('message', function(e) {
+    if (e.data) {
+      try {
+        var cmd = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        window.handleCommand(cmd);
+      } catch (err) { /* ignore */ }
+    }
+  });
+
+  // Signal ready
+  sendEvent({ type: 'MAP_READY' });
+})();
+</script>
+</body>
+</html>

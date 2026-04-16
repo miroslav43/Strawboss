@@ -37,4 +37,5 @@ export interface DisputeDto {
 
 export interface ResolveDisputeDto {
   resolutionNotes: string;
+  resolvedTo: 'delivered' | 'completed';
 }

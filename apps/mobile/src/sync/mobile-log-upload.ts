@@ -1,6 +1,7 @@
 import type { ApiClient } from '@strawboss/api';
 import type { MobileLogEntryDto } from '@strawboss/validation';
 import * as FileSystem from 'expo-file-system/legacy';
+import { flushPending } from '../lib/logger';
 
 const ROOT = `${FileSystem.documentDirectory ?? ''}strawboss-logs`;
 
@@ -12,6 +13,9 @@ function pathFor(category: string, day: string): string {
  * Uploads today's `all/*.log` NDJSON to the API and removes local day files on success.
  */
 export async function uploadTodayMobileLogs(api: ApiClient): Promise<void> {
+  // Flush any pending log lines to disk before reading
+  await flushPending();
+
   const day = new Date().toISOString().slice(0, 10);
   const allPath = pathFor('all', day);
   const info = await FileSystem.getInfoAsync(allPath);
