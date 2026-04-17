@@ -130,31 +130,17 @@ cmd_mobile__build__local() {
 cmd_mobile__install() {
   header "Install APK on Device"
 
-  # #region agent log
-  _sbdbg() {
-    local ts; ts=$(($(date +%s) * 1000))
-    printf '{"sessionId":"a856b2","hypothesisId":"%s","location":"02-mobile.sh:mobile-install","message":"%s","data":%s,"timestamp":%s}\n' \
-      "$1" "$2" "$3" "$ts" >>"/Users/maleticimiroslav/LuciClaudeBirou/Strawboss/.cursor/debug-a856b2.log" 2>/dev/null || true
-  }
-  # #endregion
-
   local apk_file="${1:-}"
-
-  _sbdbg "H1" "after_header" '{"step":"post_header"}'
 
   if [ -z "$apk_file" ]; then
     # find exits 1 if the APK tree does not exist yet; with pipefail + set -e that would
     # abort the script before we can print "No APK found" — swallow pipeline failure.
     apk_file=$(find "$STRAWBOSS_ROOT/apps/mobile/android/app/build/outputs/apk" -name "*.apk" -type f 2>/dev/null | sort -r | head -1) || true
     if [ -z "$apk_file" ]; then
-      _sbdbg "H2" "apk_missing" '{"apk_len":0}'
       error "No APK found. Run ${BOLD}./strawboss.sh mobile-build-local${NC} first."
       exit 1
     fi
-    _sbdbg "H2" "apk_found" "{\"apk_len\":${#apk_file}}"
     info "Found: $apk_file"
-  else
-    _sbdbg "H2" "apk_from_arg" "{\"apk_len\":${#apk_file}}"
   fi
 
   [ -f "$apk_file" ] || { error "File not found: $apk_file"; exit 1; }
@@ -165,29 +151,22 @@ cmd_mobile__install() {
     if [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/platform-tools/adb" ]; then
       adb_bin="$ANDROID_HOME/platform-tools/adb"
     else
-      _sbdbg "H3" "adb_missing" '{}'
       error "adb not found. Install Android platform-tools."
       exit 1
     fi
   fi
-  _sbdbg "H3" "adb_ready" '{"ok":true}'
 
   local devices
   # grep -c returns exit 1 when count is 0; with pipefail, `|| echo "0"` appended a
   # second line → devices="0\n0" → `[ "$devices" -eq 0 ]` fails under set -e. Use `|| true`.
   devices=$("$adb_bin" devices 2>/dev/null | grep -c "device$" || true)
-  local dnl=0
-  [[ "$devices" == *$'\n'* ]] && dnl=1
-  _sbdbg "H4" "devices_captured" "{\"len\":${#devices},\"has_newline\":$dnl}"
 
   if [ "$devices" -eq 0 ]; then
-    _sbdbg "H4b" "no_adb_devices" '{}'
     error "No devices connected. Connect via USB or start an emulator."
     echo -e "  ${DIM}Tip: Enable USB Debugging in Developer Options on your phone${NC}"
     exit 1
   fi
 
-  _sbdbg "H5" "devices_ok_pre_install" "{\"device_count\":$devices}"
   info "Installing on $devices device(s)..."
   local apk_size
   apk_size=$(_stat_size "$apk_file")
@@ -195,7 +174,6 @@ cmd_mobile__install() {
   echo ""
 
   "$adb_bin" install -r "$apk_file"
-  _sbdbg "H6" "adb_install_finished" "{\"exit_code\":$?}"
   echo ""
   success "Installed! Look for ${BOLD}StrawBoss${NC} on the device."
 }
