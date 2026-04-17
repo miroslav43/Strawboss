@@ -11,6 +11,8 @@ export const userSchema = z
   .object({
     id: uuidSchema,
     email: z.string().email(),
+    username: z.string().nullable(),
+    pin: z.string().nullable(),
     phone: z.string().nullable(),
     fullName: z.string().min(1),
     role: userRoleSchema,
@@ -23,21 +25,31 @@ export const userSchema = z
   .merge(timestampsSchema)
   .merge(softDeleteSchema);
 
+/** Exactly two words: Surname Firstname (e.g. "Maletici Miroslav"). */
+const fullNameTwoWords = z
+  .string()
+  .regex(/^\S+\s+\S+$/, 'Introduceți exact 2 cuvinte: Nume Prenume');
+
 export const createUserSchema = z.object({
-  email: z.string().email(),
-  fullName: z.string().min(1),
+  fullName: fullNameTwoWords,
   role: userRoleSchema,
   phone: z.string().nullable().optional(),
+  /** Optional: admin can override the auto-generated username before submit. */
+  usernameOverride: z.string().min(3).optional(),
 });
 
 export const updateUserSchema = z
   .object({
-    email: z.string().email(),
     fullName: z.string().min(1),
     role: userRoleSchema,
     phone: z.string().nullable(),
     isActive: z.boolean(),
     locale: z.string(),
     avatarUrl: z.string().url().nullable(),
+    /** Admin can change the username (must be unique). */
+    username: z.string().min(3),
+    /** Admin can change the 4-digit PIN (also updates Supabase Auth password). */
+    pin: z.string().regex(/^\d{4}$/, 'PIN must be 4 digits'),
+    assignedMachineId: z.string().uuid().nullable(),
   })
   .partial();

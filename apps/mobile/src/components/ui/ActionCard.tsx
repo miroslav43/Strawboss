@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 
 interface ActionCardProps {
@@ -49,7 +50,12 @@ export function ActionCard({
         )}
       </View>
       {variant === 'completed' && (
-        <Text style={styles.checkmark}>{'\u2713'}</Text>
+        <MaterialCommunityIcons
+          name="check-circle"
+          size={24}
+          color={colors.success}
+          accessibilityLabel="Finalizat"
+        />
       )}
     </TouchableOpacity>
   );
@@ -107,10 +113,5 @@ const styles = StyleSheet.create({
   },
   completedSubtitle: {
     color: colors.success,
-  },
-  checkmark: {
-    fontSize: 24,
-    color: colors.success,
-    fontWeight: '700',
   },
 });

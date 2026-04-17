@@ -5,11 +5,11 @@ import type { ApiClient } from '../client/api-client.js';
 const ADMIN_USERS_KEY = ['admin', 'users'] as const;
 
 export interface CreateUserPayload {
-  email: string;
-  password: string;
   fullName: string;
   role: UserRole;
   phone?: string | null;
+  /** Optional: admin override for the auto-generated username. */
+  usernameOverride?: string;
 }
 
 export interface UpdateUserPayload {
@@ -18,6 +18,10 @@ export interface UpdateUserPayload {
   phone?: string | null;
   isActive?: boolean;
   assignedMachineId?: string | null;
+  /** Admin can edit the username (must be unique). */
+  username?: string;
+  /** Admin can edit the 4-digit PIN (also updates Supabase Auth password). */
+  pin?: string;
 }
 
 /** List all operator accounts (admin only). */

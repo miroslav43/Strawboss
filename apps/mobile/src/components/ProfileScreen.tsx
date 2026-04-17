@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import type { User, Machine } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
@@ -13,10 +14,11 @@ const ROLE_LABEL: Record<string, string> = {
   admin: 'Administrator',
 };
 
-const MACHINE_EMOJI: Record<string, string> = {
-  loader: '🔧',
-  baler: '🌾',
-  truck: '🚛',
+type MachineIconName = 'wrench' | 'grain' | 'truck' | 'map-marker';
+const MACHINE_MDI: Record<string, MachineIconName> = {
+  loader: 'wrench',
+  baler: 'grain',
+  truck: 'truck',
 };
 
 export function ProfileScreen() {
@@ -74,9 +76,11 @@ export function ProfileScreen() {
                 <Text style={styles.noMachine}>Nicio mașină asignată</Text>
               ) : machine ? (
                 <View style={styles.machineRow}>
-                  <Text style={styles.machineEmoji}>
-                    {MACHINE_EMOJI[machine.machineType] ?? '📍'}
-                  </Text>
+                  <MaterialCommunityIcons
+                    name={MACHINE_MDI[machine.machineType] ?? 'map-marker'}
+                    size={28}
+                    color="#0A5C36"
+                  />
                   <View>
                     <Text style={styles.machineCode}>{machine.internalCode}</Text>
                     <Text style={styles.machineDetail}>
@@ -147,7 +151,6 @@ const styles = StyleSheet.create({
   roleText: { fontSize: 13, fontWeight: '600', color: '#0A5C36' },
 
   machineRow: { flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'flex-start' },
-  machineEmoji: { fontSize: 28 },
   machineCode: { fontSize: 16, fontWeight: '700', color: '#0A5C36' },
   machineDetail: { fontSize: 13, color: '#5D4037' },
   machinePlate: { fontSize: 12, color: '#9ca3af' },

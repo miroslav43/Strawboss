@@ -48,16 +48,16 @@ export default function BalerHomeScreen() {
 
         <View style={styles.buttonGroup}>
           <BigButton
-            title="🌾  Înregistrează producție"
+            title="Înregistrează producție"
             onPress={() => router.push('/baler-ops/production')}
           />
           <BigButton
-            title="⛽  Notează consumabile"
+            title="Notează consumabile"
             onPress={() => router.push('/(baler)/consumables')}
             variant="secondary"
           />
           <BigButton
-            title="📊  Starea mea"
+            title="Starea mea"
             onPress={() => router.push('/(baler)/stats')}
             variant="outline"
           />

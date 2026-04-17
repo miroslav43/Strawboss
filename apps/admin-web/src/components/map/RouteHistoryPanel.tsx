@@ -1,17 +1,19 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { X, Clock, MapPin } from 'lucide-react';
+import { X, Clock, MapPin, Truck, Wrench, Wheat } from 'lucide-react';
 import { useRouteHistory } from '@strawboss/api';
 import type { RoutePoint } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
-const MACHINE_EMOJI: Record<string, string> = {
-  baler: '🌾',
-  loader: '🔧',
-  truck: '🚛',
-};
+function MachineTypeIcon({ type }: { type: string | null }) {
+  const cls = 'h-4 w-4 flex-shrink-0';
+  if (type === 'truck') return <Truck className={cls} />;
+  if (type === 'loader') return <Wrench className={cls} />;
+  if (type === 'baler') return <Wheat className={cls} />;
+  return <MapPin className={cls} />;
+}
 
 interface RouteHistoryPanelProps {
   machineId: string;
@@ -64,7 +66,6 @@ export function RouteHistoryPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const emoji = MACHINE_EMOJI[machineType ?? ''] ?? '📍';
 
   const formatPoints = useCallback(
     (n: number) => t('map.routePointsCount', { n }),
@@ -76,8 +77,9 @@ export function RouteHistoryPanel({
       <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
         <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 text-blue-500" />
+          <MachineTypeIcon type={machineType} />
           <span className="text-sm font-semibold text-neutral-800">
-            {emoji} {machineCode ?? t('leaflet.machineUnknown')}
+            {machineCode ?? t('leaflet.machineUnknown')}
           </span>
           <span className="text-xs text-neutral-400">{t('map.routeGpsTrack')}</span>
         </div>

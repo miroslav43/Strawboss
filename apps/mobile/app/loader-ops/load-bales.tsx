@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -106,7 +107,7 @@ export default function LoadBalesScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
-          <Text style={styles.successEmoji}>✅</Text>
+          <MaterialCommunityIcons name="check-circle" size={64} color="#0A5C36" />
           <Text style={styles.successText}>Baloți înregistrați!</Text>
           <Text style={styles.successSubtext}>Se sincronizează cu serverul...</Text>
         </View>
@@ -119,9 +120,10 @@ export default function LoadBalesScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Încarcă Baloți</Text>
         {truck ? (
-          <Text style={styles.truckInfo}>
-            🚛 {truck.registrationPlate ?? truck.internalCode}
-          </Text>
+          <View style={styles.truckRow}>
+            <MaterialCommunityIcons name="truck" size={14} color="#5D4037" />
+            <Text style={styles.truckInfo}>{truck.registrationPlate ?? truck.internalCode}</Text>
+          </View>
         ) : null}
       </View>
 
@@ -192,7 +194,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F3DED8' },
   header: { padding: 16, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
-  truckInfo: { fontSize: 14, color: '#5D4037', marginTop: 4 },
+  truckRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  truckInfo: { fontSize: 14, color: '#5D4037' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   loadingText: { color: '#5D4037', fontSize: 14 },
   content: { padding: 16, gap: 12 },
@@ -213,7 +216,6 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 14, color: '#5D4037' },
   summaryValue: { fontSize: 14, fontWeight: '500', color: '#374151' },
   summaryValueLarge: { fontSize: 28, fontWeight: '700', color: '#0A5C36' },
-  successEmoji: { fontSize: 64 },
   successText: { fontSize: 20, fontWeight: '700', color: '#0A5C36' },
   successSubtext: { fontSize: 14, color: '#5D4037' },
 });

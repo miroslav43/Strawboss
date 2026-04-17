@@ -11,6 +11,8 @@ import {
   Wrench,
   AlertTriangle,
   Gauge,
+  Truck,
+  Wheat,
 } from 'lucide-react';
 import {
   useMachines,
@@ -46,11 +48,11 @@ const TYPE_LABEL_SINGULAR: Record<MachineType, string> = {
   [MachineType.truck]:  'Camion',
 };
 
-const TYPE_EMOJI: Record<MachineType, string> = {
-  [MachineType.loader]: '🔧',
-  [MachineType.baler]:  '🌾',
-  [MachineType.truck]:  '🚛',
-};
+function MachineTypeIcon({ type, className = 'h-4 w-4' }: { type: MachineType; className?: string }) {
+  if (type === MachineType.truck) return <Truck className={className} />;
+  if (type === MachineType.loader) return <Wrench className={className} />;
+  return <Wheat className={className} />;
+}
 
 const TYPE_COLORS: Record<MachineType, string> = {
   [MachineType.loader]: 'bg-blue-100 text-blue-700',
@@ -268,7 +270,7 @@ function MachineForm({
           className={inputCls}
         >
           {Object.values(MachineType).map((t) => (
-            <option key={t} value={t}>{TYPE_EMOJI[t]} {TYPE_LABEL_SINGULAR[t]}</option>
+            <option key={t} value={t}>{TYPE_LABEL_SINGULAR[t]}</option>
           ))}
         </select>
       </Field>
@@ -518,7 +520,8 @@ function DeleteDialog({
 function TypeBadge({ type }: { type: MachineType }) {
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_COLORS[type]}`}>
-      {TYPE_EMOJI[type]} {TYPE_LABEL_SINGULAR[type]}
+      <MachineTypeIcon type={type} className="h-3 w-3" />
+      {TYPE_LABEL_SINGULAR[type]}
     </span>
   );
 }
@@ -638,19 +641,19 @@ export default function MachinesPage() {
           color="bg-green-50"
         />
         <StatCard
-          icon={<span className="text-base leading-none">🚛</span>}
+          icon={<Truck className="h-4 w-4 text-green-600" />}
           value={truckCount}
           label="Camioane"
           color={TYPE_STAT_COLORS[MachineType.truck]}
         />
         <StatCard
-          icon={<span className="text-base leading-none">🔧</span>}
+          icon={<Wrench className="h-4 w-4 text-blue-600" />}
           value={loaderCount}
           label="Încărcătoare"
           color={TYPE_STAT_COLORS[MachineType.loader]}
         />
         <StatCard
-          icon={<span className="text-base leading-none">🌾</span>}
+          icon={<Wheat className="h-4 w-4 text-amber-600" />}
           value={balerCount}
           label="Balotiere"
           color={TYPE_STAT_COLORS[MachineType.baler]}
@@ -735,7 +738,7 @@ export default function MachinesPage() {
                   <tr className="border-y border-neutral-200 bg-neutral-50">
                     <td colSpan={7} className="px-4 py-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm">{TYPE_EMOJI[group.type]}</span>
+                        <MachineTypeIcon type={group.type} className="h-4 w-4 text-neutral-500" />
                         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
                           {TYPE_LABELS[group.type]}
                         </span>

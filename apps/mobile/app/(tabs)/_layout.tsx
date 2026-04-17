@@ -1,20 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Text, StyleSheet } from 'react-native';
-
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Home: '\u2302',
-    Scan: '\u2316',
-    Trips: '\u2708',
-    Sync: '\u21BB',
-    Profil: '👤',
-  };
-  return (
-    <Text style={[styles.icon, focused && styles.iconFocused]}>
-      {icons[label] ?? '?'}
-    </Text>
-  );
-}
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function TabLayout() {
   return (
@@ -33,42 +18,52 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon label="Home" focused={focused} />,
+          tabBarAccessibilityLabel: 'Acasă',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="home" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="scan"
         options={{
           title: 'Scan',
-          tabBarIcon: ({ focused }) => <TabIcon label="Scan" focused={focused} />,
+          tabBarAccessibilityLabel: 'Scanează',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="qrcode-scan" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="trips"
         options={{
           title: 'Trips',
-          tabBarIcon: ({ focused }) => <TabIcon label="Trips" focused={focused} />,
+          tabBarAccessibilityLabel: 'Curse',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="map-marker-path" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="sync"
         options={{
           title: 'Sync',
-          tabBarIcon: ({ focused }) => <TabIcon label="Sync" focused={focused} />,
+          tabBarAccessibilityLabel: 'Sincronizare',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="sync" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profil',
-          tabBarIcon: ({ focused }) => <TabIcon label="Profil" focused={focused} />,
+          tabBarAccessibilityLabel: 'Profilul meu',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account" size={size} color={color} />
+          ),
         }}
       />
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  icon: { fontSize: 22, color: '#8D6E63' },
-  iconFocused: { color: '#0A5C36' },
-});

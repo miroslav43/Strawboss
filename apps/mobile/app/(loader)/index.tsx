@@ -59,7 +59,7 @@ export default function LoaderScanScreen() {
         </View>
 
         <BigButton
-          title="⚠️  Raportează problemă tehnică"
+          title="Raportează problemă tehnică"
           onPress={() => setProblemModalVisible(true)}
           variant="outline"
         />

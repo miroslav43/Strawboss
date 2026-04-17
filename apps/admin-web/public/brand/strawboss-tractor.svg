@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" aria-hidden="true">
+  <title>StrawBoss tractor mark</title>
+  <!-- Flat geometric farm tractor: reads at favicon size; safe-zone friendly for adaptive icons -->
+  <g stroke="#1a3d2e" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Rear wheel -->
+    <circle cx="128" cy="318" r="72" fill="#0A5C36"/>
+    <circle cx="128" cy="318" r="28" fill="#E8C4A8" stroke-width="4"/>
+    <!-- Front wheel -->
+    <circle cx="368" cy="332" r="44" fill="#0A5C36"/>
+    <circle cx="368" cy="332" r="16" fill="#E8C4A8" stroke-width="3"/>
+    <!-- Chassis -->
+    <path fill="#0d6b3f" d="M88 268 L92 228 L280 208 L340 232 L372 268 L372 292 L88 292 Z"/>
+    <!-- Cabin -->
+    <path fill="#0A5C36" d="M248 208 L248 132 L330 118 L352 145 L352 208 Z"/>
+    <path fill="#b8e0c8" opacity="0.55" d="M258 198 L258 142 L318 132 L338 152 L338 198 Z"/>
+    <!-- Hood / engine -->
+    <path fill="#0f7a47" d="M92 228 L92 188 L248 168 L280 208 Z"/>
+    <!-- Straw accent stripe -->
+    <path fill="#E8C4A8" stroke="none" d="M100 248 L340 232 L344 244 L104 260 Z"/>
+    <!-- Exhaust -->
+    <path fill="#2d4a3a" stroke="none" d="M318 118 L326 88 L334 90 L328 120 Z"/>
+    <!-- Hitch -->
+    <path fill="#1a3d2e" d="M76 276 L76 300 L88 308 L88 276 Z"/>
+  </g>
+</svg>

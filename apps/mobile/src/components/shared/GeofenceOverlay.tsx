@@ -7,6 +7,7 @@ import {
   Animated,
   ActivityIndicator,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { BigButton } from '@/components/ui/BigButton';
 import type { GeofenceAlert } from '@/hooks/useGeofenceNotifications';
@@ -77,7 +78,7 @@ function EntryBanner({
 
   const isDeposit = alert.type === 'deposit_entry';
   const bgColor = isDeposit ? '#1565C0' : '#2E7D32';
-  const icon = isDeposit ? '\uD83C\uDFED' : '\uD83C\uDF3E'; // 🏭 / 🌾
+  const iconName = isDeposit ? 'warehouse' : 'grain';
   const message = isDeposit
     ? 'Ai ajuns la depozit'
     : `Ai început câmpul ${alert.parcelName}`;
@@ -90,7 +91,7 @@ function EntryBanner({
       ]}
     >
       <Pressable style={styles.bannerContent} onPress={onDismiss}>
-        <Text style={styles.bannerIcon}>{icon}</Text>
+        <MaterialCommunityIcons name={iconName} size={28} color="#FFF" />
         <Text style={styles.bannerText}>{message}</Text>
       </Pressable>
     </Animated.View>
@@ -129,7 +130,7 @@ function ExitConfirmModal({
       <View style={styles.modalContent}>
         <View style={styles.modalHandle} />
 
-        <Text style={styles.modalIcon}>{'\uD83C\uDF3E'}</Text>
+        <MaterialCommunityIcons name="grain" size={48} color="#0A5C36" />
         <Text style={styles.modalTitle}>
           Ai terminat câmpul{'\n'}
           <Text style={styles.modalParcelName}>{alert.parcelName}</Text>?
@@ -187,9 +188,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  bannerIcon: {
-    fontSize: 28,
-  },
   bannerText: {
     color: '#FFF',
     fontSize: 16,
@@ -219,9 +217,6 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: '#D7CCC8',
-  },
-  modalIcon: {
-    fontSize: 48,
   },
   modalTitle: {
     fontSize: 22,

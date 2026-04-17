@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BigButton } from '../ui/BigButton';
 import { colors } from '@strawboss/ui-tokens';
 
@@ -30,15 +31,20 @@ export function PhotoCapture({ onCapture, label }: PhotoCaptureProps) {
       {photoUri ? (
         <View style={styles.previewContainer}>
           <Image source={{ uri: photoUri }} style={styles.preview} />
-          <BigButton title="Retake Photo" variant="outline" onPress={takePhoto} />
+          <BigButton title="Refă fotografia" variant="outline" onPress={() => { void takePhoto(); }} />
         </View>
       ) : (
         <View style={styles.captureContainer}>
           <View style={styles.placeholder}>
-            <Text style={styles.placeholderIcon}>{'\uD83D\uDCF7'}</Text>
-            <Text style={styles.placeholderText}>No photo taken</Text>
+            <MaterialCommunityIcons
+              name="camera"
+              size={40}
+              color={colors.neutral}
+              accessibilityLabel="Nicio fotografie realizată"
+            />
+            <Text style={styles.placeholderText}>Nicio fotografie realizată</Text>
           </View>
-          <BigButton title="Take Photo" onPress={takePhoto} />
+          <BigButton title="Fotografiază" onPress={() => { void takePhoto(); }} />
         </View>
       )}
     </View>
@@ -66,10 +72,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.neutral200,
     borderStyle: 'dashed',
-  },
-  placeholderIcon: {
-    fontSize: 40,
-    marginBottom: 8,
+    gap: 8,
   },
   placeholderText: {
     fontSize: 14,

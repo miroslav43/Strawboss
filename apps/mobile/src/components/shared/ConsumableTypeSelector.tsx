@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 
 type ConsumableType = 'diesel' | 'twine';
@@ -10,13 +11,13 @@ interface ConsumableTypeSelectorProps {
 
 interface CardConfig {
   type: ConsumableType;
-  icon: string;
+  iconName: 'gas-station' | 'content-cut';
   label: string;
 }
 
 const CARDS: readonly CardConfig[] = [
-  { type: 'diesel', icon: '⛽', label: 'Motorină' },
-  { type: 'twine', icon: '🧵', label: 'Sfoară' },
+  { type: 'diesel', iconName: 'gas-station', label: 'Motorină' },
+  { type: 'twine', iconName: 'content-cut', label: 'Sfoară' },
 ] as const;
 
 export function ConsumableTypeSelector({
@@ -25,27 +26,34 @@ export function ConsumableTypeSelector({
 }: ConsumableTypeSelectorProps) {
   return (
     <View style={styles.container}>
-      {CARDS.map((card) => (
-        <TouchableOpacity
-          key={card.type}
-          style={[
-            styles.card,
-            selected === card.type ? styles.cardSelected : styles.cardUnselected,
-          ]}
-          onPress={() => onSelect(card.type)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.icon}>{card.icon}</Text>
-          <Text
+      {CARDS.map((card) => {
+        const isSelected = selected === card.type;
+        return (
+          <TouchableOpacity
+            key={card.type}
             style={[
-              styles.label,
-              selected === card.type && styles.labelSelected,
+              styles.card,
+              isSelected ? styles.cardSelected : styles.cardUnselected,
             ]}
+            onPress={() => onSelect(card.type)}
+            activeOpacity={0.7}
           >
-            {card.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <MaterialCommunityIcons
+              name={card.iconName}
+              size={40}
+              color={isSelected ? colors.primary : colors.neutral}
+            />
+            <Text
+              style={[
+                styles.label,
+                isSelected && styles.labelSelected,
+              ]}
+            >
+              {card.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -72,9 +80,6 @@ const styles = StyleSheet.create({
   },
   cardUnselected: {
     borderColor: colors.neutral100,
-  },
-  icon: {
-    fontSize: 40,
   },
   label: {
     fontSize: 16,

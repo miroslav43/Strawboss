@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BigButton } from '../../ui/BigButton';
 import { colors } from '@strawboss/ui-tokens';
 
@@ -11,9 +12,9 @@ interface ConsumableConfirmationProps {
   loading: boolean;
 }
 
-const TYPE_LABELS: Record<'diesel' | 'twine', { label: string; unit: string; icon: string }> = {
-  diesel: { label: 'Motorină', unit: 'L', icon: '⛽' },
-  twine: { label: 'Sfoară', unit: 'kg', icon: '🧵' },
+const TYPE_LABELS: Record<'diesel' | 'twine', { label: string; unit: string; iconName: 'gas-station' | 'content-cut' }> = {
+  diesel: { label: 'Motorină', unit: 'L', iconName: 'gas-station' },
+  twine: { label: 'Sfoară', unit: 'kg', iconName: 'content-cut' },
 };
 
 export function ConsumableConfirmation({
@@ -24,7 +25,7 @@ export function ConsumableConfirmation({
   onBack,
   loading,
 }: ConsumableConfirmationProps) {
-  const { label, unit, icon } = TYPE_LABELS[consumableType];
+  const { label, unit, iconName } = TYPE_LABELS[consumableType];
 
   return (
     <View style={styles.container}>
@@ -34,7 +35,7 @@ export function ConsumableConfirmation({
         <View style={styles.row}>
           <Text style={styles.label}>Tip</Text>
           <View style={styles.typeRow}>
-            <Text style={styles.icon}>{icon}</Text>
+            <MaterialCommunityIcons name={iconName} size={20} color={colors.neutral} />
             <Text style={styles.value}>{label}</Text>
           </View>
         </View>
@@ -125,9 +126,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.neutral,
-  },
-  icon: {
-    fontSize: 20,
   },
   photoPresent: {
     color: colors.primary,

@@ -5,6 +5,7 @@ import {
   FlatList,
   TouchableOpacity,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import type { MyTask } from '@/hooks/useMyTasks';
 
@@ -20,12 +21,18 @@ const STATUS_LABELS: Record<string, string> = {
   done: 'Finalizat',
 };
 
-const PRIORITY_INDICATORS: Record<string, string> = {
-  urgent: '🔴',
-  high: '🟠',
-  normal: '',
-  low: '',
+/** Priority color for the dot indicator. Undefined = no dot shown. */
+const PRIORITY_COLORS: Record<string, string | undefined> = {
+  urgent: '#DC2626',
+  high:   '#EA580C',
+  normal: undefined,
+  low:    undefined,
 };
+
+interface SubtitleInfo {
+  icon: 'map-marker' | 'tractor';
+  text: string;
+}
 
 interface TaskListProps {
   tasks: MyTask[];
@@ -43,7 +50,6 @@ export function TaskList({ tasks, role }: TaskListProps) {
   }
 
   const handlePress = (task: MyTask) => {
-    // Navigate to the map tab for the current role, with the parcel/destination to focus
     const rolePrefix =
       role === 'baler_operator'
         ? '(baler)'
@@ -63,12 +69,12 @@ export function TaskList({ tasks, role }: TaskListProps) {
     return `Sarcina #${task.sequenceOrder}`;
   };
 
-  const getSubtitle = (task: MyTask): string | null => {
+  const getSubtitle = (task: MyTask): SubtitleInfo | null => {
     if (role === 'driver' && task.destinationName) {
-      return `📍 ${task.destinationName}`;
+      return { icon: 'map-marker', text: task.destinationName };
     }
     if (task.machineCode) {
-      return `🚜 ${task.machineCode}`;
+      return { icon: 'tractor', text: task.machineCode };
     }
     return null;
   };
@@ -82,15 +88,22 @@ export function TaskList({ tasks, role }: TaskListProps) {
         scrollEnabled={false}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
-          const priority = PRIORITY_INDICATORS[item.priority] ?? '';
+          const priorityColor = PRIORITY_COLORS[item.priority];
           const subtitle = getSubtitle(item);
           return (
             <TouchableOpacity style={styles.card} onPress={() => handlePress(item)}>
               <View style={styles.cardHeader}>
                 <View style={styles.titleRow}>
                   <Text style={styles.sequence}>{item.sequenceOrder}.</Text>
+                  {priorityColor !== undefined && (
+                    <MaterialCommunityIcons
+                      name="circle"
+                      size={10}
+                      color={priorityColor}
+                      accessibilityLabel={item.priority === 'urgent' ? 'Urgent' : 'Prioritate mare'}
+                    />
+                  )}
                   <Text style={styles.taskName} numberOfLines={1}>
-                    {priority ? `${priority} ` : ''}
                     {getTaskLabel(item)}
                   </Text>
                 </View>
@@ -105,9 +118,16 @@ export function TaskList({ tasks, role }: TaskListProps) {
                   </Text>
                 </View>
               </View>
-              {subtitle ? (
-                <Text style={styles.subtitle}>{subtitle}</Text>
-              ) : null}
+              {subtitle !== null && (
+                <View style={styles.subtitleRow}>
+                  <MaterialCommunityIcons
+                    name={subtitle.icon}
+                    size={13}
+                    color="#8D6E63"
+                  />
+                  <Text style={styles.subtitle}>{subtitle.text}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           );
         }}
@@ -148,5 +168,6 @@ const styles = StyleSheet.create({
   taskName: { fontSize: 15, fontWeight: '500', color: '#000', flex: 1 },
   badge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8 },
   badgeText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
-  subtitle: { fontSize: 13, color: '#5D4037', marginLeft: 22 },
+  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 22 },
+  subtitle: { fontSize: 13, color: '#5D4037' },
 });

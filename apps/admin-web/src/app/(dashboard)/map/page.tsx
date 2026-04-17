@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import dynamicImport from 'next/dynamic';
-import { MapPin, Plus, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapPin, Plus, XCircle, ChevronLeft, ChevronRight, X, AlertTriangle, Wheat, Map, FolderOpen, CheckCircle2 } from 'lucide-react';
 import area from '@turf/area';
 import { polygon as turfPolygon, multiPolygon as turfMultiPolygon } from '@turf/helpers';
 import {
@@ -114,8 +114,8 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
           {/* Area badge */}
           {previewHa !== null ? (
             <div className="mb-5 flex items-center gap-4 rounded-xl border border-primary/20 bg-primary/5 px-5 py-4">
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-2xl">
-                🌾
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Wheat className="h-6 w-6 text-primary" />
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-primary/70">
@@ -128,8 +128,8 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
             </div>
           ) : (
             <div className="mb-5 flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-5 py-4">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xl">
-                🗺️
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-neutral-100">
+                <Map className="h-5 w-5 text-neutral-400" />
               </div>
               <p className="text-sm text-neutral-600">{t('map.drawnOnMap')}</p>
             </div>
@@ -139,7 +139,7 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
 
           {createParcel.isError && (
             <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              <span className="flex-shrink-0">⚠️</span>
+              <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-500" />
               <span>
                 {(createParcel.error as Error)?.message ?? t('map.saveFieldErrorFallback')}
               </span>
@@ -230,7 +230,7 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between bg-primary px-6 py-4">
           <div className="flex items-center gap-2">
-            <span className="text-lg">📂</span>
+            <FolderOpen className="h-5 w-5 text-white" />
             <h2 className="text-base font-semibold text-white">
               {total === 1
                 ? t('map.importKmlTitle', { count: total })
@@ -281,9 +281,10 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
           <div className="px-6 py-5 text-sm">
             <p className="font-medium text-neutral-800">{t('map.importDone')}</p>
             <p className="mt-1 text-neutral-500">
-              ✅ {t('map.importSuccess', { ok: progress.done - progress.failed })}
+              <CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-green-600" />
+              {t('map.importSuccess', { ok: progress.done - progress.failed })}
               {progress.failed > 0 && (
-                <>, ⚠️ {t('map.importFailed', { n: progress.failed })}</>
+                <>, <AlertTriangle className="inline h-3 w-3 text-amber-500" /> {t('map.importFailed', { n: progress.failed })}</>
               )}
             </p>
           </div>
@@ -596,7 +597,7 @@ export default function MapPage() {
       {deleteError && (
         <div className="mx-4 mt-2 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
           <span>{deleteError}</span>
-          <button onClick={() => setDeleteError(null)} className="ml-3 text-red-400 hover:text-red-600">✕</button>
+          <button onClick={() => setDeleteError(null)} className="ml-3 text-red-400 hover:text-red-600"><X className="h-4 w-4" /></button>
         </div>
       )}
 

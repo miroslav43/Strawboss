@@ -4,7 +4,16 @@ import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, Platform, View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  AppState,
+  Platform,
+  View,
+  Text,
+  Image,
+  ActivityIndicator,
+  StyleSheet,
+} from 'react-native';
 import { getDatabase } from '@/lib/storage';
 import { getSupabaseClient } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
@@ -40,6 +49,11 @@ const ROLE_ROUTES: Record<string, string> = {
 function LoadingSplash() {
   return (
     <View style={splash.container}>
+      <Image
+        source={require('../assets/splash-inline.png')}
+        style={splash.logo}
+        accessible={false}
+      />
       <Text style={splash.title}>StrawBoss</Text>
       <ActivityIndicator color="#0A5C36" style={{ marginTop: 24 }} />
     </View>
@@ -52,6 +66,12 @@ const splash = StyleSheet.create({
     backgroundColor: '#F3DED8',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: 16,
+    resizeMode: 'contain',
   },
   title: {
     fontSize: 36,
@@ -69,21 +89,16 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
 
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:AuthGate-mount',message:'[H4] AuthGate mounted, about to call supabase.auth.getSession()',data:{},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const supabase = getSupabaseClient();
     supabase.auth.getSession()
       .then(({ data }) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:getSession-resolved',message:'[H4] supabase.auth.getSession() resolved',data:{hasSession:!!data.session},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         setIsAuthenticated(!!data.session);
       })
       .catch((err) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:getSession-rejected',message:'[H4] supabase.auth.getSession() REJECTED — isAuthenticated stays null forever',data:{error:String((err as Error)?.message ?? err)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
+        if (__DEV__) {
+          console.warn('[StrawBoss] getSession failed, sending user to login', err);
+        }
+        setIsAuthenticated(false);
       });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -217,24 +232,43 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
 
-  // #region agent log
-  fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:RootLayout-render',message:'[H2/H3] RootLayout function body executing (JS bundle reached React tree)',data:{dbReady},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
   useEffect(() => {
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      if (cancelled) return;
+      if (__DEV__) {
+        console.warn('[StrawBoss] getDatabase exceeded 20s — unblocking UI');
+      }
+      setDbReady(true);
+    }, 20_000);
+
     getDatabase()
       .then(() => {
-        // #region agent log
-        fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:getDatabase-resolved',message:'[H3] getDatabase() resolved OK — dbReady becoming true',data:{},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        setDbReady(true);
+        if (__DEV__) console.warn('[StrawBoss] getDatabase OK');
       })
       .catch((err) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:getDatabase-rejected',message:'[H3] getDatabase() REJECTED — splash will hang',data:{error:String((err as Error)?.message ?? err)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
+        if (__DEV__) console.warn('[StrawBoss] getDatabase failed', err);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        clearTimeout(timeoutId);
+        setDbReady(true);
       });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, []);
+
+  useEffect(() => {
+    void SplashScreen.preventAutoHideAsync();
+  }, []);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    void SplashScreen.hideAsync();
+  }, [dbReady]);
 
   useEffect(() => {
     void cleanupOldMobileLogFiles();

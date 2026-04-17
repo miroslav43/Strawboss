@@ -12,16 +12,44 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getSupabaseClient } from '@/lib/auth';
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
+
+/**
+ * Mirror backend's pinToAuthPassword: Supabase Auth requires ≥6 chars but
+ * user PINs are 4 digits. We pad before calling signInWithPassword.
+ * Must stay in sync with backend/service/src/admin-users/admin-users.service.ts.
+ */
+function pinToAuthPassword(pin: string): string {
+  return `sb_${pin}`;
+}
+
+/** Resolve a username to an email via the backend. Returns null on failure. */
+async function resolveLogin(login: string): Promise<string | null> {
+  if (login.includes('@')) return login;
+  try {
+    const res = await fetch(`${API_URL}/api/v1/auth/resolve`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ login }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { email?: string };
+    return data.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [login,        setLogin]        = useState('');
+  const [password,     setPassword]     = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setError('Email and password are required');
+    if (!login.trim() || !password.trim()) {
+      setError('Username/email si parola sunt obligatorii');
       return;
     }
 
@@ -29,17 +57,31 @@ export default function LoginScreen() {
     setError(null);
 
     try {
+      const trimmedLogin = login.trim();
+      const isUsername = !trimmedLogin.includes('@');
+      const email = await resolveLogin(trimmedLogin);
+      if (!email) {
+        setError('Username inexistent. Verifica datele introduse.');
+        setLoading(false);
+        return;
+      }
+
+      // Operators/drivers log in with username + 4-digit PIN → pad to satisfy
+      // Supabase Auth's min-6-char policy. Admins with email + long password
+      // should pass through unchanged.
+      const authPassword = isUsername ? pinToAuthPassword(password) : password;
+
       const supabase = getSupabaseClient();
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+        email,
+        password: authPassword,
       });
 
       if (authError) {
         setError(authError.message);
       }
-    } catch (err) {
-      setError('An unexpected error occurred');
+    } catch {
+      setError('A aparut o eroare neasteptata');
     } finally {
       setLoading(false);
     }
@@ -59,25 +101,25 @@ export default function LoginScreen() {
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            placeholder="Email"
+            placeholder="Username sau Email"
             placeholderTextColor="#999"
-            value={email}
-            onChangeText={setEmail}
+            value={login}
+            onChangeText={setLogin}
             autoCapitalize="none"
             keyboardType="email-address"
-            autoComplete="email"
+            autoComplete="username"
             editable={!loading}
           />
 
           <View style={styles.passwordContainer}>
             <TextInput
               style={styles.passwordInput}
-              placeholder="Password"
+              placeholder="PIN sau parola"
               placeholderTextColor="#999"
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
-              autoComplete="password"
+              autoComplete="current-password"
               editable={!loading}
             />
             <TouchableOpacity
@@ -85,7 +127,7 @@ export default function LoginScreen() {
               onPress={() => setShowPassword((v) => !v)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁️'}</Text>
+              <Text style={styles.eyeText}>{showPassword ? 'O' : '*'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -93,13 +135,13 @@ export default function LoginScreen() {
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
+            onPress={() => { void handleLogin(); }}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
+              <Text style={styles.buttonText}>Autentificare</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -168,6 +210,7 @@ const styles = StyleSheet.create({
   },
   eyeText: {
     fontSize: 18,
+    color: '#666',
   },
   errorText: {
     color: '#C62828',

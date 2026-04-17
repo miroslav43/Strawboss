@@ -12,5 +12,7 @@ coverage
 logs/
 # Docker / local upload volume at repo root only (do not use bare `uploads/` — it ignores `backend/service/src/uploads/`).
 /uploads/
+# Local dev uploads written by the backend (receipts, etc.) — user data, never committed.
+/backend/service/uploads/
 .DS_Store
 .cursor/

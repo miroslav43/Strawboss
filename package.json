@@ -6,9 +6,11 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test"
+    "test": "turbo test",
+    "brand:rasters": "node scripts/generate-brand-rasters.mjs"
   },
   "devDependencies": {
+    "sharp": "^0.34.1",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^8.57.0",

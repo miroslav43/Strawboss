@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Linking from 'expo-linking';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 
 interface WhatsAppLinkProps {
@@ -42,10 +43,12 @@ export function WhatsAppLink({
     <View style={styles.wrapper}>
       <TouchableOpacity
         style={styles.button}
-        onPress={handlePress}
+        onPress={() => { void handlePress(); }}
         activeOpacity={0.7}
+        accessibilityLabel={label}
+        accessibilityRole="button"
       >
-        <Text style={styles.whatsappIcon}>{'💬'}</Text>
+        <MaterialCommunityIcons name="whatsapp" size={22} color={colors.white} />
         <Text style={styles.label}>{label}</Text>
       </TouchableOpacity>
       {errorMessage !== null && (
@@ -68,9 +71,6 @@ const styles = StyleSheet.create({
     height: 56,
     gap: 10,
     paddingHorizontal: 20,
-  },
-  whatsappIcon: {
-    fontSize: 22,
   },
   label: {
     fontSize: 16,

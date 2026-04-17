@@ -29,6 +29,7 @@ Lower-level commands for targeted work:
 ./strawboss.sh logs:flow           # tail today's logs/web/flow/ (business transitions)
 ./strawboss.sh logs:mobile         # tail today's logs/mobile/all/ (uploaded from devices)
 ./strawboss.sh logs:clean          # remove all files under logs/
+pnpm brand:rasters                 # Regenerate mobile splash/icon + admin OG + app icon from branding/strawboss-tractor.svg
 ```
 
 To run a script in a single package directly:

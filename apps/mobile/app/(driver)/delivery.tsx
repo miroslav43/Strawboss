@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth-store';
 import { useEffect, useState, useCallback } from 'react';
@@ -55,13 +56,19 @@ export default function DriverDeliveryScreen() {
             <Text style={styles.cardTitle}>Cursă activă</Text>
             <Text style={styles.tripNumber}>{activeTrip.trip_number ?? 'Cursă'}</Text>
             {activeTrip.destination_name ? (
-              <Text style={styles.destination}>📍 {activeTrip.destination_name}</Text>
+              <View style={styles.inlineRow}>
+                <MaterialCommunityIcons name="map-marker" size={16} color="#5D4037" />
+                <Text style={styles.destination}>{activeTrip.destination_name}</Text>
+              </View>
             ) : null}
-            <Text style={styles.baleCount}>🌾 {activeTrip.bale_count} baloți</Text>
+            <View style={styles.inlineRow}>
+              <MaterialCommunityIcons name="grain" size={16} color="#8D6E63" />
+              <Text style={styles.baleCount}>{activeTrip.bale_count} baloți</Text>
+            </View>
           </View>
 
           <BigButton
-            title="📋  Începe procesul de livrare"
+            title="Începe procesul de livrare"
             onPress={() =>
               router.push(`/driver-ops/delivery-flow?tripId=${activeTrip.id}`)
             }
@@ -69,7 +76,7 @@ export default function DriverDeliveryScreen() {
         </View>
       ) : (
         <View style={styles.centered}>
-          <Text style={styles.emptyEmoji}>🚛</Text>
+          <MaterialCommunityIcons name="truck" size={48} color="#8D6E63" />
           <Text style={styles.emptyText}>Nicio cursă la destinație.</Text>
           <Text style={styles.emptySubtext}>
             Când ajungeți la destinație, livrarea apare automat.
@@ -86,6 +93,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, padding: 24 },
   content: { padding: 16, gap: 16 },
+  inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -101,7 +109,6 @@ const styles = StyleSheet.create({
   tripNumber: { fontSize: 20, fontWeight: '700', color: '#000' },
   destination: { fontSize: 14, color: '#5D4037' },
   baleCount: { fontSize: 14, color: '#8D6E63' },
-  emptyEmoji: { fontSize: 48 },
   emptyText: { fontSize: 15, color: '#374151', fontWeight: '500', textAlign: 'center' },
   emptySubtext: { fontSize: 13, color: '#8D6E63', textAlign: 'center' },
 });

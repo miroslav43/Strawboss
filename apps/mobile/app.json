@@ -5,6 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "strawboss",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F3DED8"
+    },
     "platforms": [
       "ios",
       "android"
@@ -37,6 +43,10 @@
     ],
     "android": {
       "package": "com.strawboss.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F3DED8"
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",

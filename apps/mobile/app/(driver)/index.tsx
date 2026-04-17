@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
@@ -112,10 +113,16 @@ export default function DriverTripsScreen() {
               </View>
             </View>
             {item.destination_name ? (
-              <Text style={styles.destination}>📍 {item.destination_name}</Text>
+              <View style={styles.inlineRow}>
+                <MaterialCommunityIcons name="map-marker" size={14} color="#5D4037" />
+                <Text style={styles.destination}>{item.destination_name}</Text>
+              </View>
             ) : null}
             <View style={styles.meta}>
-              <Text style={styles.metaText}>🌾 {item.bale_count} baloți</Text>
+              <View style={styles.inlineRow}>
+                <MaterialCommunityIcons name="grain" size={13} color="#8D6E63" />
+                <Text style={styles.metaText}>{item.bale_count} baloți</Text>
+              </View>
               {item.status === 'arrived' && (
                 <Text style={styles.deliveryHint}>Apasă pentru livrare →</Text>
               )}
@@ -156,6 +163,7 @@ const styles = StyleSheet.create({
   badge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   badgeText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
   destination: { fontSize: 14, color: '#5D4037' },
+  inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   metaText: { fontSize: 13, color: '#8D6E63' },
   deliveryHint: { fontSize: 12, color: '#0A5C36', fontWeight: '600' },

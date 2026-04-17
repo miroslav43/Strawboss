@@ -11,6 +11,8 @@ export enum UserRole {
 export interface User extends Timestamps, SoftDelete {
   id: string;
   email: string;
+  username: string | null;
+  pin: string | null;
   phone: string | null;
   fullName: string;
   role: UserRole;

@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 type AlertSeverity = 'warning' | 'error';
 
@@ -10,17 +11,17 @@ interface AlertBannerProps {
 
 const SEVERITY_CONFIG: Record<
   AlertSeverity,
-  { background: string; text: string; icon: string }
+  { background: string; text: string; iconName: 'alert' | 'close-circle' }
 > = {
   warning: {
     background: '#FEF3C7',
     text: '#92400E',
-    icon: '\u26A0\uFE0F',
+    iconName: 'alert',
   },
   error: {
     background: '#FEE2E2',
     text: '#991B1B',
-    icon: '\u274C',
+    iconName: 'close-circle',
   },
 } as const;
 
@@ -29,7 +30,12 @@ export function AlertBanner({ message, severity, onDismiss }: AlertBannerProps) 
 
   return (
     <View style={[styles.container, { backgroundColor: config.background }]}>
-      <Text style={styles.icon}>{config.icon}</Text>
+      <MaterialCommunityIcons
+        name={config.iconName}
+        size={18}
+        color={config.text}
+        accessibilityLabel={severity === 'warning' ? 'Avertisment' : 'Eroare'}
+      />
       <Text style={[styles.message, { color: config.text }]}>{message}</Text>
       {onDismiss !== undefined && (
         <TouchableOpacity
@@ -37,8 +43,10 @@ export function AlertBanner({ message, severity, onDismiss }: AlertBannerProps) 
           onPress={onDismiss}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel="Închide alerta"
+          accessibilityRole="button"
         >
-          <Text style={[styles.dismissIcon, { color: config.text }]}>{'×'}</Text>
+          <MaterialCommunityIcons name="close" size={20} color={config.text} />
         </TouchableOpacity>
       )}
     </View>
@@ -54,9 +62,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 10,
   },
-  icon: {
-    fontSize: 18,
-  },
   message: {
     flex: 1,
     fontSize: 14,
@@ -66,12 +71,7 @@ const styles = StyleSheet.create({
   dismissButton: {
     justifyContent: 'center',
     alignItems: 'center',
-    width: 24,
-    height: 24,
-  },
-  dismissIcon: {
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 24,
+    width: 28,
+    height: 28,
   },
 });

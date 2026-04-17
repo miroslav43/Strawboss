@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { View, Text, Animated, StyleSheet, Easing } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 
 interface SyncStatusIndicatorProps {
@@ -37,20 +38,19 @@ export function SyncStatusIndicator({
 
   if (syncing) {
     return (
-      <View style={styles.container}>
-        <Animated.Text
-          style={[styles.icon, { transform: [{ rotate: spin }] }]}
-        >
-          {'\u21BB'}
-        </Animated.Text>
-      </View>
+      <Animated.View
+        style={{ transform: [{ rotate: spin }] }}
+        accessibilityLabel="Sincronizare în curs"
+      >
+        <MaterialCommunityIcons name="sync" size={20} color={colors.neutral} />
+      </Animated.View>
     );
   }
 
   if (pendingCount > 0) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.icon}>{'\u2191'}</Text>
+      <View style={styles.container} accessibilityLabel={`${pendingCount} operații în așteptare`}>
+        <MaterialCommunityIcons name="arrow-up" size={20} color={colors.neutral} />
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{pendingCount}</Text>
         </View>
@@ -59,9 +59,12 @@ export function SyncStatusIndicator({
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.checkIcon}>{'\u2713'}</Text>
-    </View>
+    <MaterialCommunityIcons
+      name="check-circle-outline"
+      size={20}
+      color={colors.success}
+      accessibilityLabel="Sincronizat"
+    />
   );
 }
 
@@ -70,14 +73,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
-  },
-  icon: {
-    fontSize: 20,
-    color: colors.neutral,
-  },
-  checkIcon: {
-    fontSize: 20,
-    color: colors.success,
   },
   badge: {
     position: 'absolute',

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import type { User, Machine } from '@strawboss/types';
@@ -16,10 +17,11 @@ import { useSync } from '@/hooks/useSync';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
 import { mobileApiClient } from '@/lib/api-client';
 
-const MACHINE_EMOJI: Record<string, string> = {
-  loader: '🔧',
-  baler:  '🌾',
-  truck:  '🚛',
+type MachineIconName = 'wrench' | 'grain' | 'truck' | 'map-marker';
+const MACHINE_MDI: Record<string, MachineIconName> = {
+  loader: 'wrench',
+  baler:  'grain',
+  truck:  'truck',
 };
 
 const MACHINE_TYPE_LABEL: Record<string, string> = {
@@ -94,7 +96,7 @@ export default function HomeScreen() {
           ) : !assignedMachineId ? (
             /* No machine assigned */
             <View style={styles.noMachineBox}>
-              <Text style={styles.noMachineEmoji}>🚫</Text>
+              <MaterialCommunityIcons name="cancel" size={32} color="#374151" />
               <Text style={styles.noMachineTitle}>Nicio mașină asignată</Text>
               <Text style={styles.noMachineSubtitle}>
                 Contactează administratorul pentru a-ți asigna o mașină.
@@ -104,9 +106,11 @@ export default function HomeScreen() {
             /* Machine found */
             <>
               <View style={styles.machineCard}>
-                <Text style={styles.machineEmoji}>
-                  {MACHINE_EMOJI[machine.machineType] ?? '📍'}
-                </Text>
+                <MaterialCommunityIcons
+                  name={MACHINE_MDI[machine.machineType] ?? 'map-marker'}
+                  size={26}
+                  color="#0A5C36"
+                />
                 <View style={styles.machineInfo}>
                   <Text style={styles.machineCode}>{machine.internalCode}</Text>
                   <Text style={styles.machineDetail}>
@@ -150,9 +154,14 @@ export default function HomeScreen() {
                 <View style={styles.trackingBadge}>
                   {isTracking ? <View style={styles.pulseDot} /> : <View style={styles.trackingDotMuted} />}
                   <View>
-                    <Text style={styles.trackingBadgeText}>
-                      {MACHINE_EMOJI[machine.machineType] ?? '📍'} {machine.internalCode}
-                    </Text>
+                    <View style={styles.inlineRow}>
+                      <MaterialCommunityIcons
+                        name={MACHINE_MDI[machine.machineType] ?? 'map-marker'}
+                        size={13}
+                        color="#15803d"
+                      />
+                      <Text style={styles.trackingBadgeText}>{machine.internalCode}</Text>
+                    </View>
                     {lastReportedAt ? (
                       <Text style={styles.lastReportedText}>Ultimul ping: {lastReportedAt}</Text>
                     ) : (
@@ -226,10 +235,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 6,
   },
-  noMachineEmoji:    { fontSize: 32 },
   noMachineTitle:    { fontSize: 15, fontWeight: '600', color: '#374151' },
   noMachineSubtitle: { fontSize: 13, color: '#8D6E63', textAlign: 'center' },
 
+  inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   machineCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -240,7 +249,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BBF7D0',
   },
-  machineEmoji:  { fontSize: 26 },
   machineInfo:   { flex: 1 },
   machineCode:   { fontSize: 16, fontWeight: '700', color: '#0A5C36' },
   machineDetail: { fontSize: 13, color: '#5D4037', marginTop: 2 },

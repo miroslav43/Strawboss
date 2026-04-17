@@ -108,9 +108,9 @@ function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): stri
     <div style="min-width:180px;font-family:sans-serif;line-height:1.5;">
       <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${displayName}</div>
       <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${esc(p.code)}</div>
-      ${p.areaHectares != null ? `<div style="font-size:12px;color:#6b7280;">📐 ${p.areaHectares} ha</div>` : ''}
-      ${p.municipality  ? `<div style="font-size:12px;color:#6b7280;">📍 ${esc(p.municipality)}</div>`  : ''}
-      ${p.ownerName     ? `<div style="font-size:12px;color:#6b7280;">👤 ${esc(p.ownerName)}</div>`     : ''}
+      ${p.areaHectares != null ? `<div style="font-size:12px;color:#6b7280;">${p.areaHectares} ha</div>` : ''}
+      ${p.municipality  ? `<div style="font-size:12px;color:#6b7280;">${esc(p.municipality)}</div>`  : ''}
+      ${p.ownerName     ? `<div style="font-size:12px;color:#6b7280;">${esc(p.ownerName)}</div>`     : ''}
       <div style="margin-top:4px;font-size:11px;color:#6b7280;">
         ${esc(s.harvestStatusLabel)}: ${esc(s.labelHarvestStatus(p.harvestStatus))}
       </div>
@@ -140,7 +140,7 @@ function machinePopupHtml(
   const routeRow = selectionOnly
     ? ''
     : `<div style="margin-top:8px;">
-        <button data-show-route-machine-id="${esc(m.machineId)}" style="${btnBase}color:#3b82f6;border-color:#93c5fd;">🗺️ ${esc(s.showRoute)}</button>
+        <button data-show-route-machine-id="${esc(m.machineId)}" style="${btnBase}color:#3b82f6;border-color:#93c5fd;">${esc(s.showRoute)}</button>
       </div>`;
   return `
     <div style="min-width:180px;font-family:sans-serif;line-height:1.5;">
@@ -642,8 +642,8 @@ export function LeafletMap({
           `<div style="min-width:160px;font-family:sans-serif;line-height:1.5;">
             <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${esc(d.name)}</div>
             <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${esc(d.code)}</div>
-            ${d.address ? `<div style="font-size:12px;color:#6b7280;">📍 ${esc(d.address)}</div>` : ''}
-            ${d.contactName ? `<div style="font-size:12px;color:#6b7280;">👤 ${esc(d.contactName)}</div>` : ''}
+            ${d.address ? `<div style="font-size:12px;color:#6b7280;">${esc(d.address)}</div>` : ''}
+            ${d.contactName ? `<div style="font-size:12px;color:#6b7280;">${esc(d.contactName)}</div>` : ''}
           </div>`,
           { maxWidth: 260 },
         );

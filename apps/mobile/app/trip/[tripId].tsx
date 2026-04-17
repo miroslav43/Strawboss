@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
@@ -194,7 +195,7 @@ export default function TripDetailScreen() {
             <ActionCard
               title="Start Loading"
               subtitle="Scan machine and count bales"
-              icon={<Text style={styles.actionIcon}>{'\u2B06'}</Text>}
+              icon={<MaterialCommunityIcons name="arrow-up-bold" size={24} color={colors.primary} />}
               onPress={() =>
                 router.push({
                   pathname: '/operations/load',
@@ -209,7 +210,7 @@ export default function TripDetailScreen() {
             <ActionCard
               title="Continue Loading"
               subtitle="Resume the loading process"
-              icon={<Text style={styles.actionIcon}>{'\u2B06'}</Text>}
+              icon={<MaterialCommunityIcons name="arrow-up-bold" size={24} color={colors.primary} />}
               onPress={() =>
                 router.push({
                   pathname: '/operations/load',
@@ -224,7 +225,7 @@ export default function TripDetailScreen() {
             <ActionCard
               title="Depart"
               subtitle="Begin transit to destination"
-              icon={<Text style={styles.actionIcon}>{'\u27A1'}</Text>}
+              icon={<MaterialCommunityIcons name="arrow-right-bold" size={24} color={colors.primary} />}
               onPress={() =>
                 updateTripStatus('in_transit', {
                   departure_at: new Date().toISOString(),
@@ -238,7 +239,7 @@ export default function TripDetailScreen() {
             <ActionCard
               title="Arrive at Destination"
               subtitle="Mark arrival at delivery point"
-              icon={<Text style={styles.actionIcon}>{'\uD83D\uDCCD'}</Text>}
+              icon={<MaterialCommunityIcons name="map-marker" size={24} color={colors.primary} />}
               onPress={() =>
                 updateTripStatus('arrived', {
                   arrival_at: new Date().toISOString(),
@@ -252,7 +253,7 @@ export default function TripDetailScreen() {
             <ActionCard
               title="Start Delivery"
               subtitle="Weigh, photograph, and sign"
-              icon={<Text style={styles.actionIcon}>{'\u2B07'}</Text>}
+              icon={<MaterialCommunityIcons name="arrow-down-bold" size={24} color={colors.primary} />}
               onPress={() =>
                 router.push({
                   pathname: '/operations/deliver',
@@ -267,7 +268,7 @@ export default function TripDetailScreen() {
             <ActionCard
               title="Complete Trip"
               subtitle="Mark this trip as finished"
-              icon={<Text style={styles.actionIcon}>{'\u2713'}</Text>}
+              icon={<MaterialCommunityIcons name="check-bold" size={24} color={colors.primary} />}
               onPress={() =>
                 updateTripStatus('completed', {
                   completed_at: new Date().toISOString(),
@@ -366,9 +367,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.neutral,
-  },
-  actionIcon: {
-    fontSize: 20,
   },
   doneCard: {
     backgroundColor: colors.primary50,

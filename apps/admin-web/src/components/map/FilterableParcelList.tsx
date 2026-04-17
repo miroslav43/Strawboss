@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useRef } from 'react';
-import { ChevronDown, ChevronUp, Crosshair, Pencil, MapPin, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, ChevronUp, Crosshair, Pencil, MapPin, Trash2, Upload, X, User } from 'lucide-react';
 import type { Parcel } from '@strawboss/types';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { parseKml, type KmlParsedParcel } from '@/lib/kml-parser';
@@ -130,7 +130,7 @@ export function FilterableParcelList({
       {kmlError && (
         <div className="mx-3 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
           {kmlError}
-          <button onClick={() => setKmlError(null)} className="ml-2 text-red-400 hover:text-red-600">✕</button>
+          <button onClick={() => setKmlError(null)} className="ml-2 text-red-400 hover:text-red-600"><X className="h-3 w-3 inline" /></button>
         </div>
       )}
 
@@ -194,8 +194,9 @@ export function FilterableParcelList({
                       {parcel.areaHectares != null ? `${parcel.areaHectares} ha` : '—'}
                     </p>
                     {parcel.ownerName && (
-                      <p className="truncate text-xs text-neutral-400">
-                        👤 {parcel.ownerName}
+                      <p className="flex items-center gap-1 truncate text-xs text-neutral-400">
+                        <User className="h-3 w-3 flex-shrink-0" />
+                        {parcel.ownerName}
                       </p>
                     )}
                   </div>

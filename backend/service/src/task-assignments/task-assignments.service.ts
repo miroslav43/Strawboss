@@ -241,11 +241,27 @@ export class TaskAssignmentsService {
       },
     }));
 
+    // Assignments with no parcel (e.g. trucks planned without a source field).
+    // They are NOT part of any parcel group, so admin-web's parcel view skips them,
+    // but mobile clients still need to see them on the assigned operator's screen.
+    const unassignedToParcel = rows
+      .filter((r) => !r.parcelId && r.status === 'in_progress')
+      .map((r) => ({
+        ...r,
+        machine: {
+          id: r.machineId,
+          machineType: r.machineType,
+          internalCode: r.machineCode,
+          registrationPlate: r.registrationPlate,
+        },
+      }));
+
     return {
       date,
       available,
       inProgress,
       done,
+      unassignedToParcel,
       parcelStatuses: statusRows,
     };
   }

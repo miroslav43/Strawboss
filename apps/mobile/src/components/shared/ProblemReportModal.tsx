@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 import { BigButton } from '@/components/ui/BigButton';
 import { mobileApiClient } from '@/lib/api-client';
@@ -104,7 +105,7 @@ export function ProblemReportModal({
 
             {isSuccess ? (
               <View style={styles.successContainer}>
-                <Text style={styles.successIcon}>{'✓'}</Text>
+                <MaterialCommunityIcons name="check-circle" size={48} color={colors.success} />
                 <Text style={styles.successText}>
                   Problema a fost raportată cu succes!
                 </Text>
@@ -197,10 +198,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 32,
     gap: 12,
-  },
-  successIcon: {
-    fontSize: 48,
-    color: colors.success,
   },
   successText: {
     fontSize: 16,
