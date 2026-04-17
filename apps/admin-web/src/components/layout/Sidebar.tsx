@@ -17,6 +17,8 @@ import {
   Tractor,
   Wheat,
   Warehouse,
+  Fuel,
+  Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
@@ -34,6 +36,8 @@ const navItems = [
   { href: '/parcels', icon: Wheat, labelKey: 'nav.parcels' as const },
   { href: '/deposits', icon: Warehouse, labelKey: 'nav.deposits' as const },
   { href: '/machines', icon: Wrench, labelKey: 'nav.machines' as const },
+  { href: '/fuel-logs', icon: Fuel, labelKey: 'nav.fuelLogs' as const },
+  { href: '/consumable-logs', icon: Package, labelKey: 'nav.consumableLogs' as const },
   { href: '/accounts', icon: Users, labelKey: 'nav.accounts' as const },
 ] as const;
 

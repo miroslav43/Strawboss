@@ -21,8 +21,15 @@ export class ConsumableLogsController {
   list(
     @Query('machineId') machineId?: string,
     @Query('parcelId') parcelId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.consumableLogsService.list({ machineId, parcelId });
+    return this.consumableLogsService.list({
+      machineId,
+      parcelId,
+      dateFrom,
+      dateTo,
+    });
   }
 
   @Post()

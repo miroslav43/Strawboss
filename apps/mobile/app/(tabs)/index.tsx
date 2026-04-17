@@ -5,8 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -47,20 +47,12 @@ export default function HomeScreen() {
     enabled: !!assignedMachineId,
   });
 
-  const { isTracking, error: trackingError, lastReportedAt, startTracking, stopTracking } =
+  const { isTracking, error: trackingError, lastReportedAt, refresh: refreshTracking } =
     useLocationTracking();
-
-  const handleToggleTracking = async () => {
-    if (isTracking) {
-      stopTracking();
-    } else if (assignedMachineId) {
-      await startTracking(assignedMachineId);
-    }
-  };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchProfile(), triggerSync()]);
+    await Promise.all([refetchProfile(), triggerSync(), refreshTracking()]);
     setRefreshing(false);
   };
 
@@ -128,41 +120,43 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              {/* Tracking toggle */}
-              <TouchableOpacity
+              {/* GPS status (Android: auto-started after login when a machine is assigned) */}
+              <View
                 style={[
-                  styles.trackingButton,
-                  isTracking ? styles.trackingButtonActive : styles.trackingButtonIdle,
+                  styles.trackingStatusBar,
+                  isTracking ? styles.trackingStatusActive : styles.trackingStatusIdle,
                 ]}
-                onPress={handleToggleTracking}
-                activeOpacity={0.8}
               >
                 <View style={styles.trackingButtonInner}>
                   <View
                     style={[
                       styles.trackingDot,
-                      { backgroundColor: isTracking ? '#fff' : '#9ca3af' },
+                      { backgroundColor: isTracking ? '#16a34a' : '#9ca3af' },
                     ]}
                   />
-                  <Text style={styles.trackingButtonText}>
-                    {isTracking ? 'Oprește tracking GPS' : 'Pornește tracking GPS'}
+                  <Text style={styles.trackingStatusText}>
+                    {Platform.OS === 'android'
+                      ? isTracking
+                        ? 'GPS activ (inclusiv în fundal)'
+                        : 'GPS nu rulează — verifică permisiunile „Tot timpul”'
+                      : isTracking
+                        ? 'GPS activ'
+                        : 'GPS: pornește din setările aplicației (iOS)'}
                   </Text>
                 </View>
-              </TouchableOpacity>
+              </View>
 
-              {/* Active badge */}
-              {isTracking && (
+              {(isTracking || lastReportedAt) && (
                 <View style={styles.trackingBadge}>
-                  <View style={styles.pulseDot} />
+                  {isTracking ? <View style={styles.pulseDot} /> : <View style={styles.trackingDotMuted} />}
                   <View>
                     <Text style={styles.trackingBadgeText}>
-                      Tracking activ — {MACHINE_EMOJI[machine.machineType] ?? '📍'}{' '}
-                      {machine.internalCode}
+                      {MACHINE_EMOJI[machine.machineType] ?? '📍'} {machine.internalCode}
                     </Text>
-                    {lastReportedAt && (
-                      <Text style={styles.lastReportedText}>
-                        Ultimul ping: {lastReportedAt}
-                      </Text>
+                    {lastReportedAt ? (
+                      <Text style={styles.lastReportedText}>Ultimul ping: {lastReportedAt}</Text>
+                    ) : (
+                      <Text style={styles.lastReportedText}>Așteptând primul ping…</Text>
                     )}
                   </View>
                 </View>
@@ -252,17 +246,29 @@ const styles = StyleSheet.create({
   machineDetail: { fontSize: 13, color: '#5D4037', marginTop: 2 },
   machinePlate:  { fontSize: 12, color: '#9ca3af', marginTop: 2 },
 
-  trackingButton: { borderRadius: 10, padding: 14, marginTop: 4 },
-  trackingButtonIdle:   { backgroundColor: '#0A5C36' },
-  trackingButtonActive: { backgroundColor: '#C62828' },
+  trackingStatusBar: {
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 4,
+    borderWidth: 1,
+  },
+  trackingStatusActive: {
+    backgroundColor: '#F0F9F4',
+    borderColor: '#BBF7D0',
+  },
+  trackingStatusIdle: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+  },
   trackingButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  trackingDot:       { width: 8, height: 8, borderRadius: 4 },
-  trackingButtonText:{ fontSize: 15, fontWeight: '700', color: '#fff' },
+  trackingDot: { width: 8, height: 8, borderRadius: 4 },
+  trackingDotMuted: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#d1d5db' },
+  trackingStatusText: { fontSize: 14, fontWeight: '600', color: '#374151', flex: 1 },
 
   trackingBadge: {
     flexDirection: 'row',

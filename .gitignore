@@ -10,4 +10,7 @@ coverage
 .worktrees
 .superpowers
 logs/
+# Docker / local upload volume at repo root only (do not use bare `uploads/` — it ignores `backend/service/src/uploads/`).
+/uploads/
+.DS_Store
 .cursor/

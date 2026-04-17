@@ -17,10 +17,6 @@ interface Parcel {
   name: string;
 }
 
-interface ParcelsResponse {
-  data: Parcel[];
-}
-
 interface ParcelSelectorProps {
   onSelect: (parcelId: string, parcelName: string) => void;
   selectedId: string | null;
@@ -28,10 +24,11 @@ interface ParcelSelectorProps {
 }
 
 async function fetchActiveParcels(): Promise<Parcel[]> {
-  const response = await mobileApiClient.get<ParcelsResponse>(
+  // Backend returns a plain array for this endpoint (not a paginated wrapper).
+  const parcels = await mobileApiClient.get<Parcel[]>(
     '/api/v1/parcels?isActive=true',
   );
-  return response.data;
+  return parcels ?? [];
 }
 
 export function ParcelSelector({

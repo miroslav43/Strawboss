@@ -24,6 +24,11 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { MachineIconPicker } from '@/components/map/MachineIconPicker';
+import { MACHINE_ICONS } from '@/components/map/machine-icons';
+import type { MachineType as MapMachineType } from '@/components/map/machine-icons';
+import { useMachineIconPrefs } from '@/hooks/useMachineIconPrefs';
+import type { IconVariant } from '@/components/map/machine-icons';
 
 // ── Labels / config ───────────────────────────────────────────────────────
 
@@ -402,9 +407,16 @@ function CreateMachineModal({ onClose, allMachines }: {
 
 // ── Edit modal ────────────────────────────────────────────────────────────
 
-function EditMachineModal({ machine, onClose }: {
+function EditMachineModal({
+  machine,
+  onClose,
+  iconVariant,
+  onSetIconVariant,
+}: {
   machine: Machine;
   onClose: () => void;
+  iconVariant: IconVariant;
+  onSetIconVariant: (v: IconVariant) => void;
 }) {
   const [form, setForm] = useState<MachineFormState>(() => machineToForm(machine));
   const update = useUpdateMachine(apiClient);
@@ -419,11 +431,27 @@ function EditMachineModal({ machine, onClose }: {
   };
 
   const code = machine.internalCode || machine.id.slice(0, 8);
+  const mapType = machine.machineType as unknown as MapMachineType;
 
   return (
     <ModalShell title={`Editează — ${code}`} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-5 p-6">
         <MachineForm form={form} onChange={patch} showIsActive />
+
+        {/* Icon picker — stored in localStorage, not sent to backend */}
+        {MACHINE_ICONS[mapType] && (
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-2">
+            <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+              Iconiță pe hartă
+            </p>
+            <MachineIconPicker
+              machineType={mapType}
+              currentVariant={iconVariant}
+              onSet={onSetIconVariant}
+            />
+          </div>
+        )}
+
         {update.isError && <ErrorBanner message={(update.error as Error)?.message} />}
         <ModalFooter
           onCancel={onClose}
@@ -529,6 +557,8 @@ export default function MachinesPage() {
   const deleteMachine = useDeleteMachine();
 
   const machines = toMachineList(machinesRaw);
+
+  const { prefs: iconPrefs, setVariant: setIconVariant, getVariant } = useMachineIconPrefs();
 
   const [showCreate,   setShowCreate]   = useState(false);
   const [editTarget,   setEditTarget]   = useState<Machine | null>(null);
@@ -723,7 +753,25 @@ export default function MachinesPage() {
                         {m.internalCode}
                       </td>
                       <td className="px-4 py-3">
-                        <TypeBadge type={m.machineType} />
+                        <div className="flex items-center gap-2">
+                          {/* Current icon preview for this machine */}
+                          {MACHINE_ICONS[m.machineType as MapMachineType] && (() => {
+                            const def = MACHINE_ICONS[m.machineType as MapMachineType];
+                            const v = getVariant(m.id);
+                            return (
+                              <button
+                                type="button"
+                                title="Schimbă iconița (deschide editare)"
+                                onClick={() => setEditTarget(m)}
+                                style={{ background: def.color }}
+                                className="h-6 w-6 shrink-0 rounded-md flex items-center justify-center hover:scale-110 transition-transform"
+                                // Safe: SVG string is a compile-time constant from machine-icons.ts
+                                dangerouslySetInnerHTML={{ __html: def.variants[v] }}
+                              />
+                            );
+                          })()}
+                          <TypeBadge type={m.machineType} />
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-neutral-700">
                         {m.make} {m.model}
@@ -777,7 +825,12 @@ export default function MachinesPage() {
         <CreateMachineModal allMachines={machines} onClose={() => setShowCreate(false)} />
       )}
       {editTarget && (
-        <EditMachineModal machine={editTarget} onClose={() => setEditTarget(null)} />
+        <EditMachineModal
+          machine={editTarget}
+          onClose={() => setEditTarget(null)}
+          iconVariant={getVariant(editTarget.id)}
+          onSetIconVariant={(v) => setIconVariant(editTarget.id, v)}
+        />
       )}
       {deleteTarget && (
         <DeleteDialog

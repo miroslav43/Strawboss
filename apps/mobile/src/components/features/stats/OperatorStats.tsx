@@ -7,6 +7,7 @@ import {
   Text,
   StyleSheet,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { StatCard } from './StatCard';
 import { mobileApiClient } from '@/lib/api-client';
 import { colors } from '@strawboss/ui-tokens';
@@ -15,12 +16,19 @@ interface OperatorStatsProps {
   operatorId: string;
 }
 
+/**
+ * Aggregates returned by `/fuel-logs/stats` and `/consumable-logs/stats`.
+ * The Postgres driver serializes `SUM(...)` / `COUNT(...)` as strings for
+ * `numeric` and `bigint`; we coerce with `Number(...)` on the client.
+ */
 interface FuelStatsResponse {
-  total_liters?: number;
+  totalLiters?: number | string;
+  entryCount?: number | string;
 }
 
-interface TwineStatsResponse {
-  total_kg?: number;
+interface ConsumableStatsResponse {
+  totalQuantity?: number | string;
+  entryCount?: number | string;
 }
 
 interface BaleProductionsResponse {
@@ -40,6 +48,12 @@ const INITIAL_STATS: StatsState = {
   totalBales: 0,
 };
 
+function toNumber(value: number | string | undefined): number {
+  if (value == null) return 0;
+  const n = typeof value === 'string' ? Number(value) : value;
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function OperatorStats({ operatorId }: OperatorStatsProps) {
   const [stats, setStats] = useState<StatsState>(INITIAL_STATS);
   const [loading, setLoading] = useState(true);
@@ -54,7 +68,7 @@ export function OperatorStats({ operatorId }: OperatorStatsProps) {
         mobileApiClient.get<FuelStatsResponse>(
           `/api/v1/fuel-logs/stats?operatorId=${operatorId}`,
         ),
-        mobileApiClient.get<TwineStatsResponse>(
+        mobileApiClient.get<ConsumableStatsResponse>(
           `/api/v1/consumable-logs/stats?operatorId=${operatorId}&consumableType=twine`,
         ),
         mobileApiClient.get<BaleProductionsResponse>(
@@ -69,8 +83,8 @@ export function OperatorStats({ operatorId }: OperatorStatsProps) {
         ) ?? balesRes.total ?? 0;
 
       setStats({
-        totalFuelLiters: fuelRes.total_liters ?? 0,
-        totalTwineKg: twineRes.total_kg ?? 0,
+        totalFuelLiters: toNumber(fuelRes.totalLiters),
+        totalTwineKg: toNumber(twineRes.totalQuantity),
         totalBales,
       });
     } catch (err) {
@@ -84,6 +98,14 @@ export function OperatorStats({ operatorId }: OperatorStatsProps) {
     setLoading(true);
     fetchStats().finally(() => setLoading(false));
   }, [fetchStats]);
+
+  // Refetch whenever the user navigates back to this tab/screen — ensures
+  // the summary reflects the most recent local save + background sync.
+  useFocusEffect(
+    useCallback(() => {
+      void fetchStats();
+    }, [fetchStats]),
+  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

@@ -11,7 +11,10 @@ export interface LocalConsumableLog {
   quantity: number;
   unit: string;
   logged_at: string;
+  /** Local file URI captured from the camera/picker; kept for offline preview. */
   receipt_photo_uri: string | null;
+  /** Public URL returned by the server after upload; this is what we sync. */
+  receipt_photo_url: string | null;
   created_at: string;
   updated_at: string;
   server_version: number;
@@ -25,8 +28,9 @@ export class ConsumableLogsRepo {
       `INSERT INTO consumable_logs (
         id, machine_id, operator_id, parcel_id,
         consumable_type, quantity, unit, logged_at,
-        receipt_photo_uri, created_at, updated_at, server_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        receipt_photo_uri, receipt_photo_url,
+        created_at, updated_at, server_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.machine_id,
@@ -37,6 +41,7 @@ export class ConsumableLogsRepo {
         data.unit,
         data.logged_at,
         data.receipt_photo_uri,
+        data.receipt_photo_url,
         data.created_at,
         data.updated_at,
         data.server_version,
@@ -49,8 +54,9 @@ export class ConsumableLogsRepo {
       `INSERT INTO consumable_logs (
         id, machine_id, operator_id, parcel_id,
         consumable_type, quantity, unit, logged_at,
-        receipt_photo_uri, created_at, updated_at, server_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        receipt_photo_uri, receipt_photo_url,
+        created_at, updated_at, server_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         machine_id = excluded.machine_id,
         operator_id = excluded.operator_id,
@@ -60,6 +66,7 @@ export class ConsumableLogsRepo {
         unit = excluded.unit,
         logged_at = excluded.logged_at,
         receipt_photo_uri = excluded.receipt_photo_uri,
+        receipt_photo_url = excluded.receipt_photo_url,
         updated_at = excluded.updated_at,
         server_version = excluded.server_version`,
       [
@@ -72,10 +79,23 @@ export class ConsumableLogsRepo {
         data.unit,
         data.logged_at,
         data.receipt_photo_uri,
+        data.receipt_photo_url,
         data.created_at,
         data.updated_at,
         data.server_version,
       ] as SQLiteBindValue[]
+    );
+  }
+
+  /**
+   * Patch the receipt URL on an existing row without changing anything else.
+   * Used by the pre-push sync hook when a photo upload succeeds after the
+   * original row was saved offline.
+   */
+  async updateReceiptUrl(id: string, url: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE consumable_logs SET receipt_photo_url = ?, updated_at = datetime('now') WHERE id = ?`,
+      [url, id] as SQLiteBindValue[],
     );
   }
 

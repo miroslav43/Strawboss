@@ -1,10 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import type { Parcel } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
-import { calculateRoute } from '@/lib/routing';
+import { calculateRoute, haversineKm } from '@/lib/routing';
 import { MapView, type MapViewHandle } from './MapView';
 import { ParcelInfoSheet } from './ParcelInfoSheet';
 import type { MapEvent, ParcelMapData, DestinationMapData, MachineMarkerData } from '@/map/map-bridge';
@@ -31,10 +31,40 @@ interface MapScreenProps {
   focusId?: string;
 }
 
+/**
+ * The backend serialises centroid/coords with PostGIS `ST_AsGeoJSON(...)::json`,
+ * so we receive a GeoJSON Point `{ type: 'Point', coordinates: [lon, lat] }`
+ * even though some TypeScript types model it as `{ lat, lon }`. Accept both
+ * shapes and return `null` for anything unusable.
+ */
+function toLatLon(
+  raw: unknown,
+): { lat: number; lon: number } | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const obj = raw as {
+    lat?: unknown;
+    lon?: unknown;
+    coordinates?: unknown;
+  };
+  if (typeof obj.lat === 'number' && typeof obj.lon === 'number') {
+    return { lat: obj.lat, lon: obj.lon };
+  }
+  if (Array.isArray(obj.coordinates) && obj.coordinates.length >= 2) {
+    const [lon, lat] = obj.coordinates;
+    if (typeof lon === 'number' && typeof lat === 'number') {
+      return { lat, lon };
+    }
+  }
+  return null;
+}
+
 export function MapScreen({ focusId }: MapScreenProps) {
   const mapRef = useRef<MapViewHandle>(null);
   const [mapReady, setMapReady] = useState(false);
   const [selectedItem, setSelectedParcel] = useState<SelectedMapItem | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(
+    null,
+  );
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -59,6 +89,14 @@ export function MapScreen({ focusId }: MapScreenProps) {
     queryFn: () => mobileApiClient.get<RelatedMachine[]>('/api/v1/location/related-machines'),
     refetchInterval: 30_000,
   });
+
+  const handleReset = useCallback(() => {
+    mapRef.current?.sendCommand({ type: 'CLEAR_ROUTE' });
+    mapRef.current?.sendCommand({ type: 'HIGHLIGHT_PARCEL', parcelId: '' });
+    mapRef.current?.sendCommand({ type: 'FIT_BOUNDS' });
+    setSelectedParcel(null);
+    setRouteInfo(null);
+  }, []);
 
   // Track user location
   useEffect(() => {
@@ -105,14 +143,17 @@ export function MapScreen({ focusId }: MapScreenProps) {
     }
 
     if (destinations?.length) {
-      const destData: DestinationMapData[] = destinations.map((d) => ({
-        id: d.id,
-        name: d.name,
-        code: d.code,
-        boundary: d.boundary,
-        lat: d.coords?.lat,
-        lon: d.coords?.lon,
-      }));
+      const destData: DestinationMapData[] = destinations.map((d) => {
+        const center = toLatLon(d.coords);
+        return {
+          id: d.id,
+          name: d.name,
+          code: d.code,
+          boundary: d.boundary,
+          lat: center?.lat,
+          lon: center?.lon,
+        };
+      });
       mapRef.current?.sendCommand({ type: 'SET_DESTINATIONS', destinations: destData });
     }
   }, [mapReady, parcels, destinations]);
@@ -159,6 +200,9 @@ export function MapScreen({ focusId }: MapScreenProps) {
       if (event.type === 'PARCEL_TAPPED') {
         const parcel = parcels?.find((p) => p.id === event.parcelId);
         if (parcel) {
+          mapRef.current?.sendCommand({ type: 'CLEAR_ROUTE' });
+          setRouteInfo(null);
+          const center = toLatLon(parcel.centroid);
           setSelectedParcel({
             id: parcel.id,
             name: parcel.name,
@@ -166,20 +210,23 @@ export function MapScreen({ focusId }: MapScreenProps) {
             areaHectares: parcel.areaHectares,
             municipality: parcel.municipality,
             harvestStatus: parcel.harvestStatus,
-            centroidLat: parcel.centroid?.lat,
-            centroidLon: parcel.centroid?.lon,
+            centroidLat: center?.lat,
+            centroidLon: center?.lon,
           });
           mapRef.current?.sendCommand({ type: 'HIGHLIGHT_PARCEL', parcelId: parcel.id });
         }
       } else if (event.type === 'DESTINATION_TAPPED') {
         const dest = destinations?.find((d) => d.id === event.destinationId);
         if (dest) {
+          mapRef.current?.sendCommand({ type: 'CLEAR_ROUTE' });
+          setRouteInfo(null);
+          const center = toLatLon(dest.coords);
           setSelectedParcel({
             id: dest.id,
             name: dest.name,
             code: dest.code,
-            centroidLat: dest.coords?.lat,
-            centroidLon: dest.coords?.lon,
+            centroidLat: center?.lat,
+            centroidLon: center?.lon,
           });
         }
       }
@@ -211,6 +258,10 @@ export function MapScreen({ focusId }: MapScreenProps) {
         distanceKm: result.distanceKm,
         durationMin: result.durationMin,
       });
+      setRouteInfo({
+        distanceKm: result.distanceKm,
+        durationMin: result.durationMin,
+      });
     } else {
       // Fallback: straight line
       mapRef.current?.sendCommand({
@@ -220,23 +271,43 @@ export function MapScreen({ focusId }: MapScreenProps) {
           { lat: selectedItem.centroidLat, lon: selectedItem.centroidLon },
         ],
       });
+      const approxKm = haversineKm(userLocation, {
+        lat: selectedItem.centroidLat,
+        lon: selectedItem.centroidLon,
+      });
+      setRouteInfo({
+        distanceKm: approxKm,
+        durationMin: 0,
+      });
       Alert.alert('Info', 'Ruta detaliată necesită internet. Se afișează linie directă.');
     }
-    setSelectedParcel(null);
   }, [selectedItem, userLocation]);
 
   const handleDismiss = useCallback(() => {
-    setSelectedParcel(null);
-    mapRef.current?.sendCommand({ type: 'HIGHLIGHT_PARCEL', parcelId: '' });
-  }, []);
+    handleReset();
+  }, [handleReset]);
+
+  const showOverlayControls = selectedItem !== null || routeInfo !== null;
 
   return (
     <View style={styles.container}>
       <MapView ref={mapRef} onEvent={handleMapEvent} onReady={handleMapReady} />
+      {showOverlayControls && (
+        <TouchableOpacity
+          style={styles.resetFab}
+          onPress={handleReset}
+          accessibilityRole="button"
+          accessibilityLabel="Resetează harta"
+        >
+          <Text style={styles.resetFabText}>Reset</Text>
+        </TouchableOpacity>
+      )}
       {selectedItem && (
         <ParcelInfoSheet
           parcel={selectedItem}
-          onNavigateOnMap={handleNavigateOnMap}
+          routeInfo={routeInfo}
+          hasUserLocation={userLocation !== null}
+          onPreviewRoute={handleNavigateOnMap}
           onDismiss={handleDismiss}
           isLoadingRoute={isLoadingRoute}
         />
@@ -258,4 +329,25 @@ interface SelectedMapItem {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  resetFab: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  resetFabText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0A5C36',
+  },
 });

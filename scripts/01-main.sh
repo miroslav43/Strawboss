@@ -57,11 +57,11 @@ cmd_dev() {
   _build_packages
 
   echo ""
-  echo -e "  ${CYAN}\\u250C\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2510${NC}"
-  echo -e "  ${CYAN}\\u2502${NC}  ${BOLD}Admin${NC}     http://localhost:3000   ${CYAN}\\u2502${NC}"
-  echo -e "  ${CYAN}\\u2502${NC}  ${BOLD}Backend${NC}   http://localhost:3001   ${CYAN}\\u2502${NC}"
-  echo -e "  ${CYAN}\\u2502${NC}  ${BOLD}Redis${NC}     localhost:6379          ${CYAN}\\u2502${NC}"
-  echo -e "  ${CYAN}\\u2514\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2518${NC}"
+  echo -e "  ${CYAN}┌────────────────────────────────────────┐${NC}"
+  echo -e "  ${CYAN}│${NC}  ${BOLD}Admin${NC}     http://localhost:3000   ${CYAN}│${NC}"
+  echo -e "  ${CYAN}│${NC}  ${BOLD}Backend${NC}   http://localhost:3001   ${CYAN}│${NC}"
+  echo -e "  ${CYAN}│${NC}  ${BOLD}Redis${NC}     localhost:6379          ${CYAN}│${NC}"
+  echo -e "  ${CYAN}└────────────────────────────────────────┘${NC}"
   echo ""
 
   pnpm --filter @strawboss/backend --filter @strawboss/admin-web dev

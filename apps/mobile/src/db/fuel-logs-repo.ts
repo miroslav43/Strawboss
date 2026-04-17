@@ -13,7 +13,10 @@ export interface LocalFuelLog {
   odometer_km: number | null;
   hourmeter_hrs: number | null;
   is_full_tank: number;
+  /** Local file URI captured from the camera/picker; kept for offline preview. */
   receipt_photo_uri: string | null;
+  /** Public URL returned by the server after upload; this is what we sync. */
+  receipt_photo_url: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -28,9 +31,9 @@ export class FuelLogsRepo {
       `INSERT INTO fuel_logs (
         id, machine_id, operator_id, parcel_id, logged_at,
         fuel_type, quantity_liters, odometer_km, hourmeter_hrs,
-        is_full_tank, receipt_photo_uri, notes,
+        is_full_tank, receipt_photo_uri, receipt_photo_url, notes,
         created_at, updated_at, server_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.machine_id,
@@ -43,6 +46,7 @@ export class FuelLogsRepo {
         data.hourmeter_hrs,
         data.is_full_tank,
         data.receipt_photo_uri,
+        data.receipt_photo_url,
         data.notes,
         data.created_at,
         data.updated_at,
@@ -56,9 +60,9 @@ export class FuelLogsRepo {
       `INSERT INTO fuel_logs (
         id, machine_id, operator_id, parcel_id, logged_at,
         fuel_type, quantity_liters, odometer_km, hourmeter_hrs,
-        is_full_tank, receipt_photo_uri, notes,
+        is_full_tank, receipt_photo_uri, receipt_photo_url, notes,
         created_at, updated_at, server_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         machine_id = excluded.machine_id,
         operator_id = excluded.operator_id,
@@ -70,6 +74,7 @@ export class FuelLogsRepo {
         hourmeter_hrs = excluded.hourmeter_hrs,
         is_full_tank = excluded.is_full_tank,
         receipt_photo_uri = excluded.receipt_photo_uri,
+        receipt_photo_url = excluded.receipt_photo_url,
         notes = excluded.notes,
         updated_at = excluded.updated_at,
         server_version = excluded.server_version`,
@@ -85,11 +90,24 @@ export class FuelLogsRepo {
         data.hourmeter_hrs,
         data.is_full_tank,
         data.receipt_photo_uri,
+        data.receipt_photo_url,
         data.notes,
         data.created_at,
         data.updated_at,
         data.server_version,
       ] as SQLiteBindValue[]
+    );
+  }
+
+  /**
+   * Patch the receipt URL on an existing row without changing anything else.
+   * Used by the pre-push sync hook when a photo upload succeeds after the
+   * original row was saved offline.
+   */
+  async updateReceiptUrl(id: string, url: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE fuel_logs SET receipt_photo_url = ?, updated_at = datetime('now') WHERE id = ?`,
+      [url, id] as SQLiteBindValue[],
     );
   }
 

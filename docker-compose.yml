@@ -10,9 +10,11 @@ services:
       - "3001"
     volumes:
       - ./logs:/app/logs
+      - ./uploads:/app/uploads
     environment:
       - PORT=3001
       - LOG_ROOT=/app/logs
+      - UPLOADS_ROOT=/app/uploads
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}

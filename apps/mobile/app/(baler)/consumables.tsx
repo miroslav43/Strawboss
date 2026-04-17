@@ -27,9 +27,6 @@ export default function BalerConsumablesScreen() {
         onComplete={() => {
           // Stay on tab — user can record more consumables
         }}
-        onCancel={() => {
-          // No-op on tab screen
-        }}
       />
     </SafeAreaView>
   );

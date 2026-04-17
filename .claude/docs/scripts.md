@@ -93,7 +93,7 @@ cmd_my__command() {
 |---|---|
 | `mobile-dev` | Start Expo dev server (builds shared packages first) |
 | `mobile-build` | Android APK via Expo EAS cloud build |
-| `mobile-build-local` | Android APK via local Gradle (accepts `debug` or `release` arg) |
+| `mobile-build-local` | Android APK via local Gradle (`debug` or `release`, optional `--fast` to skip `gradlew clean`) |
 | `mobile-install` | Install APK on connected device via adb (auto-finds latest APK) |
 
 ### Status & Diagnostics (`scripts/03-status.sh`)

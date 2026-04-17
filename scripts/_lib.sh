@@ -35,29 +35,29 @@ else
   WHITE='' GRAY='' BOLD='' DIM='' NC=''
 fi
 
-# Unicode symbols
-OK="${GREEN}\\u2714${NC}"
-FAIL="${RED}\\u2718${NC}"
-WARN="${YELLOW}\\u26A0${NC}"
-ARROW="${CYAN}\\u25B6${NC}"
-DOT="${GRAY}\\u2022${NC}"
+# Symbols (UTF-8 literals — bash `echo -e` does not interpret \uXXXX escapes.)
+OK="${GREEN}✓${NC}"
+FAIL="${RED}✗${NC}"
+WARN="${YELLOW}⚠${NC}"
+ARROW="${CYAN}▶${NC}"
+DOT="${GRAY}•${NC}"
 
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
-info()    { echo -e "  ${BLUE}\\u25CF${NC}  $*"; }
-success() { echo -e "  ${GREEN}\\u2714${NC}  $*"; }
-warn()    { echo -e "  ${YELLOW}\\u26A0${NC}  $*"; }
-error()   { echo -e "  ${RED}\\u2718${NC}  $*" >&2; }
+info()    { echo -e "  ${BLUE}●${NC}  $*"; }
+success() { echo -e "  ${GREEN}✓${NC}  $*"; }
+warn()    { echo -e "  ${YELLOW}⚠${NC}  $*"; }
+error()   { echo -e "  ${RED}✗${NC}  $*" >&2; }
 
 header() {
   echo ""
-  echo -e "  ${BOLD}${CYAN}\\u250C\\u2500\\u2500 $* \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500${NC}"
+  echo -e "  ${BOLD}${CYAN}┌── $* ──────────────────────────────────────${NC}"
   echo ""
 }
 
 divider() {
-  echo -e "  ${GRAY}\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500${NC}"
+  echo -e "  ${GRAY}────────────────────────────────────────────────────────${NC}"
 }
 
 section() {

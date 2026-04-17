@@ -12,6 +12,7 @@ import { pushMutations } from './push';
 import { pullUpdates } from './pull';
 import { mergeRecords } from './conflict';
 import { uploadTodayMobileLogs } from './mobile-log-upload';
+import { uploadReceipt } from '../lib/receiptUpload';
 
 export interface SyncResult {
   pushed: number;
@@ -45,6 +46,15 @@ export class SyncManager {
 
     // Reset any entries stuck in 'in_flight' from a previous interrupted sync
     await this.syncQueueRepo.resetInFlight();
+
+    // Best-effort: upload receipt photos for rows that were saved offline or
+    // whose initial upload attempt failed. Any failure here is non-fatal —
+    // the mutation still pushes, just without a photo URL.
+    await this.uploadPendingReceipts().catch((err) => {
+      mobileLogger.error('Pre-push receipt upload pass failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     const pushResult = await this.push();
     const pullResult = await this.pull();
@@ -319,5 +329,78 @@ export class SyncManager {
         } as unknown as LocalTaskAssignment);
       }
     }
+  }
+
+  /**
+   * Walk the pending sync_queue and, for any fuel_logs / consumable_logs
+   * mutation whose payload is missing `receipt_photo_url`, try to upload the
+   * locally-stored photo and patch both the local row and the queue payload.
+   *
+   * This is the recovery path for photos that failed to upload synchronously
+   * at save time (e.g. the operator was offline when they logged fuel).
+   */
+  private async uploadPendingReceipts(): Promise<void> {
+    const pending = await this.syncQueueRepo.dequeue(100);
+    if (pending.length === 0) return;
+
+    for (const entry of pending) {
+      if (
+        entry.entity_type !== 'fuel_logs' &&
+        entry.entity_type !== 'consumable_logs'
+      ) {
+        continue;
+      }
+
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(entry.payload) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+
+      if (typeof payload['receipt_photo_url'] === 'string' && payload['receipt_photo_url']) {
+        continue;
+      }
+
+      const localUri = await this.getLocalReceiptUri(
+        entry.entity_type,
+        entry.entity_id,
+      );
+      if (!localUri) continue;
+
+      try {
+        const kind = entry.entity_type === 'fuel_logs' ? 'fuel' : 'consumable';
+        const uploaded = await uploadReceipt(localUri, kind);
+        payload['receipt_photo_url'] = uploaded.url;
+        await this.syncQueueRepo.updatePayload(entry.id, payload);
+
+        if (entry.entity_type === 'fuel_logs' && this.fuelLogsRepo) {
+          await this.fuelLogsRepo.updateReceiptUrl(entry.entity_id, uploaded.url);
+        } else if (entry.entity_type === 'consumable_logs' && this.consumableLogsRepo) {
+          await this.consumableLogsRepo.updateReceiptUrl(entry.entity_id, uploaded.url);
+        }
+      } catch (err) {
+        mobileLogger.info('Deferred receipt upload skipped, will retry next cycle', {
+          table: entry.entity_type,
+          id: entry.entity_id,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  private async getLocalReceiptUri(
+    table: string,
+    id: string,
+  ): Promise<string | null> {
+    if (table === 'fuel_logs' && this.fuelLogsRepo) {
+      const row = await this.fuelLogsRepo.findById(id);
+      return row?.receipt_photo_uri ?? null;
+    }
+    if (table === 'consumable_logs' && this.consumableLogsRepo) {
+      const row = await this.consumableLogsRepo.findById(id);
+      return row?.receipt_photo_uri ?? null;
+    }
+    return null;
   }
 }

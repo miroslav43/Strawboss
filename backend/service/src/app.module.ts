@@ -34,6 +34,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { GeofenceModule } from './geofence/geofence.module';
 import { MobileLogsModule } from './mobile-logs/mobile-logs.module';
 import { HealthModule } from './health/health.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { HealthModule } from './health/health.module';
     NotificationsModule,
     GeofenceModule,
     MobileLogsModule,
+    UploadsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

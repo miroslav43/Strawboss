@@ -105,6 +105,20 @@ export class SyncQueueRepo {
     );
   }
 
+  /**
+   * Replace the payload of a queued entry. Used by the pre-push upload hook
+   * that turns a local receipt URI into a server URL just before the queue
+   * is drained, so the payload we send reflects the latest known URL.
+   */
+  async updatePayload(id: number, payload: unknown): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE sync_queue
+       SET payload = ?, updated_at = datetime('now')
+       WHERE id = ?`,
+      [JSON.stringify(payload), id],
+    );
+  }
+
   async resetInFlight(): Promise<void> {
     await this.db.runAsync(
       `UPDATE sync_queue SET status = 'pending', updated_at = datetime('now') WHERE status = 'in_flight'`

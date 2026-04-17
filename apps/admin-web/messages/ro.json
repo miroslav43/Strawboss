@@ -11,7 +11,19 @@
     "no": "Nu",
     "none": "—",
     "active": "Activ",
-    "inactive": "Inactiv"
+    "inactive": "Inactiv",
+    "error": "Ceva nu a mers bine."
+  },
+  "fuelLogs": {
+    "dateFrom": "De la",
+    "dateTo": "Până la",
+    "liters": "litri",
+    "entries": "înregistrări",
+    "unknownMachine": "Mașină necunoscută",
+    "empty": "Nu există consumuri de motorină în această perioadă."
+  },
+  "consumableLogs": {
+    "empty": "Nu există consumabile înregistrate în această perioadă."
   },
   "nav": {
     "operations": "Operațiuni",
@@ -26,6 +38,8 @@
     "machines": "Mașini",
     "deposits": "Depozite",
     "accounts": "Conturi",
+    "fuelLogs": "Motorină",
+    "consumableLogs": "Consumabile",
     "settings": "Setări",
     "collapseSidebar": "Restrânge meniul",
     "expandSidebar": "Extinde meniul"

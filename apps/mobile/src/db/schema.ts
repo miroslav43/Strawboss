@@ -83,6 +83,7 @@ export const TABLES = {
     hourmeter_hrs REAL,
     is_full_tank INTEGER DEFAULT 0,
     receipt_photo_uri TEXT,
+    receipt_photo_url TEXT,
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -99,6 +100,7 @@ export const TABLES = {
     unit TEXT DEFAULT 'kg',
     logged_at TEXT NOT NULL,
     receipt_photo_uri TEXT,
+    receipt_photo_url TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     server_version INTEGER DEFAULT 0

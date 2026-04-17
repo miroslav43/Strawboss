@@ -6,8 +6,41 @@ import { realpathSync, existsSync, readFileSync } from 'fs';
 const projectRoot = __dirname; // apps/admin-web
 const monorepoRoot = path.resolve(projectRoot, '../..');
 
+/**
+ * `@next/env` merge rule: a key from a later `.env*` file is skipped if it already
+ * exists on `process.env` (even as `""`). CI/shell sometimes exports empty
+ * `NEXT_PUBLIC_*`, which blocks the repo root `.env` — then `next build` prerender
+ * fails with "supabaseUrl is required". We re-apply root `.env` for public keys
+ * when the current value is missing or blank.
+ */
+function mergeRootEnvFromDotenvFile(): void {
+  const filePath = path.join(monorepoRoot, '.env');
+  if (!existsSync(filePath)) return;
+  const raw = readFileSync(filePath, 'utf8');
+  for (const line of raw.split(/\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (!key.startsWith('NEXT_PUBLIC_')) continue;
+    let val = trimmed.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    const cur = process.env[key];
+    if (cur === undefined || cur === '') {
+      process.env[key] = val;
+    }
+  }
+}
+
 // Load Strawboss root `.env` / `.env.local` so `NEXT_PUBLIC_*` exist when Next runs from apps/admin-web.
-loadEnvConfig(monorepoRoot);
+loadEnvConfig(monorepoRoot, process.env.NODE_ENV === 'development');
+mergeRootEnvFromDotenvFile();
 
 /**
  * pnpm may hoist a package only under `apps/admin-web/node_modules` (e.g. Docker

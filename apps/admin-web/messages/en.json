@@ -11,7 +11,19 @@
     "no": "No",
     "none": "—",
     "active": "Active",
-    "inactive": "Inactive"
+    "inactive": "Inactive",
+    "error": "Something went wrong."
+  },
+  "fuelLogs": {
+    "dateFrom": "From",
+    "dateTo": "To",
+    "liters": "liters",
+    "entries": "entries",
+    "unknownMachine": "Unknown machine",
+    "empty": "No fuel logs in this range."
+  },
+  "consumableLogs": {
+    "empty": "No consumable logs in this range."
   },
   "nav": {
     "operations": "Operations",
@@ -26,6 +38,8 @@
     "machines": "Machines",
     "deposits": "Deposits",
     "accounts": "Accounts",
+    "fuelLogs": "Fuel logs",
+    "consumableLogs": "Consumables",
     "settings": "Settings",
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar"

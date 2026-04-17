@@ -43,10 +43,25 @@ export async function registerForPushNotifications(): Promise<string | null> {
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
     });
+    /** Used alongside expo-location foreground service (user-visible persistent GPS). */
+    await Notifications.setNotificationChannelAsync('location', {
+      name: 'Locație GPS',
+      importance: Notifications.AndroidImportance.LOW,
+      sound: null,
+      vibrationPattern: [0, 0],
+    });
   }
 
-  const tokenData = await Notifications.getExpoPushTokenAsync();
-  return tokenData.data;
+  // Fetching the Expo push token requires Firebase (FCM) credentials on Android.
+  // In dev / self-hosted builds without google-services.json the call throws with
+  // "Default FirebaseApp is not initialized". Treat that as a recoverable no-op
+  // so the rest of the app (local notifications, channels) keeps working.
+  try {
+    const tokenData = await Notifications.getExpoPushTokenAsync();
+    return tokenData.data;
+  } catch {
+    return null;
+  }
 }
 
 /**

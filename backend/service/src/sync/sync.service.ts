@@ -46,7 +46,8 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
   consumable_logs: new Set([
     'id', 'machine_id', 'operator_id', 'parcel_id', 'consumable_type',
     'description', 'quantity', 'unit', 'unit_price', 'total_cost', 'logged_at',
-    'deleted_at', 'updated_at',
+    'receipt_photo_url', 'deleted_at', 'updated_at',
+    'client_id', 'sync_version',
   ]),
   task_assignments: new Set([
     'id', 'assignment_date', 'machine_id', 'parcel_id', 'assigned_user_id',

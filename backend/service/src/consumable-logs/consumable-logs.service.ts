@@ -32,7 +32,12 @@ export class ConsumableLogsService {
     return rows[0];
   }
 
-  async list(filters?: { machineId?: string; parcelId?: string }) {
+  async list(filters?: {
+    machineId?: string;
+    parcelId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
     if (filters?.machineId) {
@@ -40,6 +45,12 @@ export class ConsumableLogsService {
     }
     if (filters?.parcelId) {
       conditions.push(sql`parcel_id = ${filters.parcelId}`);
+    }
+    if (filters?.dateFrom) {
+      conditions.push(sql`logged_at >= ${filters.dateFrom}`);
+    }
+    if (filters?.dateTo) {
+      conditions.push(sql`logged_at <= ${filters.dateTo}`);
     }
 
     const where = sql.join(conditions, sql` AND `);

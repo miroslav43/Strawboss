@@ -9,6 +9,7 @@ import { getDatabase } from '@/lib/storage';
 import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { ConsumableLogsRepo } from '@/db/consumable-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { uploadReceipt } from '@/lib/receiptUpload';
 import { colors } from '@strawboss/ui-tokens';
 
 type ConsumableType = 'diesel' | 'twine';
@@ -18,7 +19,8 @@ interface ConsumableFlowProps {
   operatorId: string;
   parcelId?: string;
   onComplete: () => void;
-  onCancel: () => void;
+  /** Optional (e.g. modal); tab screens omit. */
+  onCancel?: () => void;
 }
 
 type ConsumableStep = 'type' | 'quantity' | 'photo' | 'confirm';
@@ -33,7 +35,6 @@ export function ConsumableFlow({
   operatorId,
   parcelId,
   onComplete,
-  onCancel,
 }: ConsumableFlowProps) {
   const [step, setStep] = useState<ConsumableStep>('type');
   const [consumableType, setConsumableType] = useState<ConsumableType | null>(null);
@@ -43,6 +44,7 @@ export function ConsumableFlow({
 
   const handleConfirm = useCallback(async () => {
     if (!consumableType) return;
+    const savedType = consumableType;
     setSaving(true);
     try {
       const db = await getDatabase();
@@ -52,7 +54,17 @@ export function ConsumableFlow({
       const now = new Date().toISOString();
       const qty = parseFloat(quantity);
 
-      if (consumableType === 'diesel') {
+      let receiptPhotoUrl: string | null = null;
+      if (photoUri) {
+        try {
+          const result = await uploadReceipt(photoUri);
+          receiptPhotoUrl = result.url;
+        } catch {
+          receiptPhotoUrl = null;
+        }
+      }
+
+      if (savedType === 'diesel') {
         const fuelLogsRepo = new FuelLogsRepo(db);
         await fuelLogsRepo.create({
           id,
@@ -66,6 +78,7 @@ export function ConsumableFlow({
           hourmeter_hrs: null,
           is_full_tank: 0,
           receipt_photo_uri: photoUri,
+          receipt_photo_url: receiptPhotoUrl,
           notes: null,
           created_at: now,
           updated_at: now,
@@ -73,7 +86,7 @@ export function ConsumableFlow({
         });
 
         await syncQueue.enqueue({
-          entityType: 'fuel_log',
+          entityType: 'fuel_logs',
           entityId: id,
           action: 'insert',
           payload: {
@@ -84,11 +97,15 @@ export function ConsumableFlow({
             logged_at: now,
             fuel_type: 'diesel',
             quantity_liters: qty,
-            receipt_photo_uri: photoUri,
+            is_full_tank: 0,
+            receipt_photo_url: receiptPhotoUrl,
+            notes: null,
+            sync_version: 1,
+            client_id: id,
           },
-          idempotencyKey: `fuel_log_${id}`,
+          idempotencyKey: `fuel_logs_${id}`,
         });
-      } else {
+      } else if (savedType === 'twine') {
         const consumableLogsRepo = new ConsumableLogsRepo(db);
         await consumableLogsRepo.create({
           id,
@@ -100,13 +117,14 @@ export function ConsumableFlow({
           unit: 'kg',
           logged_at: now,
           receipt_photo_uri: photoUri,
+          receipt_photo_url: receiptPhotoUrl,
           created_at: now,
           updated_at: now,
           server_version: 0,
         });
 
         await syncQueue.enqueue({
-          entityType: 'consumable_log',
+          entityType: 'consumable_logs',
           entityId: id,
           action: 'insert',
           payload: {
@@ -115,15 +133,25 @@ export function ConsumableFlow({
             operator_id: operatorId,
             parcel_id: parcelId ?? null,
             consumable_type: 'twine',
+            description: null,
             quantity: qty,
             unit: 'kg',
             logged_at: now,
-            receipt_photo_uri: photoUri,
+            receipt_photo_url: receiptPhotoUrl,
           },
-          idempotencyKey: `consumable_log_${id}`,
+          idempotencyKey: `consumable_logs_${id}`,
         });
       }
 
+      const pendingCount = await syncQueue.getPendingCount();
+      setConsumableType(null);
+      setQuantity('');
+      setPhotoUri(null);
+      setStep('type');
+      Alert.alert(
+        'Salvat',
+        `${qty} ${UNIT_LABELS[savedType]} înregistrat. Sincronizare: ${pendingCount} în așteptare.`,
+      );
       onComplete();
     } catch (err) {
       Alert.alert(
@@ -150,7 +178,13 @@ export function ConsumableFlow({
               onPress={() => setStep('quantity')}
               disabled={consumableType === null}
             />
-            <BigButton title="Anulează" variant="outline" onPress={onCancel} />
+            {consumableType !== null ? (
+              <BigButton
+                title="Șterge selecția"
+                variant="outline"
+                onPress={() => setConsumableType(null)}
+              />
+            ) : null}
           </View>
         </View>
       );

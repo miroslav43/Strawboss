@@ -1,3 +1,5 @@
+import * as Linking from 'expo-linking';
+
 export interface RouteResult {
   points: { lat: number; lon: number }[];
   distanceKm: number;
@@ -55,4 +57,42 @@ export function getExternalNavUrl(lat: number, lon: number): string {
 
 export function getGeoUri(lat: number, lon: number): string {
   return `geo:${lat},${lon}?q=${lat},${lon}`;
+}
+
+export function getGoogleMapsWebDirUrl(lat: number, lon: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+}
+
+/**
+ * Try to open turn-by-turn navigation: Google Maps (Android) → geo: → web Maps.
+ * The first URL that opens successfully wins; some schemes don't report via canOpenURL.
+ */
+export async function openExternalNavigation(lat: number, lon: number): Promise<void> {
+  const candidates = [getExternalNavUrl(lat, lon), getGeoUri(lat, lon), getGoogleMapsWebDirUrl(lat, lon)];
+  let lastError: unknown;
+  for (const url of candidates) {
+    try {
+      await Linking.openURL(url);
+      return;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Nu s-a putut deschide navigația');
+}
+
+/** Rough straight-line distance in km (for UI when OSRM is unavailable). */
+export function haversineKm(
+  a: { lat: number; lon: number },
+  b: { lat: number; lon: number },
+): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLon = Math.sin(dLon / 2);
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }

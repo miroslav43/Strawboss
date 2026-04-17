@@ -7,6 +7,9 @@ import { HarvestStatus } from '@strawboss/types';
 import { useUpdateParcelBoundary } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { getMachineVisual } from './machine-icons';
+import type { IconVariant } from './machine-icons';
+import type { IconPrefs } from '@/hooks/useMachineIconPrefs';
 
 function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -18,35 +21,6 @@ const DEFAULT_ZOOM = 13;
 
 const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
 
-const MACHINE_VISUAL: Record<string, { color: string; svg: string }> = {
-  truck: {
-    color: '#22c55e',
-    svg: `<svg viewBox="0 0 24 24" width="18" height="18" fill="white" xmlns="http://www.w3.org/2000/svg">
-      <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9 1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
-    </svg>`,
-  },
-  baler: {
-    color: '#f59e0b',
-    svg: `<svg viewBox="0 0 24 24" width="18" height="18" fill="white" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-    </svg>`,
-  },
-  loader: {
-    color: '#3b82f6',
-    svg: `<svg viewBox="0 0 24 24" width="18" height="18" fill="white" xmlns="http://www.w3.org/2000/svg">
-      <path d="M2 20h20v-2H2v2zm2-4h4v-4H4v4zm6-8h4v12h-4V8zm6 4h4v8h-4v-8zM4 8l4-4 4 4H4z"/>
-    </svg>`,
-  },
-};
-
-function getMachineVisual(type: string | null) {
-  return (
-    MACHINE_VISUAL[type ?? ''] ?? {
-      color: '#9ca3af',
-      svg: '<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><circle cx="12" cy="12" r="8"/></svg>',
-    }
-  );
-}
 
 function isOnline(recordedAt: string): boolean {
   return Date.now() - new Date(recordedAt).getTime() < ONLINE_THRESHOLD_MS;
@@ -103,15 +77,16 @@ function getParcelPolygonStyle(
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createMachineIcon(L: any, type: string | null, online: boolean, pickSelected = false) {
-  const cfg  = getMachineVisual(type);
+function createMachineIcon(
+  L: any,
+  type: string | null,
+  online: boolean,
+  pickSelected = false,
+  variant: IconVariant = 0,
+) {
+  const cfg  = getMachineVisual(type, variant);
   const ring = pickSelected ? '#dc2626' : online ? '#16a34a' : '#9ca3af';
-  const html = `<div style="
-    width:34px;height:34px;border-radius:8px;
-    background:${cfg.color};border:3px solid ${ring};
-    box-shadow:0 2px 8px rgba(0,0,0,.4);
-    display:flex;align-items:center;justify-content:center;
-  ">${cfg.svg}</div>`;
+  const html = `<div style="width:34px;height:34px;border-radius:8px;background:${cfg.color};border:3px solid ${ring};box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;overflow:visible;">${cfg.svg}</div>`;
   return L.divIcon({ html, className: '', iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -20] });
 }
 
@@ -223,6 +198,8 @@ export interface LeafletMapProps {
   onMachineMarkerSelect?: (machineId: string) => void;
   /** Hide editing tools, layer toggles, and draw UI — map is click-to-select only. */
   selectionOnly?: boolean;
+  /** Per-machine icon variant map (machineId → 0|1|2). Loaded from localStorage by the parent. */
+  iconPrefs?: IconPrefs;
 }
 
 export function LeafletMap({
@@ -253,6 +230,7 @@ export function LeafletMap({
   selectedMachineId = null,
   onMachineMarkerSelect,
   selectionOnly = false,
+  iconPrefs = {},
 }: LeafletMapProps) {
   const { t } = useI18n();
 
@@ -596,7 +574,8 @@ export function LeafletMap({
       machines.forEach((m) => {
         const online = isOnline(m.recordedAt);
         const pickSelected = selectedMachineId != null && m.machineId === selectedMachineId;
-        const icon = createMachineIcon(L, m.machineType, online, pickSelected);
+        const variant = (iconPrefs[m.machineId] ?? 0) as IconVariant;
+        const icon = createMachineIcon(L, m.machineType, online, pickSelected, variant);
         const marker = L.marker([m.lat, m.lon], { icon })
           .bindPopup(
             machinePopupHtml(m, mapStrings, machineTypeLabel(m.machineType), selectionOnly),
@@ -630,6 +609,7 @@ export function LeafletMap({
     machineTypeLabel,
     selectedMachineId,
     selectionOnly,
+    iconPrefs,
   ]);
 
   // ── 3b. Sync deposit polygons (blue) ────────────────────────────────────

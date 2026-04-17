@@ -6,6 +6,7 @@ import { PhotoCapture } from '../../shared/PhotoCapture';
 import { getDatabase } from '@/lib/storage';
 import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { uploadReceipt } from '@/lib/receiptUpload';
 import { colors } from '@strawboss/ui-tokens';
 
 interface FuelEntryFlowProps {
@@ -41,6 +42,17 @@ export function FuelEntryFlow({
       const quantityLiters = parseFloat(liters);
       const odometerKm = odometer ? parseFloat(odometer) : null;
 
+      // Best-effort immediate upload — if it fails (offline), SyncManager retries later.
+      let receiptPhotoUrl: string | null = null;
+      if (photoUri) {
+        try {
+          const result = await uploadReceipt(photoUri);
+          receiptPhotoUrl = result.url;
+        } catch {
+          receiptPhotoUrl = null;
+        }
+      }
+
       await fuelLogsRepo.create({
         id,
         machine_id: machineId,
@@ -53,6 +65,7 @@ export function FuelEntryFlow({
         hourmeter_hrs: null,
         is_full_tank: 0,
         receipt_photo_uri: photoUri,
+        receipt_photo_url: receiptPhotoUrl,
         notes: null,
         created_at: now,
         updated_at: now,
@@ -60,7 +73,7 @@ export function FuelEntryFlow({
       });
 
       await syncQueue.enqueue({
-        entityType: 'fuel_log',
+        entityType: 'fuel_logs',
         entityId: id,
         action: 'insert',
         payload: {
@@ -72,11 +85,25 @@ export function FuelEntryFlow({
           fuel_type: 'diesel',
           quantity_liters: quantityLiters,
           odometer_km: odometerKm,
-          receipt_photo_uri: photoUri,
+          is_full_tank: 0,
+          receipt_photo_url: receiptPhotoUrl,
+          notes: null,
+          sync_version: 1,
+          client_id: id,
         },
-        idempotencyKey: `fuel_log_${id}`,
+        idempotencyKey: `fuel_logs_${id}`,
       });
 
+      const pendingCount = await syncQueue.getPendingCount();
+
+      setLiters('');
+      setOdometer('');
+      setPhotoUri(null);
+      setStep('liters');
+      Alert.alert(
+        'Salvat',
+        `${quantityLiters} L alimentare înregistrată. Sincronizare: ${pendingCount} în așteptare.`,
+      );
       onComplete();
     } catch (err) {
       Alert.alert(

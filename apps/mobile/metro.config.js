@@ -28,7 +28,11 @@ const singletons = ['react', 'react-native', '@tanstack/react-query'];
 const singletonEntries = new Map();
 for (const pkg of singletons) {
   try {
-    const entry = require.resolve(pkg, { paths: [monorepoRoot] });
+    // Resolve from projectRoot first so the app's own dependency versions win.
+    // Using monorepoRoot could pick up a hoisted copy with a different version
+    // (e.g. react 19.2.4 from another workspace package vs the 19.1.0 required
+    // by react-native 0.81's bundled renderer).
+    const entry = require.resolve(pkg, { paths: [projectRoot, monorepoRoot] });
     singletonEntries.set(pkg, fs.realpathSync(entry));
   } catch {
     // package missing — skip

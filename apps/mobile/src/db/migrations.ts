@@ -15,6 +15,13 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync(TABLES.bale_loads);
   await db.execAsync(TABLES.task_assignments);
 
+  // Additive column migrations for users upgrading from older builds. SQLite
+  // does not support `ADD COLUMN IF NOT EXISTS`, so we swallow the duplicate
+  // column error instead. Keeping this inline keeps migration logic simple
+  // and colocated with the table definitions above.
+  await addColumnIfMissing(db, 'fuel_logs', 'receipt_photo_url', 'TEXT');
+  await addColumnIfMissing(db, 'consumable_logs', 'receipt_photo_url', 'TEXT');
+
   // Create indexes for common queries
   await db.execAsync(
     `CREATE INDEX IF NOT EXISTS idx_operations_trip_id ON operations(trip_id)`
@@ -58,4 +65,20 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync(
     `CREATE INDEX IF NOT EXISTS idx_task_assignments_assignment_date ON task_assignments(assignment_date)`
   );
+}
+
+async function addColumnIfMissing(
+  db: SQLite.SQLiteDatabase,
+  table: string,
+  column: string,
+  type: string,
+): Promise<void> {
+  try {
+    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  } catch (err) {
+    // "duplicate column name" is the expected error on subsequent runs; any
+    // other error is unexpected and should surface to the caller.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/duplicate column/i.test(msg)) throw err;
+  }
 }

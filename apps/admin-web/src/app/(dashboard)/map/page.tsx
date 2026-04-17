@@ -26,6 +26,7 @@ import { apiClient } from '@/lib/api';
 import { type KmlParsedParcel } from '@/lib/kml-parser';
 import { useI18n } from '@/lib/i18n';
 import { clientLogger } from '@/lib/client-logger';
+import { useMachineIconPrefs } from '@/hooks/useMachineIconPrefs';
 
 // Leaflet cannot run on the server — disable SSR for the map component.
 const LeafletMap = dynamicImport(
@@ -450,6 +451,8 @@ export default function MapPage() {
   const { data: depositsRaw = [] }                       = useDeliveryDestinations(apiClient);
   const deleteParcel                                     = useDeleteParcel(apiClient);
 
+  const { prefs: iconPrefs } = useMachineIconPrefs();
+
   const [selectedParcelId,   setSelectedParcelId]   = useState<string | null>(null);
   const [editParcel,         setEditParcel]          = useState<Parcel | null>(null);
   const [editingParcelInfo,  setEditingParcelInfo]   = useState<Parcel | null>(null);
@@ -675,6 +678,7 @@ export default function MapPage() {
             hiddenParcelIds={hiddenParcelIds}
             hiddenMachineIds={hiddenMachineIds}
             deposits={deposits}
+            iconPrefs={iconPrefs}
           />
           {selectedMachineId && (
             <RouteHistoryPanel

@@ -1,3 +1,5 @@
+import '@/lib/register-background-tasks';
+
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
@@ -9,6 +11,15 @@ import { useAuthStore } from '@/stores/auth-store';
 import { mobileApiClient } from '@/lib/api-client';
 import { cleanupOldMobileLogFiles } from '@/lib/logger';
 import { registerForPushNotifications } from '@/lib/notifications';
+import {
+  requestBackgroundLocationPermissions,
+  startBackgroundLocationTracking,
+  stopBackgroundLocationTracking,
+} from '@/lib/location';
+import {
+  registerBackgroundSyncTask,
+  unregisterBackgroundSyncTask,
+} from '@/lib/background-sync';
 import type { User } from '@strawboss/types';
 
 const queryClient = new QueryClient({
@@ -55,12 +66,25 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [profileReady, setProfileReady] = useState(false); // true once profile fetch settled
   const { role, setProfile } = useAuthStore();
+  const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
 
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:AuthGate-mount',message:'[H4] AuthGate mounted, about to call supabase.auth.getSession()',data:{},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const supabase = getSupabaseClient();
-    supabase.auth.getSession().then(({ data }) => {
-      setIsAuthenticated(!!data.session);
-    });
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:getSession-resolved',message:'[H4] supabase.auth.getSession() resolved',data:{hasSession:!!data.session},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setIsAuthenticated(!!data.session);
+      })
+      .catch((err) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:getSession-rejected',message:'[H4] supabase.auth.getSession() REJECTED — isAuthenticated stays null forever',data:{error:String((err as Error)?.message ?? err)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+      });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
@@ -105,18 +129,57 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const { userId, assignedMachineId } = useAuthStore.getState();
     if (!userId) return;
 
-    registerForPushNotifications().then((token) => {
-      if (token) {
-        mobileApiClient
-          .post('/api/v1/notifications/register-token', {
-            token,
-            platform: Platform.OS,
-            machineId: assignedMachineId ?? undefined,
-          })
-          .catch(() => {});
-      }
-    });
+    registerForPushNotifications()
+      .then((token) => {
+        if (token) {
+          mobileApiClient
+            .post('/api/v1/notifications/register-token', {
+              token,
+              platform: Platform.OS,
+              machineId: assignedMachineId ?? undefined,
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
   }, [isAuthenticated, role]);
+
+  // Stop background work when logged out
+  useEffect(() => {
+    if (isAuthenticated !== false) return;
+    void (async () => {
+      await stopBackgroundLocationTracking();
+      await unregisterBackgroundSyncTask();
+    })();
+  }, [isAuthenticated]);
+
+  // Android: after login + assigned machine, request location (fg+bg) and start FGS + periodic sync
+  useEffect(() => {
+    if (!isAuthenticated || !profileReady || !role) return;
+
+    if (!assignedMachineId || Platform.OS !== 'android') {
+      void stopBackgroundLocationTracking();
+      void unregisterBackgroundSyncTask();
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const ok = await requestBackgroundLocationPermissions();
+      if (cancelled || !ok) return;
+      try {
+        await startBackgroundLocationTracking(assignedMachineId);
+      } catch {
+        /* Expo Go / denied FGS — best effort */
+      }
+      if (cancelled) return;
+      await registerBackgroundSyncTask();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, profileReady, role, assignedMachineId]);
 
   useEffect(() => {
     if (isAuthenticated === null) return; // Session check still pending
@@ -154,8 +217,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
 
+  // #region agent log
+  fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:RootLayout-render',message:'[H2/H3] RootLayout function body executing (JS bundle reached React tree)',data:{dbReady},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   useEffect(() => {
-    getDatabase().then(() => setDbReady(true));
+    getDatabase()
+      .then(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:getDatabase-resolved',message:'[H3] getDatabase() resolved OK — dbReady becoming true',data:{},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setDbReady(true);
+      })
+      .catch((err) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7683/ingest/3d71bb49-f968-4f69-8e84-89a66bd466af',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3abba4'},body:JSON.stringify({sessionId:'3abba4',location:'_layout.tsx:getDatabase-rejected',message:'[H3] getDatabase() REJECTED — splash will hang',data:{error:String((err as Error)?.message ?? err)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+      });
   }, []);
 
   useEffect(() => {

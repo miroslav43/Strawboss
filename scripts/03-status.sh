@@ -8,9 +8,9 @@
 # @cmd status "Full dashboard: env, builds, ports, Docker, git"
 cmd_status() {
   echo ""
-  echo -e "  ${BOLD}${CYAN}\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584\\u2584${NC}"
+  echo -e "  ${BOLD}${CYAN}▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄${NC}"
   echo -e "  ${BOLD}${WHITE}  STRAWBOSS  ${GRAY}status dashboard${NC}"
-  echo -e "  ${BOLD}${CYAN}\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580\\u2580${NC}"
+  echo -e "  ${BOLD}${CYAN}▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀${NC}"
 
   section "Environment"
   [ -f "$STRAWBOSS_ROOT/.env" ] && _ok ".env" "" || _fail ".env" "${DIM}copy from .env.example${NC}"
@@ -183,9 +183,9 @@ cmd_health() {
   divider
   echo ""
   if [ "$fail" -eq 0 ]; then
-    echo -e "  ${GREEN}${BOLD}\\u2714  All $total checks passed${NC}"
+    echo -e "  ${GREEN}${BOLD}✓  All $total checks passed${NC}"
   else
-    echo -e "  ${RED}${BOLD}\\u2718  $fail/$total checks failed${NC}  ${DIM}($pass passed)${NC}"
+    echo -e "  ${RED}${BOLD}✗  $fail/$total checks failed${NC}  ${DIM}($pass passed)${NC}"
   fi
   echo ""
 
@@ -247,9 +247,9 @@ cmd_doctor() {
   divider
   echo ""
   if [ "$issues" -eq 0 ]; then
-    echo -e "  ${GREEN}${BOLD}\\u2714  No issues found. Everything looks good!${NC}"
+    echo -e "  ${GREEN}${BOLD}✓  No issues found. Everything looks good!${NC}"
   else
-    echo -e "  ${YELLOW}${BOLD}\\u26A0  Found $issues issue(s) to address.${NC}"
+    echo -e "  ${YELLOW}${BOLD}⚠  Found $issues issue(s) to address.${NC}"
   fi
   echo ""
 }
@@ -322,9 +322,9 @@ cmd_ports() {
       if [ -n "$pid" ]; then
         pname=$(ps -p "$pid" -o comm= 2>/dev/null || echo "?")
       fi
-      printf "  ${GREEN}\\u25CF${NC}  ${BOLD}:%-5s${NC}  %-30s  ${DIM}PID %-6s %s${NC}\\n" "$port" "$desc" "${pid:-?}" "$pname"
+      printf "  ${GREEN}●${NC}  ${BOLD}:%-5s${NC}  %-30s  ${DIM}PID %-6s %s${NC}\\n" "$port" "$desc" "${pid:-?}" "$pname"
     else
-      printf "  ${GRAY}\\u25CB${NC}  ${GRAY}:%-5s${NC}  ${GRAY}%-30s  free${NC}\\n" "$port" "$desc"
+      printf "  ${GRAY}○${NC}  ${GRAY}:%-5s${NC}  ${GRAY}%-30s  free${NC}\\n" "$port" "$desc"
     fi
   done
   echo ""

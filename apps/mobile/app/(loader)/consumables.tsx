@@ -25,9 +25,6 @@ export default function LoaderConsumablesScreen() {
         onComplete={() => {
           // Stay on tab
         }}
-        onCancel={() => {
-          // No-op on tab screen
-        }}
       />
     </SafeAreaView>
   );

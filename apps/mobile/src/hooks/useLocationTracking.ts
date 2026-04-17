@@ -1,77 +1,50 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { AppState } from 'react-native';
 import {
-  requestLocationPermission,
-  startLocationWatcher,
-  stopLocationWatcher,
+  isBackgroundLocationTrackingActive,
+  readLastLocationSuccessIso,
 } from '@/lib/location';
-import type { LocationSubscription } from '@/lib/location';
-import { mobileApiClient } from '@/lib/api-client';
-import { mobileLogger } from '@/lib/logger';
 
 interface UseLocationTrackingResult {
+  /** True when Android background location updates (FGS) are active. */
   isTracking: boolean;
   error: string | null;
+  /** Last successful server ping (local clock), from disk. */
   lastReportedAt: string | null;
-  startTracking: (machineId: string) => Promise<void>;
-  stopTracking: () => void;
+  refresh: () => Promise<void>;
 }
 
 /**
- * Hook that manages continuous GPS tracking for a given machine.
- * Each position update is immediately POSTed to POST /api/v1/location/report.
+ * Read-only status for GPS tracking. On Android, tracking is started automatically
+ * from `AuthGate` when the user has an assigned machine; there is no in-app toggle here.
  */
 export function useLocationTracking(): UseLocationTrackingResult {
   const [isTracking, setIsTracking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [lastReportedAt, setLastReportedAt] = useState<string | null>(null);
-  const subscriptionRef = useRef<LocationSubscription | null>(null);
+  const [error] = useState<string | null>(null);
 
-  const startTracking = useCallback(async (machineId: string) => {
-    setError(null);
+  const refresh = useCallback(async () => {
+    const active = await isBackgroundLocationTrackingActive();
+    setIsTracking(active);
+    const iso = await readLastLocationSuccessIso();
+    setLastReportedAt(
+      iso ? new Date(iso).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null,
+    );
+  }, []);
 
-    const granted = await requestLocationPermission();
-    if (!granted) {
-      setError('Permisiunea de locație a fost refuzată.');
-      return;
-    }
-
-    const sub = await startLocationWatcher(machineId, async (report) => {
-      try {
-        await mobileApiClient.post<void>('/api/v1/location/report', report);
-        setLastReportedAt(new Date().toLocaleTimeString('ro-RO'));
-        setError(null);
-        mobileLogger.debug('Location report OK', {
-          machineId,
-          lat: report.lat,
-          lon: report.lon,
-        });
-      } catch (err) {
-        const msg = (err as Error)?.message ?? 'Eroare la trimiterea locației';
-        setError(`GPS trimis, dar serverul nu a răspuns: ${msg}`);
-        mobileLogger.warn('Location report failed', {
-          machineId,
-          message: msg,
-        });
-      }
+  useEffect(() => {
+    void refresh();
+    const interval = setInterval(() => {
+      void refresh();
+    }, 5000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refresh();
     });
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, [refresh]);
 
-    if (!sub) {
-      setError('Nu s-a putut porni urmărirea GPS. Verifică permisiunile.');
-      return;
-    }
-
-    subscriptionRef.current = sub;
-    setIsTracking(true);
-    mobileLogger.flow('Location tracking started', { machineId });
-  }, []);
-
-  const stopTracking = useCallback(() => {
-    if (subscriptionRef.current) {
-      stopLocationWatcher(subscriptionRef.current);
-      subscriptionRef.current = null;
-    }
-    setIsTracking(false);
-  }, []);
-
-  return { isTracking, error, lastReportedAt, startTracking, stopTracking };
+  return { isTracking, error, lastReportedAt, refresh };
 }
