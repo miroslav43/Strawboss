@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';

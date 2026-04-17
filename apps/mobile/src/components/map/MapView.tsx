@@ -4,6 +4,9 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { MapCommand, MapEvent } from '@/map/map-bridge';
 import { serializeCommand, parseEvent } from '@/map/map-bridge';
 
+// React Native resolves static asset paths through require(); ESM import
+// doesn't work for non-JS files bundled by Metro.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const MAP_HTML = require('@/map/leaflet-map.html');
 
 export interface MapViewHandle {

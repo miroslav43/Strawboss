@@ -572,7 +572,6 @@ export default function MapPage() {
       });
       return next;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parcels]);
 
   const handleToggleParcel = useCallback((parcelId: string) => {

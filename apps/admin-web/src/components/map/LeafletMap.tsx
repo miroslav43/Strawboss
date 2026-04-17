@@ -76,9 +76,9 @@ function getParcelPolygonStyle(
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Leaflet is loaded dynamically (client-only) so its type is not statically known.
 function createMachineIcon(
-  L: any,
+  L: typeof import('leaflet'),
   type: string | null,
   online: boolean,
   pickSelected = false,
@@ -472,7 +472,6 @@ export function LeafletMap({
       }
     };
     // selectionOnly determines whether Geoman controls and pm:create are registered at init.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionOnly]);
 
   // When the map container's box changes (e.g. left sidebar collapse on /map),
@@ -557,7 +556,6 @@ export function LeafletMap({
     };
 
     void render();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parcels, selectedParcelId, showParcels, hiddenParcelIds, mapReady, mapStrings, selectionOnly]);
 
   // ── 3. Sync machine markers ──────────────────────────────────────────────
@@ -597,7 +595,6 @@ export function LeafletMap({
     };
 
     void render();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     machines,
     showTrucks,
@@ -663,7 +660,6 @@ export function LeafletMap({
     };
 
     void render();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deposits, showDeposits, hiddenDepositIds, mapReady, selectedDepositId]);
 
   // ── 4. Start boundary-edit when editParcel changes ──────────────────────
@@ -672,7 +668,6 @@ export function LeafletMap({
     if (editParcel && mapInstanceRef.current) {
       void handleStartEdit(editParcel);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editParcel, selectionOnly]);
 
   // ── 5. Draw mode (parcel or deposit) ─────────────────────────────────────
@@ -753,7 +748,6 @@ export function LeafletMap({
     };
 
     void render();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routePoints, mapReady, mapStrings.routeStart, mapStrings.routeEnd]);
 
   // ── 7. Navigate to parcel ──────────────────────────────────────────────
@@ -769,7 +763,6 @@ export function LeafletMap({
       }
     }
     onNavigationComplete?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigateToParcelId, mapReady]);
 
   // ── 8. Navigate to machine ─────────────────────────────────────────────
@@ -782,7 +775,6 @@ export function LeafletMap({
       marker.openPopup();
     }
     onNavigationComplete?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigateToMachineId, mapReady]);
 
   // ── Edit-boundary handlers ───────────────────────────────────────────────

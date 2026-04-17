@@ -307,7 +307,7 @@ export class AdminUsersService {
   private async uniqueUsername(base: string): Promise<string> {
     let candidate = base;
     let n = 2;
-    while (true) {
+    for (;;) {
       const rows = await this.drizzleProvider.db.execute(sql`
         SELECT 1 FROM users WHERE username = ${candidate} LIMIT 1
       `);
@@ -322,7 +322,7 @@ export class AdminUsersService {
     const domain   = base.slice(atIdx + 1);
     let candidate  = base;
     let n = 2;
-    while (true) {
+    for (;;) {
       const rows = await this.drizzleProvider.db.execute(sql`
         SELECT 1 FROM users WHERE email = ${candidate} LIMIT 1
       `);

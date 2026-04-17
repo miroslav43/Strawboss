@@ -50,6 +50,8 @@ function LoadingSplash() {
   return (
     <View style={splash.container}>
       <Image
+        // React Native requires require() for bundled image assets.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         source={require('../assets/splash-inline.png')}
         style={splash.logo}
         accessible={false}

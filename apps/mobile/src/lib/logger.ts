@@ -16,10 +16,6 @@ function pathFor(category: string, day: string): string {
   return `${ROOT}/${category}/${day}.log`;
 }
 
-function daySlug(d = new Date()): string {
-  return d.toISOString().slice(0, 10);
-}
-
 async function ensureDir(dir: string): Promise<void> {
   const info = await FileSystem.getInfoAsync(dir);
   if (!info.exists) {

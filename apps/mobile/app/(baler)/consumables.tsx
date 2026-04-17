@@ -1,11 +1,9 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ConsumableFlow } from '@/components/features/consumables/ConsumableFlow';
-import { useProfile } from '@/hooks/useProfile';
 import { useAuthStore } from '@/stores/auth-store';
 
 export default function BalerConsumablesScreen() {
-  const { profile } = useProfile();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const userId = useAuthStore((s) => s.userId);
 

@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { Fragment, useState, useMemo, useEffect } from 'react';
+import { Fragment, useState, useMemo } from 'react';
 import {
   Plus,
   Pencil,
@@ -561,7 +561,7 @@ export default function MachinesPage() {
 
   const machines = toMachineList(machinesRaw);
 
-  const { prefs: iconPrefs, setVariant: setIconVariant, getVariant } = useMachineIconPrefs();
+  const { setVariant: setIconVariant, getVariant } = useMachineIconPrefs();
 
   const [showCreate,   setShowCreate]   = useState(false);
   const [editTarget,   setEditTarget]   = useState<Machine | null>(null);

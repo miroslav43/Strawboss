@@ -45,7 +45,9 @@ export function EnhancedDeliveryFlow({
   destinationName,
   receiverPhone,
   onComplete,
-  onCancel,
+  // onCancel is part of the public prop contract but not consumed yet;
+  // kept here so callers can keep wiring it up without breaking changes.
+  onCancel: _onCancel,
 }: EnhancedDeliveryFlowProps) {
   const [currentStep, setCurrentStep] = useState<Step>(0);
   const [netWeightValue, setNetWeightValue] = useState('');

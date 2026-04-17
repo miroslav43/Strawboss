@@ -40,7 +40,7 @@ export class CmrService {
     const trip = trips[0];
 
     // 2. Fetch related data
-    const [parcelResult, truckResult, driverResult, baleLoadsResult, destinationResult] =
+    const [parcelResult, truckResult, driverResult, baleLoadsResult, _destinationResult] =
       await Promise.all([
         trip.source_parcel_id
           ? this.drizzleProvider.db.execute(

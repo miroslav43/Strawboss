@@ -6,7 +6,7 @@
     "dev": "next dev --port 3000",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src/ --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "i18n:parity": "node scripts/check-i18n-parity.mjs"
   },

@@ -6,6 +6,7 @@ import {
   Res,
   NotFoundException,
 } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import { DocumentsService } from './documents.service';
 
 @Controller('documents')
@@ -26,7 +27,7 @@ export class DocumentsController {
   }
 
   @Get(':id/download')
-  async download(@Param('id') id: string, @Res() res: any) {
+  async download(@Param('id') id: string, @Res() res: FastifyReply) {
     const doc = await this.documentsService.findById(id);
     const fileUrl = doc.file_url as string | null;
 

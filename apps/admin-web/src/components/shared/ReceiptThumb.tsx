@@ -58,7 +58,6 @@ export function ReceiptThumb({ url, size = 56, caption }: ReceiptThumbProps) {
         style={{ width: size, height: size }}
         aria-label="Open receipt photo"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={url}
           alt={caption ?? 'Receipt'}
@@ -83,7 +82,6 @@ export function ReceiptThumb({ url, size = 56, caption }: ReceiptThumbProps) {
           >
             <X className="h-5 w-5" />
           </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={url}
             alt={caption ?? 'Receipt'}

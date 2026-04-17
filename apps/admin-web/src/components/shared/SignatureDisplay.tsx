@@ -39,7 +39,6 @@ export function SignatureDisplay({
         <FileSignature className="h-4 w-4 text-neutral-500" />
         <span className="text-sm font-medium text-neutral-700">Signature</span>
       </div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={signatureUrl}
         alt={signerName ? `Signature of ${signerName}` : 'Signature'}

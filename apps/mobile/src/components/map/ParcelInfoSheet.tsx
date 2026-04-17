@@ -96,10 +96,10 @@ export function ParcelInfoSheet({
     [translateY, peekOffset],
   );
 
-  // Reset to full whenever a new parcel is selected.
+  // Reset to full whenever a new parcel is selected. snapTo is a stable
+  // useCallback, so intentionally omitted from the dep array.
   useEffect(() => {
     snapTo('full');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parcel.id]);
 
   // Auto-snap to peek the first time a route appears, so the user immediately

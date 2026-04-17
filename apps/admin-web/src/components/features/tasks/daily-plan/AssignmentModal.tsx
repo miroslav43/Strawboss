@@ -47,7 +47,7 @@ const machineLabels: Record<string, string> = {
 
 export function AssignmentModal({
   machine,
-  date,
+  date: _date,
   parcels,
   doneParcels,
   inProgressAssignments,

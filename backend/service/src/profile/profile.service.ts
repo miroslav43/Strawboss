@@ -85,9 +85,9 @@ export class ProfileService {
       throw new BadRequestException('New password must be at least 6 characters');
     }
 
-    // Use Supabase Auth admin API to update password
-    // (Supabase stores credentials in auth.users, not public.users)
-    const user = await this.findByUserId(userId);
+    // Ensure the user exists before hitting Supabase Auth admin API
+    // (credentials live in auth.users, not public.users).
+    await this.findByUserId(userId);
     const { error } = await this.supabase.auth.admin.updateUserById(userId, {
       password: newPassword,
     });

@@ -11,4 +11,17 @@ module.exports = {
     node: true,
     es2022: true,
   },
+  rules: {
+    // Standard TypeScript convention: underscore-prefixed identifiers are intentionally unused.
+    'no-unused-vars': 'off',
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+        destructuredArrayIgnorePattern: '^_',
+      },
+    ],
+  },
 };
