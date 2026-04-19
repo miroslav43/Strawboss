@@ -3,11 +3,7 @@ import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { MapCommand, MapEvent } from '@/map/map-bridge';
 import { serializeCommand, parseEvent } from '@/map/map-bridge';
-
-// React Native resolves static asset paths through require(); ESM import
-// doesn't work for non-JS files bundled by Metro.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const MAP_HTML = require('@/map/leaflet-map.html');
+import { LEAFLET_MAP_HTML } from '@/map/leaflet-map-content';
 
 export interface MapViewHandle {
   sendCommand(cmd: MapCommand): void;
@@ -48,7 +44,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(
       <View style={[styles.container, style]}>
         <WebView
           ref={webViewRef}
-          source={MAP_HTML}
+          // Inline HTML + HTTPS baseUrl avoids Metro's synthetic http:// asset
+          // URL that Android 9+ blocks as cleartext.
+          source={{ html: LEAFLET_MAP_HTML, baseUrl: 'https://localhost/' }}
           style={styles.webview}
           javaScriptEnabled
           originWhitelist={['*']}
@@ -59,6 +57,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
           startInLoadingState={false}
+          mixedContentMode="never"
           onError={() => setLoading(false)}
         />
         {loading && (

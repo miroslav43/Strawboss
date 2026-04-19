@@ -1,4 +1,14 @@
-<!DOCTYPE html>
+// Leaflet map HTML served to the WebView.
+//
+// Kept as an inlined string (instead of require('./leaflet-map.html')) because
+// in release builds Metro resolves html assets to a synthetic URL like
+// http://src_map_leafletmap/ which Android 9+ blocks with
+// net::ERR_CLEARTEXT_NOT_PERMITTED. Using { html } + HTTPS baseUrl loads the
+// document directly from memory with a secure origin for subresources.
+//
+// String.raw preserves the \uXXXX emoji escapes so the browser's JS engine
+// (not the TS parser) decodes them when parsing the inline <script>.
+export const LEAFLET_MAP_HTML = String.raw`<!DOCTYPE html>
 <html lang="ro">
 <head>
 <meta charset="utf-8" />
@@ -67,10 +77,8 @@ setTimeout(function() {
 </script>
 <script>
 (function() {
-  // Guard: skip map init if Leaflet failed to load (offline)
   if (typeof L === 'undefined') return;
 
-  // ── Map init ──────────────────────────────────────────────────────
   var map = L.map('map', {
     zoomControl: false,
     attributionControl: false
@@ -84,17 +92,15 @@ setTimeout(function() {
     .addAttribution('&copy; <a href="https://osm.org/copyright">OSM</a>')
     .addTo(map);
 
-  // ── Layer groups ──────────────────────────────────────────────────
   var parcelsLayer = L.layerGroup().addTo(map);
   var destinationsLayer = L.layerGroup().addTo(map);
   var machinesLayer = L.layerGroup().addTo(map);
   var userMarkerLayer = L.layerGroup().addTo(map);
   var routeLayer = L.layerGroup().addTo(map);
 
-  var parcelLayers = {}; // id → L.geoJSON layer
+  var parcelLayers = {};
   var highlightedId = null;
 
-  // ── Polygon styles ────────────────────────────────────────────────
   function getParcelStyle(harvestStatus, isHighlighted) {
     if (isHighlighted) {
       return { color: '#dc2626', weight: 3, fillOpacity: 0.3 };
@@ -117,8 +123,6 @@ setTimeout(function() {
     fillOpacity: 0.15,
     dashArray: '6, 4'
   };
-
-  // ── Command handlers ──────────────────────────────────────────────
 
   function setParcels(parcels) {
     parcelsLayer.clearLayers();
@@ -143,7 +147,6 @@ setTimeout(function() {
         });
       });
 
-      // Tooltip with parcel name
       if (p.name) {
         layer.bindTooltip(p.name, { sticky: true, className: 'route-info' });
       }
@@ -181,7 +184,6 @@ setTimeout(function() {
         }
         layer.addTo(destinationsLayer);
       } else if (d.lat != null && d.lon != null) {
-        // Point marker for destinations without boundary
         var marker = L.circleMarker([d.lat, d.lon], {
           radius: 8, color: '#1565C0', fillColor: '#1565C0', fillOpacity: 0.5, weight: 2
         });
@@ -220,7 +222,6 @@ setTimeout(function() {
   function setUserLocation(lat, lon, accuracy) {
     userMarkerLayer.clearLayers();
 
-    // Accuracy circle
     if (accuracy && accuracy > 0) {
       L.circle([lat, lon], {
         radius: accuracy,
@@ -229,7 +230,6 @@ setTimeout(function() {
       }).addTo(userMarkerLayer);
     }
 
-    // Blue dot
     var icon = L.divIcon({ className: 'user-marker', iconSize: [16, 16], iconAnchor: [8, 8] });
     L.marker([lat, lon], { icon: icon, interactive: false }).addTo(userMarkerLayer);
   }
@@ -245,7 +245,6 @@ setTimeout(function() {
       opacity: 0.85
     }).addTo(routeLayer);
 
-    // Info popup at midpoint
     if (distanceKm != null || durationMin != null) {
       var mid = Math.floor(latlngs.length / 2);
       var parts = [];
@@ -266,7 +265,6 @@ setTimeout(function() {
   }
 
   function highlightParcel(parcelId) {
-    // Reset previous highlight
     if (highlightedId && parcelLayers[highlightedId]) {
       var prev = parcelLayers[highlightedId];
       prev.layer.setStyle(getParcelStyle(prev.data.harvestStatus, false));
@@ -302,8 +300,6 @@ setTimeout(function() {
     map.setView([lat, lon], zoom || 15);
   }
 
-  // ── Message bridge ────────────────────────────────────────────────
-
   function sendEvent(event) {
     if (window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify(event));
@@ -324,7 +320,6 @@ setTimeout(function() {
     }
   };
 
-  // Listen for messages from React Native
   window.addEventListener('message', function(e) {
     if (e.data) {
       try {
@@ -334,7 +329,6 @@ setTimeout(function() {
     }
   });
 
-  // Also listen on document for Android WebView
   document.addEventListener('message', function(e) {
     if (e.data) {
       try {
@@ -344,9 +338,8 @@ setTimeout(function() {
     }
   });
 
-  // Signal ready
   sendEvent({ type: 'MAP_READY' });
 })();
 </script>
 </body>
-</html>
+</html>`;
