@@ -14,14 +14,14 @@ const STEPS = [
 ] as const;
 
 const STEP_LABELS: Record<string, string> = {
-  planned: 'Plan',
-  loading: 'Load',
-  loaded: 'Loaded',
+  planned:    'Plan',
+  loading:    'Load',
+  loaded:     'Loaded',
   in_transit: 'Transit',
-  arrived: 'Arrive',
+  arrived:    'Arrive',
   delivering: 'Deliver',
-  delivered: 'Done',
-  completed: 'Complete',
+  delivered:  'Done',
+  completed:  'Complete',
 };
 
 interface TripProgressProps {
@@ -58,8 +58,8 @@ export function TripProgress({ currentStatus }: TripProgressProps) {
       <View style={styles.stepsRow}>
         {STEPS.map((step, index) => {
           const isCompleted = index < currentIndex;
-          const isCurrent = index === currentIndex;
-          const isFuture = index > currentIndex;
+          const isCurrent   = index === currentIndex;
+          const isFuture    = index > currentIndex;
 
           return (
             <View key={step} style={styles.stepItem}>
@@ -87,7 +87,7 @@ export function TripProgress({ currentStatus }: TripProgressProps) {
                     style={[
                       styles.dot,
                       isCompleted && styles.dotCompleted,
-                      isFuture && styles.dotFuture,
+                      isFuture    && styles.dotFuture,
                     ]}
                   />
                 )}
@@ -104,7 +104,7 @@ export function TripProgress({ currentStatus }: TripProgressProps) {
                 style={[
                   styles.label,
                   isCurrent && styles.labelCurrent,
-                  isFuture && styles.labelFuture,
+                  isFuture  && styles.labelFuture,
                 ]}
               >
                 {STEP_LABELS[step] ?? step}
@@ -120,6 +120,7 @@ export function TripProgress({ currentStatus }: TripProgressProps) {
 const styles = StyleSheet.create({
   container: {
     paddingVertical: 12,
+    paddingHorizontal: 4,
   },
   stepsRow: {
     flexDirection: 'row',
@@ -137,18 +138,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: colors.primary,
   },
   dotCompleted: {
     backgroundColor: colors.primary,
   },
   dotCurrent: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: colors.secondary,
   },
   dotFuture: {
@@ -167,7 +168,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral200,
   },
   label: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '600',
     color: colors.neutral,
     textAlign: 'center',

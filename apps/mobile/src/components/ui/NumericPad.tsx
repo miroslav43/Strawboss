@@ -19,18 +19,14 @@ export function NumericPad({
       onChange(value.slice(0, -1));
       return;
     }
-
     if (key === 'clear') {
       onChange('');
       return;
     }
-
     if (key === '.' && (!decimal || value.includes('.'))) {
       return;
     }
-
     if (value.length >= maxLength) return;
-
     onChange(value + key);
   };
 
@@ -55,8 +51,7 @@ export function NumericPad({
                 key={key}
                 style={[
                   styles.key,
-                  key === 'backspace' && styles.actionKey,
-                  key === 'clear' && styles.actionKey,
+                  (key === 'backspace' || key === 'clear') && styles.actionKey,
                 ]}
                 onPress={() => handlePress(key)}
                 activeOpacity={0.6}
@@ -88,30 +83,30 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   displayText: {
-    fontSize: 40,
+    fontSize: 48,
     fontWeight: '700',
     color: colors.primary,
   },
   pad: {
-    gap: 10,
+    gap: 12,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 10,
+    gap: 12,
   },
   key: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
+    width: 72,
+    height: 72,
+    borderRadius: 14,
     backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.12,
     shadowRadius: 2,
-    elevation: 2,
+    elevation: 3,
   },
   actionKey: {
     backgroundColor: colors.surface,

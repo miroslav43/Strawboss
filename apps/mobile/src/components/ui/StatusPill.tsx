@@ -11,16 +11,16 @@ interface PillStyle {
 }
 
 const STATUS_STYLES: Record<string, PillStyle> = {
-  planned: { bg: '#9E9E9E', text: '#FFFFFF' },
-  loading: { bg: '#F59E0B', text: '#FFFFFF' },
-  loaded: { bg: '#D97706', text: '#FFFFFF' },
+  planned:    { bg: '#9E9E9E', text: '#FFFFFF' },
+  loading:    { bg: '#F59E0B', text: '#FFFFFF' },
+  loaded:     { bg: '#D97706', text: '#FFFFFF' },
   in_transit: { bg: '#1565C0', text: '#FFFFFF' },
-  arrived: { bg: '#2196F3', text: '#FFFFFF' },
+  arrived:    { bg: '#2196F3', text: '#FFFFFF' },
   delivering: { bg: '#2E7D32', text: '#FFFFFF' },
-  delivered: { bg: '#1B5E20', text: '#FFFFFF' },
-  completed: { bg: '#0A5C36', text: '#FFFFFF' },
-  cancelled: { bg: '#C62828', text: '#FFFFFF' },
-  disputed: { bg: '#C62828', text: '#FFFFFF' },
+  delivered:  { bg: '#1B5E20', text: '#FFFFFF' },
+  completed:  { bg: '#0A5C36', text: '#FFFFFF' },
+  cancelled:  { bg: '#C62828', text: '#FFFFFF' },
+  disputed:   { bg: '#C62828', text: '#FFFFFF' },
 };
 
 const DEFAULT_STYLE: PillStyle = { bg: '#9E9E9E', text: '#FFFFFF' };
@@ -60,20 +60,22 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   md: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
   },
   sm: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
   text: {
     fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   textMd: {
-    fontSize: 13,
+    fontSize: 12,
   },
   textSm: {
-    fontSize: 11,
+    fontSize: 10,
   },
 });

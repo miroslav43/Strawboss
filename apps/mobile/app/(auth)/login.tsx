@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getSupabaseClient } from '@/lib/auth';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
@@ -88,21 +89,21 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.content}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>StrawBoss</Text>
-          <Text style={styles.subtitle}>Agricultural Logistics</Text>
+        <View style={styles.brandHeader}>
+          <Text style={styles.brandTitle}>StrawBoss</Text>
+          <Text style={styles.brandSubtitle}>Agricultural Logistics</Text>
         </View>
 
-        <View style={styles.form}>
+        <View style={styles.card}>
           <TextInput
             style={styles.input}
             placeholder="Username sau Email"
-            placeholderTextColor="#999"
+            placeholderTextColor="#9CA3AF"
             value={login}
             onChangeText={setLogin}
             autoCapitalize="none"
@@ -115,7 +116,7 @@ export default function LoginScreen() {
             <TextInput
               style={styles.passwordInput}
               placeholder="PIN sau parola"
-              placeholderTextColor="#999"
+              placeholderTextColor="#9CA3AF"
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
@@ -126,8 +127,13 @@ export default function LoginScreen() {
               style={styles.eyeButton}
               onPress={() => setShowPassword((v) => !v)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel={showPassword ? 'Ascunde parola' : 'Arată parola'}
             >
-              <Text style={styles.eyeText}>{showPassword ? 'O' : '*'}</Text>
+              <MaterialCommunityIcons
+                name={showPassword ? 'eye' : 'eye-off'}
+                size={22}
+                color="#9CA3AF"
+              />
             </TouchableOpacity>
           </View>
 
@@ -153,45 +159,55 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3DED8',
+    backgroundColor: '#0A5C36',
   },
   content: {
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-  header: {
+  brandHeader: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 32,
   },
-  title: {
-    fontSize: 36,
+  brandTitle: {
+    fontSize: 40,
     fontWeight: '700',
-    color: '#0A5C36',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
-  subtitle: {
+  brandSubtitle: {
     fontSize: 16,
-    color: '#5D4037',
-    marginTop: 8,
+    color: 'rgba(255, 255, 255, 0.75)',
+    marginTop: 6,
+    fontWeight: '500',
   },
-  form: {
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
     gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#000',
+    color: '#111827',
     borderWidth: 1,
     borderColor: '#D7CCC8',
   },
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#D7CCC8',
   },
@@ -200,17 +216,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#000',
+    color: '#111827',
   },
   eyeButton: {
     paddingHorizontal: 14,
     paddingVertical: 14,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  eyeText: {
-    fontSize: 18,
-    color: '#666',
   },
   errorText: {
     color: '#C62828',
@@ -219,17 +231,19 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#0A5C36',
-    borderRadius: 8,
-    paddingVertical: 16,
+    borderRadius: 16,
+    height: 60,
     alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'center',
+    marginTop: 4,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });

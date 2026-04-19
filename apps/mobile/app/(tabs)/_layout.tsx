@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { TabBarIcon } from '@/components/ui/TabBarIcon';
 
 export default function TabLayout() {
   return (
@@ -11,6 +11,19 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#D7CCC8',
+          height: 72,
+          paddingBottom: 12,
+          paddingTop: 4,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          elevation: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 2,
         },
       }}
     >
@@ -19,8 +32,8 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarAccessibilityLabel: 'Acasă',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="home" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabBarIcon name="home" focused={focused} color={color} size={size} />
           ),
         }}
       />
@@ -29,8 +42,8 @@ export default function TabLayout() {
         options={{
           title: 'Scan',
           tabBarAccessibilityLabel: 'Scanează',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="qrcode-scan" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabBarIcon name="qrcode-scan" focused={focused} color={color} size={size} />
           ),
         }}
       />
@@ -39,8 +52,8 @@ export default function TabLayout() {
         options={{
           title: 'Trips',
           tabBarAccessibilityLabel: 'Curse',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="map-marker-path" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabBarIcon name="map-marker-path" focused={focused} color={color} size={size} />
           ),
         }}
       />
@@ -49,8 +62,8 @@ export default function TabLayout() {
         options={{
           title: 'Sync',
           tabBarAccessibilityLabel: 'Sincronizare',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="sync" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabBarIcon name="sync" focused={focused} color={color} size={size} />
           ),
         }}
       />
@@ -59,8 +72,8 @@ export default function TabLayout() {
         options={{
           title: 'Profil',
           tabBarAccessibilityLabel: 'Profilul meu',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="account" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabBarIcon name="account" focused={focused} color={color} size={size} />
           ),
         }}
       />

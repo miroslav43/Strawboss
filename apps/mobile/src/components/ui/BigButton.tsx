@@ -72,15 +72,16 @@ export function BigButton({
 
 const styles = StyleSheet.create({
   container: {
-    height: 56,
-    borderRadius: 12,
+    height: 60,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
   },
   text: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
   disabled: {
     opacity: 0.5,

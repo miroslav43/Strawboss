@@ -7,21 +7,22 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { colors } from '@strawboss/ui-tokens';
 import type { MyTask } from '@/hooks/useMyTasks';
 
 const STATUS_COLORS: Record<string, string> = {
-  available: '#1565C0',
+  available:   '#1565C0',
   in_progress: '#B7791F',
-  done: '#2E7D32',
+  done:        '#2E7D32',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  available: 'Disponibil',
+  available:   'Disponibil',
   in_progress: 'În lucru',
-  done: 'Finalizat',
+  done:        'Finalizat',
 };
 
-/** Priority color for the dot indicator. Undefined = no dot shown. */
+/** Priority color for the left border stripe. Undefined = no stripe shown. */
 const PRIORITY_COLORS: Record<string, string | undefined> = {
   urgent: '#DC2626',
   high:   '#EA580C',
@@ -91,10 +92,21 @@ export function TaskList({ tasks, role }: TaskListProps) {
           const priorityColor = PRIORITY_COLORS[item.priority];
           const subtitle = getSubtitle(item);
           return (
-            <TouchableOpacity style={styles.card} onPress={() => handlePress(item)}>
+            <TouchableOpacity
+              style={[
+                styles.card,
+                priorityColor !== undefined && {
+                  borderLeftWidth: 3,
+                  borderLeftColor: priorityColor,
+                },
+              ]}
+              onPress={() => handlePress(item)}
+            >
               <View style={styles.cardHeader}>
                 <View style={styles.titleRow}>
-                  <Text style={styles.sequence}>{item.sequenceOrder}.</Text>
+                  <View style={styles.sequenceCircle}>
+                    <Text style={styles.sequence}>{item.sequenceOrder}</Text>
+                  </View>
                   {priorityColor !== undefined && (
                     <MaterialCommunityIcons
                       name="circle"
@@ -123,7 +135,7 @@ export function TaskList({ tasks, role }: TaskListProps) {
                   <MaterialCommunityIcons
                     name={subtitle.icon}
                     size={13}
-                    color="#8D6E63"
+                    color={colors.neutral400}
                   />
                   <Text style={styles.subtitle}>{subtitle.text}</Text>
                 </View>
@@ -138,19 +150,19 @@ export function TaskList({ tasks, role }: TaskListProps) {
 
 const styles = StyleSheet.create({
   container: { gap: 8 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#5D4037' },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: colors.primary },
   list: { gap: 8 },
   emptyContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderRadius: 16,
     padding: 16,
     alignItems: 'center',
   },
-  emptyText: { fontSize: 13, color: '#8D6E63' },
+  emptyText: { fontSize: 13, color: colors.neutral400 },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 16,
     gap: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -164,10 +176,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 6 },
-  sequence: { fontSize: 14, fontWeight: '700', color: '#0A5C36' },
-  taskName: { fontSize: 15, fontWeight: '500', color: '#000', flex: 1 },
+  sequenceCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sequence: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  taskName: { fontSize: 15, fontWeight: '500', color: colors.black, flex: 1 },
   badge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8 },
-  badgeText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
-  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 22 },
-  subtitle: { fontSize: 13, color: '#5D4037' },
+  badgeText: { color: colors.white, fontSize: 11, fontWeight: '600' },
+  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 30 },
+  subtitle: { fontSize: 13, color: colors.neutral },
 });

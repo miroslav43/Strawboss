@@ -34,16 +34,22 @@ export default function LoaderScanScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <OfflineBanner />
-      <ScrollView contentContainerStyle={styles.content}>
-        <TaskList tasks={tasks} role="loader_operator" />
+    <View style={styles.outerContainer}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <OfflineBanner />
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>Scanează Camion</Text>
+          <Text style={styles.subtitle}>
+            Poziționați camera pe codul QR de pe camion
+          </Text>
+          <TaskList tasks={tasks} role="loader_operator" />
+        </View>
+      </SafeAreaView>
 
-        <Text style={styles.title}>Scanează Camion</Text>
-        <Text style={styles.subtitle}>
-          Poziționați camera pe codul QR de pe camion
-        </Text>
-
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.content}
+      >
         <View style={styles.scannerContainer}>
           <QRScanner onScan={handleScan} />
         </View>
@@ -70,15 +76,43 @@ export default function LoaderScanScreen() {
         onClose={() => setProblemModalVisible(false)}
         machineId={assignedMachineId ?? undefined}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3DED8' },
-  content: { padding: 16, gap: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
-  subtitle: { fontSize: 13, color: '#5D4037' },
+  outerContainer: {
+    flex: 1,
+    backgroundColor: '#0A5C36',
+  },
+  safeArea: {
+    backgroundColor: '#0A5C36',
+  },
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+    gap: 12,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  body: {
+    flex: 1,
+    backgroundColor: '#F3DED8',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  content: {
+    padding: 16,
+    gap: 16,
+  },
   scannerContainer: {
     height: 300,
     borderRadius: 12,

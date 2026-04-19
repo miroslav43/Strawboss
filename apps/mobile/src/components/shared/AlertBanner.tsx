@@ -29,7 +29,15 @@ export function AlertBanner({ message, severity, onDismiss }: AlertBannerProps) 
   const config = SEVERITY_CONFIG[severity];
 
   return (
-    <View style={[styles.container, { backgroundColor: config.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: config.background,
+          borderLeftColor: config.text,
+        },
+      ]}
+    >
       <MaterialCommunityIcons
         name={config.iconName}
         size={18}
@@ -57,9 +65,10 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
+    borderLeftWidth: 3,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 14,
     gap: 10,
   },
   message: {
