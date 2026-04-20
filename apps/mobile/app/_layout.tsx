@@ -30,6 +30,7 @@ import {
   unregisterBackgroundSyncTask,
 } from '@/lib/background-sync';
 import type { User } from '@strawboss/types';
+import { debugIngest } from '@/lib/debug-ingest';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -92,11 +93,38 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const supabase = getSupabaseClient();
-    supabase.auth.getSession()
+    // #region agent log
+    debugIngest(
+      'app/_layout.tsx:AuthGate',
+      'getSession start',
+      {
+        hasSupabaseUrl: !!process.env.EXPO_PUBLIC_SUPABASE_URL,
+      },
+      'H5'
+    );
+    // #endregion
+    supabase.auth
+      .getSession()
       .then(({ data }) => {
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:AuthGate',
+          'getSession ok',
+          { hasSession: !!data.session },
+          'H5'
+        );
+        // #endregion
         setIsAuthenticated(!!data.session);
       })
       .catch((err) => {
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:AuthGate',
+          'getSession catch',
+          { err: err instanceof Error ? err.message : String(err) },
+          'H5'
+        );
+        // #endregion
         if (__DEV__) {
           console.warn('[StrawBoss] getSession failed, sending user to login', err);
         }
@@ -235,9 +263,25 @@ export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
+    // #region agent log
+    debugIngest(
+      'app/_layout.tsx:RootLayout',
+      'bootstrap useEffect start',
+      { __DEV__ },
+      'H1'
+    );
+    // #endregion
     let cancelled = false;
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
+      // #region agent log
+      debugIngest(
+        'app/_layout.tsx:RootLayout',
+        'dbReady timeout 20s fired',
+        {},
+        'H1'
+      );
+      // #endregion
       if (__DEV__) {
         console.warn('[StrawBoss] getDatabase exceeded 20s — unblocking UI');
       }
@@ -249,11 +293,27 @@ export default function RootLayout() {
         if (__DEV__) console.warn('[StrawBoss] getDatabase OK');
       })
       .catch((err) => {
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:RootLayout',
+          'getDatabase promise catch',
+          { err: err instanceof Error ? err.message : String(err) },
+          'H1'
+        );
+        // #endregion
         if (__DEV__) console.warn('[StrawBoss] getDatabase failed', err);
       })
       .finally(() => {
         if (cancelled) return;
         clearTimeout(timeoutId);
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:RootLayout',
+          'getDatabase finally → setDbReady',
+          {},
+          'H1'
+        );
+        // #endregion
         setDbReady(true);
       });
 
@@ -269,7 +329,36 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!dbReady) return;
-    void SplashScreen.hideAsync();
+    // #region agent log
+    debugIngest(
+      'app/_layout.tsx:RootLayout',
+      'calling SplashScreen.hideAsync',
+      {},
+      'H3'
+    );
+    // #endregion
+    void SplashScreen.hideAsync().then(
+      () => {
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:RootLayout',
+          'SplashScreen.hideAsync resolved',
+          {},
+          'H3'
+        );
+        // #endregion
+      },
+      (e) => {
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:RootLayout',
+          'SplashScreen.hideAsync rejected',
+          { err: e instanceof Error ? e.message : String(e) },
+          'H3'
+        );
+        // #endregion
+      }
+    );
   }, [dbReady]);
 
   useEffect(() => {

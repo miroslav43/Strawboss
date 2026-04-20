@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ProductionFlow } from '@/components/features/production/ProductionFlow';
@@ -16,71 +16,86 @@ export default function BalerProductionScreen() {
   const [selectedParcelName, setSelectedParcelName] = useState<string | null>(null);
   const [parcelConfirmed, setParcelConfirmed] = useState(false);
 
-  if (!userId) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator color="#0A5C36" />
+  return (
+    <View style={styles.outerContainer}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>Înregistrează Producție</Text>
+          {!parcelConfirmed && (
+            <Text style={styles.subtitle}>Selectați parcela curentă</Text>
+          )}
         </View>
       </SafeAreaView>
-    );
-  }
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {!parcelConfirmed ? (
-        <View style={styles.selectionContent}>
-          <Text style={styles.title}>Înregistrează Producție</Text>
-          <Text style={styles.subtitle}>Selectați parcela curentă:</Text>
-
-          <ParcelSelector
-            onSelect={(parcelId, parcelName) => {
-              setSelectedParcelId(parcelId);
-              setSelectedParcelName(parcelName);
-            }}
-            selectedId={selectedParcelId}
-            selectedName={selectedParcelName}
-          />
-
-          <View style={styles.actions}>
-            <BigButton
-              title="Continuă"
-              onPress={() => {
-                if (selectedParcelId) {
-                  mobileLogger.flow('Baler production: parcel chosen', {
-                    parcelId: selectedParcelId,
-                  });
-                }
-                setParcelConfirmed(true);
-              }}
-              disabled={!selectedParcelId}
-            />
-            <BigButton
-              title="Anulează"
-              variant="outline"
-              onPress={() => router.back()}
-            />
+      <View style={styles.body}>
+        {!userId ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color="#0A5C36" />
           </View>
-        </View>
-      ) : (
-        <ProductionFlow
-          parcelId={selectedParcelId!}
-          parcelName={selectedParcelName!}
-          balerId={assignedMachineId}
-          operatorId={userId}
-          onComplete={() => router.back()}
-          onCancel={() => setParcelConfirmed(false)}
-        />
-      )}
-    </SafeAreaView>
+        ) : !parcelConfirmed ? (
+          <ScrollView contentContainerStyle={styles.content}>
+            <ParcelSelector
+              onSelect={(parcelId, parcelName) => {
+                setSelectedParcelId(parcelId);
+                setSelectedParcelName(parcelName);
+              }}
+              selectedId={selectedParcelId}
+              selectedName={selectedParcelName}
+            />
+
+            <View style={styles.actions}>
+              <BigButton
+                title="Continuă"
+                onPress={() => {
+                  if (selectedParcelId) {
+                    mobileLogger.flow('Baler production: parcel chosen', {
+                      parcelId: selectedParcelId,
+                    });
+                  }
+                  setParcelConfirmed(true);
+                }}
+                disabled={!selectedParcelId}
+              />
+              <BigButton
+                title="Anulează"
+                variant="outline"
+                onPress={() => router.back()}
+              />
+            </View>
+          </ScrollView>
+        ) : (
+          <ProductionFlow
+            parcelId={selectedParcelId!}
+            parcelName={selectedParcelName!}
+            balerId={assignedMachineId}
+            operatorId={userId}
+            onComplete={() => router.back()}
+            onCancel={() => setParcelConfirmed(false)}
+          />
+        )}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3DED8' },
+  outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
+  safeArea: { backgroundColor: '#0A5C36' },
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+    gap: 4,
+  },
+  title: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
+  subtitle: { fontSize: 14, color: 'rgba(255, 255, 255, 0.8)' },
+  body: {
+    flex: 1,
+    backgroundColor: '#F3DED8',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  selectionContent: { flex: 1, padding: 16, gap: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
-  subtitle: { fontSize: 14, color: '#5D4037' },
-  actions: { marginTop: 'auto', gap: 12 },
+  content: { padding: 16, gap: 16, flexGrow: 1 },
+  actions: { gap: 12, marginTop: 'auto', paddingTop: 16 },
 });

@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { runMigrations } from '../db/migrations';
+import { debugIngest } from './debug-ingest';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -9,8 +10,48 @@ let db: SQLite.SQLiteDatabase | null = null;
  */
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (!db) {
-    db = await SQLite.openDatabaseAsync('strawboss.db');
-    await runMigrations(db);
+    // #region agent log
+    debugIngest(
+      'storage.ts:getDatabase',
+      'openDatabaseAsync start',
+      { hasEnvApi: !!process.env.EXPO_PUBLIC_API_URL },
+      'H1'
+    );
+    // #endregion
+    const t0 = Date.now();
+    try {
+      db = await SQLite.openDatabaseAsync('strawboss.db');
+      // #region agent log
+      debugIngest(
+        'storage.ts:getDatabase',
+        'openDatabaseAsync done',
+        { ms: Date.now() - t0 },
+        'H1'
+      );
+      // #endregion
+      await runMigrations(db);
+      // #region agent log
+      debugIngest(
+        'storage.ts:getDatabase',
+        'runMigrations done',
+        { ms: Date.now() - t0 },
+        'H1'
+      );
+      // #endregion
+    } catch (err) {
+      // #region agent log
+      debugIngest(
+        'storage.ts:getDatabase',
+        'getDatabase error',
+        {
+          ms: Date.now() - t0,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'H1'
+      );
+      // #endregion
+      throw err;
+    }
   }
   return db;
 }

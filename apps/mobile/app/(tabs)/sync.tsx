@@ -65,18 +65,23 @@ export default function SyncScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.outerContainer}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>Sincronizare</Text>
+        </View>
+      </SafeAreaView>
+
       <ScrollView
+        style={styles.body}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <Text style={styles.title}>Sync Status</Text>
-
         <View style={styles.card}>
           <View style={styles.statusRow}>
-            <Text style={styles.label}>Network:</Text>
+            <Text style={styles.label}>Rețea:</Text>
             <View style={styles.statusIndicator}>
               <View
                 style={[
@@ -91,16 +96,16 @@ export default function SyncScreen() {
           </View>
 
           <View style={styles.statusRow}>
-            <Text style={styles.label}>Pending changes:</Text>
+            <Text style={styles.label}>Modificări în așteptare:</Text>
             <Text style={[styles.value, pendingCount > 0 && styles.valuePending]}>
               {pendingCount}
             </Text>
           </View>
 
           <View style={styles.statusRow}>
-            <Text style={styles.label}>Last sync:</Text>
+            <Text style={styles.label}>Ultima sincronizare:</Text>
             <Text style={styles.value}>
-              {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : 'Never'}
+              {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : 'Niciodată'}
             </Text>
           </View>
         </View>
@@ -117,14 +122,14 @@ export default function SyncScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.syncButtonText}>
-              {isConnected ? 'Sync Now' : 'No Connection'}
+              {isConnected ? 'Sincronizează acum' : 'Fără conexiune'}
             </Text>
           )}
         </TouchableOpacity>
 
         {errors.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Recent Errors</Text>
+            <Text style={styles.cardTitle}>Erori recente</Text>
             {errors.map((error, i) => (
               <Text key={i} style={styles.errorText}>
                 {error}
@@ -136,7 +141,7 @@ export default function SyncScreen() {
         {failedEntries.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
-              Failed Entries ({failedEntries.length})
+              Intrări eșuate ({failedEntries.length})
             </Text>
             {failedEntries.map((entry) => (
               <View key={entry.id} style={styles.failedEntry}>
@@ -145,44 +150,46 @@ export default function SyncScreen() {
                     {entry.entity_type} / {entry.action}
                   </Text>
                   <Text style={styles.failedEntryError} numberOfLines={2}>
-                    {entry.last_error ?? 'Unknown error'}
+                    {entry.last_error ?? 'Eroare necunoscută'}
                   </Text>
                   <Text style={styles.failedEntryMeta}>
-                    Retries: {entry.retry_count}
+                    Reîncercări: {entry.retry_count}
                   </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.retryButton}
                   onPress={() => handleRetry(entry.id)}
                 >
-                  <Text style={styles.retryButtonText}>Retry</Text>
+                  <Text style={styles.retryButtonText}>Reîncearcă</Text>
                 </TouchableOpacity>
               </View>
             ))}
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
+  safeArea: { backgroundColor: '#0A5C36' },
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  title: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
+  body: {
     flex: 1,
     backgroundColor: '#F3DED8',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
-  content: {
-    padding: 16,
-    gap: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0A5C36',
-  },
+  content: { padding: 16, gap: 16 },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     gap: 12,
     shadowColor: '#000',
@@ -191,56 +198,23 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#5D4037',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  label: {
-    fontSize: 14,
-    color: '#5D4037',
-  },
-  value: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000',
-  },
-  valuePending: {
-    color: '#B7791F',
-  },
+  cardTitle: { fontSize: 14, fontWeight: '600', color: '#5D4037' },
+  statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statusIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  label: { fontSize: 14, color: '#5D4037' },
+  value: { fontSize: 14, fontWeight: '600', color: '#000' },
+  valuePending: { color: '#B7791F' },
   syncButton: {
     backgroundColor: '#0A5C36',
-    borderRadius: 8,
-    paddingVertical: 16,
+    borderRadius: 16,
+    height: 60,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  syncButtonDisabled: {
-    opacity: 0.5,
-  },
-  syncButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  errorText: {
-    fontSize: 13,
-    color: '#C62828',
-  },
+  syncButtonDisabled: { opacity: 0.5 },
+  syncButtonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
+  errorText: { fontSize: 13, color: '#C62828' },
   failedEntry: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -248,33 +222,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#EFEBE9',
   },
-  failedEntryInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  failedEntryType: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#5D4037',
-  },
-  failedEntryError: {
-    fontSize: 12,
-    color: '#C62828',
-  },
-  failedEntryMeta: {
-    fontSize: 11,
-    color: '#8D6E63',
-  },
+  failedEntryInfo: { flex: 1, gap: 2 },
+  failedEntryType: { fontSize: 13, fontWeight: '600', color: '#5D4037' },
+  failedEntryError: { fontSize: 12, color: '#C62828' },
+  failedEntryMeta: { fontSize: 11, color: '#8D6E63' },
   retryButton: {
     backgroundColor: '#0A5C36',
-    borderRadius: 6,
-    paddingVertical: 6,
+    borderRadius: 8,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     marginLeft: 8,
   },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  retryButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
 });

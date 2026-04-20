@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,9 +42,6 @@ export default function LoadBalesScreen() {
 
   const handleContinue = async () => {
     if (baleCount <= 0) return;
-
-    // Check parcel bale availability if we have a parcel context
-    // (For now we skip the parcel check since loader may not have parcel info here)
     setStep('confirm');
   };
 
@@ -94,115 +92,143 @@ export default function LoadBalesScreen() {
 
   if (truckLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
+      <View style={styles.outerContainer}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <View style={styles.headerSection}>
+            <Text style={styles.title}>Încarcă Baloți</Text>
+          </View>
+        </SafeAreaView>
+        <View style={[styles.body, styles.centered]}>
           <ActivityIndicator color="#0A5C36" />
           <Text style={styles.loadingText}>Se verifică camionul...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (saved) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
+      <View style={styles.outerContainer}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <View style={styles.headerSection}>
+            <Text style={styles.title}>Încarcă Baloți</Text>
+          </View>
+        </SafeAreaView>
+        <View style={[styles.body, styles.centered]}>
           <MaterialCommunityIcons name="check-circle" size={64} color="#0A5C36" />
           <Text style={styles.successText}>Baloți înregistrați!</Text>
           <Text style={styles.successSubtext}>Se sincronizează cu serverul...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Încarcă Baloți</Text>
-        {truck ? (
-          <View style={styles.truckRow}>
-            <MaterialCommunityIcons name="truck" size={14} color="#5D4037" />
-            <Text style={styles.truckInfo}>{truck.registrationPlate ?? truck.internalCode}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {availabilityWarning ? (
-        <AlertBanner
-          message={availabilityWarning}
-          severity="warning"
-          onDismiss={() => setAvailabilityWarning(null)}
-        />
-      ) : null}
-
-      {step === 'count' && (
-        <View style={styles.content}>
-          <Text style={styles.stepLabel}>Număr baloți încărcați:</Text>
-          <NumericPad
-            value={baleCountStr}
-            onChange={setBaleCountStr}
-            decimal={false}
-          />
-          <BigButton
-            title="Continuă"
-            onPress={handleContinue}
-            disabled={baleCount <= 0}
-          />
-          <BigButton
-            title="Anulează"
-            onPress={() => router.back()}
-            variant="outline"
-          />
-        </View>
-      )}
-
-      {step === 'confirm' && (
-        <View style={styles.content}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Confirmare încărcare</Text>
-            {truck ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Camion</Text>
-                <Text style={styles.summaryValue}>
-                  {truck.registrationPlate ?? truck.internalCode}
-                </Text>
-              </View>
-            ) : null}
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Baloți</Text>
-              <Text style={styles.summaryValueLarge}>{baleCount}</Text>
+    <View style={styles.outerContainer}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>Încarcă Baloți</Text>
+          {truck ? (
+            <View style={styles.truckRow}>
+              <MaterialCommunityIcons name="truck" size={14} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.truckInfo}>
+                {truck.registrationPlate ?? truck.internalCode}
+              </Text>
             </View>
-          </View>
-
-          <BigButton
-            title="Încarcă"
-            onPress={handleConfirm}
-            loading={saving}
-          />
-          <BigButton
-            title="Înapoi"
-            onPress={() => setStep('count')}
-            variant="outline"
-          />
+          ) : null}
         </View>
-      )}
-    </SafeAreaView>
+      </SafeAreaView>
+
+      <ScrollView style={styles.body} contentContainerStyle={styles.content}>
+        {availabilityWarning ? (
+          <AlertBanner
+            message={availabilityWarning}
+            severity="warning"
+            onDismiss={() => setAvailabilityWarning(null)}
+          />
+        ) : null}
+
+        {step === 'count' && (
+          <>
+            <Text style={styles.stepLabel}>Număr baloți încărcați:</Text>
+            <NumericPad
+              value={baleCountStr}
+              onChange={setBaleCountStr}
+              decimal={false}
+            />
+            <BigButton
+              title="Continuă"
+              onPress={handleContinue}
+              disabled={baleCount <= 0}
+            />
+            <BigButton
+              title="Anulează"
+              onPress={() => router.back()}
+              variant="outline"
+            />
+          </>
+        )}
+
+        {step === 'confirm' && (
+          <>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>Confirmare încărcare</Text>
+              {truck ? (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Camion</Text>
+                  <Text style={styles.summaryValue}>
+                    {truck.registrationPlate ?? truck.internalCode}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Baloți</Text>
+                <Text style={styles.summaryValueLarge}>{baleCount}</Text>
+              </View>
+            </View>
+
+            <BigButton
+              title="Încarcă"
+              onPress={handleConfirm}
+              loading={saving}
+            />
+            <BigButton
+              title="Înapoi"
+              onPress={() => setStep('count')}
+              variant="outline"
+            />
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3DED8' },
-  header: { padding: 16, paddingBottom: 8 },
-  title: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
-  truckRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  truckInfo: { fontSize: 14, color: '#5D4037' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
+  safeArea: { backgroundColor: '#0A5C36' },
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+    gap: 4,
+  },
+  title: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
+  truckRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  truckInfo: { fontSize: 14, color: 'rgba(255, 255, 255, 0.8)' },
+  body: {
+    flex: 1,
+    backgroundColor: '#F3DED8',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  centered: { justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 40 },
   loadingText: { color: '#5D4037', fontSize: 14 },
   content: { padding: 16, gap: 12 },
   stepLabel: { fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 4 },
   summaryCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     gap: 12,
     shadowColor: '#000',

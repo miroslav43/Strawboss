@@ -35,13 +35,11 @@ export default function HomeScreen() {
   const { pendingCount, lastSyncAt, triggerSync, syncing } = useSync();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch the current user's profile — includes assignedMachineId.
   const { data: profile, isLoading: profileLoading, refetch: refetchProfile } = useQuery({
     queryKey: ['profile'],
     queryFn: () => mobileApiClient.get<User>('/api/v1/profile'),
   });
 
-  // If a machine is assigned, fetch its details.
   const assignedMachineId = profile?.assignedMachineId ?? null;
   const { data: machine, isLoading: machineLoading } = useQuery({
     queryKey: ['machine', assignedMachineId],
@@ -61,16 +59,21 @@ export default function HomeScreen() {
   const isLoadingMachine = profileLoading || (!!assignedMachineId && machineLoading);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.outerContainer}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>StrawBoss</Text>
+          <Text style={styles.subtitle}>Agricultural Logistics</Text>
+        </View>
+      </SafeAreaView>
+
       <ScrollView
+        style={styles.body}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <Text style={styles.title}>StrawBoss</Text>
-        <Text style={styles.subtitle}>Agricultural Logistics</Text>
-
         {/* Connection status */}
         <View style={styles.statusCard}>
           <Text style={styles.cardTitle}>Conexiune</Text>
@@ -94,7 +97,6 @@ export default function HomeScreen() {
           {isLoadingMachine ? (
             <ActivityIndicator size="small" color="#0A5C36" />
           ) : !assignedMachineId ? (
-            /* No machine assigned */
             <View style={styles.noMachineBox}>
               <MaterialCommunityIcons name="cancel" size={32} color="#374151" />
               <Text style={styles.noMachineTitle}>Nicio mașină asignată</Text>
@@ -103,7 +105,6 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : machine ? (
-            /* Machine found */
             <>
               <View style={styles.machineCard}>
                 <MaterialCommunityIcons
@@ -124,7 +125,6 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              {/* GPS status (Android: auto-started after login when a machine is assigned) */}
               <View
                 style={[
                   styles.trackingStatusBar,
@@ -142,7 +142,7 @@ export default function HomeScreen() {
                     {Platform.OS === 'android'
                       ? isTracking
                         ? 'GPS activ (inclusiv în fundal)'
-                        : 'GPS nu rulează — verifică permisiunile „Tot timpul”'
+                        : 'GPS nu rulează — verifică permisiunile „Tot timpul"'
                       : isTracking
                         ? 'GPS activ'
                         : 'GPS: pornește din setările aplicației (iOS)'}
@@ -198,19 +198,32 @@ export default function HomeScreen() {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: '#F3DED8' },
-  content:         { padding: 16, gap: 16 },
-  title:           { fontSize: 28, fontWeight: '700', color: '#0A5C36' },
-  subtitle:        { fontSize: 14, color: '#5D4037', marginBottom: 8 },
+  outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
+  safeArea: { backgroundColor: '#0A5C36' },
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+    gap: 4,
+  },
+  title: { fontSize: 28, fontWeight: '700', color: '#FFFFFF' },
+  subtitle: { fontSize: 14, color: 'rgba(255, 255, 255, 0.8)' },
+  body: {
+    flex: 1,
+    backgroundColor: '#F3DED8',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  content: { padding: 16, gap: 16 },
 
   statusCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     gap: 12,
     shadowColor: '#000',
@@ -219,23 +232,19 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  cardTitle:  { fontSize: 16, fontWeight: '600', color: '#5D4037' },
+  cardTitle: { fontSize: 14, fontWeight: '600', color: '#5D4037' },
 
-  statusRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  statusDot:  { width: 10, height: 10, borderRadius: 5 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
   statusText: { fontSize: 14, color: '#000' },
 
-  infoRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label:      { fontSize: 14, color: '#5D4037' },
-  value:      { fontSize: 14, fontWeight: '600', color: '#000' },
-  syncingText:{ fontSize: 14, color: '#0A5C36', fontStyle: 'italic' },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  label: { fontSize: 14, color: '#5D4037' },
+  value: { fontSize: 14, fontWeight: '600', color: '#000' },
+  syncingText: { fontSize: 14, color: '#0A5C36', fontStyle: 'italic' },
 
-  noMachineBox: {
-    alignItems: 'center',
-    paddingVertical: 16,
-    gap: 6,
-  },
-  noMachineTitle:    { fontSize: 15, fontWeight: '600', color: '#374151' },
+  noMachineBox: { alignItems: 'center', paddingVertical: 16, gap: 6 },
+  noMachineTitle: { fontSize: 15, fontWeight: '600', color: '#374151' },
   noMachineSubtitle: { fontSize: 13, color: '#8D6E63', textAlign: 'center' },
 
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -249,10 +258,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BBF7D0',
   },
-  machineInfo:   { flex: 1 },
-  machineCode:   { fontSize: 16, fontWeight: '700', color: '#0A5C36' },
+  machineInfo: { flex: 1 },
+  machineCode: { fontSize: 16, fontWeight: '700', color: '#0A5C36' },
   machineDetail: { fontSize: 13, color: '#5D4037', marginTop: 2 },
-  machinePlate:  { fontSize: 12, color: '#9ca3af', marginTop: 2 },
+  machinePlate: { fontSize: 12, color: '#9ca3af', marginTop: 2 },
 
   trackingStatusBar: {
     borderRadius: 10,
@@ -260,14 +269,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderWidth: 1,
   },
-  trackingStatusActive: {
-    backgroundColor: '#F0F9F4',
-    borderColor: '#BBF7D0',
-  },
-  trackingStatusIdle: {
-    backgroundColor: '#F9FAFB',
-    borderColor: '#E5E7EB',
-  },
+  trackingStatusActive: { backgroundColor: '#F0F9F4', borderColor: '#BBF7D0' },
+  trackingStatusIdle: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
   trackingButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -289,9 +292,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BBF7D0',
   },
-  pulseDot:          { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16a34a' },
+  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16a34a' },
   trackingBadgeText: { fontSize: 13, color: '#15803d', fontWeight: '500' },
-  lastReportedText:  { fontSize: 11, color: '#6b7280', marginTop: 2 },
+  lastReportedText: { fontSize: 11, color: '#6b7280', marginTop: 2 },
 
   errorText: { fontSize: 13, color: '#C62828', fontStyle: 'italic' },
 });

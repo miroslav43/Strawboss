@@ -67,6 +67,6 @@ export default function DriverDeliveryFlowScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F3DED8' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorText: { color: '#C62828', fontSize: 14 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
+  errorText: { color: '#C62828', fontSize: 14, textAlign: 'center' },
 });

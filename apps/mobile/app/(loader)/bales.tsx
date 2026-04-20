@@ -22,22 +22,25 @@ export default function LoaderBalesScreen() {
   });
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Încărcări de azi</Text>
-      </View>
+    <View style={styles.outerContainer}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>Încărcări de azi</Text>
+        </View>
+      </SafeAreaView>
 
       {isLoading ? (
-        <View style={styles.centered}>
+        <View style={[styles.body, styles.centered]}>
           <ActivityIndicator color="#0A5C36" />
         </View>
       ) : !loads || loads.length === 0 ? (
-        <View style={styles.centered}>
+        <View style={[styles.body, styles.centered]}>
           <Text style={styles.emptyText}>Nicio încărcare înregistrată azi.</Text>
           <Text style={styles.emptySubtext}>Scanați un camion pentru a începe.</Text>
         </View>
       ) : (
         <FlatList
+          style={styles.body}
           data={loads}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
@@ -63,21 +66,32 @@ export default function LoaderBalesScreen() {
           )}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3DED8' },
-  header: { padding: 16, paddingBottom: 8 },
-  title: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
+  outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
+  safeArea: { backgroundColor: '#0A5C36' },
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  title: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
+  body: {
+    flex: 1,
+    backgroundColor: '#F3DED8',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  centered: { justifyContent: 'center', alignItems: 'center', gap: 8, paddingTop: 40 },
   emptyText: { fontSize: 15, color: '#374151', fontWeight: '500' },
   emptySubtext: { fontSize: 13, color: '#8D6E63' },
   list: { padding: 16, gap: 12 },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     gap: 6,
     shadowColor: '#000',
