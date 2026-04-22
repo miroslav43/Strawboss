@@ -1,14 +1,18 @@
 import { Tabs } from 'expo-router';
 import { View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
 import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
+import { AppHeader } from '@/components/shared/AppHeader';
 
 export default function DriverTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
 
   return (
+    <SafeAreaProvider>
     <View style={{ flex: 1 }}>
+      <AppHeader />
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -90,5 +94,6 @@ export default function DriverTabLayout() {
         onConfirmParcelDone={confirmParcelDone}
       />
     </View>
+    </SafeAreaProvider>
   );
 }

@@ -10,6 +10,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { NotificationsService } from '../notifications/notifications.service';
 import { TripStatus } from '@strawboss/types';
 import { QUEUE_CMR_GENERATION } from '../jobs/queues';
 import type {
@@ -33,7 +34,21 @@ export class TripsService {
     private readonly drizzleProvider: DrizzleProvider,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
     @InjectQueue(QUEUE_CMR_GENERATION) private readonly cmrQueue: Queue,
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  private async pushToDriver(tripId: string, title: string, body: string, type: string): Promise<void> {
+    try {
+      const rows = await this.drizzleProvider.db.execute(
+        sql`SELECT driver_id FROM trips WHERE id = ${tripId} AND driver_id IS NOT NULL LIMIT 1`,
+      ) as unknown as { driver_id: string }[];
+      if (rows[0]?.driver_id) {
+        await this.notificationsService.sendPush(rows[0].driver_id, title, body, { type, tripId });
+      }
+    } catch {
+      // Best-effort — never fail a trip transition due to push error
+    }
+  }
 
   private logTripFlow(
     tripId: string,
@@ -208,6 +223,7 @@ export class TripsService {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'COMPLETE_LOADING', from, TripStatus.loaded);
+    void this.pushToDriver(id, 'Transport pregătit', 'Baloții au fost încărcați. Poți pleca.', 'trip_loaded');
     return result;
   }
 
@@ -255,6 +271,7 @@ export class TripsService {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'ARRIVE', from, TripStatus.arrived);
+    void this.pushToDriver(id, 'Ai ajuns la destinație', 'Confirmă livrarea când ești gata.', 'trip_arrived');
     return result;
   }
 
@@ -334,6 +351,7 @@ export class TripsService {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'COMPLETE', from, TripStatus.completed);
+    void this.pushToDriver(id, 'Transport finalizat', 'Transportul a fost completat cu succes.', 'trip_completed');
 
     // Auto-generate CMR document in background (after signature is captured)
     await this.cmrQueue.add('generate', { tripId: id });
@@ -380,6 +398,7 @@ export class TripsService {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'DISPUTE', from, TripStatus.disputed);
+    void this.pushToDriver(id, 'Dispută transport', 'Transportul tău a intrat în dispută. Contactează dispeceratul.', 'trip_disputed');
     return result;
   }
 

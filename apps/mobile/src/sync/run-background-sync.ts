@@ -10,6 +10,7 @@ import { ConsumableLogsRepo } from '../db/consumable-logs-repo';
 import { BaleLoadsRepo } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo } from '../db/task-assignments-repo';
 import { SyncManager } from './SyncManager';
+import { NotificationsRepo } from '../db/notifications-repo';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -50,6 +51,11 @@ export async function runBackgroundSyncCycle(): Promise<void> {
   );
 
   const result = await manager.sync();
+
+  // Prune notification history older than 7 days
+  const notificationsRepo = new NotificationsRepo(db);
+  await notificationsRepo.cleanupOlderThan(7 * 24 * 3600 * 1000);
+
   if (result.errors.length > 0) {
     mobileLogger.warn('Background sync finished with errors', {
       errors: result.errors,

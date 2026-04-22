@@ -19,7 +19,9 @@ import { getSupabaseClient } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
 import { mobileApiClient } from '@/lib/api-client';
 import { cleanupOldMobileLogFiles } from '@/lib/logger';
-import { registerForPushNotifications } from '@/lib/notifications';
+import { registerForPushNotifications, addNotificationListener, addNotificationResponseListener } from '@/lib/notifications';
+import { handleIncomingPush } from '@/lib/notification-handler';
+import { NotificationsRepo } from '@/db/notifications-repo';
 import {
   requestBackgroundLocationPermissions,
   startBackgroundLocationTracking,
@@ -167,6 +169,33 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         setProfileReady(true);
       });
   }, [isAuthenticated, role, setProfile]);
+
+  // Intercept all incoming pushes → persist to local notifications table
+  useEffect(() => {
+    const fgSub = addNotificationListener((notification) => {
+      void handleIncomingPush(notification);
+    });
+    const tapSub = addNotificationResponseListener((response) => {
+      void handleIncomingPush(response.notification);
+    });
+    return () => {
+      fgSub.remove();
+      tapSub.remove();
+    };
+  }, []);
+
+  // 7-day cleanup of local notification history on mount
+  useEffect(() => {
+    void (async () => {
+      try {
+        const db = await getDatabase();
+        const repo = new NotificationsRepo(db);
+        await repo.cleanupOlderThan(7 * 24 * 3600 * 1000);
+      } catch {
+        // Non-critical
+      }
+    })();
+  }, []);
 
   // Register push token once profile is loaded
   useEffect(() => {
@@ -375,7 +404,9 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       {dbReady ? (
         <AuthGate>
-          <Stack screenOptions={{ headerShown: false }} />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="notifications" options={{ presentation: 'card', animation: 'slide_from_right' }} />
+          </Stack>
         </AuthGate>
       ) : (
         <LoadingSplash />
