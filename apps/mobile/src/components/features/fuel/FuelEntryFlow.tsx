@@ -7,6 +7,7 @@ import { getDatabase } from '@/lib/storage';
 import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { uploadReceipt } from '@/lib/receiptUpload';
+import { generateUuid } from '@/lib/uuid';
 import { colors } from '@strawboss/ui-tokens';
 
 interface FuelEntryFlowProps {
@@ -37,7 +38,7 @@ export function FuelEntryFlow({
       const fuelLogsRepo = new FuelLogsRepo(db);
       const syncQueue = new SyncQueueRepo(db);
 
-      const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const id = generateUuid();
       const now = new Date().toISOString();
       const quantityLiters = parseFloat(liters);
       const odometerKm = odometer ? parseFloat(odometer) : null;
@@ -85,7 +86,9 @@ export function FuelEntryFlow({
           fuel_type: 'diesel',
           quantity_liters: quantityLiters,
           odometer_km: odometerKm,
-          is_full_tank: 0,
+          // Postgres `is_full_tank` is BOOLEAN — send a native boolean so the
+          // server insert doesn't trip on an implicit integer→boolean cast.
+          is_full_tank: false,
           receipt_photo_url: receiptPhotoUrl,
           notes: null,
           sync_version: 1,
@@ -102,7 +105,7 @@ export function FuelEntryFlow({
       setStep('liters');
       Alert.alert(
         'Salvat',
-        `${quantityLiters} L alimentare înregistrată. Sincronizare: ${pendingCount} în așteptare.`,
+        `${quantityLiters} L alimentare înregistrată. În coadă sync: ${pendingCount}.`,
       );
       onComplete();
     } catch (err) {

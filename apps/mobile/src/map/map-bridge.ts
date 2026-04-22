@@ -27,6 +27,8 @@ export interface MachineMarkerData {
   lat: number;
   lon: number;
   operatorName: string | null;
+  /** Full tooltip line from RN (e.g. includes ≈km). If omitted, WebView builds from code + operator. */
+  tooltipLabel?: string;
 }
 
 export type MapCommand =

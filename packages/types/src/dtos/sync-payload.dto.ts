@@ -19,9 +19,11 @@ export interface SyncPullRequest {
 export interface SyncResult {
   table: string;
   recordId: string;
-  status: "applied" | "conflict" | "skipped";
+  status: "applied" | "conflict" | "skipped" | "failed";
   serverVersion: number;
   data: Record<string, unknown> | null;
+  /** Optional human-readable error, present when status === "failed". */
+  error?: string;
 }
 
 export interface SyncResponse {

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 
 @Controller('dashboard')
@@ -11,13 +11,19 @@ export class DashboardController {
   }
 
   @Get('production')
-  getProduction() {
-    return this.dashboardService.getProduction();
+  getProduction(
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.dashboardService.getProduction({ dateFrom, dateTo });
   }
 
   @Get('costs')
-  getCosts() {
-    return this.dashboardService.getCosts();
+  getCosts(
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.dashboardService.getCosts({ dateFrom, dateTo });
   }
 
   @Get('trending')

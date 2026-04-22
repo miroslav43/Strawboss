@@ -43,6 +43,10 @@ const queryClient = new QueryClient({
   },
 });
 
+// Keep splash visible until hideAsync; run at load (Expo recommendation). Native
+// keep-awake can reject on some Android devices — swallow so the app still boots.
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+
 const ROLE_ROUTES: Record<string, string> = {
   baler_operator: '/(baler)',
   loader_operator: '/(loader)',
@@ -153,21 +157,83 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    let cancelled = false;
+    const t0 = Date.now();
+    const profileTimeoutMs = 20_000;
+    // #region agent log
+    debugIngest('app/_layout.tsx:AuthGate', 'profile fetch start', {}, 'L3');
+    // #endregion
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
+      if (cancelled) return;
+      // #region agent log
+      debugIngest(
+        'app/_layout.tsx:AuthGate',
+        'profile fetch watchdog fired',
+        { ms: Date.now() - t0 },
+        'L3'
+      );
+      // #endregion
+      setProfileReady(true);
+    }, profileTimeoutMs);
+
+    const clearWatchdog = () => {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+        timeoutId = undefined;
+      }
+    };
+
     mobileApiClient
       .get<User>('/api/v1/profile')
       .then((profile) => {
+        if (cancelled) return;
         setProfile({
           role: profile.role,
           userId: profile.id,
           assignedMachineId: profile.assignedMachineId ?? null,
         });
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:AuthGate',
+          'profile fetch ok',
+          { ms: Date.now() - t0 },
+          'L3'
+        );
+        // #endregion
       })
-      .catch(() => {
-        // Profile fetch failed — proceed to default route
+      .catch((err) => {
+        if (cancelled) return;
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:AuthGate',
+          'profile fetch error',
+          {
+            ms: Date.now() - t0,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          'L3'
+        );
+        // #endregion
       })
       .finally(() => {
+        clearWatchdog();
+        if (cancelled) return;
+        // #region agent log
+        debugIngest(
+          'app/_layout.tsx:AuthGate',
+          'profile fetch finally',
+          { ms: Date.now() - t0 },
+          'L3'
+        );
+        // #endregion
         setProfileReady(true);
       });
+
+    return () => {
+      cancelled = true;
+      clearWatchdog();
+    };
   }, [isAuthenticated, role, setProfile]);
 
   // Intercept all incoming pushes → persist to local notifications table
@@ -256,6 +322,22 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, profileReady, role, assignedMachineId]);
 
   useEffect(() => {
+    // #region agent log
+    debugIngest(
+      'app/_layout.tsx:AuthGate',
+      'auth snapshot',
+      {
+        isAuthenticated,
+        profileReady,
+        role: role ?? null,
+        seg0: segments[0] ?? null,
+      },
+      'H5'
+    );
+    // #endregion
+  }, [isAuthenticated, profileReady, role, segments]);
+
+  useEffect(() => {
     if (isAuthenticated === null) return; // Session check still pending
 
     const inAuthGroup = segments[0] === '(auth)';
@@ -290,6 +372,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
+
+  useEffect(() => {
+    // #region agent log
+    debugIngest(
+      'app/_layout.tsx:RootLayout',
+      'dbReady changed',
+      { dbReady, showing: dbReady ? 'AuthGate' : 'LoadingSplash' },
+      'H1'
+    );
+    // #endregion
+  }, [dbReady]);
 
   useEffect(() => {
     // #region agent log
@@ -350,10 +443,6 @@ export default function RootLayout() {
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, []);
-
-  useEffect(() => {
-    void SplashScreen.preventAutoHideAsync();
   }, []);
 
   useEffect(() => {

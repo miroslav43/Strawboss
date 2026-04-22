@@ -96,7 +96,7 @@ export default function SyncScreen() {
           </View>
 
           <View style={styles.statusRow}>
-            <Text style={styles.label}>Modificări în așteptare:</Text>
+            <Text style={styles.label}>În coadă (inclusiv erori):</Text>
             <Text style={[styles.value, pendingCount > 0 && styles.valuePending]}>
               {pendingCount}
             </Text>

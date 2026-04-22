@@ -47,6 +47,19 @@ export class SyncManager {
     // Reset any entries stuck in 'in_flight' from a previous interrupted sync
     await this.syncQueueRepo.resetInFlight();
 
+    await this.syncQueueRepo.normalizeLegacyEntityTypes();
+
+    // Legacy entries produced with Math.random() IDs can never succeed on
+    // the server (id columns are UUID). Flag them so we don't keep retrying.
+    const invalidated = await this.syncQueueRepo.markInvalidUuidsAsFailed();
+    if (invalidated > 0) {
+      mobileLogger.flow('Sync: flagged legacy entries with invalid UUIDs', {
+        count: invalidated,
+      });
+    }
+
+    await this.syncQueueRepo.purgeCompleted();
+
     // Best-effort: upload receipt photos for rows that were saved offline or
     // whose initial upload attempt failed. Any failure here is non-fatal —
     // the mutation still pushes, just without a photo URL.
@@ -85,14 +98,15 @@ export class SyncManager {
    * Push all pending mutations to the server.
    */
   private async push(): Promise<{ count: number; errors: string[] }> {
+    let batchIds: number[] = [];
     try {
       const entries = await this.syncQueueRepo.dequeue(50);
       if (entries.length === 0) {
         return { count: 0, errors: [] };
       }
 
-      const ids = entries.map((e) => e.id);
-      await this.syncQueueRepo.markInFlight(ids);
+      batchIds = entries.map((e) => e.id);
+      await this.syncQueueRepo.markInFlight(batchIds);
 
       const result = await pushMutations(entries, this.apiClient);
 
@@ -104,9 +118,27 @@ export class SyncManager {
         await this.syncQueueRepo.markFailed(failed.id, failed.error);
       }
 
+      const handled = new Set([
+        ...result.completedIds,
+        ...result.failedEntries.map((f) => f.id),
+      ]);
+      for (const id of batchIds) {
+        if (!handled.has(id)) {
+          await this.syncQueueRepo.markFailed(
+            id,
+            'Răspuns incomplet de la server pentru această înregistrare',
+          );
+        }
+      }
+
+      await this.syncQueueRepo.purgeCompleted();
+
       return { count: result.count, errors: result.errors };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Push failed';
+      for (const id of batchIds) {
+        await this.syncQueueRepo.markFailed(id, message);
+      }
       return { count: 0, errors: [message] };
     }
   }

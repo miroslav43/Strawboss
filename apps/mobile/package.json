@@ -4,15 +4,15 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "expo start",
+    "dev": "dotenv -e .env.dev -- expo start",
     "build:android": "eas build --platform android --profile apk",
-    "build:android:local": "expo prebuild --platform android && cd android && ./gradlew assembleDebug",
-    "build:apk": "expo prebuild --clean --platform android && cd android && ./gradlew assembleDebug",
+    "build:android:local": "dotenv -e .env.dev -- sh -c \"expo prebuild --platform android && cd android && ./gradlew assembleDebug\"",
+    "build:apk": "dotenv -e .env.production -- sh -c \"expo prebuild --clean --platform android && cd android && ./gradlew assembleDebug\"",
     "build:ios": "eas build --platform ios",
     "typecheck": "tsc --noEmit",
     "lint": "eslint app/ src/",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "android": "dotenv -e .env.dev -- expo run:android",
+    "ios": "dotenv -e .env.dev -- expo run:ios"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.1.17",
+    "dotenv-cli": "^8.0.0",
     "typescript": "^5.7.0"
   }
 }

@@ -7,71 +7,82 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { colors } from '@strawboss/ui-tokens';
-import { mobileApiClient } from '@/lib/api-client';
+import type { ActiveParcel } from '@/hooks/useActiveParcels';
 
-interface Parcel {
-  id: string;
-  name: string;
-}
-
-interface ParcelSelectorProps {
+export interface ParcelSelectorProps {
   onSelect: (parcelId: string, parcelName: string) => void;
   selectedId: string | null;
   selectedName: string | null;
-}
-
-async function fetchActiveParcels(): Promise<Parcel[]> {
-  // Backend returns a plain array for this endpoint (not a paginated wrapper).
-  const parcels = await mobileApiClient.get<Parcel[]>(
-    '/api/v1/parcels?isActive=true',
-  );
-  return parcels ?? [];
+  /** From parent `useActiveParcels()` — avoids a second useQuery in this component. */
+  parcels: ActiveParcel[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  /**
+   * When false, only the modal is rendered; control visibility with
+   * `modalOpen` + `onModalOpenChange` (controlled) or omit for fully controlled from parent.
+   */
+  showTrigger?: boolean;
+  /** Controlled modal visibility (required together with onModalOpenChange when showTrigger is false). */
+  modalOpen?: boolean;
+  onModalOpenChange?: (open: boolean) => void;
 }
 
 export function ParcelSelector({
   onSelect,
   selectedId,
   selectedName,
+  parcels,
+  isLoading,
+  isError,
+  showTrigger = true,
+  modalOpen: modalOpenProp,
+  onModalOpenChange,
 }: ParcelSelectorProps) {
-  const [modalVisible, setModalVisible] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = modalOpenProp !== undefined;
+  const modalVisible = isControlled ? modalOpenProp : internalOpen;
 
-  const { data: parcels, isLoading, isError } = useQuery({
-    queryKey: ['parcels', 'active'],
-    queryFn: fetchActiveParcels,
-  });
+  const setModalVisible = useCallback(
+    (open: boolean) => {
+      onModalOpenChange?.(open);
+      if (!isControlled) setInternalOpen(open);
+    },
+    [isControlled, onModalOpenChange],
+  );
 
-  const handleSelect = (parcel: Parcel) => {
+  const handleSelect = (parcel: ActiveParcel) => {
     onSelect(parcel.id, parcel.name);
     setModalVisible(false);
   };
 
   return (
     <View>
-      <TouchableOpacity
-        style={styles.selector}
-        onPress={() => setModalVisible(true)}
-        activeOpacity={0.7}
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <ActivityIndicator size="small" color={colors.primary} />
-        ) : (
-          <Text
-            style={[
-              styles.selectorText,
-              !selectedId && styles.selectorPlaceholder,
-            ]}
-          >
-            {selectedName ?? 'Selectează parcela...'}
-          </Text>
-        )}
-        <Text style={styles.chevron}>{'›'}</Text>
-      </TouchableOpacity>
+      {showTrigger && (
+        <TouchableOpacity
+          style={styles.selector}
+          onPress={() => setModalVisible(true)}
+          activeOpacity={0.7}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text
+              style={[
+                styles.selectorText,
+                !selectedId && styles.selectorPlaceholder,
+              ]}
+            >
+              {selectedName ?? 'Selectează parcela...'}
+            </Text>
+          )}
+          <Text style={styles.chevron}>{'›'}</Text>
+        </TouchableOpacity>
+      )}
 
-      {isError && (
+      {showTrigger && isError && (
         <Text style={styles.errorText}>
           Eroare la încărcarea parcelelor. Încearcă din nou.
         </Text>
@@ -86,31 +97,42 @@ export function ParcelSelector({
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Selectează parcela</Text>
-            <ScrollView style={styles.scrollView}>
-              {(parcels ?? []).map((parcel) => (
-                <TouchableOpacity
-                  key={parcel.id}
-                  style={[
-                    styles.parcelItem,
-                    selectedId === parcel.id && styles.parcelItemSelected,
-                  ]}
-                  onPress={() => handleSelect(parcel)}
-                  activeOpacity={0.7}
-                >
-                  <Text
+            {isLoading ? (
+              <ActivityIndicator
+                style={{ marginVertical: 24 }}
+                color={colors.primary}
+              />
+            ) : isError ? (
+              <Text style={styles.errorTextCenter}>
+                Eroare la încărcarea parcelelor.
+              </Text>
+            ) : (
+              <ScrollView style={styles.scrollView}>
+                {(parcels ?? []).map((parcel) => (
+                  <TouchableOpacity
+                    key={parcel.id}
                     style={[
-                      styles.parcelName,
-                      selectedId === parcel.id && styles.parcelNameSelected,
+                      styles.parcelItem,
+                      selectedId === parcel.id && styles.parcelItemSelected,
                     ]}
+                    onPress={() => handleSelect(parcel)}
+                    activeOpacity={0.7}
                   >
-                    {parcel.name}
-                  </Text>
-                  {selectedId === parcel.id && (
-                    <Text style={styles.checkmark}>{'\u2713'}</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                    <Text
+                      style={[
+                        styles.parcelName,
+                        selectedId === parcel.id && styles.parcelNameSelected,
+                      ]}
+                    >
+                      {parcel.code ? `${parcel.name} (${parcel.code})` : parcel.name}
+                    </Text>
+                    {selectedId === parcel.id && (
+                      <Text style={styles.checkmark}>{'\u2713'}</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => setModalVisible(false)}
@@ -155,6 +177,13 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 6,
     fontSize: 13,
+    color: colors.danger,
+  },
+  errorTextCenter: {
+    textAlign: 'center',
+    marginVertical: 24,
+    paddingHorizontal: 20,
+    fontSize: 14,
     color: colors.danger,
   },
   modalOverlay: {

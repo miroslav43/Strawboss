@@ -1,9 +1,13 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { View, StyleSheet, Alert, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import type { Parcel } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
+import { useAuthStore } from '@/stores/auth-store';
 import { calculateRoute, haversineKm } from '@/lib/routing';
 import { MapView, type MapViewHandle } from './MapView';
 import { ParcelInfoSheet } from './ParcelInfoSheet';
@@ -58,15 +62,26 @@ function toLatLon(
   return null;
 }
 
+const MAP_USER_ZOOM = 16;
+
 export function MapScreen({ focusId }: MapScreenProps) {
+  const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const mapRef = useRef<MapViewHandle>(null);
+  const pendingRecenterRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [selectedItem, setSelectedParcel] = useState<SelectedMapItem | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(
     null,
   );
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{
+    lat: number;
+    lon: number;
+    accuracyM: number | null;
+  } | null>(null);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch parcels
@@ -83,12 +98,39 @@ export function MapScreen({ focusId }: MapScreenProps) {
     staleTime: 5 * 60_000,
   });
 
-  // Fetch related machine locations (trucks for loaders, etc.)
+  // Fetch related machine locations (trucks for loaders, parent baler for drivers, etc.)
   const { data: relatedMachines } = useQuery({
     queryKey: ['map-related-machines'],
     queryFn: () => mobileApiClient.get<RelatedMachine[]>('/api/v1/location/related-machines'),
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
+
+  const machineMarkers = useMemo((): MachineMarkerData[] => {
+    if (!relatedMachines?.length) return [];
+    const others =
+      assignedMachineId !== null
+        ? relatedMachines.filter((m) => m.machineId !== assignedMachineId)
+        : relatedMachines;
+    return others.map((m) => {
+      const base = `${m.machineCode}${m.operatorName ? ` — ${m.operatorName}` : ''}`;
+      let tooltipLabel = base;
+      if (userLocation) {
+        const km = haversineKm(userLocation, { lat: m.lat, lon: m.lon });
+        const kmStr =
+          km < 10 ? km.toFixed(1).replace('.', ',') : String(Math.round(km));
+        tooltipLabel = `${base} · ≈${kmStr} km`;
+      }
+      return {
+        id: m.machineId,
+        machineCode: m.machineCode,
+        machineType: m.machineType,
+        lat: m.lat,
+        lon: m.lon,
+        operatorName: m.operatorName,
+        tooltipLabel,
+      };
+    });
+  }, [relatedMachines, assignedMachineId, userLocation]);
 
   const handleReset = useCallback(() => {
     mapRef.current?.sendCommand({ type: 'CLEAR_ROUTE' });
@@ -97,6 +139,79 @@ export function MapScreen({ focusId }: MapScreenProps) {
     setSelectedParcel(null);
     setRouteInfo(null);
   }, []);
+
+  const pushUserToMap = useCallback(
+    (lat: number, lon: number, accuracyM: number | null) => {
+      mapRef.current?.sendCommand({
+        type: 'SET_USER_LOCATION',
+        lat,
+        lon,
+        ...(accuracyM != null ? { accuracy: accuracyM } : {}),
+      });
+      mapRef.current?.sendCommand({
+        type: 'CENTER_ON',
+        lat,
+        lon,
+        zoom: MAP_USER_ZOOM,
+      });
+    },
+    [],
+  );
+
+  const fetchAndCenterUser = useCallback(
+    async (opts: { alertOnFailure: boolean; showProgress?: boolean }) => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          if (opts.alertOnFailure) {
+            Alert.alert(
+              'Locație',
+              'Activează permisiunea de locație pentru a te repoziționa pe hartă.',
+            );
+          }
+          return;
+        }
+        if (opts.showProgress) setLocating(true);
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        const acc = loc.coords.accuracy;
+        const accuracyM =
+          acc != null && Number.isFinite(acc) && acc > 0 ? acc : null;
+        const next = {
+          lat: loc.coords.latitude,
+          lon: loc.coords.longitude,
+          accuracyM,
+        };
+        setUserLocation(next);
+        if (mapReady) {
+          pushUserToMap(next.lat, next.lon, accuracyM);
+        } else {
+          pendingRecenterRef.current = true;
+        }
+      } catch {
+        if (opts.alertOnFailure) {
+          Alert.alert('Eroare', 'Nu s-a putut obține locația curentă.');
+        }
+      } finally {
+        if (opts.showProgress) setLocating(false);
+      }
+    },
+    [mapReady, pushUserToMap],
+  );
+
+  useEffect(() => {
+    if (!mapReady || !userLocation || !pendingRecenterRef.current) return;
+    pendingRecenterRef.current = false;
+    pushUserToMap(userLocation.lat, userLocation.lon, userLocation.accuracyM);
+  }, [mapReady, userLocation, pushUserToMap]);
+
+  // Map tab focus: refresh related positions; recenter on user unless opening a focused parcel.
+  useFocusEffect(
+    useCallback(() => {
+      void queryClient.invalidateQueries({ queryKey: ['map-related-machines'] });
+      if (focusId) return;
+      void fetchAndCenterUser({ alertOnFailure: false, showProgress: false });
+    }, [focusId, fetchAndCenterUser, queryClient]),
+  );
 
   // Track user location
   useEffect(() => {
@@ -109,7 +224,13 @@ export function MapScreen({ focusId }: MapScreenProps) {
 
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
         if (!cancelled) {
-          setUserLocation({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+          const acc = loc.coords.accuracy;
+          setUserLocation({
+            lat: loc.coords.latitude,
+            lon: loc.coords.longitude,
+            accuracyM:
+              acc != null && Number.isFinite(acc) && acc > 0 ? acc : null,
+          });
         }
       } catch {
         // Silently ignore — location will show when available
@@ -158,21 +279,11 @@ export function MapScreen({ focusId }: MapScreenProps) {
     }
   }, [mapReady, parcels, destinations]);
 
-  // Send machine markers to map
+  // Send machine markers to map (others only; distance label updates with userLocation)
   useEffect(() => {
-    if (!mapReady) return;
-    if (relatedMachines?.length) {
-      const machineData: MachineMarkerData[] = relatedMachines.map((m) => ({
-        id: m.machineId,
-        machineCode: m.machineCode,
-        machineType: m.machineType,
-        lat: m.lat,
-        lon: m.lon,
-        operatorName: m.operatorName,
-      }));
-      mapRef.current?.sendCommand({ type: 'SET_MACHINES', machines: machineData });
-    }
-  }, [mapReady, relatedMachines]);
+    if (!mapReady || relatedMachines === undefined) return;
+    mapRef.current?.sendCommand({ type: 'SET_MACHINES', machines: machineMarkers });
+  }, [mapReady, relatedMachines, machineMarkers]);
 
   // Update user location on map
   useEffect(() => {
@@ -181,6 +292,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
       type: 'SET_USER_LOCATION',
       lat: userLocation.lat,
       lon: userLocation.lon,
+      ...(userLocation.accuracyM != null ? { accuracy: userLocation.accuracyM } : {}),
     });
   }, [mapReady, userLocation]);
 
@@ -312,6 +424,21 @@ export function MapScreen({ focusId }: MapScreenProps) {
           isLoadingRoute={isLoadingRoute}
         />
       )}
+
+      <TouchableOpacity
+        style={[styles.locateFab, { bottom: 16 + insets.bottom, right: 16 }]}
+        onPress={() => void fetchAndCenterUser({ alertOnFailure: true, showProgress: true })}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Recentrare pe locația mea"
+        disabled={locating}
+      >
+        {locating ? (
+          <ActivityIndicator color="#0A5C36" size="small" />
+        ) : (
+          <MaterialCommunityIcons name="crosshairs-gps" size={24} color="#0A5C36" />
+        )}
+      </TouchableOpacity>
     </View>
   );
 }
@@ -349,5 +476,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#0A5C36',
+  },
+  locateFab: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
 });

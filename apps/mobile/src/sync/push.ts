@@ -9,6 +9,33 @@ export interface PushResult {
   failedEntries: Array<{ id: number; error: string }>;
 }
 
+/** Columns stored as INTEGER 0/1 locally but declared BOOLEAN in Postgres. */
+const BOOLEAN_FIELDS_BY_TABLE: Record<string, readonly string[]> = {
+  fuel_logs: ['is_full_tank'],
+};
+
+/**
+ * Coerce legacy payload values so they match the server schema. Older mobile
+ * builds stored 0/1 for boolean columns (SQLite convention); Postgres rejects
+ * an implicit int→boolean cast during INSERT, so we normalize here.
+ */
+function normalizePayload(
+  table: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const booleanFields = BOOLEAN_FIELDS_BY_TABLE[table];
+  if (!booleanFields) return payload;
+
+  const next = { ...payload };
+  for (const field of booleanFields) {
+    const v = next[field];
+    if (typeof v === 'number') next[field] = v !== 0;
+    else if (v === '0' || v === 'false') next[field] = false;
+    else if (v === '1' || v === 'true') next[field] = true;
+  }
+  return next;
+}
+
 /**
  * Push pending mutations from the sync queue to the server.
  * Converts local queue entries to the SyncPushRequest format and sends them.
@@ -25,7 +52,10 @@ export async function pushMutations(
     table: entry.entity_type,
     recordId: entry.entity_id,
     action: entry.action as 'insert' | 'update' | 'delete',
-    data: JSON.parse(entry.payload) as Record<string, unknown>,
+    data: normalizePayload(
+      entry.entity_type,
+      JSON.parse(entry.payload) as Record<string, unknown>,
+    ),
     clientId: entry.entity_id,
     clientVersion: 0,
     idempotencyKey: entry.idempotency_key,
@@ -47,7 +77,15 @@ export async function pushMutations(
       if (result.status === 'applied' || result.status === 'skipped') {
         completedIds.push(entry.id);
       } else if (result.status === 'conflict') {
-        const errorMsg = `${result.status}: ${result.table}/${result.recordId}`;
+        const errorMsg = `conflict: ${result.table}/${result.recordId}`;
+        errors.push(errorMsg);
+        failedEntries.push({ id: entry.id, error: errorMsg });
+      } else if (result.status === 'failed') {
+        const errorMsg = `server rejected ${result.table}/${result.recordId}: ${result.error ?? 'unknown error'}`;
+        errors.push(errorMsg);
+        failedEntries.push({ id: entry.id, error: errorMsg });
+      } else {
+        const errorMsg = `Unexpected sync status: ${String((result as { status?: unknown })?.status)} (${result?.table ?? '?'}/${result?.recordId ?? '?'})`;
         errors.push(errorMsg);
         failedEntries.push({ id: entry.id, error: errorMsg });
       }

@@ -258,11 +258,12 @@ export class AdminUsersService {
    * Used by the public /auth/resolve endpoint for username-based login.
    */
   async resolveLogin(login: string): Promise<string> {
-    if (login.includes('@')) return login;
+    if (login.includes('@')) return login.trim();
 
+    const normalized = login.trim();
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT email FROM users
-      WHERE username = ${login} AND deleted_at IS NULL
+      WHERE lower(btrim(username)) = lower(${normalized}) AND deleted_at IS NULL
       LIMIT 1
     `);
     const rows = result as unknown as { email: string }[];

@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getSupabaseClient } from '@/lib/auth';
+import { debugIngest } from '@/lib/debug-ingest';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
 
@@ -24,20 +25,93 @@ function pinToAuthPassword(pin: string): string {
   return `sb_${pin}`;
 }
 
-/** Resolve a username to an email via the backend. Returns null on failure. */
-async function resolveLogin(login: string): Promise<string | null> {
-  if (login.includes('@')) return login;
+type ResolveLoginResult =
+  | { ok: true; email: string }
+  | { ok: false; errorHint: string };
+
+/** Resolve a username to an email via the backend. */
+async function resolveLogin(
+  login: string,
+  signal?: AbortSignal
+): Promise<ResolveLoginResult> {
+  const trimmed = login.trim();
+  if (trimmed.includes('@')) return { ok: true, email: trimmed };
   try {
     const res = await fetch(`${API_URL}/api/v1/auth/resolve`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ login }),
+      body:    JSON.stringify({ login: trimmed }),
+      signal,
     });
-    if (!res.ok) return null;
-    const data = await res.json() as { email?: string };
-    return data.email ?? null;
-  } catch {
-    return null;
+    const payload = (await res.json().catch(() => ({}))) as {
+      message?: string | string[];
+      email?: string;
+    };
+    const nestMsg = Array.isArray(payload.message)
+      ? payload.message.join(', ')
+      : (payload.message ?? '');
+    // #region agent log
+    debugIngest(
+      '(auth)/login.tsx:resolveLogin',
+      'resolve http',
+      { status: res.status, ok: res.ok, hasEmail: !!payload.email },
+      'L1b'
+    );
+    // #endregion
+    if (!res.ok) {
+      if (res.status === 404) {
+        return {
+          ok: false,
+          errorHint:
+            'User inexistent pe serverul la care e conectată aplicația. Dacă îl vezi în admin pe site, pune în .env.dev același EXPO_PUBLIC_API_URL ca domeniul admin (sau date de test în backend-ul local).',
+        };
+      }
+      return {
+        ok: false,
+        errorHint:
+          nestMsg || `Eroare API la rezolvare user (${res.status}).`,
+      };
+    }
+    if (!payload.email) {
+      return { ok: false, errorHint: 'Răspuns API invalid (fără email).' };
+    }
+    return { ok: true, email: payload.email };
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') throw e;
+    const errMsg = e instanceof Error ? e.message : String(e);
+    const origin = API_URL.replace(/\/$/, '') || '(lipsește EXPO_PUBLIC_API_URL)';
+    const isLoopback = /127\.0\.0\.1|localhost/i.test(API_URL);
+    // #region agent log
+    debugIngest(
+      '(auth)/login.tsx:resolveLogin',
+      'resolve fetch threw',
+      {
+        errName: e instanceof Error ? e.name : 'unknown',
+        errMsg: errMsg.slice(0, 160),
+        isLoopback,
+        hasApiUrl: API_URL.length > 0,
+      },
+      'L1c'
+    );
+    // #endregion
+    if (!API_URL.trim()) {
+      return {
+        ok: false,
+        errorHint:
+          'Lipsește EXPO_PUBLIC_API_URL. Completează apps/mobile/.env.dev și repornește Metro.',
+      };
+    }
+    if (isLoopback) {
+      return {
+        ok: false,
+        errorHint:
+          `Nu merge conexiunea la ${origin}. Pe telefon (USB): rulează „adb reverse tcp:3001 tcp:3001”, apoi pornește backend-ul pe Mac la portul 3001. Eroare rețea: ${errMsg}`,
+      };
+    }
+    return {
+      ok: false,
+      errorHint: `Nu pot contacta API la ${origin}. Verifică Wi‑Fi/firewall și că backend-ul ascultă pe 0.0.0.0 (nu doar localhost). ${errMsg}`,
+    };
   }
 }
 
@@ -57,15 +131,60 @@ export default function LoginScreen() {
     setLoading(true);
     setError(null);
 
+    const resolveTimeoutMs = 20_000;
+    const ac = new AbortController();
+    const resolveTimer = setTimeout(() => ac.abort(), resolveTimeoutMs);
+
     try {
       const trimmedLogin = login.trim();
       const isUsername = !trimmedLogin.includes('@');
-      const email = await resolveLogin(trimmedLogin);
-      if (!email) {
-        setError('Username inexistent. Verifica datele introduse.');
-        setLoading(false);
+      // #region agent log
+      debugIngest(
+        '(auth)/login.tsx:handleLogin',
+        'resolve start',
+        {
+          hasApiUrl: API_URL.length > 0,
+          isUsername,
+        },
+        'L1'
+      );
+      // #endregion
+
+      let resolved: ResolveLoginResult;
+      try {
+        resolved = await resolveLogin(trimmedLogin, ac.signal);
+      } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') {
+          // #region agent log
+          debugIngest(
+            '(auth)/login.tsx:handleLogin',
+            'resolve aborted (timeout)',
+            { resolveTimeoutMs },
+            'L1'
+          );
+          // #endregion
+          setError(
+            'Nu ajung la serverul API (timeout). Verifică că backend-ul rulează, că telefonul e pe același Wi‑Fi ca Mac-ul, și că EXPO_PUBLIC_API_URL folosește IP-ul corect (ex. același prefix ca în Metro).'
+          );
+          return;
+        }
+        throw e;
+      }
+
+      // #region agent log
+      debugIngest(
+        '(auth)/login.tsx:handleLogin',
+        'resolve done',
+        { ok: resolved.ok },
+        'L1'
+      );
+      // #endregion
+
+      if (!resolved.ok) {
+        setError(resolved.errorHint);
         return;
       }
+      const email = resolved.email;
 
       // Operators/drivers log in with username + 4-digit PIN → pad to satisfy
       // Supabase Auth's min-6-char policy. Admins with email + long password
@@ -73,10 +192,22 @@ export default function LoginScreen() {
       const authPassword = isUsername ? pinToAuthPassword(password) : password;
 
       const supabase = getSupabaseClient();
+      // #region agent log
+      debugIngest('(auth)/login.tsx:handleLogin', 'signIn start', {}, 'L2');
+      // #endregion
+      const tSign0 = Date.now();
       const { error: authError } = await supabase.auth.signInWithPassword({
         email,
         password: authPassword,
       });
+      // #region agent log
+      debugIngest(
+        '(auth)/login.tsx:handleLogin',
+        'signIn done',
+        { ms: Date.now() - tSign0, authErr: !!authError },
+        'L2'
+      );
+      // #endregion
 
       if (authError) {
         setError(authError.message);
@@ -84,6 +215,7 @@ export default function LoginScreen() {
     } catch {
       setError('A aparut o eroare neasteptata');
     } finally {
+      clearTimeout(resolveTimer);
       setLoading(false);
     }
   };

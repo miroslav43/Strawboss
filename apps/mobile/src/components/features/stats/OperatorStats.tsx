@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View,
-  ScrollView,
-  RefreshControl,
   ActivityIndicator,
   Text,
   StyleSheet,
@@ -57,7 +55,6 @@ function toNumber(value: number | string | undefined): number {
 export function OperatorStats({ operatorId }: OperatorStatsProps) {
   const [stats, setStats] = useState<StatsState>(INITIAL_STATS);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
@@ -107,31 +104,16 @@ export function OperatorStats({ operatorId }: OperatorStatsProps) {
     }, [fetchStats]),
   );
 
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchStats();
-    setRefreshing(false);
-  }, [fetchStats]);
-
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={styles.loadingRow}>
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <View style={styles.content}>
       {error !== null && (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
@@ -153,18 +135,16 @@ export function OperatorStats({ operatorId }: OperatorStatsProps) {
         value={stats.totalBales}
         unit="buc"
       />
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
+  loadingRow: {
+    paddingVertical: 24,
     alignItems: 'center',
   },
   content: {
-    padding: 16,
     gap: 12,
   },
   errorBanner: {

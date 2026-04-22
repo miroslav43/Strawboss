@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strawboss — Terra Signal Implementation Plan</title>
+<style>
+  :root {
+    --green-900: #0A3D22;
+    --green-800: #0A5C36;
+    --green-700: #1A7A4A;
+    --green-600: #1E8449;
+    --green-100: #E8F5E9;
+    --brown-700: #5D4037;
+    --brown-500: #795548;
+    --brown-200: #D7CCC8;
+    --brown-100: #EFEBE9;
+    --terra: #F3DED8;
+    --blue-800: #1565C0;
+    --blue-100: #E3F2FD;
+    --purple: #7C3AED;
+    --purple-100: #EDE9FE;
+    --danger: #C62828;
+    --amber: #B7791F;
+    --white: #FFFFFF;
+    --gray-50: #F9FAFB;
+    --gray-100: #F3F4F6;
+    --gray-200: #E5E7EB;
+    --gray-500: #6B7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'SF Mono', 'Fira Code', monospace;
+    --radius: 12px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 40px rgba(0,0,0,0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: #F7F4F0;
+    color: var(--gray-900);
+    line-height: 1.6;
+  }
+
+  /* ─── HERO ─── */
+  .hero {
+    background: linear-gradient(135deg, var(--green-900) 0%, var(--green-800) 50%, var(--green-700) 100%);
+    padding: 72px 32px 56px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 6px 18px;
+    border-radius: 99px;
+    border: 1px solid rgba(255,255,255,0.2);
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: 42px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -1px;
+    line-height: 1.1;
+    margin-bottom: 16px;
+  }
+  .hero h1 span { color: #86EFAC; }
+  .hero p {
+    font-size: 17px;
+    color: rgba(255,255,255,0.7);
+    max-width: 580px;
+    margin: 0 auto 32px;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .hero-stat { color: rgba(255,255,255,0.85); }
+  .hero-stat .n { font-size: 26px; font-weight: 800; color: #fff; display: block; }
+  .hero-stat .l { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.7; }
+
+  /* ─── LAYOUT ─── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* ─── PHASE TIMELINE ─── */
+  .timeline {
+    padding: 64px 0 0;
+  }
+  .timeline-header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .timeline-header h2 {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--gray-900);
+    margin-bottom: 8px;
+  }
+  .timeline-header p { color: var(--gray-500); font-size: 15px; }
+
+  .phases { display: flex; flex-direction: column; gap: 48px; padding-bottom: 80px; }
+
+  /* ─── PHASE CARD ─── */
+  .phase {
+    background: var(--white);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    position: relative;
+  }
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 28px 32px;
+    border-bottom: 1px solid var(--gray-100);
+    cursor: pointer;
+  }
+  .phase-number {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 900;
+    flex-shrink: 0;
+    color: #fff;
+  }
+  .phase-meta { flex: 1; }
+  .phase-meta h3 {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--gray-900);
+    margin-bottom: 4px;
+  }
+  .phase-meta p { font-size: 14px; color: var(--gray-500); }
+  .phase-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .tag {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 99px;
+    letter-spacing: 0.3px;
+  }
+  .tag-effort { background: var(--gray-100); color: var(--gray-700); }
+  .tag-files { background: var(--green-100); color: var(--green-800); }
+  .tag-impact { background: #FEF3C7; color: #92400E; }
+  .tag-new { background: var(--purple-100); color: var(--purple); }
+
+  .phase-body { padding: 32px; }
+
+  /* ─── CHANGE ITEMS ─── */
+  .change-group { margin-bottom: 28px; }
+  .change-group:last-child { margin-bottom: 0; }
+  .change-group-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .change-group-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--gray-200);
+  }
+
+  .change-item {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+    align-items: start;
+  }
+  .change-item:last-child { margin-bottom: 0; }
+
+  @media (max-width: 720px) {
+    .change-item { grid-template-columns: 1fr; }
+  }
+
+  .change-file {
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .change-file .filename {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green-800);
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .change-file .filename .badge-new {
+    font-size: 9px;
+    font-weight: 800;
+    background: var(--purple);
+    color: #fff;
+    padding: 1px 6px;
+    border-radius: 99px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .change-file ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .change-file ul li {
+    font-size: 13px;
+    color: var(--gray-700);
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.5;
+  }
+  .change-file ul li::before {
+    content: '→';
+    color: var(--green-700);
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ─── CODE SNIPPETS ─── */
+  .code-block {
+    background: #1a2332;
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin: 12px 0;
+    overflow-x: auto;
+    position: relative;
+  }
+  .code-block .code-lang {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .code-block pre {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+    color: #e2e8f0;
+    white-space: pre;
+  }
+  .code-block .kw { color: #93C5FD; }
+  .code-block .str { color: #86EFAC; }
+  .code-block .cm { color: #6B7280; font-style: italic; }
+  .code-block .fn { color: #FCD34D; }
+  .code-block .num { color: #F9A8D4; }
+  .code-block .var { color: #e2e8f0; }
+
+  /* ─── BEFORE/AFTER ─── */
+  .ba-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 12px 0;
+  }
+  @media (max-width: 600px) { .ba-grid { grid-template-columns: 1fr; } }
+  .ba-card { border-radius: 10px; padding: 14px 16px; }
+  .ba-card.before { background: #FFF5F5; border: 1px solid #FECACA; }
+  .ba-card.after { background: #F0FDF4; border: 1px solid #BBF7D0; }
+  .ba-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .ba-card.before .ba-label { color: var(--danger); }
+  .ba-card.after .ba-label { color: var(--green-800); }
+  .ba-card p { font-size: 13px; color: var(--gray-700); line-height: 1.6; }
+  .ba-card code {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: rgba(0,0,0,0.06);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--gray-900);
+  }
+
+  /* ─── DESIGN TOKENS ─── */
+  .token-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .token-swatch {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+  }
+  .token-color { height: 48px; }
+  .token-info { background: #fff; padding: 8px 10px; }
+  .token-info .name { font-family: var(--mono); font-size: 10px; color: var(--gray-700); font-weight: 600; }
+  .token-info .hex { font-family: var(--mono); font-size: 10px; color: var(--gray-500); }
+  .token-info .use { font-size: 10px; color: var(--gray-500); margin-top: 2px; }
+
+  /* ─── COMPONENT PREVIEW ─── */
+  .component-preview {
+    background: var(--terra);
+    border-radius: 14px;
+    padding: 24px;
+    margin: 12px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+
+  /* Simulated button previews */
+  .sim-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 24px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: default;
+    letter-spacing: 0.2px;
+  }
+  .sim-btn.primary { background: linear-gradient(135deg, #0A5C36, #1E8449); color: #fff; box-shadow: 0 4px 16px rgba(10,92,54,0.35); }
+  .sim-btn.secondary { background: #E8F5E9; color: #0A5C36; }
+  .sim-btn.danger { background: linear-gradient(135deg, #C62828, #E53935); color: #fff; }
+  .sim-btn.outline { background: transparent; color: #0A5C36; border: 2px solid #0A5C36; }
+  .sim-btn .icon { font-size: 18px; }
+
+  /* Simulated role headers */
+  .sim-role-header {
+    border-radius: 18px;
+    padding: 20px 20px 32px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    margin: 12px 0;
+    min-height: 110px;
+  }
+  .sim-role-header::after {
+    content: '';
+    position: absolute;
+    bottom: -20px;
+    right: -20px;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+  }
+  .sim-role-header .rh-greeting { font-size: 12px; opacity: 0.75; margin-bottom: 2px; }
+  .sim-role-header .rh-name { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .sim-role-header .rh-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.2);
+    border-radius: 99px;
+    padding: 3px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .sim-role-header .rh-machine {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .rh-driver { background: linear-gradient(135deg, #0A3D22, #0A5C36); }
+  .rh-baler { background: linear-gradient(135deg, #3E2723, #795548); }
+  .rh-loader { background: linear-gradient(135deg, #0D47A1, #1565C0); }
+
+  /* Simulated pill */
+  .sim-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+
+  /* Simulated offline banner */
+  .sim-offline {
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sim-offline.old { background: var(--amber); }
+  .sim-offline.new { background: #5B21B6; }
+
+  /* ─── STATUS COLORS ─── */
+  .status-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+  }
+
+  /* ─── PHASE COLORS ─── */
+  .ph-1 .phase-number { background: linear-gradient(135deg, #374151, #1F2937); }
+  .ph-2 .phase-number { background: linear-gradient(135deg, #0A5C36, #1E8449); }
+  .ph-3 .phase-number { background: linear-gradient(135deg, #5B21B6, #7C3AED); }
+  .ph-4 .phase-number { background: linear-gradient(135deg, #0A5C36, #1A7A4A); }
+  .ph-5 .phase-number { background: linear-gradient(135deg, #3E2723, #795548); }
+  .ph-6 .phase-number { background: linear-gradient(135deg, #0D47A1, #1565C0); }
+  .ph-7 .phase-number { background: linear-gradient(135deg, #7F1D1D, #B91C1C); }
+  .ph-8 .phase-number { background: linear-gradient(135deg, #1F2937, #374151); }
+
+  .ph-1 .phase-header { border-left: 4px solid #374151; }
+  .ph-2 .phase-header { border-left: 4px solid var(--green-800); }
+  .ph-3 .phase-header { border-left: 4px solid var(--purple); }
+  .ph-4 .phase-header { border-left: 4px solid var(--green-700); }
+  .ph-5 .phase-header { border-left: 4px solid #795548; }
+  .ph-6 .phase-header { border-left: 4px solid var(--blue-800); }
+  .ph-7 .phase-header { border-left: 4px solid #B91C1C; }
+  .ph-8 .phase-header { border-left: 4px solid #374151; }
+
+  /* ─── SUMMARY TABLE ─── */
+  .summary-section {
+    background: var(--white);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin: 48px 0;
+  }
+  .summary-header {
+    background: linear-gradient(135deg, var(--green-900), var(--green-800));
+    padding: 24px 32px;
+    color: #fff;
+  }
+  .summary-header h2 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  .summary-header p { font-size: 14px; opacity: 0.7; }
+  .summary-table { width: 100%; border-collapse: collapse; }
+  .summary-table th {
+    padding: 12px 16px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    background: var(--gray-50);
+    text-align: left;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .summary-table td {
+    padding: 14px 16px;
+    font-size: 13px;
+    color: var(--gray-700);
+    border-bottom: 1px solid var(--gray-100);
+    vertical-align: top;
+  }
+  .summary-table tr:last-child td { border-bottom: none; }
+  .summary-table tr:hover td { background: var(--gray-50); }
+  .phase-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: var(--gray-900);
+  }
+  .phase-dot::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pd-1::before { background: #374151; }
+  .pd-2::before { background: var(--green-800); }
+  .pd-3::before { background: var(--purple); }
+  .pd-4::before { background: var(--green-700); }
+  .pd-5::before { background: #795548; }
+  .pd-6::before { background: var(--blue-800); }
+  .pd-7::before { background: #B91C1C; }
+  .pd-8::before { background: #374151; }
+
+  .effort-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .effort-bar .bar {
+    height: 6px;
+    border-radius: 99px;
+    background: var(--green-800);
+    flex-shrink: 0;
+  }
+  .effort-bar span { font-size: 12px; color: var(--gray-500); }
+
+  /* ─── CHECKLIST ─── */
+  .checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--gray-50);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--gray-700);
+  }
+  .check-item .check-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    margin-top: 1px;
+  }
+  .check-icon.todo { background: var(--gray-200); color: var(--gray-500); }
+  .check-icon.imp { background: #FEF3C7; color: #92400E; }
+
+  /* ─── FOOTER ─── */
+  .footer {
+    background: var(--gray-900);
+    color: rgba(255,255,255,0.5);
+    text-align: center;
+    padding: 32px;
+    font-size: 13px;
+    margin-top: 0;
+  }
+  .footer strong { color: rgba(255,255,255,0.8); }
+
+  /* ─── CALLOUT ─── */
+  .callout {
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 12px 0;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .callout.info { background: var(--blue-100); border-left: 4px solid var(--blue-800); }
+  .callout.warn { background: #FEF3C7; border-left: 4px solid var(--amber); }
+  .callout.tip { background: var(--green-100); border-left: 4px solid var(--green-800); }
+  .callout-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .callout p { font-size: 13px; color: var(--gray-700); line-height: 1.6; }
+  .callout p strong { color: var(--gray-900); }
+
+  /* ─── DIVIDER ─── */
+  .divider {
+    height: 1px;
+    background: var(--gray-200);
+    margin: 24px 0;
+  }
+
+  /* ─── ROLE LEGEND ─── */
+  .role-legend {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 24px 0;
+  }
+  @media (max-width: 600px) { .role-legend { grid-template-columns: 1fr; } }
+  .role-card {
+    border-radius: 14px;
+    padding: 18px;
+    color: #fff;
+  }
+  .role-card.driver { background: linear-gradient(135deg, #0A3D22, #0A5C36); }
+  .role-card.baler { background: linear-gradient(135deg, #3E2723, #795548); }
+  .role-card.loader { background: linear-gradient(135deg, #0D47A1, #1565C0); }
+  .role-card h4 { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+  .role-card .role-tabs { font-size: 11px; opacity: 0.7; margin-bottom: 10px; }
+  .role-card .role-accent {
+    display: inline-block;
+    background: rgba(255,255,255,0.2);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  .role-card ul { list-style: none; }
+  .role-card ul li { font-size: 12px; opacity: 0.85; padding: 2px 0; }
+  .role-card ul li::before { content: '· '; opacity: 0.5; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════
+     HERO
+════════════════════════════════════════════════ -->
+<div class="hero">
+  <div class="hero-badge">Terra Signal — Implementation Plan</div>
+  <h1>Redesigning <span>Strawboss Mobile</span><br>From the Ground Up</h1>
+  <p>A structured 8-phase rollout for applying the Terra Signal design language across every screen of the Strawboss field-operations app.</p>
+  <div class="hero-meta">
+    <div class="hero-stat"><span class="n">8</span><span class="l">Phases</span></div>
+    <div class="hero-stat"><span class="n">21</span><span class="l">Files changed</span></div>
+    <div class="hero-stat"><span class="n">3</span><span class="l">Role identities</span></div>
+    <div class="hero-stat"><span class="n">~21h</span><span class="l">Total effort</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     DESIGN LANGUAGE OVERVIEW
+════════════════════════════════════════════════ -->
+<div class="container">
+  <div class="timeline">
+    <div class="timeline-header">
+      <h2>Design Language — Quick Reference</h2>
+      <p>Core decisions that anchor every phase below</p>
+    </div>
+
+    <!-- Role identity legend -->
+    <div class="role-legend">
+      <div class="role-card driver">
+        <h4>🚛 Șofer (Driver)</h4>
+        <div class="role-tabs">5 tabs → 4 tabs</div>
+        <ul>
+          <li>Cursele Mele</li>
+          <li>Livrare (merged into home)</li>
+          <li>Hartă</li>
+          <li>Combustibil</li>
+          <li>Profil</li>
+        </ul>
+        <div class="role-accent">#0A5C36 → #1E8449</div>
+      </div>
+      <div class="role-card baler">
+        <h4>🌾 Balotieră (Baler)</h4>
+        <div class="role-tabs">5 tabs → 4 tabs</div>
+        <ul>
+          <li>Acasă (+ stats inline)</li>
+          <li>Consumabile</li>
+          <li>Hartă</li>
+          <li>Profil</li>
+        </ul>
+        <div class="role-accent">#3E2723 → #795548</div>
+      </div>
+      <div class="role-card loader">
+        <h4>🏗️ Încărcător (Loader)</h4>
+        <div class="role-tabs">5 tabs → 3 tabs</div>
+        <ul>
+          <li>Scanează (QR)</li>
+          <li>Încărcări de azi</li>
+          <li>Profil</li>
+        </ul>
+        <div class="role-accent">#0D47A1 → #1565C0</div>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <p><strong>Offline banner color change:</strong> The current amber <code>#B7791F</code> offline indicator clashes with Baler's brown color system. All three roles will use <strong>purple <code>#7C3AED</code></strong> for the offline/sync banner — a neutral signal color no role "owns".</p>
+    </div>
+
+<!-- ═══════════════════════════════════════════════
+     PHASES
+════════════════════════════════════════════════ -->
+<div class="phases">
+
+<!-- ───── PHASE 1 ───── -->
+<div class="phase ph-1">
+  <div class="phase-header">
+    <div class="phase-number">1</div>
+    <div class="phase-meta">
+      <h3>Token Foundation</h3>
+      <p>Extend <code>@strawboss/ui-tokens</code> with gradients, role accent colors, and new shadow scale — no visual changes yet, just the vocabulary other phases use.</p>
+    </div>
+    <div class="phase-tags">
+      <span class="tag tag-effort">~2h</span>
+      <span class="tag tag-files">2 files</span>
+      <span class="tag tag-impact">High impact</span>
+    </div>
+  </div>
+  <div class="phase-body">
+
+    <div class="change-group">
+      <div class="change-group-title">Token extensions</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">packages/ui-tokens/src/native.ts</div>
+          <ul>
+            <li>Add <code>gradients.driver</code> — <code>['#0A3D22','#0A5C36']</code></li>
+            <li>Add <code>gradients.baler</code> — <code>['#3E2723','#795548']</code></li>
+            <li>Add <code>gradients.loader</code> — <code>['#0D47A1','#1565C0']</code></li>
+            <li>Add <code>gradients.card</code> — subtle white-to-gray for card backgrounds</li>
+            <li>Add <code>shadows.xl</code> — elevation 12, offset 0/8, blur 32</li>
+            <li>Add <code>roleColors</code> map (driver/baler/loader) exporting accent + header gradient</li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">packages/ui-tokens/src/colors.ts</div>
+          <ul>
+            <li>Add <code>purple: '#7C3AED'</code> for offline banner</li>
+            <li>Add <code>purple100: '#EDE9FE'</code></li>
+            <li>Add <code>blue800: '#1565C0'</code>, <code>blue100: '#E3F2FD'</code> for Loader role</li>
+            <li>Add <code>brown800: '#3E2723'</code> for Baler header dark stop</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <span class="code-lang">TypeScript</span>
+      <pre><span class="cm">// packages/ui-tokens/src/native.ts — additions</span>
+
+<span class="kw">export const</span> <span class="var">gradients</span> = {
+  driver:  [<span class="str">'#0A3D22'</span>, <span class="str">'#0A5C36'</span>],  <span class="cm">// Deep forest → brand green</span>
+  baler:   [<span class="str">'#3E2723'</span>, <span class="str">'#795548'</span>],  <span class="cm">// Dark earth → warm brown</span>
+  loader:  [<span class="str">'#0D47A1'</span>, <span class="str">'#1565C0'</span>],  <span class="cm">// Navy → signal blue</span>
+  card:    [<span class="str">'#FFFFFF'</span>, <span class="str">'#F9FAFB'</span>],  <span class="cm">// Card surface</span>
+} <span class="kw">as const</span>
+
+<span class="kw">export const</span> <span class="var">roleColors</span> = {
+  driver:  { accent: <span class="str">'#0A5C36'</span>, active: <span class="str">'#0A5C36'</span>, gradient: gradients.driver },
+  baler:   { accent: <span class="str">'#795548'</span>, active: <span class="str">'#795548'</span>, gradient: gradients.baler  },
+  loader:  { accent: <span class="str">'#1565C0'</span>, active: <span class="str">'#1565C0'</span>, gradient: gradients.loader },
+} <span class="kw">as const</span>
+
+<span class="cm">// Extend shadows</span>
+<span class="kw">export const</span> <span class="var">shadows</span> = {
+  <span class="cm">/* ...existing sm/md/lg... */</span>
+  xl: {
+    shadowColor: <span class="str">'#000'</span>,
+    shadowOffset: { width: <span class="num">0</span>, height: <span class="num">8</span> },
+    shadowOpacity: <span class="num">0.16</span>,
+    shadowRadius: <span class="num">32</span>,
+    elevation: <span class="num">12</span>,
+  },
+}</pre>
+    </div>
+
+    <div class="callout tip">
+      <span class="callout-icon">✅</span>
+      <p><strong>Why first:</strong> All downstream phases import from <code>@strawboss/ui-tokens</code>. Defining the vocabulary here means every component can reference <code>gradients.driver</code> instead of inline hex strings — and a future rebrand only touches this one file.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───── PHASE 2 ───── -->
+<div class="phase ph-2">
+  <div class="phase-header">
+    <div class="phase-number">2</div>
+    <div class="phase-meta">
+      <h3>Core Components</h3>
+      <p>Upgrade shared UI building blocks. Everything built on top of these gets the new look for free.</p>
+    </div>
+    <div class="phase-tags">
+      <span class="tag tag-effort">~5h</span>
+      <span class="tag tag-files">6 files</span>
+      <span class="tag tag-impact">High impact</span>
+      <span class="tag tag-new">1 new component</span>
+    </div>
+  </div>
+  <div class="phase-body">
+
+    <div class="change-group">
+      <div class="change-group-title">BigButton — icon support + gradient primary</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/src/components/ui/BigButton.tsx</div>
+          <ul>
+            <li>Add <code>icon?: string</code> prop (MaterialCommunityIcons name)</li>
+            <li>Add <code>iconPosition?: 'left' | 'right'</code> (default left)</li>
+            <li>Wrap primary variant in <code>LinearGradient</code> from <code>expo-linear-gradient</code></li>
+            <li>Increase height from 56 → 60, border-radius 12 → 16</li>
+            <li>Add <code>loading?: boolean</code> prop that shows <code>ActivityIndicator</code> in button</li>
+            <li>Add subtle press animation via <code>Animated.spring</code> scale 1→0.97</li>
+          </ul>
+        </div>
+        <div>
+          <div class="component-preview">
+            <div class="sim-btn primary"><span class="icon">🚛</span> Înregistrează</div>
+            <div class="sim-btn secondary"><span class="icon">📦</span> Consumabile</div>
+            <div class="sim-btn danger"><span class="icon">⚠️</span> Raportează</div>
+            <div class="sim-btn outline"><span class="icon">←</span> Anulează</div>
+          </div>
+          <div class="ba-grid">
+            <div class="ba-card before">
+              <div class="ba-label">Before</div>
+              <p>All variants same height, no icons. Primary is flat green fill — identical visual weight to secondary.</p>
+            </div>
+            <div class="ba-card after">
+              <div class="ba-label">After</div>
+              <p>Primary has gradient shadow lift. Icon differentiates actions at a glance. Loading spinner replaces disabled state.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="change-group">
+      <div class="change-group-title">RoleHeader — new shared component</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/src/components/shared/RoleHeader.tsx <span class="badge-new">NEW</span></div>
+          <ul>
+            <li>Props: <code>role: 'driver'|'baler'|'loader'</code>, <code>name: string</code>, <code>machineCode?: string</code>, <code>subtitle?: string</code></li>
+            <li>Uses <code>LinearGradient</code> with <code>gradients[role]</code> from tokens</li>
+            <li>Shows greeting ("Bună ziua,"), name in large bold text, role badge pill</li>
+            <li>Machine code shown in top-right chip if provided</li>
+            <li>Sync status dot (green=online, purple=offline) wired to <code>useNetInfo</code></li>
+            <li>Bottom curve clip via <code>borderBottomLeftRadius/borderBottomRightRadius: 28</code></li>
+            <li>Adds bottom padding (~20px) to overlap with first card below</li>
+          </ul>
+        </div>
+        <div>
+          <div class="sim-role-header rh-driver">
+            <div class="rh-machine">TR-042 🚛</div>
+            <div class="rh-greeting">Bună ziua,</div>
+            <div class="rh-name">Ion Popescu</div>
+            <div class="rh-badge">ȘOFER</div>
+          </div>
+          <div class="sim-role-header rh-baler" style="margin-top:10px">
+            <div class="rh-machine">BAL-007 🌾</div>
+            <div class="rh-greeting">Bună ziua,</div>
+            <div class="rh-name">Gheorghe Marin</div>
+            <div class="rh-badge">OPERATOR BALOTIERĂ</div>
+          </div>
+          <div class="sim-role-header rh-loader" style="margin-top:10px">
+            <div class="rh-machine">INC-03 🏗️</div>
+            <div class="rh-greeting">Bună ziua,</div>
+            <div class="rh-name">Mihai Ionescu</div>
+            <div class="rh-badge">OPERATOR ÎNCĂRCĂTOR</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <span class="code-lang">TypeScript</span>
+      <pre><span class="cm">// apps/mobile/src/components/shared/RoleHeader.tsx</span>
+<span class="kw">import</span> { LinearGradient } <span class="kw">from</span> <span class="str">'expo-linear-gradient'</span>
+<span class="kw">import</span> { gradients, roleColors } <span class="kw">from</span> <span class="str">'@strawboss/ui-tokens'</span>
+
+<span class="kw">interface</span> <span class="fn">RoleHeaderProps</span> {
+  role: <span class="str">'driver'</span> | <span class="str">'baler'</span> | <span class="str">'loader'</span>
+  name: <span class="str">string</span>
+  machineCode?: <span class="str">string</span>
+  subtitle?: <span class="str">string</span>
+  isOnline: <span class="str">boolean</span>
+}
+
+<span class="kw">export function</span> <span class="fn">RoleHeader</span>({ role, name, machineCode, isOnline }: RoleHeaderProps) {
+  <span class="kw">const</span> grad = gradients[role]
+  <span class="kw">const</span> ROLE_LABELS = { driver: <span class="str">'ȘOFER'</span>, baler: <span class="str">'BALOTIERĂ'</span>, loader: <span class="str">'ÎNCĂRCĂTOR'</span> }
+
+  <span class="kw">return</span> (
+    &lt;<span class="fn">LinearGradient</span> colors={grad} style={styles.header}&gt;
+      <span class="cm">{/* Sync dot */}</span>
+      &lt;<span class="var">View</span> style={styles.syncDot(isOnline)} /&gt;
+      <span class="cm">{/* Machine chip */}</span>
+      {machineCode &amp;&amp; &lt;<span class="var">View</span> style={styles.machineChip}&gt;&lt;<span class="var">Text</span>&gt;{machineCode}&lt;/<span class="var">Text</span>&gt;&lt;/<span class="var">View</span>&gt;}
+      &lt;<span class="var">Text</span> style={styles.greeting}&gt;Bună ziua,&lt;/<span class="var">Text</span>&gt;
+      &lt;<span class="var">Text</span> style={styles.name}&gt;{name}&lt;/<span class="var">Text</span>&gt;
+      &lt;<span class="var">View</span> style={styles.badge}&gt;
+        &lt;<span class="var">Text</span> style={styles.badgeText}&gt;{ROLE_LABELS[role]}&lt;/<span class="var">Text</span>&gt;
+      &lt;/<span class="var">View</span>&gt;
+    &lt;/<span class="fn">LinearGradient</span>&gt;
+  )
+}</pre>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="change-group">
+      <div class="change-group-title">OfflineBanner — purple, icon, stronger signal</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/src/components/shared/OfflineBanner.tsx</div>
+          <ul>
+            <li>Change background from <code>colors.warning</code> (#B7791F) → <code>colors.purple</code> (#5B21B6)</li>
+            <li>Add <code>cloud-off-outline</code> MaterialCommunityIcons icon left of text</li>
+            <li>Change text to "Mod offline — modificările se salvează local" (more informative)</li>
+            <li>Add a gentle pulsing animation (<code>Animated.loop</code> opacity 1→0.75→1)</li>
+          </ul>
+        </div>
+        <div>
+          <div class="component-preview">
+            <div class="sim-offline old">⚠️ Offline — fara conexiune</div>
+            <div class="sim-offline new">☁️ Mod offline — datele se salvează local</div>
+          </div>
+          <div class="ba-grid">
+            <div class="ba-card before">
+              <div class="ba-label">Before</div>
+              <p>Amber background — visually indistinguishable from warning alerts. Baler operators see brown + amber = confusing.</p>
+            </div>
+            <div class="ba-card after">
+              <div class="ba-label">After</div>
+              <p>Purple is role-neutral. Clear icon. Text reassures the user data isn't lost — less panic.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="change-group">
+      <div class="change-group-title">StatusPill — Romanian labels</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/src/components/ui/StatusPill.tsx</div>
+          <ul>
+            <li>Replace <code>formatStatus()</code> (English title-case) with Romanian label map</li>
+            <li>Add <code>STATUS_LABELS_RO</code>: planned→Planificat, loading→Se încarcă, in_transit→În tranzit, arrived→Sosit, delivering→Livrare, delivered→Livrat, completed→Finalizat, disputed→Contestat</li>
+            <li>Add icon dot (4×4 circle) left of text in <code>md</code> size using status bg color at 70% opacity</li>
+          </ul>
+        </div>
+        <div>
+          <div class="component-preview">
+            <span class="sim-pill" style="background:#F59E0B;color:#fff">Se încarcă</span>
+            <span class="sim-pill" style="background:#1565C0;color:#fff">În tranzit</span>
+            <span class="sim-pill" style="background:#2E7D32;color:#fff">Livrare</span>
+            <span class="sim-pill" style="background:#0A5C36;color:#fff">Finalizat</span>
+            <span class="sim-pill" style="background:#C62828;color:#fff">Contestat</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="change-group">
+      <div class="change-group-title">TaskList — larger tap targets, urgent red</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/src/components/shared/TaskList.tsx</div>
+          <ul>
+            <li>Increase row <code>minHeight</code> from implicit ~44 → 64px</li>
+            <li>Task name font-size 13 → 15, font-weight '500' → '600'</li>
+            <li>Add 3px left border accent per status color (available=blue, in_progress=amber, done=green)</li>
+            <li>Urgent/high priority: left border turns red (#C62828), add "URGENT" text badge in red pill</li>
+            <li>Replace sequence number with status icon (check/clock/arrow) for faster scanning</li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/src/components/ui/ActionCard.tsx</div>
+          <ul>
+            <li>Increase icon container 48×48 → 56×56</li>
+            <li>Active state: use <code>LinearGradient</code> tinted overlay instead of flat <code>primary50</code> bg</li>
+            <li>Completed state: add animated checkmark <code>Animated.spring</code> scale-in</li>
+            <li>Locked state: add lock icon overlay, reduce opacity to 0.45 (from 0.4)</li>
+            <li>Increase <code>minHeight</code> 80 → 90</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───── PHASE 3 ───── -->
+<div class="phase ph-3">
+  <div class="phase-header">
+    <div class="phase-number">3</div>
+    <div class="phase-meta">
+      <h3>Auth — Login Screen</h3>
+      <p>First impression and most-used screen for operators. PIN entry needs to feel deliberate and premium.</p>
+    </div>
+    <div class="phase-tags">
+      <span class="tag tag-effort">~2h</span>
+      <span class="tag tag-files">1 file</span>
+      <span class="tag tag-impact">High impact</span>
+    </div>
+  </div>
+  <div class="phase-body">
+
+    <div class="change-item">
+      <div class="change-file">
+        <div class="filename">apps/mobile/app/(auth)/login.tsx</div>
+        <ul>
+          <li>Replace flat <code>backgroundColor: '#F3DED8'</code> with <code>LinearGradient</code> from <code>#0A3D22</code> (top 40%) → <code>#F3DED8</code> (bottom 60%) — creates depth without a photo</li>
+          <li>Replace text <code>"O"/"*"</code> password toggle with <code>MaterialCommunityIcons eye/eye-off</code> (size 22, color rgba white 0.7)</li>
+          <li>For PIN-mode login: render 4 large dot indicators (filled circle vs empty circle, size 18, spacing 20) above the PIN input field — shows entry progress without showing digits</li>
+          <li>Add Strawboss wordmark / tractor icon at top of screen (SVG or PNG from branding/)</li>
+          <li>Move "Intrare cu cod PIN" / "Intrare cu email" toggle to a segmented control above the form</li>
+          <li>Input fields: white background, border-radius 14, height 56 — slightly elevated card feel</li>
+          <li>Login button: full-width primary <code>BigButton</code> with gradient + "Intră" + key icon</li>
+          <li>Error text: use <code>colors.danger</code>, add shake animation on failed attempt</li>
+        </ul>
+      </div>
+      <div>
+        <div class="ba-grid">
+          <div class="ba-card before">
+            <div class="ba-label">Before</div>
+            <p>Flat terra background. Password toggle is plain text <code>"O"</code>/<code>"*"</code>. No visual feedback for PIN entry progress. No branding above fold.</p>
+          </div>
+          <div class="ba-card after">
+            <div class="ba-label">After</div>
+            <p>Gradient hero → terra transition. Branded logo at top. PIN dots show progress. Eye icon for password. Shake animation on error. Elevated card inputs.</p>
+          </div>
+        </div>
+        <div class="code-block">
+          <span class="code-lang">TypeScript</span>
+          <pre><span class="cm">// PIN dot indicator — replaces plain text input display</span>
+<span class="kw">const</span> PinDots = ({ length, filled }: { length: <span class="num">4</span>, filled: <span class="var">number</span> }) => (
+  &lt;<span class="var">View</span> style={{ flexDirection: <span class="str">'row'</span>, gap: <span class="num">20</span> }}&gt;
+    {<span class="fn">Array.from</span>({ length }).map((_, i) =&gt; (
+      &lt;<span class="var">View</span> key={i} style={{
+        width: <span class="num">18</span>, height: <span class="num">18</span>, borderRadius: <span class="num">9</span>,
+        backgroundColor: i &lt; filled
+          ? <span class="str">'rgba(255,255,255,0.95)'</span>
+          : <span class="str">'rgba(255,255,255,0.25)'</span>,
+        borderWidth: i &lt; filled ? <span class="num">0</span> : <span class="num">2</span>,
+        borderColor: <span class="str">'rgba(255,255,255,0.4)'</span>,
+      }} /&gt;
+    ))}
+  &lt;/<span class="var">View</span>&gt;
+)</pre>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───── PHASE 4 ───── -->
+<div class="phase ph-4">
+  <div class="phase-header">
+    <div class="phase-number">4</div>
+    <div class="phase-meta">
+      <h3>Driver Screens</h3>
+      <p>The role with the most complex workflow — trip state machine, delivery flow, fuel logging. Needs clear hierarchy and active-trip prominence.</p>
+    </div>
+    <div class="phase-tags">
+      <span class="tag tag-effort">~4h</span>
+      <span class="tag tag-files">6 files</span>
+    </div>
+  </div>
+  <div class="phase-body">
+
+    <div class="change-group">
+      <div class="change-group-title">Tab layout — 5 tabs → 4 tabs</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(driver)/_layout.tsx</div>
+          <ul>
+            <li>Remove standalone "Livrare" tab — delivery context is surfaced as hero card on Home when a trip is in <code>arrived/delivering</code> state</li>
+            <li>Rename remaining tabs: Acasă, Hartă, Combustibil, Profil</li>
+            <li>Update <code>tabBarActiveTintColor</code> to use <code>roleColors.driver.active</code> from tokens</li>
+            <li>Increase tab bar height to 60 (from default ~49) for easier tapping in gloves</li>
+            <li>Update icons: Acasă→<code>truck</code>, Hartă→<code>map-marker-radius</code>, Combustibil→<code>gas-station</code>, Profil→<code>account-circle</code></li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(driver)/delivery.tsx</div>
+          <ul>
+            <li>This screen is no longer a primary tab — it becomes a push-navigated screen from the home hero card when trip is in arrived/delivering state</li>
+            <li>Add <code>RoleHeader</code> with subtitle "Procesul de livrare activ"</li>
+            <li>Hero active trip card with gradient border (primary color) and pulsing indicator</li>
+            <li>Single large <code>BigButton</code> with truck-delivery icon: "Începe Livrarea →"</li>
+            <li>Empty state: centered truck illustration + "Nicio livrare activă" + secondary button "Vezi toate cursele"</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="change-group">
+      <div class="change-group-title">Driver Home — hero trip card</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(driver)/index.tsx</div>
+          <ul>
+            <li>Add <code>RoleHeader role="driver"</code> at the very top (reads name + machineCode from auth store)</li>
+            <li>When active trip exists: render a <strong>hero card</strong> — full-width, gradient accent, <code>StatusPill</code> with Romanian label, destination address, large "Continuă Cursa →" <code>BigButton</code></li>
+            <li>When no active trip: render a calm empty state card with compass icon + "Nicio cursă activă" — no alarming empty screen</li>
+            <li>Trip list cards below hero: larger row height (min 80px), bold destination text, StatusPill right-aligned</li>
+            <li>Replace hardcoded <code>STATUS_COLORS</code> / <code>STATUS_LABELS</code> with shared <code>STATUS_STYLES</code> and <code>STATUS_LABELS_RO</code> from StatusPill file</li>
+            <li>Add <code>OfflineBanner</code> below <code>RoleHeader</code> (already existed — just keep in place)</li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(driver)/fuel.tsx</div>
+          <ul>
+            <li>Add <code>RoleHeader role="driver" subtitle="Înregistrare combustibil"</code> above <code>FuelEntryFlow</code></li>
+            <li>Wrap in <code>SafeAreaView</code> with background matching gradient bottom color <code>#0A5C36</code> for a seamless edge</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <p><strong>Navigation change note:</strong> Removing the Livrare tab means <code>router.push('/(driver)/delivery')</code> calls in <code>index.tsx</code> need to be replaced with <code>router.push('/driver-ops/delivery-flow')</code> directly, or a push to the delivery screen from the hero card tap. Double-check the <code>STATUS_ENDPOINTS</code> map in <code>trip/[tripId].tsx</code> still routes correctly.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───── PHASE 5 ───── -->
+<div class="phase ph-5">
+  <div class="phase-header">
+    <div class="phase-number">5</div>
+    <div class="phase-meta">
+      <h3>Baler Screens</h3>
+      <p>Baler operators have a repetitive daily rhythm: parcel → count bales → log consumables. The home screen should show today's progress at a glance.</p>
+    </div>
+    <div class="phase-tags">
+      <span class="tag tag-effort">~4h</span>
+      <span class="tag tag-files">5 files</span>
+    </div>
+  </div>
+  <div class="phase-body">
+
+    <div class="change-group">
+      <div class="change-group-title">Tab layout — 5 tabs → 4 tabs</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(baler)/_layout.tsx</div>
+          <ul>
+            <li>Remove standalone "Starea Mea" (stats) tab — fold a summary strip into the Home header</li>
+            <li>Tabs: Acasă, Consumabile, Hartă, Profil</li>
+            <li>Change <code>tabBarActiveTintColor</code> from <code>#0A5C36</code> → <code>#795548</code> (warm brown — baler identity)</li>
+            <li>Tab bar <code>borderTopColor</code>: <code>#BCAAA4</code> (warm brown 200)</li>
+            <li>Tab icons: Acasă→<code>grain</code>, Consumabile→<code>package-variant-closed</code>, Hartă→<code>map</code>, Profil→<code>account-circle</code></li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(baler)/stats.tsx</div>
+          <ul>
+            <li>This file remains but is no longer a tab — accessible via Profil or inline on home</li>
+            <li>Alternatively keep as route but surface via a "Detalii statistici" button on home</li>
+            <li>Add <code>RoleHeader role="baler" subtitle="Performanța mea"</code></li>
+            <li>Add daily target progress bar below StatCards (if daily target config available)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="change-group">
+      <div class="change-group-title">Baler Home — stats strip + single primary CTA</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(baler)/index.tsx</div>
+          <ul>
+            <li>Add <code>RoleHeader role="baler"</code> with warm brown gradient</li>
+            <li>Add a <strong>Today's Stats Strip</strong> immediately below header — 3 inline stat chips: Baloți produși / Sfoară / Motorină — pulled from same <code>OperatorStats</code> API calls, shown as compact numbers</li>
+            <li>Reduce to <strong>single primary CTA</strong>: "Înregistrează Producție" with <code>grain</code> icon — takes up 60px height, full width</li>
+            <li>Move "Notează consumabile" to secondary <code>BigButton</code> variant below</li>
+            <li>Remove "Starea mea" <code>BigButton</code> (stats are now inline above)</li>
+            <li>Keep <code>TaskList</code> with improved styling from Phase 2</li>
+            <li>Remove the connection status card from bottom (replaced by top-of-screen <code>OfflineBanner</code>)</li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(baler)/consumables.tsx</div>
+          <ul>
+            <li>Add <code>RoleHeader role="baler" subtitle="Notează consumabile"</code> above <code>ConsumableFlow</code></li>
+            <li>Consistent SafeAreaView background</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <span class="code-lang">TypeScript</span>
+      <pre><span class="cm">// Today's stat strip — inline on Baler home</span>
+<span class="kw">function</span> <span class="fn">StatStrip</span>({ bales, fuel, twine }: StripProps) {
+  <span class="kw">return</span> (
+    &lt;<span class="var">View</span> style={styles.strip}&gt;
+      &lt;<span class="fn">StripItem</span> icon=<span class="str">"grain"</span> label=<span class="str">"Baloți"</span> value={bales} unit=<span class="str">"buc"</span> /&gt;
+      &lt;<span class="fn">StripItem</span> icon=<span class="str">"gas-station"</span> label=<span class="str">"Motorină"</span> value={fuel} unit=<span class="str">"L"</span> /&gt;
+      &lt;<span class="fn">StripItem</span> icon=<span class="str">"package-variant"</span> label=<span class="str">"Sfoară"</span> value={twine} unit=<span class="str">"kg"</span> /&gt;
+    &lt;/<span class="var">View</span>&gt;
+  )
+}
+<span class="cm">// Strip style: horizontal row, each item ~1/3 width, centered,</span>
+<span class="cm">// overlaps RoleHeader bottom by -20px (negative marginTop)</span>
+<span class="cm">// Background: white card, borderRadius 16, shadow.md</span></pre>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───── PHASE 6 ───── -->
+<div class="phase ph-6">
+  <div class="phase-header">
+    <div class="phase-number">6</div>
+    <div class="phase-meta">
+      <h3>Loader Screens</h3>
+      <p>Loader operators have the simplest daily flow: scan truck QR → count bales → done. Fewer tabs, maximum focus on the QR action.</p>
+    </div>
+    <div class="phase-tags">
+      <span class="tag tag-effort">~3h</span>
+      <span class="tag tag-files">4 files</span>
+    </div>
+  </div>
+  <div class="phase-body">
+
+    <div class="change-group">
+      <div class="change-group-title">Tab layout — 5 tabs → 3 tabs</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(loader)/_layout.tsx</div>
+          <ul>
+            <li>Reduce to 3 tabs: Scanează, Încărcări, Profil</li>
+            <li>Remove Hartă tab (loader rarely needs full map) and Consumabile tab (move to a button within the scan flow itself)</li>
+            <li>Change <code>tabBarActiveTintColor</code> to <code>#1565C0</code> (signal blue — loader identity)</li>
+            <li>Tab bar <code>borderTopColor</code>: <code>#BBDEFB</code> (blue 100)</li>
+            <li>Icons: Scanează→<code>qrcode-scan</code>, Încărcări→<code>package-variant-closed</code>, Profil→<code>account-circle</code></li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(loader)/index.tsx</div>
+          <ul>
+            <li>Add <code>RoleHeader role="loader"</code> with blue gradient at top</li>
+            <li>QR scanner panel: add a <strong>machine context card</strong> above scanner — shows assigned machine ID + "<code>Așteptând scan camion...</code>" subtitle with pulsing dot</li>
+            <li>Scanner viewfinder: add corner bracket decorations (custom View elements) in blue to frame the camera area</li>
+            <li>Last scanned truck: show as a small chip below scanner ("Ultimul camion: TR-042") if available in local state</li>
+            <li>"Raportează problemă" button: change from outline to small text-button below scanner to de-emphasize it</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="change-group">
+      <div class="change-group-title">Loader Bales list — today's log upgrade</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(loader)/bales.tsx</div>
+          <ul>
+            <li>Add <code>RoleHeader role="loader" subtitle="Încărcări de azi"</code></li>
+            <li>Add a prominent total at top: "Total baloți azi: <strong>142</strong>" as large number in blue</li>
+            <li>Card redesign: bale count as large (28px bold) number left side, time right side, parcel name below</li>
+            <li>Add visual timeline connector between cards (small vertical line from bottom of one card to top of next)</li>
+            <li>Empty state: scanner icon + "Scanați un camion pentru a înregistra prima încărcare"</li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/(loader)/consumables.tsx</div>
+          <ul>
+            <li>No longer a primary tab — accessible via a button in the scan/load flow</li>
+            <li>Keep the file as a screen but trigger it from within <code>loader-ops/load-bales.tsx</code> after a successful load is confirmed</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───── PHASE 7 ───── -->
+<div class="phase ph-7">
+  <div class="phase-header">
+    <div class="phase-number">7</div>
+    <div class="phase-meta">
+      <h3>Shared Flow Screens</h3>
+      <p>The push-navigated screens that all roles use: trip detail, delivery flow, production recording, load bales. Highest operational stakes.</p>
+    </div>
+    <div class="phase-tags">
+      <span class="tag tag-effort">~5h</span>
+      <span class="tag tag-files">7 files</span>
+      <span class="tag tag-impact">High impact</span>
+    </div>
+  </div>
+  <div class="phase-body">
+
+    <div class="change-group">
+      <div class="change-group-title">Trip Detail — the most complex screen</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/trip/[tripId].tsx</div>
+          <ul>
+            <li>Replace plain <code>SafeAreaView</code> header with <code>RoleHeader role="driver"</code> showing trip number as subtitle</li>
+            <li><code>TripProgress</code> component: embed inside a white card that overlaps the gradient header (negative marginTop: -20, card borderRadius: 20, shadow.md) — makes the progress feel physically attached to the header</li>
+            <li><code>InfoRow</code> pairs: increase font-size to 14/15, add MaterialCommunityIcons icon left of each label (truck-delivery for destination, weight for load weight, etc.)</li>
+            <li><code>OfflineBanner</code>: keep at top, purple per Phase 2</li>
+            <li><code>ActionCard</code> list: use updated component from Phase 2 with larger icons, gradient active state</li>
+            <li>Disputed state: add red banner card at top of list "Cursă contestată — acțiune necesară" with danger gradient</li>
+            <li>Loading state: use skeleton placeholders (shimmer effect via <code>Animated.loop</code>) instead of plain <code>ActivityIndicator</code></li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/src/components/shared/TripProgress.tsx</div>
+          <ul>
+            <li>Change step indicator from small dots (12px) to pill shapes: completed steps get filled green pill, current step gets animated green pill with white text, future steps get outlined pill</li>
+            <li>Labels below pills: current label 12px bold green, others 10px gray</li>
+            <li>Overall container: white card with horizontal scroll if needed on small screens</li>
+            <li>Add <code>onStepPress</code> prop for future deep-link to step timestamp (future feature)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="change-group">
+      <div class="change-group-title">Flow screens — consistent headers + BigButton upgrades</div>
+      <div class="change-item">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/driver-ops/delivery-flow.tsx</div>
+          <ul>
+            <li>Add step indicator at top: "Pasul 2 din 4" style stepper with role-specific accent color</li>
+            <li>Each step form: white card with generous padding (24px), field labels 13px bold</li>
+            <li>Navigation buttons: "Înapoi" as outline left, "Continuă →" as primary right (side by side)</li>
+            <li>Photo/signature steps: full-width capture area, 200px tall preview, "Refă fotografia" secondary button</li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/baler-ops/production.tsx</div>
+          <ul>
+            <li>Parcel selection card: replace plain list with larger selectable cards (60px height, parcel name 16px bold, hectares sub-label)</li>
+            <li>Selected parcel shows green left border + checkmark icon</li>
+            <li>"Continuă" <code>BigButton</code>: add <code>grain</code> icon, disabled state shows ghost style</li>
+            <li>Confirmation screen: show parcel name prominently, bale count as large centered number</li>
+          </ul>
+        </div>
+      </div>
+      <div class="change-item" style="margin-top: 12px;">
+        <div class="change-file">
+          <div class="filename">apps/mobile/app/loader-ops/load-bales.tsx</div>
+          <ul>
+            <li>Bale count input: use existing <code>NumericPad</code> but wrap in a card that shows the truck QR code parsed info (truck ID, truck code) at the top for confirmation</li>
+            <li>Running total: show a count that animates up as operator enters bales (large centered display: "142 baloți")</li>
+            <li>Confirmation: green success card with check animation before auto-navigate back</li>
+          </ul>
+        </div>
+        <div class="change-file">
+          <div class="filename">apps/mobile/src/components/features/stats/StatCard.tsx</div>
+          <ul>
+            <li>Value font-size 14 → 32px (bold, role accent color)</li>
+            <li>Unit shown inline right of value, 16px gray</li>
+            <li>Add 4px left border accent strip using role color (passed as prop or from context)</li>
+            <li>Card padding: 16→20px, shadow.sm → shadow.md</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───── PHASE 8 ───── -->
+<div class="phase ph-8">
+  <div class="phase-header">
+    <div class="phase-number">8</div>
+    <div class="phase-meta">
+      <h3>Profile Screens</h3>
+      <p>Each role's profile screen. Lower operational stakes but highest trust signal — shows the operator their identity, machine, and exit path.</p>
+    </div>
+    <div class="phase-tags">
+      <span class="tag tag-effort">~2h</span>
+      <span class="tag tag-files">4 files</span>
+    </div>
+  </div>
+  <div class="phase-body">
+
+    <div class="change-item">
+      <div class="change-file">
+        <div class="filename">apps/mobile/src/components/ProfileScreen.tsx</div>
+        <ul>
+          <li>Replace plain <code>Text style={styles.title}</code> header "Contul meu" with <code>RoleHeader</code> — role is derived from <code>profile.role</code> → mapped to <code>'driver'|'baler'|'loader'</code></li>
+          <li>Avatar circle: increase 72 → 88px, add subtle shadow.md, letter is initial of first name from <code>fullName</code></li>
+          <li>Role badge: use role-specific accent color background (not hardcoded <code>#E8F5E9</code>)</li>
+          <li>Machine card: add machine type icon (truck/grain/wrench) at 36px, increase <code>machineCode</code> to 20px bold</li>
+          <li>Logout button: change from filled red → danger outline variant (red border, red text) — less alarming color on a screen operators visit daily</li>
+          <li>Add a sync status section: "Ultima sincronizare: acum 2 min" with sync icon — pull from sync store</li>
+        </ul>
+      </div>
+      <div class="change-file">
+        <div class="filename">apps/mobile/app/(driver)/profile.tsx<br>apps/mobile/app/(baler)/profile.tsx<br>apps/mobile/app/(loader)/profile.tsx</div>
+        <ul>
+          <li>These are thin wrappers — verify each passes correct <code>role</code> to <code>ProfileScreen</code> once it accepts the prop (currently role comes from query data, which means there's a loading flash)</li>
+          <li>Add a loading skeleton that matches the <code>RoleHeader</code> shape while profile data loads — avoid flash of unstyled content</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <p><strong>Profile loading flash fix:</strong> The role is known in <code>useAuthStore</code> immediately (set on login). Pass <code>role</code> directly from auth store to <code>RoleHeader</code> instead of waiting for the <code>/api/v1/profile</code> query to resolve. The query still runs for full profile details, but the header renders instantly.</p>
+    </div>
+
+  </div>
+</div>
+
+</div> <!-- end .phases -->
+
+<!-- ═══════════════════════════════════════════════
+     SUMMARY TABLE
+════════════════════════════════════════════════ -->
+<div class="summary-section">
+  <div class="summary-header">
+    <h2>Implementation Summary</h2>
+    <p>Total effort estimate assumes one developer familiar with Expo + React Native</p>
+  </div>
+  <table class="summary-table">
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>Scope</th>
+        <th>Files</th>
+        <th>Effort</th>
+        <th>Dependency</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="phase-dot pd-1">1 — Token Foundation</span></td>
+        <td>Add gradients, role colors, purple, shadow.xl to ui-tokens</td>
+        <td>2</td>
+        <td><div class="effort-bar"><div class="bar" style="width:40px"></div><span>~2h</span></div></td>
+        <td>None — start here</td>
+      </tr>
+      <tr>
+        <td><span class="phase-dot pd-2">2 — Core Components</span></td>
+        <td>BigButton, RoleHeader (new), OfflineBanner, StatusPill, TaskList, ActionCard</td>
+        <td>6</td>
+        <td><div class="effort-bar"><div class="bar" style="width:100px"></div><span>~5h</span></div></td>
+        <td>Needs Phase 1</td>
+      </tr>
+      <tr>
+        <td><span class="phase-dot pd-3">3 — Auth Screen</span></td>
+        <td>Login gradient, PIN dots, eye icon, branding</td>
+        <td>1</td>
+        <td><div class="effort-bar"><div class="bar" style="width:40px"></div><span>~2h</span></div></td>
+        <td>Needs Phase 1</td>
+      </tr>
+      <tr>
+        <td><span class="phase-dot pd-4">4 — Driver Screens</span></td>
+        <td>Tab layout, home hero card, delivery, fuel</td>
+        <td>6</td>
+        <td><div class="effort-bar"><div class="bar" style="width:80px"></div><span>~4h</span></div></td>
+        <td>Needs Phases 1 + 2</td>
+      </tr>
+      <tr>
+        <td><span class="phase-dot pd-5">5 — Baler Screens</span></td>
+        <td>Brown identity, stat strip, simplified home, consumables header</td>
+        <td>5</td>
+        <td><div class="effort-bar"><div class="bar" style="width:80px"></div><span>~4h</span></div></td>
+        <td>Needs Phases 1 + 2</td>
+      </tr>
+      <tr>
+        <td><span class="phase-dot pd-6">6 — Loader Screens</span></td>
+        <td>Blue identity, 3 tabs, QR hero, bales list upgrade</td>
+        <td>4</td>
+        <td><div class="effort-bar"><div class="bar" style="width:60px"></div><span>~3h</span></div></td>
+        <td>Needs Phases 1 + 2</td>
+      </tr>
+      <tr>
+        <td><span class="phase-dot pd-7">7 — Shared Flow Screens</span></td>
+        <td>Trip detail, TripProgress, delivery flow, production, load bales, StatCard</td>
+        <td>7</td>
+        <td><div class="effort-bar"><div class="bar" style="width:100px"></div><span>~5h</span></div></td>
+        <td>Needs Phases 1 + 2</td>
+      </tr>
+      <tr>
+        <td><span class="phase-dot pd-8">8 — Profile Screens</span></td>
+        <td>ProfileScreen RoleHeader, logout outline, machine icon, sync status</td>
+        <td>4</td>
+        <td><div class="effort-bar"><div class="bar" style="width:40px"></div><span>~2h</span></div></td>
+        <td>Needs Phase 2</td>
+      </tr>
+      <tr style="background: #F0FDF4;">
+        <td colspan="3" style="font-weight: 800; color: #0A5C36; font-size: 14px;">Total</td>
+        <td colspan="2"><div class="effort-bar"><div class="bar" style="width:200px; background: #0A5C36"></div><span style="font-weight: 800; color: #0A5C36">~27h</span></div></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     IMPLEMENTATION CHECKLIST
+════════════════════════════════════════════════ -->
+<div style="background:#fff; border-radius:20px; box-shadow: var(--shadow); overflow:hidden; margin-bottom: 48px;">
+  <div style="background: linear-gradient(135deg, #5B21B6, #7C3AED); padding: 24px 32px; color:#fff;">
+    <h2 style="font-size:20px; font-weight:800; margin-bottom:4px;">Pre-implementation Checklist</h2>
+    <p style="font-size:14px; opacity:0.75">Verify these before writing a single line of code</p>
+  </div>
+  <div style="padding: 32px;">
+    <div class="checklist">
+      <div class="check-item">
+        <div class="check-icon imp">!</div>
+        Install <code>expo-linear-gradient</code> if not already in mobile app dependencies — required for Phase 2+ gradients. Run <code>pnpm --filter @strawboss/mobile add expo-linear-gradient</code>.
+      </div>
+      <div class="check-item">
+        <div class="check-icon imp">!</div>
+        Verify <code>@expo/vector-icons</code> version supports all icon names used (<code>eye</code>, <code>eye-off</code>, <code>truck-delivery</code>, <code>grain</code>, <code>account-circle</code>, <code>map-marker-radius</code>). Check MaterialCommunityIcons v7 icon index.
+      </div>
+      <div class="check-item">
+        <div class="check-icon todo">○</div>
+        Build <code>packages/ui-tokens</code> after Phase 1 changes: <code>./strawboss.sh build packages</code> — confirm <code>native.ts</code> exports are visible in mobile app.
+      </div>
+      <div class="check-item">
+        <div class="check-icon todo">○</div>
+        Run <code>./strawboss.sh typecheck mobile</code> after each phase to catch type errors early — especially after adding new props to <code>BigButton</code> and <code>ProfileScreen</code>.
+      </div>
+      <div class="check-item">
+        <div class="check-icon todo">○</div>
+        Test on a real Android device after Phase 4 (tab changes) — Expo Go's simulator can mask tab bar height issues on physical devices with notches.
+      </div>
+      <div class="check-item">
+        <div class="check-icon todo">○</div>
+        Verify offline sync still works after Phase 2 <code>OfflineBanner</code> changes — the <code>isConnected</code> prop source (<code>useNetInfo</code>) should be unchanged; only the visual differs.
+      </div>
+      <div class="check-item">
+        <div class="check-icon todo">○</div>
+        After removing the Livrare tab (Phase 4): confirm no direct <code>router.push('/(driver)/delivery')</code> calls remain in <code>index.tsx</code> or anywhere else using the old tab route.
+      </div>
+      <div class="check-item">
+        <div class="check-icon todo">○</div>
+        QA the trip state machine transitions in <code>trip/[tripId].tsx</code> after Phase 7 changes — the <code>STATUS_ENDPOINTS</code> map must not be accidentally refactored away during the visual update.
+      </div>
+    </div>
+  </div>
+</div>
+
+  </div> <!-- end .timeline -->
+</div> <!-- end .container -->
+
+<div class="footer">
+  <strong>Strawboss — Terra Signal Design Language</strong><br>
+  Implementation plan generated April 2026 · Preserve existing color palette · expo-linear-gradient required
+</div>
+
+</body>
+</html>

@@ -22,6 +22,7 @@ export function useSync() {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [failedQueueCount, setFailedQueueCount] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const { isConnected } = useNetworkStatus();
   const wasDisconnected = useRef(false);
@@ -30,8 +31,12 @@ export function useSync() {
     try {
       const db = await getDatabase();
       const repo = new SyncQueueRepo(db);
-      const count = await repo.getPendingCount();
+      const [count, failed] = await Promise.all([
+        repo.getPendingCount(),
+        repo.getFailedCount(),
+      ]);
       setPendingCount(count);
+      setFailedQueueCount(failed);
     } catch {
       // Ignore errors in background count refresh
     }
@@ -73,8 +78,9 @@ export function useSync() {
 
       const result = await manager.sync();
 
-      setLastSyncAt(new Date().toISOString());
-      if (result.errors.length > 0) {
+      if (result.errors.length === 0) {
+        setLastSyncAt(new Date().toISOString());
+      } else {
         setErrors(result.errors);
       }
 
@@ -86,6 +92,18 @@ export function useSync() {
       setSyncing(false);
     }
   }, [syncing, refreshPendingCount]);
+
+  const retryFailedAndSync = useCallback(async () => {
+    try {
+      const db = await getDatabase();
+      const repo = new SyncQueueRepo(db);
+      await repo.retryAllFailed();
+      await refreshPendingCount();
+    } catch {
+      // Non-fatal; triggerSync may still run pending rows
+    }
+    await triggerSync();
+  }, [refreshPendingCount, triggerSync]);
 
   // Refresh pending count periodically
   useEffect(() => {
@@ -109,5 +127,13 @@ export function useSync() {
     }
   }, [isConnected, pendingCount, triggerSync]);
 
-  return { syncing, lastSyncAt, pendingCount, errors, triggerSync };
+  return {
+    syncing,
+    lastSyncAt,
+    pendingCount,
+    failedQueueCount,
+    errors,
+    triggerSync,
+    retryFailedAndSync,
+  };
 }

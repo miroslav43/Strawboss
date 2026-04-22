@@ -84,13 +84,29 @@ setTimeout(function() {
     attributionControl: false
   }).setView([45.3883, 21.2311], 12);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-  }).addTo(map);
+  // Satellite base + reference overlay (locality / admin labels on top of imagery).
+  var placeLabelsPane = map.createPane('placeLabels');
+  placeLabelsPane.style.zIndex = 550;
+  placeLabelsPane.style.pointerEvents = 'none';
 
-  L.control.attribution({ position: 'bottomleft', prefix: false })
-    .addAttribution('&copy; <a href="https://osm.org/copyright">OSM</a>')
-    .addTo(map);
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.esri.com/">Esri</a> — Maxar, Earthstar, GIS community'
+    }
+  ).addTo(map);
+
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    {
+      pane: 'placeLabels',
+      maxZoom: 19
+    }
+  ).addTo(map);
+
+  L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
 
   var parcelsLayer = L.layerGroup().addTo(map);
   var destinationsLayer = L.layerGroup().addTo(map);
@@ -100,6 +116,10 @@ setTimeout(function() {
 
   var parcelLayers = {};
   var highlightedId = null;
+  var lastUserLat = null;
+  var lastUserLon = null;
+  var parcelsLayerPopulated = false;
+  var userCenterApplied = false;
 
   function getParcelStyle(harvestStatus, isHighlighted) {
     if (isHighlighted) {
@@ -156,12 +176,20 @@ setTimeout(function() {
       bounds.push(layer.getBounds());
     });
 
+    parcelsLayerPopulated = bounds.length > 0;
     if (bounds.length > 0) {
-      var combined = bounds[0];
-      for (var i = 1; i < bounds.length; i++) {
-        combined.extend(bounds[i]);
+      if (lastUserLat != null && lastUserLon != null) {
+        centerOn(lastUserLat, lastUserLon, 16);
+        userCenterApplied = true;
+      } else {
+        var combined = bounds[0];
+        for (var j = 1; j < bounds.length; j++) {
+          combined.extend(bounds[j]);
+        }
+        map.fitBounds(combined, { padding: [30, 30] });
       }
-      map.fitBounds(combined, { padding: [30, 30] });
+    } else {
+      parcelsLayerPopulated = false;
     }
   }
 
@@ -213,13 +241,17 @@ setTimeout(function() {
         iconAnchor: [14, 14]
       });
       var marker = L.marker([m.lat, m.lon], { icon: icon });
-      var label = m.machineCode + (m.operatorName ? ' — ' + m.operatorName : '');
+      var label = m.tooltipLabel
+        ? m.tooltipLabel
+        : (m.machineCode + (m.operatorName ? ' — ' + m.operatorName : ''));
       marker.bindTooltip(label, { className: 'route-info', direction: 'top', offset: [0, -14] });
       marker.addTo(machinesLayer);
     });
   }
 
   function setUserLocation(lat, lon, accuracy) {
+    lastUserLat = lat;
+    lastUserLon = lon;
     userMarkerLayer.clearLayers();
 
     if (accuracy && accuracy > 0) {
@@ -232,6 +264,11 @@ setTimeout(function() {
 
     var icon = L.divIcon({ className: 'user-marker', iconSize: [16, 16], iconAnchor: [8, 8] });
     L.marker([lat, lon], { icon: icon, interactive: false }).addTo(userMarkerLayer);
+
+    if (parcelsLayerPopulated && !userCenterApplied) {
+      centerOn(lat, lon, 16);
+      userCenterApplied = true;
+    }
   }
 
   function setRoute(points, distanceKm, durationMin) {
@@ -297,7 +334,7 @@ setTimeout(function() {
   }
 
   function centerOn(lat, lon, zoom) {
-    map.setView([lat, lon], zoom || 15);
+    map.setView([lat, lon], zoom || 16);
   }
 
   function sendEvent(event) {

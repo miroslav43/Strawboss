@@ -19,6 +19,7 @@ import { getDatabase } from '@/lib/storage';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { useAuthStore } from '@/stores/auth-store';
 import { mobileLogger } from '@/lib/logger';
+import { generateUuid } from '@/lib/uuid';
 
 type Step = 'count' | 'confirm';
 
@@ -57,7 +58,7 @@ export default function LoadBalesScreen() {
       const db = await getDatabase();
       const syncRepo = new SyncQueueRepo(db);
 
-      const entityId = Math.random().toString(36).slice(2);
+      const entityId = generateUuid();
       const idempotencyKey = `bale-load-${entityId}`;
 
       await syncRepo.enqueue({

@@ -37,6 +37,19 @@ interface DailyPlanResponse {
   unassignedToParcel?: MyTask[];
 }
 
+/** Drop placeholder / admin-empty rows with no field or destination to show or open on the map. */
+function taskHasRenderableLocation(t: MyTask): boolean {
+  const parcelOk =
+    (t.parcelId != null && t.parcelId !== '') ||
+    (t.parcelName != null && String(t.parcelName).trim() !== '') ||
+    (t.parcelCode != null && String(t.parcelCode).trim() !== '');
+  const destOk =
+    (t.destinationId != null && t.destinationId !== '') ||
+    (t.destinationName != null && String(t.destinationName).trim() !== '') ||
+    (t.destinationCode != null && String(t.destinationCode).trim() !== '');
+  return parcelOk || destOk;
+}
+
 function todayDateString(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -79,7 +92,7 @@ export function useMyTasks() {
 
       mine.sort((a, b) => a.sequenceOrder - b.sequenceOrder);
 
-      return mine;
+      return mine.filter(taskHasRenderableLocation);
     },
     enabled: !!userId,
     refetchInterval: 60_000,

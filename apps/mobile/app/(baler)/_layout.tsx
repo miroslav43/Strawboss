@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
 import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
@@ -8,6 +8,8 @@ import { AppHeader } from '@/components/shared/AppHeader';
 
 export default function BalerTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
+  const insets = useSafeAreaInsets();
+  const tabBarBottom = Math.max(12, insets.bottom);
 
   return (
     <SafeAreaProvider>
@@ -21,8 +23,8 @@ export default function BalerTabLayout() {
           tabBarStyle: {
             backgroundColor: '#FFFFFF',
             borderTopColor: '#D7CCC8',
-            height: 72,
-            paddingBottom: 12,
+            height: 60 + tabBarBottom,
+            paddingBottom: tabBarBottom,
             paddingTop: 4,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: -2 },
@@ -48,12 +50,12 @@ export default function BalerTabLayout() {
           }}
         />
         <Tabs.Screen
-          name="consumables"
+          name="production"
           options={{
-            title: 'Consumabile',
-            tabBarAccessibilityLabel: 'Consumabile',
+            title: 'Producție',
+            tabBarAccessibilityLabel: 'Înregistrează producție',
             tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="package-variant-closed" focused={focused} color={color} size={size} />
+              <TabBarIcon name="counter" focused={focused} color={color} size={size} />
             ),
           }}
         />
@@ -68,12 +70,12 @@ export default function BalerTabLayout() {
           }}
         />
         <Tabs.Screen
-          name="stats"
+          name="consumables"
           options={{
-            title: 'Starea Mea',
-            tabBarAccessibilityLabel: 'Statistici',
+            title: 'Consumabile',
+            tabBarAccessibilityLabel: 'Consumabile',
             tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="chart-bar" focused={focused} color={color} size={size} />
+              <TabBarIcon name="package-variant-closed" focused={focused} color={color} size={size} />
             ),
           }}
         />

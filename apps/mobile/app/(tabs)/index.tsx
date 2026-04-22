@@ -184,7 +184,7 @@ export default function HomeScreen() {
         <View style={styles.statusCard}>
           <Text style={styles.cardTitle}>Sincronizare</Text>
           <View style={styles.infoRow}>
-            <Text style={styles.label}>Schimbări în așteptare:</Text>
+            <Text style={styles.label}>În coadă (inclusiv erori):</Text>
             <Text style={styles.value}>{pendingCount}</Text>
           </View>
           <View style={styles.infoRow}>

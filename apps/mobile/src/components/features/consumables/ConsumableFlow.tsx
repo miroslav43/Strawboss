@@ -10,6 +10,7 @@ import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { ConsumableLogsRepo } from '@/db/consumable-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { uploadReceipt } from '@/lib/receiptUpload';
+import { generateUuid } from '@/lib/uuid';
 import { colors } from '@strawboss/ui-tokens';
 
 type ConsumableType = 'diesel' | 'twine';
@@ -50,7 +51,7 @@ export function ConsumableFlow({
       const db = await getDatabase();
       const syncQueue = new SyncQueueRepo(db);
 
-      const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const id = generateUuid();
       const now = new Date().toISOString();
       const qty = parseFloat(quantity);
 
@@ -97,7 +98,8 @@ export function ConsumableFlow({
             logged_at: now,
             fuel_type: 'diesel',
             quantity_liters: qty,
-            is_full_tank: 0,
+            // Postgres column is BOOLEAN; send a native boolean.
+            is_full_tank: false,
             receipt_photo_url: receiptPhotoUrl,
             notes: null,
             sync_version: 1,
@@ -150,7 +152,7 @@ export function ConsumableFlow({
       setStep('type');
       Alert.alert(
         'Salvat',
-        `${qty} ${UNIT_LABELS[savedType]} înregistrat. Sincronizare: ${pendingCount} în așteptare.`,
+        `${qty} ${UNIT_LABELS[savedType]} înregistrat. În coadă sync: ${pendingCount}.`,
       );
       onComplete();
     } catch (err) {

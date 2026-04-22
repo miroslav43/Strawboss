@@ -8,9 +8,46 @@ import type {
   AntiFraudReport,
 } from '@strawboss/types';
 
+interface DashboardDateRange {
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
+
+  private productionDateFilter(range?: DashboardDateRange) {
+    const parts: ReturnType<typeof sql>[] = [];
+    if (range?.dateFrom) {
+      parts.push(sql`bp.production_date >= ${range.dateFrom}::date`);
+    }
+    if (range?.dateTo) {
+      parts.push(sql`bp.production_date <= ${range.dateTo}::date`);
+    }
+    if (parts.length === 0) return sql``;
+    return sql` AND ${sql.join(parts, sql` AND `)}`;
+  }
+
+  /** Filter logged_at on fuel_logs / consumable_logs (mobile sends full-day Z on list APIs). */
+  private loggedAtFilter(
+    range: DashboardDateRange | undefined,
+    alias: 'fl' | 'cl',
+  ) {
+    const parts: ReturnType<typeof sql>[] = [];
+    if (range?.dateFrom) {
+      parts.push(
+        sql`${sql.raw(alias)}.logged_at >= ${`${range.dateFrom}T00:00:00.000Z`}::timestamptz`,
+      );
+    }
+    if (range?.dateTo) {
+      parts.push(
+        sql`${sql.raw(alias)}.logged_at <= ${`${range.dateTo}T23:59:59.999Z`}::timestamptz`,
+      );
+    }
+    if (parts.length === 0) return sql``;
+    return sql` AND ${sql.join(parts, sql` AND `)}`;
+  }
 
   async getOverview(): Promise<DashboardOverview> {
     const result = await this.drizzleProvider.db.execute(sql`
@@ -51,7 +88,8 @@ export class DashboardService {
     };
   }
 
-  async getProduction(): Promise<ProductionReport[]> {
+  async getProduction(range?: DashboardDateRange): Promise<ProductionReport[]> {
+    const prodExtra = this.productionDateFilter(range);
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         p.id AS parcel_id,
@@ -60,6 +98,7 @@ export class DashboardService {
           SELECT SUM(bp.bale_count)::int
           FROM bale_productions bp
           WHERE bp.parcel_id = p.id AND bp.deleted_at IS NULL
+            ${prodExtra}
         ), 0) AS produced,
         COALESCE((
           SELECT SUM(bl.bale_count)::int
@@ -98,7 +137,12 @@ export class DashboardService {
     });
   }
 
-  async getCosts(): Promise<CostReport[]> {
+  async getCosts(range?: DashboardDateRange): Promise<CostReport[]> {
+    const fuelMachineDates = this.loggedAtFilter(range, 'fl');
+    const consMachineDates = this.loggedAtFilter(range, 'cl');
+    const fuelParcelDates = this.loggedAtFilter(range, 'fl');
+    const consParcelDates = this.loggedAtFilter(range, 'cl');
+
     // Costs by machine (machines has no 'name' column — build display name from available fields)
     const machineResult = await this.drizzleProvider.db.execute(sql`
       SELECT
@@ -106,14 +150,28 @@ export class DashboardService {
         COALESCE(m.internal_code, m.registration_plate, m.make || ' ' || m.model, 'Machine') AS entity_name,
         'machine' AS entity_type,
         COALESCE((
-          SELECT SUM(fl.total_cost)::numeric
+          SELECT SUM(
+            COALESCE(
+              fl.total_cost,
+              fl.quantity_liters * COALESCE(fl.unit_price, 0),
+              0
+            )
+          )::numeric
           FROM fuel_logs fl
           WHERE fl.machine_id = m.id AND fl.deleted_at IS NULL
+            ${fuelMachineDates}
         ), 0) AS fuel_cost,
         COALESCE((
-          SELECT SUM(cl.total_cost)::numeric
+          SELECT SUM(
+            COALESCE(
+              cl.total_cost,
+              cl.quantity * COALESCE(cl.unit_price, 0),
+              0
+            )
+          )::numeric
           FROM consumable_logs cl
           WHERE cl.machine_id = m.id AND cl.deleted_at IS NULL
+            ${consMachineDates}
         ), 0) AS consumable_cost
       FROM machines m
       WHERE m.deleted_at IS NULL
@@ -129,18 +187,32 @@ export class DashboardService {
         p.name AS entity_name,
         'parcel' AS entity_type,
         COALESCE((
-          SELECT SUM(fl.total_cost)::numeric
+          SELECT SUM(
+            COALESCE(
+              fl.total_cost,
+              fl.quantity_liters * COALESCE(fl.unit_price, 0),
+              0
+            )
+          )::numeric
           FROM fuel_logs fl
           JOIN trips t ON t.truck_id = fl.machine_id
           WHERE t.source_parcel_id = p.id
             AND fl.deleted_at IS NULL AND t.deleted_at IS NULL
+            ${fuelParcelDates}
         ), 0) AS fuel_cost,
         COALESCE((
-          SELECT SUM(cl.total_cost)::numeric
+          SELECT SUM(
+            COALESCE(
+              cl.total_cost,
+              cl.quantity * COALESCE(cl.unit_price, 0),
+              0
+            )
+          )::numeric
           FROM consumable_logs cl
           JOIN trips t ON t.truck_id = cl.machine_id
           WHERE t.source_parcel_id = p.id
             AND cl.deleted_at IS NULL AND t.deleted_at IS NULL
+            ${consParcelDates}
         ), 0) AS consumable_cost
       FROM parcels p
       WHERE p.deleted_at IS NULL

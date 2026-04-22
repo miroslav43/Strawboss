@@ -107,6 +107,18 @@ export class LocationService {
         WHERE ta3.assignment_date = ${today}
           AND ta3.deleted_at IS NULL
         UNION
+        -- Parent assignment machine (e.g. baler when current user is the truck child)
+        SELECT DISTINCT parent.machine_id
+        FROM task_assignments me
+        JOIN task_assignments parent
+          ON parent.id = me.parent_assignment_id
+         AND parent.assignment_date = ${today}
+         AND parent.deleted_at IS NULL
+        WHERE me.assigned_user_id = ${userId}::uuid
+          AND me.assignment_date = ${today}
+          AND me.deleted_at IS NULL
+          AND me.parent_assignment_id IS NOT NULL
+        UNION
         -- My own machines
         SELECT machine_id FROM my_assignments
       )

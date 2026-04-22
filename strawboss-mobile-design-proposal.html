@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StrawBoss Mobile — Design Proposal</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  :root {
+    --green-900: #032411;
+    --green-700: #074024;
+    --green-600: #094E2E;
+    --green-500: #0A5C36;
+    --green-400: #1E8449;
+    --green-300: #2E7D32;
+    --green-100: #C8E6C9;
+    --green-50:  #E8F5E9;
+    --brown-900: #1A0F0B;
+    --brown-700: #3E2723;
+    --brown-600: #4E342E;
+    --brown-500: #5D4037;
+    --brown-400: #8D6E63;
+    --brown-200: #BCAAA4;
+    --brown-100: #D7CCC8;
+    --bg:        #F3DED8;
+    --surface:   #EED9D2;
+    --white:     #FFFFFF;
+    --danger:    #C62828;
+    --warning:   #B7791F;
+    --info:      #1565C0;
+    --gold:      #D4A017;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #1a1a2e;
+    color: #fff;
+    min-height: 100vh;
+  }
+
+  /* ─── Page Layout ──────────────────────────────────────── */
+  .page-header {
+    text-align: center;
+    padding: 48px 24px 32px;
+    background: linear-gradient(135deg, #0A5C36 0%, #1E8449 50%, #2E7D32 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .page-header::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+  .page-header h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -0.5px; position: relative; }
+  .page-header h1 span { color: #A5D6A7; }
+  .page-header p { margin-top: 8px; font-size: 1rem; opacity: 0.85; position: relative; }
+  .badge-row { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; position: relative; }
+  .badge { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; padding: 4px 14px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; }
+
+  .section {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 48px 24px;
+  }
+  .section-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .section-subtitle {
+    font-size: 0.95rem;
+    color: #aaa;
+    margin-bottom: 40px;
+    max-width: 600px;
+  }
+
+  /* ─── Analysis Section ─────────────────────────────────── */
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-bottom: 48px;
+  }
+  .analysis-card {
+    background: #16213e;
+    border-radius: 16px;
+    padding: 24px;
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .analysis-card.problem { border-left: 3px solid #ef4444; }
+  .analysis-card.improvement { border-left: 3px solid #22c55e; }
+  .analysis-card.insight { border-left: 3px solid #f59e0b; }
+  .analysis-card h3 { font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .analysis-card.problem h3 { color: #ef4444; }
+  .analysis-card.improvement h3 { color: #22c55e; }
+  .analysis-card.insight h3 { color: #f59e0b; }
+  .analysis-card ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .analysis-card li { font-size: 0.875rem; color: #ccc; display: flex; gap: 8px; align-items: flex-start; line-height: 1.5; }
+  .analysis-card li::before { content: '•'; flex-shrink: 0; margin-top: 1px; }
+  .analysis-card.problem li::before { color: #ef4444; }
+  .analysis-card.improvement li::before { color: #22c55e; }
+  .analysis-card.insight li::before { color: #f59e0b; }
+
+  /* ─── Color Palette ────────────────────────────────────── */
+  .palette-section {
+    background: #16213e;
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 48px;
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .palette-section h3 { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 20px; }
+  .palette-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .swatch { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .swatch-color { width: 56px; height: 56px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); }
+  .swatch-label { font-size: 0.65rem; color: #888; text-align: center; }
+  .swatch-hex { font-size: 0.7rem; color: #aaa; font-family: monospace; }
+
+  /* ─── Phone Frames ─────────────────────────────────────── */
+  .screens-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 40px;
+    justify-items: center;
+  }
+
+  .screen-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    max-width: 340px;
+  }
+  .screen-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #888;
+    text-align: center;
+  }
+  .screen-role {
+    font-size: 0.75rem;
+    color: #666;
+    text-align: center;
+    margin-top: -8px;
+  }
+
+  .phone {
+    width: 320px;
+    height: 680px;
+    background: #111;
+    border-radius: 44px;
+    padding: 12px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.1),
+      0 30px 60px rgba(0,0,0,0.6),
+      inset 0 0 0 1px rgba(255,255,255,0.05);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 18px; left: 50%; transform: translateX(-50%);
+    width: 100px; height: 28px;
+    background: #111;
+    border-radius: 0 0 18px 18px;
+    z-index: 10;
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    border-radius: 34px;
+    overflow: hidden;
+    position: relative;
+    background: var(--bg);
+  }
+
+  /* ─── DESIGN TOKENS (used inside phone screens) ─────────── */
+  .s-bg      { background: var(--bg); }
+  .s-surface { background: var(--surface); }
+  .s-white   { background: var(--white); }
+  .s-green   { background: var(--green-500); }
+
+  /* ─── STATUS BAR ────────────────────────────────────────── */
+  .status-bar {
+    height: 44px;
+    background: var(--green-700);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    flex-shrink: 0;
+  }
+  .status-bar-light { background: transparent; }
+  .status-time { font-size: 13px; font-weight: 700; color: #fff; font-family: 'Inter', sans-serif; }
+  .status-icons { display: flex; gap: 6px; align-items: center; }
+  .status-icons svg { width: 14px; height: 14px; fill: #fff; opacity: 0.9; }
+
+  /* ─── SCREEN INTERNALS ──────────────────────────────────── */
+  .screen-body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: calc(100% - 44px);
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* ─── LOGIN SCREEN ──────────────────────────────────────── */
+  .login-screen {
+    background: linear-gradient(160deg, var(--green-700) 0%, var(--green-500) 45%, #1E8449 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    gap: 0;
+    height: 100%;
+    position: relative;
+  }
+  .login-screen::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.08) 0%, transparent 70%);
+  }
+  .login-logo-wrap {
+    width: 80px; height: 80px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 24px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.25);
+    backdrop-filter: blur(10px);
+  }
+  .login-logo-wrap svg { width: 48px; height: 48px; }
+  .login-brand { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: -0.5px; margin-bottom: 4px; position: relative; }
+  .login-brand-sub { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.65); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 36px; position: relative; }
+  .login-card {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 24px;
+    padding: 24px;
+    width: 100%;
+    display: flex; flex-direction: column; gap: 14px;
+    backdrop-filter: blur(20px);
+    position: relative;
+  }
+  .login-field-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.6); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+  .login-field {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 14px;
+    padding: 13px 16px;
+    display: flex; align-items: center; gap: 10px;
+    color: #fff;
+  }
+  .login-field svg { width: 16px; height: 16px; fill: rgba(255,255,255,0.6); flex-shrink: 0; }
+  .login-field-text { font-size: 14px; color: rgba(255,255,255,0.8); flex: 1; font-family: 'Inter'; }
+  .login-field-placeholder { color: rgba(255,255,255,0.4); }
+  .login-pin-row { display: flex; gap: 10px; }
+  .login-pin-dot {
+    flex: 1; height: 56px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: rgba(255,255,255,0.5);
+  }
+  .login-pin-dot.filled { color: #fff; background: rgba(255,255,255,0.25); }
+  .login-btn {
+    background: #fff;
+    border-radius: 14px;
+    padding: 15px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--green-500);
+    margin-top: 4px;
+  }
+  .login-or { text-align: center; font-size: 11px; color: rgba(255,255,255,0.4); }
+  .login-alt { text-align: center; font-size: 12px; color: rgba(255,255,255,0.65); font-weight: 600; }
+
+  /* ─── HEADER HERO ───────────────────────────────────────── */
+  .hero-header {
+    background: linear-gradient(160deg, var(--green-700) 0%, var(--green-500) 100%);
+    padding: 52px 20px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-header::after {
+    content: '';
+    position: absolute; bottom: -1px; left: 0; right: 0;
+    height: 24px;
+    background: var(--bg);
+    border-radius: 24px 24px 0 0;
+  }
+  .hero-greeting { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.65); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  .hero-name { font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 2px; letter-spacing: -0.3px; }
+  .hero-role-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 10px; font-weight: 700;
+    color: rgba(255,255,255,0.9);
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(255,255,255,0.2);
+    text-transform: uppercase;
+  }
+  .hero-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
+
+  .hero-role-badge.orange { background: rgba(180,83,9,0.4); border-color: rgba(251,146,60,0.3); }
+  .hero-role-badge.orange .hero-dot { background: #fb923c; }
+  .hero-role-badge.blue { background: rgba(29,78,216,0.3); border-color: rgba(96,165,250,0.3); }
+  .hero-role-badge.blue .hero-dot { background: #60a5fa; }
+
+  /* ─── SCROLL BODY ───────────────────────────────────────── */
+  .scroll-body { flex: 1; overflow: hidden; padding: 20px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* ─── ACTIVE TRIP CARD ──────────────────────────────────── */
+  .trip-hero-card {
+    background: var(--white);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  }
+  .trip-hero-top {
+    background: linear-gradient(90deg, var(--green-500) 0%, #1E8449 100%);
+    padding: 14px 16px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .trip-hero-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 1.5px; text-transform: uppercase; }
+  .trip-hero-num { font-size: 18px; font-weight: 800; color: #fff; }
+  .trip-status-pill {
+    background: rgba(255,255,255,0.2);
+    border-radius: 20px; padding: 4px 12px;
+    font-size: 10px; font-weight: 700; color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+  }
+  .trip-progress-bar-wrap {
+    height: 4px; background: rgba(255,255,255,0.2);
+    margin: 0 16px;
+    position: relative;
+  }
+  .trip-progress-bar { height: 4px; background: rgba(255,255,255,0.8); border-radius: 2px; width: 60%; }
+  .trip-hero-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .trip-dest-row { display: flex; align-items: center; gap: 8px; }
+  .trip-dest-icon {
+    width: 32px; height: 32px;
+    background: var(--green-50);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .trip-dest-icon svg { width: 16px; height: 16px; fill: var(--green-500); }
+  .trip-dest-label { font-size: 10px; color: var(--brown-400); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .trip-dest-name { font-size: 15px; font-weight: 700; color: #111; }
+  .trip-stats-row { display: flex; gap: 8px; }
+  .trip-stat {
+    flex: 1; background: var(--bg);
+    border-radius: 12px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .trip-stat-val { font-size: 17px; font-weight: 800; color: var(--green-500); }
+  .trip-stat-label { font-size: 9px; font-weight: 600; color: var(--brown-400); text-transform: uppercase; letter-spacing: 0.5px; }
+  .trip-cta {
+    background: linear-gradient(90deg, var(--green-500), #1E8449);
+    border-radius: 14px; padding: 15px;
+    text-align: center;
+    font-size: 15px; font-weight: 700; color: #fff;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .trip-cta svg { width: 18px; height: 18px; fill: #fff; opacity: 0.8; }
+  .trip-cta-secondary {
+    border: 1.5px solid var(--green-500);
+    border-radius: 14px; padding: 13px;
+    text-align: center; font-size: 13px; font-weight: 600; color: var(--green-500);
+  }
+
+  /* ─── TASK SECTION ──────────────────────────────────────── */
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .section-head-title { font-size: 13px; font-weight: 700; color: var(--brown-500); text-transform: uppercase; letter-spacing: 0.5px; }
+  .section-head-count {
+    background: var(--green-500); color: #fff;
+    border-radius: 20px; padding: 2px 9px;
+    font-size: 10px; font-weight: 700;
+  }
+
+  /* ─── TASK CARD ─────────────────────────────────────────── */
+  .task-card {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 13px 14px;
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-left: 3px solid transparent;
+  }
+  .task-card.status-available { border-left-color: var(--info); }
+  .task-card.status-inprogress { border-left-color: var(--warning); }
+  .task-card.status-done { border-left-color: var(--green-300); opacity: 0.7; }
+  .task-seq {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--green-50);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: var(--green-500);
+    flex-shrink: 0;
+  }
+  .task-seq.urgent { background: #fee2e2; color: var(--danger); }
+  .task-info { flex: 1; min-width: 0; }
+  .task-name { font-size: 13px; font-weight: 600; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .task-sub { font-size: 11px; color: var(--brown-400); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+  .task-sub svg { width: 10px; height: 10px; fill: var(--brown-400); flex-shrink: 0; }
+  .task-badge {
+    border-radius: 8px; padding: 3px 8px;
+    font-size: 10px; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+  }
+  .task-badge.available { background: var(--info); }
+  .task-badge.inprogress { background: var(--warning); }
+  .task-badge.done { background: var(--green-300); }
+
+  /* ─── BOTTOM TAB BAR ────────────────────────────────────── */
+  .tab-bar {
+    background: rgba(255,255,255,0.95);
+    border-top: 1px solid rgba(0,0,0,0.06);
+    padding: 8px 8px 16px;
+    display: flex;
+    backdrop-filter: blur(10px);
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .tab-item {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; gap: 3px;
+    padding: 8px 4px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .tab-item.active { background: var(--green-50); }
+  .tab-item svg { width: 22px; height: 22px; }
+  .tab-icon { fill: var(--brown-400); }
+  .tab-item.active .tab-icon { fill: var(--green-500); }
+  .tab-label { font-size: 9.5px; font-weight: 600; color: var(--brown-400); font-family: 'Inter'; }
+  .tab-item.active .tab-label { color: var(--green-500); }
+
+  /* ─── BALER SCREEN ──────────────────────────────────────── */
+  .stat-big-card {
+    background: var(--white);
+    border-radius: 20px;
+    padding: 16px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .stat-big-row { display: flex; gap: 10px; }
+  .stat-big-item {
+    flex: 1; background: var(--bg);
+    border-radius: 14px; padding: 14px 12px;
+    display: flex; flex-direction: column;
+    align-items: flex-start; gap: 4px;
+  }
+  .stat-big-icon {
+    width: 32px; height: 32px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 4px;
+  }
+  .stat-big-icon.green { background: var(--green-50); }
+  .stat-big-icon.orange { background: #FFF7ED; }
+  .stat-big-icon.green svg { fill: var(--green-500); width: 16px; height: 16px; }
+  .stat-big-icon.orange svg { fill: #EA580C; width: 16px; height: 16px; }
+  .stat-big-val { font-size: 28px; font-weight: 800; color: var(--green-500); line-height: 1; }
+  .stat-big-val.orange { color: #EA580C; }
+  .stat-big-label { font-size: 10px; font-weight: 600; color: var(--brown-400); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .action-btn-primary {
+    background: linear-gradient(90deg, var(--green-500), #1E8449);
+    border-radius: 16px; padding: 17px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .action-btn-primary svg { width: 20px; height: 20px; fill: #fff; opacity: 0.85; }
+  .action-btn-primary span { font-size: 15px; font-weight: 700; color: #fff; }
+
+  .action-btn-secondary {
+    background: var(--white);
+    border-radius: 16px; padding: 15px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    border: 1.5px solid var(--brown-100);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  }
+  .action-btn-secondary svg { width: 18px; height: 18px; fill: var(--brown-500); }
+  .action-btn-secondary span { font-size: 14px; font-weight: 600; color: var(--brown-500); }
+
+  .status-pill-row {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  }
+  .status-pill-left { display: flex; align-items: center; gap: 10px; }
+  .status-dot-wrap {
+    width: 36px; height: 36px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .status-dot-wrap.online { background: #dcfce7; }
+  .status-dot-wrap.offline { background: #fee2e2; }
+  .status-dot-wrap svg { width: 18px; height: 18px; }
+  .status-dot-wrap.online svg { fill: #16a34a; }
+  .status-dot-wrap.offline svg { fill: var(--danger); }
+  .status-pill-label { font-size: 12px; font-weight: 600; color: #333; }
+  .status-pill-sub { font-size: 10px; color: var(--brown-400); margin-top: 1px; }
+  .sync-time { font-size: 10px; font-weight: 600; color: var(--brown-400); }
+
+  /* ─── LOADER SCREEN ─────────────────────────────────────── */
+  .qr-hero {
+    background: var(--white);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  }
+  .qr-hero-top {
+    background: linear-gradient(135deg, var(--brown-700) 0%, var(--brown-500) 100%);
+    padding: 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .qr-hero-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: rgba(255,255,255,0.7); text-transform: uppercase; }
+  .qr-hero-title { font-size: 18px; font-weight: 800; color: #fff; margin-top: 2px; }
+  .qr-icon-wrap {
+    width: 48px; height: 48px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .qr-icon-wrap svg { width: 28px; height: 28px; fill: #fff; }
+  .qr-scanner-area {
+    height: 180px;
+    background: #0d1117;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .qr-scanner-area::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, rgba(10,92,54,0.2) 0%, transparent 70%);
+  }
+  .qr-frame {
+    width: 110px; height: 110px;
+    position: relative;
+  }
+  .qr-corner {
+    position: absolute; width: 20px; height: 20px;
+    border: 3px solid var(--green-400);
+  }
+  .qr-corner.tl { top: 0; left: 0; border-right: none; border-bottom: none; border-radius: 4px 0 0 0; }
+  .qr-corner.tr { top: 0; right: 0; border-left: none; border-bottom: none; border-radius: 0 4px 0 0; }
+  .qr-corner.bl { bottom: 0; left: 0; border-right: none; border-top: none; border-radius: 0 0 0 4px; }
+  .qr-corner.br { bottom: 0; right: 0; border-left: none; border-top: none; border-radius: 0 0 4px 0; }
+  .qr-scan-line {
+    position: absolute; width: 90px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--green-400), transparent);
+    top: 40%;
+    left: 50%; transform: translateX(-50%);
+    border-radius: 1px;
+  }
+  .qr-hint {
+    padding: 12px 16px;
+    font-size: 11px; color: var(--brown-400); text-align: center; font-weight: 500;
+  }
+  .qr-loader-id {
+    padding: 0 16px 14px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .qr-loader-id svg { width: 14px; height: 14px; fill: var(--green-500); }
+  .qr-loader-id-text { font-size: 12px; font-weight: 600; color: var(--green-500); }
+
+  /* ─── DRIVER TRIPS LIST ─────────────────────────────────── */
+  .trip-card {
+    background: var(--white);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+  }
+  .trip-card-accent {
+    height: 4px;
+  }
+  .trip-card-accent.transit { background: linear-gradient(90deg, #B7791F, #EA580C); }
+  .trip-card-accent.arrived { background: linear-gradient(90deg, var(--green-300), var(--green-400)); }
+  .trip-card-accent.planned { background: linear-gradient(90deg, var(--info), #3b82f6); }
+  .trip-card-body { padding: 13px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .trip-card-header { display: flex; align-items: center; justify-content: space-between; }
+  .trip-card-num { font-size: 14px; font-weight: 700; color: #111; }
+  .trip-card-status {
+    border-radius: 8px; padding: 3px 9px;
+    font-size: 10px; font-weight: 700; color: #fff;
+  }
+  .trip-card-status.transit { background: #B7791F; }
+  .trip-card-status.arrived { background: var(--green-300); }
+  .trip-card-status.planned { background: var(--info); }
+  .trip-card-dest { display: flex; align-items: center; gap: 6px; }
+  .trip-card-dest svg { width: 12px; height: 12px; fill: var(--brown-400); flex-shrink: 0; }
+  .trip-card-dest-text { font-size: 12px; color: var(--brown-500); font-weight: 500; }
+  .trip-card-footer { display: flex; align-items: center; justify-content: space-between; }
+  .trip-card-meta { display: flex; align-items: center; gap: 4px; }
+  .trip-card-meta svg { width: 11px; height: 11px; fill: var(--brown-400); }
+  .trip-card-meta-text { font-size: 11px; color: var(--brown-400); }
+  .trip-card-action { font-size: 11px; font-weight: 700; color: var(--green-500); display: flex; align-items: center; gap: 3px; }
+  .trip-card-action svg { width: 12px; height: 12px; fill: var(--green-500); }
+
+  /* ─── OFFLINE BANNER ────────────────────────────────────── */
+  .offline-banner {
+    background: #7C3AED;
+    padding: 6px 16px;
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  .offline-banner svg { width: 14px; height: 14px; fill: #fff; flex-shrink: 0; }
+  .offline-banner-text { font-size: 11px; font-weight: 600; color: #fff; }
+
+  /* ─── COMPARISON ────────────────────────────────────────── */
+  .compare-section { display: flex; gap: 32px; flex-wrap: wrap; }
+  .compare-col { flex: 1; min-width: 280px; }
+  .compare-col-title {
+    font-size: 0.8rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 16px; padding-bottom: 8px;
+    border-bottom: 2px solid;
+  }
+  .compare-col-title.before { color: #ef4444; border-color: #ef4444; }
+  .compare-col-title.after  { color: #22c55e; border-color: #22c55e; }
+  .compare-item { display: flex; gap: 10px; margin-bottom: 14px; align-items: flex-start; }
+  .compare-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; font-size: 11px; font-weight: 700; }
+  .compare-icon.x { background: #ef4444; color: #fff; }
+  .compare-icon.check { background: #22c55e; color: #fff; }
+  .compare-text { font-size: 0.875rem; color: #ccc; line-height: 1.5; }
+  .compare-text strong { color: #fff; }
+
+  /* ─── SEPARATOR ─────────────────────────────────────────── */
+  hr.divider { border: none; border-top: 1px solid rgba(255,255,255,0.07); margin: 40px 0; }
+
+  /* ─── DESIGN PRINCIPLES ─────────────────────────────────── */
+  .principles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .principle {
+    background: #16213e; border-radius: 16px; padding: 20px;
+    border: 1px solid rgba(255,255,255,0.07);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .principle-icon { font-size: 28px; }
+  .principle-title { font-size: 0.9rem; font-weight: 700; color: #fff; }
+  .principle-text { font-size: 0.8rem; color: #999; line-height: 1.5; }
+
+  /* ─── FOOTER ────────────────────────────────────────────── */
+  .footer {
+    text-align: center; padding: 40px 24px 60px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+  .footer p { font-size: 0.8rem; color: #555; }
+  .footer strong { color: #888; }
+
+  /* ─── SCROLLBAR ─────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- PAGE HEADER                                               -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="page-header">
+  <h1>StrawBoss <span>Mobile</span> — Design Proposal</h1>
+  <p>Premium UI/UX redesign for agricultural field workers</p>
+  <div class="badge-row">
+    <span class="badge">🚜 Baler Operator</span>
+    <span class="badge">🚛 Driver</span>
+    <span class="badge">📦 Loader Operator</span>
+    <span class="badge">🎨 Color Palette Preserved</span>
+    <span class="badge">✋ Glove-friendly Targets</span>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- ANALYSIS                                                   -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-title">Current Design — Analysis</div>
+  <div class="section-subtitle">What we found after reviewing all screens, components, and the UI token system.</div>
+
+  <div class="analysis-grid">
+    <div class="analysis-card problem">
+      <h3>⚠ Problems Identified</h3>
+      <ul>
+        <li>Login uses plain text "O" / "*" characters instead of proper eye icons</li>
+        <li>No visual hierarchy between primary and secondary actions — all BigButtons look identical in weight</li>
+        <li>5-tab driver bar is crowded; no visual priority for the active-trip action</li>
+        <li>Status colors are hardcoded across 3+ files instead of using the token system</li>
+        <li>Background (#F3DED8) clashes with white cards — low perceived contrast in bright sunlight</li>
+        <li>Empty states are bare text with no illustration or clear instruction</li>
+        <li>Tab icons have no active background highlight — active vs inactive hard to distinguish outdoors</li>
+        <li>Font sizes in cards (11–13px) are too small for gloved/dirty hands in the field</li>
+      </ul>
+    </div>
+
+    <div class="analysis-card insight">
+      <h3>💡 Field Context Insights</h3>
+      <ul>
+        <li>Users work outdoors in direct sunlight — contrast is critical</li>
+        <li>Tractor/loader operators often wear gloves — tap targets must be 48px+ minimum</li>
+        <li>Multiple roles (baler, loader, driver) each have a single primary daily action — the UI must surface it immediately</li>
+        <li>Offline-first architecture means sync state must be prominent and reassuring</li>
+        <li>Romanian-language UI — labels should be tested for length overflow</li>
+        <li>Workers may not be tech-savvy — icons + labels always together, never icons alone</li>
+      </ul>
+    </div>
+
+    <div class="analysis-card improvement">
+      <h3>✅ What Works Well</h3>
+      <ul>
+        <li>Color palette is cohesive — forest green + warm brown reads professional and agricultural</li>
+        <li>BigButton height (56px) is appropriate for field use</li>
+        <li>Soft-delete + offline sync architecture already supports the design needs</li>
+        <li>Card-based layout with border-radius:12 gives a friendly, modern feel</li>
+        <li>MaterialCommunityIcons library covers all needed icons</li>
+        <li>Role-separated layouts (driver/baler/loader) are architecturally solid</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Palette -->
+  <div class="palette-section">
+    <h3>Design Tokens — Existing Palette (fully preserved)</h3>
+    <div class="palette-row">
+      <div class="swatch"><div class="swatch-color" style="background:#0A5C36"></div><div class="swatch-label">Primary</div><div class="swatch-hex">#0A5C36</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#1E8449"></div><div class="swatch-label">Secondary</div><div class="swatch-hex">#1E8449</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#2E7D32"></div><div class="swatch-label">Success</div><div class="swatch-hex">#2E7D32</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#094E2E"></div><div class="swatch-label">Green 600</div><div class="swatch-hex">#094E2E</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#5D4037"></div><div class="swatch-label">Neutral</div><div class="swatch-hex">#5D4037</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#8D6E63"></div><div class="swatch-label">Tertiary</div><div class="swatch-hex">#8D6E63</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#D7CCC8"></div><div class="swatch-label">Neutral 100</div><div class="swatch-hex">#D7CCC8</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#F3DED8; border:1px solid #ccc"></div><div class="swatch-label">Background</div><div class="swatch-hex">#F3DED8</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#EED9D2; border:1px solid #ccc"></div><div class="swatch-label">Surface</div><div class="swatch-hex">#EED9D2</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#C62828"></div><div class="swatch-label">Danger</div><div class="swatch-hex">#C62828</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#B7791F"></div><div class="swatch-label">Warning</div><div class="swatch-hex">#B7791F</div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#1565C0"></div><div class="swatch-label">Info</div><div class="swatch-hex">#1565C0</div></div>
+    </div>
+  </div>
+
+  <!-- Design Principles -->
+  <div class="section-title" style="font-size:1.2rem; margin-bottom:16px;">Design Principles for This Redesign</div>
+  <div class="principles-grid">
+    <div class="principle">
+      <div class="principle-icon">☀️</div>
+      <div class="principle-title">Sunlight Legibility</div>
+      <div class="principle-text">Minimum 4.5:1 contrast ratio everywhere. Dark green headers provide the high-contrast anchor for all key info.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-icon">🧤</div>
+      <div class="principle-title">Glove-Friendly Targets</div>
+      <div class="principle-text">All interactive elements 52px minimum height. Cards have generous padding. No tiny icon-only buttons.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-icon">🎯</div>
+      <div class="principle-title">One Primary Action</div>
+      <div class="principle-text">Each role's home screen shows ONE clear call-to-action above the fold. Secondary actions are visually subordinate.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-icon">📶</div>
+      <div class="principle-title">Sync State Always Visible</div>
+      <div class="principle-text">Offline status is shown as a persistent banner + a connection card on home. Sync time is always displayed.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-icon">🏆</div>
+      <div class="principle-title">Premium Feel</div>
+      <div class="principle-text">Gradient headers, frosted glass login card, left-accent trip cards, and fluid motion cues elevate the product.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-icon">🔤</div>
+      <div class="principle-title">Icon + Label Always</div>
+      <div class="principle-text">No icon-only UI. Every tab, button, and action card pairs an icon with a Romanian text label.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SCREENS                                                    -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-title">Redesigned Screens</div>
+  <div class="section-subtitle">All four key user flows — Login, Driver, Baler Operator, and Loader Operator home screens.</div>
+
+  <div class="screens-grid">
+
+    <!-- ─────────────────────────────────── LOGIN ── -->
+    <div class="screen-wrapper">
+      <div class="screen-label">Login Screen</div>
+      <div class="screen-role">All roles</div>
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="status-bar" style="background:rgba(7,64,36,0.6); position:absolute; top:0; left:0; right:0; z-index:5;">
+            <span class="status-time">9:41</span>
+            <div class="status-icons">
+              <svg viewBox="0 0 24 24"><path d="M1.5 8.5C5.3 4.7 10.4 2.5 12 2.5s6.7 2.2 10.5 6L12 19.5 1.5 8.5z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M17 4h3v16h-3V4zm-5 4h3v12h-3V8zm-5 4h3v8H7v-8z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+            </div>
+          </div>
+          <div class="login-screen">
+            <div class="login-logo-wrap">
+              <!-- Tractor SVG icon -->
+              <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="20" cy="46" r="10" stroke="#fff" stroke-width="3"/>
+                <circle cx="20" cy="46" r="4" fill="#fff"/>
+                <circle cx="46" cy="50" r="6" stroke="#fff" stroke-width="3"/>
+                <circle cx="46" cy="50" r="2.5" fill="#fff"/>
+                <rect x="18" y="22" width="28" height="18" rx="3" fill="rgba(255,255,255,0.3)" stroke="#fff" stroke-width="2"/>
+                <rect x="28" y="26" width="14" height="10" rx="2" fill="rgba(255,255,255,0.15)" stroke="#fff" stroke-width="1.5"/>
+                <path d="M18 35 Q12 35 10 40 L20 40" stroke="#fff" stroke-width="2" fill="none"/>
+                <rect x="8" y="28" width="12" height="10" rx="2" fill="rgba(255,255,255,0.2)" stroke="#fff" stroke-width="1.5"/>
+                <path d="M42 36 L46 36 L48 40 L46 44" stroke="#fff" stroke-width="2" fill="none"/>
+              </svg>
+            </div>
+            <div class="login-brand">StrawBoss</div>
+            <div class="login-brand-sub">Agricultural Logistics</div>
+
+            <div class="login-card">
+              <div>
+                <div class="login-field-label">Utilizator</div>
+                <div class="login-field">
+                  <svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+                  <span class="login-field-text">ion.popescu</span>
+                </div>
+              </div>
+              <div>
+                <div class="login-field-label">PIN (4 cifre)</div>
+                <div class="login-pin-row">
+                  <div class="login-pin-dot filled">●</div>
+                  <div class="login-pin-dot filled">●</div>
+                  <div class="login-pin-dot filled">●</div>
+                  <div class="login-pin-dot">○</div>
+                </div>
+              </div>
+              <div class="login-btn">Autentificare →</div>
+              <div class="login-or">── sau ──</div>
+              <div class="login-alt">Autentificare cu Email</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────── DRIVER ── -->
+    <div class="screen-wrapper">
+      <div class="screen-label">Driver — Home</div>
+      <div class="screen-role">Active trip view</div>
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen" style="background:var(--bg); display:flex; flex-direction:column;">
+          <div class="status-bar">
+            <span class="status-time">9:41</span>
+            <div class="status-icons">
+              <svg viewBox="0 0 24 24"><path d="M1.5 8.5C5.3 4.7 10.4 2.5 12 2.5s6.7 2.2 10.5 6L12 19.5 1.5 8.5z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M17 4h3v16h-3V4zm-5 4h3v12h-3V8zm-5 4h3v8H7v-8z"/></svg>
+            </div>
+          </div>
+          <div class="hero-header">
+            <div class="hero-greeting">Bună ziua</div>
+            <div class="hero-name">Ion Popescu</div>
+            <div style="margin-top:8px;">
+              <div class="hero-role-badge">
+                <div class="hero-dot"></div>
+                Șofer
+              </div>
+            </div>
+          </div>
+
+          <div class="scroll-body">
+            <!-- Active Trip Hero -->
+            <div class="trip-hero-card">
+              <div class="trip-hero-top">
+                <div>
+                  <div class="trip-hero-label">Cursă Activă</div>
+                  <div class="trip-hero-num">#T-2024-047</div>
+                </div>
+                <div class="trip-status-pill">În drum</div>
+              </div>
+              <div style="background:var(--green-500); height:4px;">
+                <div style="background:rgba(255,255,255,0.5); height:4px; width:65%;"></div>
+              </div>
+              <div class="trip-hero-body">
+                <div class="trip-dest-row">
+                  <div class="trip-dest-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                  </div>
+                  <div>
+                    <div class="trip-dest-label">Destinație</div>
+                    <div class="trip-dest-name">Ferma Borcea Nord</div>
+                  </div>
+                </div>
+                <div class="trip-stats-row">
+                  <div class="trip-stat">
+                    <div class="trip-stat-val">248</div>
+                    <div class="trip-stat-label">Baloți</div>
+                  </div>
+                  <div class="trip-stat">
+                    <div class="trip-stat-val">47 km</div>
+                    <div class="trip-stat-label">Distanță</div>
+                  </div>
+                  <div class="trip-stat">
+                    <div class="trip-stat-val">14.2 t</div>
+                    <div class="trip-stat-label">Greutate</div>
+                  </div>
+                </div>
+                <div class="trip-cta">
+                  <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+                  Confirmă Sosirea
+                </div>
+              </div>
+            </div>
+
+            <!-- Tasks -->
+            <div>
+              <div class="section-head">
+                <div class="section-head-title">Sarcini Azi</div>
+                <div class="section-head-count">3</div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div class="task-card status-inprogress">
+                  <div class="task-seq">1</div>
+                  <div class="task-info">
+                    <div class="task-name">Parcela Câmpia de Nord</div>
+                    <div class="task-sub">
+                      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+                      Ferma Borcea Nord
+                    </div>
+                  </div>
+                  <div class="task-badge inprogress">În lucru</div>
+                </div>
+                <div class="task-card status-available">
+                  <div class="task-seq">2</div>
+                  <div class="task-info">
+                    <div class="task-name">Parcela Sud-Est</div>
+                    <div class="task-sub">
+                      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+                      Ferma Crișan
+                    </div>
+                  </div>
+                  <div class="task-badge available">Disponibil</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab Bar -->
+          <div class="tab-bar">
+            <div class="tab-item active">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4z"/></svg>
+              <span class="tab-label">Cursele Mele</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg>
+              <span class="tab-label">Livrare</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5z"/></svg>
+              <span class="tab-label">Hartă</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77z"/></svg>
+              <span class="tab-label">Combustibil</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+              <span class="tab-label">Profil</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────── BALER ── -->
+    <div class="screen-wrapper">
+      <div class="screen-label">Baler Operator — Home</div>
+      <div class="screen-role">Daily production view</div>
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen" style="background:var(--bg); display:flex; flex-direction:column;">
+          <div class="status-bar" style="background: #B7791F;">
+            <span class="status-time">9:41</span>
+            <div class="status-icons">
+              <svg viewBox="0 0 24 24"><path d="M1.5 8.5C5.3 4.7 10.4 2.5 12 2.5s6.7 2.2 10.5 6L12 19.5 1.5 8.5z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M17 4h3v16h-3V4zm-5 4h3v12h-3V8zm-5 4h3v8H7v-8z"/></svg>
+            </div>
+          </div>
+          <div class="hero-header" style="background: linear-gradient(160deg, #5D4037 0%, #8D6E63 100%);">
+            <div class="hero-greeting">Bună ziua</div>
+            <div class="hero-name">Vasile Marin</div>
+            <div style="margin-top:8px;">
+              <div class="hero-role-badge orange">
+                <div class="hero-dot"></div>
+                Operator Balotieră
+              </div>
+            </div>
+          </div>
+
+          <div class="scroll-body">
+            <!-- Production Stats -->
+            <div class="stat-big-card">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <div style="font-size:11px; font-weight:700; color:var(--brown-500); text-transform:uppercase; letter-spacing:0.5px;">Producție Azi</div>
+                <div style="font-size:10px; color:var(--brown-400);">Actualizat la 9:38</div>
+              </div>
+              <div class="stat-big-row">
+                <div class="stat-big-item">
+                  <div class="stat-big-icon green">
+                    <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+                  </div>
+                  <div class="stat-big-val">342</div>
+                  <div class="stat-big-label">Baloți</div>
+                </div>
+                <div class="stat-big-item">
+                  <div class="stat-big-icon orange">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+                  </div>
+                  <div class="stat-big-val orange">5</div>
+                  <div class="stat-big-label">Runde</div>
+                </div>
+              </div>
+              <div style="background:var(--bg); border-radius:12px; padding:12px; display:flex; align-items:center; gap:10px;">
+                <div style="flex:1; height:6px; background:var(--brown-100); border-radius:3px; overflow:hidden;">
+                  <div style="width:68%; height:6px; background:linear-gradient(90deg, var(--green-500), #1E8449); border-radius:3px;"></div>
+                </div>
+                <div style="font-size:11px; font-weight:700; color:var(--green-500);">68% obiectiv</div>
+              </div>
+            </div>
+
+            <!-- Primary Action -->
+            <div class="action-btn-primary">
+              <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+              <span>Înregistrează Producție</span>
+            </div>
+
+            <!-- Secondary Actions Row -->
+            <div style="display:flex; gap:10px;">
+              <div class="action-btn-secondary" style="flex:1;">
+                <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                <span>Consumabile</span>
+              </div>
+              <div class="action-btn-secondary" style="flex:1;">
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                <span>Statistici</span>
+              </div>
+            </div>
+
+            <!-- Connection -->
+            <div class="status-pill-row">
+              <div class="status-pill-left">
+                <div class="status-dot-wrap online">
+                  <svg viewBox="0 0 24 24"><path d="M1.5 8.5C5.3 4.7 10.4 2.5 12 2.5s6.7 2.2 10.5 6L12 19.5 1.5 8.5z"/></svg>
+                </div>
+                <div>
+                  <div class="status-pill-label">Online</div>
+                  <div class="status-pill-sub">Sincronizare completă</div>
+                </div>
+              </div>
+              <div class="sync-time">acum 2 min</div>
+            </div>
+
+          </div>
+
+          <!-- Tab Bar -->
+          <div class="tab-bar">
+            <div class="tab-item active">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+              <span class="tab-label">Acasă</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5z"/></svg>
+              <span class="tab-label">Hartă</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+              <span class="tab-label">Consumabile</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+              <span class="tab-label">Profil</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────── LOADER ── -->
+    <div class="screen-wrapper">
+      <div class="screen-label">Loader Operator — Home</div>
+      <div class="screen-role">QR scan + tasks</div>
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen" style="background:var(--bg); display:flex; flex-direction:column;">
+          <div class="status-bar" style="background: #1565C0;">
+            <span class="status-time">9:41</span>
+            <div class="status-icons">
+              <svg viewBox="0 0 24 24"><path d="M1.5 8.5C5.3 4.7 10.4 2.5 12 2.5s6.7 2.2 10.5 6L12 19.5 1.5 8.5z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M17 4h3v16h-3V4zm-5 4h3v12h-3V8zm-5 4h3v8H7v-8z"/></svg>
+            </div>
+          </div>
+
+          <!-- Offline Banner Example -->
+          <div class="offline-banner">
+            <svg viewBox="0 0 24 24"><path d="M22.99 9C19.15 5.16 13.8 3.76 8.84 4.78L11 6.94c3.23-.3 6.56.81 9 3.25l2.99-3.19zM18.99 13c-1.31-1.31-2.92-2.17-4.63-2.56l3.07 3.07.99-1.01-.57-.6.14.1zM2 3.05L5.07 6.1C3.6 6.82 2.22 7.78 1 9l2.99 3c1.22-1.22 2.65-2.1 4.2-2.63l2.47 2.47C9.17 12.23 7.88 13 7 13.9L10 17c.88-.88 2.05-1.44 3.31-1.66L15.42 17.5 16.96 16 3.5 2.5 2 3.05z"/></svg>
+            <span class="offline-banner-text">Offline — datele se salvează local</span>
+          </div>
+
+          <div class="hero-header" style="background: linear-gradient(160deg, #1565C0 0%, #1976D2 100%);">
+            <div class="hero-greeting">Bună ziua</div>
+            <div class="hero-name">Gheorghe Ionescu</div>
+            <div style="margin-top:8px;">
+              <div class="hero-role-badge blue">
+                <div class="hero-dot"></div>
+                Operator Încărcare
+              </div>
+            </div>
+          </div>
+
+          <div class="scroll-body" style="gap:12px;">
+            <!-- QR Hero Card -->
+            <div class="qr-hero">
+              <div class="qr-hero-top">
+                <div>
+                  <div class="qr-hero-label">Acțiune principală</div>
+                  <div class="qr-hero-title">Scanează Camion</div>
+                </div>
+                <div class="qr-icon-wrap">
+                  <svg viewBox="0 0 24 24" fill="white"><path d="M3 5h2V3H3v2zm4 16H5v-2H3v2h4zm14-2h-2v2h4v-4h-2v2zm2-16h-4v2h2v2h2V3zM5 11H3v2h2v-2zm0 4H3v2h2v-2zM9 3H7v2h2V3zm10 8h2v-2h-2v2zm0 4h2v-2h-2v2zM11 3H9v2h2V3zm4 0h-2v2h2V3zm2 2V3h-2v2h2z"/></svg>
+                </div>
+              </div>
+              <div class="qr-scanner-area">
+                <div class="qr-frame">
+                  <div class="qr-corner tl"></div>
+                  <div class="qr-corner tr"></div>
+                  <div class="qr-corner bl"></div>
+                  <div class="qr-corner br"></div>
+                  <div class="qr-scan-line"></div>
+                </div>
+              </div>
+              <div class="qr-hint">Poziționați camera pe codul QR de pe camion</div>
+              <div class="qr-loader-id">
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 12V6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+                <span class="qr-loader-id-text">Mașina asignată: ML-04 / Loader #2</span>
+              </div>
+            </div>
+
+            <!-- Tasks compact -->
+            <div>
+              <div class="section-head">
+                <div class="section-head-title">Sarcini Azi</div>
+                <div class="section-head-count">2</div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div class="task-card status-available">
+                  <div class="task-seq urgent">!</div>
+                  <div class="task-info">
+                    <div class="task-name">Parcela Văii Mari</div>
+                    <div class="task-sub">
+                      <svg viewBox="0 0 24 24"><path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77z"/></svg>
+                      ML-04
+                    </div>
+                  </div>
+                  <div class="task-badge" style="background:var(--danger);">URGENT</div>
+                </div>
+                <div class="task-card status-available">
+                  <div class="task-seq">2</div>
+                  <div class="task-info">
+                    <div class="task-name">Parcela Est</div>
+                    <div class="task-sub">
+                      <svg viewBox="0 0 24 24"><path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77z"/></svg>
+                      ML-04
+                    </div>
+                  </div>
+                  <div class="task-badge available">Disponibil</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab Bar -->
+          <div class="tab-bar">
+            <div class="tab-item active">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M3 5h2V3H3v2zm4 16H5v-2H3v2h4zm14-2h-2v2h4v-4h-2v2zm2-16h-4v2h2v2h2V3zM5 11H3v2h2v-2zm0 4H3v2h2v-2zM9 3H7v2h2V3zm10 8h2v-2h-2v2zm0 4h2v-2h-2v2zM11 3H9v2h2V3zm4 0h-2v2h2V3zm2 2V3h-2v2h2z"/></svg>
+              <span class="tab-label">Scanare</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+              <span class="tab-label">Baloți</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5z"/></svg>
+              <span class="tab-label">Hartă</span>
+            </div>
+            <div class="tab-item">
+              <svg viewBox="0 0 24 24"><path class="tab-icon" d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+              <span class="tab-label">Profil</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /screens-grid -->
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- BEFORE / AFTER COMPARISON                                 -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="section">
+  <hr class="divider">
+  <div class="section-title">Before / After — Key Differences</div>
+  <div class="section-subtitle">What changes and why it matters for field workers.</div>
+
+  <div class="compare-section">
+    <div class="compare-col">
+      <div class="compare-col-title before">Before (Current)</div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">Login uses plain text <strong>"O"</strong> and <strong>"*"</strong> to toggle password — unintuitive for any user</div></div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">Flat pink background (#F3DED8) for the full login screen — no brand presence or premium feel</div></div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">Driver home lists trips immediately with no greeting — user has no spatial orientation</div></div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">All BigButtons look identical — "Înregistrează producție" and "Starea mea" have equal visual weight</div></div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">Task badges are 11px text — unreadable in bright sunlight or with gloves</div></div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">Connection status card is at the bottom, below the fold — offline state goes unnoticed</div></div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">5-tab driver bar equally weights all tabs — "Cursele Mele" should be dominant</div></div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">QR scanner is just a raw view with minimal context — no role, no machine ID shown</div></div>
+      <div class="compare-item"><div class="compare-icon x">✕</div><div class="compare-text">No visual hierarchy for urgent tasks — urgent and normal look the same</div></div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-col-title after">After (Proposed)</div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text">Login uses a <strong>4-dot PIN pad</strong> visual — familiar pattern for workers who use 4-digit PINs daily</div></div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text">Full-screen <strong>gradient green login</strong> with frosted glass card — premium, branded, recognisable</div></div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text"><strong>Personalised hero header</strong> shows name + role badge — users immediately know they're in the right view</div></div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text"><strong>Primary action is gradient green</strong>, secondary is outline white — clear visual hierarchy</div></div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text">Badges are <strong>border-radius:8 with 10px bold text</strong> + colored left-border on cards — readable at arm's length</div></div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text">Offline state is a <strong>persistent purple banner at the top</strong> — always visible, distinctive color</div></div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text">Active trip gets a <strong>full hero card</strong> with progress bar and big CTA — the driver's one job is unmissable</div></div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text">QR card includes <strong>role identity, machine ID, and scanner state</strong> — full context at a glance</div></div>
+      <div class="compare-item"><div class="compare-icon check">✓</div><div class="compare-text">Urgent tasks have a <strong>red circular "!" indicator</strong> and "URGENT" badge — impossible to miss</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- IMPLEMENTATION NOTES                                      -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="section">
+  <hr class="divider">
+  <div class="section-title">Implementation Notes</div>
+  <div class="section-subtitle">How to apply this design to the existing codebase — no architecture changes needed.</div>
+
+  <div class="analysis-grid">
+    <div class="analysis-card improvement">
+      <h3>🔑 Login Screen</h3>
+      <ul>
+        <li>Replace the "O"/"*" toggle with <strong>MaterialCommunityIcons eye/eye-off</strong> — already available in the icon library</li>
+        <li>Add a LinearGradient background (expo-linear-gradient) to the login container — single import</li>
+        <li>Show the 4-dot PIN display when username is not an email — PIN users skip the text password flow</li>
+        <li>The tractor logo can use the existing branding SVG from the /branding folder</li>
+      </ul>
+    </div>
+
+    <div class="analysis-card improvement">
+      <h3>🚛 Driver Home</h3>
+      <ul>
+        <li>Promote the first active/in-transit trip to a hero card above the task list</li>
+        <li>Add a gradient LinearGradient to the SafeAreaView header area (48px tall)</li>
+        <li>Show name from <strong>useProfile()</strong> hook — already available</li>
+        <li>The trip progress bar maps the status enum to a percentage (planned=10%, loading=30%, loaded=50%, in_transit=65%, arrived=80%, delivering=90%, delivered=100%)</li>
+      </ul>
+    </div>
+
+    <div class="analysis-card improvement">
+      <h3>🌾 Baler Home</h3>
+      <ul>
+        <li>Pull today's bale count from the offline SQLite operations table — already synced</li>
+        <li>The production progress bar uses target from the task assignment if available, else a configurable constant</li>
+        <li>Reduce to 4 tabs (Home, Map, Consumables, Profile) — Stats moves into the Home card</li>
+        <li>Replace the status card with the inline pill row — smaller footprint, same info</li>
+      </ul>
+    </div>
+
+    <div class="analysis-card improvement">
+      <h3>📦 Loader Home</h3>
+      <ul>
+        <li>Wrap the QRScanner in the styled card container — the scanner view itself doesn't change</li>
+        <li>Add machine ID from <strong>useAuthStore(s => s.assignedMachineId)</strong> already available in the store</li>
+        <li>Offline banner is already the OfflineBanner component — just move it above the hero header visually</li>
+        <li>Urgent tasks use <strong>task.priority === "urgent"</strong> already in the task object — just style it</li>
+      </ul>
+    </div>
+
+    <div class="analysis-card insight">
+      <h3>🎨 Shared Token Updates</h3>
+      <ul>
+        <li>Add <strong>gradient definitions</strong> to ui-tokens/native.ts: primaryGradient, brownGradient, blueGradient</li>
+        <li>Add <strong>statusBar colors</strong> per role: driverBar (#0A5C36), balerBar (#5D4037), loaderBar (#1565C0)</li>
+        <li>Increase card border-radius token from 12 to <strong>16–20</strong> for a more premium feel</li>
+        <li>Add a <strong>shadows.xl</strong> for hero cards: 0 8px 32px rgba(0,0,0,0.12)</li>
+      </ul>
+    </div>
+
+    <div class="analysis-card insight">
+      <h3>📱 General UX Rules</h3>
+      <ul>
+        <li>All tap targets must remain ≥ 52px tall — BigButton is already 56px ✓</li>
+        <li>Replace inline <strong>color strings</strong> with token references across all screen files</li>
+        <li>Section titles: 11px / 700 / uppercase / letter-spacing 0.5px — consistent across all roles</li>
+        <li>Offline banner: always purple (#7C3AED) to be visually distinct from both the green and brown role colors</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- FOOTER                                                    -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="footer">
+  <p><strong>StrawBoss Mobile — Design Proposal</strong> · April 2026</p>
+  <p style="margin-top:8px;">Color palette fully preserved · All changes are additive · No backend changes required</p>
+</div>
+
+</body>
+</html>

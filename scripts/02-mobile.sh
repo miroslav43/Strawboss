@@ -74,6 +74,16 @@ cmd_mobile__build__local() {
   local mobile_dir="$STRAWBOSS_ROOT/apps/mobile"
   [ -d "$mobile_dir" ] || { error "apps/mobile not found."; exit 1; }
 
+  local dotenv_file=".env.dev"
+  if [ "$variant" = "release" ]; then
+    dotenv_file=".env.production"
+  fi
+  if [ ! -f "$mobile_dir/$dotenv_file" ]; then
+    error "Missing ${BOLD}$mobile_dir/$dotenv_file${NC}. Copy from .env.dev.example / .env.production.example and fill values."
+    exit 1
+  fi
+  info "Expo env file: ${BOLD}$dotenv_file${NC} (debug → .env.dev, release → .env.production)"
+
   info "Building shared packages..."
   pnpm --filter @strawboss/types build
   pnpm --filter @strawboss/validation build
@@ -81,7 +91,7 @@ cmd_mobile__build__local() {
   pnpm --filter @strawboss/api build
 
   info "expo prebuild --platform android..."
-  ( cd "$mobile_dir" && pnpm exec expo prebuild --platform android )
+  ( cd "$mobile_dir" && pnpm exec dotenv -e "$dotenv_file" -- pnpm exec expo prebuild --platform android )
 
   local gradle_task="assembleDebug" out_sub="debug"
   if [ "$variant" = "release" ]; then
@@ -108,8 +118,8 @@ cmd_mobile__build__local() {
     info "Skipping daemon stop + clean (--fast)"
   fi
 
-  info "Gradle: ./gradlew $gradle_task"
-  ( cd "$mobile_dir/android" && ./gradlew "$gradle_task" )
+  info "Gradle: ./gradlew $gradle_task (with $dotenv_file for bundled EXPO_PUBLIC_*)"
+  ( cd "$mobile_dir" && pnpm exec dotenv -e "$dotenv_file" -- sh -c "cd android && ./gradlew $gradle_task" )
 
   local apk_dir="$mobile_dir/android/app/build/outputs/apk/$out_sub"
   echo ""

@@ -5,6 +5,8 @@ dist
 .expo
 .env*
 !.env.example
+!.env.dev.example
+!.env.production.example
 coverage
 *.tsbuildinfo
 .worktrees

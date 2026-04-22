@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
 import { TaskList } from '@/components/shared/TaskList';
+import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { useAuthStore } from '@/stores/auth-store';
 import { useMyTasks } from '@/hooks/useMyTasks';
 import { getDatabase } from '@/lib/storage';
@@ -83,7 +84,10 @@ export default function DriverTripsScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <OfflineBanner />
         <View style={styles.headerSection}>
-          <Text style={styles.title}>Cursele Mele</Text>
+          <View style={styles.headerTopRow}>
+            <Text style={styles.title}>Cursele Mele</Text>
+            <ConnectionStatusBadge />
+          </View>
           <TaskList tasks={tasks} role="driver" />
         </View>
       </SafeAreaView>
@@ -151,6 +155,11 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 24,
     gap: 12,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   title: {
     fontSize: 26,

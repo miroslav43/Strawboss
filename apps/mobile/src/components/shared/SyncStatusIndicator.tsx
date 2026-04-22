@@ -49,7 +49,7 @@ export function SyncStatusIndicator({
 
   if (pendingCount > 0) {
     return (
-      <View style={styles.container} accessibilityLabel={`${pendingCount} operații în așteptare`}>
+      <View style={styles.container} accessibilityLabel={`${pendingCount} operații în coadă sync`}>
         <MaterialCommunityIcons name="arrow-up" size={20} color={colors.neutral} />
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{pendingCount}</Text>

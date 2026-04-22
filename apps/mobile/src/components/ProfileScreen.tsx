@@ -1,11 +1,23 @@
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { User, Machine } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
 import { getSupabaseClient } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
+import { OperatorStats } from '@/components/features/stats/OperatorStats';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useSync } from '@/hooks/useSync';
 
 const ROLE_LABEL: Record<string, string> = {
   driver:          'Șofer',
@@ -23,6 +35,17 @@ const MACHINE_MDI: Record<string, MachineIconName> = {
 
 export function ProfileScreen() {
   const { clear } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const { isConnected } = useNetworkStatus();
+  const {
+    pendingCount: queueCount,
+    failedQueueCount,
+    syncing,
+    lastSyncAt,
+    triggerSync,
+    retryFailedAndSync,
+  } = useSync();
 
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile'],
@@ -42,7 +65,18 @@ export function ProfileScreen() {
     clear();
   };
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['profile'] }),
+      queryClient.invalidateQueries({ queryKey: ['machine'] }),
+      triggerSync(),
+    ]);
+    setRefreshing(false);
+  }, [queryClient, triggerSync]);
+
   const isLoading = profileLoading || (!!assignedMachineId && machineLoading);
+  const showStats = profile?.role === 'baler_operator' && !!profile?.id;
 
   return (
     <View style={styles.outerContainer}>
@@ -74,7 +108,63 @@ export function ProfileScreen() {
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#0A5C36" />
+        }
       >
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Sincronizare</Text>
+          <View style={styles.syncRow}>
+            <Text style={styles.syncLabel}>Rețea</Text>
+            <Text style={styles.syncValue}>{isConnected ? 'Online' : 'Offline'}</Text>
+          </View>
+          <View style={styles.syncRow}>
+            <Text style={styles.syncLabel}>În coadă</Text>
+            <Text
+              style={[
+                styles.syncValue,
+                queueCount > 0 ? styles.syncValueHighlight : null,
+              ]}
+            >
+              {queueCount}
+            </Text>
+          </View>
+          {failedQueueCount > 0 ? (
+            <Text style={styles.syncFailedHint}>
+              Ultimul sync a eșuat pentru {failedQueueCount}{' '}
+              {failedQueueCount === 1 ? 'înregistrare' : 'înregistrări'} — folosește butonul de mai
+              jos.
+            </Text>
+          ) : null}
+          <View style={styles.syncRow}>
+            <Text style={styles.syncLabel}>Ultima sincronizare</Text>
+            <Text style={styles.syncValue}>
+              {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : '—'}
+            </Text>
+          </View>
+          {syncing ? (
+            <Text style={styles.syncHint}>Se sincronizează…</Text>
+          ) : null}
+          <TouchableOpacity
+            style={styles.syncButton}
+            onPress={() => void triggerSync()}
+            disabled={!isConnected || syncing}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.syncButtonText}>Sincronizează acum</Text>
+          </TouchableOpacity>
+          {failedQueueCount > 0 ? (
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => void retryFailedAndSync()}
+              disabled={!isConnected || syncing}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.retryButtonText}>Reîncearcă înregistrările eșuate</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
         {profile ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Mașina asignată</Text>
@@ -100,6 +190,13 @@ export function ProfileScreen() {
             ) : (
               <Text style={styles.noMachine}>Nu s-a putut încărca mașina</Text>
             )}
+          </View>
+        ) : null}
+
+        {showStats && profile ? (
+          <View style={styles.statsSection}>
+            <Text style={styles.sectionTitle}>Starea mea</Text>
+            <OperatorStats operatorId={profile.id} />
           </View>
         ) : null}
 
@@ -172,6 +269,47 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   cardTitle: { fontSize: 14, fontWeight: '600', color: '#5D4037' },
+  syncRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  syncLabel: { fontSize: 13, color: '#8D6E63' },
+  syncValue: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  syncValueHighlight: { color: '#E65100' },
+  syncFailedHint: {
+    fontSize: 12,
+    color: '#BF360C',
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  syncHint: { fontSize: 13, color: '#0A5C36', fontStyle: 'italic' },
+  syncButton: {
+    marginTop: 8,
+    backgroundColor: '#0A5C36',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  syncButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  retryButton: {
+    marginTop: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E65100',
+  },
+  retryButtonText: { color: '#E65100', fontSize: 15, fontWeight: '700' },
+  statsSection: { gap: 10 },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0A5C36',
+    marginTop: 4,
+  },
   machineRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   machineCode: { fontSize: 16, fontWeight: '700', color: '#0A5C36' },
   machineDetail: { fontSize: 13, color: '#5D4037' },

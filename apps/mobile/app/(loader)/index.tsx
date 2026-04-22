@@ -10,14 +10,12 @@ import { router } from 'expo-router';
 import { QRScanner } from '@/components/shared/QRScanner';
 import { BigButton } from '@/components/ui/BigButton';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
-import { TaskList } from '@/components/shared/TaskList';
+import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { ProblemReportModal } from '@/components/shared/ProblemReportModal';
 import { useAuthStore } from '@/stores/auth-store';
-import { useMyTasks } from '@/hooks/useMyTasks';
 
 export default function LoaderScanScreen() {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
-  const { tasks } = useMyTasks();
   const [problemModalVisible, setProblemModalVisible] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -38,11 +36,13 @@ export default function LoaderScanScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <OfflineBanner />
         <View style={styles.headerSection}>
-          <Text style={styles.title}>Scanează Camion</Text>
+          <View style={styles.headerTopRow}>
+            <Text style={styles.title}>Scanează Camion</Text>
+            <ConnectionStatusBadge />
+          </View>
           <Text style={styles.subtitle}>
             Poziționați camera pe codul QR de pe camion
           </Text>
-          <TaskList tasks={tasks} role="loader_operator" />
         </View>
       </SafeAreaView>
 
@@ -93,6 +93,11 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 24,
     gap: 12,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   title: {
     fontSize: 24,
