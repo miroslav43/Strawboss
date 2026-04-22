@@ -42,10 +42,10 @@ export default function LoaderTabLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: 'Scanează',
-            tabBarAccessibilityLabel: 'Scanează codul QR',
+            title: 'Camioane',
+            tabBarAccessibilityLabel: 'Camioane de încărcat',
             tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="qrcode-scan" focused={focused} color={color} size={size} />
+              <TabBarIcon name="truck" focused={focused} color={color} size={size} />
             ),
           }}
         />
@@ -72,10 +72,10 @@ export default function LoaderTabLayout() {
         <Tabs.Screen
           name="consumables"
           options={{
-            title: 'Consumabile',
-            tabBarAccessibilityLabel: 'Consumabile',
+            title: 'Motorină',
+            tabBarAccessibilityLabel: 'Motorină',
             tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="package-variant-closed" focused={focused} color={color} size={size} />
+              <TabBarIcon name="gas-station" focused={focused} color={color} size={size} />
             ),
           }}
         />
