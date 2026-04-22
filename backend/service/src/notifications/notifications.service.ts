@@ -93,6 +93,43 @@ export class NotificationsService {
   }
 
   /**
+   * Broadcast a push notification to all users, users of a specific role, or a single user.
+   */
+  async broadcast(
+    target: { kind: 'all' } | { kind: 'role'; role: string } | { kind: 'user'; userId: string },
+    title: string,
+    body: string,
+  ): Promise<void> {
+    let userIds: string[];
+
+    if (target.kind === 'user') {
+      userIds = [target.userId];
+    } else if (target.kind === 'role') {
+      const rows = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM users WHERE role = ${target.role} AND deleted_at IS NULL
+      `) as unknown as { id: string }[];
+      userIds = rows.map(r => r.id);
+    } else {
+      const rows = await this.drizzleProvider.db.execute(sql`
+        SELECT DISTINCT user_id::text as id FROM device_push_tokens WHERE is_active = true
+      `) as unknown as { id: string }[];
+      userIds = rows.map(r => r.id);
+    }
+
+    await Promise.all(
+      userIds.map(uid =>
+        this.sendPush(uid, title, body, { type: 'broadcast' }).catch(() => {}),
+      ),
+    );
+
+    this.winston.log('info', `Broadcast sent to ${userIds.length} user(s)`, {
+      context: 'NotificationsService',
+      targetKind: target.kind,
+      userCount: userIds.length,
+    });
+  }
+
+  /**
    * Send a geofence exit notification asking if the parcel is done.
    */
   async sendGeofenceExitNotification(

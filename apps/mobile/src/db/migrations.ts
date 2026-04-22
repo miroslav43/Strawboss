@@ -14,6 +14,7 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync(TABLES.consumable_logs);
   await db.execAsync(TABLES.bale_loads);
   await db.execAsync(TABLES.task_assignments);
+  await db.execAsync(TABLES.notifications);
 
   // Additive column migrations for users upgrading from older builds. SQLite
   // does not support `ADD COLUMN IF NOT EXISTS`, so we swallow the duplicate
@@ -64,6 +65,12 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   );
   await db.execAsync(
     `CREATE INDEX IF NOT EXISTS idx_task_assignments_assignment_date ON task_assignments(assignment_date)`
+  );
+  await db.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC)`
+  );
+  await db.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read)`
   );
 }
 

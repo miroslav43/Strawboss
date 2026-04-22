@@ -3,12 +3,14 @@ import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class TaskAssignmentsService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async list(filters?: {
@@ -351,7 +353,34 @@ export class TaskAssignmentsService {
         ${dto.notes ?? null}
       ) RETURNING *`,
     );
+
+    const rows = result as unknown as { id: string; assigned_user_id: string | null; parcel_id: string | null }[];
+    const assignedUserId = rows[0]?.assigned_user_id;
+    if (assignedUserId) {
+      void this.sendAssignmentPush(assignedUserId, rows[0]?.parcel_id ?? null, rows[0]?.id);
+    }
+
     return result;
+  }
+
+  private async sendAssignmentPush(userId: string, parcelId: string | null, assignmentId: string): Promise<void> {
+    try {
+      let parcelName = 'parcelă nouă';
+      if (parcelId) {
+        const parcelRows = await this.drizzleProvider.db.execute(
+          sql`SELECT name FROM parcels WHERE id = ${parcelId} LIMIT 1`,
+        ) as unknown as { name: string }[];
+        if (parcelRows[0]?.name) parcelName = parcelRows[0].name;
+      }
+      await this.notificationsService.sendPush(
+        userId,
+        'Sarcină nouă',
+        `Ai o sarcină pe parcela ${parcelName}`,
+        { type: 'assignment_created', assignmentId, parcelName },
+      );
+    } catch {
+      // Best-effort
+    }
   }
 
   async bulkCreate(dtos: Record<string, unknown>[]) {

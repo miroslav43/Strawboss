@@ -130,6 +130,11 @@ export {
 } from "./schemas/mobile-log-ingest.schema.js";
 
 export {
+  broadcastNotificationSchema,
+  type BroadcastNotificationDto,
+} from './schemas/mobile-notification.schema.js';
+
+export {
   dashboardOverviewSchema,
   productionReportSchema,
   costReportSchema,

@@ -138,4 +138,16 @@ export const TABLES = {
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     server_version INTEGER DEFAULT 0
   )`,
+  notifications: `CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    data_json TEXT,
+    severity TEXT NOT NULL DEFAULT 'info',
+    is_read INTEGER NOT NULL DEFAULT 0,
+    read_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
 } as const;
