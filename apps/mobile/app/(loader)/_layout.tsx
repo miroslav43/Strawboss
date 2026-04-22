@@ -4,7 +4,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
 import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
-import { AppHeader } from '@/components/shared/AppHeader';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 
 export default function LoaderTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
@@ -14,10 +14,13 @@ export default function LoaderTabLayout() {
   return (
     <SafeAreaProvider>
     <View style={{ flex: 1 }}>
-      <AppHeader />
       <Tabs
         screenOptions={{
-          headerShown: false,
+          headerShown: true,
+          headerStyle: { backgroundColor: '#0A5C36' },
+          headerTintColor: '#FFFFFF',
+          headerTitleStyle: { color: '#FFFFFF', fontWeight: '700', fontSize: 17 },
+          headerRight: () => <NotificationBell />,
           tabBarActiveTintColor: '#0A5C36',
           tabBarInactiveTintColor: '#8D6E63',
           tabBarStyle: {
@@ -43,9 +46,9 @@ export default function LoaderTabLayout() {
           name="index"
           options={{
             title: 'Camioane',
-            tabBarAccessibilityLabel: 'Camioane de încărcat',
+            tabBarAccessibilityLabel: 'Scanează camion',
             tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="truck" focused={focused} color={color} size={size} />
+              <TabBarIcon name="qrcode-scan" focused={focused} color={color} size={size} />
             ),
           }}
         />

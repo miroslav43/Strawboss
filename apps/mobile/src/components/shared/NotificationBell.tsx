@@ -4,7 +4,11 @@ import { useRouter } from 'expo-router';
 import { nativeColors } from '@strawboss/ui-tokens/native';
 import { useNotifications } from '@/hooks/useNotifications';
 
-export function NotificationBell() {
+interface NotificationBellProps {
+  color?: string;
+}
+
+export function NotificationBell({ color = '#FFFFFF' }: NotificationBellProps) {
   const router = useRouter();
   const { unreadCount } = useNotifications();
 
@@ -16,11 +20,7 @@ export function NotificationBell() {
       accessibilityRole="button"
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
-      <MaterialCommunityIcons
-        name="bell-outline"
-        size={24}
-        color={nativeColors.primary}
-      />
+      <MaterialCommunityIcons name="bell-outline" size={24} color={color} />
       {unreadCount > 0 && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>
@@ -35,15 +35,16 @@ export function NotificationBell() {
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 8,
   },
   badge: {
     position: 'absolute',
-    top: 2,
-    right: 2,
+    top: 4,
+    right: 4,
     minWidth: 16,
     height: 16,
     borderRadius: 8,
