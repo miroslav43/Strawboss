@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
 import { PhotoCapture } from '../../shared/PhotoCapture';
@@ -11,6 +12,7 @@ import { ConsumableLogsRepo } from '@/db/consumable-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { uploadReceipt } from '@/lib/receiptUpload';
 import { generateUuid } from '@/lib/uuid';
+import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 import { colors } from '@strawboss/ui-tokens';
 
 type ConsumableType = 'diesel' | 'twine';
@@ -22,6 +24,12 @@ interface ConsumableFlowProps {
   onComplete: () => void;
   /** Optional (e.g. modal); tab screens omit. */
   onCancel?: () => void;
+  /**
+   * When provided, the type selector is skipped and the flow starts at
+   * the quantity step locked to this type. Useful for role-specific tabs
+   * where only one type is relevant (e.g. 'diesel' for loader_operator).
+   */
+  lockType?: ConsumableType;
 }
 
 type ConsumableStep = 'type' | 'quantity' | 'photo' | 'confirm';
@@ -36,9 +44,12 @@ export function ConsumableFlow({
   operatorId,
   parcelId,
   onComplete,
+  lockType,
 }: ConsumableFlowProps) {
-  const [step, setStep] = useState<ConsumableStep>('type');
-  const [consumableType, setConsumableType] = useState<ConsumableType | null>(null);
+  const queryClient = useQueryClient();
+  // If lockType is set, we start directly at quantity with the type pre-selected.
+  const [step, setStep] = useState<ConsumableStep>(lockType ? 'quantity' : 'type');
+  const [consumableType, setConsumableType] = useState<ConsumableType | null>(lockType ?? null);
   const [quantity, setQuantity] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -146,10 +157,14 @@ export function ConsumableFlow({
       }
 
       const pendingCount = await syncQueue.getPendingCount();
-      setConsumableType(null);
+      void queryClient.invalidateQueries({
+        queryKey: operatorStatsQueryKey(operatorId),
+      });
+      // If lockType is set, reset to quantity (skip type selection); otherwise back to type.
+      setConsumableType(lockType ?? null);
       setQuantity('');
       setPhotoUri(null);
-      setStep('type');
+      setStep(lockType ? 'quantity' : 'type');
       Alert.alert(
         'Salvat',
         `${qty} ${UNIT_LABELS[savedType]} înregistrat. În coadă sync: ${pendingCount}.`,
@@ -163,7 +178,17 @@ export function ConsumableFlow({
     } finally {
       setSaving(false);
     }
-  }, [consumableType, machineId, operatorId, parcelId, quantity, photoUri, onComplete]);
+  }, [
+    consumableType,
+    lockType,
+    machineId,
+    operatorId,
+    parcelId,
+    quantity,
+    photoUri,
+    onComplete,
+    queryClient,
+  ]);
 
   switch (step) {
     case 'type':
@@ -209,11 +234,14 @@ export function ConsumableFlow({
               onPress={() => setStep('photo')}
               disabled={!quantity || quantity === '0'}
             />
-            <BigButton
-              title="Înapoi"
-              variant="outline"
-              onPress={() => setStep('type')}
-            />
+            {/* Hide Back when type is locked — there is no previous step */}
+            {!lockType && (
+              <BigButton
+                title="Înapoi"
+                variant="outline"
+                onPress={() => setStep('type')}
+              />
+            )}
           </View>
         </View>
       );

@@ -13,8 +13,10 @@ export class BaleLoadsController {
   list(
     @Query('tripId') tripId?: string,
     @Query('parcelId') parcelId?: string,
+    @Query('operatorId') operatorId?: string,
+    @Query('dateFrom') dateFrom?: string,
   ) {
-    return this.baleLoadsService.list({ tripId, parcelId });
+    return this.baleLoadsService.list({ tripId, parcelId, operatorId, dateFrom });
   }
 
   @Post()

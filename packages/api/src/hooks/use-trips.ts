@@ -138,3 +138,19 @@ export function useCancelTrip(client: ApiClient) {
     },
   });
 }
+
+/**
+ * Soft-delete a trip. Detaches any linked task_assignment on the server
+ * so re-configuring that task can re-trigger auto-creation.
+ */
+export function useDeleteTrip(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tripId: string) =>
+      client.delete<{ id: string }>(`/api/v1/trips/${tripId}`),
+    onSuccess: (_data, tripId) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+    },
+  });
+}

@@ -7,10 +7,10 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { OfflineBanner } from '@/components/shared/OfflineBanner';
 import { TaskList } from '@/components/shared/TaskList';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
+import { NotificationBell } from '@/components/shared/NotificationBell';
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyTasks } from '@/hooks/useMyTasks';
 
@@ -27,22 +27,23 @@ export default function BalerHomeScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <OfflineBanner />
-        <View style={styles.headerSection}>
-          <View style={styles.headerTopRow}>
-            <Text style={styles.title}>Balotieră</Text>
+      <ScreenHeader
+        title="Balotieră"
+        right={
+          <View style={styles.headerRightGroup}>
             <ConnectionStatusBadge />
+            <NotificationBell />
           </View>
-          {isLoading ? (
-            <ActivityIndicator color="#FFFFFF" style={styles.loader} />
-          ) : (
-            <Text style={styles.subtitle}>
-              {profile?.fullName ?? 'Operator'}
-            </Text>
-          )}
-        </View>
-      </SafeAreaView>
+        }
+      >
+        {isLoading ? (
+          <ActivityIndicator color="#FFFFFF" style={styles.loader} />
+        ) : (
+          <Text style={styles.subtitle}>
+            {profile?.fullName ?? 'Operator'}
+          </Text>
+        )}
+      </ScreenHeader>
 
       <ScrollView
         style={styles.body}
@@ -60,25 +61,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A5C36',
   },
-  safeArea: {
-    backgroundColor: '#0A5C36',
-  },
-  headerSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-    gap: 4,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
+  headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   subtitle: {
     fontSize: 15,
     color: 'rgba(255, 255, 255, 0.8)',

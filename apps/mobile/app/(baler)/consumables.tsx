@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { ConsumableFlow } from '@/components/features/consumables/ConsumableFlow';
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
 
 export default function BalerConsumablesScreen() {
@@ -9,11 +9,7 @@ export default function BalerConsumablesScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.headerSection}>
-          <Text style={styles.title}>Consumabile</Text>
-        </View>
-      </SafeAreaView>
+      <ScreenHeader title="Consumabile" />
       <View style={styles.body}>
         {!userId ? (
           <View style={styles.centered}>
@@ -35,13 +31,6 @@ export default function BalerConsumablesScreen() {
 
 const styles = StyleSheet.create({
   outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
-  safeArea: { backgroundColor: '#0A5C36' },
-  headerSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  title: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
   body: {
     flex: 1,
     backgroundColor: '#F3DED8',

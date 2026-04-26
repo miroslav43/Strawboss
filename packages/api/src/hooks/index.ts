@@ -10,6 +10,7 @@ export {
   useConfirmDelivery,
   useCompleteTrip,
   useCancelTrip,
+  useDeleteTrip,
 } from './use-trips.js';
 
 export {

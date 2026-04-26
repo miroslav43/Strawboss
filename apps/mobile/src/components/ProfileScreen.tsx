@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   ScrollView,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -45,6 +46,7 @@ export function ProfileScreen() {
     lastSyncAt,
     triggerSync,
     retryFailedAndSync,
+    clearFailedQueue,
   } = useSync();
 
   const { data: profile, isLoading: profileLoading } = useQuery({
@@ -76,7 +78,41 @@ export function ProfileScreen() {
   }, [queryClient, triggerSync]);
 
   const isLoading = profileLoading || (!!assignedMachineId && machineLoading);
-  const showStats = profile?.role === 'baler_operator' && !!profile?.id;
+  // Every operator role benefits from seeing today's personal totals on the
+  // profile (baler, loader, driver alike). Admins still get the rest of the
+  // screen without these counters since they don't register usage.
+  const OPERATOR_ROLES = new Set(['baler_operator', 'loader_operator', 'driver']);
+  const showStats = !!profile?.id && OPERATOR_ROLES.has(profile.role);
+
+  const handleClearFailedQueue = useCallback(() => {
+    Alert.alert(
+      'Șterge coada eșuată',
+      'Înregistrările eșuate vor fi șterse definitiv de pe telefon. Cele deja trimise pe server rămân neschimbate. Continui?',
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Șterge',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const deleted = await clearFailedQueue();
+              Alert.alert(
+                'Gata',
+                deleted > 0
+                  ? `S-au șters ${deleted} înregistrări din coadă.`
+                  : 'Nu existau înregistrări eșuate.',
+              );
+            } catch (err) {
+              Alert.alert(
+                'Eroare',
+                err instanceof Error ? err.message : 'Nu s-a putut șterge coada.',
+              );
+            }
+          },
+        },
+      ],
+    );
+  }, [clearFailedQueue]);
 
   return (
     <View style={styles.outerContainer}>
@@ -154,14 +190,24 @@ export function ProfileScreen() {
             <Text style={styles.syncButtonText}>Sincronizează acum</Text>
           </TouchableOpacity>
           {failedQueueCount > 0 ? (
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={() => void retryFailedAndSync()}
-              disabled={!isConnected || syncing}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.retryButtonText}>Reîncearcă înregistrările eșuate</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => void retryFailedAndSync()}
+                disabled={!isConnected || syncing}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.retryButtonText}>Reîncearcă înregistrările eșuate</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.clearQueueButton}
+                onPress={handleClearFailedQueue}
+                disabled={syncing}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.clearQueueButtonText}>Șterge coada eșuată</Text>
+              </TouchableOpacity>
+            </>
           ) : null}
         </View>
 
@@ -303,6 +349,18 @@ const styles = StyleSheet.create({
     borderColor: '#E65100',
   },
   retryButtonText: { color: '#E65100', fontSize: 15, fontWeight: '700' },
+  clearQueueButton: {
+    marginTop: 6,
+    paddingVertical: 8,
+    alignItems: 'center',
+    width: '100%',
+  },
+  clearQueueButtonText: {
+    color: '#8D6E63',
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
   statsSection: { gap: 10 },
   sectionTitle: {
     fontSize: 17,

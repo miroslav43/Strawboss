@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Param,
   Body,
   Query,
@@ -47,6 +48,7 @@ export class TripsController {
     @Query('driverId') driverId?: string,
     @Query('truckId') truckId?: string,
     @Query('sourceParcelId') sourceParcelId?: string,
+    @Query('loaderOperatorId') loaderOperatorId?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
@@ -55,6 +57,7 @@ export class TripsController {
       driverId,
       truckId,
       sourceParcelId,
+      loaderOperatorId,
       dateFrom,
       dateTo,
     });
@@ -71,6 +74,12 @@ export class TripsController {
     @Body(new ZodValidationPipe(tripCreateDtoSchema)) dto: TripCreateDto,
   ) {
     return this.tripsService.create(dto);
+  }
+
+  @Delete(':id')
+  @Roles('admin' as UserRole, 'dispatcher' as UserRole)
+  softDelete(@Param('id') id: string) {
+    return this.tripsService.softDelete(id);
   }
 
   @Post(':id/start-loading')

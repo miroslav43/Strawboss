@@ -6,7 +6,13 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class BaleLoadsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(filters?: { tripId?: string; parcelId?: string }) {
+  async list(filters?: {
+    tripId?: string;
+    parcelId?: string;
+    operatorId?: string;
+    /** ISO 8601 inclusive lower bound on loaded_at (e.g. start of today). */
+    dateFrom?: string;
+  }) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
     if (filters?.tripId) {
@@ -14,6 +20,12 @@ export class BaleLoadsService {
     }
     if (filters?.parcelId) {
       conditions.push(sql`parcel_id = ${filters.parcelId}`);
+    }
+    if (filters?.operatorId) {
+      conditions.push(sql`operator_id = ${filters.operatorId}::uuid`);
+    }
+    if (filters?.dateFrom) {
+      conditions.push(sql`loaded_at >= ${filters.dateFrom}`);
     }
 
     const where = sql.join(conditions, sql` AND `);

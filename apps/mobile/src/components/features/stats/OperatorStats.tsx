@@ -1,110 +1,82 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  ActivityIndicator,
-  Text,
-  StyleSheet,
-} from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { StatCard } from './StatCard';
-import { mobileApiClient } from '@/lib/api-client';
 import { colors } from '@strawboss/ui-tokens';
+import { getDatabase } from '@/lib/storage';
 
 interface OperatorStatsProps {
   operatorId: string;
 }
 
-/**
- * Aggregates returned by `/fuel-logs/stats` and `/consumable-logs/stats`.
- * The Postgres driver serializes `SUM(...)` / `COUNT(...)` as strings for
- * `numeric` and `bigint`; we coerce with `Number(...)` on the client.
- */
-interface FuelStatsResponse {
-  totalLiters?: number | string;
-  entryCount?: number | string;
-}
-
-interface ConsumableStatsResponse {
-  totalQuantity?: number | string;
-  entryCount?: number | string;
-}
-
-interface BaleProductionsResponse {
-  data?: Array<{ bale_count: number }>;
-  total?: number;
-}
-
-interface StatsState {
+interface TodayStats {
   totalFuelLiters: number;
   totalTwineKg: number;
   totalBales: number;
 }
 
-const INITIAL_STATS: StatsState = {
-  totalFuelLiters: 0,
-  totalTwineKg: 0,
-  totalBales: 0,
-};
+/**
+ * Query key used by both this component and the save flows (production /
+ * fuel / consumables). Exporting it keeps invalidation in one place: any
+ * screen that enqueues a new record invalidates this key to refresh the
+ * profile counters instantly, without waiting for a server round-trip.
+ */
+export const operatorStatsQueryKey = (operatorId: string) =>
+  ['operator-stats-local', operatorId] as const;
 
-function toNumber(value: number | string | undefined): number {
-  if (value == null) return 0;
-  const n = typeof value === 'string' ? Number(value) : value;
-  return Number.isFinite(n) ? n : 0;
+/**
+ * Today's aggregates, computed directly from the local SQLite tables. We
+ * deliberately avoid the server API here — the user wants the numbers to
+ * update the instant they tap "Salvează", which is *before* the sync
+ * queue is drained. SQLite reflects every local write immediately.
+ */
+async function loadTodayStats(operatorId: string): Promise<TodayStats> {
+  const db = await getDatabase();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [balesRow, fuelRow, twineRow] = await Promise.all([
+    db.getFirstAsync<{ total: number | null }>(
+      `SELECT COALESCE(SUM(bale_count), 0) AS total
+         FROM bale_productions
+        WHERE operator_id = ?
+          AND substr(production_date, 1, 10) = ?`,
+      [operatorId, today],
+    ),
+    db.getFirstAsync<{ total: number | null }>(
+      `SELECT COALESCE(SUM(quantity_liters), 0) AS total
+         FROM fuel_logs
+        WHERE operator_id = ?
+          AND substr(logged_at, 1, 10) = ?`,
+      [operatorId, today],
+    ),
+    db.getFirstAsync<{ total: number | null }>(
+      `SELECT COALESCE(SUM(quantity), 0) AS total
+         FROM consumable_logs
+        WHERE operator_id = ?
+          AND consumable_type = 'twine'
+          AND substr(logged_at, 1, 10) = ?`,
+      [operatorId, today],
+    ),
+  ]);
+
+  return {
+    totalBales: Number(balesRow?.total ?? 0),
+    totalFuelLiters: Number(fuelRow?.total ?? 0),
+    totalTwineKg: Number(twineRow?.total ?? 0),
+  };
 }
 
 export function OperatorStats({ operatorId }: OperatorStatsProps) {
-  const [stats, setStats] = useState<StatsState>(INITIAL_STATS);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useQuery({
+    queryKey: operatorStatsQueryKey(operatorId),
+    queryFn: () => loadTodayStats(operatorId),
+    // Recompute on focus / remount so the counters stay fresh even without
+    // explicit invalidation from another screen.
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
 
-  const fetchStats = useCallback(async () => {
-    try {
-      setError(null);
-
-      const [fuelRes, twineRes, balesRes] = await Promise.all([
-        mobileApiClient.get<FuelStatsResponse>(
-          `/api/v1/fuel-logs/stats?operatorId=${operatorId}`,
-        ),
-        mobileApiClient.get<ConsumableStatsResponse>(
-          `/api/v1/consumable-logs/stats?operatorId=${operatorId}&consumableType=twine`,
-        ),
-        mobileApiClient.get<BaleProductionsResponse>(
-          `/api/v1/bale-productions?operatorId=${operatorId}`,
-        ),
-      ]);
-
-      const totalBales =
-        balesRes.data?.reduce(
-          (sum: number, rec: { bale_count: number }) => sum + (rec.bale_count ?? 0),
-          0,
-        ) ?? balesRes.total ?? 0;
-
-      setStats({
-        totalFuelLiters: toNumber(fuelRes.totalLiters),
-        totalTwineKg: toNumber(twineRes.totalQuantity),
-        totalBales,
-      });
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Nu s-au putut încărca statisticile',
-      );
-    }
-  }, [operatorId]);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchStats().finally(() => setLoading(false));
-  }, [fetchStats]);
-
-  // Refetch whenever the user navigates back to this tab/screen — ensures
-  // the summary reflects the most recent local save + background sync.
-  useFocusEffect(
-    useCallback(() => {
-      void fetchStats();
-    }, [fetchStats]),
-  );
-
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={styles.loadingRow}>
         <ActivityIndicator color={colors.primary} />
@@ -112,29 +84,21 @@ export function OperatorStats({ operatorId }: OperatorStatsProps) {
     );
   }
 
+  const stats = data ?? { totalFuelLiters: 0, totalTwineKg: 0, totalBales: 0 };
+
   return (
     <View style={styles.content}>
-      {error !== null && (
+      {error ? (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>
+            {error instanceof Error ? error.message : 'Nu s-au putut încărca statisticile'}
+          </Text>
         </View>
-      )}
+      ) : null}
 
-      <StatCard
-        label="Motorină totală"
-        value={stats.totalFuelLiters}
-        unit="L"
-      />
-      <StatCard
-        label="Sfoară totală"
-        value={stats.totalTwineKg}
-        unit="kg"
-      />
-      <StatCard
-        label="Baloți produși"
-        value={stats.totalBales}
-        unit="buc"
-      />
+      <StatCard label="Baloți produși azi" value={stats.totalBales} unit="buc" />
+      <StatCard label="Motorină azi" value={stats.totalFuelLiters} unit="L" />
+      <StatCard label="Sfoară azi" value={stats.totalTwineKg} unit="kg" />
     </View>
   );
 }

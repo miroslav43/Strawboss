@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Inject,
+  OnModuleInit,
 } from '@nestjs/common';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
@@ -29,13 +30,61 @@ import type {
 import { getAvailableTransitions } from '@strawboss/domain';
 
 @Injectable()
-export class TripsService {
+export class TripsService implements OnModuleInit {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
     @InjectQueue(QUEUE_CMR_GENERATION) private readonly cmrQueue: Queue,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  /**
+   * On boot, reconcile any truck task_assignments that were fully wired
+   * up (parent loader + destination) but never had a Trip materialized —
+   * e.g. created before this feature shipped, or during a window where
+   * auto-upsert errored out. Idempotent: only rows with trip_id IS NULL.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const rows = (await this.drizzleProvider.db.execute(
+        sql`SELECT ta.id
+            FROM task_assignments ta
+            JOIN machines m ON m.id = ta.machine_id
+            WHERE m.machine_type = 'truck'
+              AND ta.deleted_at IS NULL
+              AND ta.trip_id IS NULL
+              AND ta.parent_assignment_id IS NOT NULL
+              AND ta.destination_id IS NOT NULL`,
+      )) as unknown as { id: string }[];
+      if (rows.length === 0) return;
+
+      this.winston.log(
+        'flow',
+        `Auto-trip backfill: reconciling ${rows.length} truck task(s) on boot`,
+        { context: 'TripsService', count: rows.length },
+      );
+      for (const row of rows) {
+        try {
+          await this.autoUpsertFromTruckTask(row.id);
+        } catch (err) {
+          this.winston.warn(
+            `Auto-trip backfill failed for task ${row.id}`,
+            {
+              context: 'TripsService',
+              taskId: row.id,
+              err: err instanceof Error ? { message: err.message } : err,
+            },
+          );
+        }
+      }
+    } catch (err) {
+      // Never block boot — log and move on.
+      this.winston.error('Auto-trip backfill scan failed on boot', {
+        context: 'TripsService',
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
+    }
+  }
 
   private async pushToDriver(tripId: string, title: string, body: string, type: string): Promise<void> {
     try {
@@ -70,43 +119,65 @@ export class TripsService {
     driverId?: string;
     truckId?: string;
     sourceParcelId?: string;
+    loaderOperatorId?: string;
     dateFrom?: string;
     dateTo?: string;
   }) {
-    const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
+    const conditions: ReturnType<typeof sql>[] = [sql`t.deleted_at IS NULL`];
 
     if (filters?.status) {
       const statuses = filters.status.split(',').map((s) => s.trim()).filter(Boolean);
       if (statuses.length === 1) {
-        conditions.push(sql`status = ${statuses[0]}::trip_status`);
+        conditions.push(sql`t.status = ${statuses[0]}::trip_status`);
       } else if (statuses.length > 1) {
-        // Build IN clause with explicit cast for each value
         const castList = sql.join(
           statuses.map((s) => sql`${s}::trip_status`),
           sql`, `,
         );
-        conditions.push(sql`status IN (${castList})`);
+        conditions.push(sql`t.status IN (${castList})`);
       }
     }
     if (filters?.driverId) {
-      conditions.push(sql`driver_id = ${filters.driverId}`);
+      conditions.push(sql`t.driver_id = ${filters.driverId}`);
     }
     if (filters?.truckId) {
-      conditions.push(sql`truck_id = ${filters.truckId}`);
+      conditions.push(sql`t.truck_id = ${filters.truckId}`);
     }
     if (filters?.sourceParcelId) {
-      conditions.push(sql`source_parcel_id = ${filters.sourceParcelId}`);
+      conditions.push(sql`t.source_parcel_id = ${filters.sourceParcelId}`);
+    }
+    if (filters?.loaderOperatorId) {
+      conditions.push(sql`t.loader_operator_id = ${filters.loaderOperatorId}`);
     }
     if (filters?.dateFrom) {
-      conditions.push(sql`created_at >= ${filters.dateFrom}`);
+      conditions.push(sql`t.created_at >= ${filters.dateFrom}`);
     }
     if (filters?.dateTo) {
-      conditions.push(sql`created_at <= ${filters.dateTo}`);
+      conditions.push(sql`t.created_at <= ${filters.dateTo}`);
     }
 
     const where = sql.join(conditions, sql` AND `);
+    // LEFT JOIN destinations/machines/users so the admin table can show
+    // human-readable labels without per-row lookups.
+    // Trips already store `destination_name` inline (denormalized on create),
+    // so we only need to enrich truck / driver / source-parcel labels here.
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM trips WHERE ${where} ORDER BY created_at DESC LIMIT 1000`,
+      sql`
+        SELECT
+          t.*,
+          m.registration_plate                         AS truck_plate,
+          m.internal_code                              AS truck_code,
+          u.full_name                                  AS driver_name,
+          p.name                                       AS source_parcel_name,
+          p.code                                       AS source_parcel_code
+        FROM trips t
+        LEFT JOIN machines m ON m.id = t.truck_id
+        LEFT JOIN users    u ON u.id = t.driver_id
+        LEFT JOIN parcels  p ON p.id = t.source_parcel_id
+        WHERE ${where}
+        ORDER BY t.created_at DESC
+        LIMIT 1000
+      `,
     );
     return result;
   }
@@ -399,6 +470,237 @@ export class TripsService {
     }
     this.logTripFlow(id, 'DISPUTE', from, TripStatus.disputed);
     void this.pushToDriver(id, 'Dispută transport', 'Transportul tău a intrat în dispută. Contactează dispeceratul.', 'trip_disputed');
+    return result;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Auto-trip from truck task assignment (Option B)
+  //
+  // When admin wires up a truck task (parent loader + destination),
+  // we materialize a Trip in `planned` status so the loader app and the
+  // rest of the system have something to work with. Idempotent via
+  // `task_assignments.trip_id`; only mutates trips still in `planned`.
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create or update a Trip that mirrors a truck task_assignment.
+   * No-op if the task is not a truck, is incomplete, or if no driver is
+   * assigned to the truck.
+   */
+  async autoUpsertFromTruckTask(taskId: string): Promise<void> {
+    // Load truck task + machine type in one shot.
+    const taskRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT
+        ta.id, ta.machine_id, ta.parent_assignment_id, ta.destination_id,
+        ta.trip_id, ta.deleted_at,
+        m.machine_type
+      FROM task_assignments ta
+      JOIN machines m ON m.id = ta.machine_id
+      WHERE ta.id = ${taskId}
+      LIMIT 1`,
+    )) as unknown as {
+      id: string;
+      machine_id: string;
+      parent_assignment_id: string | null;
+      destination_id: string | null;
+      trip_id: string | null;
+      deleted_at: string | null;
+      machine_type: string;
+    }[];
+    const task = taskRows[0];
+    if (!task || task.deleted_at !== null) return;
+    if (task.machine_type !== 'truck') return;
+    if (!task.parent_assignment_id || !task.destination_id) {
+      // Not enough info yet — keep any existing trip as-is and wait
+      // for admin to finish wiring up the task.
+      return;
+    }
+
+    // Resolve driver: user whose assigned_machine_id == truck.
+    const driverRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM users
+          WHERE assigned_machine_id = ${task.machine_id}
+            AND deleted_at IS NULL
+          ORDER BY created_at ASC
+          LIMIT 1`,
+    )) as unknown as { id: string }[];
+    const driverId = driverRows[0]?.id ?? null;
+    if (!driverId) {
+      this.winston.warn(
+        `Auto-trip skipped: truck ${task.machine_id} has no driver assigned (users.assigned_machine_id)`,
+        { context: 'TripsService', taskId, truckId: task.machine_id },
+      );
+      return;
+    }
+
+    // Resolve parent (loader task) for source parcel + loader machine + loader operator.
+    const parentRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id, machine_id, parcel_id, assigned_user_id
+          FROM task_assignments
+          WHERE id = ${task.parent_assignment_id}
+            AND deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as {
+      id: string;
+      machine_id: string;
+      parcel_id: string | null;
+      assigned_user_id: string | null;
+    }[];
+    const parent = parentRows[0];
+    if (!parent) return;
+
+    const sourceParcelId = parent.parcel_id;
+    const loaderMachineId = parent.machine_id;
+
+    // Loader operator: prefer explicit assigned_user_id on the loader task,
+    // fall back to whoever is permanently linked to the loader machine.
+    let loaderOperatorId: string | null = parent.assigned_user_id;
+    if (!loaderOperatorId && loaderMachineId) {
+      const opRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM users
+            WHERE assigned_machine_id = ${loaderMachineId}
+              AND deleted_at IS NULL
+            ORDER BY created_at ASC
+            LIMIT 1`,
+      )) as unknown as { id: string }[];
+      loaderOperatorId = opRows[0]?.id ?? null;
+    }
+
+    // Destination details (used to denormalize into trips.destination_*).
+    const destRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT name, address, ST_AsGeoJSON(coords) AS coords_geojson
+          FROM delivery_destinations
+          WHERE id = ${task.destination_id} AND deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as { name: string; address: string | null; coords_geojson: string | null }[];
+    const dest = destRows[0];
+    if (!dest) return;
+    const destCoordsGeoJson = dest.coords_geojson;
+
+    if (!task.trip_id) {
+      // ── INSERT path
+      const tripNumber = await this.generateTripNumber();
+      const inserted = (await this.drizzleProvider.db.execute(
+        sql`INSERT INTO trips (
+          trip_number, status, source_parcel_id, truck_id, driver_id,
+          loader_id, loader_operator_id,
+          destination_name, destination_address, destination_coords,
+          bale_count, source_parcel_auto, sync_version
+        ) VALUES (
+          ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
+          ${task.machine_id}, ${driverId},
+          ${loaderMachineId}, ${loaderOperatorId},
+          ${dest.name}, ${dest.address ?? null},
+          ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
+          0, false, 1
+        ) RETURNING id`,
+      )) as unknown as { id: string }[];
+      const tripId = inserted[0]?.id;
+      if (!tripId) return;
+
+      await this.drizzleProvider.db.execute(
+        sql`UPDATE task_assignments SET trip_id = ${tripId}, updated_at = NOW() WHERE id = ${taskId}`,
+      );
+
+      this.logTripFlow(tripId, 'AUTO_CREATE_FROM_TASK', 'new', TripStatus.planned);
+      this.winston.log('flow', `Auto-created trip ${tripId} from truck task ${taskId}`, {
+        context: 'TripsService',
+        tripId,
+        taskId,
+        truckId: task.machine_id,
+        driverId,
+      });
+      return;
+    }
+
+    // ── UPDATE path: only while trip is still in `planned`.
+    const statusRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT status FROM trips WHERE id = ${task.trip_id} LIMIT 1`,
+    )) as unknown as { status: string }[];
+    const currentStatus = statusRows[0]?.status;
+    if (!currentStatus) return;
+    if (currentStatus !== TripStatus.planned) {
+      this.winston.log(
+        'flow',
+        `Auto-trip update skipped: trip ${task.trip_id} already in status ${currentStatus}`,
+        { context: 'TripsService', tripId: task.trip_id, taskId },
+      );
+      return;
+    }
+
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        source_parcel_id = ${sourceParcelId},
+        truck_id = ${task.machine_id},
+        driver_id = ${driverId},
+        loader_id = ${loaderMachineId},
+        loader_operator_id = ${loaderOperatorId},
+        destination_name = ${dest.name},
+        destination_address = ${dest.address ?? null},
+        destination_coords = ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
+        updated_at = NOW()
+      WHERE id = ${task.trip_id} AND status = ${TripStatus.planned}`,
+    );
+
+    this.winston.log('flow', `Auto-updated trip ${task.trip_id} from truck task ${taskId}`, {
+      context: 'TripsService',
+      tripId: task.trip_id,
+      taskId,
+    });
+  }
+
+  /**
+   * Cancel a Trip that was auto-created from a truck task_assignment,
+   * but only if the trip is still in `planned`. If work already started
+   * (loading+) we leave it so ops can finish the real transport.
+   */
+  async autoCancelForTruckTask(taskId: string): Promise<void> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT trip_id FROM task_assignments WHERE id = ${taskId} LIMIT 1`,
+    )) as unknown as { trip_id: string | null }[];
+    const tripId = rows[0]?.trip_id ?? null;
+    if (!tripId) return;
+
+    const result = (await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+        status = ${TripStatus.cancelled},
+        cancelled_at = NOW(),
+        cancellation_reason = 'Task assignment removed',
+        updated_at = NOW()
+      WHERE id = ${tripId} AND status = ${TripStatus.planned}
+      RETURNING id`,
+    )) as unknown as { id: string }[];
+
+    if (result.length > 0) {
+      this.logTripFlow(tripId, 'AUTO_CANCEL_FROM_TASK', TripStatus.planned, TripStatus.cancelled);
+    } else {
+      this.winston.log(
+        'flow',
+        `Auto-cancel skipped: trip ${tripId} is already past planned (real transport in progress)`,
+        { context: 'TripsService', tripId, taskId },
+      );
+    }
+  }
+
+  /**
+   * Soft-delete a trip and detach it from any linked task_assignment so a
+   * future admin edit on the task can re-trigger auto-creation cleanly.
+   *
+   * Idempotent: if the trip is already soft-deleted, throws 404.
+   */
+  async softDelete(id: string) {
+    const trip = await this.findById(id);
+    const from = trip.status as TripStatus;
+
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE task_assignments SET trip_id = NULL, updated_at = NOW() WHERE trip_id = ${id}`,
+    );
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} RETURNING id`,
+    );
+
+    this.logTripFlow(id, 'DELETE', from, 'deleted');
     return result;
   }
 

@@ -1,5 +1,4 @@
 import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth-store';
@@ -7,6 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { BigButton } from '@/components/ui/BigButton';
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 
 export default function DriverDeliveryScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -36,11 +36,7 @@ export default function DriverDeliveryScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.headerSection}>
-          <Text style={styles.title}>Livrare</Text>
-        </View>
-      </SafeAreaView>
+      <ScreenHeader title="Livrare" />
 
       {loading ? (
         <View style={[styles.body, styles.centered]}>
@@ -89,13 +85,6 @@ export default function DriverDeliveryScreen() {
 
 const styles = StyleSheet.create({
   outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
-  safeArea: { backgroundColor: '#0A5C36' },
-  headerSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  title: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
   body: {
     flex: 1,
     backgroundColor: '#F3DED8',

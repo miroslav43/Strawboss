@@ -5,15 +5,21 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { QRScanner } from '@/components/shared/QRScanner';
 import { BigButton } from '@/components/ui/BigButton';
-import { OfflineBanner } from '@/components/shared/OfflineBanner';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ProblemReportModal } from '@/components/shared/ProblemReportModal';
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
 
+/**
+ * Loader home tab: always-on QR scanner for identifying a truck when it
+ * doesn't have a planned trip (or when the driver wants to tag a specific
+ * truck quickly). For the list of trucks planned for today see the
+ * "Încărcări" tab.
+ */
 export default function LoaderScanScreen() {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const [problemModalVisible, setProblemModalVisible] = useState(false);
@@ -24,8 +30,7 @@ export default function LoaderScanScreen() {
     // Expected format: strawboss://truck/<truckId>
     const match = data.match(/strawboss:\/\/truck\/([a-zA-Z0-9-]+)/);
     if (match) {
-      const truckId = match[1];
-      router.push(`/loader-ops/load-bales?truckId=${truckId}`);
+      router.push(`/loader-ops/load-bales?truckId=${match[1]}`);
     } else {
       setScanError('Cod QR invalid. Scanați codul de pe camion.');
     }
@@ -33,23 +38,21 @@ export default function LoaderScanScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <OfflineBanner />
-        <View style={styles.headerSection}>
-          <View style={styles.headerTopRow}>
-            <Text style={styles.title}>Scanează Camion</Text>
+      <ScreenHeader
+        title="Scanează camion"
+        right={
+          <View style={styles.headerRightGroup}>
             <ConnectionStatusBadge />
+            <NotificationBell />
           </View>
-          <Text style={styles.subtitle}>
-            Poziționați camera pe codul QR de pe camion
-          </Text>
-        </View>
-      </SafeAreaView>
-
-      <ScrollView
-        style={styles.body}
-        contentContainerStyle={styles.content}
+        }
       >
+        <Text style={styles.subtitle}>
+          Poziționează camera pe codul QR de pe camion.
+        </Text>
+      </ScreenHeader>
+
+      <ScrollView style={styles.body} contentContainerStyle={styles.content}>
         <View style={styles.scannerContainer}>
           <QRScanner onScan={handleScan} />
         </View>
@@ -81,43 +84,16 @@ export default function LoaderScanScreen() {
 }
 
 const styles = StyleSheet.create({
-  outerContainer: {
-    flex: 1,
-    backgroundColor: '#0A5C36',
-  },
-  safeArea: {
-    backgroundColor: '#0A5C36',
-  },
-  headerSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-    gap: 12,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
+  outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
+  headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  subtitle: { fontSize: 14, color: 'rgba(255, 255, 255, 0.8)' },
   body: {
     flex: 1,
     backgroundColor: '#F3DED8',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
-  content: {
-    padding: 16,
-    gap: 16,
-  },
+  content: { padding: 16, gap: 16 },
   scannerContainer: {
     height: 300,
     borderRadius: 12,

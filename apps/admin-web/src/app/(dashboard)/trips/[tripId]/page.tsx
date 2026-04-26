@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { use } from 'react';
+import { use, useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useTrip } from '@strawboss/api';
@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { TripDetail } from '@/components/features/trips/TripDetail';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { toTripCamel } from '@/lib/trip-mapper';
 
 interface TripDetailPageProps {
   params: Promise<{ tripId: string }>;
@@ -18,6 +19,9 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
   const { t } = useI18n();
   const { tripId } = use(params);
   const tripQuery = useTrip(apiClient, tripId);
+  // Backend returns snake_case rows straight from SQL; map to the canonical
+  // camelCase `Trip` shape expected by <TripDetail />.
+  const trip = useMemo(() => toTripCamel(tripQuery.data), [tripQuery.data]);
 
   return (
     <div>
@@ -42,8 +46,8 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
         <div className="py-8 text-center text-sm text-red-500">
           {t('trips.loadError')}
         </div>
-      ) : tripQuery.data ? (
-        <TripDetail trip={tripQuery.data} />
+      ) : trip ? (
+        <TripDetail trip={trip} />
       ) : (
         <div className="py-8 text-center text-sm text-neutral-400">
           {t('trips.notFound')}

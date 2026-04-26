@@ -360,9 +360,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Not in auth group: check if we're in the wrong tab group
+    // Not in auth group: only redirect when the user is inside the *wrong*
+    // role group. Non-group top-level routes (loader-ops, baler-ops,
+    // driver-ops, notifications, etc.) must be allowed through — otherwise
+    // pushing to e.g. `/loader-ops/load-bales` bounces straight back to the
+    // role home.
     const targetSegment = destination.slice(1); // '/(driver)' → '(driver)'
-    if (segments[0] !== targetSegment) {
+    const current = segments[0] ?? '';
+    const isGroupRoute = current.startsWith('(') && current.endsWith(')');
+    if (isGroupRoute && current !== targetSegment) {
       router.replace(destination as Parameters<typeof router.replace>[0]);
     }
   }, [isAuthenticated, profileReady, role, segments, router]);

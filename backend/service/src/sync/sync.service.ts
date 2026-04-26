@@ -191,6 +191,25 @@ export class SyncService {
       const rows = insertResult as unknown as Record<string, unknown>[];
       resultData = rows[0] ?? null;
       serverVersion = 1;
+
+      // Side-effect: when a bale_load lands via sync, keep the parent trip's
+      // bale_count aggregate in sync with the loads (mirrors the behaviour of
+      // BaleLoadsService.create when posted via the REST endpoint).
+      if (mutation.table === 'bale_loads') {
+        const tripId = resultData?.trip_id as string | null | undefined;
+        if (tripId) {
+          await this.drizzleProvider.db.execute(
+            sql`UPDATE trips SET
+                  bale_count = (
+                    SELECT COALESCE(SUM(bale_count), 0)::int
+                    FROM bale_loads
+                    WHERE trip_id = ${tripId} AND deleted_at IS NULL
+                  ),
+                  updated_at = NOW()
+                WHERE id = ${tripId}`,
+          );
+        }
+      }
     } else if (mutation.action === 'update') {
       const currentResult = await this.drizzleProvider.db.execute(
         sql`SELECT sync_version FROM ${sql.raw(`"${mutation.table}"`)}

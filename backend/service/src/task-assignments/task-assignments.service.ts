@@ -4,6 +4,7 @@ import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TripsService } from '../trips/trips.service';
 
 @Injectable()
 export class TaskAssignmentsService {
@@ -11,7 +12,42 @@ export class TaskAssignmentsService {
     private readonly drizzleProvider: DrizzleProvider,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
     private readonly notificationsService: NotificationsService,
+    private readonly tripsService: TripsService,
   ) {}
+
+  /**
+   * Best-effort auto-upsert so admin planning flows never fail when trip
+   * creation is not possible (e.g. no driver on truck yet).
+   */
+  private async autoUpsertTripSafe(taskId: string): Promise<void> {
+    try {
+      await this.tripsService.autoUpsertFromTruckTask(taskId);
+    } catch (err) {
+      this.winston.error(
+        `autoUpsertFromTruckTask failed for task ${taskId}`,
+        {
+          context: 'TaskAssignmentsService',
+          taskId,
+          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+        },
+      );
+    }
+  }
+
+  private async autoCancelTripSafe(taskId: string): Promise<void> {
+    try {
+      await this.tripsService.autoCancelForTruckTask(taskId);
+    } catch (err) {
+      this.winston.error(
+        `autoCancelForTruckTask failed for task ${taskId}`,
+        {
+          context: 'TaskAssignmentsService',
+          taskId,
+          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+        },
+      );
+    }
+  }
 
   async list(filters?: {
     assignmentDate?: string;
@@ -360,6 +396,12 @@ export class TaskAssignmentsService {
       void this.sendAssignmentPush(assignedUserId, rows[0]?.parcel_id ?? null, rows[0]?.id);
     }
 
+    // Try to materialize a Trip for truck tasks. No-op otherwise.
+    const newId = rows[0]?.id;
+    if (newId) {
+      await this.autoUpsertTripSafe(newId);
+    }
+
     return result;
   }
 
@@ -453,6 +495,11 @@ export class TaskAssignmentsService {
       );
     }
 
+    // Re-sync trip whenever the wiring changes (truck, parent loader, or destination).
+    if ('parentAssignmentId' in dto || 'destinationId' in dto || 'machineId' in dto) {
+      await this.autoUpsertTripSafe(id);
+    }
+
     return result;
   }
 
@@ -533,6 +580,8 @@ export class TaskAssignmentsService {
 
   async softDelete(id: string) {
     await this.findById(id);
+    // Cancel linked trip BEFORE soft-deleting: autoCancelForTruckTask reads trip_id from the row.
+    await this.autoCancelTripSafe(id);
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE task_assignments SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} RETURNING *`,
     );

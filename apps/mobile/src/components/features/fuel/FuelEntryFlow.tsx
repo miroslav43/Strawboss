@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
 import { PhotoCapture } from '../../shared/PhotoCapture';
@@ -8,6 +9,7 @@ import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { uploadReceipt } from '@/lib/receiptUpload';
 import { generateUuid } from '@/lib/uuid';
+import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 import { colors } from '@strawboss/ui-tokens';
 
 interface FuelEntryFlowProps {
@@ -25,6 +27,7 @@ export function FuelEntryFlow({
   onComplete,
   onCancel,
 }: FuelEntryFlowProps) {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<FuelStep>('liters');
   const [liters, setLiters] = useState('');
   const [odometer, setOdometer] = useState('');
@@ -99,6 +102,10 @@ export function FuelEntryFlow({
 
       const pendingCount = await syncQueue.getPendingCount();
 
+      void queryClient.invalidateQueries({
+        queryKey: operatorStatsQueryKey(operatorId),
+      });
+
       setLiters('');
       setOdometer('');
       setPhotoUri(null);
@@ -116,7 +123,7 @@ export function FuelEntryFlow({
     } finally {
       setSaving(false);
     }
-  }, [machineId, operatorId, liters, odometer, photoUri, onComplete]);
+  }, [machineId, operatorId, liters, odometer, photoUri, onComplete, queryClient]);
 
   switch (step) {
     case 'liters':

@@ -30,6 +30,9 @@ export class SyncQueueRepo {
     await this.db.runAsync(
       `UPDATE sync_queue SET entity_type = 'bale_productions' WHERE entity_type = 'bale_production'`
     );
+    await this.db.runAsync(
+      `UPDATE sync_queue SET entity_type = 'bale_loads' WHERE entity_type = 'bale_load'`
+    );
   }
 
   /**
@@ -172,5 +175,29 @@ export class SyncQueueRepo {
     await this.db.runAsync(
       `DELETE FROM sync_queue WHERE status = 'completed'`
     );
+  }
+
+  /**
+   * Remove all rows that cannot or will not sync: failed rows and completed
+   * rows. Pending / in-flight rows are kept so we never drop data the user
+   * hasn't seen a failure for. Returns how many rows were deleted so the UI
+   * can show a confirmation.
+   */
+  async clearFailed(): Promise<number> {
+    const result = await this.db.runAsync(
+      `DELETE FROM sync_queue WHERE status IN ('failed', 'completed')`
+    );
+    return result.changes ?? 0;
+  }
+
+  /**
+   * Nuclear option — wipe every queued mutation. Exposed so the user can
+   * manually clear the queue from the profile screen when stuck records
+   * keep retrying and cannot be recovered (e.g. legacy data from an old
+   * schema). Use with care.
+   */
+  async clearAll(): Promise<number> {
+    const result = await this.db.runAsync(`DELETE FROM sync_queue`);
+    return result.changes ?? 0;
   }
 }

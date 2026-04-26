@@ -21,6 +21,31 @@ export interface LocalBaleLoad {
 export class BaleLoadsRepo {
   constructor(private db: SQLite.SQLiteDatabase) {}
 
+  async create(data: LocalBaleLoad): Promise<void> {
+    await this.db.runAsync(
+      `INSERT INTO bale_loads (
+        id, trip_id, parcel_id, loader_id, operator_id,
+        bale_count, loaded_at, gps_lat, gps_lon, notes,
+        created_at, updated_at, server_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        data.id,
+        data.trip_id,
+        data.parcel_id,
+        data.loader_id,
+        data.operator_id,
+        data.bale_count,
+        data.loaded_at,
+        data.gps_lat,
+        data.gps_lon,
+        data.notes,
+        data.created_at,
+        data.updated_at,
+        data.server_version,
+      ] as SQLiteBindValue[]
+    );
+  }
+
   async upsert(data: LocalBaleLoad): Promise<void> {
     await this.db.runAsync(
       `INSERT INTO bale_loads (
@@ -71,6 +96,38 @@ export class BaleLoadsRepo {
       `SELECT * FROM bale_loads WHERE trip_id = ? ORDER BY loaded_at DESC`,
       [tripId]
     );
+  }
+
+  /**
+   * Lists every bale_load for a given operator after a given ISO timestamp.
+   * Used by the loader UI to show today's recorded loads (including ones
+   * that haven't been synced to the server yet).
+   */
+  async listByOperatorSince(
+    operatorId: string,
+    sinceIso: string,
+  ): Promise<LocalBaleLoad[]> {
+    return this.db.getAllAsync<LocalBaleLoad>(
+      `SELECT * FROM bale_loads
+        WHERE operator_id = ?
+          AND loaded_at IS NOT NULL
+          AND loaded_at >= ?
+        ORDER BY loaded_at DESC`,
+      [operatorId, sinceIso]
+    );
+  }
+
+  /**
+   * Sums bale counts for a given trip in the local DB. Used to give loaders
+   * instant visual feedback on the trip card before sync completes.
+   */
+  async sumByTrip(tripId: string): Promise<number> {
+    const result = await this.db.getFirstAsync<{ total: number | null }>(
+      `SELECT COALESCE(SUM(bale_count), 0) as total
+         FROM bale_loads WHERE trip_id = ?`,
+      [tripId]
+    );
+    return Number(result?.total ?? 0);
   }
 
   async listAll(): Promise<LocalBaleLoad[]> {

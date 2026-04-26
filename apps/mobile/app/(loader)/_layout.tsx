@@ -4,7 +4,6 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
 import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
-import { NotificationBell } from '@/components/shared/NotificationBell';
 
 export default function LoaderTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
@@ -16,11 +15,7 @@ export default function LoaderTabLayout() {
     <View style={{ flex: 1 }}>
       <Tabs
         screenOptions={{
-          headerShown: true,
-          headerStyle: { backgroundColor: '#0A5C36' },
-          headerTintColor: '#FFFFFF',
-          headerTitleStyle: { color: '#FFFFFF', fontWeight: '700', fontSize: 17 },
-          headerRight: () => <NotificationBell />,
+          headerShown: false,
           tabBarActiveTintColor: '#0A5C36',
           tabBarInactiveTintColor: '#8D6E63',
           tabBarStyle: {

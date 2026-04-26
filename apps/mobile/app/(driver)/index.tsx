@@ -9,11 +9,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { OfflineBanner } from '@/components/shared/OfflineBanner';
 import { TaskList } from '@/components/shared/TaskList';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
+import { NotificationBell } from '@/components/shared/NotificationBell';
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
 import { useMyTasks } from '@/hooks/useMyTasks';
 import { getDatabase } from '@/lib/storage';
@@ -81,16 +81,17 @@ export default function DriverTripsScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <OfflineBanner />
-        <View style={styles.headerSection}>
-          <View style={styles.headerTopRow}>
-            <Text style={styles.title}>Cursele Mele</Text>
+      <ScreenHeader
+        title="Cursele Mele"
+        right={
+          <View style={styles.headerRightGroup}>
             <ConnectionStatusBadge />
+            <NotificationBell />
           </View>
-          <TaskList tasks={tasks} role="driver" />
-        </View>
-      </SafeAreaView>
+        }
+      >
+        <TaskList tasks={tasks} role="driver" />
+      </ScreenHeader>
 
       {loading ? (
         <View style={[styles.body, styles.centered]}>
@@ -147,25 +148,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A5C36',
   },
-  safeArea: {
-    backgroundColor: '#0A5C36',
-  },
-  headerSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-    gap: 12,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
+  headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   body: {
     flex: 1,
     backgroundColor: '#F3DED8',

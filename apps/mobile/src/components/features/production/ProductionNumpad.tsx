@@ -20,6 +20,7 @@ import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { mobileLogger } from '@/lib/logger';
 import { generateUuid } from '@/lib/uuid';
 import { useMyTasks } from '@/hooks/useMyTasks';
+import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 import {
   useActiveParcels,
   findParcelAtLocation,
@@ -339,6 +340,9 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
 
       mobileLogger.flow('Baler production: queued for sync', { parcelId, id });
       void queryClient.invalidateQueries({ queryKey: ['bale-productions'] });
+      void queryClient.invalidateQueries({
+        queryKey: operatorStatsQueryKey(operatorId),
+      });
 
       setCount('');
       showToast(`Înregistrat — ${numericCount} baloți`);

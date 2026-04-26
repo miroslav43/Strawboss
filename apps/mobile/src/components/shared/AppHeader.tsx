@@ -1,7 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { nativeColors } from '@strawboss/ui-tokens/native';
-import { ConnectionStatusBadge } from './ConnectionStatusBadge';
 import { NotificationBell } from './NotificationBell';
 
 export function AppHeader() {
@@ -11,7 +10,6 @@ export function AppHeader() {
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <Text style={styles.title}>Strawboss</Text>
       <View style={styles.right}>
-        <ConnectionStatusBadge />
         <NotificationBell />
       </View>
     </View>

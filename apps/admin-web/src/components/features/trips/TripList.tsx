@@ -1,43 +1,70 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { Trash2 } from 'lucide-react';
 import type { Trip } from '@strawboss/types';
+import { useDeleteTrip } from '@strawboss/api';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { DataTable, type Column } from '@/components/shared/DataTable';
+import { apiClient } from '@/lib/api';
 
-interface TripRow extends Record<string, unknown> {
+/**
+ * Shape of a single trip row as returned by `GET /api/v1/trips`.
+ * The backend emits snake_case; the enrichment JOIN also provides
+ * human-readable labels for truck / driver / parcel / destination.
+ *
+ * Fields are optional so the table degrades gracefully if the JOIN
+ * misses a foreign key (e.g. a trip without driver yet).
+ */
+export interface TripRow extends Record<string, unknown> {
   id: string;
-  tripNumber: string;
+  trip_number: string | null;
   status: Trip['status'];
-  truckId: string;
-  driverId: string;
-  sourceParcelId: string;
-  destinationName: string | null;
-  baleCount: number;
-  createdAt: string;
+  truck_id: string | null;
+  driver_id: string | null;
+  source_parcel_id: string | null;
+  destination_id: string | null;
+  bale_count: number | string | null;
+  created_at: string;
+  // JOIN-enriched labels
+  destination_name?: string | null;
+  truck_plate?: string | null;
+  truck_code?: string | null;
+  driver_name?: string | null;
+  source_parcel_name?: string | null;
+  source_parcel_code?: string | null;
 }
 
-function toRow(trip: Trip): TripRow {
-  return {
-    id: trip.id,
-    tripNumber: trip.tripNumber,
-    status: trip.status,
-    truckId: trip.truckId,
-    driverId: trip.driverId,
-    sourceParcelId: trip.sourceParcelId,
-    destinationName: trip.destinationName,
-    baleCount: trip.baleCount,
-    createdAt: trip.createdAt,
-  };
+function truckLabel(row: TripRow): string {
+  return (
+    row.truck_plate ||
+    row.truck_code ||
+    (row.truck_id ? `${row.truck_id.slice(0, 8)}…` : '—')
+  );
 }
 
-const columns: Column<TripRow>[] = [
+function driverLabel(row: TripRow): string {
+  if (row.driver_name && row.driver_name.trim().length > 0) return row.driver_name;
+  return row.driver_id ? `${row.driver_id.slice(0, 8)}…` : '—';
+}
+
+function sourceLabel(row: TripRow): string {
+  return (
+    row.source_parcel_name ||
+    row.source_parcel_code ||
+    (row.source_parcel_id ? `${row.source_parcel_id.slice(0, 8)}…` : '—')
+  );
+}
+
+const baseColumns: Column<TripRow>[] = [
   {
-    key: 'tripNumber',
+    key: 'trip_number',
     header: 'Trip #',
     sortable: true,
     render: (row) => (
-      <span className="font-medium text-neutral-800">{row.tripNumber}</span>
+      <span className="font-medium text-neutral-800">
+        {row.trip_number ?? '—'}
+      </span>
     ),
   },
   {
@@ -46,70 +73,95 @@ const columns: Column<TripRow>[] = [
     render: (row) => <StatusBadge status={row.status} />,
   },
   {
-    key: 'truckId',
+    key: 'truck_plate',
     header: 'Truck',
     render: (row) => (
-      <span className="text-xs text-neutral-600">
-        {String(row.truckId).slice(0, 8)}...
-      </span>
+      <span className="text-xs text-neutral-700">{truckLabel(row)}</span>
     ),
   },
   {
-    key: 'driverId',
+    key: 'driver_name',
     header: 'Driver',
     render: (row) => (
-      <span className="text-xs text-neutral-600">
-        {String(row.driverId).slice(0, 8)}...
-      </span>
+      <span className="text-xs text-neutral-700">{driverLabel(row)}</span>
     ),
   },
   {
-    key: 'sourceParcelId',
+    key: 'source_parcel_name',
     header: 'Source',
     render: (row) => (
-      <span className="text-xs text-neutral-600">
-        {String(row.sourceParcelId).slice(0, 8)}...
-      </span>
+      <span className="text-xs text-neutral-700">{sourceLabel(row)}</span>
     ),
   },
   {
-    key: 'destinationName',
+    key: 'destination_name',
     header: 'Destination',
     render: (row) => (
-      <span className="text-xs text-neutral-600">
-        {row.destinationName ?? 'TBD'}
+      <span className="text-xs text-neutral-700">
+        {row.destination_name ?? 'TBD'}
       </span>
     ),
   },
   {
-    key: 'baleCount',
+    key: 'bale_count',
     header: 'Bales',
     sortable: true,
+    render: (row) => <span>{Number(row.bale_count ?? 0)}</span>,
   },
   {
-    key: 'createdAt',
+    key: 'created_at',
     header: 'Created',
     sortable: true,
     render: (row) => (
       <span className="text-xs text-neutral-500">
-        {new Date(String(row.createdAt)).toLocaleDateString()}
+        {new Date(String(row.created_at)).toLocaleDateString()}
       </span>
     ),
   },
 ];
 
 interface TripListProps {
-  trips: Trip[];
+  trips: TripRow[];
 }
 
 export function TripList({ trips }: TripListProps) {
   const router = useRouter();
-  const rows = trips.map(toRow);
+  const deleteTrip = useDeleteTrip(apiClient);
+
+  const columns: Column<TripRow>[] = [
+    ...baseColumns,
+    {
+      key: 'actions',
+      header: '',
+      render: (row) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            // Don't trigger row click when tapping trash
+            e.stopPropagation();
+            const label = row.trip_number ?? row.id.slice(0, 8);
+            if (
+              typeof window !== 'undefined' &&
+              window.confirm(`Șterge cursa ${label}?`)
+            ) {
+              deleteTrip.mutate(row.id);
+            }
+          }}
+          className="rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
+          aria-label="Șterge cursa"
+          title="Șterge cursa"
+          disabled={deleteTrip.isPending}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      ),
+    },
+  ];
 
   return (
     <DataTable<TripRow>
       columns={columns}
-      data={rows}
+      data={trips}
       keyExtractor={(row) => row.id}
       onRowClick={(row) => router.push(`/trips/${row.id}`)}
     />

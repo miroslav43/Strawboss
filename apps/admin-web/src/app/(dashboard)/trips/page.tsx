@@ -5,11 +5,11 @@ import { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { useTrips } from '@strawboss/api';
 import { TripStatus } from '@strawboss/types';
-import type { Trip, PaginatedResponse } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { TripList } from '@/components/features/trips/TripList';
+import { TripList, type TripRow } from '@/components/features/trips/TripList';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { normalizeList } from '@/lib/normalize-api-list';
 
 export default function TripsPage() {
   const { t } = useI18n();
@@ -36,8 +36,12 @@ export default function TripsPage() {
 
   const hasFilters = Object.keys(filters).length > 0;
   const tripsQuery = useTrips(apiClient, hasFilters ? filters : undefined);
-  const tripsResponse = tripsQuery.data as PaginatedResponse<Trip> | undefined;
-  const trips = tripsResponse?.data ?? [];
+  // Backend returns a raw snake_case array; normalize + expose as TripRow[]
+  // so the table can display labels without any camelCase assumptions.
+  const trips = useMemo<TripRow[]>(
+    () => normalizeList<TripRow>(tripsQuery.data),
+    [tripsQuery.data],
+  );
 
   return (
     <div>

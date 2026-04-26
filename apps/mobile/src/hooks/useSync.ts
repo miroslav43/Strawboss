@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ApiClient } from '@strawboss/api';
 import { getDatabase } from '../lib/storage';
 import { getSupabaseClient } from '../lib/auth';
@@ -26,6 +27,7 @@ export function useSync() {
   const [errors, setErrors] = useState<string[]>([]);
   const { isConnected } = useNetworkStatus();
   const wasDisconnected = useRef(false);
+  const queryClient = useQueryClient();
 
   const refreshPendingCount = useCallback(async () => {
     try {
@@ -84,6 +86,17 @@ export function useSync() {
         setErrors(result.errors);
       }
 
+      // After a sync cycle, refresh any server-backed views that depend on
+      // the tables we just pushed. This is what makes the loader's trip
+      // cards and "Încărcări înregistrate azi" list update without the user
+      // having to pull-to-refresh.
+      if (result.pushed > 0 || result.pulled > 0) {
+        queryClient.invalidateQueries({ queryKey: ['trips-to-load'] });
+        queryClient.invalidateQueries({ queryKey: ['bale-loads'] });
+        queryClient.invalidateQueries({ queryKey: ['trips'] });
+        queryClient.invalidateQueries({ queryKey: ['operator-stats'] });
+      }
+
       await refreshPendingCount();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed';
@@ -91,7 +104,7 @@ export function useSync() {
     } finally {
       setSyncing(false);
     }
-  }, [syncing, refreshPendingCount]);
+  }, [syncing, refreshPendingCount, queryClient]);
 
   const retryFailedAndSync = useCallback(async () => {
     try {
@@ -104,6 +117,28 @@ export function useSync() {
     }
     await triggerSync();
   }, [refreshPendingCount, triggerSync]);
+
+  /**
+   * Delete failed/completed entries from the local queue. Pending and
+   * in-flight rows are preserved so we never discard data that hasn't been
+   * attempted yet.
+   */
+  const clearFailedQueue = useCallback(async (): Promise<number> => {
+    const db = await getDatabase();
+    const repo = new SyncQueueRepo(db);
+    const deleted = await repo.clearFailed();
+    await refreshPendingCount();
+    return deleted;
+  }, [refreshPendingCount]);
+
+  /** Wipe the entire sync queue — use only when the user explicitly confirms. */
+  const clearEntireQueue = useCallback(async (): Promise<number> => {
+    const db = await getDatabase();
+    const repo = new SyncQueueRepo(db);
+    const deleted = await repo.clearAll();
+    await refreshPendingCount();
+    return deleted;
+  }, [refreshPendingCount]);
 
   // Refresh pending count periodically
   useEffect(() => {
@@ -135,5 +170,7 @@ export function useSync() {
     errors,
     triggerSync,
     retryFailedAndSync,
+    clearFailedQueue,
+    clearEntireQueue,
   };
 }
