@@ -2,6 +2,7 @@ import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { StatCard } from './StatCard';
 import { colors } from '@strawboss/ui-tokens';
+import { scale, fontScale } from '@/utils/responsive';
 import { getDatabase } from '@/lib/storage';
 
 interface OperatorStatsProps {
@@ -148,20 +149,20 @@ export function OperatorStats({ operatorId, role }: OperatorStatsProps) {
 
 const styles = StyleSheet.create({
   loadingRow: {
-    paddingVertical: 24,
+    paddingVertical: scale(24),
     alignItems: 'center',
   },
   content: {
-    gap: 12,
+    gap: scale(12),
   },
   errorBanner: {
     backgroundColor: colors.danger,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: scale(12),
+    padding: scale(12),
   },
   errorText: {
     color: colors.white,
-    fontSize: 14,
+    fontSize: fontScale(14),
     fontWeight: '500',
     textAlign: 'center',
   },

@@ -13,6 +13,8 @@ import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ProblemReportModal } from '@/components/shared/ProblemReportModal';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
+import { SCREEN_HEIGHT, scale } from '@/utils/responsive';
+import { colors } from '@strawboss/ui-tokens';
 
 /**
  * Loader home tab: always-on QR scanner for identifying a truck when it
@@ -84,19 +86,19 @@ export default function LoaderScanScreen() {
 }
 
 const styles = StyleSheet.create({
-  outerContainer: { flex: 1, backgroundColor: '#0A5C36' },
+  outerContainer: { flex: 1, backgroundColor: colors.primary },
   headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   subtitle: { fontSize: 14, color: 'rgba(255, 255, 255, 0.8)' },
   body: {
     flex: 1,
-    backgroundColor: '#F3DED8',
+    backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
   content: { padding: 16, gap: 16 },
   scannerContainer: {
-    height: 300,
-    borderRadius: 12,
+    height: Math.min(scale(300), SCREEN_HEIGHT * 0.35),
+    borderRadius: scale(12),
     overflow: 'hidden',
   },
   errorBox: {
@@ -106,5 +108,5 @@ const styles = StyleSheet.create({
   },
   errorText: { color: '#991B1B', fontSize: 13 },
   divider: { alignItems: 'center' },
-  dividerText: { color: '#8D6E63', fontSize: 13 },
+  dividerText: { color: colors.tertiary, fontSize: 13 },
 });

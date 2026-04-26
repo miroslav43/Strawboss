@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
+import { scale, fontScale } from '@/utils/responsive';
 
 interface ActionCardProps {
   title: string;
@@ -61,14 +62,16 @@ export function ActionCard({
   );
 }
 
+const ICON_SIZE = scale(56);
+
 const styles = StyleSheet.create({
   container: {
-    minHeight: 80,
+    minHeight: scale(80),
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
     borderRadius: 20,
-    padding: 18,
+    padding: scale(18),
     gap: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -82,11 +85,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary50,
   },
   completed: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: colors.primary50,
   },
   iconContainer: {
-    width: 56,
-    height: 56,
+    width: ICON_SIZE,
+    height: ICON_SIZE,
     borderRadius: 16,
     backgroundColor: colors.surface,
     justifyContent: 'center',
@@ -97,7 +100,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   title: {
-    fontSize: 16,
+    fontSize: fontScale(16),
     fontWeight: '600',
     color: colors.black,
   },
@@ -108,7 +111,7 @@ const styles = StyleSheet.create({
     color: colors.success,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: fontScale(13),
     color: colors.neutral,
   },
   completedSubtitle: {

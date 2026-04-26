@@ -2,7 +2,11 @@ import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { nativeColors } from '@strawboss/ui-tokens/native';
+import { scale } from '@/utils/responsive';
 import { useNotifications } from '@/hooks/useNotifications';
+
+const BELL_SIZE = Math.max(44, scale(44)); // iOS minimum 44pt touch target
+const BADGE_SIZE = scale(16);
 
 interface NotificationBellProps {
   color?: string;
@@ -35,8 +39,8 @@ export function NotificationBell({ color = '#FFFFFF' }: NotificationBellProps) {
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
-    width: 40,
-    height: 40,
+    width: BELL_SIZE,
+    height: BELL_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
@@ -45,9 +49,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 4,
     right: 4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    minWidth: BADGE_SIZE,
+    height: BADGE_SIZE,
+    borderRadius: BADGE_SIZE / 2,
     backgroundColor: nativeColors.danger,
     alignItems: 'center',
     justifyContent: 'center',

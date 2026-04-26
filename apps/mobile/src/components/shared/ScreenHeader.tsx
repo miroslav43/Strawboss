@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '@strawboss/ui-tokens';
+import { scale, fontScale } from '@/utils/responsive';
 import { NotificationBell } from './NotificationBell';
 
 interface ScreenHeaderProps {
@@ -17,6 +19,11 @@ interface ScreenHeaderProps {
   /** Optional override for the outer container style. */
   style?: ViewStyle;
 }
+
+const HEADER_PH = scale(20);
+const HEADER_PT = scale(16);
+const HEADER_PB = scale(24);
+const TITLE_SIZE = fontScale(24);
 
 /**
  * Unified green in-screen header used across every tab screen.
@@ -43,17 +50,17 @@ export function ScreenHeader({ title, children, right, style }: ScreenHeaderProp
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: '#0A5C36' },
+  safeArea: { backgroundColor: colors.primary },
   row: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingHorizontal: HEADER_PH,
+    paddingTop: HEADER_PT,
+    paddingBottom: HEADER_PB,
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
   titleColumn: { flex: 1, gap: 4 },
-  title: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
+  title: { fontSize: TITLE_SIZE, fontWeight: '700', color: '#FFFFFF' },
   meta: { gap: 4 },
-  rightSlot: { marginLeft: 12, marginTop: -4 },
+  rightSlot: { marginLeft: scale(12), marginTop: -scale(4) },
 });

@@ -3,6 +3,10 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
+import { scale } from '@/utils/responsive';
+import { colors } from '@strawboss/ui-tokens';
+
+const FRAME_SIZE = Math.min(scale(250), 280);
 
 export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -67,7 +71,7 @@ export default function ScanScreen() {
           onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         />
         <View style={styles.overlay}>
-          <View style={styles.scanFrame} />
+          <View style={[styles.scanFrame, { width: FRAME_SIZE, height: FRAME_SIZE }]} />
           <Text style={styles.scanText}>
             Point camera at a StrawBoss QR code
           </Text>
@@ -104,11 +108,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scanFrame: {
-    width: 250,
-    height: 250,
     borderWidth: 2,
-    borderColor: '#0A5C36',
-    borderRadius: 12,
+    borderColor: colors.primary,
+    borderRadius: scale(12),
     backgroundColor: 'transparent',
   },
   scanText: {
@@ -122,16 +124,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#F3DED8',
+    backgroundColor: colors.background,
   },
   message: {
     fontSize: 16,
-    color: '#5D4037',
+    color: colors.neutral,
     textAlign: 'center',
     marginBottom: 16,
   },
   button: {
-    backgroundColor: '#0A5C36',
+    backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 14,
     paddingHorizontal: 24,
@@ -142,7 +144,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   rescanButton: {
-    backgroundColor: '#0A5C36',
+    backgroundColor: colors.primary,
     paddingVertical: 16,
     alignItems: 'center',
   },

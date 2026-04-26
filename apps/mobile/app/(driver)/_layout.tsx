@@ -4,11 +4,11 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
 import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
+import { makeTabBarStyle, tabBarLabelStyle, tabBarActiveTintColor, tabBarInactiveTintColor } from '@/constants/tabBarConfig';
 
 export default function DriverTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
   const insets = useSafeAreaInsets();
-  const tabBarBottom = Math.max(12, insets.bottom);
 
   return (
     <SafeAreaProvider>
@@ -16,25 +16,10 @@ export default function DriverTabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: '#0A5C36',
-          tabBarInactiveTintColor: '#8D6E63',
-          tabBarStyle: {
-            backgroundColor: '#FFFFFF',
-            borderTopColor: '#D7CCC8',
-            height: 60 + tabBarBottom,
-            paddingBottom: tabBarBottom,
-            paddingTop: 4,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: -2 },
-            shadowOpacity: 0.06,
-            shadowRadius: 8,
-            elevation: 8,
-          },
-          tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: '600',
-            marginTop: 2,
-          },
+          tabBarActiveTintColor,
+          tabBarInactiveTintColor,
+          tabBarStyle: makeTabBarStyle(insets.bottom),
+          tabBarLabelStyle,
         }}
       >
         <Tabs.Screen

@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { colors } from '@strawboss/ui-tokens';
+import { scale, fontScale } from '@/utils/responsive';
 
 interface NumericPadProps {
   value: string;
@@ -74,6 +75,9 @@ export function NumericPad({
   );
 }
 
+const KEY_SIZE = Math.max(64, scale(72));
+const KEY_RADIUS = scale(14);
+
 const styles = StyleSheet.create({
   container: {
     gap: 16,
@@ -83,7 +87,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   displayText: {
-    fontSize: 48,
+    fontSize: fontScale(48),
     fontWeight: '700',
     color: colors.primary,
   },
@@ -96,9 +100,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   key: {
-    width: 72,
-    height: 72,
-    borderRadius: 14,
+    width: KEY_SIZE,
+    height: KEY_SIZE,
+    borderRadius: KEY_RADIUS,
     backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
@@ -112,7 +116,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   keyText: {
-    fontSize: 28,
+    fontSize: fontScale(28),
     fontWeight: '600',
     color: colors.black,
   },

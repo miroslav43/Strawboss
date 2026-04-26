@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { scale, fontScale } from '@/utils/responsive';
 
 type AlertSeverity = 'warning' | 'error';
 
@@ -65,15 +66,15 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: scale(14),
     borderLeftWidth: 3,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: scale(14),
+    paddingVertical: scale(14),
     gap: 10,
   },
   message: {
     flex: 1,
-    fontSize: 14,
+    fontSize: fontScale(14),
     fontWeight: '500',
     lineHeight: 20,
   },

@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '@strawboss/ui-tokens';
+import { scale, fontScale } from '@/utils/responsive';
 
 interface StatCardProps {
   label: string;
@@ -26,8 +27,8 @@ export function StatCard({ label, value, unit, subtitle }: StatCardProps) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: scale(16),
+    padding: scale(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -36,7 +37,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   label: {
-    fontSize: 14,
+    fontSize: fontScale(14),
     fontWeight: '500',
     color: colors.neutral,
   },
@@ -46,18 +47,18 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   value: {
-    fontSize: 36,
+    fontSize: fontScale(36),
     fontWeight: '700',
-    color: '#0A5C36',
+    color: colors.primary,
   },
   unit: {
-    fontSize: 16,
+    fontSize: fontScale(16),
     fontWeight: '500',
     color: colors.neutral,
     marginBottom: 2,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: fontScale(12),
     color: colors.neutral,
     marginTop: 2,
   },

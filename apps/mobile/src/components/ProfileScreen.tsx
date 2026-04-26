@@ -13,6 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { User, Machine } from '@strawboss/types';
+import { colors } from '@strawboss/ui-tokens';
+import { scale, fontScale } from '@/utils/responsive';
 import { mobileApiClient } from '@/lib/api-client';
 import { getSupabaseClient } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
@@ -145,7 +147,7 @@ export function ProfileScreen() {
         style={styles.body}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#0A5C36" />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
       >
         <View style={styles.card}>
@@ -221,7 +223,7 @@ export function ProfileScreen() {
                 <MaterialCommunityIcons
                   name={MACHINE_MDI[machine.machineType] ?? 'map-marker'}
                   size={28}
-                  color="#0A5C36"
+                  color={colors.primary}
                 />
                 <View>
                   <Text style={styles.machineCode}>{machine.internalCode}</Text>
@@ -254,25 +256,37 @@ export function ProfileScreen() {
   );
 }
 
+const AVATAR_SIZE = scale(88);
+const AVATAR_RADIUS = scale(44);
+const LOGOUT_HEIGHT = scale(60);
+const LOGOUT_RADIUS = scale(16);
+const CARD_RADIUS = scale(16);
+const CARD_PADDING = scale(16);
+const BODY_TOP_RADIUS = scale(24);
+const HEADER_PH = scale(20);
+const HEADER_PT = scale(16);
+const HEADER_PB = scale(32);
+const CONTENT_PADDING = scale(16);
+
 const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
-    backgroundColor: '#0A5C36',
+    backgroundColor: colors.primary,
   },
   safeArea: {
-    backgroundColor: '#0A5C36',
+    backgroundColor: colors.primary,
   },
   headerSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
+    paddingHorizontal: HEADER_PH,
+    paddingTop: HEADER_PT,
+    paddingBottom: HEADER_PB,
     alignItems: 'center',
     gap: 8,
   },
   avatarCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_RADIUS,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -280,8 +294,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.4)',
   },
-  avatarText: { fontSize: 36, fontWeight: '700', color: '#FFFFFF' },
-  fullName: { fontSize: 22, fontWeight: '700', color: '#FFFFFF' },
+  avatarText: { fontSize: fontScale(36), fontWeight: '700', color: colors.white },
+  fullName: { fontSize: fontScale(22), fontWeight: '700', color: colors.white },
   email: { fontSize: 14, color: 'rgba(255, 255, 255, 0.8)' },
   roleBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
@@ -290,31 +304,31 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     marginTop: 4,
   },
-  roleText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
+  roleText: { fontSize: fontScale(13), fontWeight: '600', color: colors.white },
   errorText: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontStyle: 'italic' },
   body: {
     flex: 1,
-    backgroundColor: '#F3DED8',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: BODY_TOP_RADIUS,
+    borderTopRightRadius: BODY_TOP_RADIUS,
   },
   content: {
-    padding: 16,
+    padding: CONTENT_PADDING,
     gap: 16,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: colors.white,
+    borderRadius: CARD_RADIUS,
+    padding: CARD_PADDING,
     gap: 8,
     alignItems: 'flex-start',
-    shadowColor: '#000',
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  cardTitle: { fontSize: 14, fontWeight: '600', color: '#5D4037' },
+  cardTitle: { fontSize: 14, fontWeight: '600', color: colors.neutral },
   syncRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -330,18 +344,18 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 17,
   },
-  syncHint: { fontSize: 13, color: '#0A5C36', fontStyle: 'italic' },
+  syncHint: { fontSize: 13, color: colors.primary, fontStyle: 'italic' },
   syncButton: {
     marginTop: 8,
-    backgroundColor: '#0A5C36',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  syncButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  syncButtonText: { color: colors.white, fontSize: 15, fontWeight: '700' },
   retryButton: {
     marginTop: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
@@ -363,23 +377,23 @@ const styles = StyleSheet.create({
   },
   statsSection: { gap: 10 },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: fontScale(17),
     fontWeight: '700',
-    color: '#0A5C36',
+    color: colors.primary,
     marginTop: 4,
   },
   machineRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  machineCode: { fontSize: 16, fontWeight: '700', color: '#0A5C36' },
-  machineDetail: { fontSize: 13, color: '#5D4037' },
+  machineCode: { fontSize: fontScale(16), fontWeight: '700', color: colors.primary },
+  machineDetail: { fontSize: 13, color: colors.neutral },
   machinePlate: { fontSize: 12, color: '#9ca3af' },
   noMachine: { fontSize: 14, color: '#8D6E63', fontStyle: 'italic' },
   logoutButton: {
-    backgroundColor: '#C62828',
-    borderRadius: 16,
-    height: 60,
+    backgroundColor: colors.danger,
+    borderRadius: LOGOUT_RADIUS,
+    height: LOGOUT_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
   },
-  logoutText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
+  logoutText: { color: colors.white, fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 });

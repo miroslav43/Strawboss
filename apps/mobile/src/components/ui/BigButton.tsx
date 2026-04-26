@@ -7,6 +7,7 @@ import {
   type TextStyle,
 } from 'react-native';
 import { colors } from '@strawboss/ui-tokens';
+import { scale, fontScale } from '@/utils/responsive';
 
 interface BigButtonProps {
   title: string;
@@ -70,16 +71,18 @@ export function BigButton({
   );
 }
 
+const BUTTON_HEIGHT = Math.max(56, scale(60));
+
 const styles = StyleSheet.create({
   container: {
-    height: 60,
+    height: BUTTON_HEIGHT,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
   },
   text: {
-    fontSize: 17,
+    fontSize: fontScale(17),
     fontWeight: '700',
     letterSpacing: 0.3,
   },
