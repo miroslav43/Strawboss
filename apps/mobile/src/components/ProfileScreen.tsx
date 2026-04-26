@@ -242,7 +242,7 @@ export function ProfileScreen() {
         {showStats && profile ? (
           <View style={styles.statsSection}>
             <Text style={styles.sectionTitle}>Starea mea</Text>
-            <OperatorStats operatorId={profile.id} />
+            <OperatorStats operatorId={profile.id} role={profile.role} />
           </View>
         ) : null}
 

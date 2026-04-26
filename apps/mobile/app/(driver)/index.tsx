@@ -16,6 +16,7 @@ import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
 import { useMyTasks } from '@/hooks/useMyTasks';
+import { useSync } from '@/hooks/useSync';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 
@@ -44,6 +45,7 @@ const STATUS_LABELS: Record<string, string> = {
 export default function DriverTripsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const { tasks, refetch: refetchTasks } = useMyTasks();
+  const { triggerSync } = useSync();
   const [trips, setTrips] = useState<LocalTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,7 +55,6 @@ export default function DriverTripsScreen() {
       const db = await getDatabase();
       const repo = new TripsRepo(db);
       const all = await repo.listActive();
-      // Filter to trips assigned to this driver
       const mine = userId ? all.filter((t) => t.driver_id === userId) : all;
       setTrips(mine);
     } finally {
@@ -62,11 +63,17 @@ export default function DriverTripsScreen() {
   }, [userId]);
 
   useEffect(() => {
-    void loadTrips();
-  }, [loadTrips]);
+    void (async () => {
+      await triggerSync();
+      await loadTrips();
+    })();
+  // triggerSync is stable (useCallback); loadTrips changes only when userId changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
+    await triggerSync();
     await Promise.all([loadTrips(), refetchTasks()]);
     setRefreshing(false);
   };
