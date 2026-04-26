@@ -17,6 +17,7 @@ import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { mobileApiClient } from '@/lib/api-client';
 import { getSupabaseClient } from '@/lib/auth';
+import { clearLocalData } from '@/lib/storage';
 import { useAuthStore } from '@/stores/auth-store';
 import { OperatorStats } from '@/components/features/stats/OperatorStats';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
@@ -66,6 +67,8 @@ export function ProfileScreen() {
   const handleLogout = async () => {
     const supabase = getSupabaseClient();
     await supabase.auth.signOut();
+    await clearLocalData();
+    queryClient.clear();
     clear();
   };
 

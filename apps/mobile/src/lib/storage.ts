@@ -57,6 +57,25 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 }
 
 /**
+ * Delete all user-specific rows from every local table.
+ * Called on logout so the next user starts with a clean slate.
+ */
+export async function clearLocalData(): Promise<void> {
+  const database = await getDatabase();
+  await database.execAsync(`
+    DELETE FROM trips;
+    DELETE FROM operations;
+    DELETE FROM bale_productions;
+    DELETE FROM fuel_logs;
+    DELETE FROM consumable_logs;
+    DELETE FROM bale_loads;
+    DELETE FROM task_assignments;
+    DELETE FROM sync_queue;
+    DELETE FROM notifications;
+  `);
+}
+
+/**
  * Close the database connection.
  * Used for cleanup/testing.
  */
