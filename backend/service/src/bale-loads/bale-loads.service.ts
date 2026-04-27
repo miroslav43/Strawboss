@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 
@@ -36,6 +36,13 @@ export class BaleLoadsService {
   }
 
   async create(dto: Record<string, unknown>) {
+    const tripRows = await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM trips WHERE id = ${dto.tripId} AND deleted_at IS NULL LIMIT 1`,
+    ) as unknown as { id: string }[];
+    if (!tripRows.length) {
+      throw new NotFoundException('Trip-ul nu a fost găsit sau a fost șters');
+    }
+
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO bale_loads (
         trip_id, parcel_id, loader_id, operator_id,

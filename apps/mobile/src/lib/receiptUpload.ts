@@ -52,7 +52,7 @@ export async function compressReceipt(sourceUri: string): Promise<CompressResult
  */
 export async function uploadReceipt(
   sourceUri: string,
-  kind: 'fuel' | 'consumable' = 'fuel',
+  kind: 'fuel' | 'consumable' | 'delivery' = 'fuel',
 ): Promise<UploadResponse> {
   const compressed = await compressReceipt(sourceUri);
 

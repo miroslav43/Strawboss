@@ -692,6 +692,12 @@ export class TripsService implements OnModuleInit {
     const trip = await this.findById(id);
     const from = trip.status as TripStatus;
 
+    if (!['planned', 'cancelled'].includes(from)) {
+      throw new BadRequestException(
+        `Tripul cu status "${from}" nu poate fi șters. Anulați-l mai întâi.`,
+      );
+    }
+
     await this.drizzleProvider.db.execute(
       sql`UPDATE task_assignments SET trip_id = NULL, updated_at = NOW() WHERE trip_id = ${id}`,
     );

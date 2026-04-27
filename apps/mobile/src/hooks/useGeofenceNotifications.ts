@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { addNotificationResponseListener, addNotificationListener } from '@/lib/notifications';
 import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
+import { useAuthStore } from '@/stores/auth-store';
 
 interface NotificationData {
   type?: string;
@@ -22,6 +23,13 @@ export interface GeofenceAlert {
 export function useGeofenceNotifications() {
   const [alertQueue, setAlertQueue] = useState<GeofenceAlert[]>([]);
   const activeAlert = alertQueue[0] ?? null;
+  const userId = useAuthStore((s) => s.userId);
+
+  useEffect(() => {
+    if (!userId) {
+      setAlertQueue([]);
+    }
+  }, [userId]);
 
   const dismissAlert = useCallback(() => {
     setAlertQueue(q => q.slice(1));

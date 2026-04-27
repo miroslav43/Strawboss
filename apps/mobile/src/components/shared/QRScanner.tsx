@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { colors } from '@strawboss/ui-tokens';
@@ -10,6 +10,7 @@ interface QRScannerProps {
 
 export function QRScanner({ onScan, instruction }: QRScannerProps) {
   const [scanned, setScanned] = useState(false);
+  const lastScanTime = useRef<number>(0);
 
   return (
     <View style={styles.container}>
@@ -20,6 +21,9 @@ export function QRScanner({ onScan, instruction }: QRScannerProps) {
           scanned
             ? undefined
             : ({ data }) => {
+                const now = Date.now();
+                if (now - lastScanTime.current < 1500) return;
+                lastScanTime.current = now;
                 setScanned(true);
                 onScan(data);
               }

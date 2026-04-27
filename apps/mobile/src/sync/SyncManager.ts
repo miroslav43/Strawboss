@@ -364,12 +364,12 @@ export class SyncManager {
   }
 
   /**
-   * Walk the pending sync_queue and, for any fuel_logs / consumable_logs
-   * mutation whose payload is missing `receipt_photo_url`, try to upload the
-   * locally-stored photo and patch both the local row and the queue payload.
+   * Walk the pending sync_queue and, for any fuel_logs / consumable_logs /
+   * delivery operations mutation whose photo is still a local file:// URI,
+   * try to upload the photo and patch the queue payload with the server URL.
    *
    * This is the recovery path for photos that failed to upload synchronously
-   * at save time (e.g. the operator was offline when they logged fuel).
+   * at save time (e.g. the operator was offline).
    */
   private async uploadPendingReceipts(): Promise<void> {
     const pending = await this.syncQueueRepo.dequeue(100);
@@ -378,7 +378,8 @@ export class SyncManager {
     for (const entry of pending) {
       if (
         entry.entity_type !== 'fuel_logs' &&
-        entry.entity_type !== 'consumable_logs'
+        entry.entity_type !== 'consumable_logs' &&
+        entry.entity_type !== 'operations'
       ) {
         continue;
       }
@@ -390,6 +391,25 @@ export class SyncManager {
         continue;
       }
 
+      // Delivery photo: operations with type='delivery' and a local photo_uri
+      if (entry.entity_type === 'operations') {
+        if (payload['type'] !== 'delivery') continue;
+        const localUri = payload['photo_uri'];
+        if (typeof localUri !== 'string' || !localUri.startsWith('file://')) continue;
+        try {
+          const uploaded = await uploadReceipt(localUri, 'delivery');
+          payload['photo_uri'] = uploaded.url;
+          await this.syncQueueRepo.updatePayload(entry.id, payload);
+        } catch (err) {
+          mobileLogger.info('Deferred delivery photo upload skipped, will retry next cycle', {
+            id: entry.entity_id,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+        continue;
+      }
+
+      // Receipt photos: fuel_logs / consumable_logs
       if (typeof payload['receipt_photo_url'] === 'string' && payload['receipt_photo_url']) {
         continue;
       }

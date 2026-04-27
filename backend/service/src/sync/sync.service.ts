@@ -301,9 +301,18 @@ export class SyncService {
         ownerFilter = sql` AND operator_id = ${_callerId}::uuid`;
       }
 
+      // Tables that carry a deleted_at column and must be filtered.
+      const TABLES_WITH_SOFT_DELETE = new Set([
+        'trips', 'bale_loads', 'bale_productions',
+        'fuel_logs', 'consumable_logs', 'task_assignments',
+      ]);
+      const softDeleteFilter = TABLES_WITH_SOFT_DELETE.has(table)
+        ? sql` AND deleted_at IS NULL`
+        : sql``;
+
       const result = await this.drizzleProvider.db.execute(
         sql`SELECT * FROM ${sql.raw(`"${table}"`)}
-            WHERE sync_version > ${sinceVersion} ${ownerFilter}
+            WHERE sync_version > ${sinceVersion} ${ownerFilter}${softDeleteFilter}
             ORDER BY sync_version ASC
             LIMIT 1000`,
       );

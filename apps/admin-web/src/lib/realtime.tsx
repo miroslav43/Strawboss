@@ -15,8 +15,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   const subscribe = useCallback(() => {
     const channel = supabase.channel('db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, (payload) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+        const recordId =
+          (payload.new as { id?: string } | undefined)?.id ??
+          (payload.old as { id?: string } | undefined)?.id;
+        if (recordId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(recordId) });
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task_assignments' }, () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
