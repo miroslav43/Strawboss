@@ -30,6 +30,7 @@ export function useGenerateCmr(client: ApiClient) {
       client.post<Document>(`/api/v1/trips/${tripId}/generate-cmr`),
     onSuccess: (_data, tripId) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.documents.byTrip(tripId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
     },
   });
 }

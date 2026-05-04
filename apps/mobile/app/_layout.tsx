@@ -6,6 +6,7 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import {
+  Alert,
   AppState,
   Platform,
   View,
@@ -158,6 +159,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
 
     let cancelled = false;
+    let profileFetchFailed = false;
     const t0 = Date.now();
     const profileTimeoutMs = 20_000;
     // #region agent log
@@ -202,8 +204,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         );
         // #endregion
       })
-      .catch((err) => {
+      .catch(async (err) => {
         if (cancelled) return;
+        profileFetchFailed = true;
         // #region agent log
         debugIngest(
           'app/_layout.tsx:AuthGate',
@@ -215,10 +218,22 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           'L3'
         );
         // #endregion
+        if (__DEV__) console.warn('[StrawBoss] Profile fetch failed', err);
+        Alert.alert(
+          'Eroare de conectare',
+          'Nu s-a putut încărca profilul. Verificați conexiunea și reconectați-vă.',
+          [{ text: 'OK' }]
+        );
+        const supabase = getSupabaseClient();
+        await supabase.auth.signOut();
+        if (!cancelled) {
+          setIsAuthenticated(false);
+          setProfileReady(false);
+        }
       })
       .finally(() => {
         clearWatchdog();
-        if (cancelled) return;
+        if (cancelled || profileFetchFailed) return;
         // #region agent log
         debugIngest(
           'app/_layout.tsx:AuthGate',
@@ -271,6 +286,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
     registerForPushNotifications()
       .then((token) => {
+        if (__DEV__) {
+          if (token) console.info('[StrawBoss] DEV: push token registered:', token.slice(0, 40) + '...');
+          else console.info('[StrawBoss] DEV: no push token — local notifications only (run `npx eas init` to enable push)');
+        }
         if (token) {
           mobileApiClient
             .post('/api/v1/notifications/register-token', {
@@ -293,13 +312,20 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     })();
   }, [isAuthenticated]);
 
-  // Android: after login + assigned machine, request location (fg+bg) and start FGS + periodic sync
+  // All authenticated users: register periodic background sync (WorkManager / BGTaskScheduler).
   useEffect(() => {
     if (!isAuthenticated || !profileReady || !role) return;
+    void registerBackgroundSyncTask();
+    return () => {
+      void unregisterBackgroundSyncTask();
+    };
+  }, [isAuthenticated, profileReady, role]);
 
+  // Android only: GPS foreground service for users with an assigned machine.
+  useEffect(() => {
+    if (!isAuthenticated || !profileReady || !role) return;
     if (!assignedMachineId || Platform.OS !== 'android') {
       void stopBackgroundLocationTracking();
-      void unregisterBackgroundSyncTask();
       return;
     }
 
@@ -312,8 +338,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       } catch {
         /* Expo Go / denied FGS — best effort */
       }
-      if (cancelled) return;
-      await registerBackgroundSyncTask();
     })();
 
     return () => {

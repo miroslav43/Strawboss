@@ -20,8 +20,11 @@ export function useCreateFuelLog(client: ApiClient) {
   return useMutation({
     mutationFn: (data: Partial<FuelLog>) =>
       client.post<FuelLog>('/api/v1/fuel-logs', data),
-    onSuccess: () => {
+    onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.fuelLogs.all });
+      if (data.machineId) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.fuelLogs.byMachine(data.machineId) });
+      }
     },
   });
 }

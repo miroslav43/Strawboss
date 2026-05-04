@@ -86,6 +86,13 @@ export class TaskAssignmentsRepo {
     );
   }
 
+  async listByDate(date: string): Promise<LocalTaskAssignment[]> {
+    return this.db.getAllAsync<LocalTaskAssignment>(
+      `SELECT * FROM task_assignments WHERE assignment_date = ? ORDER BY sequence_order ASC`,
+      [date],
+    );
+  }
+
   async getMaxServerVersion(): Promise<number> {
     const result = await this.db.getFirstAsync<{ max_ver: number }>(
       `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM task_assignments`

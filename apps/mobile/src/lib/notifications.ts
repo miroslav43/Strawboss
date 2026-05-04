@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 /**
@@ -56,10 +57,28 @@ export async function registerForPushNotifications(): Promise<string | null> {
   // In dev / self-hosted builds without google-services.json the call throws with
   // "Default FirebaseApp is not initialized". Treat that as a recoverable no-op
   // so the rest of the app (local notifications, channels) keeps working.
+  // The projectId is required for Expo's managed push service; falls back to slug
+  // when not explicitly configured via EAS.
+  const projectId: string | undefined =
+    process.env.EXPO_PUBLIC_EAS_PROJECT_ID ??
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId ??
+    undefined;
+
+  // In Expo Go dev builds without an EAS projectId, getExpoPushTokenAsync throws
+  // ("Default FirebaseApp is not initialized"). Local notifications still work fine.
+  if (__DEV__ && !projectId) {
+    console.info('[StrawBoss] DEV: no EAS projectId — skipping push token (local notifications active)');
+    return null;
+  }
+
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined,
+    );
     return tokenData.data;
-  } catch {
+  } catch (err) {
+    if (__DEV__) console.warn('[StrawBoss] DEV: getExpoPushTokenAsync failed:', err instanceof Error ? err.message : String(err));
     return null;
   }
 }
@@ -69,7 +88,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
  */
 export function addNotificationListener(
   handler: (notification: Notifications.Notification) => void,
-): Notifications.Subscription {
+): ReturnType<typeof Notifications.addNotificationReceivedListener> {
   return Notifications.addNotificationReceivedListener(handler);
 }
 
@@ -78,6 +97,6 @@ export function addNotificationListener(
  */
 export function addNotificationResponseListener(
   handler: (response: Notifications.NotificationResponse) => void,
-): Notifications.Subscription {
+): ReturnType<typeof Notifications.addNotificationResponseReceivedListener> {
   return Notifications.addNotificationResponseReceivedListener(handler);
 }

@@ -15,6 +15,11 @@ function notifyListeners() {
   for (const fn of listeners) fn();
 }
 
+/** Call after directly inserting notifications into SQLite to refresh all subscribers (e.g. bell icon). */
+export function broadcastNotificationRefresh(): void {
+  notifyListeners();
+}
+
 interface PushData {
   type?: string;
   assignmentId?: string;

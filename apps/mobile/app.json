@@ -48,21 +48,36 @@
         "backgroundColor": "#F3DED8"
       },
       "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
-        "POST_NOTIFICATIONS",
-        "WAKE_LOCK"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.WAKE_LOCK",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "ios": {
+      "bundleIdentifier": "com.strawboss.mobile",
       "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch",
+          "location",
+          "processing"
+        ],
         "NSLocationWhenInUseUsageDescription": "StrawBoss uses your location to report your position to the farm manager.",
         "NSLocationAlwaysUsageDescription": "StrawBoss uses background location to track your position while working in the field.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "StrawBoss uses your location to track field operations."
       }
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4e72ed84-e37f-48d8-bfe8-38c22787d279"
+      }
+    },
+    "owner": "miroslav43"
   }
 }

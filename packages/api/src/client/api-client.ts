@@ -15,6 +15,24 @@ export interface ApiClientConfig {
 export class ApiClient {
   constructor(private config: ApiClientConfig) {}
 
+  private async handleErrorResponse(
+    res: Response,
+    method: string,
+    path: string,
+    fallbackMessage: string,
+  ): Promise<never> {
+    const error = await res.json().catch(() => ({ message: res.statusText }));
+    const message = (error as { message?: string }).message ?? fallbackMessage;
+    this.config.onApiError?.({
+      method,
+      path,
+      status: res.status,
+      message,
+      data: error,
+    });
+    throw new ApiError(res.status, message, error);
+  }
+
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = await this.config.getToken();
     const hasBody = body !== undefined;
@@ -37,32 +55,14 @@ export class ApiClient {
         body: hasBody ? JSON.stringify(body) : undefined,
       });
       if (!retryRes.ok) {
-        const error = await retryRes.json().catch(() => ({ message: retryRes.statusText }));
-        const message = error.message ?? 'Request failed';
-        this.config.onApiError?.({
-          method,
-          path,
-          status: retryRes.status,
-          message,
-          data: error,
-        });
-        throw new ApiError(retryRes.status, message, error);
+        return this.handleErrorResponse(retryRes, method, path, 'Request failed');
       }
       if (retryRes.status === 204) return undefined as T;
       return retryRes.json() as Promise<T>;
     }
 
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ message: res.statusText }));
-      const message = error.message ?? 'Request failed';
-      this.config.onApiError?.({
-        method,
-        path,
-        status: res.status,
-        message,
-        data: error,
-      });
-      throw new ApiError(res.status, message, error);
+      return this.handleErrorResponse(res, method, path, 'Request failed');
     }
     // Handle 204 No Content
     if (res.status === 204) return undefined as T;
@@ -88,22 +88,31 @@ export class ApiClient {
   /** Upload a file via multipart form data. */
   async upload<T>(path: string, formData: FormData): Promise<T> {
     const token = await this.config.getToken();
+    const buildUploadHeaders = (t: string | null) => ({
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+    });
     const res = await fetch(`${this.config.baseUrl}${path}`, {
       method: 'POST',
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: buildUploadHeaders(token),
       body: formData,
     });
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ message: res.statusText }));
-      const message = error.message ?? 'Upload failed';
-      this.config.onApiError?.({
+
+    // On 401, refresh the token and retry once
+    if (res.status === 401) {
+      const newToken = await this.config.getToken();
+      const retryRes = await fetch(`${this.config.baseUrl}${path}`, {
         method: 'POST',
-        path,
-        status: res.status,
-        message,
-        data: error,
+        headers: buildUploadHeaders(newToken),
+        body: formData,
       });
-      throw new ApiError(res.status, message, error);
+      if (!retryRes.ok) {
+        return this.handleErrorResponse(retryRes, 'POST', path, 'Upload failed');
+      }
+      return retryRes.json() as Promise<T>;
+    }
+
+    if (!res.ok) {
+      return this.handleErrorResponse(res, 'POST', path, 'Upload failed');
     }
     return res.json() as Promise<T>;
   }

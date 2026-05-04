@@ -1,8 +1,8 @@
 /**
- * Periodic SQLite → server sync via expo-background-task (WorkManager on Android).
+ * Periodic SQLite → server sync via expo-background-task.
+ * Uses WorkManager on Android and BGTaskScheduler on iOS.
  * Task must be defined at module load so headless JS startup can resolve it.
  */
-import { Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import {
   registerTaskAsync,
@@ -26,9 +26,8 @@ TaskManager.defineTask(STRAWBOSS_BACKGROUND_SYNC_TASK, async () => {
   }
 });
 
-/** Register WorkManager / BGTask interval (minimum 15 minutes on Android). */
+/** Register WorkManager (Android) / BGTaskScheduler (iOS) interval — minimum 15 minutes. */
 export async function registerBackgroundSyncTask(): Promise<void> {
-  if (Platform.OS !== 'android') return;
   try {
     await registerTaskAsync(STRAWBOSS_BACKGROUND_SYNC_TASK, {
       minimumInterval: 15,
@@ -42,7 +41,6 @@ export async function registerBackgroundSyncTask(): Promise<void> {
 }
 
 export async function unregisterBackgroundSyncTask(): Promise<void> {
-  if (Platform.OS !== 'android') return;
   try {
     await unregisterTaskAsync(STRAWBOSS_BACKGROUND_SYNC_TASK);
     mobileLogger.flow('Background sync task unregistered');
