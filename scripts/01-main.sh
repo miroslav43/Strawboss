@@ -16,6 +16,10 @@ cmd_setup() {
   pnpm install
   success "Dependencies installed."
 
+  # Bind-mounted upload dirs must exist on the host before `docker compose up`
+  # so Docker does not create them as root and break the non-root container user.
+  mkdir -p "$STRAWBOSS_ROOT/uploads/avatars" "$STRAWBOSS_ROOT/uploads/receipts"
+
   _build_packages
 
   if [ -f "$STRAWBOSS_ROOT/.env" ]; then

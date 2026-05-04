@@ -42,3 +42,20 @@ export const resolveDisputeSchema = z.object({
   resolutionNotes: z.string().min(1),
   resolvedTo: z.enum(['delivered', 'completed']),
 });
+
+/**
+ * Atomic loader "register load" payload — finds or creates the trip for
+ * (truck, today), inserts a `bale_loads` row, and transitions the trip to
+ * `loaded` in a single transaction.
+ *
+ * `idempotencyKey` is the client-side bale_load UUID so retries dedupe.
+ */
+export const registerLoadSchema = z.object({
+  truckId: uuidSchema,
+  loaderMachineId: uuidSchema,
+  parcelId: uuidSchema,
+  baleCount: z.number().int().positive(),
+  gpsLat: z.number().min(-90).max(90).optional(),
+  gpsLon: z.number().min(-180).max(180).optional(),
+  idempotencyKey: uuidSchema,
+});

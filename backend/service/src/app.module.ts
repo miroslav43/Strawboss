@@ -35,6 +35,15 @@ import { GeofenceModule } from './geofence/geofence.module';
 import { MobileLogsModule } from './mobile-logs/mobile-logs.module';
 import { HealthModule } from './health/health.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { DevModule } from './dev/dev.module';
+
+// Dev-only mock simulator endpoints — gated behind NODE_ENV so production
+// stays clean. STRAWBOSS_ENABLE_DEV=1 forces them on (e.g. for staging
+// where you want to keep the toy endpoints around).
+const devModules =
+  process.env.NODE_ENV !== 'production' || process.env.STRAWBOSS_ENABLE_DEV === '1'
+    ? [DevModule]
+    : [];
 
 @Module({
   imports: [
@@ -69,6 +78,7 @@ import { UploadsModule } from './uploads/uploads.module';
     GeofenceModule,
     MobileLogsModule,
     UploadsModule,
+    ...devModules,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

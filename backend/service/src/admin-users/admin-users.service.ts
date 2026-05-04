@@ -231,6 +231,22 @@ export class AdminUsersService {
     return this.getById(id);
   }
 
+  /**
+   * Persist a new avatar URL for the target user. Used by the admin upload
+   * endpoint after `UploadsService.saveAvatar` has written the file to disk.
+   */
+  async setUserAvatar(id: string, avatarUrl: string): Promise<User> {
+    // Validate the user exists (and isn't soft-deleted) before we touch the row.
+    await this.getById(id);
+
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE users SET avatar_url = ${avatarUrl}, updated_at = NOW()
+      WHERE id = ${id}::uuid AND deleted_at IS NULL
+    `);
+
+    return this.getById(id);
+  }
+
   async deactivateUser(id: string): Promise<void> {
     const result = await this.drizzleProvider.db.execute(sql`
       UPDATE users SET is_active = false, deleted_at = now()

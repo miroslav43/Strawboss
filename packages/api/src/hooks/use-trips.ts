@@ -11,6 +11,8 @@ import type {
   ConfirmDeliveryDto,
   CompleteDto,
   CancelDto,
+  RegisterLoadDto,
+  RegisterLoadResult,
 } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
@@ -135,6 +137,28 @@ export function useCancelTrip(client: ApiClient) {
     onSuccess: (_data, { tripId }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+    },
+  });
+}
+
+/**
+ * Atomic loader "register load" — single mutation that finds/creates the trip
+ * for (truck, today), inserts a `bale_loads` row, and transitions the trip to
+ * `loaded`. Idempotent on `idempotencyKey` (the client-side bale_load UUID).
+ */
+export function useRegisterLoad(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: RegisterLoadDto) =>
+      client.post<RegisterLoadResult>('/api/v1/trips/register-load', data),
+    onSuccess: (result) => {
+      const tripId = (result?.trip?.id as string | undefined) ?? undefined;
+      if (tripId) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.baleLoads.byTrip(tripId) });
+      }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.baleLoads.all });
     },
   });
 }

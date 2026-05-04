@@ -114,6 +114,7 @@ export {
   cancelSchema,
   disputeSchema,
   resolveDisputeSchema,
+  registerLoadSchema,
 } from "./dtos/trip-transition.schema.js";
 
 export {

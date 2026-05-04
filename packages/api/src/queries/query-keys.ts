@@ -54,6 +54,8 @@ export const queryKeys = {
     machines: () => ['location', 'machines'] as const,
     route: (machineId: string, from: string, to: string) => ['location', 'route', machineId, from, to] as const,
     related: () => ['location', 'related-machines'] as const,
+    trucksAtLoader: (loaderMachineId: string) =>
+      ['location', 'trucks-at-loader', loaderMachineId] as const,
   },
   auth: {
     session: () => ['auth', 'session'] as const,

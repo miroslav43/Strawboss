@@ -66,3 +66,19 @@ export function useDeactivateUser(client: ApiClient) {
     },
   });
 }
+
+/**
+ * Admin-only: upload a profile picture for another user. Used by the admin
+ * Accounts edit modal. Expects a `FormData` with a single `file` field.
+ */
+export function useUploadUserAvatar(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
+      client.upload<User>(`/api/v1/admin/users/${id}/avatar`, formData),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ADMIN_USERS_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+    },
+  });
+}

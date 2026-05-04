@@ -85,6 +85,25 @@ export class ApiClient {
     return this.request<T>('DELETE', path);
   }
 
+  /**
+   * Turn a server-relative URL (e.g. `/api/v1/uploads/avatars/abc.webp?v=1`)
+   * into something an `<img>` or React Native `<Image>` can actually load.
+   *
+   * - Absolute URLs are returned unchanged.
+   * - When `baseUrl` is empty (admin-web dev, which relies on same-origin
+   *   Next.js rewrites), the relative URL is returned as-is.
+   * - Otherwise the `baseUrl` is prepended.
+   *
+   * Returns `null` for nullish/blank input so callers can pass
+   * `user.avatarUrl` (a nullable column) directly.
+   */
+  resolveAssetUrl(relative: string | null | undefined): string | null {
+    if (!relative) return null;
+    if (/^https?:\/\//i.test(relative)) return relative;
+    if (!this.config.baseUrl) return relative;
+    return `${this.config.baseUrl}${relative}`;
+  }
+
   /** Upload a file via multipart form data. */
   async upload<T>(path: string, formData: FormData): Promise<T> {
     const token = await this.config.getToken();

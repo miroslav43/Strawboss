@@ -102,6 +102,7 @@ export function DepositGeofenceModal({
         contactPhone: contactPhone.trim() || null,
         contactEmail: emailTrim ? emailTrim : null,
         boundary: JSON.stringify(geometry),
+        isDefault: false,
       },
       {
         onSuccess: onClose,

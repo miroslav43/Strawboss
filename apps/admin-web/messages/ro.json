@@ -552,6 +552,7 @@
       "contactEmail": "Email contact",
       "contactEmailPlaceholder": "email@exemplu.com",
       "activeDeposit": "Depozit activ",
+      "defaultDeposit": "Depozit implicit (folosit când nu se găsește alt depozit)",
       "createError": "Eroare la creare. Încearcă din nou.",
       "updateError": "Eroare la actualizare. Încearcă din nou."
     },

@@ -7,6 +7,7 @@ export interface LocalTrip {
   trip_number: string | null;
   status: string;
   source_parcel_id: string | null;
+  destination_id: string | null;
   destination_name: string | null;
   destination_address: string | null;
   truck_id: string | null;
@@ -25,6 +26,8 @@ export interface LocalTrip {
   arrival_at: string | null;
   delivered_at: string | null;
   completed_at: string | null;
+  /** Local-only: when the driver tapped the trip card to dismiss the NOU badge. */
+  acknowledged_at: string | null;
   created_at: string;
   updated_at: string;
   server_version: number;
@@ -79,6 +82,14 @@ export class TripsRepo {
     await this.db.runAsync(
       `UPDATE trips SET status = ?, updated_at = datetime('now') WHERE id = ?`,
       [status, id]
+    );
+  }
+
+  /** Mark a trip as acknowledged so the NOU badge disappears locally. */
+  async acknowledge(id: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE trips SET acknowledged_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      [id]
     );
   }
 

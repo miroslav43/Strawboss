@@ -24,7 +24,7 @@ export function useUpdateProfileLocale(client: ApiClient) {
   });
 }
 
-/** Update profile fields: fullName, phone, locale, notificationPrefs. */
+/** Update profile fields: fullName, phone, locale, notificationPrefs, avatarUrl. */
 export function useUpdateProfile(client: ApiClient) {
   const qc = useQueryClient();
   return useMutation({
@@ -33,6 +33,7 @@ export function useUpdateProfile(client: ApiClient) {
       phone?: string | null;
       locale?: 'en' | 'ro';
       notificationPrefs?: Record<string, boolean>;
+      avatarUrl?: string | null;
     }) => client.patch<User>('/api/v1/profile', dto),
     onSuccess: (user) => {
       qc.setQueryData(profileKey, user);
@@ -45,5 +46,22 @@ export function useChangePassword(client: ApiClient) {
   return useMutation({
     mutationFn: (dto: { currentPassword: string; newPassword: string }) =>
       client.post<{ ok: boolean }>('/api/v1/profile/change-password', dto),
+  });
+}
+
+/**
+ * Upload the current user's profile picture. Expects a `FormData` with a
+ * single `file` field (mobile: RN-style `{ uri, name, type }`; web: a `File`).
+ * Server re-encodes to WebP 512×512 and returns the updated user.
+ */
+export function useUploadAvatar(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      client.upload<User>('/api/v1/profile/avatar', formData),
+    onSuccess: (user) => {
+      qc.setQueryData(profileKey, user);
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
   });
 }

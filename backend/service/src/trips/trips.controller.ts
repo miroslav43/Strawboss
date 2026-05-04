@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 import { TripsService } from './trips.service';
 import { Roles } from '../auth/roles.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
   tripCreateDtoSchema,
@@ -22,6 +24,7 @@ import {
   cancelSchema,
   disputeSchema,
   resolveDisputeSchema,
+  registerLoadSchema,
 } from '@strawboss/validation';
 import type {
   UserRole,
@@ -36,6 +39,7 @@ import type {
   CancelDto,
   DisputeDto,
   ResolveDisputeDto,
+  RegisterLoadDto,
 } from '@strawboss/types';
 
 @Controller('trips')
@@ -80,6 +84,20 @@ export class TripsController {
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   softDelete(@Param('id') id: string) {
     return this.tripsService.softDelete(id);
+  }
+
+  /**
+   * Atomic loader entry point ("Camion plin" / register-load):
+   * find or create the trip for (truck, today), insert a bale_load, and
+   * transition the trip to `loaded`. Idempotent on `idempotencyKey`.
+   */
+  @Post('register-load')
+  @Roles('admin' as UserRole, 'loader_operator' as UserRole)
+  registerLoad(
+    @Body(new ZodValidationPipe(registerLoadSchema)) dto: RegisterLoadDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.tripsService.registerLoad(dto, user.id);
   }
 
   @Post(':id/start-loading')

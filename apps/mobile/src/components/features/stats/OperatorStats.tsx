@@ -18,8 +18,13 @@ interface TodayStats {
   totalBalesLoaded: number | undefined;
 }
 
+/**
+ * Array-hierarchical key so `invalidateQueries({ queryKey: ['operator-stats'] })`
+ * in the sync post-pull hook already invalidates every operator's local stats
+ * as a side-effect, without us wiring up per-user invalidation.
+ */
 export const operatorStatsQueryKey = (operatorId: string) =>
-  ['operator-stats-local', operatorId] as const;
+  ['operator-stats', 'local', operatorId] as const;
 
 async function loadTodayStats(operatorId: string, role: string): Promise<TodayStats> {
   const db = await getDatabase();
@@ -51,11 +56,14 @@ async function loadTodayStats(operatorId: string, role: string): Promise<TodaySt
   }
 
   if (role === 'loader_operator') {
+    // Attribute bales to THIS user's individual loads rather than to the
+    // trip-level `loader_operator_id`: in shared trips two loaders may each
+    // register partial loads, and we want each to see only their own totals.
     const loadsRow = await db.getFirstAsync<{ total: number | null }>(
       `SELECT COALESCE(SUM(bale_count), 0) AS total
-         FROM trips
-        WHERE loader_operator_id = ?
-          AND substr(loading_completed_at, 1, 10) = ?`,
+         FROM bale_loads
+        WHERE operator_id = ?
+          AND substr(loaded_at, 1, 10) = ?`,
       [operatorId, today],
     );
     return {

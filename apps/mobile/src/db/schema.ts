@@ -20,6 +20,7 @@ export const TABLES = {
     trip_number TEXT,
     status TEXT NOT NULL DEFAULT 'planned',
     source_parcel_id TEXT,
+    destination_id TEXT,
     destination_name TEXT,
     destination_address TEXT,
     truck_id TEXT,
@@ -38,6 +39,7 @@ export const TABLES = {
     arrival_at TEXT,
     delivered_at TEXT,
     completed_at TEXT,
+    acknowledged_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     server_version INTEGER DEFAULT 0

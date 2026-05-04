@@ -44,8 +44,12 @@ function resolveTypeAndCategory(pushType: string): {
       return { type: MobileNotificationType.assignment_created, category: MobileNotificationCategory.task, severity: MobileNotificationSeverity.info };
     case 'trip_loaded':
       return { type: MobileNotificationType.trip_loaded, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.info };
+    case 'trip_departed':
+      return { type: MobileNotificationType.trip_departed, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.info };
     case 'trip_arrived':
       return { type: MobileNotificationType.trip_arrived, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.info };
+    case 'truck_arrived_at_loader':
+      return { type: MobileNotificationType.truck_arrived_at_loader, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.info };
     case 'trip_completed':
       return { type: MobileNotificationType.trip_completed, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.success };
     case 'trip_disputed':

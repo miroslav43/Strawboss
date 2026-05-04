@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import { TaskAssignmentsService } from './task-assignments.service';
 import { Roles } from '../auth/roles.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
   createTaskAssignmentSchema,
@@ -85,6 +87,22 @@ export class TaskAssignmentsController {
     dto: { status: string },
   ) {
     return this.taskAssignmentsService.updateStatus(id, dto.status);
+  }
+
+  /**
+   * Operator-friendly: any operator (loader/baler/driver) can mark
+   * THEIR OWN assignment as `in_progress`. Used by the loader app's
+   * "Începe lucru pe parcela X" prompt.
+   */
+  @Post(':id/start')
+  @Roles(
+    'admin' as UserRole,
+    'loader_operator' as UserRole,
+    'baler_operator' as UserRole,
+    'driver' as UserRole,
+  )
+  startByOperator(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.taskAssignmentsService.startByOperator(id, user.id);
   }
 
   @Patch(':id')

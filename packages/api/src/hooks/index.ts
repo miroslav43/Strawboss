@@ -11,7 +11,11 @@ export {
   useCompleteTrip,
   useCancelTrip,
   useDeleteTrip,
+  useRegisterLoad,
 } from './use-trips.js';
+
+export { useTrucksAtLoader } from './use-trucks-at-loader.js';
+export type { TruckAtLoader } from './use-trucks-at-loader.js';
 
 export {
   useParcels,
@@ -98,12 +102,19 @@ export {
   useCreateUser,
   useUpdateUser,
   useDeactivateUser,
+  useUploadUserAvatar,
 } from './use-admin-users.js';
 export type { CreateUserPayload, UpdateUserPayload } from './use-admin-users.js';
 
 export { useMachineLocations } from './use-machine-locations.js';
 export { useRouteHistory } from './use-route-history.js';
-export { useProfile, useUpdateProfileLocale, useUpdateProfile, useChangePassword } from './use-profile.js';
+export {
+  useProfile,
+  useUpdateProfileLocale,
+  useUpdateProfile,
+  useChangePassword,
+  useUploadAvatar,
+} from './use-profile.js';
 
 export {
   useBaleProductions,

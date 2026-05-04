@@ -16,6 +16,7 @@ export const deliveryDestinationSchema = z
     contactEmail: z.string().email().nullable(),
     boundary: z.string().nullable(),
     isActive: z.boolean(),
+    isDefault: z.boolean(),
   })
   .merge(timestampsSchema)
   .merge(softDeleteSchema);
@@ -29,6 +30,7 @@ export const createDeliveryDestinationSchema = z.object({
   contactPhone: z.string().nullable().optional(),
   contactEmail: z.string().email().nullable().optional(),
   boundary: z.string().nullable().optional(),
+  isDefault: z.boolean().optional(),
 });
 
 export const updateDeliveryDestinationSchema = z
@@ -42,5 +44,6 @@ export const updateDeliveryDestinationSchema = z
     contactEmail: z.string().email().nullable(),
     boundary: z.string().nullable(),
     isActive: z.boolean(),
+    isDefault: z.boolean(),
   })
   .partial();

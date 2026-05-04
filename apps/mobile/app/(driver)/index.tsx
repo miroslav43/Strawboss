@@ -78,7 +78,21 @@ export default function DriverTripsScreen() {
     setRefreshing(false);
   };
 
-  const handleTripPress = (trip: LocalTrip) => {
+  const handleTripPress = async (trip: LocalTrip) => {
+    if (!trip.acknowledged_at) {
+      try {
+        const db = await getDatabase();
+        const repo = new TripsRepo(db);
+        await repo.acknowledge(trip.id);
+        setTrips((prev) =>
+          prev.map((t) =>
+            t.id === trip.id ? { ...t, acknowledged_at: new Date().toISOString() } : t,
+          ),
+        );
+      } catch {
+        // Best-effort — proceed to nav even if local update fails.
+      }
+    }
     if (trip.status === 'arrived' || trip.status === 'delivering') {
       router.push(`/driver-ops/delivery-flow?tripId=${trip.id}`);
     } else {
@@ -111,33 +125,46 @@ export default function DriverTripsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} onPress={() => handleTripPress(item)}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.tripNumber}>{item.trip_number ?? 'Cursă'}</Text>
-                <View style={[styles.badge, { backgroundColor: STATUS_COLORS[item.status] ?? '#5D4037' }]}>
-                  <Text style={styles.badgeText}>
-                    {STATUS_LABELS[item.status] ?? item.status}
-                  </Text>
+          renderItem={({ item }) => {
+            const isFresh = item.status === 'loaded' && !item.acknowledged_at;
+            return (
+              <TouchableOpacity
+                style={[styles.card, isFresh && styles.cardFresh]}
+                onPress={() => void handleTripPress(item)}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardHeaderLeft}>
+                    {isFresh && (
+                      <View style={styles.newBadge}>
+                        <Text style={styles.newBadgeText}>NOU</Text>
+                      </View>
+                    )}
+                    <Text style={styles.tripNumber}>{item.trip_number ?? 'Cursă'}</Text>
+                  </View>
+                  <View style={[styles.badge, { backgroundColor: STATUS_COLORS[item.status] ?? '#5D4037' }]}>
+                    <Text style={styles.badgeText}>
+                      {STATUS_LABELS[item.status] ?? item.status}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              {item.destination_name ? (
-                <View style={styles.inlineRow}>
-                  <MaterialCommunityIcons name="map-marker" size={14} color="#5D4037" />
-                  <Text style={styles.destination}>{item.destination_name}</Text>
+                {item.destination_name ? (
+                  <View style={styles.inlineRow}>
+                    <MaterialCommunityIcons name="map-marker" size={14} color="#5D4037" />
+                    <Text style={styles.destination}>{item.destination_name}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.meta}>
+                  <View style={styles.inlineRow}>
+                    <MaterialCommunityIcons name="grain" size={13} color="#8D6E63" />
+                    <Text style={styles.metaText}>{item.bale_count} baloți</Text>
+                  </View>
+                  {item.status === 'arrived' && (
+                    <Text style={styles.deliveryHint}>Apasă pentru livrare</Text>
+                  )}
                 </View>
-              ) : null}
-              <View style={styles.meta}>
-                <View style={styles.inlineRow}>
-                  <MaterialCommunityIcons name="grain" size={13} color="#8D6E63" />
-                  <Text style={styles.metaText}>{item.bale_count} baloți</Text>
-                </View>
-                {item.status === 'arrived' && (
-                  <Text style={styles.deliveryHint}>Apasă pentru livrare</Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          )}
+              </TouchableOpacity>
+            );
+          }}
           ListEmptyComponent={
             <View style={styles.centered}>
               <Text style={styles.emptyText}>Nicio cursă activă.</Text>
@@ -184,7 +211,19 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  cardFresh: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#0A5C36',
+  },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  newBadge: {
+    backgroundColor: '#FBBF24',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: { color: '#000', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   tripNumber: { fontSize: 16, fontWeight: '600', color: '#000' },
   badge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   badgeText: { color: '#FFF', fontSize: 12, fontWeight: '600' },

@@ -150,6 +150,86 @@ export class LocationService {
   }
 
   /**
+   * Return trucks currently within proximity of the given loader machine.
+   * Used by the loader app to pick which truck to load without manual QR scanning.
+   *
+   * Match criteria:
+   *   - machine_type = 'truck'
+   *   - both machines have at least one GPS report in the last `windowMinutes`
+   *   - latest truck position is within `radiusM` meters of the latest loader position
+   */
+  async getTrucksAtLoader(
+    loaderMachineId: string,
+    options: { radiusM?: number; windowMinutes?: number } = {},
+  ): Promise<Array<{
+    id: string;
+    registrationPlate: string | null;
+    internalCode: string | null;
+    driverName: string | null;
+    distanceM: number;
+    lastSeenAt: string;
+    lat: number;
+    lon: number;
+  }>> {
+    const radiusM = options.radiusM ?? 75;
+    const windowMinutes = options.windowMinutes ?? 5;
+
+    const result = await this.drizzleProvider.db.execute(sql`
+      WITH loader_pos AS (
+        SELECT coords, recorded_at
+        FROM machine_location_events
+        WHERE machine_id = ${loaderMachineId}::uuid
+          AND recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
+        ORDER BY recorded_at DESC
+        LIMIT 1
+      ),
+      latest_truck_pos AS (
+        SELECT DISTINCT ON (mle.machine_id)
+          mle.machine_id,
+          mle.coords,
+          mle.lat,
+          mle.lon,
+          mle.recorded_at
+        FROM machine_location_events mle
+        JOIN machines m ON m.id = mle.machine_id
+        WHERE m.machine_type = 'truck'
+          AND m.deleted_at IS NULL
+          AND mle.recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
+        ORDER BY mle.machine_id, mle.recorded_at DESC
+      )
+      SELECT
+        m.id                                                           AS id,
+        m.registration_plate                                           AS "registrationPlate",
+        m.internal_code                                                AS "internalCode",
+        u.full_name                                                    AS "driverName",
+        ROUND(ST_Distance(ltp.coords::geography, lp.coords::geography)::numeric, 1)::float AS "distanceM",
+        ltp.recorded_at                                                AS "lastSeenAt",
+        ltp.lat::float                                                 AS lat,
+        ltp.lon::float                                                 AS lon
+      FROM latest_truck_pos ltp
+      JOIN loader_pos lp        ON TRUE
+      JOIN machines m           ON m.id = ltp.machine_id
+      LEFT JOIN users u         ON u.assigned_machine_id = m.id
+                                AND u.role = 'driver'::user_role
+                                AND u.deleted_at IS NULL
+      WHERE ST_DWithin(ltp.coords::geography, lp.coords::geography, ${radiusM})
+      ORDER BY "distanceM" ASC
+      LIMIT 50
+    `);
+
+    return result as unknown as Array<{
+      id: string;
+      registrationPlate: string | null;
+      internalCode: string | null;
+      driverName: string | null;
+      distanceM: number;
+      lastSeenAt: string;
+      lat: number;
+      lon: number;
+    }>;
+  }
+
+  /**
    * Return the GPS route history for a specific machine within a time range.
    * Points are ordered chronologically (ASC) with a safety cap of 50 000 rows.
    */

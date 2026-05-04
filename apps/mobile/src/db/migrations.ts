@@ -22,6 +22,14 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   // and colocated with the table definitions above.
   await addColumnIfMissing(db, 'fuel_logs', 'receipt_photo_url', 'TEXT');
   await addColumnIfMissing(db, 'consumable_logs', 'receipt_photo_url', 'TEXT');
+  // 'acknowledged_at' lets the driver "Cursele Mele" list flag freshly-loaded
+  // trips with a NOU badge. Tap-to-acknowledge clears it locally — purely a
+  // client-side flag, never sent to the server.
+  await addColumnIfMissing(db, 'trips', 'acknowledged_at', 'TEXT');
+  // 'destination_id' on trips: stored as FK to delivery_destinations so the
+  // "Alege depozit" guard in trip detail can detect when the driver still
+  // needs to pick a destination before departing.
+  await addColumnIfMissing(db, 'trips', 'destination_id', 'TEXT');
 
   // Create indexes for common queries
   await db.execAsync(

@@ -179,6 +179,23 @@ export class GeofenceService {
           );
         }
 
+        // When a truck enters a parcel, also notify any loader/baler operator
+        // who is assigned to the same parcel today — they need to know a
+        // truck has arrived at their field so they can start loading.
+        if (
+          geofenceType === 'parcel'
+          && assignment.machineType === 'truck'
+          && assignment.parcelId
+        ) {
+          await this.notifyLoadersAtParcel(
+            assignment.parcelId,
+            assignment.machineId,
+            assignment.parcelName,
+            assignment.assignmentId,
+            today,
+          );
+        }
+
         // Notify driver when truck enters deposit geofence
         if (geofenceType === 'deposit' && assignment.assignedUserId) {
           await this.notificationsService.sendPush(
@@ -229,6 +246,83 @@ export class GeofenceService {
           );
         }
       }
+    }
+  }
+
+  /**
+   * Notify any loader/baler operator assigned to the same parcel today that
+   * a truck has arrived. Best-effort: a missing loader assignment, a missing
+   * push token, or an Expo error never blocks the geofence event recording.
+   */
+  private async notifyLoadersAtParcel(
+    parcelId: string,
+    truckMachineId: string,
+    parcelName: string | null,
+    truckAssignmentId: string,
+    today: string,
+  ): Promise<void> {
+    try {
+      // Pull every loader/baler assignment for this parcel today plus the
+      // truck plate so the push body has something useful to read.
+      const loaderRows = (await this.drizzleProvider.db.execute(sql`
+        SELECT
+          ta.assigned_user_id AS "userId",
+          ta.id               AS "assignmentId",
+          (SELECT registration_plate FROM machines WHERE id = ${truckMachineId}::uuid) AS "truckPlate"
+        FROM task_assignments ta
+        JOIN machines m ON m.id = ta.machine_id
+        WHERE ta.parcel_id = ${parcelId}::uuid
+          AND ta.assignment_date = ${today}
+          AND ta.deleted_at IS NULL
+          AND m.machine_type IN ('loader', 'baler')
+          AND ta.assigned_user_id IS NOT NULL
+      `)) as unknown as { userId: string; assignmentId: string; truckPlate: string | null }[];
+
+      if (loaderRows.length === 0) return;
+
+      const plate = loaderRows[0]?.truckPlate ?? 'un camion';
+      const where = parcelName ?? 'câmpul tău';
+
+      await Promise.all(
+        loaderRows.map((row) =>
+          this.notificationsService.sendPush(
+            row.userId,
+            'A sosit un camion',
+            `Camionul ${plate} a ajuns la ${where}.`,
+            {
+              type: 'truck_arrived_at_loader',
+              assignmentId: row.assignmentId,
+              truckMachineId,
+              truckAssignmentId,
+              truckPlate: plate,
+              parcelName,
+            },
+          ).catch(() => {
+            // Best-effort — push failures must not break the geofence loop.
+          }),
+        ),
+      );
+
+      this.winston.log(
+        'flow',
+        `Notified ${loaderRows.length} loader(s) that truck ${truckMachineId} arrived at parcel ${parcelId}`,
+        {
+          context: 'GeofenceService',
+          truckMachineId,
+          parcelId,
+          loaderCount: loaderRows.length,
+        },
+      );
+    } catch (err) {
+      this.winston.warn(
+        `notifyLoadersAtParcel failed (parcel ${parcelId})`,
+        {
+          context: 'GeofenceService',
+          parcelId,
+          truckMachineId,
+          err: err instanceof Error ? { message: err.message } : err,
+        },
+      );
     }
   }
 

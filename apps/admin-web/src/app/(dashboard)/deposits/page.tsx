@@ -38,6 +38,7 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
   const [contactPhone, setContactPhone] = useState(deposit?.contactPhone ?? '');
   const [contactEmail, setContactEmail] = useState(deposit?.contactEmail ?? '');
   const [isActive, setIsActive] = useState(deposit?.isActive ?? true);
+  const [isDefault, setIsDefault] = useState(deposit?.isDefault ?? false);
   const [error, setError] = useState('');
 
   const createDeposit = useCreateDeliveryDestination(apiClient);
@@ -58,6 +59,7 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
       contactName: contactName.trim() || null,
       contactPhone: contactPhone.trim() || null,
       contactEmail: contactEmail.trim() || null,
+      isDefault,
       ...(isEdit ? { isActive } : {}),
     };
 
@@ -72,7 +74,7 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
         onError: () => setError(t('deposits.form.createError')),
       });
     }
-  }, [code, name, address, contactName, contactPhone, contactEmail, isActive, isEdit, deposit, createDeposit, updateDeposit, onClose, t]);
+  }, [code, name, address, contactName, contactPhone, contactEmail, isActive, isDefault, isEdit, deposit, createDeposit, updateDeposit, onClose, t]);
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
@@ -191,6 +193,20 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
               </button>
             </div>
           )}
+
+          {/* Default deposit toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-neutral-200 px-4 py-3">
+            <span className="text-sm font-medium text-neutral-700 pr-3">
+              {t('deposits.form.defaultDeposit')}
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsDefault((v) => !v)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${isDefault ? 'bg-primary' : 'bg-neutral-300'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isDefault ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
 
           {/* Error */}
           {error && (

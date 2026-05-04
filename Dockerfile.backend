@@ -50,6 +50,7 @@ WORKDIR /app/backend/service
 EXPOSE 3001
 RUN apk add --no-cache wget
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-RUN mkdir -p /app/logs && chown -R appuser:appgroup /app/logs
+RUN mkdir -p /app/logs /app/uploads/avatars /app/uploads/receipts \
+  && chown -R appuser:appgroup /app/logs /app/uploads
 USER appuser
 CMD ["node", "dist/main.js"]

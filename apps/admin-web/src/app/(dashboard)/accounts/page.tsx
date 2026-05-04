@@ -22,6 +22,7 @@ import {
   useCreateUser,
   useDeactivateUser,
   useUpdateUser,
+  useUploadUserAvatar,
   useMachines,
   type CreateUserPayload,
   type UpdateUserPayload,
@@ -30,6 +31,7 @@ import { UserRole, MachineType } from '@strawboss/types';
 import type { User, Machine } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
+import { UserAvatar } from '@/components/shared/UserAvatar';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
@@ -440,7 +442,9 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     phone:    user.phone    ?? '',
   });
   const [showPin, setShowPin] = useState(false);
+  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
   const updateUser = useUpdateUser(apiClient);
+  const uploadAvatar = useUploadUserAvatar(apiClient);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -458,6 +462,42 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     updateUser.mutate({ id: user.id, data }, { onSuccess: () => onClose() });
   };
 
+  const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Always reset the input so re-picking the same file fires a new change.
+    e.target.value = '';
+    if (!file) return;
+
+    // Optimistic local preview — an object URL we keep until upload settles.
+    const objectUrl = URL.createObjectURL(file);
+    setLocalPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return objectUrl;
+    });
+
+    const formData = new FormData();
+    formData.append('file', file);
+    uploadAvatar.mutate(
+      { id: user.id, formData },
+      {
+        onSettled: () => {
+          // React Query will have refetched the admin-users list; drop the
+          // local preview so the real URL from the server takes over.
+          setLocalPreviewUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+        },
+      },
+    );
+  };
+
+  // Prefer live preview while uploading, then fall back to the persisted URL.
+  const displayUser = {
+    fullName: form.fullName || user.fullName,
+    avatarUrl: localPreviewUrl ?? user.avatarUrl,
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
@@ -471,6 +511,29 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
+          <div className="flex items-center gap-4">
+            <UserAvatar user={displayUser} size="lg" />
+            <div className="flex flex-col gap-1">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarPick}
+                  disabled={uploadAvatar.isPending}
+                />
+                {uploadAvatar.isPending ? 'Se incarca...' : 'Schimba poza'}
+              </label>
+              {uploadAvatar.isError ? (
+                <p className="text-xs text-red-600">
+                  {(uploadAvatar.error as Error)?.message ?? 'Upload esuat'}
+                </p>
+              ) : (
+                <p className="text-xs text-neutral-400">JPG, PNG sau WebP. Max 3 MB.</p>
+              )}
+            </div>
+          </div>
+
           <FormField label="Nume complet" required>
             <input
               required type="text" value={form.fullName}
@@ -874,6 +937,7 @@ export default function AccountsPage() {
                       <tr key={user.id} className={`hover:bg-neutral-50 ${!user.isActive ? 'opacity-50' : ''}`}>
                         <td className="px-4 py-3 font-medium text-neutral-800">
                           <div className="flex items-center gap-2">
+                            <UserAvatar user={user} size="sm" />
                             {user.role === UserRole.admin && (
                               <Shield className="h-3.5 w-3.5 text-purple-400" />
                             )}

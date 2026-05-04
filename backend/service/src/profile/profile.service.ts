@@ -48,6 +48,7 @@ export class ProfileService {
       phone?: string | null;
       locale?: 'en' | 'ro';
       notificationPrefs?: Record<string, boolean>;
+      avatarUrl?: string | null;
     },
   ): Promise<User> {
     await this.findByUserId(userId);
@@ -65,6 +66,9 @@ export class ProfileService {
     }
     if (dto.notificationPrefs !== undefined) {
       sets.push(sql`notification_prefs = ${JSON.stringify(dto.notificationPrefs)}::jsonb`);
+    }
+    if (dto.avatarUrl !== undefined) {
+      sets.push(sql`avatar_url = ${dto.avatarUrl}`);
     }
 
     const setClause = sql.join(sets, sql`, `);

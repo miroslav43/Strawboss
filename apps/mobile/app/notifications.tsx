@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -6,18 +6,32 @@ import {
   TouchableOpacity,
   StyleSheet,
   Pressable,
+  RefreshControl,
+  Alert,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { nativeColors } from '@strawboss/ui-tokens/native';
 import type { MobileNotification } from '@/types/notifications';
-import { MobileNotificationSeverity } from '@/types/notifications';
+import { MobileNotificationSeverity, MobileNotificationType } from '@/types/notifications';
 import { useNotifications } from '@/hooks/useNotifications';
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 
-function formatDate(ts: number): string {
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+function formatDayHeader(ts: number): string {
   const d = new Date(ts);
-  return d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'short', year: 'numeric' });
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - MS_PER_DAY);
+  if (isSameDay(d, now)) return 'Astăzi';
+  if (isSameDay(d, yesterday)) return 'Ieri';
+  return d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
 function formatTime(ts: number): string {
@@ -28,7 +42,7 @@ function formatTime(ts: number): string {
 function groupByDay(items: MobileNotification[]): { date: string; data: MobileNotification[] }[] {
   const map = new Map<string, MobileNotification[]>();
   for (const item of items) {
-    const key = formatDate(item.createdAt);
+    const key = formatDayHeader(item.createdAt);
     const arr = map.get(key) ?? [];
     arr.push(item);
     map.set(key, arr);
@@ -41,127 +55,198 @@ function severityColor(severity: MobileNotificationSeverity): string {
     case MobileNotificationSeverity.critical: return nativeColors.danger;
     case MobileNotificationSeverity.warning: return nativeColors.warning;
     case MobileNotificationSeverity.success: return nativeColors.success;
+    case MobileNotificationSeverity.info: return nativeColors.info;
     default: return nativeColors.info;
   }
 }
 
-function severityIcon(severity: MobileNotificationSeverity): React.ComponentProps<typeof MaterialCommunityIcons>['name'] {
-  switch (severity) {
-    case MobileNotificationSeverity.critical: return 'alert-circle';
-    case MobileNotificationSeverity.warning: return 'alert';
-    case MobileNotificationSeverity.success: return 'check-circle';
-    default: return 'information';
+function typeIcon(
+  type: MobileNotificationType,
+): React.ComponentProps<typeof MaterialCommunityIcons>['name'] {
+  switch (type) {
+    case MobileNotificationType.parcel_entered: return 'tractor';
+    case MobileNotificationType.parcel_exit_confirm: return 'help-circle';
+    case MobileNotificationType.deposit_entered: return 'warehouse';
+    case MobileNotificationType.assignment_created: return 'clipboard-list';
+    case MobileNotificationType.truck_arrived_at_loader: return 'truck';
+    case MobileNotificationType.trip_loaded: return 'package-variant';
+    case MobileNotificationType.trip_departed: return 'truck-fast';
+    case MobileNotificationType.trip_arrived: return 'map-marker-check';
+    case MobileNotificationType.trip_completed: return 'check-circle';
+    case MobileNotificationType.trip_disputed: return 'alert-circle';
+    case MobileNotificationType.broadcast: return 'bullhorn';
+    default: return 'bell';
   }
 }
 
 interface NotificationItemProps {
   item: MobileNotification;
-  onRead: (id: string) => void;
-  onDelete: (id: string) => void;
+  onPress: (item: MobileNotification) => void;
+  onLongPress: (item: MobileNotification) => void;
 }
 
-function NotificationItem({ item, onRead, onDelete }: NotificationItemProps) {
-  const color = severityColor(item.severity);
-  const icon = severityIcon(item.severity);
+function NotificationItem({ item, onPress, onLongPress }: NotificationItemProps) {
+  const stripeColor = severityColor(item.severity);
+  const icon = typeIcon(item.type);
 
   return (
     <Pressable
-      style={[styles.item, item.isRead && styles.itemRead]}
-      onPress={() => !item.isRead && onRead(item.id)}
+      style={styles.item}
+      onPress={() => onPress(item)}
+      onLongPress={() => onLongPress(item)}
       accessibilityRole="button"
-      accessibilityLabel={item.title}
+      accessibilityLabel={`${item.title}. ${item.body}`}
     >
-      <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-        <MaterialCommunityIcons name={icon} size={20} color={color} />
+      <View style={[styles.severityStripe, { backgroundColor: stripeColor }]} />
+      <View style={[styles.iconContainer, { backgroundColor: stripeColor + '22' }]}>
+        <MaterialCommunityIcons name={icon} size={22} color={stripeColor} />
       </View>
       <View style={styles.itemContent}>
         <View style={styles.itemHeader}>
-          <Text style={[styles.itemTitle, item.isRead && styles.textRead]} numberOfLines={1}>
+          <Text
+            style={[styles.itemTitle, item.isRead && styles.itemTitleRead]}
+            numberOfLines={1}
+          >
             {item.title}
           </Text>
           <Text style={styles.itemTime}>{formatTime(item.createdAt)}</Text>
         </View>
-        <Text style={[styles.itemBody, item.isRead && styles.textRead]} numberOfLines={2}>
+        <Text style={styles.itemBody} numberOfLines={2}>
           {item.body}
         </Text>
       </View>
       {!item.isRead && <View style={styles.unreadDot} />}
-      <TouchableOpacity
-        style={styles.deleteBtn}
-        onPress={() => onDelete(item.id)}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        accessibilityLabel="Șterge notificarea"
-      >
-        <MaterialCommunityIcons name="close" size={16} color={nativeColors.neutral400} />
-      </TouchableOpacity>
     </Pressable>
   );
 }
 
 export default function NotificationsScreen() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { items, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+  const { items, unreadCount, markAsRead, markAllAsRead, deleteNotification, refresh } =
+    useNotifications();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
+
+  const handlePress = useCallback(
+    (item: MobileNotification) => {
+      if (!item.isRead) {
+        void markAsRead(item.id);
+      }
+      try {
+        const data = item.dataJson ? (JSON.parse(item.dataJson) as { tripId?: string; assignmentId?: string }) : null;
+        if (data?.tripId) {
+          router.push(`/trip/${data.tripId}`);
+        }
+      } catch {
+        // Malformed JSON — just mark read and stay on the page.
+      }
+    },
+    [markAsRead, router],
+  );
+
+  const handleLongPress = useCallback(
+    (item: MobileNotification) => {
+      Alert.alert(
+        'Șterge notificarea?',
+        item.title,
+        [
+          { text: 'Anulează', style: 'cancel' },
+          {
+            text: 'Șterge',
+            style: 'destructive',
+            onPress: () => {
+              void deleteNotification(item.id);
+            },
+          },
+        ],
+      );
+    },
+    [deleteNotification],
+  );
+
+  const handleMarkAllRead = useCallback(() => {
+    void markAllAsRead();
+  }, [markAllAsRead]);
 
   const groups = groupByDay(items);
 
-  const handleMarkAllRead = useCallback(async () => {
-    await markAllAsRead();
-  }, [markAllAsRead]);
-
-  if (items.length === 0) {
-    return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color={nativeColors.primary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notificări</Text>
-          <View style={styles.headerRight} />
-        </View>
-        <View style={styles.empty}>
-          <MaterialCommunityIcons name="bell-off-outline" size={56} color={nativeColors.neutral300} />
-          <Text style={styles.emptyTitle}>Nicio notificare</Text>
-          <Text style={styles.emptyBody}>Notificările vor apărea aici</Text>
-        </View>
-      </View>
-    );
-  }
+  const headerRight = (
+    <View style={styles.headerRightGroup}>
+      {unreadCount > 0 && (
+        <TouchableOpacity
+          onPress={handleMarkAllRead}
+          accessibilityRole="button"
+          accessibilityLabel="Marchează toate ca citite"
+          style={styles.markAllBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.markAllText}>Marchează tot</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={nativeColors.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notificări</Text>
-        {unreadCount > 0 ? (
-          <TouchableOpacity onPress={handleMarkAllRead} style={styles.markAllBtn}>
-            <Text style={styles.markAllText}>Marchează tot</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerRight} />
-        )}
-      </View>
+    <View style={styles.container}>
+      <ScreenHeader title="Notificări" right={headerRight}>
+        <Text style={styles.subtitle}>
+          {unreadCount > 0
+            ? `${unreadCount} ${unreadCount === 1 ? 'notificare necitită' : 'notificări necitite'}`
+            : 'Toate notificările citite'}
+        </Text>
+      </ScreenHeader>
 
-      <FlatList
-        data={groups}
-        keyExtractor={g => g.date}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item: group }) => (
-          <View>
-            <Text style={styles.dayHeader}>{group.date}</Text>
-            {group.data.map(n => (
-              <NotificationItem
-                key={n.id}
-                item={n}
-                onRead={markAsRead}
-                onDelete={deleteNotification}
-              />
-            ))}
+      {items.length === 0 ? (
+        <View style={styles.body}>
+          <View style={styles.empty}>
+            <MaterialCommunityIcons
+              name="bell-off-outline"
+              size={64}
+              color={nativeColors.neutral300}
+            />
+            <Text style={styles.emptyTitle}>Nu ai notificări</Text>
+            <Text style={styles.emptyBody}>
+              Notificările despre cursele tale vor apărea aici.
+            </Text>
           </View>
-        )}
-      />
+        </View>
+      ) : (
+        <FlatList
+          style={styles.body}
+          data={groups}
+          keyExtractor={(g) => g.date}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={nativeColors.primary}
+              colors={[nativeColors.primary]}
+            />
+          }
+          renderItem={({ item: group }) => (
+            <View>
+              <Text style={styles.dayHeader}>{group.date}</Text>
+              {group.data.map((n) => (
+                <NotificationItem
+                  key={n.id}
+                  item={n}
+                  onPress={handlePress}
+                  onLongPress={handleLongPress}
+                />
+              ))}
+            </View>
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -169,49 +254,45 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: nativeColors.background,
+    backgroundColor: nativeColors.primary,
   },
-  header: {
+  subtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  headerRightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: nativeColors.neutral100,
-  },
-  backBtn: {
-    width: 36,
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: nativeColors.primary,
-  },
-  headerRight: {
-    width: 80,
+    gap: 8,
   },
   markAllBtn: {
-    width: 80,
-    alignItems: 'flex-end',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   markAllText: {
-    fontSize: 13,
-    color: nativeColors.secondary,
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '600',
   },
+  body: {
+    flex: 1,
+    backgroundColor: nativeColors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
   listContent: {
+    paddingTop: 8,
     paddingBottom: 24,
   },
   dayHeader: {
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 6,
-    fontSize: 13,
-    fontWeight: '600',
-    color: nativeColors.neutral400,
+    fontSize: 12,
+    fontWeight: '700',
+    color: nativeColors.neutral500,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -220,18 +301,23 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     backgroundColor: '#fff',
     marginHorizontal: 12,
-    marginBottom: 6,
+    marginBottom: 8,
     borderRadius: 12,
-    padding: 12,
-    gap: 10,
+    paddingVertical: 12,
+    paddingRight: 12,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 2,
     elevation: 1,
   },
-  itemRead: {
-    opacity: 0.65,
+  severityStripe: {
+    width: 4,
+    alignSelf: 'stretch',
+    marginRight: 12,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
   },
   iconContainer: {
     width: 36,
@@ -240,25 +326,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    marginRight: 10,
   },
   itemContent: {
     flex: 1,
+    gap: 2,
   },
   itemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
   },
   itemTitle: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    color: nativeColors.primary,
+    color: nativeColors.neutral800,
+  },
+  itemTitleRead: {
+    fontWeight: '500',
+    color: nativeColors.neutral500,
   },
   itemTime: {
     fontSize: 12,
-    color: nativeColors.neutral300,
+    color: nativeColors.neutral400,
     marginLeft: 8,
     flexShrink: 0,
   },
@@ -267,27 +358,22 @@ const styles = StyleSheet.create({
     color: nativeColors.neutral500,
     lineHeight: 18,
   },
-  textRead: {
-    fontWeight: '400',
-  },
   unreadDot: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: nativeColors.secondary,
-    marginTop: 4,
-    flexShrink: 0,
-  },
-  deleteBtn: {
-    alignSelf: 'flex-start',
-    marginTop: 2,
-    flexShrink: 0,
   },
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
+    paddingHorizontal: 32,
+    paddingTop: 64,
   },
   emptyTitle: {
     fontSize: 18,
@@ -296,6 +382,7 @@ const styles = StyleSheet.create({
   },
   emptyBody: {
     fontSize: 14,
-    color: nativeColors.neutral300,
+    color: nativeColors.neutral400,
+    textAlign: 'center',
   },
 });

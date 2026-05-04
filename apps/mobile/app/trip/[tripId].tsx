@@ -1,8 +1,19 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  FlatList,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useDeliveryDestinations } from '@strawboss/api';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { mobileApiClient } from '@/lib/api-client';
@@ -20,6 +31,8 @@ export default function TripDetailScreen() {
   const [trip, setTrip] = useState<LocalTrip | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const destinationsQuery = useDeliveryDestinations(mobileApiClient);
 
   const loadTrip = useCallback(async () => {
     if (!tripId) return;
@@ -108,6 +121,40 @@ export default function TripDetailScreen() {
     [tripId, trip, loadTrip],
   );
 
+  const assignDestination = useCallback(
+    async (destinationId: string, destinationName: string, destinationAddress: string | null) => {
+      if (!tripId) return;
+      setPickerOpen(false);
+      setActionLoading(true);
+      try {
+        await mobileApiClient.patch(`/api/v1/trips/${tripId}`, {
+          destinationId,
+        });
+        const db = await getDatabase();
+        const repo = new TripsRepo(db);
+        await repo.update(tripId, {
+          destination_id: destinationId,
+          destination_name: destinationName,
+          destination_address: destinationAddress,
+        });
+        await loadTrip();
+      } catch (err) {
+        mobileLogger.error('Trip detail: assign destination failed', {
+          tripId,
+          destinationId,
+          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+        });
+        Alert.alert(
+          'Eroare',
+          err instanceof Error ? err.message : 'Nu am putut salva depozitul.',
+        );
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [tripId, loadTrip],
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -191,40 +238,29 @@ export default function TripDetailScreen() {
         <View style={styles.actionsSection}>
           <Text style={styles.sectionTitle}>Actions</Text>
 
-          {trip.status === 'planned' && (
+          {(trip.status === 'planned' || trip.status === 'loading') && (
+            <View style={styles.waitingCard}>
+              <MaterialCommunityIcons name="timer-sand" size={20} color={colors.neutral} />
+              <Text style={styles.waitingText}>
+                Așteaptă ca loader-ul să încarce camionul.
+              </Text>
+            </View>
+          )}
+
+          {trip.status === 'loaded' && trip.destination_id == null && (
             <ActionCard
-              title="Start Loading"
-              subtitle="Scan machine and count bales"
-              icon={<MaterialCommunityIcons name="arrow-up-bold" size={24} color={colors.primary} />}
-              onPress={() =>
-                router.push({
-                  pathname: '/operations/load',
-                  params: { tripId: trip.id },
-                })
-              }
+              title="Alege depozit"
+              subtitle="Selectează destinația înainte de plecare"
+              icon={<MaterialCommunityIcons name="warehouse" size={24} color={colors.primary} />}
+              onPress={() => setPickerOpen(true)}
               variant="active"
             />
           )}
 
-          {trip.status === 'loading' && (
+          {trip.status === 'loaded' && trip.destination_id != null && (
             <ActionCard
-              title="Continue Loading"
-              subtitle="Resume the loading process"
-              icon={<MaterialCommunityIcons name="arrow-up-bold" size={24} color={colors.primary} />}
-              onPress={() =>
-                router.push({
-                  pathname: '/operations/load',
-                  params: { tripId: trip.id },
-                })
-              }
-              variant="active"
-            />
-          )}
-
-          {trip.status === 'loaded' && (
-            <ActionCard
-              title="Depart"
-              subtitle="Begin transit to destination"
+              title="Plecare"
+              subtitle="Începe transportul către depozit"
               icon={<MaterialCommunityIcons name="arrow-right-bold" size={24} color={colors.primary} />}
               onPress={() =>
                 updateTripStatus('in_transit', {
@@ -293,6 +329,64 @@ export default function TripDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)} />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Alege depozit</Text>
+            <Pressable onPress={() => setPickerOpen(false)} hitSlop={12}>
+              <MaterialCommunityIcons name="close" size={22} color={colors.neutral} />
+            </Pressable>
+          </View>
+          {destinationsQuery.isLoading ? (
+            <ActivityIndicator color={colors.primary} style={{ padding: 24 }} />
+          ) : destinationsQuery.error ? (
+            <Text style={styles.modalError}>Nu am putut încărca depozitele.</Text>
+          ) : (
+            <FlatList
+              data={(destinationsQuery.data ?? []).filter((d) => d.isActive !== false)}
+              keyExtractor={(d) => d.id}
+              ItemSeparatorComponent={() => <View style={styles.modalDivider} />}
+              ListEmptyComponent={
+                <Text style={styles.modalEmpty}>Nu există depozite active.</Text>
+              }
+              renderItem={({ item }) => (
+                <Pressable
+                  style={styles.modalRow}
+                  onPress={() =>
+                    void assignDestination(
+                      item.id,
+                      item.name,
+                      (item as { address?: string | null }).address ?? null,
+                    )
+                  }
+                >
+                  <MaterialCommunityIcons name="warehouse" size={20} color={colors.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalRowTitle}>{item.name}</Text>
+                    {(item as { address?: string | null }).address ? (
+                      <Text style={styles.modalRowSub}>
+                        {(item as { address?: string | null }).address}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {item.isDefault ? (
+                    <View style={styles.defaultBadge}>
+                      <Text style={styles.defaultBadgeText}>implicit</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              )}
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -396,4 +490,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
   },
+  waitingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.primary50,
+    borderRadius: 12,
+    padding: 14,
+  },
+  waitingText: {
+    color: colors.primary,
+    fontSize: 14,
+    flex: 1,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: '70%',
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: colors.primary },
+  modalEmpty: { padding: 24, color: colors.neutral, textAlign: 'center' },
+  modalError: { padding: 24, color: colors.danger, textAlign: 'center' },
+  modalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  modalRowTitle: { fontSize: 15, fontWeight: '600', color: colors.black },
+  modalRowSub: { fontSize: 12, color: colors.neutral, marginTop: 2 },
+  modalDivider: { height: 1, backgroundColor: '#EFEAE3', marginHorizontal: 18 },
+  defaultBadge: {
+    backgroundColor: colors.primary50,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  defaultBadgeText: { fontSize: 10, fontWeight: '700', color: colors.primary, letterSpacing: 0.4 },
 });

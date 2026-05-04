@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
@@ -501,6 +506,54 @@ export class TaskAssignmentsService {
     }
 
     return result;
+  }
+
+  /**
+   * Operator-friendly variant of `updateStatus` that lets a non-admin caller
+   * mark their own assignment as `in_progress`. Ownership = caller is the
+   * `assigned_user_id` OR the user permanently linked to the task's machine
+   * (`users.assigned_machine_id`). Throws otherwise.
+   *
+   * Idempotent: if the assignment is already `in_progress`, returns the row
+   * unchanged. Refuses to act on `done` rows so operators can't accidentally
+   * re-open completed work.
+   */
+  async startByOperator(id: string, callerId: string) {
+    const ownerRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT ta.id, ta.status, ta.machine_id, ta.assigned_user_id,
+                 u.id AS machine_user_id
+          FROM task_assignments ta
+          LEFT JOIN users u ON u.assigned_machine_id = ta.machine_id
+                            AND u.deleted_at IS NULL
+          WHERE ta.id = ${id} AND ta.deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as {
+      id: string;
+      status: string;
+      machine_id: string | null;
+      assigned_user_id: string | null;
+      machine_user_id: string | null;
+    }[];
+    const row = ownerRows[0];
+    if (!row) {
+      throw new NotFoundException('Task assignment not found');
+    }
+    const isOwner =
+      row.assigned_user_id === callerId || row.machine_user_id === callerId;
+    if (!isOwner) {
+      throw new BadRequestException(
+        'Nu poți porni o sarcină care nu îți este asignată.',
+      );
+    }
+    if (row.status === 'done') {
+      throw new BadRequestException(
+        'Sarcina este deja finalizată. Cere dispecerului să o redeschidă.',
+      );
+    }
+    if (row.status === 'in_progress') {
+      return this.findById(id);
+    }
+    return this.updateStatus(id, 'in_progress');
   }
 
   async updateStatus(id: string, status: string) {

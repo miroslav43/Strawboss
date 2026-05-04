@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import * as Notifications from 'expo-notifications';
 import type { MobileNotification } from '@/types/notifications';
 import { NotificationsRepo } from '../db/notifications-repo';
 import { getDatabase } from '../lib/storage';
@@ -7,6 +8,15 @@ import { subscribeToNotificationChanges } from '../lib/notification-handler';
 export function useNotifications() {
   const [items, setItems] = useState<MobileNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Mirror unread count to the OS app-icon badge so the home-screen icon
+  // reflects what the in-app bell shows. Best-effort — Expo Go and some
+  // Android devices reject this; we never want to crash the hook over it.
+  useEffect(() => {
+    Notifications.setBadgeCountAsync(unreadCount).catch(() => {
+      // ignore
+    });
+  }, [unreadCount]);
 
   const refresh = useCallback(async () => {
     try {

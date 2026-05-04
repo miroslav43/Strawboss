@@ -12,6 +12,7 @@ import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
+import { DeliveryDestinationsService } from '../delivery-destinations/delivery-destinations.service';
 import { TripStatus } from '@strawboss/types';
 import { QUEUE_CMR_GENERATION } from '../jobs/queues';
 import type {
@@ -26,6 +27,8 @@ import type {
   CancelDto,
   DisputeDto,
   ResolveDisputeDto,
+  RegisterLoadDto,
+  RegisterLoadResult,
 } from '@strawboss/types';
 import { getAvailableTransitions } from '@strawboss/domain';
 
@@ -36,6 +39,7 @@ export class TripsService implements OnModuleInit {
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
     @InjectQueue(QUEUE_CMR_GENERATION) private readonly cmrQueue: Queue,
     private readonly notificationsService: NotificationsService,
+    private readonly deliveryDestinationsService: DeliveryDestinationsService,
   ) {}
 
   /**
@@ -262,6 +266,12 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'START_LOADING', from, TripStatus.loading);
+    void this.pushToDriver(
+      id,
+      'Începe încărcarea',
+      'Loaderul a început încărcarea camionului.',
+      'assignment_created',
+    );
     return result;
   }
 
@@ -298,6 +308,241 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
+  /**
+   * Atomic loader flow ("Camion plin" handler).
+   *
+   * In one DB transaction:
+   *   1. Find or create a Trip for (truckId, today) in status planned/loading.
+   *   2. Insert a `bale_loads` row tied to that trip.
+   *   3. Transition the trip directly to `loaded` (collapses the
+   *      planned → loading → loaded chain because one full truckload from
+   *      one parcel is one trip in this product flow).
+   *   4. Mirror the result to `sync_idempotency` so retries are no-ops.
+   *
+   * Destination resolution order when creating a new trip:
+   *   a) Truck's planned task today (`task_assignments.destination_id`)
+   *   b) Global default destination (`delivery_destinations.is_default = TRUE`)
+   *   c) NULL (driver picks before "Plecare")
+   */
+  async registerLoad(
+    dto: RegisterLoadDto,
+    callerId: string,
+  ): Promise<RegisterLoadResult> {
+    const idempotencyTable = 'register_load';
+
+    const existing = (await this.drizzleProvider.db.execute(
+      sql`SELECT result_data FROM sync_idempotency
+          WHERE client_id = ${callerId}
+            AND table_name = ${idempotencyTable}
+            AND record_id = ${dto.idempotencyKey}
+          LIMIT 1`,
+    )) as unknown as { result_data: RegisterLoadResult | null }[];
+    if (existing[0]?.result_data) {
+      return existing[0].result_data;
+    }
+
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      // Find an open trip for this truck today (FOR UPDATE to serialize
+      // concurrent loader scans of the same truck).
+      const openRows = (await tx.execute(
+        sql`SELECT id, status, source_parcel_id
+            FROM trips
+            WHERE truck_id = ${dto.truckId}
+              AND deleted_at IS NULL
+              AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
+              AND created_at::date = CURRENT_DATE
+            ORDER BY created_at DESC
+            LIMIT 1
+            FOR UPDATE`,
+      )) as unknown as { id: string; status: TripStatus; source_parcel_id: string | null }[];
+
+      let tripId: string;
+      let created = false;
+
+      if (openRows[0]) {
+        tripId = openRows[0].id;
+      } else {
+        // Resolve driver from truck's permanent assignment.
+        const driverRows = (await tx.execute(
+          sql`SELECT id FROM users
+              WHERE assigned_machine_id = ${dto.truckId}
+                AND role = 'driver'::user_role
+                AND deleted_at IS NULL
+              ORDER BY created_at ASC
+              LIMIT 1`,
+        )) as unknown as { id: string }[];
+        const driverId = driverRows[0]?.id;
+        if (!driverId) {
+          throw new BadRequestException(
+            'Camionul nu are șofer asignat. Contactează dispecerul.',
+          );
+        }
+
+        // Resolve destination: truck's planned task today → global default → null.
+        let destinationId: string | null = null;
+        let destName: string | null = null;
+        let destAddress: string | null = null;
+        let destCoordsGeoJson: string | null = null;
+
+        const taskDestRows = (await tx.execute(
+          sql`SELECT dd.id, dd.name, dd.address,
+                     ST_AsGeoJSON(dd.coords) AS coords_geojson
+              FROM task_assignments ta
+              JOIN delivery_destinations dd ON dd.id = ta.destination_id
+              WHERE ta.machine_id = ${dto.truckId}
+                AND ta.assignment_date = CURRENT_DATE
+                AND ta.deleted_at IS NULL
+                AND ta.destination_id IS NOT NULL
+                AND dd.deleted_at IS NULL
+              ORDER BY ta.sequence_order ASC
+              LIMIT 1`,
+        )) as unknown as {
+          id: string;
+          name: string;
+          address: string | null;
+          coords_geojson: string | null;
+        }[];
+
+        if (taskDestRows[0]) {
+          destinationId = taskDestRows[0].id;
+          destName = taskDestRows[0].name;
+          destAddress = taskDestRows[0].address;
+          destCoordsGeoJson = taskDestRows[0].coords_geojson;
+        } else {
+          const defaultDest = await this.deliveryDestinationsService.findDefault();
+          if (defaultDest) {
+            const defRows = (await tx.execute(
+              sql`SELECT name, address, ST_AsGeoJSON(coords) AS coords_geojson
+                  FROM delivery_destinations
+                  WHERE id = ${defaultDest.id}
+                  LIMIT 1`,
+            )) as unknown as {
+              name: string;
+              address: string | null;
+              coords_geojson: string | null;
+            }[];
+            if (defRows[0]) {
+              destinationId = defaultDest.id;
+              destName = defRows[0].name;
+              destAddress = defRows[0].address;
+              destCoordsGeoJson = defRows[0].coords_geojson;
+            }
+          }
+        }
+
+        const tripNumber = await this.generateTripNumber();
+        const insertedTrip = (await tx.execute(
+          sql`INSERT INTO trips (
+                trip_number, status,
+                source_parcel_id, source_parcel_auto,
+                truck_id, driver_id,
+                loader_id, loader_operator_id,
+                destination_name, destination_address, destination_coords,
+                bale_count, sync_version
+              ) VALUES (
+                ${tripNumber}, ${TripStatus.planned}::trip_status,
+                ${dto.parcelId}, true,
+                ${dto.truckId}, ${driverId},
+                ${dto.loaderMachineId}, ${callerId},
+                ${destName}, ${destAddress},
+                ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
+                0, 1
+              )
+              RETURNING id`,
+        )) as unknown as { id: string }[];
+
+        tripId = insertedTrip[0].id;
+        created = true;
+
+        if (destinationId) {
+          // Best-effort link the truck's task today to this auto-created trip.
+          await tx.execute(
+            sql`UPDATE task_assignments SET trip_id = ${tripId}, updated_at = NOW()
+                WHERE machine_id = ${dto.truckId}
+                  AND assignment_date = CURRENT_DATE
+                  AND deleted_at IS NULL
+                  AND trip_id IS NULL`,
+          );
+        }
+
+        this.logTripFlow(tripId, 'AUTO_CREATE_FROM_LOAD', 'new', TripStatus.planned);
+      }
+
+      // Insert the bale_load tied to this trip.
+      await tx.execute(
+        sql`INSERT INTO bale_loads (
+              id, trip_id, parcel_id, loader_id, operator_id,
+              bale_count, loaded_at, gps_lat, gps_lon, sync_version
+            ) VALUES (
+              ${dto.idempotencyKey}, ${tripId}, ${dto.parcelId},
+              ${dto.loaderMachineId}, ${callerId},
+              ${dto.baleCount}, NOW(),
+              ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null}, 1
+            )`,
+      );
+
+      // Transition trip → loaded (collapses planned → loading → loaded so
+      // the driver immediately sees a "ready to depart" trip).
+      const updated = (await tx.execute(
+        sql`UPDATE trips SET
+              status = ${TripStatus.loaded}::trip_status,
+              loading_started_at = COALESCE(loading_started_at, NOW()),
+              loading_completed_at = NOW(),
+              bale_count = (
+                SELECT COALESCE(SUM(bale_count), 0)::int
+                FROM bale_loads
+                WHERE trip_id = ${tripId} AND deleted_at IS NULL
+              ),
+              updated_at = NOW(),
+              sync_version = sync_version + 1
+            WHERE id = ${tripId}
+              AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
+            RETURNING *`,
+      )) as unknown as Record<string, unknown>[];
+
+      if (!updated.length) {
+        throw new BadRequestException(
+          'Trip status changed concurrently — nu se poate închide încărcarea.',
+        );
+      }
+
+      const payload: RegisterLoadResult = {
+        trip: updated[0],
+        baleLoadId: dto.idempotencyKey,
+        created,
+      };
+
+      // Idempotency record so retries return the same payload immediately.
+      await tx.execute(
+        sql`INSERT INTO sync_idempotency (
+              client_id, table_name, record_id,
+              client_version, server_version, result_data
+            ) VALUES (
+              ${callerId}, ${idempotencyTable}, ${dto.idempotencyKey},
+              1, 1, ${JSON.stringify(payload)}::jsonb
+            )
+            ON CONFLICT DO NOTHING`,
+      );
+
+      return payload;
+    });
+
+    this.logTripFlow(
+      result.trip.id as string,
+      'REGISTER_LOAD',
+      result.created ? 'new' : (result.trip.status as string),
+      TripStatus.loaded,
+    );
+    void this.pushToDriver(
+      result.trip.id as string,
+      'Transport pregătit',
+      'Baloții au fost încărcați. Poți pleca.',
+      'trip_loaded',
+    );
+
+    return result;
+  }
+
   async depart(id: string, dto: DepartDto) {
     const trip = await this.findById(id);
     const from = trip.status as TripStatus;
@@ -315,6 +560,12 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'DEPART', from, TripStatus.in_transit);
+    void this.pushToDriver(
+      id,
+      'Drum bun',
+      `Cursa este în drum spre ${(trip.destination_name as string | null) ?? 'destinație'}.`,
+      'trip_departed',
+    );
     return result;
   }
 

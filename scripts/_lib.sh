@@ -247,6 +247,131 @@ _validate_prod_env() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Mock / dev API helpers (used by scripts/08-mock.sh)
+# ---------------------------------------------------------------------------
+
+# Stable seed UUIDs (kept in sync with supabase/seed.sql)
+SEED_ADMIN_ID="a0000000-0000-0000-0000-000000000001"
+SEED_LOADER_ID="a0000000-0000-0000-0000-000000000002"
+SEED_DRIVER_ID="a0000000-0000-0000-0000-000000000003"
+SEED_BALER_ID="a0000000-0000-0000-0000-000000000004"
+SEED_TRUCK_ID="c0000000-0000-0000-0000-000000000001"
+SEED_TRUCK2_ID="c0000000-0000-0000-0000-000000000002"
+SEED_LOADER_MACHINE_ID="c0000000-0000-0000-0000-000000000003"
+SEED_BALER_MACHINE_ID="c0000000-0000-0000-0000-000000000004"
+SEED_PARCEL_ID="e0000000-0000-0000-0000-000000000001"
+SEED_DEPOSIT_ID="d0000000-0000-0000-0000-000000000001"
+
+# Default API base for mock scripts. Override with API_URL=... in shell.
+_default_api_url() { echo "${API_URL:-http://localhost:3001}"; }
+
+# Map a friendly name (admin|driver|loader|baler) → seed user UUID.
+mock_user_id_for() {
+  case "${1:-admin}" in
+    admin)  echo "$SEED_ADMIN_ID" ;;
+    driver) echo "$SEED_DRIVER_ID" ;;
+    loader) echo "$SEED_LOADER_ID" ;;
+    baler)  echo "$SEED_BALER_ID" ;;
+    *)
+      error "Unknown user alias: $1 (use: admin, driver, loader, baler)"
+      return 1
+      ;;
+  esac
+}
+
+# Map a friendly name → backend role string for JWT.
+mock_role_for() {
+  case "${1:-admin}" in
+    admin)  echo "admin" ;;
+    driver) echo "driver" ;;
+    loader) echo "loader_operator" ;;
+    baler)  echo "baler_operator" ;;
+    *)
+      error "Unknown user alias: $1 (use: admin, driver, loader, baler)"
+      return 1
+      ;;
+  esac
+}
+
+# Mint a short-lived HS256 JWT signed with SUPABASE_JWT_SECRET.
+# Usage:  mock_jwt <user_id> <role>
+# Output: signed JWT on stdout.
+mock_jwt() {
+  local user_id="${1:-}"
+  local role="${2:-admin}"
+  if [ -z "$user_id" ]; then
+    error "mock_jwt: user_id required"
+    return 1
+  fi
+  if [ -z "${SUPABASE_JWT_SECRET:-}" ]; then
+    _load_env
+  fi
+  if [ -z "${SUPABASE_JWT_SECRET:-}" ]; then
+    error "SUPABASE_JWT_SECRET not set in .env — required for mock JWT minting"
+    return 1
+  fi
+  require_cmd node
+  USER_ID="$user_id" ROLE="$role" SECRET="$SUPABASE_JWT_SECRET" node -e '
+    const crypto = require("crypto");
+    const enc = (obj) =>
+      Buffer.from(JSON.stringify(obj))
+        .toString("base64")
+        .replace(/=/g, "")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_");
+    const now = Math.floor(Date.now() / 1000);
+    const header = enc({ alg: "HS256", typ: "JWT" });
+    const payload = enc({
+      sub: process.env.USER_ID,
+      role: process.env.ROLE,
+      app_metadata: { role: process.env.ROLE },
+      iat: now,
+      exp: now + 3600,
+      iss: "strawboss-mock-script",
+    });
+    const data = `${header}.${payload}`;
+    const sig = crypto
+      .createHmac("sha256", process.env.SECRET)
+      .update(data)
+      .digest("base64")
+      .replace(/=/g, "")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_");
+    process.stdout.write(`${data}.${sig}`);
+  '
+}
+
+# POST JSON to the dev backend. Prints response body to stdout; on a non-2xx
+# response, also prints status + body to stderr and returns non-zero.
+# Usage:  api_post <path> <token> <json_body>
+api_post() {
+  local path="${1:-}"
+  local token="${2:-}"
+  local body="${3:-{\}}"
+  if [ -z "$path" ] || [ -z "$token" ]; then
+    error "api_post: usage: api_post <path> <token> <json_body>"
+    return 1
+  fi
+  require_cmd curl
+  local url
+  url="$(_default_api_url)${path}"
+  local response
+  response=$(curl -sS -X POST \
+    -H "Authorization: Bearer $token" \
+    -H "Content-Type: application/json" \
+    -w $'\n__HTTP_STATUS__:%{http_code}' \
+    -d "$body" \
+    "$url")
+  local status_line="${response##*$'\n'__HTTP_STATUS__:}"
+  local response_body="${response%$'\n'__HTTP_STATUS__:*}"
+  echo "$response_body"
+  if [[ ! "$status_line" =~ ^2[0-9][0-9]$ ]]; then
+    error "POST $path → HTTP $status_line"
+    return 1
+  fi
+}
+
 # Resolve ANDROID_HOME from env, .env, or common paths
 _mobile_resolve_android_home() {
   if [ -f "$STRAWBOSS_ROOT/.env" ] && [ -z "${ANDROID_HOME:-}" ]; then

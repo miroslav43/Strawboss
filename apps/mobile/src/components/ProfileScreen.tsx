@@ -3,11 +3,13 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   ScrollView,
   RefreshControl,
   Alert,
+  Vibration,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,14 +21,18 @@ import { mobileApiClient } from '@/lib/api-client';
 import { getSupabaseClient } from '@/lib/auth';
 import { clearLocalData } from '@/lib/storage';
 import { useAuthStore } from '@/stores/auth-store';
+import { useDevModeStore } from '@/stores/dev-mode-store';
 import { OperatorStats } from '@/components/features/stats/OperatorStats';
+import { AvatarPicker } from '@/components/shared/AvatarPicker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSync } from '@/hooks/useSync';
+import { useTapSequence } from '@/hooks/useTapSequence';
 
 const ROLE_LABEL: Record<string, string> = {
   driver:          'Șofer',
   loader_operator: 'Operator Încărcător',
   baler_operator:  'Operator Balotieră',
+  dispatcher:      'Dispecer',
   admin:           'Administrator',
 };
 
@@ -39,6 +45,7 @@ const MACHINE_MDI: Record<string, MachineIconName> = {
 
 export function ProfileScreen() {
   const { clear } = useAuthStore();
+  const { devSyncVisible, revealSync, hideSync } = useDevModeStore();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const { isConnected } = useNetworkStatus();
@@ -70,7 +77,36 @@ export function ProfileScreen() {
     await clearLocalData();
     queryClient.clear();
     clear();
+    // Session-only debug toggles reset on logout so the next signed-in user
+    // starts from the same baseline as a fresh install.
+    hideSync();
   };
+
+  const handleAvatarUploaded = useCallback(
+    (user: User) => {
+      // Swap the cached profile immediately so the header renders the new
+      // picture without a follow-up /profile GET.
+      queryClient.setQueryData(['profile'], user);
+    },
+    [queryClient],
+  );
+
+  // Reveal the Sincronizare card after 5 rapid taps on the role badge. The
+  // 2.5 s window is lenient enough for thumb-tap precision but short enough
+  // that accidental double-taps can't stack into 5 over a minute of idle use.
+  const { onTap: onRoleBadgeTap } = useTapSequence({
+    count: 5,
+    windowMs: 2500,
+    onThreshold: () => {
+      if (devSyncVisible) return;
+      Vibration.vibrate(30);
+      revealSync();
+      Alert.alert(
+        'Sincronizare activată',
+        'Controlul de sincronizare va fi vizibil până la închiderea aplicației.',
+      );
+    },
+  });
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -127,18 +163,22 @@ export function ProfileScreen() {
             <ActivityIndicator size="large" color="#FFFFFF" />
           ) : profile ? (
             <>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>
-                  {profile.fullName?.charAt(0)?.toUpperCase() ?? '?'}
-                </Text>
-              </View>
+              <AvatarPicker
+                avatarUrl={profile.avatarUrl}
+                fullName={profile.fullName}
+                onUploaded={handleAvatarUploaded}
+              />
               <Text style={styles.fullName}>{profile.fullName}</Text>
               <Text style={styles.email}>{profile.email}</Text>
-              <View style={styles.roleBadge}>
+              <Pressable
+                onPress={onRoleBadgeTap}
+                style={styles.roleBadge}
+                accessibilityLabel={ROLE_LABEL[profile.role] ?? profile.role}
+              >
                 <Text style={styles.roleText}>
                   {ROLE_LABEL[profile.role] ?? profile.role}
                 </Text>
-              </View>
+              </Pressable>
             </>
           ) : (
             <Text style={styles.errorText}>Nu s-au putut încărca datele profilului</Text>
@@ -153,68 +193,70 @@ export function ProfileScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
       >
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Sincronizare</Text>
-          <View style={styles.syncRow}>
-            <Text style={styles.syncLabel}>Rețea</Text>
-            <Text style={styles.syncValue}>{isConnected ? 'Online' : 'Offline'}</Text>
-          </View>
-          <View style={styles.syncRow}>
-            <Text style={styles.syncLabel}>În coadă</Text>
-            <Text
-              style={[
-                styles.syncValue,
-                queueCount > 0 ? styles.syncValueHighlight : null,
-              ]}
+        {devSyncVisible ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Sincronizare</Text>
+            <View style={styles.syncRow}>
+              <Text style={styles.syncLabel}>Rețea</Text>
+              <Text style={styles.syncValue}>{isConnected ? 'Online' : 'Offline'}</Text>
+            </View>
+            <View style={styles.syncRow}>
+              <Text style={styles.syncLabel}>În coadă</Text>
+              <Text
+                style={[
+                  styles.syncValue,
+                  queueCount > 0 ? styles.syncValueHighlight : null,
+                ]}
+              >
+                {queueCount}
+              </Text>
+            </View>
+            {failedQueueCount > 0 ? (
+              <Text style={styles.syncFailedHint}>
+                Ultimul sync a eșuat pentru {failedQueueCount}{' '}
+                {failedQueueCount === 1 ? 'înregistrare' : 'înregistrări'} — folosește butonul de mai
+                jos.
+              </Text>
+            ) : null}
+            <View style={styles.syncRow}>
+              <Text style={styles.syncLabel}>Ultima sincronizare</Text>
+              <Text style={styles.syncValue}>
+                {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : '—'}
+              </Text>
+            </View>
+            {syncing ? (
+              <Text style={styles.syncHint}>Se sincronizează…</Text>
+            ) : null}
+            <TouchableOpacity
+              style={styles.syncButton}
+              onPress={() => void triggerSync()}
+              disabled={!isConnected || syncing}
+              activeOpacity={0.85}
             >
-              {queueCount}
-            </Text>
+              <Text style={styles.syncButtonText}>Sincronizează acum</Text>
+            </TouchableOpacity>
+            {failedQueueCount > 0 ? (
+              <>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={() => void retryFailedAndSync()}
+                  disabled={!isConnected || syncing}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.retryButtonText}>Reîncearcă înregistrările eșuate</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.clearQueueButton}
+                  onPress={handleClearFailedQueue}
+                  disabled={syncing}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.clearQueueButtonText}>Șterge coada eșuată</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
           </View>
-          {failedQueueCount > 0 ? (
-            <Text style={styles.syncFailedHint}>
-              Ultimul sync a eșuat pentru {failedQueueCount}{' '}
-              {failedQueueCount === 1 ? 'înregistrare' : 'înregistrări'} — folosește butonul de mai
-              jos.
-            </Text>
-          ) : null}
-          <View style={styles.syncRow}>
-            <Text style={styles.syncLabel}>Ultima sincronizare</Text>
-            <Text style={styles.syncValue}>
-              {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : '—'}
-            </Text>
-          </View>
-          {syncing ? (
-            <Text style={styles.syncHint}>Se sincronizează…</Text>
-          ) : null}
-          <TouchableOpacity
-            style={styles.syncButton}
-            onPress={() => void triggerSync()}
-            disabled={!isConnected || syncing}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.syncButtonText}>Sincronizează acum</Text>
-          </TouchableOpacity>
-          {failedQueueCount > 0 ? (
-            <>
-              <TouchableOpacity
-                style={styles.retryButton}
-                onPress={() => void retryFailedAndSync()}
-                disabled={!isConnected || syncing}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.retryButtonText}>Reîncearcă înregistrările eșuate</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.clearQueueButton}
-                onPress={handleClearFailedQueue}
-                disabled={syncing}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.clearQueueButtonText}>Șterge coada eșuată</Text>
-              </TouchableOpacity>
-            </>
-          ) : null}
-        </View>
+        ) : null}
 
         {profile ? (
           <View style={styles.card}>
@@ -259,8 +301,6 @@ export function ProfileScreen() {
   );
 }
 
-const AVATAR_SIZE = scale(88);
-const AVATAR_RADIUS = scale(44);
 const LOGOUT_HEIGHT = scale(60);
 const LOGOUT_RADIUS = scale(16);
 const CARD_RADIUS = scale(16);
@@ -286,18 +326,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  avatarCircle: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_RADIUS,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-  },
-  avatarText: { fontSize: fontScale(36), fontWeight: '700', color: colors.white },
   fullName: { fontSize: fontScale(22), fontWeight: '700', color: colors.white },
   email: { fontSize: 14, color: 'rgba(255, 255, 255, 0.8)' },
   roleBadge: {

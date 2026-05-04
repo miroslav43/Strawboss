@@ -6,19 +6,25 @@ import {
   Delete,
   Body,
   Param,
+  Req,
   HttpCode,
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { AdminUsersService, CreateUserDto, UpdateUserDto } from './admin-users.service';
 import { Roles } from '../auth/roles.guard';
 import { Public } from '../auth/auth.guard';
 import { UserRole } from '@strawboss/types';
+import { UploadsService } from '../uploads/uploads.service';
 
 @Controller('admin/users')
 @Roles(UserRole.admin)
 export class AdminUsersController {
-  constructor(private readonly adminUsersService: AdminUsersService) {}
+  constructor(
+    private readonly adminUsersService: AdminUsersService,
+    private readonly uploadsService: UploadsService,
+  ) {}
 
   /** GET /api/v1/admin/users */
   @Get()
@@ -43,6 +49,36 @@ export class AdminUsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async deactivate(@Param('id') id: string): Promise<void> {
     await this.adminUsersService.deactivateUser(id);
+  }
+
+  /**
+   * POST /api/v1/admin/users/:id/avatar
+   *
+   * Admin-only override: upload a profile picture on behalf of another user.
+   * Mirrors `POST /api/v1/profile/avatar` but writes to the target user instead
+   * of the caller.
+   */
+  @Post(':id/avatar')
+  async uploadUserAvatar(
+    @Param('id') id: string,
+    @Req() req: FastifyRequest,
+  ) {
+    if (!req.isMultipart()) {
+      throw new BadRequestException('Expected multipart/form-data');
+    }
+
+    const file = await req.file();
+    if (!file) {
+      throw new BadRequestException('Missing "file" part');
+    }
+
+    const saved = await this.uploadsService.saveAvatar({
+      userId: id,
+      mimetype: file.mimetype,
+      stream: file.file,
+    });
+
+    return this.adminUsersService.setUserAvatar(id, saved.url);
   }
 }
 

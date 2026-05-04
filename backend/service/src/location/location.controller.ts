@@ -56,4 +56,24 @@ export class LocationController {
   ) {
     return this.locationService.getRouteHistory(machineId, from, to);
   }
+
+  /**
+   * GET /api/v1/location/trucks-at-loader/:loaderMachineId
+   * Loader/admin-only: returns trucks currently within proximity of the loader.
+   * Optional `radiusM` (default 75) and `windowMinutes` (default 5) query params.
+   */
+  @Get('trucks-at-loader/:loaderMachineId')
+  @Roles(UserRole.admin, UserRole.loader_operator)
+  getTrucksAtLoader(
+    @Param('loaderMachineId') loaderMachineId: string,
+    @Query('radiusM') radiusMRaw?: string,
+    @Query('windowMinutes') windowMinutesRaw?: string,
+  ) {
+    const radiusM = radiusMRaw ? Number(radiusMRaw) : undefined;
+    const windowMinutes = windowMinutesRaw ? Number(windowMinutesRaw) : undefined;
+    return this.locationService.getTrucksAtLoader(loaderMachineId, {
+      radiusM: Number.isFinite(radiusM) ? radiusM : undefined,
+      windowMinutes: Number.isFinite(windowMinutes) ? windowMinutes : undefined,
+    });
+  }
 }

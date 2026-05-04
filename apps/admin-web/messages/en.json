@@ -552,6 +552,7 @@
       "contactEmail": "Contact email",
       "contactEmailPlaceholder": "email@example.com",
       "activeDeposit": "Active deposit",
+      "defaultDeposit": "Default deposit (used when no other deposit can be derived)",
       "createError": "Error creating. Try again.",
       "updateError": "Error updating. Try again."
     },
