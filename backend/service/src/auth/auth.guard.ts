@@ -16,6 +16,8 @@ export interface RequestUser {
   id: string;
   email: string;
   role: string;
+  organizationId: string | null;    // null for super_admin users
+  organizationSlug: string | null;  // null for super_admin users
 }
 
 @Injectable()
@@ -82,10 +84,17 @@ export class AuthGuard implements CanActivate {
         (payload.role as string | undefined) ??
         '';
 
+      const organizationId =
+        (appMeta?.organization_id as string | undefined) ?? null;
+      const organizationSlug =
+        (appMeta?.organization_slug as string | undefined) ?? null;
+
       request.user = {
         id: (payload.sub as string) ?? '',
         email: (payload.email as string) ?? '',
         role,
+        organizationId,
+        organizationSlug,
       } satisfies RequestUser;
 
       return true;
