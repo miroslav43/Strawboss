@@ -81,17 +81,23 @@ export class AdminUsersService {
     });
   }
 
-  async listUsers(): Promise<User[]> {
+  async listUsers(orgId: string | null): Promise<User[]> {
+    const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT ${USER_SELECT_COLS}
       FROM users
-      WHERE deleted_at IS NULL
+      WHERE ${where}
       ORDER BY created_at DESC
+      LIMIT 1000
     `);
     return result as unknown as User[];
   }
 
-  async createUser(dto: CreateUserDto): Promise<User> {
+  async createUser(orgId: string, dto: CreateUserDto): Promise<User> {
     const { username, email, pin } = await this.generateCredentials(
       dto.fullName,
       dto.usernameOverride,
@@ -118,7 +124,7 @@ export class AdminUsersService {
 
     // 2. Insert into public.users with the same UUID.
     const insertResult = await this.drizzleProvider.db.execute(sql`
-      INSERT INTO users (id, email, username, pin, phone, full_name, role, is_active, locale)
+      INSERT INTO users (id, email, username, pin, phone, full_name, role, is_active, locale, organization_id)
       VALUES (
         ${authId}::uuid,
         ${email},
@@ -128,7 +134,8 @@ export class AdminUsersService {
         ${dto.fullName},
         ${dto.role}::user_role,
         true,
-        'ro'
+        'ro',
+        ${orgId}::uuid
       )
       RETURNING ${USER_SELECT_COLS}
     `);
@@ -137,7 +144,7 @@ export class AdminUsersService {
     return rows[0];
   }
 
-  async updateUser(id: string, dto: UpdateUserDto): Promise<User> {
+  async updateUser(id: string, orgId: string | null, dto: UpdateUserDto): Promise<User> {
     const hasChanges =
       dto.fullName !== undefined ||
       dto.role !== undefined ||
@@ -147,11 +154,11 @@ export class AdminUsersService {
       dto.username !== undefined ||
       dto.pin !== undefined;
 
-    if (!hasChanges) return this.getById(id);
+    if (!hasChanges) return this.getById(id, orgId);
 
     // Validate machine assignment compatibility.
     if (dto.assignedMachineId) {
-      const current = await this.getById(id);
+      const current = await this.getById(id, orgId);
       const effectiveRole: UserRole = dto.role ?? current.role;
       const requiredType = ROLE_MACHINE_TYPE[effectiveRole];
 
@@ -211,6 +218,15 @@ export class AdminUsersService {
       }
     }
 
+    const updateConditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) {
+      updateConditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const updateWhere = sql.join(updateConditions, sql` AND `);
+
     await this.drizzleProvider.db.execute(sql`
       UPDATE users SET
         full_name           = COALESCE(${dto.fullName ?? null}, full_name),
@@ -225,32 +241,50 @@ export class AdminUsersService {
         username            = COALESCE(${dto.username ?? null}, username),
         pin                 = CASE WHEN ${dto.pin !== undefined} THEN ${dto.pin ?? null} ELSE pin END,
         updated_at          = now()
-      WHERE id = ${id}::uuid AND deleted_at IS NULL
+      WHERE ${updateWhere}
     `);
 
-    return this.getById(id);
+    return this.getById(id, orgId);
   }
 
   /**
    * Persist a new avatar URL for the target user. Used by the admin upload
    * endpoint after `UploadsService.saveAvatar` has written the file to disk.
    */
-  async setUserAvatar(id: string, avatarUrl: string): Promise<User> {
+  async setUserAvatar(id: string, orgId: string | null, avatarUrl: string): Promise<User> {
     // Validate the user exists (and isn't soft-deleted) before we touch the row.
-    await this.getById(id);
+    await this.getById(id, orgId);
+
+    const avatarConditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) {
+      avatarConditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const avatarWhere = sql.join(avatarConditions, sql` AND `);
 
     await this.drizzleProvider.db.execute(sql`
       UPDATE users SET avatar_url = ${avatarUrl}, updated_at = NOW()
-      WHERE id = ${id}::uuid AND deleted_at IS NULL
+      WHERE ${avatarWhere}
     `);
 
-    return this.getById(id);
+    return this.getById(id, orgId);
   }
 
-  async deactivateUser(id: string): Promise<void> {
+  async deactivateUser(id: string, orgId: string | null): Promise<void> {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(sql`
       UPDATE users SET is_active = false, deleted_at = now()
-      WHERE id = ${id}::uuid AND deleted_at IS NULL
+      WHERE ${where}
       RETURNING id
     `);
     const rows = result as unknown as { id: string }[];
@@ -259,10 +293,18 @@ export class AdminUsersService {
     await this.supabaseAdmin.auth.admin.deleteUser(id);
   }
 
-  async getById(id: string): Promise<User> {
+  async getById(id: string, orgId: string | null): Promise<User> {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT ${USER_SELECT_COLS}
-      FROM users WHERE id = ${id}::uuid AND deleted_at IS NULL LIMIT 1
+      FROM users WHERE ${where} LIMIT 1
     `);
     const rows = result as unknown as User[];
     if (!rows.length) throw new NotFoundException(`User ${id} not found`);
@@ -316,7 +358,7 @@ export class AdminUsersService {
   private slugify(s: string): string {
     return s
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[̀-ͯ]/g, '')
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '');
   }
