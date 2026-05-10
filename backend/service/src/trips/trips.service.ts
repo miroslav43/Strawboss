@@ -693,7 +693,7 @@ export class TripsService implements OnModuleInit {
     void this.pushToDriver(id, 'Transport finalizat', 'Transportul a fost completat cu succes.', 'trip_completed');
 
     // Auto-generate CMR document in background (after signature is captured)
-    await this.cmrQueue.add('generate', { tripId: id });
+    await this.cmrQueue.add('generate', { tripId: id, orgId: orgId ?? '' });
     this.winston.log('flow', `CMR generation queued for trip ${id}`, {
       context: 'TripsService',
       tripId: id,

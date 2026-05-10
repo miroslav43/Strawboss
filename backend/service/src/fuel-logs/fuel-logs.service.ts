@@ -6,14 +6,20 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class FuelLogsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async getStats(filters?: {
-    operatorId?: string;
-    machineId?: string;
-    dateFrom?: string;
-    dateTo?: string;
-  }) {
+  async getStats(
+    orgId: string | null,
+    filters?: {
+      operatorId?: string;
+      machineId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.operatorId) {
       conditions.push(sql`operator_id = ${filters.operatorId}`);
     }
@@ -40,13 +46,19 @@ export class FuelLogsService {
     return rows[0];
   }
 
-  async list(filters?: {
-    machineId?: string;
-    dateFrom?: string;
-    dateTo?: string;
-  }) {
+  async list(
+    orgId: string | null,
+    filters?: {
+      machineId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.machineId) {
       conditions.push(sql`machine_id = ${filters.machineId}`);
     }
@@ -59,18 +71,18 @@ export class FuelLogsService {
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM fuel_logs WHERE ${where} ORDER BY logged_at DESC`,
+      sql`SELECT * FROM fuel_logs WHERE ${where} ORDER BY logged_at DESC LIMIT 1000`,
     );
     return result;
   }
 
-  async create(dto: Record<string, unknown>) {
+  async create(orgId: string, dto: Record<string, unknown>) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO fuel_logs (
         machine_id, operator_id, parcel_id, logged_at, fuel_type,
         quantity_liters, unit_price, total_cost, odometer_km,
         hourmeter_hrs, is_full_tank, receipt_photo_url, notes,
-        client_id, sync_version
+        client_id, sync_version, organization_id
       ) VALUES (
         ${dto.machineId}, ${dto.operatorId}, ${dto.parcelId ?? null},
         ${dto.loggedAt}, ${dto.fuelType},
@@ -78,7 +90,8 @@ export class FuelLogsService {
         ${dto.totalCost ?? null}, ${dto.odometerKm ?? null},
         ${dto.hourmeterHrs ?? null}, ${dto.isFullTank},
         ${dto.receiptPhotoUrl ?? null}, ${dto.notes ?? null},
-        ${dto.clientId ?? null}, 1
+        ${dto.clientId ?? null}, 1,
+        ${orgId}::uuid
       ) RETURNING *`,
     );
 

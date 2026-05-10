@@ -17,7 +17,7 @@ export class CmrProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ tripId: string }>): Promise<void> {
+  async process(job: Job<{ tripId: string; orgId: string }>): Promise<void> {
     this.winston.log('flow', `CMR generation job started`, {
       context: 'CmrProcessor',
       tripId: job.data.tripId,
@@ -25,7 +25,7 @@ export class CmrProcessor extends WorkerHost {
     });
 
     try {
-      await this.cmrService.generateCmr(job.data.tripId);
+      await this.cmrService.generateCmr(job.data.tripId, job.data.orgId);
     } catch (err) {
       this.logger.error(
         `CMR generation failed for trip ${job.data.tripId}: ${err instanceof Error ? err.message : String(err)}`,

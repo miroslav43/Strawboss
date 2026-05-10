@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { DocumentsService } from './documents.service';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/auth.guard';
 
 @Controller('documents')
 export class DocumentsController {
@@ -15,20 +17,25 @@ export class DocumentsController {
 
   @Get()
   list(
+    @CurrentUser() user: RequestUser,
     @Query('tripId') tripId?: string,
     @Query('documentType') documentType?: string,
   ) {
-    return this.documentsService.list({ tripId, documentType });
+    return this.documentsService.list(user.organizationId, { tripId, documentType });
   }
 
   @Get(':id')
-  findById(@Param('id') id: string) {
-    return this.documentsService.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.documentsService.findById(id, user.organizationId);
   }
 
   @Get(':id/download')
-  async download(@Param('id') id: string, @Res() res: FastifyReply) {
-    const doc = await this.documentsService.findById(id);
+  async download(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Res() res: FastifyReply,
+  ) {
+    const doc = await this.documentsService.findById(id, user.organizationId);
     const fileUrl = doc.file_url as string | null;
 
     if (!fileUrl) {

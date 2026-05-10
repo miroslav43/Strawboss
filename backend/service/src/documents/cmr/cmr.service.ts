@@ -28,7 +28,7 @@ export class CmrService {
    * Renders the Handlebars template to HTML, converts to PDF via Puppeteer,
    * and stores the result.
    */
-  async generateCmr(tripId: string) {
+  async generateCmr(tripId: string, orgId: string) {
     // 1. Fetch trip data
     const tripResult = await this.drizzleProvider.db.execute(
       sql`SELECT * FROM trips WHERE id = ${tripId}::uuid AND deleted_at IS NULL LIMIT 1`,
@@ -74,7 +74,7 @@ export class CmrService {
     const baleLoads = baleLoadsResult as unknown as Record<string, unknown>[];
 
     // 3. Create document record in 'generating' state
-    const docResult = await this.documentsService.create({
+    const docResult = await this.documentsService.create(orgId, {
       tripId,
       documentType: DocumentType.cmr,
       title: `CMR - ${trip.trip_number as string}`,

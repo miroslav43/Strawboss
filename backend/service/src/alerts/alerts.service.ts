@@ -7,13 +7,19 @@ import type { AlertDraft } from '@strawboss/domain';
 export class AlertsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(filters?: {
-    category?: string;
-    severity?: string;
-    isAcknowledged?: string;
-  }) {
-    const conditions: ReturnType<typeof sql>[] = [];
+  async list(
+    orgId: string | null,
+    filters?: {
+      category?: string;
+      severity?: string;
+      isAcknowledged?: string;
+    },
+  ) {
+    const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.category) {
       conditions.push(sql`category = ${filters.category}`);
     }
@@ -39,36 +45,48 @@ export class AlertsService {
     return result;
   }
 
-  async listUnacknowledged() {
+  async listUnacknowledged(orgId: string | null) {
+    if (orgId) {
+      const result = await this.drizzleProvider.db.execute(
+        sql`SELECT * FROM alerts WHERE is_acknowledged = false AND organization_id = ${orgId}::uuid ORDER BY created_at DESC`,
+      );
+      return result;
+    }
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT * FROM alerts WHERE is_acknowledged = false ORDER BY created_at DESC`,
     );
     return result;
   }
 
-  async acknowledge(id: string, userId: string) {
+  async acknowledge(id: string, userId: string, orgId: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}`];
+    if (orgId) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
+
     const existing = await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM alerts WHERE id = ${id} LIMIT 1`,
+      sql`SELECT id FROM alerts WHERE ${where} LIMIT 1`,
     );
     const rows = existing as unknown as Record<string, unknown>[];
     if (!rows.length) {
       throw new NotFoundException(`Alert ${id} not found`);
     }
 
-    const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE alerts SET
-        is_acknowledged = true,
-        acknowledged_by = ${userId},
-        acknowledged_at = NOW(),
-        updated_at = NOW()
-      WHERE id = ${id} RETURNING *`,
-    );
+    const updateConditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`];
+    if (orgId !== null) updateConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const updateWhere = sql.join(updateConditions, sql` AND `);
+    const result = await this.drizzleProvider.db.execute(sql`
+      UPDATE alerts
+      SET acknowledged_at = NOW(), acknowledged_by = ${userId}::uuid, updated_at = NOW()
+      WHERE ${updateWhere}
+    `);
     return result;
   }
 
-  async create(dto: Record<string, unknown>) {
+  async create(orgId: string, dto: Record<string, unknown>) {
     const result = await this.drizzleProvider.db.execute(
-      sql`INSERT INTO alerts (id, category, severity, title, description, machine_id, created_at, updated_at)
+      sql`INSERT INTO alerts (id, category, severity, title, description, machine_id, organization_id, created_at, updated_at)
       VALUES (
         gen_random_uuid(),
         ${dto.category},
@@ -76,6 +94,7 @@ export class AlertsService {
         ${dto.title},
         ${dto.description},
         ${(dto.machineId as string) || null},
+        ${orgId}::uuid,
         NOW(), NOW()
       )
       RETURNING id, category, severity, title, description,
@@ -85,15 +104,17 @@ export class AlertsService {
     return result;
   }
 
-  async createFromDraft(draft: AlertDraft) {
+  async createFromDraft(draft: AlertDraft, orgId: string) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO alerts (
         category, severity, title, description,
-        trip_id, machine_id, data, is_acknowledged
+        trip_id, machine_id, data, is_acknowledged,
+        organization_id
       ) VALUES (
         ${draft.category}, ${draft.severity}, ${draft.title}, ${draft.description},
         ${draft.tripId}, ${draft.machineId},
-        ${JSON.stringify(draft.data)}::jsonb, false
+        ${JSON.stringify(draft.data)}::jsonb, false,
+        ${orgId}::uuid
       ) RETURNING *`,
     );
     return result;
