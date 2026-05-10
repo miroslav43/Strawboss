@@ -54,7 +54,7 @@ export class TaskAssignmentsService {
     }
   }
 
-  async list(filters?: {
+  async list(orgId: string | null, filters?: {
     assignmentDate?: string;
     machineId?: string;
     assignedUserId?: string;
@@ -62,6 +62,9 @@ export class TaskAssignmentsService {
   }) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.assignmentDate) {
       conditions.push(sql`assignment_date = ${filters.assignmentDate}`);
     }
@@ -82,7 +85,15 @@ export class TaskAssignmentsService {
     return result;
   }
 
-  async getBoard(date: string) {
+  async getBoard(orgId: string | null, date: string) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`ta.assignment_date = ${date}`,
+      sql`ta.deleted_at IS NULL`,
+    ];
+    if (orgId !== null) {
+      conditions.push(sql`ta.organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT
         ta.*,
@@ -95,14 +106,22 @@ export class TaskAssignmentsService {
       LEFT JOIN parcels p ON ta.parcel_id = p.id
       LEFT JOIN machines m ON ta.machine_id = m.id
       LEFT JOIN users u ON ta.assigned_user_id = u.id
-      WHERE ta.assignment_date = ${date}
-        AND ta.deleted_at IS NULL
+      WHERE ${where}
       ORDER BY ta.parcel_id, ta.sequence_order ASC`,
     );
     return result;
   }
 
-  async getDailyPlan(date: string) {
+  async getDailyPlan(orgId: string | null, date: string) {
+    const planConditions: ReturnType<typeof sql>[] = [
+      sql`ta.assignment_date = ${date}`,
+      sql`ta.deleted_at IS NULL`,
+    ];
+    if (orgId !== null) {
+      planConditions.push(sql`ta.organization_id = ${orgId}::uuid`);
+    }
+    const planWhere = sql.join(planConditions, sql` AND `);
+
     // Fetch all assignments for the date with joined machine/parcel/user data
     const assignments = await this.drizzleProvider.db.execute(
       sql`SELECT
@@ -136,8 +155,7 @@ export class TaskAssignmentsService {
       LEFT JOIN parcels p ON ta.parcel_id = p.id
       LEFT JOIN users u ON ta.assigned_user_id = u.id
       LEFT JOIN delivery_destinations dd ON ta.destination_id = dd.id
-      WHERE ta.assignment_date = ${date}
-        AND ta.deleted_at IS NULL
+      WHERE ${planWhere}
       ORDER BY ta.sequence_order ASC, ta.created_at ASC`,
     );
 
@@ -309,7 +327,16 @@ export class TaskAssignmentsService {
     };
   }
 
-  async getByMachineType(date: string, machineType: string) {
+  async getByMachineType(orgId: string | null, date: string, machineType: string) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`ta.assignment_date = ${date}`,
+      sql`m.machine_type = ${machineType}`,
+      sql`ta.deleted_at IS NULL`,
+    ];
+    if (orgId !== null) {
+      conditions.push(sql`ta.organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT
         ta.id,
@@ -338,17 +365,23 @@ export class TaskAssignmentsService {
       LEFT JOIN parcels p ON ta.parcel_id = p.id
       LEFT JOIN users u ON ta.assigned_user_id = u.id
       LEFT JOIN delivery_destinations dd ON ta.destination_id = dd.id
-      WHERE ta.assignment_date = ${date}
-        AND m.machine_type = ${machineType}
-        AND ta.deleted_at IS NULL
+      WHERE ${where}
       ORDER BY ta.machine_id, ta.sequence_order ASC`,
     );
     return result;
   }
 
-  async findById(id: string) {
+  async findById(id: string, orgId?: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null && orgId !== undefined) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM task_assignments WHERE id = ${id} AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT * FROM task_assignments WHERE ${where} LIMIT 1`,
     );
     const rows = result as unknown as Record<string, unknown>[];
     if (!rows.length) {
@@ -374,17 +407,19 @@ export class TaskAssignmentsService {
     return Number(rows[0]?.n ?? 0);
   }
 
-  async create(dto: Record<string, unknown>) {
+  async create(orgId: string | null, dto: Record<string, unknown>) {
     const assignmentDate = dto.assignmentDate as string;
     const machineId = dto.machineId as string;
     const sequenceOrder = await this.nextSequenceOrder(assignmentDate, machineId);
 
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO task_assignments (
+        organization_id,
         assignment_date, machine_id, parcel_id, assigned_user_id,
         priority, sequence_order, status, parent_assignment_id,
         destination_id, estimated_start, estimated_end, notes
       ) VALUES (
+        ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
         ${assignmentDate}, ${machineId}, ${dto.parcelId ?? null},
         ${dto.assignedUserId ?? null}, ${dto.priority ?? 'normal'},
         ${sequenceOrder}, ${dto.status ?? 'available'}::task_assignment_status,
@@ -430,17 +465,17 @@ export class TaskAssignmentsService {
     }
   }
 
-  async bulkCreate(dtos: Record<string, unknown>[]) {
+  async bulkCreate(orgId: string | null, dtos: Record<string, unknown>[]) {
     const results: unknown[] = [];
     for (const dto of dtos) {
-      const result = await this.create(dto);
+      const result = await this.create(orgId, dto);
       results.push(result);
     }
     return results;
   }
 
-  async update(id: string, dto: Record<string, unknown>) {
-    const before = await this.findById(id);
+  async update(id: string, orgId: string | null, dto: Record<string, unknown>) {
+    const before = await this.findById(id, orgId);
     const prevStatus =
       typeof before.status === 'string' ? before.status : undefined;
 
@@ -477,14 +512,20 @@ export class TaskAssignmentsService {
     }
 
     if (setClauses.length === 0) {
-      return this.findById(id);
+      return this.findById(id, orgId);
     }
 
     setClauses.push(sql`updated_at = NOW()`);
     const setClause = sql.join(setClauses, sql`, `);
 
+    const updateConditions: ReturnType<typeof sql>[] = [sql`id = ${id}`, sql`deleted_at IS NULL`];
+    if (orgId !== null) {
+      updateConditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const updateWhere = sql.join(updateConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE task_assignments SET ${setClause} WHERE id = ${id} AND deleted_at IS NULL RETURNING *`,
+      sql`UPDATE task_assignments SET ${setClause} WHERE ${updateWhere} RETURNING *`,
     );
 
     if ('status' in dto && typeof dto.status === 'string' && prevStatus) {
@@ -631,12 +672,17 @@ export class TaskAssignmentsService {
     return result;
   }
 
-  async softDelete(id: string) {
-    await this.findById(id);
+  async softDelete(id: string, orgId: string | null) {
+    await this.findById(id, orgId);
     // Cancel linked trip BEFORE soft-deleting: autoCancelForTruckTask reads trip_id from the row.
     await this.autoCancelTripSafe(id);
+    const deleteConditions: ReturnType<typeof sql>[] = [sql`id = ${id}`];
+    if (orgId !== null) {
+      deleteConditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const deleteWhere = sql.join(deleteConditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE task_assignments SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} RETURNING *`,
+      sql`UPDATE task_assignments SET deleted_at = NOW(), updated_at = NOW() WHERE ${deleteWhere} RETURNING *`,
     );
     return result;
   }

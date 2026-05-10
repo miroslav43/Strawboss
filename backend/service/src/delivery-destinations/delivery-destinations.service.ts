@@ -177,11 +177,18 @@ export class DeliveryDestinationsService {
   }
 
   /** Returns the single row marked is_default = TRUE, or null. */
-  async findDefault(): Promise<{ id: string } | null> {
+  async findDefault(orgId: string | null): Promise<{ id: string } | null> {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`is_default = TRUE`,
+      sql`deleted_at IS NULL`,
+      sql`is_active = TRUE`,
+    ];
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM delivery_destinations
-          WHERE is_default = TRUE AND deleted_at IS NULL AND is_active = TRUE
-          LIMIT 1`,
+      sql`SELECT id FROM delivery_destinations WHERE ${where} LIMIT 1`,
     );
     const rows = result as unknown as { id: string }[];
     return rows[0] ?? null;

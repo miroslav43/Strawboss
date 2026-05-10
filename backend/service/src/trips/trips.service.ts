@@ -118,7 +118,7 @@ export class TripsService implements OnModuleInit {
     });
   }
 
-  async list(filters?: {
+  async list(orgId: string | null, filters?: {
     status?: string; // single value OR comma-separated values (e.g. "planned,loading")
     driverId?: string;
     truckId?: string;
@@ -128,6 +128,10 @@ export class TripsService implements OnModuleInit {
     dateTo?: string;
   }) {
     const conditions: ReturnType<typeof sql>[] = [sql`t.deleted_at IS NULL`];
+
+    if (orgId !== null) {
+      conditions.push(sql`t.organization_id = ${orgId}::uuid`);
+    }
 
     if (filters?.status) {
       const statuses = filters.status.split(',').map((s) => s.trim()).filter(Boolean);
@@ -186,9 +190,17 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async findById(id: string) {
+  async findById(id: string, orgId?: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null && orgId !== undefined) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM trips WHERE id = ${id} AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT * FROM trips WHERE ${where} LIMIT 1`,
     );
     const rows = result as unknown as Record<string, unknown>[];
     if (!rows.length) {
@@ -197,16 +209,18 @@ export class TripsService implements OnModuleInit {
     return rows[0];
   }
 
-  async create(dto: TripCreateDto) {
+  async create(orgId: string | null, dto: TripCreateDto) {
     const tripNumber = await this.generateTripNumber();
 
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO trips (
+        organization_id,
         trip_number, status, source_parcel_id, truck_id, driver_id,
         loader_id, loader_operator_id, destination_name,
         destination_address, destination_coords,
         bale_count, source_parcel_auto, sync_version
       ) VALUES (
+        ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
         ${tripNumber}, ${TripStatus.planned}, ${dto.sourceParcelId},
         ${dto.truckId}, ${dto.driverId},
         ${dto.loaderId ?? null}, ${dto.loaderOperatorId ?? null},
@@ -248,8 +262,8 @@ export class TripsService implements OnModuleInit {
     }
   }
 
-  async startLoading(id: string, dto: StartLoadingDto) {
-    const trip = await this.findById(id);
+  async startLoading(id: string, orgId: string | null, dto: StartLoadingDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'START_LOADING');
 
@@ -275,8 +289,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async completeLoading(id: string, _dto: CompleteLoadingDto) {
-    const trip = await this.findById(id);
+  async completeLoading(id: string, orgId: string | null, _dto: CompleteLoadingDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'COMPLETE_LOADING');
 
@@ -327,6 +341,7 @@ export class TripsService implements OnModuleInit {
   async registerLoad(
     dto: RegisterLoadDto,
     callerId: string,
+    orgId: string | null,
   ): Promise<RegisterLoadResult> {
     const idempotencyTable = 'register_load';
 
@@ -409,7 +424,7 @@ export class TripsService implements OnModuleInit {
           destAddress = taskDestRows[0].address;
           destCoordsGeoJson = taskDestRows[0].coords_geojson;
         } else {
-          const defaultDest = await this.deliveryDestinationsService.findDefault();
+          const defaultDest = await this.deliveryDestinationsService.findDefault(orgId);
           if (defaultDest) {
             const defRows = (await tx.execute(
               sql`SELECT name, address, ST_AsGeoJSON(coords) AS coords_geojson
@@ -433,6 +448,7 @@ export class TripsService implements OnModuleInit {
         const tripNumber = await this.generateTripNumber();
         const insertedTrip = (await tx.execute(
           sql`INSERT INTO trips (
+                organization_id,
                 trip_number, status,
                 source_parcel_id, source_parcel_auto,
                 truck_id, driver_id,
@@ -440,6 +456,7 @@ export class TripsService implements OnModuleInit {
                 destination_name, destination_address, destination_coords,
                 bale_count, sync_version
               ) VALUES (
+                ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
                 ${tripNumber}, ${TripStatus.planned}::trip_status,
                 ${dto.parcelId}, true,
                 ${dto.truckId}, ${driverId},
@@ -543,8 +560,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async depart(id: string, dto: DepartDto) {
-    const trip = await this.findById(id);
+  async depart(id: string, orgId: string | null, dto: DepartDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'DEPART');
 
@@ -569,8 +586,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async arrive(id: string, dto: ArriveDto) {
-    const trip = await this.findById(id);
+  async arrive(id: string, orgId: string | null, dto: ArriveDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'ARRIVE');
 
@@ -597,8 +614,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async startDelivery(id: string, dto: StartDeliveryDto) {
-    const trip = await this.findById(id);
+  async startDelivery(id: string, orgId: string | null, dto: StartDeliveryDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'START_DELIVERY');
 
@@ -622,8 +639,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async confirmDelivery(id: string, dto: ConfirmDeliveryDto) {
-    const trip = await this.findById(id);
+  async confirmDelivery(id: string, orgId: string | null, dto: ConfirmDeliveryDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'CONFIRM_DELIVERY');
 
@@ -654,8 +671,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async complete(id: string, dto: CompleteDto) {
-    const trip = await this.findById(id);
+  async complete(id: string, orgId: string | null, dto: CompleteDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'COMPLETE');
 
@@ -685,8 +702,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async cancel(id: string, dto: CancelDto) {
-    const trip = await this.findById(id);
+  async cancel(id: string, orgId: string | null, dto: CancelDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'CANCEL');
 
@@ -705,8 +722,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async dispute(id: string, _dto: DisputeDto) {
-    const trip = await this.findById(id);
+  async dispute(id: string, orgId: string | null, _dto: DisputeDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'DISPUTE');
 
@@ -743,7 +760,7 @@ export class TripsService implements OnModuleInit {
     const taskRows = (await this.drizzleProvider.db.execute(
       sql`SELECT
         ta.id, ta.machine_id, ta.parent_assignment_id, ta.destination_id,
-        ta.trip_id, ta.deleted_at,
+        ta.trip_id, ta.deleted_at, ta.organization_id AS "organizationId",
         m.machine_type
       FROM task_assignments ta
       JOIN machines m ON m.id = ta.machine_id
@@ -756,6 +773,7 @@ export class TripsService implements OnModuleInit {
       destination_id: string | null;
       trip_id: string | null;
       deleted_at: string | null;
+      organizationId: string | null;
       machine_type: string;
     }[];
     const task = taskRows[0];
@@ -831,13 +849,16 @@ export class TripsService implements OnModuleInit {
     if (!task.trip_id) {
       // ── INSERT path
       const tripNumber = await this.generateTripNumber();
+      const taskOrgId = task.organizationId;
       const inserted = (await this.drizzleProvider.db.execute(
         sql`INSERT INTO trips (
+          organization_id,
           trip_number, status, source_parcel_id, truck_id, driver_id,
           loader_id, loader_operator_id,
           destination_name, destination_address, destination_coords,
           bale_count, source_parcel_auto, sync_version
         ) VALUES (
+          ${taskOrgId ? sql`${taskOrgId}::uuid` : sql`NULL`},
           ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
           ${task.machine_id}, ${driverId},
           ${loaderMachineId}, ${loaderOperatorId},
@@ -939,8 +960,8 @@ export class TripsService implements OnModuleInit {
    *
    * Idempotent: if the trip is already soft-deleted, throws 404.
    */
-  async softDelete(id: string) {
-    const trip = await this.findById(id);
+  async softDelete(id: string, orgId: string | null) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
 
     if (!['planned', 'cancelled'].includes(from)) {
@@ -961,8 +982,8 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async resolveDispute(id: string, dto: ResolveDisputeDto) {
-    const trip = await this.findById(id);
+  async resolveDispute(id: string, orgId: string | null, dto: ResolveDisputeDto) {
+    const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'RESOLVE_DISPUTE');
 
