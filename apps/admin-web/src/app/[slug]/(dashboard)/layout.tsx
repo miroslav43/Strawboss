@@ -4,7 +4,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { RealtimeProvider } from '@/lib/realtime';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const params = useParams<{ slug: string }>();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [ready, setReady] = useState(false);
 
@@ -25,6 +26,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         router.replace('/login');
         return;
       }
+
+      const appMeta = session.user.app_metadata as {
+        role?: string;
+        organization_slug?: string;
+      };
+
+      // super_admin can access any org's dashboard
+      if (appMeta.role === 'super_admin') {
+        setReady(true);
+        return;
+      }
+
+      // Regular users: redirect to their own org if URL slug doesn't match
+      const userSlug = appMeta.organization_slug;
+      if (userSlug && userSlug !== params.slug) {
+        router.replace(`/${userSlug}/`);
+        return;
+      }
+
       setReady(true);
     });
 
@@ -37,6 +57,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         router.replace('/login');
         return;
       }
+
+      const appMeta = session.user.app_metadata as {
+        role?: string;
+        organization_slug?: string;
+      };
+
+      // super_admin can access any org's dashboard
+      if (appMeta.role === 'super_admin') {
+        setReady(true);
+        return;
+      }
+
+      // Regular users: redirect to their own org if URL slug doesn't match
+      const userSlug = appMeta.organization_slug;
+      if (userSlug && userSlug !== params.slug) {
+        router.replace(`/${userSlug}/`);
+        return;
+      }
+
       setReady(true);
     });
 

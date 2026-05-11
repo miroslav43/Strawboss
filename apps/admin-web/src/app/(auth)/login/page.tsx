@@ -41,7 +41,17 @@ export default function LoginPage() {
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace('/');
+      if (!session) return;
+      const appMeta = session.user.app_metadata as {
+        role?: string;
+        organization_slug?: string;
+      };
+      if (appMeta.role === 'super_admin') {
+        router.replace('/super-admin');
+        return;
+      }
+      const orgSlug = appMeta.organization_slug;
+      if (orgSlug) router.replace(`/${orgSlug}/`);
     });
   }, [router]);
 
@@ -66,7 +76,7 @@ export default function LoginPage() {
     // should pass through unchanged.
     const authPassword = isUsername ? pinToAuthPassword(password) : password;
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password: authPassword,
     });
@@ -77,7 +87,24 @@ export default function LoginPage() {
       return;
     }
 
-    router.push('/');
+    const appMeta = signInData.session?.user.app_metadata as {
+      role?: string;
+      organization_slug?: string;
+    } | undefined;
+
+    if (appMeta?.role === 'super_admin') {
+      router.push('/super-admin');
+      return;
+    }
+
+    const orgSlug = appMeta?.organization_slug;
+    if (!orgSlug) {
+      setError('Contul tău nu are o organizație asignată. Contactează administratorul.');
+      setLoading(false);
+      return;
+    }
+
+    router.push(`/${orgSlug}/`);
   }
 
   return (
