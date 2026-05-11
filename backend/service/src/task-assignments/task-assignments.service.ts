@@ -708,15 +708,21 @@ export class TaskAssignmentsService {
     }
   }
 
-  async autoCompletePastAssignments(beforeDate: string) {
+  async autoCompletePastAssignments(orgId: string | null, beforeDate: string) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`assignment_date < ${beforeDate}`,
+      sql`status = 'in_progress'::task_assignment_status`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE task_assignments
           SET status = 'done'::task_assignment_status,
               actual_end = COALESCE(actual_end, NOW()),
               updated_at = NOW()
-          WHERE assignment_date < ${beforeDate}
-            AND status = 'in_progress'::task_assignment_status
-            AND deleted_at IS NULL
+          WHERE ${where}
           RETURNING id`,
     );
     return result;

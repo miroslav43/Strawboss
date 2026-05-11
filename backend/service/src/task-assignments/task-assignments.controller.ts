@@ -127,8 +127,12 @@ export class TaskAssignmentsController {
 
   @Post('auto-complete')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
-  autoComplete(@Body() dto: { beforeDate: string }) {
+  autoComplete(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: { beforeDate: string },
+  ) {
     return this.taskAssignmentsService.autoCompletePastAssignments(
+      user.organizationId,
       dto.beforeDate,
     );
   }
