@@ -24,8 +24,11 @@ export class ParcelDailyStatusController {
   ) {}
 
   @Get()
-  listByDate(@Query('date') date: string) {
-    return this.parcelDailyStatusService.listByDate(date);
+  listByDate(
+    @CurrentUser() user: RequestUser,
+    @Query('date') date: string,
+  ) {
+    return this.parcelDailyStatusService.listByDate(date, user.organizationId);
   }
 
   @Put()
@@ -42,12 +45,13 @@ export class ParcelDailyStatusController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   async remove(
+    @CurrentUser() user: RequestUser,
     @Query('parcelId') parcelId?: string,
     @Query('date') date?: string,
   ) {
     if (!parcelId?.trim() || !date?.trim()) {
       throw new BadRequestException('parcelId and date query parameters are required');
     }
-    await this.parcelDailyStatusService.removeForDate(parcelId.trim(), date.trim());
+    await this.parcelDailyStatusService.removeForDate(parcelId.trim(), date.trim(), user.organizationId);
   }
 }

@@ -211,6 +211,7 @@ export class SyncService {
       if (mutation.table === 'bale_loads') {
         const tripId = resultData?.trip_id as string | null | undefined;
         if (tripId) {
+          const tripOrgFilter = orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``;
           await this.drizzleProvider.db.execute(
             sql`UPDATE trips SET
                   bale_count = (
@@ -219,7 +220,7 @@ export class SyncService {
                     WHERE trip_id = ${tripId} AND deleted_at IS NULL
                   ),
                   updated_at = NOW()
-                WHERE id = ${tripId}`,
+                WHERE id = ${tripId} ${tripOrgFilter}`,
           );
         }
       }
@@ -350,6 +351,7 @@ export class SyncService {
       const TABLES_WITH_SOFT_DELETE = new Set([
         'trips', 'bale_loads', 'bale_productions',
         'fuel_logs', 'consumable_logs', 'task_assignments',
+        'parcels', 'machines',
       ]);
       const softDeleteFilter = TABLES_WITH_SOFT_DELETE.has(table)
         ? sql` AND deleted_at IS NULL`
