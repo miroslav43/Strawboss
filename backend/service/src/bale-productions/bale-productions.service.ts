@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 
@@ -139,6 +139,29 @@ export class BaleProductionsService {
   }
 
   async create(orgId: string, dto: Record<string, unknown>) {
+    if (orgId) {
+      if (dto.parcelId) {
+        const parcelCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM parcels
+          WHERE id = ${dto.parcelId}::uuid
+            AND organization_id = ${orgId}::uuid
+            AND deleted_at IS NULL
+          LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!parcelCheck.length) throw new BadRequestException('Parcel not found in your organization');
+      }
+      if (dto.balerId) {
+        const balerCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM machines
+          WHERE id = ${dto.balerId}::uuid
+            AND organization_id = ${orgId}::uuid
+            AND deleted_at IS NULL
+          LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!balerCheck.length) throw new BadRequestException('Baler machine not found in your organization');
+      }
+    }
+
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO bale_productions (
         id, parcel_id, baler_id, operator_id,

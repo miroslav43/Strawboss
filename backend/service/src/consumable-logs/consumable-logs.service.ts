@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 
@@ -73,6 +73,29 @@ export class ConsumableLogsService {
   }
 
   async create(orgId: string, dto: Record<string, unknown>) {
+    if (orgId) {
+      if (dto.machineId) {
+        const machineCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM machines
+          WHERE id = ${dto.machineId}::uuid
+            AND organization_id = ${orgId}::uuid
+            AND deleted_at IS NULL
+          LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!machineCheck.length) throw new BadRequestException('Machine not found in your organization');
+      }
+      if (dto.parcelId) {
+        const parcelCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM parcels
+          WHERE id = ${dto.parcelId}::uuid
+            AND organization_id = ${orgId}::uuid
+            AND deleted_at IS NULL
+          LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!parcelCheck.length) throw new BadRequestException('Parcel not found in your organization');
+      }
+    }
+
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO consumable_logs (
         machine_id, operator_id, parcel_id, consumable_type,

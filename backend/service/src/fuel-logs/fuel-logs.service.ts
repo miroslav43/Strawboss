@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 
@@ -77,6 +77,19 @@ export class FuelLogsService {
   }
 
   async create(orgId: string, dto: Record<string, unknown>) {
+    if (orgId) {
+      const machineCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines
+        WHERE id = ${dto.machineId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!machineCheck.length) throw new BadRequestException('Machine not found in your organization');
+    }
+
+    const orgFilter = orgId ? sql`AND organization_id = ${orgId}::uuid` : sql``;
+
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO fuel_logs (
         machine_id, operator_id, parcel_id, logged_at, fuel_type,
@@ -102,7 +115,8 @@ export class FuelLogsService {
           current_odometer_km = ${dto.odometerKm},
           updated_at = NOW()
         WHERE id = ${dto.machineId}
-          AND current_odometer_km < ${dto.odometerKm}`,
+          AND current_odometer_km < ${dto.odometerKm}
+          ${orgFilter}`,
       );
     }
 
@@ -113,7 +127,8 @@ export class FuelLogsService {
           current_hourmeter_hrs = ${dto.hourmeterHrs},
           updated_at = NOW()
         WHERE id = ${dto.machineId}
-          AND current_hourmeter_hrs < ${dto.hourmeterHrs}`,
+          AND current_hourmeter_hrs < ${dto.hourmeterHrs}
+          ${orgFilter}`,
       );
     }
 

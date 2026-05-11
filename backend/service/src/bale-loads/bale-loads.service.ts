@@ -42,8 +42,14 @@ export class BaleLoadsService {
   }
 
   async create(orgId: string, dto: Record<string, unknown>) {
+    const tripConditions: ReturnType<typeof sql>[] = [
+      sql`id = ${dto.tripId}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId) tripConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const tripWhere = sql.join(tripConditions, sql` AND `);
     const tripRows = await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM trips WHERE id = ${dto.tripId} AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT id FROM trips WHERE ${tripWhere} LIMIT 1`,
     ) as unknown as { id: string }[];
     if (!tripRows.length) {
       throw new NotFoundException('Trip-ul nu a fost găsit sau a fost șters');
@@ -64,6 +70,7 @@ export class BaleLoadsService {
     );
 
     // Auto-update trip bale count
+    const tripUpdateOrgFilter = orgId ? sql`AND organization_id = ${orgId}::uuid` : sql``;
     await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         bale_count = (
@@ -72,7 +79,7 @@ export class BaleLoadsService {
           WHERE trip_id = ${dto.tripId} AND deleted_at IS NULL
         ),
         updated_at = NOW()
-      WHERE id = ${dto.tripId}`,
+      WHERE id = ${dto.tripId} ${tripUpdateOrgFilter}`,
     );
 
     return result;
