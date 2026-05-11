@@ -29,9 +29,16 @@ export class CmrService {
    * and stores the result.
    */
   async generateCmr(tripId: string, orgId: string) {
-    // 1. Fetch trip data
+    // 1. Fetch trip data (scoped to org to prevent cross-org data leakage)
+    const tripConditions: ReturnType<typeof sql>[] = [
+      sql`id = ${tripId}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId) tripConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const tripWhere = sql.join(tripConditions, sql` AND `);
+
     const tripResult = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM trips WHERE id = ${tripId}::uuid AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT * FROM trips WHERE ${tripWhere} LIMIT 1`,
     );
     const trips = tripResult as unknown as Record<string, unknown>[];
     if (!trips.length) {
