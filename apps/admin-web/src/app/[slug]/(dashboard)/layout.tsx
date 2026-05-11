@@ -38,9 +38,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return;
       }
 
-      // Regular users: redirect to their own org if URL slug doesn't match
+      // Regular users: must have an org slug
       const userSlug = appMeta.organization_slug;
-      if (userSlug && userSlug !== params.slug) {
+      if (!userSlug) {
+        router.replace('/login');
+        return;
+      }
+      if (userSlug !== params.slug) {
         router.replace(`/${userSlug}/`);
         return;
       }
@@ -69,9 +73,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return;
       }
 
-      // Regular users: redirect to their own org if URL slug doesn't match
+      // Regular users: must have an org slug
       const userSlug = appMeta.organization_slug;
-      if (userSlug && userSlug !== params.slug) {
+      if (!userSlug) {
+        router.replace('/login');
+        return;
+      }
+      if (userSlug !== params.slug) {
         router.replace(`/${userSlug}/`);
         return;
       }
