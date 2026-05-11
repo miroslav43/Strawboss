@@ -27,12 +27,15 @@ export class ParcelDailyStatusService {
     return result;
   }
 
-  async upsert(dto: {
-    parcelId: string;
-    statusDate: string;
-    isDone: boolean;
-    notes?: string | null;
-  }) {
+  async upsert(
+    orgId: string | null,
+    dto: {
+      parcelId: string;
+      statusDate: string;
+      isDone: boolean;
+      notes?: string | null;
+    },
+  ) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO parcel_daily_status (parcel_id, status_date, is_done, notes)
           VALUES (${dto.parcelId}, ${dto.statusDate}, ${dto.isDone}, ${dto.notes ?? null})
@@ -54,6 +57,7 @@ export class ParcelDailyStatusService {
     await this.parcelsService.applyHarvestStatusFromDailyPlan(
       dto.parcelId,
       dto.isDone,
+      orgId,
     );
 
     return result;

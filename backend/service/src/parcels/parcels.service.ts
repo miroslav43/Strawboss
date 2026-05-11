@@ -292,12 +292,18 @@ export class ParcelsService {
    * When daily planning marks a parcel done / not done, mirror that into
    * parcels.harvest_status: done → harvested; not done → to_harvest.
    */
-  async applyHarvestStatusFromDailyPlan(parcelId: string, isDone: boolean) {
+  async applyHarvestStatusFromDailyPlan(parcelId: string, isDone: boolean, orgId: string | null) {
     const status = isDone ? 'harvested' : 'to_harvest';
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${parcelId}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
     await this.drizzleProvider.db.execute(sql`
       UPDATE parcels
       SET harvest_status = ${status}::harvest_status, updated_at = NOW()
-      WHERE id = ${parcelId} AND deleted_at IS NULL
+      WHERE ${where}
     `);
   }
 

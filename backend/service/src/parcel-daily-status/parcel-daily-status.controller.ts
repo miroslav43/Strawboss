@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { ParcelDailyStatusService } from './parcel-daily-status.service';
 import { Roles } from '../auth/roles.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { upsertParcelDailyStatusSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
@@ -29,10 +31,11 @@ export class ParcelDailyStatusController {
   @Put()
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   upsert(
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(upsertParcelDailyStatusSchema))
     dto: { parcelId: string; statusDate: string; isDone: boolean; notes?: string | null },
   ) {
-    return this.parcelDailyStatusService.upsert(dto);
+    return this.parcelDailyStatusService.upsert(user.organizationId, dto);
   }
 
   @Delete()
