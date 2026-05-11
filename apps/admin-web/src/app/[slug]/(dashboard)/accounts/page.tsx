@@ -42,6 +42,7 @@ const ALL_ROLES: UserRole[] = [
   UserRole.baler_operator,
   UserRole.loader_operator,
   UserRole.driver,
+  UserRole.geofence_maker,
 ];
 
 const GROUP_ORDER: UserRole[] = [
@@ -49,30 +50,37 @@ const GROUP_ORDER: UserRole[] = [
   UserRole.baler_operator,
   UserRole.loader_operator,
   UserRole.driver,
+  UserRole.geofence_maker,
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.super_admin]:     'Super Admin',
   [UserRole.admin]:           'Admin',
   [UserRole.dispatcher]:      'Dispatcher',
   [UserRole.baler_operator]:  'Baler Operator',
   [UserRole.loader_operator]: 'Loader Operator',
   [UserRole.driver]:          'Driver',
+  [UserRole.geofence_maker]:  'Geofence Maker',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
+  [UserRole.super_admin]:     'bg-red-100 text-red-700',
   [UserRole.admin]:           'bg-purple-100 text-purple-700',
   [UserRole.dispatcher]:      'bg-indigo-100 text-indigo-700',
   [UserRole.baler_operator]:  'bg-amber-100 text-amber-700',
   [UserRole.loader_operator]: 'bg-blue-100 text-blue-700',
   [UserRole.driver]:          'bg-green-100 text-green-700',
+  [UserRole.geofence_maker]:  'bg-teal-100 text-teal-700',
 };
 
 const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
+  [UserRole.super_admin]:     <Shield className="h-3.5 w-3.5 text-red-500" />,
   [UserRole.admin]:           <Shield className="h-3.5 w-3.5 text-purple-500" />,
   [UserRole.dispatcher]:      <Shield className="h-3.5 w-3.5 text-indigo-500" />,
   [UserRole.baler_operator]:  <span className="text-sm">*</span>,
   [UserRole.loader_operator]: <span className="text-sm">#</span>,
   [UserRole.driver]:          <span className="text-sm">&gt;</span>,
+  [UserRole.geofence_maker]:  <span className="text-sm">&#9676;</span>,
 };
 
 /** Machine type required for each operator role. */
@@ -931,7 +939,7 @@ export default function AccountsPage() {
                     const assignedMachine = user.assignedMachineId
                       ? machineMap.get(user.assignedMachineId)
                       : null;
-                    const canAssign = user.role !== UserRole.admin && user.isActive;
+                    const canAssign = user.role !== UserRole.admin && user.role !== UserRole.dispatcher && user.role !== UserRole.geofence_maker && user.isActive;
 
                     return (
                       <tr key={user.id} className={`hover:bg-neutral-50 ${!user.isActive ? 'opacity-50' : ''}`}>

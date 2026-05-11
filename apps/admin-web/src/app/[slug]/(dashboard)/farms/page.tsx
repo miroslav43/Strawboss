@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Tractor,
   MapPin,
+  Phone,
   Search,
   CheckSquare,
   Square,
@@ -26,6 +27,12 @@ import {
   useAssignParcelToFarm,
 } from '@strawboss/api';
 import type { Farm, Parcel } from '@strawboss/types';
+import { FarmEntityType } from '@strawboss/types';
+
+const ENTITY_TYPE_LABELS: Record<FarmEntityType, string> = {
+  [FarmEntityType.persoana_juridica]: 'Persoană juridică',
+  [FarmEntityType.persoana_fizica]:   'Persoană fizică',
+};
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -302,11 +309,19 @@ export default function FarmsPage() {
   // Create form
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState('');
+  const [createPhone, setCreatePhone] = useState('');
+  const [createEntityType, setCreateEntityType] = useState<FarmEntityType | ''>('');
+  const [createCui, setCreateCui] = useState('');
+  const [createApiaCode, setCreateApiaCode] = useState('');
   const [createAddress, setCreateAddress] = useState('');
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEntityType, setEditEntityType] = useState<FarmEntityType | ''>('');
+  const [editCui, setEditCui] = useState('');
+  const [editApiaCode, setEditApiaCode] = useState('');
   const [editAddress, setEditAddress] = useState('');
 
   // Expanded farms (showing assigned parcels)
@@ -316,32 +331,53 @@ export default function FarmsPage() {
   const [assignModalFarmId, setAssignModalFarmId] = useState<string | null>(null);
 
   const handleCreate = useCallback(() => {
-    if (!createName.trim()) return;
+    if (!createName.trim() || !createPhone.trim()) return;
     createFarm.mutate(
-      { name: createName.trim(), address: createAddress.trim() || undefined },
+      {
+        name:       createName.trim(),
+        phone:      createPhone.trim(),
+        entityType: createEntityType || undefined,
+        cui:        createCui.trim() || undefined,
+        apiaCode:   createApiaCode.trim() || undefined,
+        address:    createAddress.trim() || undefined,
+      },
       {
         onSuccess: () => {
-          setCreateName('');
-          setCreateAddress('');
+          setCreateName(''); setCreatePhone(''); setCreateEntityType('');
+          setCreateCui(''); setCreateApiaCode(''); setCreateAddress('');
           setShowCreate(false);
         },
       },
     );
-  }, [createName, createAddress, createFarm]);
+  }, [createName, createPhone, createEntityType, createCui, createApiaCode, createAddress, createFarm]);
 
   const startEdit = useCallback((farm: Farm) => {
     setEditingId(farm.id);
     setEditName(farm.name);
+    setEditPhone(farm.phone ?? '');
+    setEditEntityType(farm.entityType ?? '');
+    setEditCui(farm.cui ?? '');
+    setEditApiaCode(farm.apiaCode ?? '');
     setEditAddress(farm.address ?? '');
   }, []);
 
   const handleUpdate = useCallback(() => {
-    if (!editingId || !editName.trim()) return;
+    if (!editingId || !editName.trim() || !editPhone.trim()) return;
     updateFarm.mutate(
-      { id: editingId, data: { name: editName.trim(), address: editAddress.trim() || undefined } },
+      {
+        id: editingId,
+        data: {
+          name:       editName.trim(),
+          phone:      editPhone.trim(),
+          entityType: editEntityType || null,
+          cui:        editCui.trim() || null,
+          apiaCode:   editApiaCode.trim() || null,
+          address:    editAddress.trim() || null,
+        },
+      },
       { onSuccess: () => setEditingId(null) },
     );
-  }, [editingId, editName, editAddress, updateFarm]);
+  }, [editingId, editName, editPhone, editEntityType, editCui, editApiaCode, editAddress, updateFarm]);
 
   const handleDelete = useCallback((farm: Farm) => {
     const parcelCount = parcels.filter((p) => p.farmId === farm.id).length;
@@ -392,7 +428,7 @@ export default function FarmsPage() {
           <h3 className="text-sm font-semibold text-neutral-700">Fermă nouă</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Nume *</label>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Nume fermă *</label>
               <input
                 type="text"
                 placeholder="Ex: Ferma Ionescu"
@@ -400,11 +436,52 @@ export default function FarmsPage() {
                 onChange={(e) => setCreateName(e.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Adresă (opțional)</label>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Telefon *</label>
+              <input
+                type="tel"
+                placeholder="Ex: 0722 123 456"
+                value={createPhone}
+                onChange={(e) => setCreatePhone(e.target.value)}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Tip entitate</label>
+              <select
+                value={createEntityType}
+                onChange={(e) => setCreateEntityType(e.target.value as FarmEntityType | '')}
+                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">— Selectează —</option>
+                <option value={FarmEntityType.persoana_juridica}>Persoană juridică</option>
+                <option value={FarmEntityType.persoana_fizica}>Persoană fizică</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">CUI</label>
+              <input
+                type="text"
+                placeholder="Ex: RO12345678"
+                value={createCui}
+                onChange={(e) => setCreateCui(e.target.value)}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Cod RO APIA</label>
+              <input
+                type="text"
+                placeholder="Cod APIA al fermei"
+                value={createApiaCode}
+                onChange={(e) => setCreateApiaCode(e.target.value)}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Adresă</label>
               <input
                 type="text"
                 placeholder="Ex: Deta, Timiș"
@@ -417,14 +494,18 @@ export default function FarmsPage() {
           <div className="flex gap-2">
             <button
               onClick={handleCreate}
-              disabled={!createName.trim() || createFarm.isPending}
+              disabled={!createName.trim() || !createPhone.trim() || createFarm.isPending}
               className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
             >
               {createFarm.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Salvează
             </button>
             <button
-              onClick={() => { setShowCreate(false); setCreateName(''); setCreateAddress(''); }}
+              onClick={() => {
+                setShowCreate(false);
+                setCreateName(''); setCreatePhone(''); setCreateEntityType('');
+                setCreateCui(''); setCreateApiaCode(''); setCreateAddress('');
+              }}
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50"
             >
               Anulează
@@ -461,45 +542,108 @@ export default function FarmsPage() {
                   </div>
 
                   {isEditing ? (
-                    <div className="flex flex-1 items-center gap-2 min-w-0">
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="flex-1 min-w-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                        autoFocus
-                        onKeyDown={(e) => e.key === 'Enter' && handleUpdate()}
-                      />
-                      <input
-                        type="text"
-                        value={editAddress}
-                        onChange={(e) => setEditAddress(e.target.value)}
-                        placeholder="Adresă"
-                        className="w-40 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                      <button
-                        onClick={handleUpdate}
-                        disabled={!editName.trim() || updateFarm.isPending}
-                        className="rounded-lg bg-primary p-1.5 text-white hover:bg-primary/90 disabled:opacity-50"
-                      >
-                        {updateFarm.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="rounded-lg border border-neutral-300 p-1.5 text-neutral-500 hover:bg-neutral-50"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                    <div className="flex flex-1 flex-col gap-3 min-w-0">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-medium text-neutral-600 mb-1">Nume *</label>
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                            autoFocus
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-neutral-600 mb-1">Telefon *</label>
+                          <input
+                            type="tel"
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-neutral-600 mb-1">Tip entitate</label>
+                          <select
+                            value={editEntityType}
+                            onChange={(e) => setEditEntityType(e.target.value as FarmEntityType | '')}
+                            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          >
+                            <option value="">— Selectează —</option>
+                            <option value={FarmEntityType.persoana_juridica}>Persoană juridică</option>
+                            <option value={FarmEntityType.persoana_fizica}>Persoană fizică</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-neutral-600 mb-1">CUI</label>
+                          <input
+                            type="text"
+                            value={editCui}
+                            onChange={(e) => setEditCui(e.target.value)}
+                            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-neutral-600 mb-1">Cod RO APIA</label>
+                          <input
+                            type="text"
+                            value={editApiaCode}
+                            onChange={(e) => setEditApiaCode(e.target.value)}
+                            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-neutral-600 mb-1">Adresă</label>
+                          <input
+                            type="text"
+                            value={editAddress}
+                            onChange={(e) => setEditAddress(e.target.value)}
+                            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleUpdate}
+                          disabled={!editName.trim() || !editPhone.trim() || updateFarm.isPending}
+                          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+                        >
+                          {updateFarm.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          Salvează
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+                        >
+                          Anulează
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-neutral-800">{farm.name}</p>
-                      {farm.address && (
-                        <p className="flex items-center gap-1 text-xs text-neutral-400 mt-0.5">
-                          <MapPin className="h-3 w-3" />
-                          {farm.address}
-                        </p>
-                      )}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-neutral-400">
+                        {farm.entityType && (
+                          <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-600">
+                            {ENTITY_TYPE_LABELS[farm.entityType]}
+                          </span>
+                        )}
+                        {farm.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {farm.phone}
+                          </span>
+                        )}
+                        {farm.address && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {farm.address}
+                          </span>
+                        )}
+                        {farm.cui && <span>CUI: {farm.cui}</span>}
+                        {farm.apiaCode && <span>APIA: {farm.apiaCode}</span>}
+                      </div>
                     </div>
                   )}
 

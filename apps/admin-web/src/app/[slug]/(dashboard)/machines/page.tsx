@@ -109,10 +109,10 @@ interface MachineFormState {
   year: string;
   fuelType: FuelType;
   tankCapacityLiters: string;
-  maxPayloadKg: string;
   maxBaleCount: string;
-  balesPerHourAvg: string;
-  reachMeters: string;
+  ownerCompanyName: string;
+  ownerCompanyAddress: string;
+  ownerCompanyCui: string;
   isActive: boolean;
 }
 
@@ -126,47 +126,47 @@ function blankForm(machines: Machine[], type: MachineType = MachineType.loader):
     year:               String(new Date().getFullYear()),
     fuelType:           FuelType.diesel,
     tankCapacityLiters: '',
-    maxPayloadKg:       '',
     maxBaleCount:       '',
-    balesPerHourAvg:    '',
-    reachMeters:        '',
+    ownerCompanyName:   '',
+    ownerCompanyAddress: '',
+    ownerCompanyCui:    '',
     isActive:           true,
   };
 }
 
 function formToPayload(f: MachineFormState): Partial<Machine> {
   return {
-    machineType:        f.machineType,
-    internalCode:       f.internalCode.trim(),
-    registrationPlate:  f.registrationPlate.trim() || undefined,
-    make:               f.make.trim(),
-    model:              f.model.trim(),
-    year:               Number(f.year),
-    fuelType:           f.fuelType,
-    tankCapacityLiters: Number(f.tankCapacityLiters),
-    maxPayloadKg:       f.maxPayloadKg    ? Number(f.maxPayloadKg)    : null,
-    maxBaleCount:       f.maxBaleCount    ? Number(f.maxBaleCount)    : null,
-    balesPerHourAvg:    f.balesPerHourAvg ? Number(f.balesPerHourAvg) : null,
-    reachMeters:        f.reachMeters     ? Number(f.reachMeters)     : null,
-    isActive:           f.isActive,
+    machineType:          f.machineType,
+    internalCode:         f.internalCode.trim(),
+    registrationPlate:    f.registrationPlate.trim(),
+    make:                 f.make.trim(),
+    model:                f.model.trim(),
+    year:                 Number(f.year),
+    fuelType:             f.fuelType,
+    tankCapacityLiters:   Number(f.tankCapacityLiters),
+    maxBaleCount:         f.maxBaleCount ? Number(f.maxBaleCount) : null,
+    ownerCompanyName:     f.ownerCompanyName.trim()    || null,
+    ownerCompanyAddress:  f.ownerCompanyAddress.trim() || null,
+    ownerCompanyCui:      f.ownerCompanyCui.trim()     || null,
+    isActive:             f.isActive,
   } as Partial<Machine>;
 }
 
 function machineToForm(m: Machine): MachineFormState {
   return {
-    machineType:        m.machineType,
-    internalCode:       m.internalCode ?? '',
-    registrationPlate:  m.registrationPlate ?? '',
-    make:               m.make,
-    model:              m.model,
-    year:               String(m.year),
-    fuelType:           m.fuelType,
-    tankCapacityLiters: m.tankCapacityLiters != null ? String(m.tankCapacityLiters) : '',
-    maxPayloadKg:       m.maxPayloadKg    != null ? String(m.maxPayloadKg)    : '',
-    maxBaleCount:       m.maxBaleCount    != null ? String(m.maxBaleCount)    : '',
-    balesPerHourAvg:    m.balesPerHourAvg != null ? String(m.balesPerHourAvg) : '',
-    reachMeters:        m.reachMeters     != null ? String(m.reachMeters)     : '',
-    isActive:           m.isActive,
+    machineType:         m.machineType,
+    internalCode:        m.internalCode ?? '',
+    registrationPlate:   m.registrationPlate ?? '',
+    make:                m.make,
+    model:               m.model,
+    year:                String(m.year),
+    fuelType:            m.fuelType,
+    tankCapacityLiters:  m.tankCapacityLiters != null ? String(m.tankCapacityLiters) : '',
+    maxBaleCount:        m.maxBaleCount  != null ? String(m.maxBaleCount)  : '',
+    ownerCompanyName:    m.ownerCompanyName    ?? '',
+    ownerCompanyAddress: m.ownerCompanyAddress ?? '',
+    ownerCompanyCui:     m.ownerCompanyCui     ?? '',
+    isActive:            m.isActive,
   };
 }
 
@@ -308,11 +308,11 @@ function MachineForm({
         />
       </Field>
 
-      <Field label="Nr. înmatriculare">
+      <Field label="Nr. înmatriculare" required>
         <input
-          value={form.registrationPlate}
+          required value={form.registrationPlate}
           onChange={(e) => onChange({ registrationPlate: e.target.value })}
-          className={inputCls} placeholder="OS-1234-AB (opțional)"
+          className={inputCls} placeholder="OS-1234-AB"
         />
       </Field>
 
@@ -337,29 +337,38 @@ function MachineForm({
         />
       </Field>
 
-      <Field label="Sarcină maximă (kg)">
-        <input type="number" min={0} value={form.maxPayloadKg}
-          onChange={(e) => onChange({ maxPayloadKg: e.target.value })}
-          className={inputCls} placeholder="—" />
-      </Field>
-
       <Field label="Nr. max. baloți">
         <input type="number" min={0} value={form.maxBaleCount}
           onChange={(e) => onChange({ maxBaleCount: e.target.value })}
           className={inputCls} placeholder="—" />
       </Field>
 
-      <Field label="Baloți/oră (medie)">
-        <input type="number" min={0} value={form.balesPerHourAvg}
-          onChange={(e) => onChange({ balesPerHourAvg: e.target.value })}
-          className={inputCls} placeholder="—" />
-      </Field>
+      <div className="col-span-2 border-t border-neutral-200 pt-2">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+          Firma proprietară
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Denumire firmă">
+            <input value={form.ownerCompanyName}
+              onChange={(e) => onChange({ ownerCompanyName: e.target.value })}
+              className={inputCls} placeholder="SC Agro SRL" />
+          </Field>
 
-      <Field label="Raza de acțiune (m)">
-        <input type="number" min={0} value={form.reachMeters}
-          onChange={(e) => onChange({ reachMeters: e.target.value })}
-          className={inputCls} placeholder="—" />
-      </Field>
+          <Field label="CUI firmă">
+            <input value={form.ownerCompanyCui}
+              onChange={(e) => onChange({ ownerCompanyCui: e.target.value })}
+              className={inputCls} placeholder="RO12345678" />
+          </Field>
+
+          <div className="col-span-2">
+            <Field label="Adresă firmă">
+              <input value={form.ownerCompanyAddress}
+                onChange={(e) => onChange({ ownerCompanyAddress: e.target.value })}
+                className={inputCls} placeholder="Str. Exemplu nr. 1, Timișoara" />
+            </Field>
+          </div>
+        </div>
+      </div>
 
       {showIsActive && (
         <div className="col-span-2 flex items-center gap-2">

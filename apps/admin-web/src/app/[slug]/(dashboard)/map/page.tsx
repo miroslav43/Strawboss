@@ -351,8 +351,6 @@ interface EditParcelInfoModalProps {
 function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
   const { t } = useI18n();
   const [name,         setName]         = useState(parcel.name ?? '');
-  const [ownerName,    setOwnerName]    = useState(parcel.ownerName ?? '');
-  const [ownerContact, setOwnerContact] = useState(parcel.ownerContact ?? '');
   const [municipality, setMunicipality] = useState(parcel.municipality ?? '');
   const [areaHectares, setAreaHectares] = useState(parcel.areaHectares?.toString() ?? '');
   const [notes,        setNotes]        = useState(parcel.notes ?? '');
@@ -366,8 +364,6 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
         id: parcel.id,
         data: {
           name:         name.trim()         || undefined,
-          ownerName:    ownerName.trim()    || undefined,
-          ownerContact: ownerContact.trim() || undefined,
           municipality: municipality.trim() || undefined,
           areaHectares: areaHectares        ? Number(areaHectares) : undefined,
           notes:        notes.trim()        || null,
@@ -388,8 +384,6 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
           <FormField label={t('map.fieldName')} value={name} onChange={setName} placeholder={t('parcels.form.placeholders.name')} />
-          <FormField label={t('map.owner')} value={ownerName} onChange={setOwnerName} placeholder={t('parcels.form.placeholders.owner')} />
-          <FormField label={t('map.ownerContact')} value={ownerContact} onChange={setOwnerContact} placeholder={t('parcels.form.placeholders.phone')} />
           <FormField label={t('map.municipality')} value={municipality} onChange={setMunicipality} placeholder={t('parcels.form.placeholders.municipality')} />
           <FormField label={t('map.areaHa')} value={areaHectares} onChange={setAreaHectares} type="number" placeholder={t('parcels.form.placeholders.area')} />
           <FormField label={t('map.notes')} value={notes} onChange={setNotes} placeholder={t('parcels.form.placeholders.notes')} />

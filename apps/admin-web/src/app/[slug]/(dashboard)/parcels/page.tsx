@@ -81,8 +81,6 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
   const isEdit = !!parcel;
 
   const [name, setName] = useState(parcel?.name ?? '');
-  const [ownerName, setOwnerName] = useState(parcel?.ownerName ?? '');
-  const [ownerContact, setOwnerContact] = useState(parcel?.ownerContact ?? '');
   const [areaHectares, setAreaHectares] = useState(
     parcel?.areaHectares != null ? String(parcel.areaHectares) : '',
   );
@@ -105,16 +103,10 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
       setError(t('parcels.form.nameRequired'));
       return;
     }
-    if (!ownerName.trim()) {
-      setError(t('parcels.form.ownerRequired'));
-      return;
-    }
     setError('');
 
     const payload = {
       name: name.trim(),
-      ownerName: ownerName.trim(),
-      ownerContact: ownerContact.trim() || undefined,
       areaHectares: areaHectares ? parseFloat(areaHectares) : undefined,
       farmId: farmId || null,
       municipality: municipality.trim() || undefined,
@@ -135,7 +127,7 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
         onError: () => setError(t('parcels.form.createError')),
       });
     }
-  }, [name, ownerName, ownerContact, areaHectares, farmId, municipality, address, notes, isActive, harvestStatus, isEdit, parcel, createParcel, updateParcel, onClose, t]);
+  }, [name, areaHectares, farmId, municipality, address, notes, isActive, harvestStatus, isEdit, parcel, createParcel, updateParcel, onClose, t]);
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
@@ -172,34 +164,6 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
               autoFocus
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
-          </div>
-
-          {/* Owner row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">
-                {t('parcels.form.owner')} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={ownerName}
-                onChange={(e) => setOwnerName(e.target.value)}
-                placeholder={t('parcels.form.placeholders.owner')}
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">
-                {t('parcels.form.phone')}
-              </label>
-              <input
-                type="tel"
-                value={ownerContact}
-                onChange={(e) => setOwnerContact(e.target.value)}
-                placeholder={t('parcels.form.placeholders.phone')}
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
           </div>
 
           {/* Area + Farm */}
@@ -400,7 +364,6 @@ type ParcelSortKey =
   | 'name'
   | 'farmId'
   | 'municipality'
-  | 'ownerName'
   | 'areaHectares'
   | 'harvestStatus'
   | 'isActive';
@@ -479,7 +442,7 @@ export default function ParcelsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = parcels.filter((p) => {
-      if (q && ![p.name, p.code, p.municipality, p.ownerName].some((v) => v?.toLowerCase().includes(q))) return false;
+      if (q && ![p.name, p.code, p.municipality].some((v) => v?.toLowerCase().includes(q))) return false;
       if (statusFilter === 'active' && !p.isActive) return false;
       if (statusFilter === 'inactive' && p.isActive) return false;
       if (harvestFilter && (p.harvestStatus ?? HarvestStatus.planned) !== harvestFilter) return false;
@@ -691,7 +654,6 @@ export default function ParcelsPage() {
                   { key: 'name' as const, label: t('parcels.colName') },
                   { key: 'farmId' as const, label: t('parcels.colFarm') },
                   { key: 'municipality' as const, label: t('parcels.colMunicipality') },
-                  { key: 'ownerName' as const, label: t('parcels.colOwner') },
                   { key: 'areaHectares' as const, label: t('parcels.colArea') },
                   { key: 'harvestStatus' as const, label: t('parcels.colHarvestStatus') },
                   { key: 'isActive' as const, label: t('parcels.colStatus') },
@@ -760,14 +722,6 @@ export default function ParcelsPage() {
                         </span>
                       ) : (
                         <span className="text-xs text-neutral-300">—</span>
-                      )}
-                    </td>
-
-                    {/* Proprietar */}
-                    <td className="px-4 py-3 max-w-[140px]">
-                      <p className="truncate text-sm text-neutral-700">{p.ownerName || '—'}</p>
-                      {p.ownerContact && (
-                        <p className="text-xs text-neutral-400 mt-0.5">{p.ownerContact}</p>
                       )}
                     </td>
 
