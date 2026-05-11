@@ -3,6 +3,10 @@ import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import {
+  buildSimulatedPush,
+  type SimulatePushEvent,
+} from './simulate-push-templates';
 
 @Injectable()
 export class NotificationsService {
@@ -33,8 +37,19 @@ export class NotificationsService {
   }
 
   /**
-   * Send a push notification via Expo's push API.
+   * Send a templated simulated push (same payloads as dev simulator) to one user.
+   * Production-safe when called from admin-only routes.
    */
+  async sendSimulatedPushToUser(
+    userId: string,
+    event: SimulatePushEvent,
+    vars: Record<string, string> = {},
+  ): Promise<void> {
+    const { title, body, data } = buildSimulatedPush(event, vars);
+    await this.sendPush(userId, title, body, data);
+  }
+
+  /** Send a push notification via Expo's push API. */
   async sendPush(
     userId: string,
     title: string,
@@ -71,14 +86,36 @@ export class NotificationsService {
         body: JSON.stringify(messages),
       });
 
+      const raw = await response.text();
+
       if (!response.ok) {
-        const body = await response.text();
         this.winston.error('Expo push HTTP error', {
           context: 'NotificationsService',
           userId,
           status: response.status,
-          body,
+          body: raw.slice(0, 2000),
         });
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw) as {
+          data?: Array<{ status?: string; message?: string; details?: unknown }>;
+        };
+        const errors = (parsed.data ?? []).filter((r) => r.status === 'error');
+        if (errors.length > 0) {
+          this.winston.error('Expo push ticket error(s)', {
+            context: 'NotificationsService',
+            userId,
+            errors: errors.map((e) => ({
+              message: e.message,
+              details: e.details,
+            })),
+            hint: 'Upload FCM credentials for this Expo project: https://docs.expo.dev/push-notifications/fcm-credentials/',
+          });
+        }
+      } catch {
+        /* non-JSON body — ignore */
       }
     } catch (err) {
       this.winston.error('Expo push request error', {
@@ -162,11 +199,11 @@ export class NotificationsService {
     // Verify ownership: caller must own the assignment (or be admin — checked at controller)
     // Verify assignment exists and check ownership
     const ownerCheck = await this.drizzleProvider.db.execute(sql`
-      SELECT assigned_user_id FROM task_assignments
+      SELECT assigned_user_id, organization_id FROM task_assignments
       WHERE id = ${assignmentId}::uuid AND deleted_at IS NULL
       LIMIT 1
     `);
-    const rows = ownerCheck as unknown as { assigned_user_id: string | null }[];
+    const rows = ownerCheck as unknown as { assigned_user_id: string | null; organization_id: string | null }[];
     if (rows.length === 0) {
       throw new ForbiddenException('Assignment not found');
     }
@@ -200,14 +237,15 @@ export class NotificationsService {
     if (baleCount != null && baleCount > 0) {
       await this.drizzleProvider.db.execute(sql`
         INSERT INTO bale_productions
-          (parcel_id, baler_id, operator_id, production_date, bale_count, end_time)
+          (parcel_id, baler_id, operator_id, production_date, bale_count, end_time, organization_id)
         SELECT
           ta.parcel_id,
           ta.machine_id,
           ta.assigned_user_id,
           CURRENT_DATE,
           ${baleCount},
-          now()
+          now(),
+          ta.organization_id
         FROM task_assignments ta
         WHERE ta.id = ${assignmentId}::uuid
           AND ta.parcel_id IS NOT NULL
