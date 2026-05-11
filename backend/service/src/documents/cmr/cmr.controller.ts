@@ -15,6 +15,6 @@ export class CmrController {
     @Param('tripId') tripId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.cmrService.generateCmr(tripId, user.organizationId!);
+    return this.cmrService.generateCmr(tripId, user.organizationId);
   }
 }
