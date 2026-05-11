@@ -1,19 +1,12 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { DevService, type SimulateInput, type SimulateEvent, type SimulateTarget } from './dev.service';
 import { Roles } from '../auth/roles.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/auth.guard';
 import type { UserRole } from '@strawboss/types';
+import { SIMULATE_PUSH_EVENTS } from '../notifications/simulate-push-templates';
 
-const VALID_EVENTS: ReadonlySet<SimulateEvent> = new Set([
-  'field_entry',
-  'deposit_entry',
-  'truck_arrived_at_loader',
-  'trip_loaded',
-  'trip_departed',
-  'trip_arrived',
-  'trip_completed',
-  'trip_disputed',
-  'broadcast',
-]);
+const VALID_EVENTS: ReadonlySet<SimulateEvent> = new Set(SIMULATE_PUSH_EVENTS);
 
 interface RawSimulateBody {
   event?: unknown;
@@ -45,7 +38,7 @@ export class DevController {
 
   @Post('simulate')
   @Roles('admin' as UserRole)
-  async simulate(@Body() body: RawSimulateBody) {
+  async simulate(@Body() body: RawSimulateBody, @CurrentUser() user: RequestUser) {
     if (!isString(body.event) || !VALID_EVENTS.has(body.event as SimulateEvent)) {
       throw new BadRequestException(
         `event must be one of: ${[...VALID_EVENTS].join(', ')}`,
@@ -88,6 +81,6 @@ export class DevController {
       vars,
     };
 
-    return this.devService.simulate(input);
+    return this.devService.simulate(input, user.organizationId);
   }
 }

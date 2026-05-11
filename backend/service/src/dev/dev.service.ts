@@ -4,17 +4,9 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
+import { buildSimulatedPush, isSimulatePushEvent, type SimulatePushEvent } from '../notifications/simulate-push-templates';
 
-export type SimulateEvent =
-  | 'field_entry'
-  | 'deposit_entry'
-  | 'truck_arrived_at_loader'
-  | 'trip_loaded'
-  | 'trip_departed'
-  | 'trip_arrived'
-  | 'trip_completed'
-  | 'trip_disputed'
-  | 'broadcast';
+export type SimulateEvent = SimulatePushEvent;
 
 export interface SimulateTarget {
   userId?: string;
@@ -28,50 +20,6 @@ export interface SimulateInput {
   vars?: Record<string, string>;
 }
 
-interface EventTemplate {
-  title: (vars: Record<string, string>) => string;
-  body: (vars: Record<string, string>) => string;
-}
-
-const EVENT_TEMPLATES: Record<SimulateEvent, EventTemplate> = {
-  field_entry: {
-    title: () => 'Ai intrat pe câmp',
-    body: (v) => `Ai ajuns la ${v.parcel ?? 'câmpul asignat'}.`,
-  },
-  deposit_entry: {
-    title: () => 'Ai ajuns la depozit',
-    body: () => 'Ești în zona de livrare.',
-  },
-  truck_arrived_at_loader: {
-    title: () => 'A sosit un camion',
-    body: (v) => `Camionul ${v.plate ?? 'demo'} a ajuns la ${v.parcel ?? 'câmpul tău'}.`,
-  },
-  trip_loaded: {
-    title: () => 'Transport pregătit',
-    body: () => 'Baloții au fost încărcați. Poți pleca.',
-  },
-  trip_departed: {
-    title: () => 'Drum bun',
-    body: (v) => `Cursa este în drum spre ${v.warehouse ?? 'destinație'}.`,
-  },
-  trip_arrived: {
-    title: () => 'Ai ajuns la destinație',
-    body: () => 'Confirmă livrarea când ești gata.',
-  },
-  trip_completed: {
-    title: () => 'Transport finalizat',
-    body: () => 'Transportul a fost completat cu succes.',
-  },
-  trip_disputed: {
-    title: () => 'Dispută transport',
-    body: () => 'Transportul tău a intrat în dispută. Contactează dispeceratul.',
-  },
-  broadcast: {
-    title: (v) => v.title ?? 'Anunț',
-    body: (v) => v.body ?? 'Mesaj de la dispecerat.',
-  },
-};
-
 @Injectable()
 export class DevService {
   constructor(
@@ -84,12 +32,12 @@ export class DevService {
    * Simulate a notification event by calling NotificationsService directly,
    * skipping geofence/trip workflow. Used by mock test scripts.
    */
-  async simulate(input: SimulateInput): Promise<{ targetedUserIds: string[]; sentCount: number }> {
-    if (!EVENT_TEMPLATES[input.event]) {
+  async simulate(input: SimulateInput, orgId: string | null): Promise<{ targetedUserIds: string[]; sentCount: number }> {
+    if (!isSimulatePushEvent(input.event)) {
       throw new BadRequestException(`Unknown event: ${input.event}`);
     }
 
-    const userIds = await this.resolveTargetUserIds(input.target);
+    const userIds = await this.resolveTargetUserIds(input.target, orgId);
     if (userIds.length === 0) {
       this.winston.warn('Dev simulate: no target users resolved', {
         context: 'DevService',
@@ -99,11 +47,8 @@ export class DevService {
       return { targetedUserIds: [], sentCount: 0 };
     }
 
-    const template = EVENT_TEMPLATES[input.event];
     const vars = input.vars ?? {};
-    const title = template.title(vars);
-    const body = template.body(vars);
-    const data = { type: input.event, ...vars, simulated: 'true' };
+    const { title, body, data } = buildSimulatedPush(input.event, vars);
 
     let sent = 0;
     await Promise.all(
@@ -136,24 +81,44 @@ export class DevService {
     return { targetedUserIds: userIds, sentCount: sent };
   }
 
-  private async resolveTargetUserIds(target: SimulateTarget): Promise<string[]> {
+  private async resolveTargetUserIds(target: SimulateTarget, orgId: string | null): Promise<string[]> {
     if (target.userId) {
+      if (orgId !== null) {
+        const rows = (await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM users
+          WHERE id = ${target.userId}::uuid
+            AND organization_id = ${orgId}::uuid
+            AND deleted_at IS NULL
+          LIMIT 1
+        `)) as unknown as { id: string }[];
+        if (rows.length === 0) {
+          throw new BadRequestException('target user not found in your organization');
+        }
+      }
       return [target.userId];
     }
     if (target.machineId) {
+      const conditions: ReturnType<typeof sql>[] = [
+        sql`assigned_machine_id = ${target.machineId}::uuid`,
+        sql`deleted_at IS NULL`,
+      ];
+      if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+      const where = sql.join(conditions, sql` AND `);
       const rows = (await this.drizzleProvider.db.execute(sql`
-        SELECT id FROM users
-        WHERE assigned_machine_id = ${target.machineId}::uuid
-          AND deleted_at IS NULL
+        SELECT id FROM users WHERE ${where}
       `)) as unknown as { id: string }[];
       return rows.map((r) => r.id);
     }
     if (target.role) {
+      const conditions: ReturnType<typeof sql>[] = [
+        sql`role = ${target.role}::user_role`,
+        sql`deleted_at IS NULL`,
+        sql`is_active = true`,
+      ];
+      if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+      const where = sql.join(conditions, sql` AND `);
       const rows = (await this.drizzleProvider.db.execute(sql`
-        SELECT id FROM users
-        WHERE role = ${target.role}::user_role
-          AND deleted_at IS NULL
-          AND is_active = true
+        SELECT id FROM users WHERE ${where}
       `)) as unknown as { id: string }[];
       return rows.map((r) => r.id);
     }
