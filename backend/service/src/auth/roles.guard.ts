@@ -32,6 +32,11 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('No user role found');
     }
 
+    // super_admin bypasses all role requirements
+    if (user.role === UserRole.super_admin) {
+      return true;
+    }
+
     if (!requiredRoles.includes(user.role)) {
       throw new ForbiddenException(
         `Role '${user.role}' is not authorized. Required: ${requiredRoles.join(', ')}`,
