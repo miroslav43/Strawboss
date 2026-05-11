@@ -4,7 +4,10 @@ import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
 import type { UserRole } from '@strawboss/types';
-import { broadcastNotificationSchema } from '@strawboss/validation';
+import {
+  adminSimulatePushSchema,
+  broadcastNotificationSchema,
+} from '@strawboss/validation';
 
 @Controller('notifications')
 export class NotificationsController {
@@ -24,9 +27,32 @@ export class NotificationsController {
     return { ok: true };
   }
 
+  /**
+   * Send a single templated push to a user (e.g. truck_arrived_at_loader for QA on prod APK).
+   * Admin only — does not require DevModule.
+   */
+  @Post('simulate-push')
+  @Roles('admin' as UserRole)
+  async simulatePush(@Body() body: unknown) {
+    const parsed = adminSimulatePushSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(
+        parsed.error.issues[0]?.message ?? 'Invalid simulate-push payload',
+      );
+    }
+    const { userId, event, vars } = parsed.data;
+    await this.notificationsService.sendSimulatedPushToUser(
+      userId,
+      event,
+      vars ?? {},
+    );
+    return { ok: true };
+  }
+
   @Post('broadcast')
   @Roles('admin' as UserRole)
   async broadcast(
+    @CurrentUser() user: RequestUser,
     @Body() body: unknown,
   ) {
     const parsed = broadcastNotificationSchema.safeParse(body);
@@ -34,7 +60,7 @@ export class NotificationsController {
       throw new BadRequestException(parsed.error.issues[0]?.message ?? 'Invalid broadcast payload');
     }
     const { target, title, body: msgBody } = parsed.data;
-    await this.notificationsService.broadcast(target, title, msgBody);
+    await this.notificationsService.broadcast(user.organizationId, target, title, msgBody);
     return { ok: true };
   }
 

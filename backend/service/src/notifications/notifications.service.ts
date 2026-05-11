@@ -131,8 +131,10 @@ export class NotificationsService {
 
   /**
    * Broadcast a push notification to all users, users of a specific role, or a single user.
+   * Scoped to the caller's organization.
    */
   async broadcast(
+    orgId: string | null,
     target: { kind: 'all' } | { kind: 'role'; role: string } | { kind: 'user'; userId: string },
     title: string,
     body: string,
@@ -142,15 +144,33 @@ export class NotificationsService {
     if (target.kind === 'user') {
       userIds = [target.userId];
     } else if (target.kind === 'role') {
-      const rows = await this.drizzleProvider.db.execute(sql`
-        SELECT id FROM users WHERE role = ${target.role} AND deleted_at IS NULL
-      `) as unknown as { id: string }[];
+      const conditions: ReturnType<typeof sql>[] = [
+        sql`role = ${target.role}`,
+        sql`deleted_at IS NULL`,
+      ];
+      if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+      const where = sql.join(conditions, sql` AND `);
+      const rows = await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM users WHERE ${where}`,
+      ) as unknown as { id: string }[];
       userIds = rows.map(r => r.id);
     } else {
-      const rows = await this.drizzleProvider.db.execute(sql`
-        SELECT DISTINCT user_id::text as id FROM device_push_tokens WHERE is_active = true
-      `) as unknown as { id: string }[];
-      userIds = rows.map(r => r.id);
+      // kind: 'all' — scope to org's device tokens via user join
+      if (orgId !== null) {
+        const rows = await this.drizzleProvider.db.execute(sql`
+          SELECT DISTINCT dpt.user_id::text AS id
+          FROM device_push_tokens dpt
+          JOIN users u ON u.id = dpt.user_id AND u.deleted_at IS NULL
+          WHERE dpt.is_active = true
+            AND u.organization_id = ${orgId}::uuid
+        `) as unknown as { id: string }[];
+        userIds = rows.map(r => r.id);
+      } else {
+        const rows = await this.drizzleProvider.db.execute(sql`
+          SELECT DISTINCT user_id::text AS id FROM device_push_tokens WHERE is_active = true
+        `) as unknown as { id: string }[];
+        userIds = rows.map(r => r.id);
+      }
     }
 
     await Promise.all(
