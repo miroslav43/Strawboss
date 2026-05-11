@@ -231,7 +231,7 @@ export class SyncService {
               WHERE id = ${mutation.recordId}::uuid LIMIT 1`,
         );
         const guardRows = guardResult as unknown as { organization_id: string }[];
-        if (guardRows.length && guardRows[0].organization_id !== orgId) {
+        if (!guardRows.length || guardRows[0].organization_id !== orgId) {
           throw new BadRequestException(
             `Record ${mutation.recordId} does not belong to caller's organization`,
           );
@@ -280,7 +280,7 @@ export class SyncService {
               WHERE id = ${mutation.recordId}::uuid LIMIT 1`,
         );
         const guardRows = guardResult as unknown as { organization_id: string }[];
-        if (guardRows.length && guardRows[0].organization_id !== orgId) {
+        if (!guardRows.length || guardRows[0].organization_id !== orgId) {
           throw new BadRequestException(
             `Record ${mutation.recordId} does not belong to caller's organization`,
           );
