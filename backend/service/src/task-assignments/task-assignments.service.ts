@@ -559,14 +559,23 @@ export class TaskAssignmentsService {
    * unchanged. Refuses to act on `done` rows so operators can't accidentally
    * re-open completed work.
    */
-  async startByOperator(id: string, callerId: string) {
+  async startByOperator(id: string, callerId: string, orgId?: string | null) {
+    const whereConditions: ReturnType<typeof sql>[] = [
+      sql`ta.id = ${id}`,
+      sql`ta.deleted_at IS NULL`,
+    ];
+    if (orgId !== null && orgId !== undefined) {
+      whereConditions.push(sql`ta.organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(whereConditions, sql` AND `);
+
     const ownerRows = (await this.drizzleProvider.db.execute(
       sql`SELECT ta.id, ta.status, ta.machine_id, ta.assigned_user_id,
                  u.id AS machine_user_id
           FROM task_assignments ta
           LEFT JOIN users u ON u.assigned_machine_id = ta.machine_id
                             AND u.deleted_at IS NULL
-          WHERE ta.id = ${id} AND ta.deleted_at IS NULL
+          WHERE ${where}
           LIMIT 1`,
     )) as unknown as {
       id: string;
@@ -575,6 +584,7 @@ export class TaskAssignmentsService {
       assigned_user_id: string | null;
       machine_user_id: string | null;
     }[];
+
     const row = ownerRows[0];
     if (!row) {
       throw new NotFoundException('Task assignment not found');
@@ -592,13 +602,13 @@ export class TaskAssignmentsService {
       );
     }
     if (row.status === 'in_progress') {
-      return this.findById(id);
+      return this.findById(id, orgId);
     }
-    return this.updateStatus(id, 'in_progress');
+    return this.updateStatus(id, 'in_progress', orgId);
   }
 
-  async updateStatus(id: string, status: string) {
-    const before = await this.findById(id);
+  async updateStatus(id: string, status: string, orgId?: string | null) {
+    const before = await this.findById(id, orgId);
     const prevStatus =
       typeof before.status === 'string' ? before.status : 'unknown';
 
@@ -623,8 +633,18 @@ export class TaskAssignmentsService {
     }
 
     const setClause = sql.join(setClauses, sql`, `);
+
+    const whereConditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null && orgId !== undefined) {
+      whereConditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(whereConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE task_assignments SET ${setClause} WHERE id = ${id} AND deleted_at IS NULL RETURNING *`,
+      sql`UPDATE task_assignments SET ${setClause} WHERE ${where} RETURNING *`,
     );
 
     // Cascade: if moving to available, also move children to available

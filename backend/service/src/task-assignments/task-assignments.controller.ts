@@ -92,10 +92,11 @@ export class TaskAssignmentsController {
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   updateStatus(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(updateAssignmentStatusSchema))
     dto: { status: string },
   ) {
-    return this.taskAssignmentsService.updateStatus(id, dto.status);
+    return this.taskAssignmentsService.updateStatus(id, dto.status, user.organizationId);
   }
 
   /**
@@ -111,7 +112,7 @@ export class TaskAssignmentsController {
     'driver' as UserRole,
   )
   startByOperator(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.taskAssignmentsService.startByOperator(id, user.id);
+    return this.taskAssignmentsService.startByOperator(id, user.id, user.organizationId);
   }
 
   @Patch(':id')
