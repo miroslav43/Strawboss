@@ -14,6 +14,7 @@ const adminAssignableRoleSchema = z.enum([
   'loader_operator',
   'driver',
   'baler_operator',
+  'geofence_maker',
 ] as const);
 
 export const userSchema = z
