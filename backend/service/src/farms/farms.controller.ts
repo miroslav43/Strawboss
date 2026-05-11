@@ -35,7 +35,7 @@ export class FarmsController {
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createFarmSchema)) dto: Record<string, unknown>,
   ) {
-    return this.farmsService.create(user.organizationId ?? '', dto);
+    return this.farmsService.create(user.organizationId, dto);
   }
 
   @Patch(':id')

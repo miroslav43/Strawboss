@@ -343,7 +343,7 @@ export class SyncService {
       let ownerFilter = sql``;
       if (_callerId && table === 'trips') {
         ownerFilter = sql` AND (driver_id = ${_callerId}::uuid OR loader_operator_id = ${_callerId}::uuid)`;
-      } else if (_callerId && (table === 'bale_productions' || table === 'fuel_logs' || table === 'consumable_logs' || table === 'bale_loads')) {
+      } else if (_callerId && (table === 'bale_productions' || table === 'fuel_logs' || table === 'consumable_logs')) {
         ownerFilter = sql` AND operator_id = ${_callerId}::uuid`;
       }
 

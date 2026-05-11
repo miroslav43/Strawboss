@@ -43,7 +43,7 @@ export class MachinesController {
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createMachineSchema)) dto: Record<string, unknown>,
   ) {
-    return this.machinesService.create(user.organizationId ?? '', dto);
+    return this.machinesService.create(user.organizationId, dto);
   }
 
   @Patch(':id')

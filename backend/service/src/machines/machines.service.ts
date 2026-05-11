@@ -69,7 +69,7 @@ export class MachinesService {
     return rows[0];
   }
 
-  async create(orgId: string, dto: Record<string, unknown>) {
+  async create(orgId: string | null, dto: Record<string, unknown>) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO machines (
         organization_id,

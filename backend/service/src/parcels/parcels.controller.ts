@@ -55,7 +55,7 @@ export class ParcelsController {
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createParcelSchema)) dto: Record<string, unknown>,
   ) {
-    return this.parcelsService.create(user.organizationId ?? '', dto);
+    return this.parcelsService.create(user.organizationId, dto);
   }
 
   @Patch(':id')

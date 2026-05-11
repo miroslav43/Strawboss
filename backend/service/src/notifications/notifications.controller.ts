@@ -1,13 +1,21 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import { z } from 'zod';
 import { NotificationsService } from './notifications.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { RequestUser } from '../auth/auth.guard';
 import type { UserRole } from '@strawboss/types';
 import {
   adminSimulatePushSchema,
   broadcastNotificationSchema,
 } from '@strawboss/validation';
+
+const registerTokenSchema = z.object({
+  token: z.string().min(1),
+  platform: z.enum(['ios', 'android', 'web']),
+  machineId: z.string().uuid().optional(),
+});
 
 @Controller('notifications')
 export class NotificationsController {
@@ -16,7 +24,8 @@ export class NotificationsController {
   @Post('register-token')
   async registerToken(
     @CurrentUser() user: RequestUser,
-    @Body() body: { token: string; platform: string; machineId?: string },
+    @Body(new ZodValidationPipe(registerTokenSchema))
+    body: { token: string; platform: string; machineId?: string },
   ) {
     await this.notificationsService.registerToken(
       user.id,

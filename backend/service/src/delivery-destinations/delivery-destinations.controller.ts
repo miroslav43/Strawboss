@@ -43,7 +43,7 @@ export class DeliveryDestinationsController {
     @Body(new ZodValidationPipe(createDeliveryDestinationSchema))
     dto: Record<string, unknown>,
   ) {
-    return this.service.create(user.organizationId ?? '', dto);
+    return this.service.create(user.organizationId, dto);
   }
 
   @Patch(':id')

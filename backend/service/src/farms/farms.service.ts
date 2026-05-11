@@ -48,7 +48,7 @@ export class FarmsService {
     return rows[0];
   }
 
-  async create(orgId: string, dto: Record<string, unknown>) {
+  async create(orgId: string | null, dto: Record<string, unknown>) {
     const entityType = (dto.entityType as string | undefined) ?? null;
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO farms (organization_id, name, address, phone, entity_type, cui, apia_code)

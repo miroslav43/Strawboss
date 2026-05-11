@@ -129,7 +129,7 @@ export class ParcelsService {
     }
   }
 
-  async create(orgId: string, dto: Record<string, unknown>) {
+  async create(orgId: string | null, dto: Record<string, unknown>) {
     const toGeoJsonFragment = (val: unknown) =>
       val
         ? sql`ST_GeomFromGeoJSON(${typeof val === 'string' ? val : JSON.stringify(val)})`
