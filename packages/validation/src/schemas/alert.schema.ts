@@ -25,3 +25,11 @@ export const alertSchema = z
     resolutionNotes: z.string().nullable(),
   })
   .merge(timestampsSchema);
+
+export const createAlertSchema = z.object({
+  category: alertCategorySchema,
+  severity: alertSeveritySchema.optional(),
+  title: z.string().min(1),
+  description: z.string().min(1),
+  machineId: uuidSchema.nullable().optional(),
+});

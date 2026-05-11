@@ -84,7 +84,7 @@ export class AlertsService {
     return result;
   }
 
-  async create(orgId: string, dto: Record<string, unknown>) {
+  async create(orgId: string | null, dto: Record<string, unknown>) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO alerts (id, category, severity, title, description, machine_id, organization_id, created_at, updated_at)
       VALUES (
@@ -94,7 +94,7 @@ export class AlertsService {
         ${dto.title},
         ${dto.description},
         ${(dto.machineId as string) || null},
-        ${orgId}::uuid,
+        ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
         NOW(), NOW()
       )
       RETURNING id, category, severity, title, description,

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Inject,
   OnModuleInit,
 } from '@nestjs/common';
@@ -210,6 +211,39 @@ export class TripsService implements OnModuleInit {
   }
 
   async create(orgId: string | null, dto: TripCreateDto) {
+    if (orgId !== null) {
+      const truckCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines WHERE id = ${dto.truckId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!truckCheck.length) throw new ForbiddenException('Truck not found in your organization');
+
+      const driverCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM users WHERE id = ${dto.driverId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!driverCheck.length) throw new ForbiddenException('Driver not found in your organization');
+
+      if (dto.loaderId) {
+        const loaderCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM machines WHERE id = ${dto.loaderId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!loaderCheck.length) throw new ForbiddenException('Loader not found in your organization');
+      }
+
+      if (dto.loaderOperatorId) {
+        const loaderOpCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM users WHERE id = ${dto.loaderOperatorId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!loaderOpCheck.length) throw new ForbiddenException('Loader operator not found in your organization');
+      }
+
+      if (dto.sourceParcelId) {
+        const parcelCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM parcels WHERE id = ${dto.sourceParcelId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!parcelCheck.length) throw new ForbiddenException('Parcel not found in your organization');
+      }
+    }
+
     const tripNumber = await this.generateTripNumber(orgId);
 
     const result = await this.drizzleProvider.db.execute(
@@ -349,6 +383,23 @@ export class TripsService implements OnModuleInit {
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
+    if (orgId !== null) {
+      const truckCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines WHERE id = ${dto.truckId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!truckCheck.length) throw new ForbiddenException('Truck not found in your organization');
+
+      const loaderCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines WHERE id = ${dto.loaderMachineId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!loaderCheck.length) throw new ForbiddenException('Loader not found in your organization');
+
+      const parcelCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM parcels WHERE id = ${dto.parcelId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!parcelCheck.length) throw new ForbiddenException('Parcel not found in your organization');
+    }
+
     const idempotencyTable = 'register_load';
 
     const existing = (await this.drizzleProvider.db.execute(

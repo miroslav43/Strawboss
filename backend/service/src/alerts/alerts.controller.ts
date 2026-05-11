@@ -12,6 +12,8 @@ import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { createAlertSchema } from '@strawboss/validation';
 
 @Controller('alerts')
 export class AlertsController {
@@ -21,9 +23,9 @@ export class AlertsController {
   @Roles('admin' as UserRole)
   create(
     @CurrentUser() user: RequestUser,
-    @Body() dto: Record<string, unknown>,
+    @Body(new ZodValidationPipe(createAlertSchema)) dto: { category: string; severity?: string; title: string; description: string; machineId?: string | null },
   ) {
-    return this.alertsService.create(user.organizationId!, dto);
+    return this.alertsService.create(user.organizationId, dto);
   }
 
   @Get()

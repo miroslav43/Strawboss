@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -434,6 +435,42 @@ export class TaskAssignmentsService {
   async create(orgId: string | null, dto: Record<string, unknown>) {
     const assignmentDate = dto.assignmentDate as string;
     const machineId = dto.machineId as string;
+
+    if (orgId !== null) {
+      const machineCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines WHERE id = ${machineId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!machineCheck.length) throw new ForbiddenException('Machine not found in your organization');
+
+      if (dto.parcelId) {
+        const parcelCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM parcels WHERE id = ${dto.parcelId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!parcelCheck.length) throw new ForbiddenException('Parcel not found in your organization');
+      }
+
+      if (dto.assignedUserId) {
+        const userCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM users WHERE id = ${dto.assignedUserId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!userCheck.length) throw new ForbiddenException('Assigned user not found in your organization');
+      }
+
+      if (dto.destinationId) {
+        const destCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM delivery_destinations WHERE id = ${dto.destinationId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!destCheck.length) throw new ForbiddenException('Destination not found in your organization');
+      }
+
+      if (dto.parentAssignmentId) {
+        const parentCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM task_assignments WHERE id = ${dto.parentAssignmentId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!parentCheck.length) throw new ForbiddenException('Parent assignment not found in your organization');
+      }
+    }
+
     const sequenceOrder = await this.nextSequenceOrder(assignmentDate, machineId);
 
     const result = await this.drizzleProvider.db.execute(
@@ -502,6 +539,43 @@ export class TaskAssignmentsService {
     const before = await this.findById(id, orgId);
     const prevStatus =
       typeof before.status === 'string' ? before.status : undefined;
+
+    if (orgId !== null) {
+      if (dto.machineId) {
+        const machineCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM machines WHERE id = ${dto.machineId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!machineCheck.length) throw new ForbiddenException('Machine not found in your organization');
+      }
+
+      if (dto.parcelId) {
+        const parcelCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM parcels WHERE id = ${dto.parcelId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!parcelCheck.length) throw new ForbiddenException('Parcel not found in your organization');
+      }
+
+      if (dto.assignedUserId) {
+        const userCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM users WHERE id = ${dto.assignedUserId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!userCheck.length) throw new ForbiddenException('Assigned user not found in your organization');
+      }
+
+      if (dto.destinationId) {
+        const destCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM delivery_destinations WHERE id = ${dto.destinationId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!destCheck.length) throw new ForbiddenException('Destination not found in your organization');
+      }
+
+      if (dto.parentAssignmentId) {
+        const parentCheck = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM task_assignments WHERE id = ${dto.parentAssignmentId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `) as unknown as { id: string }[];
+        if (!parentCheck.length) throw new ForbiddenException('Parent assignment not found in your organization');
+      }
+    }
 
     const setClauses: ReturnType<typeof sql>[] = [];
     const fieldMap: Record<string, string> = {

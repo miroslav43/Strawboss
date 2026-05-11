@@ -83,6 +83,7 @@ export {
   alertCategorySchema,
   alertSeveritySchema,
   alertSchema,
+  createAlertSchema,
 } from "./schemas/alert.schema.js";
 
 export {
