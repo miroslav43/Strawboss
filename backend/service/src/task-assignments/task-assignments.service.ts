@@ -159,27 +159,27 @@ export class TaskAssignmentsService {
       ORDER BY ta.sequence_order ASC, ta.created_at ASC`,
     );
 
-    // Latest parcel_daily_status row per parcel on or before this plan date (carry-forward “done”)
+    // Latest parcel_daily_status row per parcel on or before this plan date (carry-forward "done")
     // When orgId is set, JOIN to parcels to scope results to the caller's org.
     const parcelStatuses = await this.drizzleProvider.db.execute(
       orgId !== null
         ? sql`SELECT DISTINCT ON (pds.parcel_id)
-        pds.parcel_id AS “parcelId”,
-        pds.is_done AS “isDone”
+        pds.parcel_id AS "parcelId",
+        pds.is_done AS "isDone"
       FROM parcel_daily_status pds
       JOIN parcels p ON p.id = pds.parcel_id AND p.deleted_at IS NULL
       WHERE pds.status_date <= ${date}
         AND p.organization_id = ${orgId}::uuid
       ORDER BY pds.parcel_id, pds.status_date DESC`
         : sql`SELECT DISTINCT ON (parcel_id)
-        parcel_id AS “parcelId”,
-        is_done AS “isDone”
+        parcel_id AS "parcelId",
+        is_done AS "isDone"
       FROM parcel_daily_status
       WHERE status_date <= ${date}
       ORDER BY parcel_id, status_date DESC`,
     );
 
-    // Parcels explicitly tracked for this date but with no in_progress rows (e.g. only “done” / empty shell)
+    // Parcels explicitly tracked for this date but with no in_progress rows (e.g. only "done" / empty shell)
     const parcelDayShellConditions: ReturnType<typeof sql>[] = [
       sql`pds.status_date = ${date}`,
       sql`p.deleted_at IS NULL`,
@@ -189,9 +189,9 @@ export class TaskAssignmentsService {
 
     const parcelDayShells = await this.drizzleProvider.db.execute(
       sql`SELECT
-        p.id AS “parcelId”,
-        p.name AS “parcelName”,
-        p.code AS “parcelCode”
+        p.id AS "parcelId",
+        p.name AS "parcelName",
+        p.code AS "parcelCode"
       FROM parcel_daily_status pds
       JOIN parcels p ON p.id = pds.parcel_id
       WHERE ${shellWhere}`,
@@ -208,9 +208,9 @@ export class TaskAssignmentsService {
     const allMachines = await this.drizzleProvider.db.execute(
       sql`SELECT
         id,
-        machine_type as “machineType”,
-        internal_code as “internalCode”,
-        registration_plate as “registrationPlate”
+        machine_type as "machineType",
+        internal_code as "internalCode",
+        registration_plate as "registrationPlate"
       FROM machines
       WHERE ${machineWhere}
       ORDER BY machine_type, internal_code`,

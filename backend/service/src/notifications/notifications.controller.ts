@@ -81,6 +81,7 @@ export class NotificationsController {
       body.assignmentId,
       body.baleCount,
       user.id,
+      user.organizationId,
     );
     return { ok: true };
   }

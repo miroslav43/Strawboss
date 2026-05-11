@@ -226,6 +226,7 @@ export class NotificationsService {
     assignmentId: string,
     baleCount?: number,
     callerUserId?: string,
+    orgId?: string | null,
   ): Promise<void> {
     // Verify ownership: caller must own the assignment (or be admin — checked at controller)
     // Verify assignment exists and check ownership
@@ -237,6 +238,9 @@ export class NotificationsService {
     const rows = ownerCheck as unknown as { assigned_user_id: string | null; organization_id: string | null }[];
     if (rows.length === 0) {
       throw new ForbiddenException('Assignment not found');
+    }
+    if (orgId !== null && orgId !== undefined && rows[0].organization_id !== orgId) {
+      throw new ForbiddenException('Assignment not found in your organization');
     }
     if (callerUserId && rows[0].assigned_user_id && rows[0].assigned_user_id !== callerUserId) {
       throw new ForbiddenException('You do not own this assignment');
