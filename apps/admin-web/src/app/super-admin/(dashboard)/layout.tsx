@@ -59,15 +59,27 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     };
   }, [router, queryClient]);
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    queryClient.clear();
+    router.replace('/login');
+  };
+
   if (!ready) return <div className="flex h-screen items-center justify-center" />;
 
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-4 border-b border-neutral-200 bg-neutral-900 px-6 py-4 text-white">
         <span className="text-lg font-bold">Super Admin</span>
-        <nav className="flex gap-4 text-sm">
+        <nav className="flex flex-1 gap-4 text-sm">
           <a href="/super-admin/organizations" className="hover:underline">Organizations</a>
         </nav>
+        <button
+          onClick={handleLogout}
+          className="rounded-md border border-neutral-600 px-3 py-1.5 text-sm text-neutral-300 transition-colors hover:border-neutral-400 hover:text-white"
+        >
+          Log out
+        </button>
       </header>
       <main className="flex-1 overflow-y-auto p-6">{children}</main>
     </div>
