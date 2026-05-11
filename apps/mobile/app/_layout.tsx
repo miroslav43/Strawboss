@@ -1,6 +1,6 @@
 import '@/lib/register-background-tasks';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
@@ -15,7 +15,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { getDatabase } from '@/lib/storage';
+import { getDatabase, clearLocalData } from '@/lib/storage';
 import { getSupabaseClient } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
 import { mobileApiClient } from '@/lib/api-client';
@@ -49,9 +49,10 @@ const queryClient = new QueryClient({
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const ROLE_ROUTES: Record<string, string> = {
-  baler_operator: '/(baler)',
+  baler_operator:  '/(baler)',
   loader_operator: '/(loader)',
-  driver: '/(driver)',
+  driver:          '/(driver)',
+  geofence_maker:  '/(geofence-maker)',
 };
 
 function LoadingSplash() {
@@ -97,6 +98,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const [profileReady, setProfileReady] = useState(false); // true once profile fetch settled
   const { role, setProfile } = useAuthStore();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  const activeUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -121,6 +123,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           'H5'
         );
         // #endregion
+        if (data.session) {
+          if (activeUserIdRef.current && activeUserIdRef.current !== data.session.user.id) {
+            void clearLocalData().catch(() => {});
+            queryClient.clear();
+            useAuthStore.getState().clear();
+            setProfileReady(false);
+          }
+          activeUserIdRef.current = data.session.user.id;
+        }
         setIsAuthenticated(!!data.session);
       })
       .catch((err) => {
@@ -139,11 +150,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
       if (!session) {
+        void clearLocalData().catch(() => {});
+        queryClient.clear();
+        useAuthStore.getState().clear();
+        activeUserIdRef.current = null;
+        setProfileReady(false);
+        setIsAuthenticated(false);
+        return;
+      }
+      // Different user logged in without an explicit logout — purge previous data
+      if (activeUserIdRef.current && activeUserIdRef.current !== session.user.id) {
+        void clearLocalData().catch(() => {});
+        queryClient.clear();
         useAuthStore.getState().clear();
         setProfileReady(false);
       }
+      activeUserIdRef.current = session.user.id;
+      setIsAuthenticated(true);
     });
 
     return () => listener.subscription.unsubscribe();
