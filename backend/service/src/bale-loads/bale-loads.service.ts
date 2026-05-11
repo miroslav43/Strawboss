@@ -18,7 +18,7 @@ export class BaleLoadsService {
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
-    if (orgId) {
+    if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
     if (filters?.tripId) {
@@ -46,7 +46,7 @@ export class BaleLoadsService {
       sql`id = ${dto.tripId}`,
       sql`deleted_at IS NULL`,
     ];
-    if (orgId) tripConditions.push(sql`organization_id = ${orgId}::uuid`);
+    if (orgId !== null) tripConditions.push(sql`organization_id = ${orgId}::uuid`);
     const tripWhere = sql.join(tripConditions, sql` AND `);
     const tripRows = await this.drizzleProvider.db.execute(
       sql`SELECT id FROM trips WHERE ${tripWhere} LIMIT 1`,

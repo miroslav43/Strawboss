@@ -17,7 +17,7 @@ export class BaleProductionsService {
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
-    if (orgId) {
+    if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
     if (filters?.operatorId) {
@@ -68,7 +68,7 @@ export class BaleProductionsService {
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`bp.deleted_at IS NULL`];
 
-    if (orgId) {
+    if (orgId !== null) {
       conditions.push(sql`bp.organization_id = ${orgId}::uuid`);
     }
     if (filters?.operatorId) {
@@ -139,27 +139,24 @@ export class BaleProductionsService {
   }
 
   async create(orgId: string, dto: Record<string, unknown>) {
-    if (orgId) {
-      if (dto.parcelId) {
-        const parcelCheck = await this.drizzleProvider.db.execute(sql`
-          SELECT id FROM parcels
-          WHERE id = ${dto.parcelId}::uuid
-            AND organization_id = ${orgId}::uuid
-            AND deleted_at IS NULL
-          LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!parcelCheck.length) throw new BadRequestException('Parcel not found in your organization');
-      }
-      if (dto.balerId) {
-        const balerCheck = await this.drizzleProvider.db.execute(sql`
-          SELECT id FROM machines
-          WHERE id = ${dto.balerId}::uuid
-            AND organization_id = ${orgId}::uuid
-            AND deleted_at IS NULL
-          LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!balerCheck.length) throw new BadRequestException('Baler machine not found in your organization');
-      }
+    if (orgId !== null) {
+      const parcelCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM parcels
+        WHERE id = ${dto.parcelId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!parcelCheck.length) throw new BadRequestException('Parcel not found in your organization');
+
+      const balerCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines
+        WHERE id = ${dto.balerId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!balerCheck.length) throw new BadRequestException('Baler machine not found in your organization');
     }
 
     const result = await this.drizzleProvider.db.execute(

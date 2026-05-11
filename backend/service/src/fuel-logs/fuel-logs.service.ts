@@ -17,7 +17,7 @@ export class FuelLogsService {
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
-    if (orgId) {
+    if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
     if (filters?.operatorId) {
@@ -56,7 +56,7 @@ export class FuelLogsService {
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
-    if (orgId) {
+    if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
     if (filters?.machineId) {
@@ -77,7 +77,7 @@ export class FuelLogsService {
   }
 
   async create(orgId: string, dto: Record<string, unknown>) {
-    if (orgId) {
+    if (orgId !== null) {
       const machineCheck = await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines
         WHERE id = ${dto.machineId}::uuid
