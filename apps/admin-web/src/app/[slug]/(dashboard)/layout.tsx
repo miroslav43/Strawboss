@@ -83,7 +83,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       active = false;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, params.slug]);
 
   return (
     <RealtimeProvider>
