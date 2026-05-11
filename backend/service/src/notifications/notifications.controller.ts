@@ -33,7 +33,10 @@ export class NotificationsController {
    */
   @Post('simulate-push')
   @Roles('admin' as UserRole)
-  async simulatePush(@Body() body: unknown) {
+  async simulatePush(
+    @CurrentUser() user: RequestUser,
+    @Body() body: unknown,
+  ) {
     const parsed = adminSimulatePushSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(
@@ -43,6 +46,7 @@ export class NotificationsController {
     const { userId, event, vars } = parsed.data;
     await this.notificationsService.sendSimulatedPushToUser(
       userId,
+      user.organizationId,
       event,
       vars ?? {},
     );

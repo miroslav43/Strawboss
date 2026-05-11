@@ -42,9 +42,21 @@ export class NotificationsService {
    */
   async sendSimulatedPushToUser(
     userId: string,
+    orgId: string | null,
     event: SimulatePushEvent,
     vars: Record<string, string> = {},
   ): Promise<void> {
+    if (orgId !== null) {
+      const checkRows = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM users
+        WHERE id = ${userId}::uuid
+          AND deleted_at IS NULL
+          AND organization_id = ${orgId}::uuid
+      `) as unknown as { id: string }[];
+      if (checkRows.length === 0) {
+        throw new ForbiddenException('Target user not found in your organization');
+      }
+    }
     const { title, body, data } = buildSimulatedPush(event, vars);
     await this.sendPush(userId, title, body, data);
   }
