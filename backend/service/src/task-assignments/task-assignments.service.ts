@@ -649,7 +649,7 @@ export class TaskAssignmentsService {
 
     // Cascade: if moving to available, also move children to available
     if (status === 'available') {
-      await this.cascadeToAvailable(id);
+      await this.cascadeToAvailable(id, orgId);
     }
 
     this.winston.log(
@@ -666,15 +666,21 @@ export class TaskAssignmentsService {
     return result;
   }
 
-  private async cascadeToAvailable(parentId: string) {
-    // Find all children
+  private async cascadeToAvailable(parentId: string, orgId?: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`parent_assignment_id = ${parentId}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null && orgId !== undefined) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const children = await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM task_assignments
-          WHERE parent_assignment_id = ${parentId} AND deleted_at IS NULL`,
+      sql`SELECT id FROM task_assignments WHERE ${where}`,
     );
     const childRows = children as unknown as Record<string, unknown>[];
     for (const child of childRows) {
-      await this.updateStatus(child.id as string, 'available');
+      await this.updateStatus(child.id as string, 'available', orgId);
     }
   }
 
