@@ -12,10 +12,13 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import type { User, UserRole } from '@strawboss/types';
 import { MachineType } from '@strawboss/types';
 
+/** Roles an org admin is allowed to assign — super_admin is excluded. */
+type AdminAssignableRole = Exclude<UserRole, 'super_admin'>;
+
 export interface CreateUserDto {
   /** Exactly two words: Surname Firstname (e.g. "Maletici Miroslav"). */
   fullName: string;
-  role: UserRole;
+  role: AdminAssignableRole;
   phone?: string | null;
   /** Optional: admin can override the auto-generated username before submit. */
   usernameOverride?: string;
@@ -23,7 +26,7 @@ export interface CreateUserDto {
 
 export interface UpdateUserDto {
   fullName?: string;
-  role?: UserRole;
+  role?: AdminAssignableRole;
   phone?: string | null;
   isActive?: boolean;
   /** UUID of the machine to assign, or null to unassign. */
@@ -156,17 +159,23 @@ export class AdminUsersService {
 
     if (!hasChanges) return this.getById(id, orgId);
 
+    // Verify the target user belongs to the caller's org before any mutations
+    const existing = await this.getById(id, orgId);
+
     // Validate machine assignment compatibility.
     if (dto.assignedMachineId) {
-      const current = await this.getById(id, orgId);
-      const effectiveRole: UserRole = dto.role ?? current.role;
+      const effectiveRole: UserRole = dto.role ?? existing.role;
       const requiredType = ROLE_MACHINE_TYPE[effectiveRole];
 
       if (requiredType) {
+        const machineConditions: ReturnType<typeof sql>[] = [
+          sql`id = ${dto.assignedMachineId!}::uuid`,
+          sql`deleted_at IS NULL`,
+        ];
+        if (orgId !== null) machineConditions.push(sql`organization_id = ${orgId}::uuid`);
+        const machineWhere = sql.join(machineConditions, sql` AND `);
         const machineRows = await this.drizzleProvider.db.execute(sql`
-          SELECT machine_type FROM machines
-          WHERE id = ${dto.assignedMachineId}::uuid AND deleted_at IS NULL
-          LIMIT 1
+          SELECT machine_type FROM machines WHERE ${machineWhere} LIMIT 1
         `);
         const rows = machineRows as unknown as { machine_type: string }[];
         if (!rows.length) {
@@ -183,12 +192,12 @@ export class AdminUsersService {
 
     // Check username uniqueness before update.
     if (dto.username !== undefined) {
-      const existing = await this.drizzleProvider.db.execute(sql`
+      const usernameCheck = await this.drizzleProvider.db.execute(sql`
         SELECT id FROM users
         WHERE username = ${dto.username} AND id != ${id}::uuid
         LIMIT 1
       `);
-      if ((existing as unknown as { id: string }[]).length) {
+      if ((usernameCheck as unknown as { id: string }[]).length) {
         throw new ConflictException('Username already taken');
       }
     }

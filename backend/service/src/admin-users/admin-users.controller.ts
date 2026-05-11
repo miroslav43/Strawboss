@@ -88,6 +88,9 @@ export class AdminUsersController {
       throw new BadRequestException('Missing "file" part');
     }
 
+    // Verify the target user belongs to the caller's org before touching disk
+    await this.adminUsersService.getById(id, user.organizationId);
+
     const saved = await this.uploadsService.saveAvatar({
       userId: id,
       mimetype: file.mimetype,
