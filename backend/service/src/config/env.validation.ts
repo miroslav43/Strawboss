@@ -7,6 +7,7 @@ export const envSchema = z.object({
   SUPABASE_JWT_SECRET: z.string().min(1),
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

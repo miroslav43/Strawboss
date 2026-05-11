@@ -97,20 +97,20 @@ export class ProfileService {
     const user = await this.findByUserId(userId);
 
     // Verify current password by attempting sign-in with the user client
-    const anonKey = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    if (anonKey && supabaseUrl) {
-      const userClient = createClient(supabaseUrl, anonKey, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
-      const { error: signInError } = await userClient.auth.signInWithPassword({
-        email: user.email,
-        password: currentPassword,
-      });
-      if (signInError) {
-        throw new BadRequestException('Current password is incorrect');
-      }
+    const anonKey = this.configService.getOrThrow<string>('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    const supabaseUrl = this.configService.getOrThrow<string>('SUPABASE_URL');
+    const userClient = createClient(supabaseUrl, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: signInError } = await userClient.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (signInError) {
+      throw new BadRequestException('Current password is incorrect');
     }
+    // Invalidate the verification session immediately — we don't need it
+    await userClient.auth.signOut();
 
     const { error } = await this.supabase.auth.admin.updateUserById(userId, {
       password: newPassword,
