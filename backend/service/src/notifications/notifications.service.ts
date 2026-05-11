@@ -142,6 +142,17 @@ export class NotificationsService {
     let userIds: string[];
 
     if (target.kind === 'user') {
+      if (orgId !== null) {
+        const checkRows = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM users
+          WHERE id = ${target.userId}::uuid
+            AND deleted_at IS NULL
+            AND organization_id = ${orgId}::uuid
+        `) as unknown as { id: string }[];
+        if (checkRows.length === 0) {
+          throw new ForbiddenException('Target user not found in your organization');
+        }
+      }
       userIds = [target.userId];
     } else if (target.kind === 'role') {
       const conditions: ReturnType<typeof sql>[] = [
