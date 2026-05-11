@@ -40,8 +40,8 @@ export class ParcelsController {
   }
 
   @Get(':id/bale-availability')
-  getBaleAvailability(@Param('id') id: string) {
-    return this.parcelsService.getBaleAvailability(id);
+  getBaleAvailability(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.parcelsService.getBaleAvailability(id, user.organizationId);
   }
 
   @Get(':id')

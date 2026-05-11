@@ -43,7 +43,10 @@ export class ParcelsService {
     return result;
   }
 
-  async getBaleAvailability(id: string) {
+  async getBaleAvailability(id: string, orgId: string | null) {
+    // Ownership check — throws NotFoundException if parcel doesn't exist or belongs to another org
+    await this.findById(id, orgId);
+
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = ${id} AND deleted_at IS NULL), 0) AS "produced",
