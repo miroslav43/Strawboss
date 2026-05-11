@@ -210,7 +210,7 @@ export class TripsService implements OnModuleInit {
   }
 
   async create(orgId: string | null, dto: TripCreateDto) {
-    const tripNumber = await this.generateTripNumber();
+    const tripNumber = await this.generateTripNumber(orgId);
 
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO trips (
@@ -239,13 +239,15 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  private async generateTripNumber(): Promise<string> {
+  private async generateTripNumber(orgId: string | null): Promise<string> {
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `TR-${dateStr}-`;
-
+    const conditions: ReturnType<typeof sql>[] = [sql`trip_number LIKE ${prefix + '%'}`];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT COUNT(*)::int as count FROM trips WHERE trip_number LIKE ${prefix + '%'}`,
+      sql`SELECT COUNT(*)::int as count FROM trips WHERE ${where}`,
     );
     const rows = result as unknown as { count: number }[];
     const count = (rows[0]?.count ?? 0) + 1;
@@ -445,7 +447,7 @@ export class TripsService implements OnModuleInit {
           }
         }
 
-        const tripNumber = await this.generateTripNumber();
+        const tripNumber = await this.generateTripNumber(orgId);
         const insertedTrip = (await tx.execute(
           sql`INSERT INTO trips (
                 organization_id,
@@ -848,8 +850,8 @@ export class TripsService implements OnModuleInit {
 
     if (!task.trip_id) {
       // ── INSERT path
-      const tripNumber = await this.generateTripNumber();
-      const taskOrgId = task.organizationId;
+      const taskOrgId = task.organizationId ?? null;
+      const tripNumber = await this.generateTripNumber(taskOrgId);
       const inserted = (await this.drizzleProvider.db.execute(
         sql`INSERT INTO trips (
           organization_id,
