@@ -244,7 +244,11 @@ export class TripsService implements OnModuleInit {
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `TR-${dateStr}-`;
     const conditions: ReturnType<typeof sql>[] = [sql`trip_number LIKE ${prefix + '%'}`];
-    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    } else {
+      conditions.push(sql`organization_id IS NULL`);
+    }
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT COUNT(*)::int as count FROM trips WHERE ${where}`,
