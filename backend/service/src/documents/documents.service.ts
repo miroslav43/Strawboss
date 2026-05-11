@@ -75,6 +75,7 @@ export class DocumentsService {
 
   async updateStatus(
     id: string,
+    orgId: string | null,
     status: string,
     fileUrl?: string | null,
   ) {
@@ -91,8 +92,13 @@ export class DocumentsService {
     }
 
     const setClause = sql.join(setClauses, sql`, `);
+
+    const whereConditions: ReturnType<typeof sql>[] = [sql`id = ${id}`];
+    if (orgId !== null) whereConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(whereConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE documents SET ${setClause} WHERE id = ${id} RETURNING *`,
+      sql`UPDATE documents SET ${setClause} WHERE ${where} RETURNING *`,
     );
     return result;
   }

@@ -156,6 +156,7 @@ export class CmrService {
 
       await this.documentsService.updateStatus(
         docId,
+        orgId,
         DocumentStatus.generated,
         fileUrl,
       );
@@ -179,7 +180,7 @@ export class CmrService {
         err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
 
-      await this.documentsService.updateStatus(docId, DocumentStatus.failed);
+      await this.documentsService.updateStatus(docId, orgId, DocumentStatus.failed);
 
       return {
         documentId: docId,
