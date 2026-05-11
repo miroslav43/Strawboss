@@ -14,11 +14,25 @@ export class LocationService {
 
   /**
    * Store a single GPS ping from a mobile device.
-   * Any authenticated operator can report their position.
+   * Any authenticated operator can report their position, but only for
+   * machines belonging to their own organization.
    */
-  async reportLocation(dto: LocationReportDto, operatorId: string): Promise<void> {
+  async reportLocation(dto: LocationReportDto, operatorId: string, orgId: string | null): Promise<void> {
     if (dto.lat < -90 || dto.lat > 90 || dto.lon < -180 || dto.lon > 180) {
       throw new BadRequestException('Invalid coordinates');
+    }
+
+    if (orgId !== null) {
+      const machineCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines
+        WHERE id = ${dto.machineId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `) as unknown as { id: string }[];
+      if (machineCheck.length === 0) {
+        throw new BadRequestException('Machine not found in your organization');
+      }
     }
 
     await this.drizzleProvider.db.execute(sql`
@@ -38,11 +52,17 @@ export class LocationService {
   }
 
   /**
-   * Return the last known position for every machine that has reported GPS.
-   * Joined with machines and users tables to include display labels.
+   * Return the last known position for every machine that has reported GPS,
+   * scoped to the caller's organization.
    * Admin-only endpoint.
    */
-  async getLastKnownPositions(): Promise<MachineLastLocation[]> {
+  async getLastKnownPositions(orgId: string | null): Promise<MachineLastLocation[]> {
+    const whereConditions: ReturnType<typeof sql>[] = [
+      sql`mle.machine_id IS NOT NULL`,
+    ];
+    if (orgId !== null) whereConditions.push(sql`m.organization_id = ${orgId}::uuid`);
+    const where = sql.join(whereConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT DISTINCT ON (mle.machine_id)
         mle.machine_id                                        AS "machineId",
@@ -63,7 +83,7 @@ export class LocationService {
       LEFT JOIN users    u  ON u.id = mle.operator_id
       LEFT JOIN users    au ON au.assigned_machine_id = mle.machine_id
                             AND au.deleted_at IS NULL
-      WHERE mle.machine_id IS NOT NULL
+      WHERE ${where}
       ORDER BY mle.machine_id, mle.recorded_at DESC
     `);
 
@@ -150,8 +170,8 @@ export class LocationService {
   }
 
   /**
-   * Return trucks currently within proximity of the given loader machine.
-   * Used by the loader app to pick which truck to load without manual QR scanning.
+   * Return trucks currently within proximity of the given loader machine,
+   * scoped to the caller's organization.
    *
    * Match criteria:
    *   - machine_type = 'truck'
@@ -161,6 +181,7 @@ export class LocationService {
   async getTrucksAtLoader(
     loaderMachineId: string,
     options: { radiusM?: number; windowMinutes?: number } = {},
+    orgId: string | null,
   ): Promise<Array<{
     id: string;
     registrationPlate: string | null;
@@ -173,6 +194,21 @@ export class LocationService {
   }>> {
     const radiusM = options.radiusM ?? 75;
     const windowMinutes = options.windowMinutes ?? 5;
+
+    if (orgId !== null) {
+      const loaderCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines
+        WHERE id = ${loaderMachineId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `) as unknown as { id: string }[];
+      if (loaderCheck.length === 0) {
+        throw new BadRequestException('Loader machine not found in your organization');
+      }
+    }
+
+    const orgFilter = orgId !== null ? sql`AND m.organization_id = ${orgId}::uuid` : sql``;
 
     const result = await this.drizzleProvider.db.execute(sql`
       WITH loader_pos AS (
@@ -194,6 +230,7 @@ export class LocationService {
         JOIN machines m ON m.id = mle.machine_id
         WHERE m.machine_type = 'truck'
           AND m.deleted_at IS NULL
+          ${orgFilter}
           AND mle.recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
         ORDER BY mle.machine_id, mle.recorded_at DESC
       )
@@ -209,6 +246,7 @@ export class LocationService {
       FROM latest_truck_pos ltp
       JOIN loader_pos lp        ON TRUE
       JOIN machines m           ON m.id = ltp.machine_id
+                                ${orgFilter}
       LEFT JOIN users u         ON u.assigned_machine_id = m.id
                                 AND u.role = 'driver'::user_role
                                 AND u.deleted_at IS NULL
@@ -230,13 +268,15 @@ export class LocationService {
   }
 
   /**
-   * Return the GPS route history for a specific machine within a time range.
+   * Return the GPS route history for a specific machine within a time range,
+   * scoped to the caller's organization.
    * Points are ordered chronologically (ASC) with a safety cap of 50 000 rows.
    */
   async getRouteHistory(
     machineId: string,
     from: string,
     to: string,
+    orgId: string | null,
   ): Promise<RouteHistoryResponse> {
     // Validate machineId is a valid UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -257,18 +297,29 @@ export class LocationService {
       throw new BadRequestException('"from" must be before "to"');
     }
 
+    const machineCheck: ReturnType<typeof sql>[] = [
+      sql`id = ${machineId}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) machineCheck.push(sql`organization_id = ${orgId}::uuid`);
+    const machineWhere = sql.join(machineCheck, sql` AND `);
+
     const machineResult = await this.drizzleProvider.db.execute(sql`
       SELECT
         COALESCE(internal_code, registration_plate) AS "machineCode",
         machine_type AS "machineType"
       FROM machines
-      WHERE id = ${machineId}::uuid AND deleted_at IS NULL
+      WHERE ${machineWhere}
       LIMIT 1
     `);
     const machine = (machineResult as unknown as Array<{
       machineCode: string | null;
       machineType: string | null;
     }>)[0] ?? null;
+
+    if (!machine) {
+      throw new BadRequestException('Machine not found');
+    }
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
