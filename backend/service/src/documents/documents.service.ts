@@ -48,7 +48,7 @@ export class DocumentsService {
   }
 
   async create(
-    orgId: string,
+    orgId: string | null,
     data: {
       tripId: string;
       documentType: string;
@@ -67,7 +67,7 @@ export class DocumentsService {
         ${data.tripId}, ${data.documentType}, ${data.title}, ${data.status},
         ${data.fileUrl ?? null}, ${data.mimeType ?? null},
         ${data.metadata ? JSON.stringify(data.metadata) : null}::jsonb,
-        ${orgId}::uuid
+        ${orgId ? sql`${orgId}::uuid` : sql`NULL`}
       ) RETURNING *`,
     );
     return result;

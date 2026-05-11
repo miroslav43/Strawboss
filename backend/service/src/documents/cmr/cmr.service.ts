@@ -28,7 +28,7 @@ export class CmrService {
    * Renders the Handlebars template to HTML, converts to PDF via Puppeteer,
    * and stores the result.
    */
-  async generateCmr(tripId: string, orgId: string) {
+  async generateCmr(tripId: string, orgId: string | null) {
     // 1. Fetch trip data (scoped to org to prevent cross-org data leakage)
     const tripConditions: ReturnType<typeof sql>[] = [
       sql`id = ${tripId}::uuid`,

@@ -17,7 +17,7 @@ export class CmrProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ tripId: string; orgId: string }>): Promise<void> {
+  async process(job: Job<{ tripId: string; orgId: string | null }>): Promise<void> {
     this.winston.log('flow', `CMR generation job started`, {
       context: 'CmrProcessor',
       tripId: job.data.tripId,
