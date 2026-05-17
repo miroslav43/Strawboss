@@ -1,17 +1,25 @@
 name: Bug Scan
 
-# Rulează la fiecare push o analiză completă de bug-uri (securitate web/mobile,
-# logică, integritate date) și publică un raport ca GitHub issue.
+# Analiză completă de bug-uri (securitate web/mobile, logică, integritate date).
+# Rulează la fiecare push, la fiecare pull request, și manual din UI.
 on:
   push:
     paths-ignore:
       - '.claude/**'
       - '**/*.md'
       - 'docs/**'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '.claude/**'
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
 
-# Anulează un scan în desfășurare dacă apare un push nou pe același branch.
+# Un push care face parte dintr-un PR și evenimentul pull_request cad în același grup
+# (după branch-ul sursă), deci se anulează reciproc — nu rulează de două ori.
 concurrency:
-  group: bug-scan-${{ github.ref }}
+  group: bug-scan-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -20,6 +28,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
       id-token: write
     steps:
       - name: Checkout (cu istoric)
@@ -35,22 +44,28 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Repo: ${{ github.repository }}
+            Event: ${{ github.event_name }}
             Branch: ${{ github.ref_name }}
-            Push: ${{ github.event.before }} -> ${{ github.sha }}
 
-            Fă o analiză completă de bug-uri pe schimbările din acest push.
+            Fă o analiză completă de bug-uri pe schimbările relevante.
 
-            1. Obține fișierele schimbate:
-               `git diff --name-only ${{ github.event.before }} ${{ github.sha }}`
-               Dacă `${{ github.event.before }}` e format doar din zerouri (branch nou),
-               compară cu `origin/main`. Dacă diff-ul e gol, nu crea niciun issue și oprește-te.
+            1. Determină fișierele schimbate, în funcție de eveniment:
+               - pull_request: `git diff --name-only origin/${{ github.base_ref }}...HEAD`
+               - push: `git diff --name-only ${{ github.event.before }} ${{ github.sha }}`
+                 (dacă `${{ github.event.before }}` e numai zerouri — branch nou —
+                 compară cu `origin/main`)
+               - workflow_dispatch: `git diff --name-only origin/main...HEAD`
+                 (dacă e gol sau ești pe main, folosește `git diff --name-only HEAD~1 HEAD`)
+               Dacă diff-ul e gol, nu posta nimic și oprește-te.
             2. Invocă skill-ul `strawboss-bug-hunt` pentru analiza multi-unghi completă —
-               securitate web/backend, securitate mobilă, bug-uri de logică, integritate date,
-               calitate cod. Skill-ul dispecerizează agenții de review specializați.
-            3. Dacă există cel puțin un finding, scrie raportul consolidat într-un fișier și
-               creează UN SINGUR GitHub issue:
-               `gh issue create --label bug-scan --title "Bug scan: ${{ github.ref_name }} <short-sha>" --body-file <raport.md>`
-               Dacă nu există findings, nu crea niciun issue — afișează doar "no findings".
+               securitate web/backend, securitate mobilă, bug-uri de logică, integritate
+               date, calitate cod. Skill-ul dispecerizează agenții de review specializați.
+            3. Scrie raportul consolidat într-un fișier și publică-l:
+               - pull_request: comentariu pe PR —
+                 `gh pr comment ${{ github.event.pull_request.number }} --body-file <raport.md>`
+               - push / workflow_dispatch: dacă există cel puțin un finding, creează un issue —
+                 `gh issue create --label bug-scan --title "Bug scan: ${{ github.ref_name }} <short-sha>" --body-file <raport.md>`
+                 Dacă nu sunt findings, nu crea issue — afișează doar "no findings".
 
             Nu modifica cod. Doar analizează și raportează.
           claude_args: |
