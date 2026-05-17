@@ -1,0 +1,312 @@
+name: Bug Fix
+
+# Citește raportul bug-scan de pe PR, creează un plan detaliat salvat ca fișier,
+# implementează fix-urile cu Opus (Critical → High → Medium), face push pe branch-ul PR.
+#
+# Trigger automat: se declanșează după orice rulare reușită de Bug Scan, dar NUMAI
+# dacă bug-scan-ul a fost inițiat de un utilizator real (nu de un push al bot-ului
+# de fix anterior — prevenind bucla infinită).
+#
+# Trigger manual: Actions → Bug Fix → Run workflow (specifică PR number + severitate).
+on:
+  workflow_run:
+    workflows: ["Bug Scan"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number de fixat (ex: 3)'
+        required: true
+        default: '3'
+      min_severity:
+        description: 'Severitate minimă (critical / high / medium / low)'
+        required: false
+        default: 'high'
+
+# Un singur job per PR — push-uri noi anulează run-ul în curs.
+concurrency:
+  group: bug-fix-${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number || 'manual' }}
+  cancel-in-progress: true
+
+jobs:
+  bug-fix:
+    # Condiții de rulare:
+    # - workflow_dispatch: întotdeauna
+    # - workflow_run: numai dacă bug-scan a reușit ȘI nu a fost declanșat de bot
+    #   (github-actions[bot] = push din job-ul de fix anterior → buclă)
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.actor.login != 'github-actions[bot]'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      # ── 1. Detectează PR + branch când vine din workflow_run ──────────────────
+      - name: Detectează PR + branch (workflow_run)
+        if: github.event_name == 'workflow_run'
+        id: detect
+        run: |
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          PR=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}" \
+               --jq '.pull_requests[0].number // empty')
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          echo "pr_number=${PR}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}"   >> "$GITHUB_OUTPUT"
+          echo "Detected PR=${PR}, branch=${BRANCH}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Validează PR detectat (workflow_run)
+        if: github.event_name == 'workflow_run' && steps.detect.outputs.pr_number == ''
+        run: |
+          echo "Bug Scan nu a fost declanșat de un PR — nimic de fixat."
+          exit 0
+
+      # ── 2. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          # token cu write permite push-ul de la final
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Switch pe branch-ul PR (workflow_run)
+        if: github.event_name == 'workflow_run'
+        run: |
+          git checkout "${{ steps.detect.outputs.branch }}"
+          git pull origin "${{ steps.detect.outputs.branch }}"
+
+      - name: Switch pe branch-ul PR (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          BRANCH=$(gh pr view "${{ inputs.pr_number }}" --json headRefName --jq '.headRefName')
+          echo "Branch: $BRANCH"
+          git checkout "$BRANCH"
+          git pull origin "$BRANCH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Configurare git author
+        run: |
+          git config user.name  "claude-bug-fix[bot]"
+          git config user.email "claude-bug-fix[bot]@users.noreply.github.com"
+
+      # ── 3. Toolchain pentru typecheck ────────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages (necesar pentru typecheck)
+        run: |
+          pnpm --filter "@strawboss/types"      build
+          pnpm --filter "@strawboss/validation" build
+          pnpm --filter "@strawboss/ui-tokens"  build
+          pnpm --filter "@strawboss/domain"     build
+          pnpm --filter "@strawboss/api"        build
+
+      # ── 4. Opus: Plan → Fix → Verificare → Push ──────────────────────────────
+      - name: Claude Opus — Plan + Fix
+        uses: anthropics/claude-code-action@v1
+        env:
+          PR_NUMBER:    ${{ steps.detect.outputs.pr_number || inputs.pr_number || '3' }}
+          MIN_SEVERITY: ${{ inputs.min_severity || 'high' }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --model claude-opus-4-7
+            --allowedTools Read,Grep,Glob,Bash,Write,Edit,Task
+            --max-turns 120
+          prompt: |
+            Tu ești un agent senior de bug-fix pentru proiectul StrawBoss — monorepo TypeScript.
+
+            Structura proiectului:
+            - backend/service/  — NestJS 11 + Drizzle ORM + Postgres.js (raw SQL via sql``)
+            - apps/admin-web/   — Next.js 15 App Router + Tailwind CSS v4
+            - apps/mobile/      — Expo SDK 54 + React Native 0.81 (offline-first, SQLite)
+            - packages/types    — interfaces + enums (zero-dep)
+            - packages/validation — Zod schemas
+            - packages/domain   — XState v5 trip machine, reconciliere bale/fuel
+            - packages/api      — TanStack Query hooks + typed fetch wrapper
+
+            PR țintă: #${{ env.PR_NUMBER }}
+            Severitate minimă de fixat: ${{ env.MIN_SEVERITY }}
+
+            Citește CLAUDE.md la început pentru context complet.
+
+            ══════════════════════════════════════════════════
+            FAZA 1 — CITIRE RAPORT + CREARE PLAN
+            ══════════════════════════════════════════════════
+
+            1. Citește CLAUDE.md:
+               ```
+               cat CLAUDE.md
+               ```
+
+            2. Citește ultimul comentariu bug-scan de pe PR:
+               ```
+               gh pr view ${{ env.PR_NUMBER }} --json comments \
+                 --jq '.comments | map(select(.author.login == "claude")) | last | .body'
+               ```
+               Dacă nu există comentariu sau raportul e gol, postează:
+               `gh pr comment ${{ env.PR_NUMBER }} --body "ℹ️ Bug Fix: niciun raport bug-scan găsit pe acest PR."`
+               și oprește-te.
+
+            3. Parsează toate finding-urile cu severitate >= ${{ env.MIN_SEVERITY }}.
+               Ordine de prioritate: 🔴 Critical → 🟠 High → 🟡 Medium → 🟢 Low.
+
+            4. Salvează planul în `.claude/active-bugfix-plan.md`:
+               ```markdown
+               # Bug Fix Plan — PR #${{ env.PR_NUMBER }} — YYYY-MM-DD
+               **Status:** IN_PROGRESS
+               **Model:** claude-opus-4-7
+               **Severitate minimă:** ${{ env.MIN_SEVERITY }}
+               **Total de fixat:** N findings
+
+               ## Findings
+
+               ### 🔴 Critical
+               - [ ] **C-1** `backend/service/src/trips/trips.service.ts:677` — Titlu scurt
+                 - Bug: descriere root cause
+                 - Fix: ce anume se schimbă
+                 - Risc: Low / Medium / High
+
+               ### 🟠 High
+               - [ ] **H-1** `path/to/file.ts:L` — Titlu
+                 ...
+
+               ## Deferred
+               *(populat pe parcurs — finding-uri care necesită migrații sau breaking changes)*
+               ```
+
+            5. Commit planul:
+               ```
+               git add .claude/active-bugfix-plan.md
+               git commit -m "chore(bugfix): plan PR #${{ env.PR_NUMBER }} — N findings [${{ env.MIN_SEVERITY }}+]"
+               ```
+
+            ══════════════════════════════════════════════════
+            FAZA 2 — IMPLEMENTARE (Critical → High → Medium → Low)
+            ══════════════════════════════════════════════════
+
+            Pentru fiecare finding din plan, în ordine:
+
+            **a) Citire context:**
+               - Read fișierul indicat + câteva zeci de linii în jur
+               - Dacă finding-ul implică mai multe fișiere, citește-le pe toate
+               - Înțelege root cause, nu simptomul
+
+            **b) Implementare:**
+               - Edit tool — schimbări minimale și focusate pe finding
+               - Fără refactoring suplimentar, fără comments care explică CE face codul
+               - Fără features noi — doar fix-ul necesar
+
+            **c) Typecheck (obligatoriu pentru .ts/.tsx):**
+               Determină package-ul și rulează:
+               - backend/service/   → `pnpm --filter @strawboss/backend typecheck 2>&1 | tail -30`
+               - apps/admin-web/    → `pnpm --filter @strawboss/admin-web typecheck 2>&1 | tail -30`
+               - apps/mobile/       → `pnpm --filter @strawboss/mobile typecheck 2>&1 | tail -30`
+               - packages/domain/   → `pnpm --filter @strawboss/domain typecheck 2>&1 | tail -30`
+               - packages/validation → `pnpm --filter @strawboss/validation typecheck 2>&1 | tail -30`
+
+               Dacă typecheck eșuează:
+               - Analizează eroarea, fă o singură retentativă de corecție
+               - Dacă tot eșuează: `git checkout HEAD -- [fișier]` și marchează ⚠️ SKIPPED în plan
+
+            **d) Actualizare plan:**
+               - `[x]` dacă fixed, `⚠️ SKIPPED` dacă typecheck a eșuat, `⏭️ DEFERRED` dacă e în categoria de skip
+
+            **e) Commit atomic:**
+               ```
+               git add [fișierele modificate explicit, nu git add -A]
+               git commit -m "fix([scope]): descriere scurtă (C-N / H-N)"
+               ```
+               Exemple:
+               - `fix(trips): remove explicit write to GENERATED column arrive() (C-1)`
+               - `fix(trips): scope org-id in startLoading FK validation (C-3)`
+               - `fix(location): add ZodValidationPipe to POST /location/report (H-4)`
+
+            **SKIP AUTOMAT** (marchează ⏭️ DEFERRED, continuă cu următorul) pentru:
+            - Finding necesită migrație DB nouă (supabase/migrations/)
+            - Finding necesită schimbare breaking în API public
+            - Typecheck eșuează după 2 încercări
+            - Finding are Confidence: Low cu context ambiguu
+            - Finding e în arii deja fixate de un alt finding anterior din același fișier
+
+            ══════════════════════════════════════════════════
+            FAZA 3 — VERIFICARE FINALĂ + PUBLICARE
+            ══════════════════════════════════════════════════
+
+            1. Typecheck final pe toate pachetele cu schimbări:
+               ```
+               pnpm --filter @strawboss/backend  typecheck 2>&1 | tail -10
+               pnpm --filter @strawboss/admin-web typecheck 2>&1 | tail -10
+               pnpm --filter @strawboss/mobile    typecheck 2>&1 | tail -10
+               ```
+
+            2. Actualizează `.claude/active-bugfix-plan.md`:
+               ```markdown
+               **Status:** COMPLETED
+               **Fixed:** N / M findings
+               **Deferred:** K findings
+               ```
+
+            3. Commit plan finalizat:
+               ```
+               git add .claude/active-bugfix-plan.md
+               git commit -m "chore(bugfix): plan finalizat PR #${{ env.PR_NUMBER }} — N fixed, K deferred"
+               ```
+
+            4. Push la origin:
+               ```
+               git push origin HEAD
+               ```
+
+            5. Comentariu sumar pe PR:
+               ```
+               gh pr comment ${{ env.PR_NUMBER }} --body "## 🤖 Bug Fix — Sumar
+
+               **Model:** claude-opus-4-7
+               **Fixed:** N findings
+               **Deferred:** K findings (necesită migrații DB sau breaking changes)
+
+               ### ✅ Fixed
+               - fix(trips): ... (C-1)
+               - fix(trips): ... (C-3)
+               - fix(location): ... (H-4)
+               ...
+
+               ### ⏭️ Deferred
+               - H-3: sync insert FK org check — necesită migrație sau refactor major
+               ...
+
+               Plan complet: \`.claude/active-bugfix-plan.md\`"
+               ```
+
+            ══════════════════════════════════════════════════
+            REGULI ABSOLUTE — NU LE ÎNCĂLCA NICIODATĂ
+            ══════════════════════════════════════════════════
+            - Nu modifica fișiere .env sau fișiere cu secrete/credențiale
+            - Nu modifica migrații existente (supabase/migrations/*.sql aplicabile)
+            - Nu folosi `git add -A` sau `git add .` — adaugă explicit fișierele modificate
+            - Fiecare commit = un singur finding logic
+            - Nu adăuga features sau refactoring dincolo de scope-ul finding-ului
+            - Dacă ești blocat, skip și continuă — nu te opri
+            - Dacă toate finding-urile sunt deferred, scrie asta clar și oprește-te fără push
