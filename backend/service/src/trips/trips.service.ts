@@ -335,7 +335,9 @@ export class TripsService implements OnModuleInit {
     this.validateTransition(from, 'COMPLETE_LOADING');
 
     const baleResult = await this.drizzleProvider.db.execute(
-      sql`SELECT COALESCE(SUM(bale_count), 0)::int as total FROM bale_loads WHERE trip_id = ${id} AND deleted_at IS NULL`,
+      sql`SELECT COALESCE(SUM(bale_count), 0)::int as total FROM bale_loads
+          WHERE trip_id = ${id} AND deleted_at IS NULL
+          ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}`,
     );
     const baleRows = baleResult as unknown as { total: number }[];
     const totalBales = baleRows[0]?.total ?? 0;
@@ -423,6 +425,7 @@ export class TripsService implements OnModuleInit {
               AND deleted_at IS NULL
               AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
               AND created_at::date = CURRENT_DATE
+              ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
             ORDER BY created_at DESC
             LIMIT 1
             FOR UPDATE`,
@@ -545,9 +548,11 @@ export class TripsService implements OnModuleInit {
       // Insert the bale_load tied to this trip.
       await tx.execute(
         sql`INSERT INTO bale_loads (
+              organization_id,
               id, trip_id, parcel_id, loader_id, operator_id,
               bale_count, loaded_at, gps_lat, gps_lon, sync_version
             ) VALUES (
+              ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
               ${dto.idempotencyKey}, ${tripId}, ${dto.parcelId},
               ${dto.loaderMachineId}, ${callerId},
               ${dto.baleCount}, NOW(),
@@ -562,10 +567,12 @@ export class TripsService implements OnModuleInit {
               status = ${TripStatus.loaded}::trip_status,
               loading_started_at = COALESCE(loading_started_at, NOW()),
               loading_completed_at = NOW(),
+              loader_signature_url = ${dto.loaderSignature ?? null},
               bale_count = (
                 SELECT COALESCE(SUM(bale_count), 0)::int
                 FROM bale_loads
                 WHERE trip_id = ${tripId} AND deleted_at IS NULL
+                  ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
               ),
               updated_at = NOW(),
               sync_version = sync_version + 1
@@ -626,6 +633,7 @@ export class TripsService implements OnModuleInit {
       sql`UPDATE trips SET
         status = ${TripStatus.in_transit},
         departure_odometer_km = ${dto.departureOdometerKm},
+        driver_signature_url = ${dto.driverSignature},
         departure_at = NOW(),
         updated_at = NOW()
       WHERE id = ${id} AND status = ${from} RETURNING *`,
@@ -640,6 +648,14 @@ export class TripsService implements OnModuleInit {
       `Cursa este în drum spre ${(trip.destination_name as string | null) ?? 'destinație'}.`,
       'trip_departed',
     );
+
+    // CMR stage 1 — partial document with loader + driver signatures
+    await this.cmrQueue.add('generate', { tripId: id, orgId: orgId, stage: 1 });
+    this.winston.log('flow', `CMR stage-1 generation queued for trip ${id}`, {
+      context: 'TripsService',
+      tripId: id,
+    });
+
     return result;
   }
 
@@ -717,6 +733,8 @@ export class TripsService implements OnModuleInit {
         tare_weight_kg = ${tareWeightKg},
         net_weight_kg = ${netWeightKg},
         weight_ticket_number = ${dto.weightTicketNumber ?? null},
+        weight_ticket_photo_url = ${dto.weightTicketPhotoUrl ?? null},
+        deteriorated_bales_count = ${dto.deterioratedBalesCount ?? null},
         delivered_at = NOW(),
         updated_at = NOW()
       WHERE id = ${id} AND status = ${from} RETURNING *`,
@@ -749,8 +767,8 @@ export class TripsService implements OnModuleInit {
     this.logTripFlow(id, 'COMPLETE', from, TripStatus.completed);
     void this.pushToDriver(id, 'Transport finalizat', 'Transportul a fost completat cu succes.', 'trip_completed');
 
-    // Auto-generate CMR document in background (after signature is captured)
-    await this.cmrQueue.add('generate', { tripId: id, orgId: orgId });
+    // CMR stage 2 — regenerate/complete the document with receiver signature
+    await this.cmrQueue.add('generate', { tripId: id, orgId: orgId, stage: 2 });
     this.winston.log('flow', `CMR generation queued for trip ${id}`, {
       context: 'TripsService',
       tripId: id,

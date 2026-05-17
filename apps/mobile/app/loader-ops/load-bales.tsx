@@ -15,6 +15,7 @@ import type { Machine } from '@strawboss/types';
 import { BigButton } from '@/components/ui/BigButton';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
+import { SignatureCapture } from '@/components/shared/SignatureCapture';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { mobileApiClient } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
@@ -54,16 +55,39 @@ interface RegisterLoadResponse {
  * `useCurrentLoaderParcel`. If that hook can't resolve a parcel, the user
  * is bounced back to the home screen with a prompt.
  */
+function truckIdFromParams(raw: string | string[] | undefined): string | null {
+  if (raw == null) return null;
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  return id && String(id).trim().length > 0 ? String(id) : null;
+}
+
 export default function LoadBalesScreen() {
-  const { truckId: truckIdParam } = useLocalSearchParams<{ truckId?: string }>();
+  const { truckId: truckIdParam } = useLocalSearchParams<{
+    truckId?: string | string[];
+  }>();
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const { isConnected: isOnline } = useNetworkStatus();
   const queryClient = useQueryClient();
   const parcel = useCurrentLoaderParcel();
 
+  // Snapshot the resolved parcel at mount so a background refresh mid-load
+  // doesn't silently change which parcel the bales get registered against.
+  const [snapshotParcelId, setSnapshotParcelId] = useState<string | null>(null);
+  const [snapshotParcelName, setSnapshotParcelName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (parcel.status === 'resolved' && parcel.parcelId && !snapshotParcelId) {
+      setSnapshotParcelId(parcel.parcelId);
+      setSnapshotParcelName(parcel.parcelName);
+    }
+  // Only run when parcel resolves; snapshot is intentionally frozen after first capture.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parcel.status, parcel.parcelId]);
+
   const [baleCountStr, setBaleCountStr] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
@@ -71,7 +95,7 @@ export default function LoadBalesScreen() {
 
   const baleCount = parseInt(baleCountStr, 10) || 0;
 
-  const truckId = truckIdParam ?? null;
+  const truckId = truckIdFromParams(truckIdParam);
   const { data: truck } = useQuery<Machine>({
     queryKey: ['machine', truckId],
     queryFn: () => mobileApiClient.get<Machine>(`/api/v1/machines/${truckId}`),
@@ -88,7 +112,11 @@ export default function LoadBalesScreen() {
   }, [truckId]);
 
   useEffect(() => {
-    if (parcel.status === 'needs_start' || parcel.status === 'unavailable') {
+    if (
+      parcel.status === 'needs_start' ||
+      parcel.status === 'unavailable' ||
+      parcel.status === 'multiple_active'
+    ) {
       // Surface the parcel prompt on home — this screen requires a resolved parcel.
       Alert.alert(
         'Teren neconfirmat',
@@ -127,10 +155,10 @@ export default function LoadBalesScreen() {
 
   const fullTruckCount = truck?.maxBaleCount ?? FULL_TRUCK_FALLBACK;
 
-  const handleSave = useCallback(async () => {
+  const handleSignatureConfirm = useCallback(async (loaderSignature: string) => {
     if (!userId || !assignedMachineId || !truckId) return;
-    if (parcel.status !== 'resolved' || !parcel.parcelId) return;
-    if (saving || baleCount <= 0) return;
+    // Use the snapshot parcelId — immune to background refresh changing the active parcel.
+    if (!snapshotParcelId) return;
 
     setSaving(true);
     try {
@@ -139,11 +167,12 @@ export default function LoadBalesScreen() {
       const payload = {
         truckId,
         loaderMachineId: assignedMachineId,
-        parcelId: parcel.parcelId,
+        parcelId: snapshotParcelId,
         baleCount,
         gpsLat: gps?.lat,
         gpsLon: gps?.lon,
         idempotencyKey,
+        loaderSignature,
       };
 
       if (isOnline) {
@@ -151,12 +180,11 @@ export default function LoadBalesScreen() {
           '/api/v1/trips/register-load',
           payload,
         );
-        // Mirror to local DBs so the loader bales tab and driver are immediate.
         await applyOptimistic({
           baleLoadId: result.baleLoadId,
           tripId: result.trip.id,
           truckId,
-          parcelId: parcel.parcelId,
+          parcelId: snapshotParcelId,
           loaderMachineId: assignedMachineId,
           operatorId: userId,
           baleCount,
@@ -168,15 +196,12 @@ export default function LoadBalesScreen() {
           created: result.created,
         });
       } else {
-        // Offline: queue the mutation. Local trip id is unknown until sync, so
-        // we tag the optimistic bale_load with a synthetic local trip id and
-        // backfill it later when the queue resolves.
         const localTripId = `local:${truckId}`;
         await applyOptimistic({
           baleLoadId: idempotencyKey,
           tripId: localTripId,
           truckId,
-          parcelId: parcel.parcelId,
+          parcelId: snapshotParcelId,
           loaderMachineId: assignedMachineId,
           operatorId: userId,
           baleCount,
@@ -206,6 +231,7 @@ export default function LoadBalesScreen() {
         truckId,
         err: err instanceof Error ? { message: err.message } : err,
       });
+      setShowSignature(false);
       Alert.alert(
         'Eroare',
         err instanceof Error ? err.message : 'Nu s-a putut înregistra încărcarea.',
@@ -213,7 +239,7 @@ export default function LoadBalesScreen() {
     } finally {
       setSaving(false);
     }
-  }, [userId, assignedMachineId, truckId, parcel, saving, baleCount, isOnline, queryClient]);
+  }, [userId, assignedMachineId, truckId, snapshotParcelId, baleCount, isOnline, queryClient]);
 
   const truckLabel = truck
     ? (truck.registrationPlate ?? truck.internalCode)
@@ -234,7 +260,36 @@ export default function LoadBalesScreen() {
     );
   }
 
-  const parcelReady = parcel.status === 'resolved';
+  if (showSignature) {
+    return (
+      <View style={styles.outerContainer}>
+        <ScreenHeader title="Semnătură operator" />
+        <View style={[styles.body, { flex: 1 }]}>
+          <View style={styles.sigHeader}>
+            <MaterialCommunityIcons name="pen" size={20} color={colors.primary} />
+            <Text style={styles.sigTitle}>Semnează încărcarea</Text>
+          </View>
+          <Text style={styles.sigHint}>
+            Confirmă că ai încărcat {baleCount} baloți în camionul {truckLabel}.
+          </Text>
+          <SignatureCapture
+            label="Semnătura operatorului încărcător"
+            onSave={(sig) => void handleSignatureConfirm(sig)}
+          />
+          {saving ? null : (
+            <BigButton
+              title="Renunță"
+              onPress={() => setShowSignature(false)}
+              variant="outline"
+            />
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  // parcelReady is based on the snapshot so it stays stable once set.
+  const parcelReady = snapshotParcelId !== null;
 
   return (
     <View style={styles.outerContainer}>
@@ -275,8 +330,8 @@ export default function LoadBalesScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.parcelLabel}>Teren</Text>
             <Text style={styles.parcelName}>
-              {parcelReady
-                ? parcel.parcelName
+              {snapshotParcelName
+                ? snapshotParcelName
                 : parcel.status === 'loading'
                   ? 'Se identifică...'
                   : 'Neconfirmat — confirmă pe ecranul principal'}
@@ -299,8 +354,7 @@ export default function LoadBalesScreen() {
 
         <BigButton
           title="Înregistrează"
-          onPress={() => void handleSave()}
-          loading={saving}
+          onPress={() => setShowSignature(true)}
           disabled={baleCount <= 0 || !parcelReady}
         />
         <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
@@ -429,4 +483,7 @@ const styles = StyleSheet.create({
   fullTruckText: { fontSize: 15, fontWeight: '700', color: colors.primary },
   successText: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
   successSubtext: { fontSize: 14, color: '#5D4037', textAlign: 'center', paddingHorizontal: 24 },
+  sigHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, paddingBottom: 4 },
+  sigTitle: { fontSize: 18, fontWeight: '700', color: colors.primary },
+  sigHint: { fontSize: 14, color: '#5D4037', paddingHorizontal: 16, paddingBottom: 12 },
 });

@@ -17,15 +17,16 @@ export class CmrProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ tripId: string; orgId: string | null }>): Promise<void> {
+  async process(job: Job<{ tripId: string; orgId: string | null; stage?: 1 | 2 }>): Promise<void> {
     this.winston.log('flow', `CMR generation job started`, {
       context: 'CmrProcessor',
       tripId: job.data.tripId,
+      stage: job.data.stage ?? 2,
       jobId: job.id,
     });
 
     try {
-      await this.cmrService.generateCmr(job.data.tripId, job.data.orgId);
+      await this.cmrService.generateCmr(job.data.tripId, job.data.orgId, job.data.stage ?? 2);
     } catch (err) {
       this.logger.error(
         `CMR generation failed for trip ${job.data.tripId}: ${err instanceof Error ? err.message : String(err)}`,

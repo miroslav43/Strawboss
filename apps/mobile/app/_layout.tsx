@@ -24,6 +24,8 @@ import { registerForPushNotifications, addNotificationListener, addNotificationR
 import { handleIncomingPush } from '@/lib/notification-handler';
 import { NotificationsRepo } from '@/db/notifications-repo';
 import {
+  flushPendingLocationReports,
+  postCurrentLocationNow,
   requestBackgroundLocationPermissions,
   startBackgroundLocationTracking,
   stopBackgroundLocationTracking,
@@ -538,6 +540,13 @@ export default function RootLayout() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void cleanupOldMobileLogFiles();
+        const { userId, assignedMachineId } = useAuthStore.getState();
+        if (userId && assignedMachineId) {
+          void (async () => {
+            await flushPendingLocationReports();
+            await postCurrentLocationNow(assignedMachineId);
+          })();
+        }
       }
     });
     return () => sub.remove();

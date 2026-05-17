@@ -161,6 +161,9 @@ export default function DriverTripsScreen() {
                   {item.status === 'arrived' && (
                     <Text style={styles.deliveryHint}>Apasă pentru livrare</Text>
                   )}
+                  {item.status === 'loaded' && (
+                    <Text style={styles.loadedHint}>Apasă pentru plecare</Text>
+                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -232,6 +235,7 @@ const styles = StyleSheet.create({
   meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   metaText: { fontSize: 13, color: '#8D6E63' },
   deliveryHint: { fontSize: 12, color: '#0A5C36', fontWeight: '600' },
+  loadedHint: { fontSize: 12, color: '#0A5C36', fontWeight: '600' },
   emptyText: { fontSize: 15, color: '#374151', fontWeight: '500' },
   emptySubtext: { fontSize: 13, color: '#8D6E63' },
 });

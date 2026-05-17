@@ -17,6 +17,7 @@ const typeLabels: Record<DocumentType, string> = {
 const statusStyles: Record<DocumentStatus, string> = {
   pending: 'bg-neutral-100 text-neutral-600',
   generating: 'bg-amber-100 text-amber-700',
+  partial: 'bg-sky-100 text-sky-700',
   generated: 'bg-green-100 text-green-700',
   sent: 'bg-blue-100 text-blue-700',
   failed: 'bg-red-100 text-red-700',

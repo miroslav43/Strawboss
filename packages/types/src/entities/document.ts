@@ -11,6 +11,7 @@ export enum DocumentType {
 export enum DocumentStatus {
   pending = "pending",
   generating = "generating",
+  partial = "partial",
   generated = "generated",
   sent = "sent",
   failed = "failed",

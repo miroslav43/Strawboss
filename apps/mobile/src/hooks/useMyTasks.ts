@@ -30,11 +30,14 @@ export interface MyTask {
 
 interface DailyPlanResponse {
   date: string;
-  available: MyTask[];
+  /** Unassigned machines (admin board use). Mobile should ignore this field. */
+  available: unknown[];
   inProgress: { parcelId: string; parcelName: string; assignments: MyTask[] }[];
   done: MyTask[];
   /** Task assignments without a parcel (e.g. trucks planned without a source field). */
   unassignedToParcel?: MyTask[];
+  /** Task assignments with status='available' — the ones mobile shows as "start task" prompts. */
+  availableTasks?: MyTask[];
 }
 
 /** Drop placeholder / admin-empty rows with no field or destination to show or open on the map. */
@@ -73,7 +76,7 @@ export function useMyTasks() {
       );
 
       const all: MyTask[] = [];
-      if (plan.available) all.push(...plan.available);
+      if (plan.availableTasks) all.push(...plan.availableTasks);
       if (plan.inProgress) {
         for (const group of plan.inProgress) {
           all.push(...group.assignments);
@@ -95,7 +98,7 @@ export function useMyTasks() {
       return mine.filter(taskHasRenderableLocation);
     },
     enabled: !!userId,
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
 
   return {

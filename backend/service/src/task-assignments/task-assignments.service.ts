@@ -342,12 +342,18 @@ export class TaskAssignmentsService {
         },
       }));
 
+    // Task assignments with status='available' — mobile clients need these to
+    // surface the "start task" prompt. Kept separate from `available` (unassigned
+    // machines) which the admin board uses for a different purpose.
+    const availableTasks = rows.filter((r) => r.status === 'available');
+
     return {
       date,
       available,
       inProgress,
       done,
       unassignedToParcel,
+      availableTasks,
       parcelStatuses: statusRows,
     };
   }

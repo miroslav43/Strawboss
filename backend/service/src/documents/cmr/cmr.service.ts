@@ -25,10 +25,13 @@ export class CmrService {
 
   /**
    * Generate a CMR document for a trip.
-   * Renders the Handlebars template to HTML, converts to PDF via Puppeteer,
-   * and stores the result.
+   *
+   * stage=1: Partial document at departure — loader + driver signatures, no weight/receiver.
+   *          Creates a new document with status=partial.
+   * stage=2: Final document at destination — all fields including receiver signature.
+   *          Finds and updates the existing partial document, or creates a new one.
    */
-  async generateCmr(tripId: string, orgId: string | null) {
+  async generateCmr(tripId: string, orgId: string | null, stage: 1 | 2 = 2) {
     // 1. Fetch trip data (scoped to org to prevent cross-org data leakage)
     const tripConditions: ReturnType<typeof sql>[] = [
       sql`id = ${tripId}::uuid`,
@@ -47,7 +50,7 @@ export class CmrService {
     const trip = trips[0];
 
     // 2. Fetch related data
-    const [parcelResult, truckResult, driverResult, baleLoadsResult, _destinationResult] =
+    const [parcelResult, truckResult, driverResult, baleLoadsResult, loaderOperatorResult] =
       await Promise.all([
         trip.source_parcel_id
           ? this.drizzleProvider.db.execute(
@@ -67,44 +70,94 @@ export class CmrService {
         this.drizzleProvider.db.execute(
           sql`SELECT * FROM bale_loads WHERE trip_id = ${tripId}::uuid AND deleted_at IS NULL`,
         ),
-        !trip.destination_name
-          ? Promise.resolve([])
-          : this.drizzleProvider.db.execute(
-              sql`SELECT name, address, contact_name FROM delivery_destinations
-                  WHERE name = ${trip.destination_name as string} LIMIT 1`,
-            ).catch(() => []),
+        trip.loader_operator_id
+          ? this.drizzleProvider.db.execute(
+              sql`SELECT id, full_name FROM users WHERE id = ${trip.loader_operator_id as string}::uuid LIMIT 1`,
+            )
+          : Promise.resolve([]),
       ]);
 
     const parcel = (parcelResult as unknown as Record<string, unknown>[])[0];
     const truck = (truckResult as unknown as Record<string, unknown>[])[0];
     const driver = (driverResult as unknown as Record<string, unknown>[])[0];
     const baleLoads = baleLoadsResult as unknown as Record<string, unknown>[];
+    const loaderOperator = (loaderOperatorResult as unknown as Record<string, unknown>[])[0];
 
-    // 3. Create document record in 'generating' state
-    const docResult = await this.documentsService.create(orgId, {
-      tripId,
-      documentType: DocumentType.cmr,
-      title: `CMR - ${trip.trip_number as string}`,
-      status: DocumentStatus.generating,
-      mimeType: 'application/pdf',
-      metadata: {
-        tripNumber: trip.trip_number,
-        parcelName: parcel?.name ?? null,
-        truckPlate: truck?.registration_plate ?? null,
-        driverName: driver?.full_name ?? null,
-        baleLoadCount: baleLoads.length,
-        totalBales: trip.bale_count,
-      },
-    });
+    // 3. Find existing partial document (for stage 2 update) or create a new record
+    let docId: string;
+    const isStage1 = stage === 1;
+    const stageLabel = isStage1 ? ' (Expediere)' : '';
+    const titleStr = `CMR - ${trip.trip_number as string}${stageLabel}`;
 
-    const docs = docResult as unknown as Record<string, unknown>[];
-    const docId = docs[0]?.id as string;
+    if (!isStage1) {
+      // Stage 2: look for an existing partial document to update
+      const existingResult = await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM documents
+            WHERE trip_id = ${tripId}::uuid
+              AND status = ${DocumentStatus.partial}::document_status
+              AND deleted_at IS NULL
+            ORDER BY created_at DESC LIMIT 1`,
+      );
+      const existing = existingResult as unknown as { id: string }[];
+      if (existing.length) {
+        docId = existing[0].id;
+        // Move to generating state
+        await this.drizzleProvider.db.execute(
+          sql`UPDATE documents SET status = ${DocumentStatus.generating}::document_status,
+              title = ${titleStr}, updated_at = NOW()
+              WHERE id = ${docId}`,
+        );
+      } else {
+        // No partial doc — create fresh generating record
+        const docResult = await this.documentsService.create(orgId, {
+          tripId,
+          documentType: DocumentType.cmr,
+          title: titleStr,
+          status: DocumentStatus.generating,
+          mimeType: 'application/pdf',
+          metadata: {
+            tripNumber: trip.trip_number,
+            parcelName: parcel?.name ?? null,
+            truckPlate: truck?.registration_plate ?? null,
+            driverName: driver?.full_name ?? null,
+            baleLoadCount: baleLoads.length,
+            totalBales: trip.bale_count,
+          },
+        });
+        const docs = docResult as unknown as Record<string, unknown>[];
+        docId = docs[0]?.id as string;
+      }
+    } else {
+      // Stage 1: always create a new partial document
+      const docResult = await this.documentsService.create(orgId, {
+        tripId,
+        documentType: DocumentType.cmr,
+        title: titleStr,
+        status: DocumentStatus.generating,
+        mimeType: 'application/pdf',
+        metadata: {
+          tripNumber: trip.trip_number,
+          parcelName: parcel?.name ?? null,
+          truckPlate: truck?.registration_plate ?? null,
+          driverName: driver?.full_name ?? null,
+          baleLoadCount: baleLoads.length,
+          totalBales: trip.bale_count,
+          stage: 1,
+        },
+      });
+      const docs = docResult as unknown as Record<string, unknown>[];
+      docId = docs[0]?.id as string;
+    }
+
+    const finalStatus = isStage1 ? DocumentStatus.partial : DocumentStatus.generated;
 
     try {
       // 4. Render Handlebars template
       const now = new Date();
       const html = this.template({
         tripNumber: trip.trip_number,
+        stage,
+        isPartial: isStage1,
         date: now.toLocaleDateString('ro-RO', { year: 'numeric', month: 'long', day: 'numeric' }),
         parcelName: parcel?.name ?? parcel?.code ?? 'N/A',
         senderAddress: parcel?.address ?? 'N/A',
@@ -114,27 +167,34 @@ export class CmrService {
         truckName: truck?.internal_code ?? truck?.make ?? 'N/A',
         truckPlate: truck?.registration_plate ?? 'N/A',
         driverName: driver?.full_name ?? 'N/A',
+        loaderName: loaderOperator?.full_name ?? '',
         baleCount: trip.bale_count ?? 0,
-        grossWeightKg: trip.gross_weight_kg ?? 'N/A',
-        netWeightKg: trip.net_weight_kg ?? 'N/A',
-        tareWeightKg: truck?.tare_weight_kg ?? 'N/A',
-        weightTicketNumber: trip.weight_ticket_number ?? 'N/A',
+        grossWeightKg: isStage1 ? null : (trip.gross_weight_kg ?? 'N/A'),
+        netWeightKg: isStage1 ? null : (trip.net_weight_kg ?? 'N/A'),
+        tareWeightKg: isStage1 ? null : (truck?.tare_weight_kg ?? 'N/A'),
+        weightTicketNumber: isStage1 ? null : (trip.weight_ticket_number ?? 'N/A'),
+        deterioratedBalesCount: isStage1 ? null : (trip.deteriorated_bales_count ?? null),
         departureOdometerKm: trip.departure_odometer_km ?? 'N/A',
-        arrivalOdometerKm: trip.arrival_odometer_km ?? 'N/A',
-        odometerDistanceKm: trip.odometer_distance_km ?? 'N/A',
+        arrivalOdometerKm: isStage1 ? null : (trip.arrival_odometer_km ?? 'N/A'),
+        odometerDistanceKm: isStage1 ? null : (trip.odometer_distance_km ?? 'N/A'),
         departureAt: trip.departure_at
           ? new Date(trip.departure_at as string).toLocaleString('ro-RO')
           : 'N/A',
-        arrivalAt: trip.arrival_at
-          ? new Date(trip.arrival_at as string).toLocaleString('ro-RO')
-          : 'N/A',
-        deliveredAt: trip.delivered_at
-          ? new Date(trip.delivered_at as string).toLocaleString('ro-RO')
-          : 'N/A',
-        receiverName: trip.receiver_name ?? 'N/A',
-        receiverSignatureUrl: trip.receiver_signature_url ?? null,
+        arrivalAt: isStage1
+          ? null
+          : trip.arrival_at
+            ? new Date(trip.arrival_at as string).toLocaleString('ro-RO')
+            : 'N/A',
+        deliveredAt: isStage1
+          ? null
+          : trip.delivered_at
+            ? new Date(trip.delivered_at as string).toLocaleString('ro-RO')
+            : 'N/A',
+        receiverName: isStage1 ? null : (trip.receiver_name ?? 'N/A'),
+        loaderSignatureUrl: trip.loader_signature_url ?? null,
+        driverSignatureUrl: trip.driver_signature_url ?? null,
+        receiverSignatureUrl: isStage1 ? null : (trip.receiver_signature_url ?? null),
         deliveryNotes: trip.delivery_notes ?? '',
-        loaderName: '',
         baleLoadCount: baleLoads.length,
       });
 
@@ -157,33 +217,29 @@ export class CmrService {
         await browser.close().catch(() => {});
       }
 
-      // 6. Store PDF — for now save as base64 data URL (real impl would upload to Supabase Storage)
-      // In production: upload to Supabase Storage bucket 'documents' and get signed URL
+      // 6. Store PDF — for now save as base64 data URL (TODO: Supabase Storage)
       const fileUrl = `data:application/pdf;base64,${Buffer.from(pdfBuffer).toString('base64')}`;
 
-      await this.documentsService.updateStatus(
-        docId,
-        orgId,
-        DocumentStatus.generated,
-        fileUrl,
-      );
+      await this.documentsService.updateStatus(docId, orgId, finalStatus, fileUrl);
 
-      this.winston.log('flow', `CMR generated for trip ${trip.trip_number}`, {
+      this.winston.log('flow', `CMR stage-${stage} generated for trip ${trip.trip_number as string}`, {
         context: 'CmrService',
         tripId,
         documentId: docId,
+        stage,
       });
 
       return {
         documentId: docId,
-        status: DocumentStatus.generated,
+        status: finalStatus,
         fileUrl,
       };
     } catch (err) {
-      this.winston.error('CMR generation failed', {
+      this.winston.error(`CMR stage-${stage} generation failed`, {
         context: 'CmrService',
         tripId,
         documentId: docId,
+        stage,
         err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
 

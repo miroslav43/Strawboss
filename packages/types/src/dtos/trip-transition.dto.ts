@@ -7,6 +7,7 @@ export interface CompleteLoadingDto {}
 
 export interface DepartDto {
   departureOdometerKm: number;
+  driverSignature: string;
 }
 
 export interface ArriveDto {
@@ -20,6 +21,8 @@ export interface StartDeliveryDto {
 export interface ConfirmDeliveryDto {
   grossWeightKg: number;
   weightTicketNumber?: string;
+  weightTicketPhotoUrl?: string;
+  deterioratedBalesCount?: number;
 }
 
 export interface CompleteDto {
@@ -55,6 +58,7 @@ export interface RegisterLoadDto {
   gpsLat?: number;
   gpsLon?: number;
   idempotencyKey: string;
+  loaderSignature?: string;
 }
 
 export interface RegisterLoadResult {

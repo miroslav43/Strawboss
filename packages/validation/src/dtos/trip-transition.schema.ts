@@ -10,6 +10,7 @@ export const completeLoadingSchema = z.object({});
 
 export const departSchema = z.object({
   departureOdometerKm: z.number().nonnegative(),
+  driverSignature: z.string().min(1),
 });
 
 export const arriveSchema = z.object({
@@ -23,6 +24,8 @@ export const startDeliverySchema = z.object({
 export const confirmDeliverySchema = z.object({
   grossWeightKg: z.number().positive(),
   weightTicketNumber: z.string().optional(),
+  weightTicketPhotoUrl: z.string().optional(),
+  deterioratedBalesCount: z.number().int().min(0).optional(),
 });
 
 export const completeSchema = z.object({
@@ -58,4 +61,5 @@ export const registerLoadSchema = z.object({
   gpsLat: z.number().min(-90).max(90).optional(),
   gpsLon: z.number().min(-180).max(180).optional(),
   idempotencyKey: uuidSchema,
+  loaderSignature: z.string().optional(),
 });
