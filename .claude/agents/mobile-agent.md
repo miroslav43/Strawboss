@@ -26,9 +26,11 @@ apps/mobile/app/
   (baler)/              -- Baler operator screens
   (loader)/             -- Loader operator screens
   (driver)/             -- Driver screens
+  (geofence-maker)/     -- Geofence maker screens (index, farms, map, profile, _layout)
   (tabs)/               -- Admin/dispatcher tab layout (fallback)
   baler-ops/            -- Baler operation flows
   driver-ops/           -- Driver operation flows
+    departure-flow.tsx  -- Two-step departure: odometru + semnătură șofer
   loader-ops/           -- Loader operation flows
   operations/           -- Shared operation screens
   trip/                 -- Trip detail/workflow screens
@@ -40,6 +42,7 @@ apps/mobile/app/
 - `baler_operator` -> `/(baler)`
 - `loader_operator` -> `/(loader)`
 - `driver` -> `/(driver)`
+- `geofence_maker` -> `/(geofence-maker)`
 - admin/dispatcher (default) -> `/(tabs)`
 
 The `AuthGate` component fetches the user profile via `mobileApiClient.get<User>('/api/v1/profile')` after authentication, stores the role in `useAuthStore`, and redirects to the correct layout group.
@@ -116,6 +119,21 @@ Supporting files:
 - After a local write (2-second debounce).
 - Periodic 60-second interval.
 
+### useCurrentLoaderParcel
+
+GPS-based active parcel detection for loader operators.
+- GPS timeout: 15s (was 5s). After timeout, retries once after 5s.
+- Status values: `locating` | `found` | `not_found` | `multiple_active` | `error`.
+- `multiple_active`: GPS point matches more than one active parcel boundary — UI must ask the operator to choose manually.
+- Snapshot of `parcelId` is taken at screen mount in `load-bales.tsx` to avoid mid-flow parcel switches.
+
+### Departure flow (`driver-ops/departure-flow.tsx`)
+
+Two-step screen that replaces a direct `depart` API call:
+1. Odometer reading entry.
+2. Driver signature capture.
+Calls `POST /trips/:id/depart` with `{ departureOdometerKm, driverSignature }`.
+
 ### Location tracking (`src/lib/location.ts`)
 
 Background location tracking for GPS-equipped devices. Reports machine position for geofence checks on the server side.
@@ -153,9 +171,10 @@ WebView-based map rendering with a bridge for communication between React Native
 1. **Offline-first**: All data mutations go through SQLite repo + sync queue. Never make direct POST/PUT/DELETE API calls for mutable data.
 2. **Stable idempotency keys**: Use the entity's UUID as the idempotency key. Never use `Date.now()`, `Math.random()`, or anything that changes across retries.
 3. **UUID for all record IDs**: Locally-created records must use UUID strings. Never use auto-increment integers -- they will conflict during sync.
-4. **Role-based screens**: Place screens in the correct layout group: `/(baler)`, `/(loader)`, `/(driver)`, or `/(tabs)`.
+4. **Role-based screens**: Place screens in the correct layout group: `/(baler)`, `/(loader)`, `/(driver)`, `/(geofence-maker)`, or `/(tabs)`.
 5. **Use mobileApiClient for reads**: Direct API calls use `mobileApiClient` from `src/lib/api-client.ts`.
 6. **Log with mobileLogger**: Use `mobileLogger.flow()` for business transitions, `.error()` for errors.
 7. **Clean up subscriptions**: Effects that set up listeners (AppState, auth, location) must return cleanup functions.
 8. **Add migrations**: New SQLite tables need entries in `src/db/migrations.ts`.
 9. **Register repos in SyncManager**: New repos must be added to the `SyncManager` constructor.
+10. **Update docs**: After code changes, update `.claude/docs/mobile.md` (and `agents/mobile-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.

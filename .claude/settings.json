@@ -43,5 +43,39 @@
   },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.example) ;; *.env|*.env.dev|*.env.production|*.env.local|*.env.lan.bak) echo '{\"systemMessage\":\"ATENTIE: editezi un fisier .env cu secrete (chei Supabase, DATABASE_URL, JWT secret). Confirma ca modificarea e intentionata.\"}' ;; esac; exit 0"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.ts|*.tsx|*.js|*.jsx|*.json|*.css) (cd /srv/apps/Strawboss && pnpm exec prettier --write \"$f\" >/dev/null 2>&1) ;; esac; exit 0",
+            "statusMessage": "Formatare Prettier..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); echo \"$cmd\" | grep -q 'git commit' || exit 0; ch=$(git -C /srv/apps/Strawboss diff HEAD~1 --name-only 2>/dev/null); echo \"$ch\" | grep -qE 'supabase/migrations/|packages/types/|packages/validation/|nginx/' && echo '{\"systemMessage\":\"Reminder: ultimul commit atinge schema/types/migratii/nginx — ruleaza /strawboss-sync-docs pentru a actualiza .claude/docs.\"}'; exit 0"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -46,7 +46,13 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 00022_missing_rls_policies.sql      -- Fill in missing policies
 00023_check_constraints_and_audit.sql -- CHECK constraints, audit improvements
 00024_partial_indexes.sql           -- Partial indexes with WHERE deleted_at IS NULL
+... (migrations 00025–00037 added in subsequent feature branches)
 ```
+
+### Key enums (current values)
+
+- `user_role`: `admin`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`
+- `document_status`: `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
 
 ### Key design patterns
 
@@ -129,7 +135,7 @@ The backend checks this table before processing each sync mutation. If the key e
 
 ### Writing new migrations
 
-The next migration should be `supabase/migrations/00025_<descriptive_name>.sql`.
+The next migration should be `supabase/migrations/00038_<descriptive_name>.sql` (current last: 00037).
 
 Rules:
 1. **Idempotent**: Safe to run multiple times.
@@ -159,3 +165,4 @@ Rules:
 6. Follow the naming convention: lowercase, underscores, descriptive.
 7. Test migrations locally before committing: `./strawboss.sh db:migrate`.
 8. When adding syncable columns, update `ALLOWED_COLUMNS` in `sync.service.ts`.
+9. After schema changes, update `.claude/docs/database.md` (and `agents/db-agent.md` if conventions changed), or run the `strawboss-sync-docs` skill.

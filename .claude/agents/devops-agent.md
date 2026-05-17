@@ -13,7 +13,7 @@ You are a specialist in the StrawBoss infrastructure layer. You understand Docke
 
 1. Read `docker-compose.yml` for the full service topology.
 2. Read the relevant Dockerfile (`Dockerfile.backend` or `Dockerfile.admin`) for build details.
-3. Read `nginx/nginx.conf` for routing and SSL configuration.
+3. Read `nginx/conf.d/` files for routing and SSL configuration (split per virtual host).
 4. Read `scripts/_lib.sh` for shared shell utilities.
 
 ## Architecture knowledge
@@ -33,7 +33,7 @@ No services expose ports directly except nginx. Backend and admin are proxied.
 
 **Volumes**:
 - `./logs:/app/logs` -- shared log volume for backend and admin.
-- `./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro` -- nginx config.
+- `./nginx/conf.d:/etc/nginx/conf.d:ro` -- nginx config directory (split per virtual host).
 - `letsencrypt` -- named volume for SSL certificates.
 - `certbot-webroot` -- named volume for ACME challenge.
 
@@ -68,7 +68,9 @@ healthcheck:
 3. `builder` -- Build packages: types -> validation -> ui-tokens -> api -> admin-web. `NEXT_PUBLIC_*` vars as build ARGs.
 4. `runner` -- Uses Next.js standalone output. Copies `.next/standalone`, `.next/static`, `public`. Non-root `appuser`. `CMD ["node", "apps/admin-web/server.js"]`.
 
-### nginx configuration (`nginx/nginx.conf`)
+### nginx configuration (`nginx/conf.d/`)
+
+Config is split into per-virtual-host files (e.g., `10-nortiauno.com.conf`, `20-video.tedde-auto.ro.conf`). The old monolithic `nginx/nginx.conf` is replaced by this directory layout; `nginx/nginx.conf.legacy` kept as backup.
 
 **HTTP server** (port 80):
 - Serves ACME challenge at `/.well-known/acme-challenge/` for Let's Encrypt.
@@ -153,3 +155,4 @@ cmd_my__command() { ... }
 7. Redis connections must use the password from `REDIS_PASSWORD`.
 8. Variable upstreams in nginx to avoid stale DNS caching.
 9. After infrastructure changes, verify: `docker compose build`, `docker compose up -d`, then check `curl https://nortiauno.com/api/v1/health`.
+10. After infrastructure changes, update `.claude/docs/infrastructure.md` (and `agents/devops-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.

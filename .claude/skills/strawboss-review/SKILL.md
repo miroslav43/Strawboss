@@ -27,6 +27,7 @@ Review the current diff (staged + unstaged, or PR diff) against these project-sp
 - [ ] **Ownership check on mutations**: Non-admin mutations should verify the caller owns the resource (e.g., driver can only update their own trips). Check `request.user.id` is used for scoping.
 - [ ] **Winston logging**: Services should inject `@Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger` and use `this.winston.log('flow', ...)` for business transitions. Check `TripsService.logTripFlow` for the pattern.
 - [ ] **BullMQ queue registration**: New queues must be added to `queues.ts` constants and registered in `jobs.module.ts`. Repeating jobs go in `job-scheduler.service.ts`.
+- [ ] **CMR two-stage**: CMR generation must use `{ tripId, stage: 1 | 2 }` in the job payload. Stage 1 queued at `depart` (partial PDF), stage 2 at `complete` (final PDF). `CmrProcessor` must read `job.data.stage`. Skipping a stage or triggering both at the same event is a bug.
 - [ ] **Soft delete respected**: Queries must include `WHERE deleted_at IS NULL` unless explicitly fetching archived records.
 
 ## Admin-web checklist (`apps/admin-web/`)
@@ -47,7 +48,7 @@ Review the current diff (staged + unstaged, or PR diff) against these project-sp
 - [ ] **Geofence overlay handles rapid events**: If modifying geofence-related code, verify the overlay does not fire duplicate alerts for the same boundary crossing. Check for debounce or dedup logic.
 - [ ] **UUID for record IDs**: All locally-created records must use UUID strings as IDs (not auto-increment integers). This prevents conflicts during sync.
 - [ ] **Logger uses batch flush**: Mobile logging via `mobileLogger` in `lib/logger.ts` appends to NDJSON files. Logs are uploaded after successful sync via `uploadTodayMobileLogs()`. Verify no synchronous file I/O on the main thread.
-- [ ] **Role-based routing**: The `_layout.tsx` root layout uses `ROLE_ROUTES` to direct users to `/(baler)`, `/(loader)`, or `/(driver)`. New role-specific screens must go in the correct group.
+- [ ] **Role-based routing**: The `_layout.tsx` root layout uses `ROLE_ROUTES` to direct users to `/(baler)`, `/(loader)`, `/(driver)`, or `/(geofence-maker)`. Valid roles: `baler_operator`, `loader_operator`, `driver`, `geofence_maker`, `admin`, `dispatcher`. New role-specific screens must go in the correct group.
 - [ ] **mobileApiClient for direct calls**: Direct API calls (not synced) use `mobileApiClient` from `lib/api-client.ts` (e.g., profile fetch, push token registration).
 
 ## Database checklist (`supabase/migrations/`)

@@ -35,7 +35,7 @@ Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bal
 
 ### Auth system
 - Global guards registered as `APP_GUARD` in `app.module.ts`: `AuthGuard` then `RolesGuard`.
-- `AuthGuard` (`auth/auth.guard.ts`): Verifies Supabase JWTs. Supports HS256 (legacy) and ES256/RS256 (JWKS). Extracts user to `request.user` as `{ id, email, role }`.
+- `AuthGuard` (`auth/auth.guard.ts`): Verifies Supabase JWTs. Supports HS256 (legacy) and ES256/RS256 (JWKS). Extracts user to `request.user` as `{ id, email, role }`. If the JWT hook omits org claims, `hydrateOrganizationFromJwt()` loads them from the DB as a fallback.
 - `@Public()` decorator: Skips auth (used for health check, etc.).
 - `@Roles('admin' as UserRole, 'dispatcher' as UserRole)` decorator: Restricts by role. Every write endpoint MUST have this.
 - `@CurrentUser()` decorator: Extracts the authenticated user from the request.
@@ -65,6 +65,7 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - Queue constants in `jobs/queues.ts`: `alert-evaluation`, `reconciliation`, `cmr-generation`, `sync-cleanup`, `geofence-check`.
 - `JobSchedulerService` (`jobs/job-scheduler.service.ts`): Seeds repeating jobs on startup via `upsertJobScheduler`.
 - Processors are `@Processor(QUEUE_NAME)` classes in their respective module directories.
+- **CMR generation** is two-stage: job payload includes `{ tripId, stage: 1 | 2 }`. Stage 1 is queued at `depart` (partial PDF), stage 2 at `complete` (final PDF). `CmrProcessor` reads `job.data.stage` to select the rendering path.
 
 ### Geofence
 `geofence.service.ts` runs every 5 minutes:
@@ -96,3 +97,4 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 7. Register new modules in `app.module.ts`.
 8. Register new BullMQ queues in `jobs/queues.ts` and `jobs.module.ts`.
 9. After making changes, run: `pnpm --filter @strawboss/backend typecheck`
+10. After code changes, update the matching docs in `.claude/docs/backend.md` (and `agents/backend-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.
