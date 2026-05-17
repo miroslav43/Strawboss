@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { ApiClient } from '@strawboss/api';
 import { getDatabase } from '../lib/storage';
 import { getAuthToken } from '../lib/auth';
+import { todayInRomania } from '../lib/date';
 import { mobileLogger } from '../lib/logger';
 import { broadcastNotificationRefresh } from '../lib/notification-handler';
 import { SyncQueueRepo } from '../db/sync-queue-repo';
@@ -91,7 +92,7 @@ async function _notifyNewAssignments(
   taskAssignmentsRepo: TaskAssignmentsRepo,
   notificationsRepo: NotificationsRepo,
 ): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInRomania();
   const assignments = await taskAssignmentsRepo.listByDate(today);
   if (assignments.length === 0) return;
 

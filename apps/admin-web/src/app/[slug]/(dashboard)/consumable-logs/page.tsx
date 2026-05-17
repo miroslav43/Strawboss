@@ -11,6 +11,7 @@ import { ReceiptThumb } from '@/components/shared/ReceiptThumb';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
+import { romaniaDateString } from '@/lib/date';
 
 /** Raw backend row shape (controller returns SQL results as-is). */
 interface ConsumableLogRow {
@@ -42,9 +43,8 @@ interface Group {
 
 function defaultDateRange(): { from: string; to: string } {
   const now = new Date();
-  const to = now.toISOString().slice(0, 10);
-  const fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const from = fromDate.toISOString().slice(0, 10);
+  const to = romaniaDateString(now);
+  const from = romaniaDateString(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
   return { from, to };
 }
 
@@ -78,9 +78,7 @@ export default function ConsumableLogsPage() {
       const params = new URLSearchParams();
       if (dateFrom) params.set('dateFrom', `${dateFrom}T00:00:00Z`);
       if (dateTo) params.set('dateTo', `${dateTo}T23:59:59Z`);
-      const raw = await apiClient.get<unknown>(
-        `/api/v1/consumable-logs?${params.toString()}`,
-      );
+      const raw = await apiClient.get<unknown>(`/api/v1/consumable-logs?${params.toString()}`);
       return normalizeList<ConsumableLogRow>(raw);
     },
   });
@@ -99,7 +97,7 @@ export default function ConsumableLogsPage() {
           machineId: machineKey,
           consumableType: row.consumable_type,
           unit,
-          machine: row.machine_id ? machineById.get(row.machine_id) ?? null : null,
+          machine: row.machine_id ? (machineById.get(row.machine_id) ?? null) : null,
           totalQuantity: 0,
           entries: [],
         };
@@ -199,9 +197,7 @@ export default function ConsumableLogsPage() {
                     )}
                     <Package className="h-5 w-5 text-primary" />
                     <div className="flex flex-col items-start">
-                      <span className="font-medium text-neutral-900">
-                        {machineLabel}
-                      </span>
+                      <span className="font-medium text-neutral-900">{machineLabel}</span>
                       <span className="text-xs uppercase text-neutral-500">
                         {group.consumableType}
                       </span>
@@ -220,10 +216,7 @@ export default function ConsumableLogsPage() {
                 {isOpen ? (
                   <div className="divide-y divide-neutral-100 border-t border-neutral-100">
                     {group.entries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="flex items-start gap-4 px-4 py-3"
-                      >
+                      <div key={entry.id} className="flex items-start gap-4 px-4 py-3">
                         <ReceiptThumb
                           url={entry.receipt_photo_url}
                           caption={`${machineLabel} · ${formatDateTime(entry.logged_at)}`}
@@ -242,9 +235,7 @@ export default function ConsumableLogsPage() {
                             ) : null}
                           </div>
                           {entry.description ? (
-                            <p className="mt-1 text-sm text-neutral-600">
-                              {entry.description}
-                            </p>
+                            <p className="mt-1 text-sm text-neutral-600">{entry.description}</p>
                           ) : null}
                         </div>
                         <div className="text-right">

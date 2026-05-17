@@ -4,6 +4,7 @@ import { StatCard } from './StatCard';
 import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { getDatabase } from '@/lib/storage';
+import { todayInRomania, addDays, startOfDayRomaniaISO } from '@/lib/date';
 
 interface OperatorStatsProps {
   operatorId: string;
@@ -28,14 +29,18 @@ export const operatorStatsQueryKey = (operatorId: string) =>
 
 async function loadTodayStats(operatorId: string, role: string): Promise<TodayStats> {
   const db = await getDatabase();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInRomania();
+  // `*_at` columns store UTC ISO instants, so a calendar-date match must use
+  // the [start, end) UTC window of the Romania business day, not a substr().
+  const dayStart = startOfDayRomaniaISO(today);
+  const dayEnd = startOfDayRomaniaISO(addDays(today, 1));
 
   const fuelRow = await db.getFirstAsync<{ total: number | null }>(
     `SELECT COALESCE(SUM(quantity_liters), 0) AS total
        FROM fuel_logs
       WHERE operator_id = ?
-        AND substr(logged_at, 1, 10) = ?`,
-    [operatorId, today],
+        AND logged_at >= ? AND logged_at < ?`,
+    [operatorId, dayStart, dayEnd],
   );
 
   if (role === 'driver') {
@@ -43,8 +48,8 @@ async function loadTodayStats(operatorId: string, role: string): Promise<TodaySt
       `SELECT COALESCE(SUM(bale_count), 0) AS total
          FROM trips
         WHERE driver_id = ?
-          AND substr(departure_at, 1, 10) = ?`,
-      [operatorId, today],
+          AND departure_at >= ? AND departure_at < ?`,
+      [operatorId, dayStart, dayEnd],
     );
     return {
       totalFuelLiters: Number(fuelRow?.total ?? 0),
@@ -63,8 +68,8 @@ async function loadTodayStats(operatorId: string, role: string): Promise<TodaySt
       `SELECT COALESCE(SUM(bale_count), 0) AS total
          FROM bale_loads
         WHERE operator_id = ?
-          AND substr(loaded_at, 1, 10) = ?`,
-      [operatorId, today],
+          AND loaded_at >= ? AND loaded_at < ?`,
+      [operatorId, dayStart, dayEnd],
     );
     return {
       totalFuelLiters: Number(fuelRow?.total ?? 0),
@@ -89,8 +94,8 @@ async function loadTodayStats(operatorId: string, role: string): Promise<TodaySt
          FROM consumable_logs
         WHERE operator_id = ?
           AND consumable_type = 'twine'
-          AND substr(logged_at, 1, 10) = ?`,
-      [operatorId, today],
+          AND logged_at >= ? AND logged_at < ?`,
+      [operatorId, dayStart, dayEnd],
     ),
   ]);
 

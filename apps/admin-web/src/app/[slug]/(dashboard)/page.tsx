@@ -7,11 +7,7 @@ import {
   useBaleProductionStats,
   useTrips,
 } from '@strawboss/api';
-import type {
-  DashboardOverview,
-  Trip,
-  PaginatedResponse,
-} from '@strawboss/types';
+import type { DashboardOverview, Trip, PaginatedResponse } from '@strawboss/types';
 import type { TrendingDay } from '@strawboss/api';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/features/dashboard/KpiCard';
@@ -20,9 +16,10 @@ import { TopOperators } from '@/components/features/dashboard/TopOperators';
 import type { OperatorStat } from '@/components/features/dashboard/TopOperators';
 import { RecentTrips } from '@/components/features/dashboard/RecentTrips';
 import { apiClient } from '@/lib/api';
+import { todayInRomania } from '@/lib/date';
 
 export default function DashboardPage() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInRomania();
 
   const overviewQuery = useDashboardOverview(apiClient);
   const trendingQuery = useDashboardTrending(apiClient);
@@ -49,9 +46,7 @@ export default function DashboardPage() {
       <PageHeader title="Dashboard" />
 
       {isLoading && (
-        <div className="py-8 text-center text-sm text-neutral-400">
-          Se incarca datele...
-        </div>
+        <div className="py-8 text-center text-sm text-neutral-400">Se incarca datele...</div>
       )}
 
       {/* Row 1: KPI Cards */}
@@ -73,11 +68,7 @@ export default function DashboardPage() {
           label="Masini active"
           value={overview?.activeMachines ?? '--'}
         />
-        <KpiCard
-          icon={'\uD83D\uDD14'}
-          label="Alerte noi"
-          value={overview?.pendingAlerts ?? '--'}
-        />
+        <KpiCard icon={'\uD83D\uDD14'} label="Alerte noi" value={overview?.pendingAlerts ?? '--'} />
       </div>
 
       {/* Row 2: Trending chart */}

@@ -19,6 +19,7 @@ import { BaleProductionsRepo } from '@/db/bale-productions-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { mobileLogger } from '@/lib/logger';
 import { generateUuid } from '@/lib/uuid';
+import { todayInRomania } from '@/lib/date';
 import { useMyTasks } from '@/hooks/useMyTasks';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 import {
@@ -47,17 +48,11 @@ const PAD_ROWS: PadKey[][] = [
 const MAX_DIGITS = 5;
 const GPS_REFRESH_MS = 45_000;
 
-function todayDateString(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps) {
   const { tasks } = useMyTasks();
   const queryClient = useQueryClient();
   const parcelQuery = useActiveParcels();
-  const activeParcels: ActiveParcel[] | undefined =
-    parcelQuery.data as ActiveParcel[] | undefined;
+  const activeParcels: ActiveParcel[] | undefined = parcelQuery.data as ActiveParcel[] | undefined;
   const parcelsLoading = parcelQuery.isLoading;
   const parcelsError = parcelQuery.isError;
 
@@ -70,9 +65,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
-  const [lastLonLat, setLastLonLat] = useState<{ lon: number; lat: number } | null>(
-    null,
-  );
+  const [lastLonLat, setLastLonLat] = useState<{ lon: number; lat: number } | null>(null);
   const [lastAccuracyM, setLastAccuracyM] = useState<number | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -155,10 +148,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       return;
     }
 
-    const gpsSaysOutsideAllParcels =
-      gpsStatus === 'ok' &&
-      activeParcels.length > 0 &&
-      !gpsHit;
+    const gpsSaysOutsideAllParcels = gpsStatus === 'ok' && activeParcels.length > 0 && !gpsHit;
 
     if (taskOnlyParcel && !gpsSaysOutsideAllParcels) {
       const meta = activeParcels.find((p) => p.id === taskOnlyParcel.id);
@@ -191,9 +181,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
     }
     if (parcelSource === 'gps') {
       const acc =
-        lastAccuracyM != null && lastAccuracyM > 0
-          ? ` (~±${Math.round(lastAccuracyM)} m)`
-          : '';
+        lastAccuracyM != null && lastAccuracyM > 0 ? ` (~±${Math.round(lastAccuracyM)} m)` : '';
       return `Detectat din GPS${acc}`;
     }
     if (parcelSource === 'task') {
@@ -222,15 +210,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       return 'În afara parcelelor delimitate — alege manual';
     }
     return 'Alege terenul';
-  }, [
-    manualOverride,
-    parcelSource,
-    gpsStatus,
-    lastLonLat,
-    lastAccuracyM,
-    activeParcels,
-    gpsHit,
-  ]);
+  }, [manualOverride, parcelSource, gpsStatus, lastLonLat, lastAccuracyM, activeParcels, gpsHit]);
 
   const bannerMainTitle = useMemo(() => {
     if (parcelName) return parcelName;
@@ -305,7 +285,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
 
       const id = generateUuid();
       const now = new Date().toISOString();
-      const productionDate = todayDateString();
+      const productionDate = todayInRomania();
 
       await productionsRepo.create({
         id,
@@ -349,15 +329,9 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
     } catch (err) {
       mobileLogger.error('Baler production: save failed', {
         parcelId,
-        err:
-          err instanceof Error
-            ? { message: err.message, stack: err.stack }
-            : err,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
-      Alert.alert(
-        'Eroare',
-        err instanceof Error ? err.message : 'Nu s-a putut salva producția',
-      );
+      Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu s-a putut salva producția');
     } finally {
       setSaving(false);
     }
@@ -385,8 +359,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
           <Text style={styles.bannerError}>
             Nu s-au putut încărca parcelele. Verifică conexiunea.
           </Text>
-        ) : parcelsLoading &&
-          (activeParcels === undefined || activeParcels.length === 0) ? (
+        ) : parcelsLoading && (activeParcels === undefined || activeParcels.length === 0) ? (
           <View style={styles.bannerLoading}>
             <ActivityIndicator color={colors.primary} />
             <Text style={styles.bannerLoadingText}>Încarc parcelele…</Text>
@@ -404,9 +377,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
                 <Text style={styles.bannerTitle} numberOfLines={2}>
                   {bannerMainTitle}
                 </Text>
-                {parcelCode ? (
-                  <Text style={styles.bannerCode}>{parcelCode}</Text>
-                ) : null}
+                {parcelCode ? <Text style={styles.bannerCode}>{parcelCode}</Text> : null}
               </View>
             </View>
             <Text style={styles.bannerSubtitle} numberOfLines={2}>
@@ -419,9 +390,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
                 onPress={() => setManualOverride(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.linkButtonSecondaryText}>
-                  Folosește din nou GPS
-                </Text>
+                <Text style={styles.linkButtonSecondaryText}>Folosește din nou GPS</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -438,10 +407,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
           ) : (
             <>
               <Text
-                style={[
-                  styles.manualDropdownText,
-                  !parcelId && styles.manualDropdownPlaceholder,
-                ]}
+                style={[styles.manualDropdownText, !parcelId && styles.manualDropdownPlaceholder]}
                 numberOfLines={1}
               >
                 {parcelName ?? 'Alege teren din listă…'}
@@ -519,9 +485,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
         disabled={!canSave}
         activeOpacity={0.85}
       >
-        <Text style={styles.saveButtonText}>
-          {saving ? 'Se salvează…' : 'SALVEAZĂ PRODUCȚIE'}
-        </Text>
+        <Text style={styles.saveButtonText}>{saving ? 'Se salvează…' : 'SALVEAZĂ PRODUCȚIE'}</Text>
       </TouchableOpacity>
     </View>
   );

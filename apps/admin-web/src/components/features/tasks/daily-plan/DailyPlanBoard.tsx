@@ -17,6 +17,7 @@ import { apiClient } from '@/lib/api';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { useI18n } from '@/lib/i18n';
 import { clientLogger } from '@/lib/client-logger';
+import { todayInRomania } from '@/lib/date';
 
 import { AvailableColumn } from './AvailableColumn';
 import { InProgressColumn, type ParcelGroupData } from './InProgressColumn';
@@ -46,7 +47,7 @@ export function DailyPlanBoard({ date }: DailyPlanBoardProps) {
   // Auto-complete past assignments (run once per date)
   const autoCompleteRef = useRef<string | null>(null);
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayInRomania();
     if (date === today && autoCompleteRef.current !== today) {
       autoCompleteRef.current = today;
       autoComplete.mutate(today);
@@ -55,10 +56,7 @@ export function DailyPlanBoard({ date }: DailyPlanBoardProps) {
 
   // Parse data
   const plan = dailyPlanQuery.data as Record<string, unknown> | undefined;
-  const allParcels = useMemo(
-    () => normalizeList<Parcel>(parcelsQuery.data),
-    [parcelsQuery.data],
-  );
+  const allParcels = useMemo(() => normalizeList<Parcel>(parcelsQuery.data), [parcelsQuery.data]);
 
   // Available machines
   const availableMachines: PlanMachine[] = useMemo(() => {
@@ -82,9 +80,7 @@ export function DailyPlanBoard({ date }: DailyPlanBoardProps) {
       parcelName: group.parcelName as string,
       parcelCode: group.parcelCode as string,
       isDone: group.isDone as boolean,
-      assignments: parseAssignments(
-        (group.assignments as Array<Record<string, unknown>>) ?? [],
-      ),
+      assignments: parseAssignments((group.assignments as Array<Record<string, unknown>>) ?? []),
     }));
   }, [plan]);
 
@@ -127,7 +123,11 @@ export function DailyPlanBoard({ date }: DailyPlanBoardProps) {
       parentAssignmentId: string | null;
     }> = [];
 
-    function flatten(assignments: HierarchicalAssignment[], parcelId: string | null, parcelName: string | null) {
+    function flatten(
+      assignments: HierarchicalAssignment[],
+      parcelId: string | null,
+      parcelName: string | null,
+    ) {
       for (const a of assignments) {
         result.push({
           id: a.id,
@@ -202,11 +202,7 @@ export function DailyPlanBoard({ date }: DailyPlanBoardProps) {
 
   // Handle assignment from modal
   const handleAssign = useCallback(
-    (data: {
-      machineId: string;
-      parcelId: string | null;
-      parentAssignmentId: string | null;
-    }) => {
+    (data: { machineId: string; parcelId: string | null; parentAssignmentId: string | null }) => {
       clientLogger.flow('Daily plan: create assignment from modal', {
         board: 'daily-plan',
         planDate: date,
@@ -247,19 +243,11 @@ export function DailyPlanBoard({ date }: DailyPlanBoardProps) {
   const isError = dailyPlanQuery.isError || parcelsQuery.isError;
 
   if (isLoading) {
-    return (
-      <div className="py-12 text-center text-sm text-neutral-400">
-        {t('common.loading')}
-      </div>
-    );
+    return <div className="py-12 text-center text-sm text-neutral-400">{t('common.loading')}</div>;
   }
 
   if (isError) {
-    return (
-      <div className="py-12 text-center text-sm text-red-500">
-        {t('tasks.loadError')}
-      </div>
-    );
+    return <div className="py-12 text-center text-sm text-red-500">{t('tasks.loadError')}</div>;
   }
 
   return (
@@ -292,9 +280,7 @@ export function DailyPlanBoard({ date }: DailyPlanBoardProps) {
   );
 }
 
-function parseAssignments(
-  raw: Array<Record<string, unknown>>,
-): HierarchicalAssignment[] {
+function parseAssignments(raw: Array<Record<string, unknown>>): HierarchicalAssignment[] {
   return raw.map((item) => ({
     id: item.id as string,
     machineId: item.machineId as string,
@@ -303,8 +289,6 @@ function parseAssignments(
     registrationPlate: item.registrationPlate as string,
     parcelId: (item.parcelId as string) ?? null,
     parentAssignmentId: (item.parentAssignmentId as string) ?? null,
-    children: parseAssignments(
-      (item.children as Array<Record<string, unknown>>) ?? [],
-    ),
+    children: parseAssignments((item.children as Array<Record<string, unknown>>) ?? []),
   }));
 }
