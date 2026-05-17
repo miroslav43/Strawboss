@@ -200,6 +200,10 @@ export class LocationService {
     const radiusM = options.radiusM ?? 75;
     const windowMinutes = options.windowMinutes ?? 5;
 
+    if (!Number.isInteger(windowMinutes) || windowMinutes < 1 || windowMinutes > 60) {
+      throw new BadRequestException('windowMinutes must be an integer between 1 and 60');
+    }
+
     if (orgId !== null) {
       const loaderCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines
@@ -300,6 +304,10 @@ export class LocationService {
   > {
     const radiusM = options.radiusM ?? 75;
     const windowMinutes = options.windowMinutes ?? 5;
+
+    if (!Number.isInteger(windowMinutes) || windowMinutes < 1 || windowMinutes > 60) {
+      throw new BadRequestException('windowMinutes must be an integer between 1 and 60');
+    }
 
     if (orgId !== null) {
       const truckCheck = (await this.drizzleProvider.db.execute(sql`
