@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
-import { PhotoCapture } from '../../shared/PhotoCapture';
+import { OcrPhotoCapture } from '../../shared/OcrPhotoCapture';
+import { OcrHint } from '../../shared/OcrHint';
 import { getDatabase } from '@/lib/storage';
 import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
@@ -19,19 +20,18 @@ interface FuelEntryFlowProps {
   onCancel: () => void;
 }
 
-type FuelStep = 'liters' | 'odometer' | 'photo' | 'confirm';
+// Photo steps come before their numeric step so OCR can pre-fill the field.
+type FuelStep = 'receipt' | 'liters' | 'odometer-photo' | 'odometer' | 'confirm';
 
-export function FuelEntryFlow({
-  machineId,
-  operatorId,
-  onComplete,
-  onCancel,
-}: FuelEntryFlowProps) {
+export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: FuelEntryFlowProps) {
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<FuelStep>('liters');
+  const [step, setStep] = useState<FuelStep>('receipt');
   const [liters, setLiters] = useState('');
   const [odometer, setOdometer] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  // Non-null while the field still holds an unverified OCR suggestion.
+  const [litersSuggested, setLitersSuggested] = useState<number | null>(null);
+  const [kmSuggested, setKmSuggested] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
   const handleConfirm = useCallback(async () => {
@@ -109,40 +109,90 @@ export function FuelEntryFlow({
       setLiters('');
       setOdometer('');
       setPhotoUri(null);
-      setStep('liters');
+      setLitersSuggested(null);
+      setKmSuggested(null);
+      setStep('receipt');
       Alert.alert(
         'Salvat',
         `${quantityLiters} L alimentare înregistrată. În coadă sync: ${pendingCount}.`,
       );
       onComplete();
     } catch (err) {
-      Alert.alert(
-        'Eroare',
-        err instanceof Error ? err.message : 'Nu s-a putut salva alimentarea',
-      );
+      Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu s-a putut salva alimentarea');
     } finally {
       setSaving(false);
     }
   }, [machineId, operatorId, liters, odometer, photoUri, onComplete, queryClient]);
 
   switch (step) {
+    case 'receipt':
+      return (
+        <View style={styles.container}>
+          <Text style={styles.title}>Bon de combustibil</Text>
+          <Text style={styles.subtitle}>Fotografiază bonul — citim automat litrii.</Text>
+          <OcrPhotoCapture
+            mode="fuel"
+            label="Fotografie bon"
+            onResult={(uri, s) => {
+              setPhotoUri(uri);
+              if (s.liters !== undefined) {
+                setLiters(String(s.liters));
+                setLitersSuggested(s.liters);
+              }
+            }}
+          />
+          <View style={styles.actions}>
+            <BigButton title="Continuă" onPress={() => setStep('liters')} />
+            <BigButton title="Anulează" variant="outline" onPress={onCancel} />
+          </View>
+        </View>
+      );
+
     case 'liters':
       return (
         <View style={styles.container}>
           <Text style={styles.title}>Litri alimentați</Text>
+          {litersSuggested !== null && <OcrHint value={`${litersSuggested} L`} />}
           <NumericPad
             value={liters}
-            onChange={setLiters}
+            onChange={(v) => {
+              setLiters(v);
+              setLitersSuggested(null);
+            }}
             maxLength={6}
             decimal
           />
           <View style={styles.actions}>
             <BigButton
               title="Continuă"
-              onPress={() => setStep('odometer')}
+              onPress={() => setStep('odometer-photo')}
               disabled={!liters || liters === '0'}
             />
-            <BigButton title="Anulează" variant="outline" onPress={onCancel} />
+            <BigButton title="Înapoi" variant="outline" onPress={() => setStep('receipt')} />
+          </View>
+        </View>
+      );
+
+    case 'odometer-photo':
+      return (
+        <View style={styles.container}>
+          <Text style={styles.title}>Foto bord (opțional)</Text>
+          <Text style={styles.subtitle}>
+            Fotografiază kilometrajul de la bord — îl citim automat.
+          </Text>
+          <OcrPhotoCapture
+            mode="odometer"
+            label="Fotografie bord"
+            onResult={(_uri, s) => {
+              if (s.km !== undefined) {
+                setOdometer(String(s.km));
+                setKmSuggested(s.km);
+              }
+            }}
+          />
+          <View style={styles.actions}>
+            <BigButton title="Continuă" onPress={() => setStep('odometer')} />
+            <BigButton title="Sari peste" variant="outline" onPress={() => setStep('odometer')} />
           </View>
         </View>
       );
@@ -151,45 +201,23 @@ export function FuelEntryFlow({
       return (
         <View style={styles.container}>
           <Text style={styles.title}>Citire odometru (km)</Text>
+          {kmSuggested !== null && <OcrHint value={`${kmSuggested} km`} />}
           <NumericPad
             value={odometer}
-            onChange={setOdometer}
+            onChange={(v) => {
+              setOdometer(v);
+              setKmSuggested(null);
+            }}
             maxLength={7}
             decimal
           />
           <View style={styles.actions}>
             <BigButton
               title="Continuă"
-              onPress={() => setStep('photo')}
+              onPress={() => setStep('confirm')}
               disabled={!odometer || odometer === '0'}
             />
-            <BigButton
-              title="Înapoi"
-              variant="outline"
-              onPress={() => setStep('liters')}
-            />
-          </View>
-        </View>
-      );
-
-    case 'photo':
-      return (
-        <View style={styles.container}>
-          <Text style={styles.title}>Foto bord / pompă (opțional)</Text>
-          <PhotoCapture
-            label="Fotografie"
-            onCapture={(uri) => setPhotoUri(uri)}
-          />
-          <View style={styles.actions}>
-            <BigButton title="Continuă" onPress={() => setStep('confirm')} />
-            <BigButton
-              title="Sari peste"
-              variant="outline"
-              onPress={() => {
-                setPhotoUri(null);
-                setStep('confirm');
-              }}
-            />
+            <BigButton title="Înapoi" variant="outline" onPress={() => setStep('odometer-photo')} />
           </View>
         </View>
       );
@@ -225,12 +253,8 @@ export function FuelEntryFlow({
           </View>
 
           <View style={styles.actions}>
-            <BigButton
-              title="Salvează"
-              onPress={handleConfirm}
-              loading={saving}
-            />
-            <TouchableOpacity onPress={() => setStep('photo')} style={styles.backButton}>
+            <BigButton title="Salvează" onPress={handleConfirm} loading={saving} />
+            <TouchableOpacity onPress={() => setStep('odometer')} style={styles.backButton}>
               <Text style={styles.backText}>Înapoi</Text>
             </TouchableOpacity>
           </View>
@@ -250,6 +274,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.neutral,
+    textAlign: 'center',
+    marginTop: -16,
   },
   summaryCard: {
     backgroundColor: colors.white,

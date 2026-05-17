@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
-import { PhotoCapture } from '../../shared/PhotoCapture';
+import { OcrPhotoCapture } from '../../shared/OcrPhotoCapture';
+import { OcrHint } from '../../shared/OcrHint';
 import { ConsumableTypeSelector } from '../../shared/ConsumableTypeSelector';
 import { ConsumableConfirmation } from './ConsumableConfirmation';
 import { getDatabase } from '@/lib/storage';
@@ -26,13 +27,14 @@ interface ConsumableFlowProps {
   onCancel?: () => void;
   /**
    * When provided, the type selector is skipped and the flow starts at
-   * the quantity step locked to this type. Useful for role-specific tabs
+   * the receipt step locked to this type. Useful for role-specific tabs
    * where only one type is relevant (e.g. 'diesel' for loader_operator).
    */
   lockType?: ConsumableType;
 }
 
-type ConsumableStep = 'type' | 'quantity' | 'photo' | 'confirm';
+// Photo step comes before the quantity step so OCR can pre-fill it.
+type ConsumableStep = 'type' | 'receipt' | 'quantity' | 'confirm';
 
 const UNIT_LABELS: Record<ConsumableType, string> = {
   diesel: 'litri',
@@ -47,11 +49,13 @@ export function ConsumableFlow({
   lockType,
 }: ConsumableFlowProps) {
   const queryClient = useQueryClient();
-  // If lockType is set, we start directly at quantity with the type pre-selected.
-  const [step, setStep] = useState<ConsumableStep>(lockType ? 'quantity' : 'type');
+  // If lockType is set, we start directly at the receipt step.
+  const [step, setStep] = useState<ConsumableStep>(lockType ? 'receipt' : 'type');
   const [consumableType, setConsumableType] = useState<ConsumableType | null>(lockType ?? null);
   const [quantity, setQuantity] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  // Non-null while the field still holds an unverified OCR suggestion.
+  const [quantitySuggested, setQuantitySuggested] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
   const handleConfirm = useCallback(async () => {
@@ -160,21 +164,19 @@ export function ConsumableFlow({
       void queryClient.invalidateQueries({
         queryKey: operatorStatsQueryKey(operatorId),
       });
-      // If lockType is set, reset to quantity (skip type selection); otherwise back to type.
+      // If lockType is set, reset to receipt (skip type selection); otherwise back to type.
       setConsumableType(lockType ?? null);
       setQuantity('');
       setPhotoUri(null);
-      setStep(lockType ? 'quantity' : 'type');
+      setQuantitySuggested(null);
+      setStep(lockType ? 'receipt' : 'type');
       Alert.alert(
         'Salvat',
         `${qty} ${UNIT_LABELS[savedType]} înregistrat. În coadă sync: ${pendingCount}.`,
       );
       onComplete();
     } catch (err) {
-      Alert.alert(
-        'Eroare',
-        err instanceof Error ? err.message : 'Nu s-a putut salva consumabilul',
-      );
+      Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu s-a putut salva consumabilul');
     } finally {
       setSaving(false);
     }
@@ -202,7 +204,7 @@ export function ConsumableFlow({
           <View style={styles.actions}>
             <BigButton
               title="Continuă"
-              onPress={() => setStep('quantity')}
+              onPress={() => setStep('receipt')}
               disabled={consumableType === null}
             />
             {consumableType !== null ? (
@@ -216,57 +218,56 @@ export function ConsumableFlow({
         </View>
       );
 
+    case 'receipt':
+      return (
+        <View style={styles.container}>
+          <Text style={styles.title}>Bon fiscal</Text>
+          <Text style={styles.subtitle}>Fotografiază bonul — citim automat cantitatea.</Text>
+          <OcrPhotoCapture
+            mode="consumable"
+            label="Fotografie bon"
+            onResult={(uri, s) => {
+              setPhotoUri(uri);
+              if (s.quantity !== undefined) {
+                setQuantity(String(s.quantity));
+                setQuantitySuggested(s.quantity);
+              }
+            }}
+          />
+          <View style={styles.actions}>
+            <BigButton title="Continuă" onPress={() => setStep('quantity')} />
+            <BigButton title="Sari peste" variant="outline" onPress={() => setStep('quantity')} />
+          </View>
+        </View>
+      );
+
     case 'quantity':
       return (
         <View style={styles.container}>
           <Text style={styles.title}>
             Cantitate ({consumableType ? UNIT_LABELS[consumableType] : ''})
           </Text>
+          {quantitySuggested !== null && (
+            <OcrHint
+              value={`${quantitySuggested} ${consumableType ? UNIT_LABELS[consumableType] : ''}`}
+            />
+          )}
           <NumericPad
             value={quantity}
-            onChange={setQuantity}
+            onChange={(v) => {
+              setQuantity(v);
+              setQuantitySuggested(null);
+            }}
             maxLength={6}
             decimal
           />
           <View style={styles.actions}>
             <BigButton
               title="Continuă"
-              onPress={() => setStep('photo')}
+              onPress={() => setStep('confirm')}
               disabled={!quantity || quantity === '0'}
             />
-            {/* Hide Back when type is locked — there is no previous step */}
-            {!lockType && (
-              <BigButton
-                title="Înapoi"
-                variant="outline"
-                onPress={() => setStep('type')}
-              />
-            )}
-          </View>
-        </View>
-      );
-
-    case 'photo':
-      return (
-        <View style={styles.container}>
-          <Text style={styles.title}>Bon fiscal (opțional)</Text>
-          <PhotoCapture
-            label="Fotografie bon"
-            onCapture={(uri) => setPhotoUri(uri)}
-          />
-          <View style={styles.actions}>
-            <BigButton
-              title="Continuă"
-              onPress={() => setStep('confirm')}
-            />
-            <BigButton
-              title="Sari peste"
-              variant="outline"
-              onPress={() => {
-                setPhotoUri(null);
-                setStep('confirm');
-              }}
-            />
+            <BigButton title="Înapoi" variant="outline" onPress={() => setStep('receipt')} />
           </View>
         </View>
       );
@@ -278,7 +279,7 @@ export function ConsumableFlow({
           quantity={parseFloat(quantity)}
           hasPhoto={photoUri !== null}
           onConfirm={handleConfirm}
-          onBack={() => setStep('photo')}
+          onBack={() => setStep('quantity')}
           loading={saving}
         />
       );
@@ -296,6 +297,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.neutral,
+    textAlign: 'center',
+    marginTop: -16,
   },
   actions: {
     gap: 12,
