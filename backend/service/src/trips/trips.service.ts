@@ -437,9 +437,11 @@ export class TripsService implements OnModuleInit {
 
       let tripId: string;
       let created = false;
+      let fromStatus: TripStatus = TripStatus.planned;
 
       if (openRows[0]) {
         tripId = openRows[0].id;
+        fromStatus = openRows[0].status;
       } else {
         // Resolve driver from truck's permanent assignment.
         const driverRows = (await tx.execute(
@@ -546,6 +548,10 @@ export class TripsService implements OnModuleInit {
 
         this.logTripFlow(tripId, 'AUTO_CREATE_FROM_LOAD', 'new', TripStatus.planned);
       }
+
+      // registerLoad collapses planned|loading → loaded — validate the jump
+      // against the state machine instead of trusting the UPDATE's WHERE alone.
+      this.validateTransition(fromStatus, 'REGISTER_LOAD');
 
       // Insert the bale_load tied to this trip.
       await tx.execute(
