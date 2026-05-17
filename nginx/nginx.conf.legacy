@@ -1,0 +1,211 @@
+# nginx reverse proxy for StrawBoss production.
+# Terminates TLS and routes traffic to the backend and admin-web containers.
+#
+# Access and error streams use the default (stdout/stderr) so `docker compose logs nginx`
+# captures them. App JSON logs live under the repo's `logs/` volume (backend/admin), not here.
+#
+# First-time setup (get Let's Encrypt cert):
+#   ./strawboss.sh docker:up nginx          # bring nginx up on port 80
+#   ./strawboss.sh ssl:init                  # issue cert via HTTP-01 challenge
+#   ./strawboss.sh docker:up                 # bring all services up with HTTPS
+
+# ── HTTP: redirect to HTTPS + serve ACME challenge ──────────────────────────
+server {
+    listen 80;
+    server_name nortiauno.com www.nortiauno.com;
+
+    # Let's Encrypt HTTP-01 challenge (used by ssl:init).
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Redirect everything else to HTTPS.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS ────────────────────────────────────────────────────────────────────
+server {
+    listen 443 ssl;
+    server_name nortiauno.com www.nortiauno.com;
+
+    ssl_certificate     /etc/letsencrypt/live/nortiauno.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/nortiauno.com/privkey.pem;
+
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Docker embedded DNS — re-resolve service names after containers are recreated
+    # (static proxy_pass hostnames are cached at nginx start → stale IP → 502).
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    # Next.js Route Handlers under /api/* (not Nest). Must be before /api/ → backend.
+    location = /api/client-log {
+        set $admin_upstream admin:3000;
+        proxy_pass         http://$admin_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
+    # Proxy API requests to the NestJS backend container.
+    location /api/ {
+        set $api_upstream backend:3001;
+        proxy_pass         http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    # Proxy everything else to the Next.js admin-web container.
+    location / {
+        set $admin_upstream admin:3000;
+        proxy_pass         http://$admin_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+
+# ============================================================================
+# video.tedde-auto.ro — edge proxy to laptop (via Tailscale 100.90.57.70)
+# Next.js :3000, FastAPI :8000 origin on laptop tedde-auto-latitude-3520
+# ============================================================================
+
+# HTTP — ACME challenge + redirect to HTTPS.
+server {
+    listen 80;
+    server_name video.tedde-auto.ro;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# HTTPS canonical vhost — video.tedde-auto.ro.
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name video.tedde-auto.ro;
+
+    ssl_certificate     /etc/letsencrypt/live/video.tedde-auto.ro/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/video.tedde-auto.ro/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSLVID:10m;
+    ssl_session_timeout 10m;
+
+    # Laptop upstream over Tailscale
+    set $tedde_laptop 100.90.57.70;
+
+    client_max_body_size 2g;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header Upgrade           $http_upgrade;
+    proxy_set_header Connection        $http_connection;
+
+    proxy_connect_timeout 10s;
+    proxy_send_timeout    3600s;
+    proxy_read_timeout    3600s;
+    proxy_buffering       off;
+    proxy_request_buffering off;
+
+    # FastAPI (API, assets mari, websockets backend) → :8000
+    location /api/ {
+        proxy_pass http://$tedde_laptop:8000;
+    }
+    location /ws  { proxy_pass http://$tedde_laptop:8000; }
+    location /socket.io/ { proxy_pass http://$tedde_laptop:8000; }
+    location /static/    { proxy_pass http://$tedde_laptop:8000; }
+    location /media/     { proxy_pass http://$tedde_laptop:8000; }
+    location /uploads/   { proxy_pass http://$tedde_laptop:8000; }
+    location /docs       { proxy_pass http://$tedde_laptop:8000; }
+    location /openapi.json { proxy_pass http://$tedde_laptop:8000; }
+
+    # Next.js UI → :3000 (fallback)
+    location / {
+        proxy_pass http://$tedde_laptop:3000;
+    }
+}
+
+# ============================================================================
+# infomeditatii.ro — Eduvora landing + API (uvicorn pe host 127.0.0.1:8000)
+# systemd: infomeditatii.service — acces din container via host.docker.internal
+# ============================================================================
+
+upstream infomeditatii_upstream {
+    server host.docker.internal:8000;
+    keepalive 8;
+}
+
+# HTTP — ACME + proxy către aplicație (ok cu Cloudflare „Flexible”; vizitatorul rămâne pe HTTPS la edge)
+server {
+    listen 80;
+    server_name infomeditatii.ro www.infomeditatii.ro;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        proxy_pass         http://infomeditatii_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "";
+        proxy_read_timeout  60s;
+        proxy_connect_timeout 10s;
+        client_max_body_size 2m;
+    }
+}
+
+# După certificat Let's Encrypt pentru acest domeniu (Certbot în stack), decomentează:
+# server {
+#     listen 443 ssl;
+#     http2 on;
+#     server_name infomeditatii.ro www.infomeditatii.ro;
+#     ssl_certificate     /etc/letsencrypt/live/infomeditatii.ro/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/infomeditatii.ro/privkey.pem;
+#     ssl_protocols       TLSv1.2 TLSv1.3;
+#     ssl_ciphers         HIGH:!aNULL:!MD5;
+#     ssl_session_cache   shared:SSL_INFOM:10m;
+#     location / {
+#         proxy_pass         http://infomeditatii_upstream;
+#         proxy_http_version 1.1;
+#         proxy_set_header   Host              $host;
+#         proxy_set_header   X-Real-IP         $remote_addr;
+#         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+#         proxy_set_header   X-Forwarded-Proto $scheme;
+#         client_max_body_size 2m;
+#     }
+# }
+

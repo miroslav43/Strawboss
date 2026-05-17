@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { DocumentViewer } from '@/components/shared/DocumentViewer';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 
 interface DocumentDetailPageProps {
   params: Promise<{ documentId: string }>;
@@ -16,6 +17,7 @@ interface DocumentDetailPageProps {
 
 export default function DocumentDetailPage({ params }: DocumentDetailPageProps) {
   const { t } = useI18n();
+  const slug = useOrgSlug();
   const { documentId } = use(params);
   const docQuery = useDocument(apiClient, documentId);
 
@@ -25,7 +27,7 @@ export default function DocumentDetailPage({ params }: DocumentDetailPageProps) 
         title={t('documents.detailTitle')}
         actions={
           <Link
-            href="/documents"
+            href={`/${slug}/documents`}
             className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
           >
             <ArrowLeft className="h-4 w-4" />

@@ -2,14 +2,16 @@
 
 import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiV1Url } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
+import { resolveOrganizationSlugForSession } from '@/lib/resolve-organization-slug';
 
 /** Resolve a username to an email via the backend. Returns null on failure. */
 async function resolveLogin(login: string): Promise<string | null> {
   if (login.includes('@')) return login;
   try {
-    const res = await fetch('/api/v1/auth/resolve', {
+    const res = await fetch(apiV1Url('/auth/resolve'), {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ login }),
@@ -40,7 +42,7 @@ export default function LoginPage() {
   const [loading,  setLoading]  = useState(false);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data: { session } }) => {
+    void supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) return;
       const appMeta = session.user.app_metadata as {
         role?: string;
@@ -50,7 +52,8 @@ export default function LoginPage() {
         router.replace('/super-admin');
         return;
       }
-      const orgSlug = appMeta.organization_slug;
+      const orgSlug =
+        appMeta.organization_slug ?? (await resolveOrganizationSlugForSession(session));
       if (orgSlug) router.replace(`/${orgSlug}/`);
     });
   }, [router]);
@@ -97,7 +100,11 @@ export default function LoginPage() {
       return;
     }
 
-    const orgSlug = appMeta?.organization_slug;
+    let orgSlug =
+      appMeta?.organization_slug ??
+      (signInData.session
+        ? await resolveOrganizationSlugForSession(signInData.session)
+        : null);
     if (!orgSlug) {
       setError('Contul tău nu are o organizație asignată. Contactează administratorul.');
       setLoading(false);

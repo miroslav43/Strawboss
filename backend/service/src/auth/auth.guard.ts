@@ -8,6 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import * as jose from 'jose';
+import { sql } from 'drizzle-orm';
+import { DrizzleProvider } from '../database/drizzle.provider';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
@@ -28,7 +30,34 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly configService: ConfigService,
     private readonly reflector: Reflector,
+    private readonly drizzleProvider: DrizzleProvider,
   ) {}
+
+  /** When the Supabase JWT hook omits org claims, load them from public.users (same source as the hook). */
+  private async hydrateOrganizationFromJwt(
+    userId: string,
+    role: string,
+  ): Promise<{ organizationId: string; organizationSlug: string } | null> {
+    if (!userId || role === 'super_admin') {
+      return null;
+    }
+    const result = await this.drizzleProvider.db.execute(sql`
+      SELECT u.organization_id AS "organizationId", o.slug AS "organizationSlug"
+      FROM users u
+      LEFT JOIN organizations o ON o.id = u.organization_id AND o.deleted_at IS NULL
+      WHERE u.id = ${userId}::uuid AND u.deleted_at IS NULL
+      LIMIT 1
+    `);
+    const rows = result as unknown as {
+      organizationId: string | null;
+      organizationSlug: string | null;
+    }[];
+    const row = rows[0];
+    if (!row?.organizationId || !row.organizationSlug) {
+      return null;
+    }
+    return { organizationId: row.organizationId, organizationSlug: row.organizationSlug };
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -84,13 +113,26 @@ export class AuthGuard implements CanActivate {
         (payload.role as string | undefined) ??
         '';
 
-      const organizationId =
+      let organizationId =
         (appMeta?.organization_id as string | undefined) ?? null;
-      const organizationSlug =
+      let organizationSlug =
         (appMeta?.organization_slug as string | undefined) ?? null;
 
+      const sub = (payload.sub as string) ?? '';
+      if (
+        role !== 'super_admin' &&
+        sub &&
+        (!organizationId || !organizationSlug)
+      ) {
+        const hydrated = await this.hydrateOrganizationFromJwt(sub, role);
+        if (hydrated) {
+          organizationId ??= hydrated.organizationId;
+          organizationSlug ??= hydrated.organizationSlug;
+        }
+      }
+
       request.user = {
-        id: (payload.sub as string) ?? '',
+        id: sub,
         email: (payload.email as string) ?? '',
         role,
         organizationId,

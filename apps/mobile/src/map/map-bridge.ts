@@ -66,3 +66,33 @@ export function parseEvent(data: string): MapEvent | null {
   }
   return null;
 }
+
+// ── Geofence Editor (geofence_maker role) ────────────────────────────
+
+export type GeofenceEditorCommand =
+  | { type: 'SET_PARCELS'; parcels: ParcelMapData[] }
+  | { type: 'SET_DESTINATIONS'; destinations: DestinationMapData[] }
+  | { type: 'FIT_BOUNDS' }
+  | { type: 'SET_USER_LOCATION'; lat: number; lon: number }
+  | { type: 'ENABLE_DRAW' }
+  | { type: 'DISABLE_DRAW' }
+  | { type: 'HIGHLIGHT_PARCEL'; parcelId: string }
+  | { type: 'CENTER_ON'; lat: number; lon: number; zoom?: number };
+
+export type GeofenceEditorEvent =
+  | { type: 'MAP_READY' }
+  | { type: 'POLYGON_DRAWN'; geojson: object };
+
+export function serializeEditorCommand(cmd: GeofenceEditorCommand): string {
+  return `window.handleCommand(${JSON.stringify(cmd)});`;
+}
+
+export function parseGeofenceEditorEvent(data: string): GeofenceEditorEvent | null {
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed && typeof parsed.type === 'string') return parsed as GeofenceEditorEvent;
+  } catch {
+    // ignore non-JSON messages
+  }
+  return null;
+}

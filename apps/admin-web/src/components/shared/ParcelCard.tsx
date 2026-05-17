@@ -28,9 +28,6 @@ export function ParcelCard({ parcel, className }: ParcelCardProps) {
       </div>
       <div className="space-y-1 text-xs text-neutral-600">
         <p>
-          <span className="text-neutral-400">Owner:</span> {parcel.ownerName}
-        </p>
-        <p>
           <span className="text-neutral-400">Area:</span>{' '}
           {parcel.areaHectares} ha
         </p>

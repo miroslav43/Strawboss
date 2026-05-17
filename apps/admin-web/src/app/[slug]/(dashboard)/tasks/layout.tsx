@@ -7,23 +7,25 @@ import { Eye, CircleDot, Container, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DayNavigator } from '@/components/features/tasks/daily-plan/DayNavigator';
 import { useI18n } from '@/lib/i18n';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { TasksDateContext } from './tasks-date-context';
 
 function formatDate(d: Date): string {
   return d.toISOString().split('T')[0];
 }
 
-const tabs = [
-  { href: '/tasks',         icon: Eye,       labelKey: 'tasks.overview' as const, color: 'text-neutral-600' },
-  { href: '/tasks/balers',  icon: CircleDot, labelKey: 'tasks.balerTasks' as const, color: 'text-amber-600' },
-  { href: '/tasks/loaders', icon: Container, labelKey: 'tasks.loaderTasks' as const, color: 'text-blue-600' },
-  { href: '/tasks/trucks',  icon: Truck,     labelKey: 'tasks.truckTasks' as const, color: 'text-green-600' },
-];
-
 export default function TasksLayout({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const pathname = usePathname();
+  const slug = useOrgSlug();
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
+
+  const tabs = [
+    { href: `/${slug}/tasks`,         icon: Eye,       labelKey: 'tasks.overview' as const, color: 'text-neutral-600' },
+    { href: `/${slug}/tasks/balers`,  icon: CircleDot, labelKey: 'tasks.balerTasks' as const, color: 'text-amber-600' },
+    { href: `/${slug}/tasks/loaders`, icon: Container, labelKey: 'tasks.loaderTasks' as const, color: 'text-blue-600' },
+    { href: `/${slug}/tasks/trucks`,  icon: Truck,     labelKey: 'tasks.truckTasks' as const, color: 'text-green-600' },
+  ];
 
   return (
     <TasksDateContext.Provider value={{ selectedDate, setSelectedDate }}>
@@ -34,8 +36,8 @@ export default function TasksLayout({ children }: { children: React.ReactNode })
         <nav className="flex gap-1 rounded-lg border border-neutral-200 bg-white p-1">
           {tabs.map((tab) => {
             const isActive =
-              tab.href === '/tasks'
-                ? pathname === '/tasks'
+              tab.href === `/${slug}/tasks`
+                ? pathname === `/${slug}/tasks`
                 : pathname.startsWith(tab.href);
             const Icon = tab.icon;
             return (

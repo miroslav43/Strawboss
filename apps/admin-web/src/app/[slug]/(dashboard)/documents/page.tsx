@@ -11,6 +11,7 @@ import { DataTable, type Column } from '@/components/shared/DataTable';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 
 const typeLabels: Record<DocumentType, string> = {
   cmr: 'CMR',
@@ -111,6 +112,7 @@ const columns: Column<DocRow>[] = [
 
 export default function DocumentsPage() {
   const { t } = useI18n();
+  const slug = useOrgSlug();
   const [typeFilter, setTypeFilter] = useState('');
   const router = useRouter();
 
@@ -153,7 +155,7 @@ export default function DocumentsPage() {
           columns={columns}
           data={docs.map(toRow)}
           keyExtractor={(row) => row.id}
-          onRowClick={(row) => router.push(`/documents/${row.id}`)}
+          onRowClick={(row) => router.push(`/${slug}/documents/${row.id}`)}
         />
       )}
     </div>

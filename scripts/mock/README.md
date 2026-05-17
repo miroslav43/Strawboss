@@ -1,53 +1,73 @@
 # Mock notification scripts
 
 Quick smoke-test commands for the mobile push / bell-badge pipeline. They
-hit the dev backend over HTTP and let you watch real notifications light up
-the device + the in-app bell badge without driving GPS or the loader UI by
-hand.
+hit the backend over HTTP and let you watch notifications on the device and
+the in-app bell without driving GPS or the loader UI by hand.
 
 ## How it works
 
 Two flavours, both run through `./strawboss.sh`:
 
-1. **Simulator pushes** (fast, single push per call) → `mock:field-arrival`,
+1. **Simulator pushes** (fast, one push per call) → `mock:field-arrival`,
    `mock:loader-arrival`, `mock:warehouse-arrival`, `mock:trip-loaded`,
-   `mock:trip-departed`, `mock:broadcast`. They post to the dev-only
-   endpoint `POST /api/v1/dev/notifications/simulate`, which calls
-   `NotificationsService.sendPush` directly with templated title/body and
-   a structured `data.type` payload. **No** workflow side effects.
+   `mock:trip-departed`, `mock:broadcast`. Templated pushes use
+   **`POST /api/v1/notifications/simulate-push`** (admin JWT). This is the
+   same payload shape as the old dev-only simulator and **works in
+   production** — no `DevModule` / `STRAWBOSS_ENABLE_DEV` required. There are
+   **no** workflow side effects beyond `sendPush`.
 
-2. **End-to-end trip** (slow, exercises the production push paths) →
-   `mock:e2e-trip` drives a real trip through `create → start-loading →
-   register-load → depart → arrive`, so every push fires from
-   `trips.service.ts` against the real seed data. Use this when you change
-   trip lifecycle code or want to verify the mobile handler maps `trip_*`
-   types correctly.
+2. **End-to-end trip** (slow, exercises real trip transitions) →
+   `mock:e2e-trip` drives `create → start-loading → register-load → depart →
+   arrive`, so pushes are emitted from `trips.service.ts`. This path needs
+   **`supabase/seed.sql` UUIDs** (`SEED_PARCEL_ID`, trucks, users, etc.) to
+   exist in the target database. On a production DB without seed data, trip
+   creation will fail — use this on dev/staging with seed, or extend the
+   script later with real IDs.
 
-Authentication is handled inside the scripts: each call mints a short-lived
-HS256 JWT signed with `SUPABASE_JWT_SECRET` from `.env`
-(`scripts/_lib.sh::mock_jwt`).
+### Choosing who receives a simulated push (mock:\* except broadcast)
+
+- **Local / seed:** pass an alias: `driver`, `loader`, `baler`, or `admin`
+  → maps to stable seed UUIDs in `scripts/_lib.sh`.
+- **Production / real users:**
+  - Set **`MOCK_NOTIFY_USER_PATTERN`** to an SQL `ILIKE` pattern
+    (e.g. `%ana@example.com%` or `%lmaletici%`). The first matching user
+    (by email or username) receives the push; the alias argument is ignored
+    when this env var is set.
+  - Or pass a pattern containing **`%`** as the user argument, e.g.
+    `./strawboss.sh mock:loader-arrival '%lmaletici%'` (requires
+    **`DATABASE_URL`** in `.env` for `psql` lookup).
+
+### Admin JWT
+
+`mock:*` notification calls and `mock:broadcast` mint an admin JWT via
+`scripts/_lib.sh::mock_notify_admin_jwt`: it prefers **`SELECT id FROM users
+WHERE role = 'admin'`** when **`DATABASE_URL`** is set (production-friendly),
+and falls back to **`SEED_ADMIN_ID`** when no row is found (typical local dev
+before DB is up).
+
+Other auth details: `SUPABASE_JWT_SECRET` from `.env` (`mock_jwt`).
 
 ## Prerequisites
 
 ```bash
 ./strawboss.sh db:migrate     # ensure the schema is up to date
-./strawboss.sh db:seed        # load admin/loader/driver/baler users + demo parcel + task assignments
+./strawboss.sh db:seed        # optional: seed users + demo data (required for seed aliases + mock:e2e-trip)
 ./strawboss.sh dev            # start backend on :3001 + admin web on :3000
 
 # In another terminal, start the mobile app:
 pnpm --filter @strawboss/mobile dev
-# (open Expo Go and log in as the driver / loader to see push + bell badge)
+# (open Expo Go and log in as the target user to see push + bell badge)
 ```
 
-The seed (`supabase/seed.sql`) ships these stable IDs that all the scripts
-target — keep them in sync with `scripts/_lib.sh::SEED_*`:
+The seed (`supabase/seed.sql`) ships these stable IDs that aliases target —
+keep them in sync with `scripts/_lib.sh::SEED_*`:
 
-| Alias  | UUID                                   | Role             |
-| ------ | -------------------------------------- | ---------------- |
-| admin  | `a0000000-0000-0000-0000-000000000001` | `admin`          |
-| loader | `a0000000-0000-0000-0000-000000000002` | `loader_operator`|
-| driver | `a0000000-0000-0000-0000-000000000003` | `driver`         |
-| baler  | `a0000000-0000-0000-0000-000000000004` | `baler_operator` |
+| Alias  | UUID                                   | Role              |
+| ------ | -------------------------------------- | ----------------- |
+| admin  | `a0000000-0000-0000-0000-000000000001` | `admin`           |
+| loader | `a0000000-0000-0000-0000-000000000002` | `loader_operator` |
+| driver | `a0000000-0000-0000-0000-000000000003` | `driver`          |
+| baler  | `a0000000-0000-0000-0000-000000000004` | `baler_operator`  |
 
 ## Examples
 
@@ -58,8 +78,13 @@ target — keep them in sync with `scripts/_lib.sh::SEED_*`:
 # Send the same push but to the loader instead
 ./strawboss.sh mock:field-arrival --user loader
 
-# Loader sees a truck arrive at their parcel
-./strawboss.sh mock:loader-arrival
+# Same on production: recipient by ILIKE pattern (needs DATABASE_URL)
+MOCK_NOTIFY_USER_PATTERN='%lmaletici%' \
+  API_URL=https://nortiauno.com ./strawboss.sh mock:loader-arrival
+
+# Or pass the pattern as the first argument to mock:loader-arrival
+DATABASE_URL=postgres://... API_URL=https://nortiauno.com \
+  ./strawboss.sh mock:loader-arrival '%lmaletici%'
 
 # Driver gets warehouse arrival push
 ./strawboss.sh mock:warehouse-arrival
@@ -73,7 +98,7 @@ target — keep them in sync with `scripts/_lib.sh::SEED_*`:
 # Custom broadcast to everyone with a registered push token
 ./strawboss.sh mock:broadcast --title "Pauză" --body "Toți la masă în 10 minute"
 
-# Full trip lifecycle: 4 push notifications back-to-back to the driver
+# Full trip lifecycle: 4 push notifications back-to-back to the driver (seed DB only)
 ./strawboss.sh mock:e2e-trip
 ```
 
@@ -83,25 +108,28 @@ count, and the OS app-icon badge should match.
 
 ## Pointing at a different API
 
-By default scripts hit `http://localhost:3001`. To target staging/prod
-(only useful when `STRAWBOSS_ENABLE_DEV=1` is set on the server):
-
 ```bash
-API_URL=https://api.staging.example.com ./strawboss.sh mock:field-arrival
+API_URL=https://nortiauno.com ./strawboss.sh mock:field-arrival
 ```
+
+For simulated pushes on prod, set **`DATABASE_URL`** (and optionally
+`MOCK_NOTIFY_USER_PATTERN` or a `%pattern%` argument) so the script can
+resolve recipients and sign JWT as a real admin user.
 
 ## Troubleshooting
 
-- `HTTP 401` → the dev backend isn't using the same `SUPABASE_JWT_SECRET`
-  as your local `.env`. Restart the backend after editing `.env`.
-- `HTTP 403` on `/dev/notifications/simulate` in production → set
-  `STRAWBOSS_ENABLE_DEV=1` (the controller is gated by `NODE_ENV` +
-  this flag). Production by default has `DevModule` disabled.
-- `HTTP 400 "no target users resolved"` → the seed user isn't in the DB.
-  Re-run `./strawboss.sh db:seed`.
-- `mock:loader-arrival` produces `sentCount: 0` → the loader user has no
-  active push token. Open the mobile app once as the loader so the token
-  registers via `POST /api/v1/notifications/register-token`.
-- Push lands in the OS but bell badge stays at zero → check that the
-  mobile app called `handleIncomingPush` (foregrounded) — when the app is
-  killed, the next foreground tick reconciles the local SQLite count.
+- `HTTP 401` → backend `SUPABASE_JWT_SECRET` does not match `.env`. Restart
+  backend after editing `.env`; ensure admin user exists if using DB-backed
+  JWT.
+- **`HTTP 404`** on `/api/v1/notifications/simulate-push` → deploy a backend
+  that includes this route (rebuild `backend` image / container).
+- `No user for MOCK_NOTIFY_USER_PATTERN` / pattern argument → fix pattern or
+  seed users; run `./strawboss.sh notif-lookup '%pattern%'`.
+- `mock:*` produces no device notification → no active row in
+  `device_push_tokens` for that user. Open the mobile app (logged in) so it
+  calls `POST /api/v1/notifications/register-token`.
+- **`mock:e2e-trip` fails on prod** → expected without seed UUIDs; use a DB
+  that has `supabase/seed.sql` applied or replace IDs in the script.
+- Push lands in the OS but bell badge stays at zero → check
+  `handleIncomingPush` when app is foregrounded — when the app is killed, the
+  next foreground tick reconciles the local SQLite count.

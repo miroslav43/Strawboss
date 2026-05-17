@@ -22,19 +22,19 @@ export const machineSchema = z
     currentOdometerKm: z.number().nonnegative(),
     currentHourmeterHrs: z.number().nonnegative(),
     isActive: z.boolean(),
-    maxPayloadKg: z.number().positive().nullable(),
     maxBaleCount: z.number().int().positive().nullable(),
     tareWeightKg: z.number().nonnegative().nullable(),
-    balesPerHourAvg: z.number().positive().nullable(),
     baleWeightAvgKg: z.number().positive().nullable(),
-    reachMeters: z.number().positive().nullable(),
+    ownerCompanyName: z.string().nullable(),
+    ownerCompanyAddress: z.string().nullable(),
+    ownerCompanyCui: z.string().nullable(),
   })
   .merge(timestampsSchema)
   .merge(softDeleteSchema);
 
 export const createMachineSchema = z.object({
   machineType: machineTypeSchema,
-  registrationPlate: z.string().min(1).optional(),
+  registrationPlate: z.string().min(1),
   internalCode: z.string().min(1),
   make: z.string().min(1),
   model: z.string().min(1),
@@ -44,12 +44,12 @@ export const createMachineSchema = z.object({
   farmtrackDeviceId: z.string().nullable().optional(),
   currentOdometerKm: z.number().nonnegative().optional(),
   currentHourmeterHrs: z.number().nonnegative().optional(),
-  maxPayloadKg: z.number().positive().nullable().optional(),
   maxBaleCount: z.number().int().positive().nullable().optional(),
   tareWeightKg: z.number().nonnegative().nullable().optional(),
-  balesPerHourAvg: z.number().positive().nullable().optional(),
   baleWeightAvgKg: z.number().positive().nullable().optional(),
-  reachMeters: z.number().positive().nullable().optional(),
+  ownerCompanyName: z.string().nullable().optional(),
+  ownerCompanyAddress: z.string().nullable().optional(),
+  ownerCompanyCui: z.string().nullable().optional(),
 });
 
 export const updateMachineSchema = z
@@ -66,11 +66,11 @@ export const updateMachineSchema = z
     currentOdometerKm: z.number().nonnegative(),
     currentHourmeterHrs: z.number().nonnegative(),
     isActive: z.boolean(),
-    maxPayloadKg: z.number().positive().nullable(),
     maxBaleCount: z.number().int().positive().nullable(),
     tareWeightKg: z.number().nonnegative().nullable(),
-    balesPerHourAvg: z.number().positive().nullable(),
     baleWeightAvgKg: z.number().positive().nullable(),
-    reachMeters: z.number().positive().nullable(),
+    ownerCompanyName: z.string().nullable(),
+    ownerCompanyAddress: z.string().nullable(),
+    ownerCompanyCui: z.string().nullable(),
   })
   .partial();

@@ -23,4 +23,7 @@ export interface User extends Timestamps, SoftDelete {
   avatarUrl: string | null;
   lastLoginAt: string | null;
   assignedMachineId: string | null;
+  /** Present on profile API responses when joined from organizations. */
+  organizationId?: string | null;
+  organizationSlug?: string | null;
 }

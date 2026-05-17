@@ -56,15 +56,44 @@ cmd_notif__lookup() {
   fi
 }
 
-# @cmd notif-broadcast "POST a test broadcast (admin HS256). Args: [email-pattern] [api-base URL, default from NEXT_PUBLIC_API_URL]"
+# @cmd notif-broadcast "POST push to one user (admin JWT). Args: [--title s] [--body s] [email-pattern default %dmaletici%] [api-base]"
 cmd_notif__broadcast() {
   _load_env
   require_cmd psql
   require_cmd node
   require_cmd curl
 
-  local pattern="${1:-"%dmaletici%"}"
-  local api_base="${2:-${NEXT_PUBLIC_API_URL:-http://127.0.0.1:3001}}"
+  local pattern=""
+  local api_base=""
+  local title="Test Strawboss"
+  local body="Mock broadcast (./strawboss.sh notif-broadcast)."
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title)
+        title="${2:-}"
+        shift 2
+        ;;
+      --body)
+        body="${2:-}"
+        shift 2
+        ;;
+      *)
+        if [ -z "$pattern" ]; then
+          pattern="$1"
+        elif [ -z "$api_base" ]; then
+          api_base="$1"
+        else
+          error "Unexpected argument: $1 (use: notif-broadcast [--title ...] [--body ...] [pattern] [api-url])"
+          exit 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  pattern="${pattern:-"%dmaletici%"}"
+  api_base="${api_base:-${NEXT_PUBLIC_API_URL:-http://127.0.0.1:3001}}"
   api_base="${api_base%/}"
 
   local target_uid
@@ -119,11 +148,22 @@ cmd_notif__broadcast() {
   header "Broadcast → user $target_uid"
   info "API: $api_base/api/v1/notifications/broadcast"
 
+  local payload
+  payload=$(
+    TARGET_UID="$target_uid" TITLE="$title" BODY="$body" node -e "
+      console.log(JSON.stringify({
+        target: { kind: 'user', userId: process.env.TARGET_UID },
+        title: process.env.TITLE,
+        body: process.env.BODY,
+      }));
+    "
+  )
+
   local out http
   out=$(curl -sS -w "\n%{http_code}" -X POST "$api_base/api/v1/notifications/broadcast" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $jwt" \
-    -d "{\"target\":{\"kind\":\"user\",\"userId\":\"$target_uid\"},\"title\":\"Test Strawboss\",\"body\":\"Mock broadcast (./strawboss.sh notif-broadcast).\"}" 2>&1) || true
+    -d "$payload" 2>&1) || true
   http=$(echo "$out" | tail -n1)
   out=$(echo "$out" | sed '$d')
   echo "$out"
@@ -137,4 +177,96 @@ cmd_notif__broadcast() {
   info "Optional — push directly to Expo (bypasses backend), full token from logs or notif-lookup (remove ...):"
   echo "  curl -sS -X POST 'https://exp.host/--/api/v2/push/send' -H 'Content-Type: application/json' \\"
   echo "    -d '[{\"to\":\"ExponentPushToken[...]\",\"title\":\"Expo only\",\"body\":\"...\",\"data\":{\"type\":\"broadcast\"}}]'"
+}
+
+# @cmd notif:simulate-truck "Push truck_arrived_at_loader (same template as prod geofence). Args: [email-pattern default %lmaletici%] [plate] [parcel] [api-base]"
+cmd_notif__simulate__truck() {
+  _load_env
+  require_cmd psql
+  require_cmd node
+  require_cmd curl
+
+  local pattern="${1:-"%lmaletici%"}"
+  local plate="${2:-OS-1234-XX}"
+  local parcel="${3:-câmpul assignat}"
+  local api_base="${4:-${NEXT_PUBLIC_API_URL:-http://127.0.0.1:3001}}"
+  api_base="${api_base%/}"
+
+  local target_uid
+  target_uid=$(psql "$DATABASE_URL" -t -A -c "\
+    SELECT id FROM users
+    WHERE deleted_at IS NULL
+      AND (email ILIKE '$pattern' OR username ILIKE '$pattern')
+    LIMIT 1;
+  " | tr -d '[:space:]')
+
+  if [ -z "$target_uid" ]; then
+    error "No user for pattern: $pattern"
+    exit 1
+  fi
+
+  local admin_id
+  admin_id=$(psql "$DATABASE_URL" -t -A -c "\
+    SELECT id FROM users
+    WHERE role = 'admin' AND deleted_at IS NULL
+    LIMIT 1;
+  " | tr -d '[:space:]')
+  if [ -z "$admin_id" ]; then
+    error "No admin user in database — cannot sign request."
+    exit 1
+  fi
+
+  export ADMIN_ID="$admin_id"
+  local jwt
+  jwt=$(
+    cd "$STRAWBOSS_ROOT/backend/service" && node -e "
+      const jose = require('jose');
+      const secret = new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET);
+      const sub = process.env.ADMIN_ID;
+      (async () => {
+        const jwt = await new jose.SignJWT({
+          app_metadata: { role: 'admin' },
+        })
+          .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+          .setSubject(sub)
+          .setIssuedAt()
+          .setExpirationTime('1h')
+          .sign(secret);
+        process.stdout.write(jwt);
+      })();
+    "
+  ) || true
+  if [ -z "$jwt" ]; then
+    error "Failed to sign JWT. Run from monorepo root with SUPABASE_JWT_SECRET in .env."
+    exit 1
+  fi
+
+  local payload
+  payload=$(node -e "
+    const plate = process.argv[1];
+    const parcel = process.argv[2];
+    const uid = process.argv[3];
+    console.log(JSON.stringify({
+      userId: uid,
+      event: 'truck_arrived_at_loader',
+      vars: { plate, parcel },
+    }));
+  " "$plate" "$parcel" "$target_uid")
+
+  header "Simulate truck at loader → user $target_uid ($pattern)"
+  info "API: $api_base/api/v1/notifications/simulate-push"
+
+  local out http
+  out=$(curl -sS -w "\n%{http_code}" -X POST "$api_base/api/v1/notifications/simulate-push" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $jwt" \
+    -d "$payload" 2>&1) || true
+  http=$(echo "$out" | tail -n1)
+  out=$(echo "$out" | sed '$d')
+  echo "$out"
+  if [ "$http" = "201" ] || [ "$http" = "200" ]; then
+    success "HTTP $http — check device for “A sosit un camion” (type truck_arrived_at_loader)."
+  else
+    warn "HTTP $http (expected 200/201)"
+  fi
 }

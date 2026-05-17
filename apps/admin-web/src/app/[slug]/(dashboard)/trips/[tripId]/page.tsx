@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { TripDetail } from '@/components/features/trips/TripDetail';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { toTripCamel } from '@/lib/trip-mapper';
 
 interface TripDetailPageProps {
@@ -17,6 +18,7 @@ interface TripDetailPageProps {
 
 export default function TripDetailPage({ params }: TripDetailPageProps) {
   const { t } = useI18n();
+  const slug = useOrgSlug();
   const { tripId } = use(params);
   const tripQuery = useTrip(apiClient, tripId);
   // Backend returns snake_case rows straight from SQL; map to the canonical
@@ -29,7 +31,7 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
         title={t('trips.detailTitle')}
         actions={
           <Link
-            href="/trips"
+            href={`/${slug}/trips`}
             className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
           >
             <ArrowLeft className="h-4 w-4" />

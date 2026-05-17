@@ -2,26 +2,82 @@
 # ============================================================================
 # 08-mock.sh — Mock notification & end-to-end trip scripts
 #
-# Quick smoke-test commands that hit the dev backend on
-# ${API_URL:-http://localhost:3001} so you can see push notifications light
-# up the mobile bell + OS badge without driving GPS / loaders by hand.
+# Quick smoke-test commands against ${API_URL:-http://localhost:3001} so you
+# can see push notifications on device + in-app bell without GPS/loaders.
 #
 # Two flavours:
-#   1. mock:* — fast simulator pushes via /api/v1/dev/notifications/simulate
-#      (skips workflow, just delivers the push payload to a single user).
-#   2. mock:e2e-trip — drives a real planned trip through start-loading →
-#      register-load → depart → arrive, exercising the production push paths
-#      from `trips.service.ts`.
+#   1. mock:* — templated pushes via POST /api/v1/notifications/simulate‑push
+#      (admin JWT; works in production). Same payloads as former dev simulate.
+#   2. mock:e2e-trip — real trip API (seed UUIDs only; see scripts/mock/README.md).
 #
-# Auth: every call mints a short-lived HS256 JWT signed with the project's
-# SUPABASE_JWT_SECRET (see _lib.sh::mock_jwt). The seed user IDs are the
-# constants SEED_*_ID also in _lib.sh and supabase/seed.sql.
+# Recipients:
+#   • Local dev: aliases driver|loader|baler|admin → seed UUIDs (_lib.sh).
+#   • Production: set MOCK_NOTIFY_USER_PATTERN (e.g. %user%) for ILIKE match
+#     on email/username, OR pass a pattern containing '%' as the user argument.
+#
+# Auth: mock_notify_admin_jwt (DB admin if DATABASE_URL set, else seed admin).
 # ============================================================================
 
 # @section "Mock / Test"
 
+# Resolve UUID of the user who receives the simulated push.
+# Usage: _mock_resolve_recipient_user_id <alias|sql-like-pattern>
+_mock_resolve_recipient_user_id() {
+  local alias_or_pattern="${1:-driver}"
+  local pattern="${MOCK_NOTIFY_USER_PATTERN:-}"
+
+  _load_env
+
+  if [ -n "$pattern" ]; then
+    require_cmd psql
+    if [ -z "${DATABASE_URL:-}" ]; then
+      error "MOCK_NOTIFY_USER_PATTERN is set but DATABASE_URL is missing"
+      return 1
+    fi
+    local u_env
+    u_env=$(psql "$DATABASE_URL" -t -A -c "\
+      SELECT id FROM users
+      WHERE deleted_at IS NULL
+        AND (email ILIKE '$pattern' OR username ILIKE '$pattern')
+      LIMIT 1;
+    " | tr -d '[:space:]')
+    if [ -z "$u_env" ]; then
+      error "No user for MOCK_NOTIFY_USER_PATTERN: $pattern"
+      return 1
+    fi
+    echo "$u_env"
+    return 0
+  fi
+
+  case "$alias_or_pattern" in
+    *%*)
+      require_cmd psql
+      if [ -z "${DATABASE_URL:-}" ]; then
+        error "Recipient '$alias_or_pattern' looks like ILIKE pattern but DATABASE_URL is missing"
+        return 1
+      fi
+      local u_pat
+      u_pat=$(psql "$DATABASE_URL" -t -A -c "\
+        SELECT id FROM users
+        WHERE deleted_at IS NULL
+          AND (email ILIKE '$alias_or_pattern' OR username ILIKE '$alias_or_pattern')
+        LIMIT 1;
+      " | tr -d '[:space:]')
+      if [ -z "$u_pat" ]; then
+        error "No user for pattern: $alias_or_pattern"
+        return 1
+      fi
+      echo "$u_pat"
+      return 0
+      ;;
+    *)
+      mock_user_id_for "$alias_or_pattern"
+      ;;
+  esac
+}
+
 _mock_simulate() {
-  # _mock_simulate <event> <target_user_alias> <vars_json>
+  # _mock_simulate <event> <target_user_alias|pattern> <vars_json>
   local event="${1:-}"
   local user_alias="${2:-driver}"
   local vars_json="${3:-{\}}"
@@ -32,47 +88,49 @@ _mock_simulate() {
   fi
 
   _load_env
-  local user_id token target_user_id
-  user_id="$(mock_user_id_for "$user_alias")" || return 1
-  target_user_id="$user_id"
-  # Always sign as admin — only admin can hit /dev/notifications/simulate.
-  token="$(mock_jwt "$SEED_ADMIN_ID" admin)"
+  local target_user_id token
+  target_user_id="$(_mock_resolve_recipient_user_id "$user_alias")" || return 1
+  token="$(mock_notify_admin_jwt)" || return 1
 
   local body
-  body=$(printf '{"event":"%s","target":{"userId":"%s"},"vars":%s}' \
-    "$event" "$target_user_id" "$vars_json")
+  body=$(printf '{"userId":"%s","event":"%s","vars":%s}' \
+    "$target_user_id" "$event" "$vars_json")
 
-  info "POST /api/v1/dev/notifications/simulate  ${DIM}(event=$event, user=$user_alias)${NC}"
-  api_post /api/v1/dev/notifications/simulate "$token" "$body"
+  info "POST /api/v1/notifications/simulate-push  ${DIM}(event=$event, user=$user_alias)${NC}"
+  api_post /api/v1/notifications/simulate-push "$token" "$body"
   echo ""
 }
 
-# @cmd mock:field-arrival "Push: truck arrived at field (target driver|loader)"
+# @cmd mock:field-arrival "Push field_entry. Args: [driver|loader|baler|admin | %pattern%] (--user alias)"
 cmd_mock__field__arrival() {
   local user="${1:-driver}"
   if [ "${1:-}" = "--user" ]; then user="${2:-driver}"; fi
   _mock_simulate field_entry "$user" '{"parcel":"C\u00e2mpul Demo"}'
 }
 
-# @cmd mock:loader-arrival "Push: a truck has arrived at the loader (target loader)"
+# @cmd mock:loader-arrival "Push truck_arrived_at_loader. Args: [loader|... | %pattern%]"
 cmd_mock__loader__arrival() {
-  _mock_simulate truck_arrived_at_loader loader \
+  local user="${1:-loader}"
+  _mock_simulate truck_arrived_at_loader "$user" \
     '{"plate":"OS-1234-AB","parcel":"C\u00e2mpul Demo"}'
 }
 
-# @cmd mock:warehouse-arrival "Push: truck entered warehouse/deposit (target driver)"
+# @cmd mock:warehouse-arrival "Push deposit_entry. Args: [driver|... | %pattern%]"
 cmd_mock__warehouse__arrival() {
-  _mock_simulate deposit_entry driver '{}'
+  local user="${1:-driver}"
+  _mock_simulate deposit_entry "$user" '{}'
 }
 
-# @cmd mock:trip-loaded "Push: truck is full / ready to depart (target driver)"
+# @cmd mock:trip-loaded "Push trip_loaded. Args: [driver|... | %pattern%]"
 cmd_mock__trip__loaded() {
-  _mock_simulate trip_loaded driver '{"plate":"OS-1234-AB"}'
+  local user="${1:-driver}"
+  _mock_simulate trip_loaded "$user" '{"plate":"OS-1234-AB"}'
 }
 
-# @cmd mock:trip-departed "Push: trip departed for destination (target driver)"
+# @cmd mock:trip-departed "Push trip_departed. Args: [driver|... | %pattern%]"
 cmd_mock__trip__departed() {
-  _mock_simulate trip_departed driver '{"warehouse":"Farma Slavonija"}'
+  local user="${1:-driver}"
+  _mock_simulate trip_departed "$user" '{"warehouse":"Farma Slavonija"}'
 }
 
 # @cmd mock:broadcast "Push: admin broadcast (--title \"...\" --body \"...\")"
@@ -89,7 +147,7 @@ cmd_mock__broadcast() {
 
   _load_env
   local token
-  token="$(mock_jwt "$SEED_ADMIN_ID" admin)"
+  token="$(mock_notify_admin_jwt)"
   local payload
   payload=$(printf '{"target":{"kind":"all"},"title":%s,"body":%s}' \
     "$(printf '"%s"' "$title")" \
@@ -100,13 +158,13 @@ cmd_mock__broadcast() {
   echo ""
 }
 
-# @cmd mock:e2e-trip "End-to-end: create + start-loading + register-load + depart + arrive"
+# @cmd mock:e2e-trip "End-to-end: create + start-loading + register-load + depart + arrive (requires seed UUIDs in DB)"
 cmd_mock__e2e__trip() {
   _load_env
   require_cmd jq
 
   local admin_token driver_token loader_token
-  admin_token="$(mock_jwt "$SEED_ADMIN_ID" admin)"
+  admin_token="$(mock_notify_admin_jwt)"
   driver_token="$(mock_jwt "$SEED_DRIVER_ID" driver)"
   loader_token="$(mock_jwt "$SEED_LOADER_ID" loader_operator)"
 
