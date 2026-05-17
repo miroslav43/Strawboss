@@ -249,33 +249,44 @@ export class TripsService implements OnModuleInit {
       }
     }
 
-    const tripNumber = await this.generateTripNumber(orgId);
-
-    const result = await this.drizzleProvider.db.execute(
-      sql`INSERT INTO trips (
-        organization_id,
-        trip_number, status, source_parcel_id, truck_id, driver_id,
-        loader_id, loader_operator_id, destination_name,
-        destination_address, destination_coords,
-        bale_count, source_parcel_auto
-      ) VALUES (
-        ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
-        ${tripNumber}, ${TripStatus.planned}, ${dto.sourceParcelId},
-        ${dto.truckId}, ${dto.driverId},
-        ${dto.loaderId ?? null}, ${dto.loaderOperatorId ?? null},
-        ${dto.destinationName ?? null}, ${dto.destinationAddress ?? null},
-        ${dto.destinationCoords ? JSON.stringify(dto.destinationCoords) : null},
-        0, false
-      ) RETURNING *`,
-    );
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      const tripNumber = await this.generateTripNumber(orgId, tx);
+      return tx.execute(
+        sql`INSERT INTO trips (
+          organization_id,
+          trip_number, status, source_parcel_id, truck_id, driver_id,
+          loader_id, loader_operator_id, destination_name,
+          destination_address, destination_coords,
+          bale_count, source_parcel_auto
+        ) VALUES (
+          ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
+          ${tripNumber}, ${TripStatus.planned}, ${dto.sourceParcelId},
+          ${dto.truckId}, ${dto.driverId},
+          ${dto.loaderId ?? null}, ${dto.loaderOperatorId ?? null},
+          ${dto.destinationName ?? null}, ${dto.destinationAddress ?? null},
+          ${dto.destinationCoords ? JSON.stringify(dto.destinationCoords) : null},
+          0, false
+        ) RETURNING *`,
+      );
+    });
     const created = (result as unknown as Record<string, unknown>[])[0];
     this.logTripFlow(String(created?.id ?? 'unknown'), 'CREATE', 'new', TripStatus.planned);
     return result;
   }
 
-  private async generateTripNumber(orgId: string | null): Promise<string> {
+  private async generateTripNumber(
+    orgId: string | null,
+    executor: Pick<DrizzleProvider['db'], 'execute'>,
+  ): Promise<string> {
     const dateStr = todayInRomania().replace(/-/g, '');
     const prefix = `TR-${dateStr}-`;
+    // Serialize trip-number minting per org+day: two concurrent requests must
+    // not read the same COUNT and emit a duplicate trip_number. The lock is
+    // transaction-scoped and held until the caller commits the INSERT, so the
+    // caller MUST run this inside a transaction.
+    await executor.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${prefix + (orgId ?? '')}))`,
+    );
     const conditions: ReturnType<typeof sql>[] = [sql`trip_number LIKE ${prefix + '%'}`];
     if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
@@ -283,7 +294,7 @@ export class TripsService implements OnModuleInit {
       conditions.push(sql`organization_id IS NULL`);
     }
     const where = sql.join(conditions, sql` AND `);
-    const result = await this.drizzleProvider.db.execute(
+    const result = await executor.execute(
       sql`SELECT COUNT(*)::int as count FROM trips WHERE ${where}`,
     );
     const rows = result as unknown as { count: number }[];
@@ -509,7 +520,7 @@ export class TripsService implements OnModuleInit {
           }
         }
 
-        const tripNumber = await this.generateTripNumber(orgId);
+        const tripNumber = await this.generateTripNumber(orgId, tx);
         const insertedTrip = (await tx.execute(
           sql`INSERT INTO trips (
                 organization_id,
@@ -936,30 +947,34 @@ export class TripsService implements OnModuleInit {
     if (!task.trip_id) {
       // ── INSERT path
       const taskOrgId = task.organizationId ?? null;
-      const tripNumber = await this.generateTripNumber(taskOrgId);
-      const inserted = (await this.drizzleProvider.db.execute(
-        sql`INSERT INTO trips (
-          organization_id,
-          trip_number, status, source_parcel_id, truck_id, driver_id,
-          loader_id, loader_operator_id,
-          destination_name, destination_address, destination_coords,
-          bale_count, source_parcel_auto
-        ) VALUES (
-          ${taskOrgId ? sql`${taskOrgId}::uuid` : sql`NULL`},
-          ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
-          ${task.machine_id}, ${driverId},
-          ${loaderMachineId}, ${loaderOperatorId},
-          ${dest.name}, ${dest.address ?? null},
-          ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
-          0, false
-        ) RETURNING id`,
-      )) as unknown as { id: string }[];
-      const tripId = inserted[0]?.id;
-      if (!tripId) return;
+      const tripId = await this.drizzleProvider.db.transaction(async (tx) => {
+        const tripNumber = await this.generateTripNumber(taskOrgId, tx);
+        const inserted = (await tx.execute(
+          sql`INSERT INTO trips (
+            organization_id,
+            trip_number, status, source_parcel_id, truck_id, driver_id,
+            loader_id, loader_operator_id,
+            destination_name, destination_address, destination_coords,
+            bale_count, source_parcel_auto
+          ) VALUES (
+            ${taskOrgId ? sql`${taskOrgId}::uuid` : sql`NULL`},
+            ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
+            ${task.machine_id}, ${driverId},
+            ${loaderMachineId}, ${loaderOperatorId},
+            ${dest.name}, ${dest.address ?? null},
+            ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
+            0, false
+          ) RETURNING id`,
+        )) as unknown as { id: string }[];
+        const newTripId = inserted[0]?.id;
+        if (!newTripId) return null;
 
-      await this.drizzleProvider.db.execute(
-        sql`UPDATE task_assignments SET trip_id = ${tripId}, updated_at = NOW() WHERE id = ${taskId}`,
-      );
+        await tx.execute(
+          sql`UPDATE task_assignments SET trip_id = ${newTripId}, updated_at = NOW() WHERE id = ${taskId}`,
+        );
+        return newTripId;
+      });
+      if (!tripId) return;
 
       this.logTripFlow(tripId, 'AUTO_CREATE_FROM_TASK', 'new', TripStatus.planned);
       this.winston.log('flow', `Auto-created trip ${tripId} from truck task ${taskId}`, {
