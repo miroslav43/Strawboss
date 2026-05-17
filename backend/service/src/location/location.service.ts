@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { todayInRomania } from '../common/date';
 import type {
   LocationReportDto,
   MachineLastLocation,
@@ -17,19 +18,23 @@ export class LocationService {
    * Any authenticated operator can report their position, but only for
    * machines belonging to their own organization.
    */
-  async reportLocation(dto: LocationReportDto, operatorId: string, orgId: string | null): Promise<void> {
+  async reportLocation(
+    dto: LocationReportDto,
+    operatorId: string,
+    orgId: string | null,
+  ): Promise<void> {
     if (dto.lat < -90 || dto.lat > 90 || dto.lon < -180 || dto.lon > 180) {
       throw new BadRequestException('Invalid coordinates');
     }
 
     if (orgId !== null) {
-      const machineCheck = await this.drizzleProvider.db.execute(sql`
+      const machineCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines
         WHERE id = ${dto.machineId}::uuid
           AND organization_id = ${orgId}::uuid
           AND deleted_at IS NULL
         LIMIT 1
-      `) as unknown as { id: string }[];
+      `)) as unknown as { id: string }[];
       if (machineCheck.length === 0) {
         throw new BadRequestException('Machine not found in your organization');
       }
@@ -57,9 +62,7 @@ export class LocationService {
    * Admin-only endpoint.
    */
   async getLastKnownPositions(orgId: string | null): Promise<MachineLastLocation[]> {
-    const whereConditions: ReturnType<typeof sql>[] = [
-      sql`mle.machine_id IS NOT NULL`,
-    ];
+    const whereConditions: ReturnType<typeof sql>[] = [sql`mle.machine_id IS NOT NULL`];
     if (orgId !== null) whereConditions.push(sql`m.organization_id = ${orgId}::uuid`);
     const where = sql.join(whereConditions, sql` AND `);
 
@@ -95,7 +98,7 @@ export class LocationService {
    * today's task assignments. This lets loaders see their trucks, etc.
    */
   async getRelatedMachineLocations(userId: string): Promise<MachineLastLocation[]> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayInRomania();
     const result = await this.drizzleProvider.db.execute(sql`
       WITH my_assignments AS (
         SELECT machine_id FROM task_assignments
@@ -182,27 +185,29 @@ export class LocationService {
     loaderMachineId: string,
     options: { radiusM?: number; windowMinutes?: number } = {},
     orgId: string | null,
-  ): Promise<Array<{
-    id: string;
-    registrationPlate: string | null;
-    internalCode: string | null;
-    driverName: string | null;
-    distanceM: number;
-    lastSeenAt: string;
-    lat: number;
-    lon: number;
-  }>> {
+  ): Promise<
+    Array<{
+      id: string;
+      registrationPlate: string | null;
+      internalCode: string | null;
+      driverName: string | null;
+      distanceM: number;
+      lastSeenAt: string;
+      lat: number;
+      lon: number;
+    }>
+  > {
     const radiusM = options.radiusM ?? 75;
     const windowMinutes = options.windowMinutes ?? 5;
 
     if (orgId !== null) {
-      const loaderCheck = await this.drizzleProvider.db.execute(sql`
+      const loaderCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines
         WHERE id = ${loaderMachineId}::uuid
           AND organization_id = ${orgId}::uuid
           AND deleted_at IS NULL
         LIMIT 1
-      `) as unknown as { id: string }[];
+      `)) as unknown as { id: string }[];
       if (loaderCheck.length === 0) {
         throw new BadRequestException('Loader machine not found in your organization');
       }
@@ -268,6 +273,107 @@ export class LocationService {
   }
 
   /**
+   * Return loaders currently within proximity of the given truck machine,
+   * scoped to the caller's organization. Mirror of getTrucksAtLoader, inverted:
+   * lets a driver see the loaders parked nearby.
+   *
+   * Match criteria:
+   *   - machine_type = 'loader'
+   *   - both machines have at least one GPS report in the last `windowMinutes`
+   *   - latest loader position is within `radiusM` meters of the latest truck position
+   */
+  async getLoadersNearTruck(
+    truckMachineId: string,
+    options: { radiusM?: number; windowMinutes?: number } = {},
+    orgId: string | null,
+  ): Promise<
+    Array<{
+      id: string;
+      registrationPlate: string | null;
+      internalCode: string | null;
+      operatorName: string | null;
+      distanceM: number;
+      lastSeenAt: string;
+      lat: number;
+      lon: number;
+    }>
+  > {
+    const radiusM = options.radiusM ?? 75;
+    const windowMinutes = options.windowMinutes ?? 5;
+
+    if (orgId !== null) {
+      const truckCheck = (await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines
+        WHERE id = ${truckMachineId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `)) as unknown as { id: string }[];
+      if (truckCheck.length === 0) {
+        throw new BadRequestException('Truck machine not found in your organization');
+      }
+    }
+
+    const orgFilter = orgId !== null ? sql`AND m.organization_id = ${orgId}::uuid` : sql``;
+
+    const result = await this.drizzleProvider.db.execute(sql`
+      WITH truck_pos AS (
+        SELECT coords, recorded_at
+        FROM machine_location_events
+        WHERE machine_id = ${truckMachineId}::uuid
+          AND recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
+        ORDER BY recorded_at DESC
+        LIMIT 1
+      ),
+      latest_loader_pos AS (
+        SELECT DISTINCT ON (mle.machine_id)
+          mle.machine_id,
+          mle.coords,
+          mle.lat,
+          mle.lon,
+          mle.recorded_at
+        FROM machine_location_events mle
+        JOIN machines m ON m.id = mle.machine_id
+        WHERE m.machine_type = 'loader'
+          AND m.deleted_at IS NULL
+          ${orgFilter}
+          AND mle.recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
+        ORDER BY mle.machine_id, mle.recorded_at DESC
+      )
+      SELECT
+        m.id                                                           AS id,
+        m.registration_plate                                           AS "registrationPlate",
+        m.internal_code                                                AS "internalCode",
+        u.full_name                                                    AS "operatorName",
+        ROUND(ST_Distance(llp.coords::geography, tp.coords::geography)::numeric, 1)::float AS "distanceM",
+        llp.recorded_at                                                AS "lastSeenAt",
+        llp.lat::float                                                 AS lat,
+        llp.lon::float                                                 AS lon
+      FROM latest_loader_pos llp
+      JOIN truck_pos tp         ON TRUE
+      JOIN machines m           ON m.id = llp.machine_id
+                                ${orgFilter}
+      LEFT JOIN users u         ON u.assigned_machine_id = m.id
+                                AND u.role = 'loader_operator'::user_role
+                                AND u.deleted_at IS NULL
+      WHERE ST_DWithin(llp.coords::geography, tp.coords::geography, ${radiusM})
+      ORDER BY "distanceM" ASC
+      LIMIT 50
+    `);
+
+    return result as unknown as Array<{
+      id: string;
+      registrationPlate: string | null;
+      internalCode: string | null;
+      operatorName: string | null;
+      distanceM: number;
+      lastSeenAt: string;
+      lat: number;
+      lon: number;
+    }>;
+  }
+
+  /**
    * Return the GPS route history for a specific machine within a time range,
    * scoped to the caller's organization.
    * Points are ordered chronologically (ASC) with a safety cap of 50 000 rows.
@@ -312,10 +418,13 @@ export class LocationService {
       WHERE ${machineWhere}
       LIMIT 1
     `);
-    const machine = (machineResult as unknown as Array<{
-      machineCode: string | null;
-      machineType: string | null;
-    }>)[0] ?? null;
+    const machine =
+      (
+        machineResult as unknown as Array<{
+          machineCode: string | null;
+          machineType: string | null;
+        }>
+      )[0] ?? null;
 
     if (!machine) {
       throw new BadRequestException('Machine not found');

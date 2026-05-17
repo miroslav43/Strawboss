@@ -7,6 +7,7 @@ import {
   Body,
   Query,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { TripsService } from './trips.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -190,6 +191,17 @@ export class TripsController {
     @Body(new ZodValidationPipe(disputeSchema)) dto: DisputeDto,
   ) {
     return this.tripsService.dispute(id, user.organizationId, dto);
+  }
+
+  @Post(':id/set-destination')
+  @Roles('admin' as UserRole, 'driver' as UserRole)
+  setDestination(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(z.object({ destinationId: z.string().uuid() })))
+    dto: { destinationId: string },
+  ) {
+    return this.tripsService.setDestination(id, user.organizationId, user.id, dto);
   }
 
   @Post(':id/resolve-dispute')

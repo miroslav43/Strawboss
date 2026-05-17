@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, Pressable, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { NotificationBell } from './NotificationBell';
@@ -16,6 +17,8 @@ interface ScreenHeaderProps {
    * Pass `null` to hide it entirely.
    */
   right?: ReactNode | null;
+  /** When provided, a back chevron is shown left of the title. */
+  onBack?: () => void;
   /** Optional override for the outer container style. */
   style?: ViewStyle;
 }
@@ -31,12 +34,23 @@ const TITLE_SIZE = fontScale(24);
  * Replaces the native Tabs header (which was duplicating the title with the
  * in-screen title). Keeps the notification bell accessible on the right.
  */
-export function ScreenHeader({ title, children, right, style }: ScreenHeaderProps) {
+export function ScreenHeader({ title, children, right, onBack, style }: ScreenHeaderProps) {
   const rightNode = right === undefined ? <NotificationBell /> : right;
 
   return (
     <SafeAreaView style={[styles.safeArea, style]} edges={['top']}>
       <View style={styles.row}>
+        {onBack ? (
+          <Pressable
+            onPress={onBack}
+            hitSlop={12}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel="Înapoi"
+          >
+            <MaterialCommunityIcons name="chevron-left" size={28} color="#FFFFFF" />
+          </Pressable>
+        ) : null}
         <View style={styles.titleColumn}>
           <Text style={styles.title} numberOfLines={1}>
             {title}
@@ -60,6 +74,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   titleColumn: { flex: 1, gap: 4 },
+  backButton: { marginRight: scale(6), marginLeft: -scale(6), marginTop: -scale(2) },
   title: { fontSize: TITLE_SIZE, fontWeight: '700', color: '#FFFFFF' },
   meta: { gap: 4 },
   rightSlot: { marginLeft: scale(12), marginTop: -scale(4) },
