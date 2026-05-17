@@ -138,6 +138,7 @@ export class GeofenceService {
         FROM geofence_events
         WHERE machine_id = ${assignment.machineId}::uuid
           AND geofence_id = ${geofenceId}::uuid
+          AND assignment_id = ${assignment.assignmentId}::uuid
         ORDER BY created_at DESC
         LIMIT 1
       `);
