@@ -1,13 +1,10 @@
 name: Bug Scan
 
 # Analiză completă de bug-uri (securitate web/mobile, logică, integritate date).
-# Rulează la fiecare push, la fiecare pull request, și manual din UI.
+# anthropics/claude-code-action NU suportă evenimentul `push` — de aceea folosim
+# `pull_request` (declanșat de fiecare push pe branch-ul unui PR, prin `synchronize`)
+# plus `workflow_dispatch` pentru rulare manuală din UI.
 on:
-  push:
-    paths-ignore:
-      - '.claude/**'
-      - '**/*.md'
-      - 'docs/**'
   pull_request:
     types: [opened, synchronize, reopened]
     paths-ignore:
@@ -16,8 +13,7 @@ on:
       - 'docs/**'
   workflow_dispatch:
 
-# Un push care face parte dintr-un PR și evenimentul pull_request cad în același grup
-# (după branch-ul sursă), deci se anulează reciproc — nu rulează de două ori.
+# Push-uri rapide pe același branch de PR se anulează reciproc — o singură rulare.
 concurrency:
   group: bug-scan-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
@@ -51,9 +47,6 @@ jobs:
 
             1. Determină fișierele schimbate, în funcție de eveniment:
                - pull_request: `git diff --name-only origin/${{ github.base_ref }}...HEAD`
-               - push: `git diff --name-only ${{ github.event.before }} ${{ github.sha }}`
-                 (dacă `${{ github.event.before }}` e numai zerouri — branch nou —
-                 compară cu `origin/main`)
                - workflow_dispatch: `git diff --name-only origin/main...HEAD`
                  (dacă e gol sau ești pe main, folosește `git diff --name-only HEAD~1 HEAD`)
                Dacă diff-ul e gol, nu posta nimic și oprește-te.
@@ -63,7 +56,7 @@ jobs:
             3. Scrie raportul consolidat într-un fișier și publică-l:
                - pull_request: comentariu pe PR —
                  `gh pr comment ${{ github.event.pull_request.number }} --body-file <raport.md>`
-               - push / workflow_dispatch: dacă există cel puțin un finding, creează un issue —
+               - workflow_dispatch: dacă există cel puțin un finding, creează un issue —
                  `gh issue create --label bug-scan --title "Bug scan: ${{ github.ref_name }} <short-sha>" --body-file <raport.md>`
                  Dacă nu sunt findings, nu crea issue — afișează doar "no findings".
 
