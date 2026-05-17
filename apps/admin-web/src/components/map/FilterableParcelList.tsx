@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useRef } from 'react';
-import { ChevronDown, ChevronUp, Crosshair, Pencil, MapPin, Trash2, Upload, X, User } from 'lucide-react';
+import { ChevronDown, ChevronUp, Crosshair, Pencil, MapPin, Trash2, Upload, X } from 'lucide-react';
 import type { Parcel } from '@strawboss/types';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { parseKml, type KmlParsedParcel } from '@/lib/kml-parser';
@@ -36,7 +36,6 @@ export function FilterableParcelList({
   const [open, setOpen] = useState(true);
   const [search, setSearch] = useState('');
   const [municipalityFilter, setMunicipalityFilter] = useState('');
-  const [ownerFilter, setOwnerFilter] = useState('');
   const [kmlError, setKmlError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,28 +44,22 @@ export function FilterableParcelList({
     [parcels],
   );
 
-  const owners = useMemo(
-    () => [...new Set(parcels.map((p) => p.ownerName).filter((x): x is string => Boolean(x)))].sort(),
-    [parcels],
-  );
-
   const filtered = useMemo(() => {
     return parcels.filter((p) => {
       if (search) {
         const q = search.toLowerCase();
-        const matches = [p.name, p.code, p.ownerName, p.municipality]
+        const matches = [p.name, p.code, p.municipality]
           .some((field) => field?.toLowerCase().includes(q));
         if (!matches) return false;
       }
       if (municipalityFilter && p.municipality !== municipalityFilter) return false;
-      if (ownerFilter && p.ownerName !== ownerFilter) return false;
       return true;
     });
-  }, [parcels, search, municipalityFilter, ownerFilter]);
+  }, [parcels, search, municipalityFilter]);
 
   const handleSearchChange = useCallback((v: string) => setSearch(v), []);
 
-  const hasFilters = search || municipalityFilter || ownerFilter;
+  const hasFilters = search || municipalityFilter;
 
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,28 +136,16 @@ export function FilterableParcelList({
               onChange={handleSearchChange}
               placeholder={t('mapList.searchParcel')}
             />
-            <div className="flex gap-1.5">
-              <select
-                value={municipalityFilter}
-                onChange={(e) => setMunicipalityFilter(e.target.value)}
-                className="flex-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600 focus:border-primary focus:outline-none"
-              >
-                <option value="">{t('mapList.allMunicipalities')}</option>
-                {municipalities.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-              <select
-                value={ownerFilter}
-                onChange={(e) => setOwnerFilter(e.target.value)}
-                className="flex-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600 focus:border-primary focus:outline-none"
-              >
-                <option value="">{t('mapList.allOwners')}</option>
-                {owners.map((o) => (
-                  <option key={o} value={o}>{o}</option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={municipalityFilter}
+              onChange={(e) => setMunicipalityFilter(e.target.value)}
+              className="w-full rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600 focus:border-primary focus:outline-none"
+            >
+              <option value="">{t('mapList.allMunicipalities')}</option>
+              {municipalities.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
           </div>
 
           {isLoading && (
@@ -193,12 +174,6 @@ export function FilterableParcelList({
                     <p className="text-xs text-neutral-400">
                       {parcel.areaHectares != null ? `${parcel.areaHectares} ha` : '—'}
                     </p>
-                    {parcel.ownerName && (
-                      <p className="flex items-center gap-1 truncate text-xs text-neutral-400">
-                        <User className="h-3 w-3 flex-shrink-0" />
-                        {parcel.ownerName}
-                      </p>
-                    )}
                   </div>
                   {/* Navigate to parcel */}
                   <button

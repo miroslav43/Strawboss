@@ -143,3 +143,4 @@ return <h1>{t('trips.title')}</h1>;
 8. Add i18n keys to BOTH `messages/en.json` and `messages/ro.json`.
 9. Add navigation links for new pages in `components/layout/Sidebar.tsx`.
 10. After making changes, run: `pnpm --filter @strawboss/admin-web build` to verify the build.
+11. After code changes, update `.claude/docs/admin-web.md` (and `agents/frontend-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.

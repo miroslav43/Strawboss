@@ -6,15 +6,21 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class BaleLoadsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(filters?: {
-    tripId?: string;
-    parcelId?: string;
-    operatorId?: string;
-    /** ISO 8601 inclusive lower bound on loaded_at (e.g. start of today). */
-    dateFrom?: string;
-  }) {
+  async list(
+    orgId: string | null,
+    filters?: {
+      tripId?: string;
+      parcelId?: string;
+      operatorId?: string;
+      /** ISO 8601 inclusive lower bound on loaded_at (e.g. start of today). */
+      dateFrom?: string;
+    },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.tripId) {
       conditions.push(sql`trip_id = ${filters.tripId}`);
     }
@@ -30,14 +36,20 @@ export class BaleLoadsService {
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM bale_loads WHERE ${where} ORDER BY loaded_at DESC`,
+      sql`SELECT * FROM bale_loads WHERE ${where} ORDER BY loaded_at DESC LIMIT 1000`,
     );
     return result;
   }
 
-  async create(dto: Record<string, unknown>) {
+  async create(orgId: string, dto: Record<string, unknown>) {
+    const tripConditions: ReturnType<typeof sql>[] = [
+      sql`id = ${dto.tripId}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) tripConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const tripWhere = sql.join(tripConditions, sql` AND `);
     const tripRows = await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM trips WHERE id = ${dto.tripId} AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT id FROM trips WHERE ${tripWhere} LIMIT 1`,
     ) as unknown as { id: string }[];
     if (!tripRows.length) {
       throw new NotFoundException('Trip-ul nu a fost găsit sau a fost șters');
@@ -47,16 +59,18 @@ export class BaleLoadsService {
       sql`INSERT INTO bale_loads (
         trip_id, parcel_id, loader_id, operator_id,
         bale_count, loaded_at, gps_lat, gps_lon, notes,
-        client_id, sync_version
+        client_id, sync_version, organization_id
       ) VALUES (
         ${dto.tripId}, ${dto.parcelId}, ${dto.loaderId}, ${dto.operatorId},
         ${dto.baleCount}, NOW(),
         ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null},
-        ${dto.notes ?? null}, ${dto.clientId ?? null}, 1
+        ${dto.notes ?? null}, ${dto.clientId ?? null}, 1,
+        ${orgId}::uuid
       ) RETURNING *`,
     );
 
     // Auto-update trip bale count
+    const tripUpdateOrgFilter = orgId ? sql`AND organization_id = ${orgId}::uuid` : sql``;
     await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         bale_count = (
@@ -65,7 +79,7 @@ export class BaleLoadsService {
           WHERE trip_id = ${dto.tripId} AND deleted_at IS NULL
         ),
         updated_at = NOW()
-      WHERE id = ${dto.tripId}`,
+      WHERE id = ${dto.tripId} ${tripUpdateOrgFilter}`,
     );
 
     return result;

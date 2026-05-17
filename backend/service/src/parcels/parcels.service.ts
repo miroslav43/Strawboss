@@ -6,9 +6,12 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class ParcelsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(filters?: { municipality?: string; isActive?: boolean }) {
+  async list(orgId: string | null, filters?: { municipality?: string; isActive?: boolean }) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.municipality) {
       conditions.push(sql`municipality = ${filters.municipality}`);
     }
@@ -20,8 +23,7 @@ export class ParcelsService {
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         id, code, name,
-        owner_name          AS "ownerName",
-        owner_contact       AS "ownerContact",
+
         area_hectares       AS "areaHectares",
         ST_AsGeoJSON(boundary)::json  AS boundary,
         ST_AsGeoJSON(centroid)::json  AS centroid,
@@ -41,7 +43,10 @@ export class ParcelsService {
     return result;
   }
 
-  async getBaleAvailability(id: string) {
+  async getBaleAvailability(id: string, orgId: string | null) {
+    // Ownership check — throws NotFoundException if parcel doesn't exist or belongs to another org
+    await this.findById(id, orgId);
+
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = ${id} AND deleted_at IS NULL), 0) AS "produced",
@@ -53,12 +58,17 @@ export class ParcelsService {
     return { produced: Number(produced), loaded: Number(loaded), remaining };
   }
 
-  async findById(id: string) {
+  async findById(id: string, orgId: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         id, code, name,
-        owner_name          AS "ownerName",
-        owner_contact       AS "ownerContact",
+
         area_hectares       AS "areaHectares",
         ST_AsGeoJSON(boundary)::json  AS boundary,
         ST_AsGeoJSON(centroid)::json  AS centroid,
@@ -72,7 +82,7 @@ export class ParcelsService {
         updated_at          AS "updatedAt",
         deleted_at          AS "deletedAt"
       FROM parcels
-      WHERE id = ${id} AND deleted_at IS NULL
+      WHERE ${where}
       LIMIT 1
     `);
     const rows = result as unknown as Record<string, unknown>[];
@@ -119,7 +129,7 @@ export class ParcelsService {
     }
   }
 
-  async create(dto: Record<string, unknown>) {
+  async create(orgId: string | null, dto: Record<string, unknown>) {
     const toGeoJsonFragment = (val: unknown) =>
       val
         ? sql`ST_GeomFromGeoJSON(${typeof val === 'string' ? val : JSON.stringify(val)})`
@@ -184,27 +194,27 @@ export class ParcelsService {
 
     const result = await this.drizzleProvider.db.execute(sql`
       INSERT INTO parcels (
-        code, name, owner_name, owner_contact, area_hectares,
+        organization_id,
+        code, name, area_hectares,
         boundary, centroid, address, municipality,
-        farmtrack_geofence_id, notes, is_active, harvest_status
+        farmtrack_geofence_id, farm_id, notes, is_active, harvest_status
       ) VALUES (
+        ${orgId}::uuid,
         ${code},
         ${(dto.name as string) ?? null},
-        ${(dto.ownerName as string) ?? null},
-        ${(dto.ownerContact as string) ?? null},
         ${areaHectares},
         ${toGeoJsonFragment(dto.boundary)},
         ${toGeoJsonFragment(centroidInput)},
         ${(dto.address as string) ?? null},
         ${municipality},
         ${(dto.farmtrackGeofenceId as string) ?? null},
+        ${(dto.farmId as string) ?? null},
         ${(dto.notes as string) ?? null},
         true,
         ${harvestStatus}::harvest_status
       )
       RETURNING
         id, code, name,
-        owner_name AS "ownerName", owner_contact AS "ownerContact",
         area_hectares AS "areaHectares",
         ST_AsGeoJSON(boundary)::json AS boundary,
         ST_AsGeoJSON(centroid)::json AS centroid,
@@ -218,15 +228,13 @@ export class ParcelsService {
     return result;
   }
 
-  async update(id: string, dto: Record<string, unknown>) {
-    await this.findById(id);
+  async update(id: string, orgId: string | null, dto: Record<string, unknown>) {
+    await this.findById(id, orgId);
 
     const setClauses: ReturnType<typeof sql>[] = [];
     const fieldMap: Record<string, string> = {
       code: 'code',
       name: 'name',
-      ownerName: 'owner_name',
-      ownerContact: 'owner_contact',
       areaHectares: 'area_hectares',
       boundary: 'boundary',
       centroid: 'centroid',
@@ -261,35 +269,53 @@ export class ParcelsService {
     }
 
     if (setClauses.length === 0) {
-      return this.findById(id);
+      return this.findById(id, orgId);
     }
 
     setClauses.push(sql`updated_at = NOW()`);
     const setClause = sql.join(setClauses, sql`, `);
 
+    const updateConditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) updateConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const updateWhere = sql.join(updateConditions, sql` AND `);
+
     await this.drizzleProvider.db.execute(
-      sql`UPDATE parcels SET ${setClause} WHERE id = ${id} AND deleted_at IS NULL`,
+      sql`UPDATE parcels SET ${setClause} WHERE ${updateWhere}`,
     );
-    return this.findById(id);
+    return this.findById(id, orgId);
   }
 
   /**
    * When daily planning marks a parcel done / not done, mirror that into
    * parcels.harvest_status: done → harvested; not done → to_harvest.
    */
-  async applyHarvestStatusFromDailyPlan(parcelId: string, isDone: boolean) {
+  async applyHarvestStatusFromDailyPlan(parcelId: string, isDone: boolean, orgId: string | null) {
     const status = isDone ? 'harvested' : 'to_harvest';
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${parcelId}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
     await this.drizzleProvider.db.execute(sql`
       UPDATE parcels
       SET harvest_status = ${status}::harvest_status, updated_at = NOW()
-      WHERE id = ${parcelId} AND deleted_at IS NULL
+      WHERE ${where}
     `);
   }
 
-  async softDelete(id: string) {
-    await this.findById(id);
+  async softDelete(id: string, orgId: string | null) {
+    await this.findById(id, orgId);
+
+    const deleteConditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`];
+    if (orgId !== null) deleteConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const deleteWhere = sql.join(deleteConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE parcels SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} RETURNING *`,
+      sql`UPDATE parcels SET deleted_at = NOW(), updated_at = NOW() WHERE ${deleteWhere} RETURNING *`,
     );
     return result;
   }

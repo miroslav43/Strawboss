@@ -30,12 +30,13 @@ export class TaskAssignmentsController {
 
   @Get()
   list(
+    @CurrentUser() user: RequestUser,
     @Query('assignmentDate') assignmentDate?: string,
     @Query('machineId') machineId?: string,
     @Query('assignedUserId') assignedUserId?: string,
     @Query('status') status?: string,
   ) {
-    return this.taskAssignmentsService.list({
+    return this.taskAssignmentsService.list(user.organizationId, {
       assignmentDate,
       machineId,
       assignedUserId,
@@ -44,49 +45,58 @@ export class TaskAssignmentsController {
   }
 
   @Get('board/:date')
-  getBoard(@Param('date') date: string) {
-    return this.taskAssignmentsService.getBoard(date);
+  getBoard(@CurrentUser() user: RequestUser, @Param('date') date: string) {
+    return this.taskAssignmentsService.getBoard(user.organizationId, date);
   }
 
   @Get('daily-plan/:date')
-  getDailyPlan(@Param('date') date: string) {
-    return this.taskAssignmentsService.getDailyPlan(date);
+  getDailyPlan(@CurrentUser() user: RequestUser, @Param('date') date: string) {
+    return this.taskAssignmentsService.getDailyPlan(user.organizationId, date);
   }
 
   @Get('by-machine-type/:date/:machineType')
   getByMachineType(
+    @CurrentUser() user: RequestUser,
     @Param('date') date: string,
     @Param('machineType') machineType: string,
   ) {
-    return this.taskAssignmentsService.getByMachineType(date, machineType);
+    return this.taskAssignmentsService.getByMachineType(user.organizationId, date, machineType);
+  }
+
+  @Get(':id')
+  findById(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.taskAssignmentsService.findById(id, user.organizationId);
   }
 
   @Post()
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   create(
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createTaskAssignmentSchema))
     dto: Record<string, unknown>,
   ) {
-    return this.taskAssignmentsService.create(dto);
+    return this.taskAssignmentsService.create(user.organizationId, dto);
   }
 
   @Post('bulk')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   bulkCreate(
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(bulkCreateSchema))
     dtos: Record<string, unknown>[],
   ) {
-    return this.taskAssignmentsService.bulkCreate(dtos);
+    return this.taskAssignmentsService.bulkCreate(user.organizationId, dtos);
   }
 
   @Patch(':id/status')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   updateStatus(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(updateAssignmentStatusSchema))
     dto: { status: string },
   ) {
-    return this.taskAssignmentsService.updateStatus(id, dto.status);
+    return this.taskAssignmentsService.updateStatus(id, dto.status, user.organizationId);
   }
 
   /**
@@ -102,29 +112,34 @@ export class TaskAssignmentsController {
     'driver' as UserRole,
   )
   startByOperator(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.taskAssignmentsService.startByOperator(id, user.id);
+    return this.taskAssignmentsService.startByOperator(id, user.id, user.organizationId);
   }
 
   @Patch(':id')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   update(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body() dto: Record<string, unknown>,
   ) {
-    return this.taskAssignmentsService.update(id, dto);
+    return this.taskAssignmentsService.update(id, user.organizationId, dto);
   }
 
   @Post('auto-complete')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
-  autoComplete(@Body() dto: { beforeDate: string }) {
+  autoComplete(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: { beforeDate: string },
+  ) {
     return this.taskAssignmentsService.autoCompletePastAssignments(
+      user.organizationId,
       dto.beforeDate,
     );
   }
 
   @Delete(':id')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
-  softDelete(@Param('id') id: string) {
-    return this.taskAssignmentsService.softDelete(id);
+  softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.taskAssignmentsService.softDelete(id, user.organizationId);
   }
 }

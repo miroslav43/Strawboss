@@ -26,10 +26,10 @@ export interface Machine extends Timestamps, SoftDelete {
   currentOdometerKm: number;
   currentHourmeterHrs: number;
   isActive: boolean;
-  maxPayloadKg: number | null;
   maxBaleCount: number | null;
   tareWeightKg: number | null;
-  balesPerHourAvg: number | null;
   baleWeightAvgKg: number | null;
-  reachMeters: number | null;
+  ownerCompanyName: string | null;
+  ownerCompanyAddress: string | null;
+  ownerCompanyCui: string | null;
 }

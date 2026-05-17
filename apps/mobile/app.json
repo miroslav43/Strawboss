@@ -43,6 +43,7 @@
     ],
     "android": {
       "package": "com.strawboss.mobile",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F3DED8"

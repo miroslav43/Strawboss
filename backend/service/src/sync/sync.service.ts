@@ -78,6 +78,10 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
   ]),
 };
 
+// NOTE: 'organization_id' is intentionally absent from ALLOWED_COLUMNS.
+// It is injected server-side after column validation to prevent mobile
+// clients from overriding or spoofing their organization scope.
+
 function validateColumnName(table: string, column: string): void {
   const allowed = ALLOWED_COLUMNS[table];
   if (!allowed || !allowed.has(column)) {
@@ -101,12 +105,12 @@ export class SyncService {
    * an `error` message so the mobile client can mark that specific queue
    * entry as failed while letting the rest of the batch succeed.
    */
-  async push(mutations: SyncMutation[], _callerId?: string): Promise<SyncResult[]> {
+  async push(mutations: SyncMutation[], _callerId?: string, orgId: string | null = null): Promise<SyncResult[]> {
     const results: SyncResult[] = [];
 
     for (const mutation of mutations) {
       try {
-        results.push(await this.applyMutation(mutation));
+        results.push(await this.applyMutation(mutation, orgId));
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(
@@ -126,7 +130,7 @@ export class SyncService {
     return results;
   }
 
-  private async applyMutation(mutation: SyncMutation): Promise<SyncResult> {
+  private async applyMutation(mutation: SyncMutation, orgId: string | null): Promise<SyncResult> {
     if (!SYNCABLE_TABLES.has(mutation.table)) {
       throw new BadRequestException(
         `Table '${mutation.table}' is not syncable`,
@@ -168,14 +172,23 @@ export class SyncService {
     let serverVersion = 0;
 
     if (mutation.action === 'insert') {
+      // Build validated data first (column allowlist check)
       const dataWithVersion = { ...mutation.data, sync_version: 1 };
       const columns = Object.keys(dataWithVersion);
       for (const col of columns) {
         if (col !== 'sync_version') validateColumnName(mutation.table, col);
       }
+
+      // Inject organization_id server-side AFTER validation so mobile clients
+      // cannot spoof it, and it never passes through the column allowlist check.
+      if (orgId !== null && SYNCABLE_TABLES.has(mutation.table)) {
+        (dataWithVersion as Record<string, unknown>).organization_id = orgId;
+      }
+
+      const finalColumns = Object.keys(dataWithVersion);
       const values = Object.values(dataWithVersion);
 
-      const colsSql = sql.raw(columns.map((c) => `"${c}"`).join(', '));
+      const colsSql = sql.raw(finalColumns.map((c) => `"${c}"`).join(', '));
       const placeholders = values.map((v) =>
         typeof v === 'object' && v !== null
           ? sql`${JSON.stringify(v)}::jsonb`
@@ -198,6 +211,7 @@ export class SyncService {
       if (mutation.table === 'bale_loads') {
         const tripId = resultData?.trip_id as string | null | undefined;
         if (tripId) {
+          const tripOrgFilter = orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``;
           await this.drizzleProvider.db.execute(
             sql`UPDATE trips SET
                   bale_count = (
@@ -206,11 +220,25 @@ export class SyncService {
                     WHERE trip_id = ${tripId} AND deleted_at IS NULL
                   ),
                   updated_at = NOW()
-                WHERE id = ${tripId}`,
+                WHERE id = ${tripId} ${tripOrgFilter}`,
           );
         }
       }
     } else if (mutation.action === 'update') {
+      // Org guard: verify the record belongs to the caller's organization
+      if (orgId !== null) {
+        const guardResult = await this.drizzleProvider.db.execute(
+          sql`SELECT organization_id FROM ${sql.raw(`"${mutation.table}"`)}
+              WHERE id = ${mutation.recordId}::uuid LIMIT 1`,
+        );
+        const guardRows = guardResult as unknown as { organization_id: string }[];
+        if (!guardRows.length || guardRows[0].organization_id !== orgId) {
+          throw new BadRequestException(
+            `Record ${mutation.recordId} does not belong to caller's organization`,
+          );
+        }
+      }
+
       const currentResult = await this.drizzleProvider.db.execute(
         sql`SELECT sync_version FROM ${sql.raw(`"${mutation.table}"`)}
             WHERE id = ${mutation.recordId} LIMIT 1`,
@@ -246,6 +274,20 @@ export class SyncService {
       const rows = updateResult as unknown as Record<string, unknown>[];
       resultData = rows[0] ?? null;
     } else if (mutation.action === 'delete') {
+      // Org guard: verify the record belongs to the caller's organization
+      if (orgId !== null) {
+        const guardResult = await this.drizzleProvider.db.execute(
+          sql`SELECT organization_id FROM ${sql.raw(`"${mutation.table}"`)}
+              WHERE id = ${mutation.recordId}::uuid LIMIT 1`,
+        );
+        const guardRows = guardResult as unknown as { organization_id: string }[];
+        if (!guardRows.length || guardRows[0].organization_id !== orgId) {
+          throw new BadRequestException(
+            `Record ${mutation.recordId} does not belong to caller's organization`,
+          );
+        }
+      }
+
       const currentResult = await this.drizzleProvider.db.execute(
         sql`SELECT sync_version FROM ${sql.raw(`"${mutation.table}"`)}
             WHERE id = ${mutation.recordId} LIMIT 1`,
@@ -285,8 +327,12 @@ export class SyncService {
   /**
    * Delta sync: for each table, return records with sync_version > requested version.
    */
-  async pull(tables: Record<string, number>, _callerId?: string) {
+  async pull(tables: Record<string, number>, _callerId?: string, orgId: string | null = null) {
     const deltas: Record<string, unknown[]> = {};
+
+    const orgFilter = orgId !== null
+      ? sql` AND organization_id = ${orgId}::uuid`
+      : sql``;
 
     for (const [table, sinceVersion] of Object.entries(tables)) {
       if (!SYNCABLE_TABLES.has(table)) {
@@ -297,7 +343,7 @@ export class SyncService {
       let ownerFilter = sql``;
       if (_callerId && table === 'trips') {
         ownerFilter = sql` AND (driver_id = ${_callerId}::uuid OR loader_operator_id = ${_callerId}::uuid)`;
-      } else if (_callerId && (table === 'bale_productions' || table === 'fuel_logs' || table === 'consumable_logs' || table === 'bale_loads')) {
+      } else if (_callerId && (table === 'bale_productions' || table === 'fuel_logs' || table === 'consumable_logs')) {
         ownerFilter = sql` AND operator_id = ${_callerId}::uuid`;
       }
 
@@ -305,6 +351,7 @@ export class SyncService {
       const TABLES_WITH_SOFT_DELETE = new Set([
         'trips', 'bale_loads', 'bale_productions',
         'fuel_logs', 'consumable_logs', 'task_assignments',
+        'parcels', 'machines',
       ]);
       const softDeleteFilter = TABLES_WITH_SOFT_DELETE.has(table)
         ? sql` AND deleted_at IS NULL`
@@ -312,7 +359,7 @@ export class SyncService {
 
       const result = await this.drizzleProvider.db.execute(
         sql`SELECT * FROM ${sql.raw(`"${table}"`)}
-            WHERE sync_version > ${sinceVersion} ${ownerFilter}${softDeleteFilter}
+            WHERE sync_version > ${sinceVersion} ${ownerFilter}${softDeleteFilter}${orgFilter}
             ORDER BY sync_version ASC
             LIMIT 1000`,
       );

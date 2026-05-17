@@ -39,6 +39,9 @@ export interface Trip extends Timestamps, SoftDelete {
   netWeightKg: number | null;
   weightTicketNumber: string | null;
   weightTicketPhotoUrl: string | null;
+  deterioratedBalesCount: number | null;
+  loaderSignatureUrl: string | null;
+  driverSignatureUrl: string | null;
   deliveredAt: string | null;
   deliveryNotes: string | null;
   receiverName: string | null;

@@ -10,11 +10,14 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { AdminUsersService, CreateUserDto, UpdateUserDto } from './admin-users.service';
 import { Roles } from '../auth/roles.guard';
 import { Public } from '../auth/auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/auth.guard';
 import { UserRole } from '@strawboss/types';
 import { UploadsService } from '../uploads/uploads.service';
 
@@ -28,27 +31,39 @@ export class AdminUsersController {
 
   /** GET /api/v1/admin/users */
   @Get()
-  list() {
-    return this.adminUsersService.listUsers();
+  list(@CurrentUser() user: RequestUser) {
+    return this.adminUsersService.listUsers(user.organizationId);
   }
 
   /** POST /api/v1/admin/users */
   @Post()
-  create(@Body() dto: CreateUserDto) {
-    return this.adminUsersService.createUser(dto);
+  create(@CurrentUser() user: RequestUser, @Body() dto: CreateUserDto) {
+    if (user.organizationId === null) {
+      throw new ForbiddenException(
+        'Super admin must use the organizations API to assign an org',
+      );
+    }
+    return this.adminUsersService.createUser(user.organizationId, dto);
   }
 
   /** PATCH /api/v1/admin/users/:id */
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.adminUsersService.updateUser(id, dto);
+  update(
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.adminUsersService.updateUser(id, user.organizationId, dto);
   }
 
   /** DELETE /api/v1/admin/users/:id */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deactivate(@Param('id') id: string): Promise<void> {
-    await this.adminUsersService.deactivateUser(id);
+  async deactivate(
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.adminUsersService.deactivateUser(id, user.organizationId);
   }
 
   /**
@@ -60,6 +75,7 @@ export class AdminUsersController {
    */
   @Post(':id/avatar')
   async uploadUserAvatar(
+    @CurrentUser() user: RequestUser,
     @Param('id') id: string,
     @Req() req: FastifyRequest,
   ) {
@@ -72,13 +88,16 @@ export class AdminUsersController {
       throw new BadRequestException('Missing "file" part');
     }
 
+    // Verify the target user belongs to the caller's org before touching disk
+    await this.adminUsersService.getById(id, user.organizationId);
+
     const saved = await this.uploadsService.saveAvatar({
       userId: id,
       mimetype: file.mimetype,
       stream: file.file,
     });
 
-    return this.adminUsersService.setUserAvatar(id, saved.url);
+    return this.adminUsersService.setUserAvatar(id, user.organizationId, saved.url);
   }
 }
 

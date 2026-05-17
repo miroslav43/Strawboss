@@ -29,11 +29,12 @@ import { useSync } from '@/hooks/useSync';
 import { useTapSequence } from '@/hooks/useTapSequence';
 
 const ROLE_LABEL: Record<string, string> = {
-  driver:          'Șofer',
-  loader_operator: 'Operator Încărcător',
-  baler_operator:  'Operator Balotieră',
-  dispatcher:      'Dispecer',
-  admin:           'Administrator',
+  driver:           'Șofer',
+  loader_operator:  'Operator Încărcător',
+  baler_operator:   'Operator Balotieră',
+  dispatcher:       'Dispecer',
+  admin:            'Administrator',
+  geofence_maker:   'Desenator Geofence',
 };
 
 type MachineIconName = 'wrench' | 'grain' | 'truck' | 'map-marker';

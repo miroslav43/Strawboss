@@ -1,6 +1,7 @@
 export * from "./common.js";
 
 export * from "./entities/farm.js";
+export type { Organization, CreateOrganizationDto } from './entities/organization.js';
 export * from "./entities/user.js";
 export * from "./entities/parcel.js";
 export * from "./entities/machine.js";

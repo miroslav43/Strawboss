@@ -20,9 +20,12 @@ const DEST_COLS = sql`
 export class DeliveryDestinationsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(filters?: { isActive?: boolean }) {
+  async list(orgId: string | null, filters?: { isActive?: boolean }) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.isActive !== undefined) {
       conditions.push(sql`is_active = ${filters.isActive}`);
     }
@@ -34,9 +37,15 @@ export class DeliveryDestinationsService {
     return result;
   }
 
-  async findById(id: string) {
+  async findById(id: string, orgId: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT ${DEST_COLS} FROM delivery_destinations WHERE id = ${id} AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT ${DEST_COLS} FROM delivery_destinations WHERE ${where} LIMIT 1`,
     );
     const rows = result as unknown as Record<string, unknown>[];
     if (!rows.length) {
@@ -45,7 +54,7 @@ export class DeliveryDestinationsService {
     return rows[0];
   }
 
-  async create(dto: Record<string, unknown>) {
+  async create(orgId: string | null, dto: Record<string, unknown>) {
     const toGeo = (val: unknown) =>
       val
         ? sql`ST_GeomFromGeoJSON(${typeof val === 'string' ? val : JSON.stringify(val)})`
@@ -55,17 +64,25 @@ export class DeliveryDestinationsService {
 
     return await this.drizzleProvider.db.transaction(async (tx) => {
       if (isDefault) {
+        const demoteConditions: ReturnType<typeof sql>[] = [
+          sql`is_default = TRUE`,
+          sql`deleted_at IS NULL`,
+        ];
+        if (orgId !== null) demoteConditions.push(sql`organization_id = ${orgId}::uuid`);
+        const demoteWhere = sql.join(demoteConditions, sql` AND `);
         await tx.execute(
           sql`UPDATE delivery_destinations SET is_default = FALSE, updated_at = NOW()
-              WHERE is_default = TRUE AND deleted_at IS NULL`,
+              WHERE ${demoteWhere}`,
         );
       }
 
       const result = await tx.execute(
         sql`INSERT INTO delivery_destinations (
+              organization_id,
               code, name, address, coords,
               contact_name, contact_phone, contact_email, boundary, is_default
             ) VALUES (
+              ${orgId}::uuid,
               ${dto.code as string},
               ${dto.name as string},
               ${(dto.address as string) ?? null},
@@ -82,8 +99,8 @@ export class DeliveryDestinationsService {
     });
   }
 
-  async update(id: string, dto: Record<string, unknown>) {
-    await this.findById(id);
+  async update(id: string, orgId: string | null, dto: Record<string, unknown>) {
+    await this.findById(id, orgId);
 
     const plainFields: Record<string, string> = {
       code: 'code',
@@ -99,9 +116,16 @@ export class DeliveryDestinationsService {
     return await this.drizzleProvider.db.transaction(async (tx) => {
       // Promoting this row to default → demote any other current default.
       if (dto.isDefault === true) {
+        const demoteConditions: ReturnType<typeof sql>[] = [
+          sql`is_default = TRUE`,
+          sql`deleted_at IS NULL`,
+          sql`id != ${id}::uuid`,
+        ];
+        if (orgId !== null) demoteConditions.push(sql`organization_id = ${orgId}::uuid`);
+        const demoteWhere = sql.join(demoteConditions, sql` AND `);
         await tx.execute(
           sql`UPDATE delivery_destinations SET is_default = FALSE, updated_at = NOW()
-              WHERE is_default = TRUE AND deleted_at IS NULL AND id != ${id}`,
+              WHERE ${demoteWhere}`,
         );
       }
 
@@ -131,14 +155,21 @@ export class DeliveryDestinationsService {
         }
       }
 
-      if (setClauses.length === 0) return this.findById(id);
+      if (setClauses.length === 0) return this.findById(id, orgId);
 
       setClauses.push(sql`updated_at = NOW()`);
       const setClause = sql.join(setClauses, sql`, `);
 
+      const updateConditions: ReturnType<typeof sql>[] = [
+        sql`id = ${id}::uuid`,
+        sql`deleted_at IS NULL`,
+      ];
+      if (orgId !== null) updateConditions.push(sql`organization_id = ${orgId}::uuid`);
+      const updateWhere = sql.join(updateConditions, sql` AND `);
+
       const result = await tx.execute(
         sql`UPDATE delivery_destinations SET ${setClause}
-            WHERE id = ${id} AND deleted_at IS NULL
+            WHERE ${updateWhere}
             RETURNING ${DEST_COLS}`,
       );
       return (result as unknown as Record<string, unknown>[])[0];
@@ -146,22 +177,34 @@ export class DeliveryDestinationsService {
   }
 
   /** Returns the single row marked is_default = TRUE, or null. */
-  async findDefault(): Promise<{ id: string } | null> {
+  async findDefault(orgId: string | null): Promise<{ id: string } | null> {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`is_default = TRUE`,
+      sql`deleted_at IS NULL`,
+      sql`is_active = TRUE`,
+    ];
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM delivery_destinations
-          WHERE is_default = TRUE AND deleted_at IS NULL AND is_active = TRUE
-          LIMIT 1`,
+      sql`SELECT id FROM delivery_destinations WHERE ${where} LIMIT 1`,
     );
     const rows = result as unknown as { id: string }[];
     return rows[0] ?? null;
   }
 
-  async softDelete(id: string) {
-    await this.findById(id);
+  async softDelete(id: string, orgId: string | null) {
+    await this.findById(id, orgId);
+
+    const deleteConditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`];
+    if (orgId !== null) deleteConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const deleteWhere = sql.join(deleteConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE delivery_destinations
           SET deleted_at = NOW(), updated_at = NOW()
-          WHERE id = ${id}
+          WHERE ${deleteWhere}
           RETURNING ${DEST_COLS}`,
     );
     return (result as unknown as Record<string, unknown>[])[0];

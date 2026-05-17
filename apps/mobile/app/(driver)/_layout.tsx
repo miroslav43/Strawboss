@@ -3,11 +3,14 @@ import { View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
 import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
+import { useTripLoadedAlert } from '@/hooks/useTripLoadedAlert';
+import { TripLoadedOverlay } from '@/components/features/driver/TripLoadedOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
 import { makeTabBarStyle, tabBarLabelStyle, tabBarActiveTintColor, tabBarInactiveTintColor } from '@/constants/tabBarConfig';
 
 export default function DriverTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
+  const { activeAlert: tripAlert, dismiss: dismissTripAlert, onDeparted } = useTripLoadedAlert();
   const insets = useSafeAreaInsets();
 
   return (
@@ -77,6 +80,11 @@ export default function DriverTabLayout() {
         alert={activeAlert}
         onDismiss={dismissAlert}
         onConfirmParcelDone={confirmParcelDone}
+      />
+      <TripLoadedOverlay
+        alert={tripAlert}
+        onDismiss={() => void dismissTripAlert()}
+        onDeparted={onDeparted}
       />
     </View>
     </SafeAreaProvider>

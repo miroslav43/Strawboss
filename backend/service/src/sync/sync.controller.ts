@@ -18,7 +18,7 @@ export class SyncController {
     @Body() body: SyncPushRequest,
     @CurrentUser() user: RequestUser,
   ) {
-    const results = await this.syncService.push(body.mutations, user.id);
+    const results = await this.syncService.push(body.mutations, user.id, user.organizationId);
     return {
       results,
       serverTime: new Date().toISOString(),
@@ -30,7 +30,7 @@ export class SyncController {
     @Body() body: SyncPullRequest,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.syncService.pull(body.tables, user.id);
+    return this.syncService.pull(body.tables, user.id, user.organizationId);
   }
 
   @Get('status')

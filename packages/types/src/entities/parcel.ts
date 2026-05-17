@@ -17,8 +17,6 @@ export interface Parcel extends Timestamps, SoftDelete {
   id: string;
   code: string;
   name: string;
-  ownerName: string;
-  ownerContact: string | null;
   areaHectares: number;
   boundary: string | null;
   centroid: GeoPoint | null;

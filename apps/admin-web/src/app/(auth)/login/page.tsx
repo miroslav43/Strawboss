@@ -2,14 +2,16 @@
 
 import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiV1Url } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
+import { resolveOrganizationSlugForSession } from '@/lib/resolve-organization-slug';
 
 /** Resolve a username to an email via the backend. Returns null on failure. */
 async function resolveLogin(login: string): Promise<string | null> {
   if (login.includes('@')) return login;
   try {
-    const res = await fetch('/api/v1/auth/resolve', {
+    const res = await fetch(apiV1Url('/auth/resolve'), {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ login }),
@@ -40,8 +42,19 @@ export default function LoginPage() {
   const [loading,  setLoading]  = useState(false);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace('/');
+    void supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      const appMeta = session.user.app_metadata as {
+        role?: string;
+        organization_slug?: string;
+      };
+      if (appMeta.role === 'super_admin') {
+        router.replace('/super-admin');
+        return;
+      }
+      const orgSlug =
+        appMeta.organization_slug ?? (await resolveOrganizationSlugForSession(session));
+      if (orgSlug) router.replace(`/${orgSlug}/`);
     });
   }, [router]);
 
@@ -66,7 +79,7 @@ export default function LoginPage() {
     // should pass through unchanged.
     const authPassword = isUsername ? pinToAuthPassword(password) : password;
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password: authPassword,
     });
@@ -77,7 +90,28 @@ export default function LoginPage() {
       return;
     }
 
-    router.push('/');
+    const appMeta = signInData.session?.user.app_metadata as {
+      role?: string;
+      organization_slug?: string;
+    } | undefined;
+
+    if (appMeta?.role === 'super_admin') {
+      router.push('/super-admin');
+      return;
+    }
+
+    let orgSlug =
+      appMeta?.organization_slug ??
+      (signInData.session
+        ? await resolveOrganizationSlugForSession(signInData.session)
+        : null);
+    if (!orgSlug) {
+      setError('Contul tău nu are o organizație asignată. Contactează administratorul.');
+      setLoading(false);
+      return;
+    }
+
+    router.push(`/${orgSlug}/`);
   }
 
   return (

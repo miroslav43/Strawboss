@@ -13,7 +13,7 @@ import { TaskAssignmentsRepo } from '../db/task-assignments-repo';
 import { SyncManager } from '../sync/SyncManager';
 import { useNetworkStatus } from './useNetworkStatus';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 /**
  * Hook that provides sync state and a trigger function.

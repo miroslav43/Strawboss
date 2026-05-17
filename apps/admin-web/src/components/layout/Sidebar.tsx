@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 import {
   Activity,
   KanbanSquare,
@@ -24,24 +25,30 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { SidebarLink } from './SidebarLink';
 
-const navItems = [
-  { href: '/operations', icon: Activity, labelKey: 'nav.operations' as const },
-  { href: '/tasks', icon: KanbanSquare, labelKey: 'nav.tasks' as const },
-  { href: '/trips', icon: Truck, labelKey: 'nav.trips' as const },
-  { href: '/documents', icon: FileText, labelKey: 'nav.documents' as const },
-  { href: '/reports', icon: BarChart3, labelKey: 'nav.reports' as const },
-  { href: '/alerts', icon: Bell, labelKey: 'nav.alerts' as const },
-  { href: '/map', icon: Map, labelKey: 'nav.map' as const },
-  { href: '/farms', icon: Tractor, labelKey: 'nav.farms' as const },
-  { href: '/parcels', icon: Wheat, labelKey: 'nav.parcels' as const },
-  { href: '/deposits', icon: Warehouse, labelKey: 'nav.deposits' as const },
-  { href: '/machines', icon: Wrench, labelKey: 'nav.machines' as const },
-  { href: '/fuel-logs', icon: Fuel, labelKey: 'nav.fuelLogs' as const },
-  { href: '/consumable-logs', icon: Package, labelKey: 'nav.consumableLogs' as const },
-  { href: '/accounts', icon: Users, labelKey: 'nav.accounts' as const },
-] as const;
+function buildNavItems(slug: string) {
+  return [
+    { href: `/${slug}/operations`, icon: Activity, labelKey: 'nav.operations' as const },
+    { href: `/${slug}/tasks`, icon: KanbanSquare, labelKey: 'nav.tasks' as const },
+    { href: `/${slug}/trips`, icon: Truck, labelKey: 'nav.trips' as const },
+    { href: `/${slug}/documents`, icon: FileText, labelKey: 'nav.documents' as const },
+    { href: `/${slug}/reports`, icon: BarChart3, labelKey: 'nav.reports' as const },
+    { href: `/${slug}/alerts`, icon: Bell, labelKey: 'nav.alerts' as const },
+    { href: `/${slug}/map`, icon: Map, labelKey: 'nav.map' as const },
+    { href: `/${slug}/farms`, icon: Tractor, labelKey: 'nav.farms' as const },
+    { href: `/${slug}/parcels`, icon: Wheat, labelKey: 'nav.parcels' as const },
+    { href: `/${slug}/deposits`, icon: Warehouse, labelKey: 'nav.deposits' as const },
+    { href: `/${slug}/machines`, icon: Wrench, labelKey: 'nav.machines' as const },
+    { href: `/${slug}/fuel-logs`, icon: Fuel, labelKey: 'nav.fuelLogs' as const },
+    { href: `/${slug}/consumable-logs`, icon: Package, labelKey: 'nav.consumableLogs' as const },
+    { href: `/${slug}/accounts`, icon: Users, labelKey: 'nav.accounts' as const },
+  ] as const;
+}
 
-const bottomItems = [{ href: '/settings', icon: Settings, labelKey: 'nav.settings' as const }] as const;
+function buildBottomItems(slug: string) {
+  return [
+    { href: `/${slug}/settings`, icon: Settings, labelKey: 'nav.settings' as const },
+  ] as const;
+}
 
 interface SidebarProps {
   open: boolean;
@@ -51,6 +58,9 @@ interface SidebarProps {
 export function Sidebar({ open, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useI18n();
+  const slug = useOrgSlug();
+  const navItems = buildNavItems(slug);
+  const bottomItems = buildBottomItems(slug);
 
   return (
     <aside

@@ -294,6 +294,34 @@ mock_role_for() {
   esac
 }
 
+# First admin user id from DATABASE_URL (production / shared DB), or empty if unavailable.
+mock_first_admin_id_from_db() {
+  if [ -z "${DATABASE_URL:-}" ]; then
+    _load_env
+  fi
+  if [ -z "${DATABASE_URL:-}" ]; then
+    echo ""
+    return 0
+  fi
+  require_cmd psql
+  psql "$DATABASE_URL" -t -A -c "\
+    SELECT id FROM users
+    WHERE role = 'admin' AND deleted_at IS NULL
+    LIMIT 1;
+  " 2>/dev/null | tr -d '[:space:]'
+}
+
+# Short-lived admin JWT for POST /notifications/* admin routes.
+# Prefers a real admin row in the DB; falls back to SEED_ADMIN_ID (local seed).
+mock_notify_admin_jwt() {
+  local admin_id
+  admin_id="$(mock_first_admin_id_from_db)"
+  if [ -z "$admin_id" ]; then
+    admin_id="$SEED_ADMIN_ID"
+  fi
+  mock_jwt "$admin_id" admin
+}
+
 # Mint a short-lived HS256 JWT signed with SUPABASE_JWT_SECRET.
 # Usage:  mock_jwt <user_id> <role>
 # Output: signed JWT on stdout.

@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00024).
+PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00037).
 
 ## Extensions (00001)
 
@@ -11,14 +11,14 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 
 | Enum | Values |
 |---|---|
-| `user_role` | `admin`, `baler_operator`, `loader_operator`, `driver` (dispatcher removed in 00009) |
+| `user_role` | `admin`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker` (dispatcher removed in 00009) |
 | `machine_type` | `truck`, `loader`, `baler` |
 | `fuel_type` | `diesel`, `gasoline`, `electric` |
 | `trip_status` | `planned`, `loading`, `loaded`, `in_transit`, `arrived`, `delivering`, `delivered`, `completed`, `cancelled`, `disputed` |
 | `parcel_status` | `active`, `inactive` |
 | `consumable_type` | `twine`, `net_wrap`, `silage_film`, `other` |
 | `document_type` | `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report` |
-| `document_status` | `pending`, `generating`, `generated`, `sent`, `failed` |
+| `document_status` | `pending`, `generating`, `partial`, `generated`, `sent`, `failed` |
 | `alert_category` | `fraud`, `anomaly`, `maintenance`, `safety`, `system` |
 | `alert_severity` | `low`, `medium`, `high`, `critical` |
 | `audit_operation` | `insert`, `update`, `delete` |
@@ -32,9 +32,9 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 
 **users**: `id` (UUID PK), `email` (UNIQUE), `phone`, `full_name`, `role` (user_role, default `driver`), `password_hash`, `is_active`, `locale` (default `en`), `avatar_url`, `last_login_at`, `assigned_machine_id` (FK machines, added 00011), `notification_prefs` (JSONB, added 00021), timestamps, `deleted_at`.
 
-**parcels**: `id` (UUID PK), `code` (UNIQUE), `name` (nullable per 00010), `owner_name`, `owner_contact`, `area_hectares` (NUMERIC 10,2), `boundary` (GEOMETRY Polygon 4326), `centroid` (GEOMETRY Point 4326), `address`, `municipality`, `farmtrack_geofence_id`, `farm_id` (FK farms, added 00014), `harvest_status` (added 00017, default `planned`), `notes`, `is_active`, timestamps, `deleted_at`.
+**parcels**: `id` (UUID PK), `code` (UNIQUE), `name` (nullable per 00010), `area_hectares` (NUMERIC 10,2), `boundary` (GEOMETRY Polygon 4326), `centroid` (GEOMETRY Point 4326), `address`, `municipality`, `farmtrack_geofence_id`, `farm_id` (FK farms, added 00014), `harvest_status` (added 00017, default `planned`), `notes`, `is_active`, timestamps, `deleted_at`.
 
-**machines**: `id` (UUID PK), `machine_type`, `registration_plate`, `internal_code` (UNIQUE), `make`, `model`, `year`, `fuel_type`, `tank_capacity_liters`, `farmtrack_device_id`, `current_odometer_km` (default 0), `current_hourmeter_hrs` (default 0), `is_active`, `max_payload_kg`, `max_bale_count`, `tare_weight_kg`, `bales_per_hour_avg`, `bale_weight_avg_kg`, `reach_meters`, timestamps, `deleted_at`.
+**machines**: `id` (UUID PK), `machine_type`, `registration_plate`, `internal_code` (UNIQUE), `make`, `model`, `year`, `fuel_type`, `tank_capacity_liters`, `farmtrack_device_id`, `current_odometer_km` (default 0), `current_hourmeter_hrs` (default 0), `is_active`, `max_payload_kg`, `max_bale_count`, `tare_weight_kg`, `bales_per_hour_avg`, `bale_weight_avg_kg`, `reach_meters`, `company_name`, `company_address`, timestamps, `deleted_at`.
 
 **delivery_destinations**: `id`, `code` (UNIQUE), `name`, `address`, `coords` (GEOMETRY Point 4326), `contact_name`, `contact_phone`, `contact_email`, `boundary` (GEOMETRY Polygon 4326, added 00018), `is_active`, timestamps, `deleted_at`.
 
@@ -42,7 +42,7 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 
 **task_assignments**: `id`, `assignment_date` (DATE), `machine_id` (FK), `parcel_id` (FK, nullable), `assigned_user_id` (FK, nullable), `priority` (default `normal`), `sequence_order` (INT), `status` (task_assignment_status, default `available`, added 00015), `parent_assignment_id` (FK self, added 00015), `destination_id` (FK delivery_destinations, added 00018), timestamps, `deleted_at`. Unique constraint: `(assignment_date, machine_id, sequence_order)` among non-deleted rows only (partial unique index, 00020).
 
-**trips**: `id`, `trip_number` (UNIQUE), `status` (default `planned`), `source_parcel_id` (FK), `source_parcel_auto`, `loader_id` (FK machines), `truck_id` (FK machines, NOT NULL), `loader_operator_id` (FK users), `driver_id` (FK users, NOT NULL), `bale_count` (default 0), phase timestamps, odometer fields, `gps_distance_km`, destination info, weight fields, `net_weight_kg` (**GENERATED** = gross - tare), `odometer_distance_km` (**GENERATED** = arrival - departure), `distance_discrepancy_km`, `fraud_flags` (JSONB), `client_id`, `sync_version` (BIGINT default 1), timestamps, `deleted_at`.
+**trips**: `id`, `trip_number` (UNIQUE), `status` (default `planned`), `source_parcel_id` (FK), `source_parcel_auto`, `loader_id` (FK machines), `truck_id` (FK machines, NOT NULL), `loader_operator_id` (FK users), `driver_id` (FK users, NOT NULL), `bale_count` (default 0), phase timestamps, odometer fields, `gps_distance_km`, destination info, weight fields, `net_weight_kg` (**GENERATED** = gross - tare), `odometer_distance_km` (**GENERATED** = arrival - departure), `distance_discrepancy_km`, `loader_signature_url` (TEXT, saved at complete-loading), `driver_signature_url` (TEXT, saved at depart), `deteriorated_bales_count` (INT, saved at confirm-delivery), `fraud_flags` (JSONB), `client_id`, `sync_version` (BIGINT default 1), timestamps, `deleted_at`.
 
 **bale_loads**: `id`, `trip_id` (FK NOT NULL), `parcel_id` (FK NOT NULL), `loader_id` (FK), `operator_id` (FK), `bale_count` (CHECK > 0), `loaded_at`, GPS coords, `farmtrack_event_id`, `notes`, `client_id`, `sync_version`, timestamps, `deleted_at`.
 
@@ -70,7 +70,7 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 
 **machine_location_events** (00009): `id`, `machine_id` (FK), `operator_id` (FK), `lat`, `lon`, `coords` (**GENERATED** via `ST_SetSRID(ST_MakePoint(lon, lat), 4326)`), `accuracy_m`, `heading_deg`, `speed_ms`, `recorded_at`, `created_at`.
 
-**farms** (00014): `id`, `name` (NOT NULL), `address`, timestamps, `deleted_at`.
+**farms** (00014): `id`, `name` (NOT NULL), `address`, `phone`, `fiscal_code`, `registration_number`, `bank_account`, `bank_name`, timestamps, `deleted_at`.
 
 **parcel_daily_status** (00015): `id`, `parcel_id` (FK NOT NULL), `status_date` (DATE), `is_done`, `notes`, timestamps. UNIQUE `(parcel_id, status_date)`.
 

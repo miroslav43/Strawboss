@@ -28,12 +28,9 @@ interface Signatures {
 }
 
 interface ConfirmDeliveryPayload {
-  netWeightKg: number;
-  deterioratedBales: number;
+  grossWeightKg: number;
+  deterioratedBalesCount: number;
   weightTicketPhotoUrl: string;
-  receiverName: string;
-  receiverSignatureUrl: string;
-  deliveredAt: string;
 }
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -57,7 +54,7 @@ export function EnhancedDeliveryFlow({
   const [signatures, setSignatures] = useState<Signatures>({});
   const [loading, setLoading] = useState(false);
 
-  const netWeightKg = parseFloat(netWeightValue) || 0;
+  const grossWeightKg = parseFloat(netWeightValue) || 0;
   const signatureUri = signatures.receiver ?? null;
 
   const goToStep = useCallback((step: Step) => {
@@ -81,29 +78,36 @@ export function EnhancedDeliveryFlow({
 
   const handleConfirm = useCallback(async () => {
     setLoading(true);
-    mobileLogger.flow('Driver enhanced delivery: POST confirm-delivery', {
+    mobileLogger.flow('Driver enhanced delivery: starting delivery confirmation', {
       tripId,
       tripNumber,
     });
     try {
-      const payload: ConfirmDeliveryPayload = {
-        netWeightKg,
-        deterioratedBales,
+      // Step 1: confirm-delivery — weight + ticket photo + deteriorated bales
+      const confirmPayload: ConfirmDeliveryPayload = {
+        grossWeightKg,
+        deterioratedBalesCount: deterioratedBales,
         weightTicketPhotoUrl: ticketPhotoUri ?? '',
-        receiverName,
-        receiverSignatureUrl: signatureUri ?? '',
-        deliveredAt: new Date().toISOString(),
       };
       await mobileApiClient.post(
         `/api/v1/trips/${tripId}/confirm-delivery`,
-        payload,
+        confirmPayload,
       );
-      mobileLogger.flow('Driver enhanced delivery: confirm-delivery success', {
-        tripId,
-      });
+      mobileLogger.flow('Driver enhanced delivery: confirm-delivery success', { tripId });
+
+      // Step 2: complete — receiver name + signature → triggers CMR stage 2
+      await mobileApiClient.post(
+        `/api/v1/trips/${tripId}/complete`,
+        {
+          receiverName,
+          receiverSignature: signatureUri ?? '',
+        },
+      );
+      mobileLogger.flow('Driver enhanced delivery: complete success', { tripId });
+
       onComplete();
     } catch (err) {
-      mobileLogger.error('Driver enhanced delivery: confirm-delivery failed', {
+      mobileLogger.error('Driver enhanced delivery: delivery confirmation failed', {
         tripId,
         err:
           err instanceof Error
@@ -118,7 +122,7 @@ export function EnhancedDeliveryFlow({
       setLoading(false);
     }
   }, [
-    netWeightKg,
+    grossWeightKg,
     deterioratedBales,
     ticketPhotoUri,
     receiverName,
@@ -181,7 +185,7 @@ export function EnhancedDeliveryFlow({
           tripNumber={tripNumber}
           baleCount={baleCount}
           deterioratedBales={deterioratedBales}
-          netWeightKg={netWeightKg}
+          netWeightKg={grossWeightKg}
           receiverName={receiverName}
           destinationName={destinationName}
           hasTicketPhoto={ticketPhotoUri !== null}

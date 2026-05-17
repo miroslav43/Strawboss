@@ -7,6 +7,7 @@ import { useDeleteTrip } from '@strawboss/api';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { apiClient } from '@/lib/api';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 
 /**
  * Shape of a single trip row as returned by `GET /api/v1/trips`.
@@ -126,6 +127,7 @@ interface TripListProps {
 
 export function TripList({ trips }: TripListProps) {
   const router = useRouter();
+  const slug = useOrgSlug();
   const deleteTrip = useDeleteTrip(apiClient);
 
   const columns: Column<TripRow>[] = [
@@ -163,7 +165,7 @@ export function TripList({ trips }: TripListProps) {
       columns={columns}
       data={trips}
       keyExtractor={(row) => row.id}
-      onRowClick={(row) => router.push(`/trips/${row.id}`)}
+      onRowClick={(row) => router.push(`/${slug}/trips/${row.id}`)}
     />
   );
 }

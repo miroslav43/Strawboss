@@ -49,29 +49,33 @@ export class DashboardService {
     return sql` AND ${sql.join(parts, sql` AND `)}`;
   }
 
-  async getOverview(): Promise<DashboardOverview> {
+  async getOverview(orgId: string | null): Promise<DashboardOverview> {
+    const orgFilter = orgId !== null
+      ? sql` AND organization_id = ${orgId}::uuid`
+      : sql``;
+
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         (SELECT COUNT(*)::int FROM trips
          WHERE status IN ('loading', 'loaded', 'in_transit', 'arrived', 'delivering')
-           AND deleted_at IS NULL
+           AND deleted_at IS NULL ${orgFilter}
         ) AS active_trips,
         (SELECT COALESCE(SUM(bale_count), 0)::int FROM bale_productions
-         WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL
+         WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL ${orgFilter}
         ) AS bales_today,
         (SELECT COUNT(*)::int FROM machines
-         WHERE is_active = true AND deleted_at IS NULL
+         WHERE is_active = true AND deleted_at IS NULL ${orgFilter}
         ) AS active_machines,
         (SELECT COUNT(*)::int FROM alerts
-         WHERE is_acknowledged = false
+         WHERE is_acknowledged = false ${orgFilter}
         ) AS pending_alerts,
         (SELECT COUNT(*)::int FROM trips
-         WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL
+         WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL ${orgFilter}
         ) AS trips_today,
         (SELECT COUNT(*)::int FROM trips
          WHERE status = 'completed'
            AND completed_at >= CURRENT_DATE
-           AND deleted_at IS NULL
+           AND deleted_at IS NULL ${orgFilter}
         ) AS trips_completed
     `);
 
@@ -88,8 +92,12 @@ export class DashboardService {
     };
   }
 
-  async getProduction(range?: DashboardDateRange): Promise<ProductionReport[]> {
+  async getProduction(orgId: string | null, range?: DashboardDateRange): Promise<ProductionReport[]> {
     const prodExtra = this.productionDateFilter(range);
+    const orgFilter = orgId !== null
+      ? sql` AND organization_id = ${orgId}::uuid`
+      : sql``;
+
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         p.id AS parcel_id,
@@ -115,7 +123,7 @@ export class DashboardService {
             AND t2.deleted_at IS NULL
         ), 0) AS delivered
       FROM parcels p
-      WHERE p.deleted_at IS NULL
+      WHERE p.deleted_at IS NULL ${orgFilter}
       ORDER BY p.name
     `);
 
@@ -137,11 +145,14 @@ export class DashboardService {
     });
   }
 
-  async getCosts(range?: DashboardDateRange): Promise<CostReport[]> {
+  async getCosts(orgId: string | null, range?: DashboardDateRange): Promise<CostReport[]> {
     const fuelMachineDates = this.loggedAtFilter(range, 'fl');
     const consMachineDates = this.loggedAtFilter(range, 'cl');
     const fuelParcelDates = this.loggedAtFilter(range, 'fl');
     const consParcelDates = this.loggedAtFilter(range, 'cl');
+    const orgFilter = orgId !== null
+      ? sql` AND organization_id = ${orgId}::uuid`
+      : sql``;
 
     // Costs by machine (machines has no 'name' column — build display name from available fields)
     const machineResult = await this.drizzleProvider.db.execute(sql`
@@ -174,7 +185,7 @@ export class DashboardService {
             ${consMachineDates}
         ), 0) AS consumable_cost
       FROM machines m
-      WHERE m.deleted_at IS NULL
+      WHERE m.deleted_at IS NULL ${orgFilter}
       ORDER BY entity_name
     `);
 
@@ -215,7 +226,7 @@ export class DashboardService {
             ${consParcelDates}
         ), 0) AS consumable_cost
       FROM parcels p
-      WHERE p.deleted_at IS NULL
+      WHERE p.deleted_at IS NULL ${orgFilter}
       ORDER BY p.name
     `);
 
@@ -236,7 +247,11 @@ export class DashboardService {
     });
   }
 
-  async getTrending() {
+  async getTrending(orgId: string | null) {
+    const orgFilter = orgId !== null
+      ? sql` AND organization_id = ${orgId}::uuid`
+      : sql``;
+
     const result = await this.drizzleProvider.db.execute(sql`
       WITH dates AS (
         SELECT generate_series(
@@ -252,31 +267,35 @@ export class DashboardService {
           SELECT COUNT(*)::int FROM trips t
           WHERE t.completed_at::date = dates.d
             AND t.status IN ('delivered', 'completed')
-            AND t.deleted_at IS NULL
+            AND t.deleted_at IS NULL ${orgFilter}
         ), 0) AS "tripsCompleted"
       FROM dates
       LEFT JOIN bale_productions bp
-        ON bp.production_date = dates.d AND bp.deleted_at IS NULL
+        ON bp.production_date = dates.d AND bp.deleted_at IS NULL ${orgFilter}
       GROUP BY dates.d
       ORDER BY dates.d ASC
     `);
     return result;
   }
 
-  async getAntiFraud(): Promise<AntiFraudReport> {
+  async getAntiFraud(orgId: string | null): Promise<AntiFraudReport> {
+    const orgFilter = orgId !== null
+      ? sql` AND organization_id = ${orgId}::uuid`
+      : sql``;
+
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         (SELECT COUNT(*)::int FROM alerts
-         WHERE category = 'fraud'
+         WHERE category = 'fraud' ${orgFilter}
         ) AS flagged_trips,
         (SELECT COUNT(*)::int FROM alerts
-         WHERE title LIKE '%Odometer%'
+         WHERE title LIKE '%Odometer%' ${orgFilter}
         ) AS odometer_anomalies,
         (SELECT COUNT(*)::int FROM alerts
-         WHERE title LIKE '%Fuel%'
+         WHERE title LIKE '%Fuel%' ${orgFilter}
         ) AS fuel_anomalies,
         (SELECT COUNT(*)::int FROM alerts
-         WHERE title LIKE '%timing%'
+         WHERE title LIKE '%timing%' ${orgFilter}
         ) AS timing_anomalies
     `);
 
@@ -286,7 +305,7 @@ export class DashboardService {
     // Fetch recent alerts
     const alertsResult = await this.drizzleProvider.db.execute(
       sql`SELECT * FROM alerts
-          WHERE category IN ('fraud', 'anomaly')
+          WHERE category IN ('fraud', 'anomaly') ${orgFilter}
           ORDER BY created_at DESC
           LIMIT 20`,
     );

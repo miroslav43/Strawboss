@@ -101,3 +101,41 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 `NEXT_PUBLIC_*` vars are baked into the Next.js build at Docker build time (build args). In development, CORS allows `localhost:3000`; in production only `https://nortiauno.com` is allowed.
 
 Optional: **`LOG_ROOT`** — root directory for `logs/web` and `logs/mobile` on servers (see `.env.example`).
+
+## Claude Code Automations
+
+The `.claude/` directory carries a custom automation setup that keeps the knowledge base in sync with the code and enforces project conventions.
+
+### Skills (`.claude/skills/<name>/SKILL.md`) — invoke with `/<name>`
+
+| Skill | Purpose |
+|---|---|
+| `strawboss-feature` | Add a new feature following project patterns |
+| `strawboss-review` | Project-specific code review checklist |
+| `strawboss-debug` | Debugging playbooks (sync, geofence, BullMQ, map, auth) |
+| `strawboss-deploy` | Production deploy walkthrough |
+| `strawboss-sync-docs` | Sync `.claude/` docs+agents with the current code — run after every feature |
+| `strawboss-new-migration` | Scaffold an idempotent migration (RLS, indexes, sync_version) |
+| `strawboss-bug-hunt` | Full multi-angle bug analysis (security web/mobile, logic, data integrity) — dispatches the review agents in parallel |
+
+### Agents (`.claude/agents/`)
+
+Domain specialists: `backend-agent`, `db-agent`, `devops-agent`, `frontend-agent`, `mobile-agent`. Review agents: `security-reviewer` (backend + DB/RLS), `web-reviewer` (admin-web XSS/i18n/React), `mobile-reviewer` (sync/offline/secrets), `logic-reviewer` (state machine, reconciliation, race conditions). Plus `docs-updater` (subagent form of `strawboss-sync-docs`, for large PRs).
+
+### Hooks (`.claude/settings.json`)
+
+- **PostToolUse / Edit**: auto-formats `.ts/.tsx/.js/.jsx/.json/.css` with Prettier.
+- **PreToolUse / Edit**: warns (does not block) when editing `.env` files with secrets.
+- **PostToolUse / Bash**: after a `git commit` that touches migrations/types/validation/nginx, reminds to run `/strawboss-sync-docs`.
+
+### GitHub Actions (`.github/workflows/`)
+
+`bug-scan.yml` — on every push (excluding docs-only changes), runs `strawboss-bug-hunt` via the Claude Code GitHub Action and files a `bug-scan` GitHub issue with the findings. Requires the `CLAUDE_CODE_OAUTH_TOKEN` repo secret and the Claude GitHub App installed.
+
+### Scheduled routine
+
+A weekly routine runs `/strawboss-sync-docs` automatically to catch any documentation drift.
+
+### Keeping docs fresh
+
+The `.claude/docs/` files (architecture, backend, database, mobile, etc.) document the codebase. After non-trivial code changes, run `/strawboss-sync-docs` so future sessions read accurate context. MCP plugins available: `context7` (live library docs), `playwright` (browser), `supabase` (after one-time auth).

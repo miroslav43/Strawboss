@@ -13,6 +13,7 @@ export class LocationController {
   /**
    * POST /api/v1/location/report
    * Any authenticated operator (baler, loader, driver) sends their GPS position.
+   * Only accepts positions for machines belonging to the caller's organization.
    */
   @Post('report')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -20,17 +21,17 @@ export class LocationController {
     @Body() dto: LocationReportDto,
     @CurrentUser() user: RequestUser,
   ): Promise<void> {
-    await this.locationService.reportLocation(dto, user.id);
+    await this.locationService.reportLocation(dto, user.id, user.organizationId);
   }
 
   /**
    * GET /api/v1/location/machines
-   * Admin-only: last known GPS position for every machine.
+   * Admin-only: last known GPS position for every machine in the caller's organization.
    */
   @Get('machines')
   @Roles(UserRole.admin)
-  getLastKnownPositions() {
-    return this.locationService.getLastKnownPositions();
+  getLastKnownPositions(@CurrentUser() user: RequestUser) {
+    return this.locationService.getLastKnownPositions(user.organizationId);
   }
 
   /**
@@ -45,7 +46,8 @@ export class LocationController {
 
   /**
    * GET /api/v1/location/machines/:machineId/route?from=...&to=...
-   * Admin-only: GPS route history for a specific machine within a time range.
+   * Admin-only: GPS route history for a specific machine within a time range,
+   * scoped to the caller's organization.
    */
   @Get('machines/:machineId/route')
   @Roles(UserRole.admin)
@@ -53,27 +55,34 @@ export class LocationController {
     @Param('machineId') machineId: string,
     @Query('from') from: string,
     @Query('to') to: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.locationService.getRouteHistory(machineId, from, to);
+    return this.locationService.getRouteHistory(machineId, from, to, user.organizationId);
   }
 
   /**
    * GET /api/v1/location/trucks-at-loader/:loaderMachineId
-   * Loader/admin-only: returns trucks currently within proximity of the loader.
+   * Loader/admin-only: returns trucks currently within proximity of the loader,
+   * scoped to the caller's organization.
    * Optional `radiusM` (default 75) and `windowMinutes` (default 5) query params.
    */
   @Get('trucks-at-loader/:loaderMachineId')
   @Roles(UserRole.admin, UserRole.loader_operator)
   getTrucksAtLoader(
     @Param('loaderMachineId') loaderMachineId: string,
+    @CurrentUser() user: RequestUser,
     @Query('radiusM') radiusMRaw?: string,
     @Query('windowMinutes') windowMinutesRaw?: string,
   ) {
     const radiusM = radiusMRaw ? Number(radiusMRaw) : undefined;
     const windowMinutes = windowMinutesRaw ? Number(windowMinutesRaw) : undefined;
-    return this.locationService.getTrucksAtLoader(loaderMachineId, {
-      radiusM: Number.isFinite(radiusM) ? radiusM : undefined,
-      windowMinutes: Number.isFinite(windowMinutes) ? windowMinutes : undefined,
-    });
+    return this.locationService.getTrucksAtLoader(
+      loaderMachineId,
+      {
+        radiusM: Number.isFinite(radiusM) ? radiusM : undefined,
+        windowMinutes: Number.isFinite(windowMinutes) ? windowMinutes : undefined,
+      },
+      user.organizationId,
+    );
   }
 }

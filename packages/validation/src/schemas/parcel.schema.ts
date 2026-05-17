@@ -16,8 +16,6 @@ export const parcelSchema = z
     id: uuidSchema,
     code: z.string().min(1),
     name: z.string().min(1),
-    ownerName: z.string().min(1),
-    ownerContact: z.string().nullable(),
     areaHectares: z.number().positive(),
     boundary: z.string().nullable(),
     centroid: geoPointSchema.nullable(),
@@ -36,8 +34,6 @@ export const createParcelSchema = z.object({
   // code and name are generated/set automatically; both optional at create time.
   code:                z.string().min(1).optional(),
   name:                z.string().min(1).optional(),
-  ownerName:           z.string().optional(),
-  ownerContact:        z.string().nullable().optional(),
   areaHectares:        z.number().positive().optional(),
   boundary:            z.string().nullable().optional(),
   centroid:            geoPointSchema.nullable().optional(),
@@ -53,8 +49,6 @@ export const updateParcelSchema = z
   .object({
     code: z.string().min(1),
     name: z.string().min(1),
-    ownerName: z.string().min(1),
-    ownerContact: z.string().nullable(),
     areaHectares: z.number().positive(),
     boundary: z.string().nullable(),
     centroid: geoPointSchema.nullable(),

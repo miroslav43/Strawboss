@@ -48,6 +48,7 @@ export class TripsController {
 
   @Get()
   list(
+    @CurrentUser() user: RequestUser,
     @Query('status') status?: string,
     @Query('driverId') driverId?: string,
     @Query('truckId') truckId?: string,
@@ -56,7 +57,7 @@ export class TripsController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
-    return this.tripsService.list({
+    return this.tripsService.list(user.organizationId, {
       status,
       driverId,
       truckId,
@@ -68,22 +69,23 @@ export class TripsController {
   }
 
   @Get(':id')
-  findById(@Param('id') id: string) {
-    return this.tripsService.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.tripsService.findById(id, user.organizationId);
   }
 
   @Post()
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   create(
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(tripCreateDtoSchema)) dto: TripCreateDto,
   ) {
-    return this.tripsService.create(dto);
+    return this.tripsService.create(user.organizationId, dto);
   }
 
   @Delete(':id')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
-  softDelete(@Param('id') id: string) {
-    return this.tripsService.softDelete(id);
+  softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.tripsService.softDelete(id, user.organizationId);
   }
 
   /**
@@ -97,96 +99,106 @@ export class TripsController {
     @Body(new ZodValidationPipe(registerLoadSchema)) dto: RegisterLoadDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.tripsService.registerLoad(dto, user.id);
+    return this.tripsService.registerLoad(dto, user.id, user.organizationId);
   }
 
   @Post(':id/start-loading')
   @Roles('admin' as UserRole, 'loader_operator' as UserRole)
   startLoading(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(startLoadingSchema)) dto: StartLoadingDto,
   ) {
-    return this.tripsService.startLoading(id, dto);
+    return this.tripsService.startLoading(id, user.organizationId, dto);
   }
 
   @Post(':id/complete-loading')
   @Roles('admin' as UserRole, 'loader_operator' as UserRole)
   completeLoading(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(completeLoadingSchema)) dto: CompleteLoadingDto,
   ) {
-    return this.tripsService.completeLoading(id, dto);
+    return this.tripsService.completeLoading(id, user.organizationId, dto);
   }
 
   @Post(':id/depart')
   @Roles('admin' as UserRole, 'driver' as UserRole)
   depart(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(departSchema)) dto: DepartDto,
   ) {
-    return this.tripsService.depart(id, dto);
+    return this.tripsService.depart(id, user.organizationId, dto);
   }
 
   @Post(':id/arrive')
   @Roles('admin' as UserRole, 'driver' as UserRole)
   arrive(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(arriveSchema)) dto: ArriveDto,
   ) {
-    return this.tripsService.arrive(id, dto);
+    return this.tripsService.arrive(id, user.organizationId, dto);
   }
 
   @Post(':id/start-delivery')
   @Roles('admin' as UserRole, 'driver' as UserRole)
   startDelivery(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(startDeliverySchema)) dto: StartDeliveryDto,
   ) {
-    return this.tripsService.startDelivery(id, dto);
+    return this.tripsService.startDelivery(id, user.organizationId, dto);
   }
 
   @Post(':id/confirm-delivery')
   @Roles('admin' as UserRole, 'driver' as UserRole)
   confirmDelivery(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(confirmDeliverySchema)) dto: ConfirmDeliveryDto,
   ) {
-    return this.tripsService.confirmDelivery(id, dto);
+    return this.tripsService.confirmDelivery(id, user.organizationId, dto);
   }
 
   @Post(':id/complete')
   @Roles('admin' as UserRole, 'driver' as UserRole)
   complete(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(completeSchema)) dto: CompleteDto,
   ) {
-    return this.tripsService.complete(id, dto);
+    return this.tripsService.complete(id, user.organizationId, dto);
   }
 
   @Post(':id/cancel')
   @Roles('admin' as UserRole)
   cancel(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(cancelSchema)) dto: CancelDto,
   ) {
-    return this.tripsService.cancel(id, dto);
+    return this.tripsService.cancel(id, user.organizationId, dto);
   }
 
   @Post(':id/dispute')
   @Roles('admin' as UserRole)
   dispute(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(disputeSchema)) dto: DisputeDto,
   ) {
-    return this.tripsService.dispute(id, dto);
+    return this.tripsService.dispute(id, user.organizationId, dto);
   }
 
   @Post(':id/resolve-dispute')
   @Roles('admin' as UserRole)
   resolveDispute(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(resolveDisputeSchema)) dto: ResolveDisputeDto,
   ) {
-    return this.tripsService.resolveDispute(id, dto);
+    return this.tripsService.resolveDispute(id, user.organizationId, dto);
   }
 }

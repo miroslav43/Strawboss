@@ -80,11 +80,13 @@ function TripCard({ trip }: { trip: TripToLoad }) {
     <TouchableOpacity
       style={styles.tripCard}
       activeOpacity={0.8}
-      onPress={() =>
-        router.push(
-          `/loader-ops/load-bales?tripId=${trip.id}` as `/${string}`,
-        )
-      }
+      onPress={() => {
+        if (!trip.truckId) return;
+        router.push({
+          pathname: '/loader-ops/load-bales',
+          params: { truckId: trip.truckId },
+        });
+      }}
     >
       <View style={styles.tripCardHeader}>
         <View style={styles.tripTitleRow}>

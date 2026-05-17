@@ -6,9 +6,12 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class DocumentsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(filters?: { tripId?: string; documentType?: string }) {
+  async list(orgId: string | null, filters?: { tripId?: string; documentType?: string }) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.tripId) {
       conditions.push(sql`trip_id = ${filters.tripId}`);
     }
@@ -23,9 +26,19 @@ export class DocumentsService {
     return result;
   }
 
-  async findById(id: string) {
+  async findById(id: string, orgId: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}`,
+      sql`deleted_at IS NULL`,
+    ];
+
+    if (orgId) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM documents WHERE id = ${id} AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT * FROM documents WHERE ${where} LIMIT 1`,
     );
     const rows = result as unknown as Record<string, unknown>[];
     if (!rows.length) {
@@ -34,23 +47,27 @@ export class DocumentsService {
     return rows[0];
   }
 
-  async create(data: {
-    tripId: string;
-    documentType: string;
-    title: string;
-    status: string;
-    fileUrl?: string | null;
-    mimeType?: string | null;
-    metadata?: Record<string, unknown> | null;
-  }) {
+  async create(
+    orgId: string | null,
+    data: {
+      tripId: string;
+      documentType: string;
+      title: string;
+      status: string;
+      fileUrl?: string | null;
+      mimeType?: string | null;
+      metadata?: Record<string, unknown> | null;
+    },
+  ) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO documents (
         trip_id, document_type, title, status,
-        file_url, mime_type, metadata
+        file_url, mime_type, metadata, organization_id
       ) VALUES (
         ${data.tripId}, ${data.documentType}, ${data.title}, ${data.status},
         ${data.fileUrl ?? null}, ${data.mimeType ?? null},
-        ${data.metadata ? JSON.stringify(data.metadata) : null}::jsonb
+        ${data.metadata ? JSON.stringify(data.metadata) : null}::jsonb,
+        ${orgId ? sql`${orgId}::uuid` : sql`NULL`}
       ) RETURNING *`,
     );
     return result;
@@ -58,6 +75,7 @@ export class DocumentsService {
 
   async updateStatus(
     id: string,
+    orgId: string | null,
     status: string,
     fileUrl?: string | null,
   ) {
@@ -74,8 +92,13 @@ export class DocumentsService {
     }
 
     const setClause = sql.join(setClauses, sql`, `);
+
+    const whereConditions: ReturnType<typeof sql>[] = [sql`id = ${id}`];
+    if (orgId !== null) whereConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(whereConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE documents SET ${setClause} WHERE id = ${id} RETURNING *`,
+      sql`UPDATE documents SET ${setClause} WHERE ${where} RETURNING *`,
     );
     return result;
   }

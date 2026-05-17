@@ -14,9 +14,11 @@ import type { Logger as WinstonLogger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { ParcelsService } from './parcels.service';
 import { Roles } from '../auth/roles.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createParcelSchema, updateParcelSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
+import type { RequestUser } from '../auth/auth.guard';
 
 @Controller('parcels')
 export class ParcelsController {
@@ -27,45 +29,48 @@ export class ParcelsController {
 
   @Get()
   list(
+    @CurrentUser() user: RequestUser,
     @Query('municipality') municipality?: string,
     @Query('isActive') isActive?: string,
   ) {
-    return this.parcelsService.list({
+    return this.parcelsService.list(user.organizationId, {
       municipality,
       isActive: isActive !== undefined ? isActive === 'true' : undefined,
     });
   }
 
   @Get(':id/bale-availability')
-  getBaleAvailability(@Param('id') id: string) {
-    return this.parcelsService.getBaleAvailability(id);
+  getBaleAvailability(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.parcelsService.getBaleAvailability(id, user.organizationId);
   }
 
   @Get(':id')
-  findById(@Param('id') id: string) {
-    return this.parcelsService.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.parcelsService.findById(id, user.organizationId);
   }
 
   @Post()
-  @Roles('admin' as UserRole)
+  @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   create(
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createParcelSchema)) dto: Record<string, unknown>,
   ) {
-    return this.parcelsService.create(dto);
+    return this.parcelsService.create(user.organizationId, dto);
   }
 
   @Patch(':id')
-  @Roles('admin' as UserRole)
+  @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   update(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(updateParcelSchema)) dto: Record<string, unknown>,
   ) {
-    return this.parcelsService.update(id, dto);
+    return this.parcelsService.update(id, user.organizationId, dto);
   }
 
   @Delete(':id')
   @Roles('admin' as UserRole)
-  async softDelete(@Param('id') id: string, @Req() req: { user?: { id: string; role: string } }) {
+  async softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser, @Req() req: { user?: { id: string; role: string } }) {
     this.winston.info('DELETE parcel started', {
       context: 'ParcelsController',
       parcelId: id,
@@ -73,7 +78,7 @@ export class ParcelsController {
       role: req.user?.role ?? null,
     });
     try {
-      const result = await this.parcelsService.softDelete(id);
+      const result = await this.parcelsService.softDelete(id, user.organizationId);
       this.winston.info('DELETE parcel success', {
         context: 'ParcelsController',
         parcelId: id,

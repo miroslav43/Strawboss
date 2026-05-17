@@ -7,6 +7,16 @@ import { softDeleteSchema } from "../helpers/common.js";
 
 export const userRoleSchema = z.nativeEnum(UserRole);
 
+// Only roles an org admin is allowed to assign — super_admin is excluded
+const adminAssignableRoleSchema = z.enum([
+  'admin',
+  'dispatcher',
+  'loader_operator',
+  'driver',
+  'baler_operator',
+  'geofence_maker',
+] as const);
+
 export const userSchema = z
   .object({
     id: uuidSchema,
@@ -21,6 +31,8 @@ export const userSchema = z
     avatarUrl: z.string().url().nullable(),
     lastLoginAt: isoDateSchema.nullable(),
     assignedMachineId: z.string().uuid().nullable(),
+    organizationId: uuidSchema.nullable().optional(),
+    organizationSlug: z.string().min(1).nullable().optional(),
   })
   .merge(timestampsSchema)
   .merge(softDeleteSchema);
@@ -32,7 +44,7 @@ const fullNameTwoWords = z
 
 export const createUserSchema = z.object({
   fullName: fullNameTwoWords,
-  role: userRoleSchema,
+  role: adminAssignableRoleSchema,
   phone: z.string().nullable().optional(),
   /** Optional: admin can override the auto-generated username before submit. */
   usernameOverride: z.string().min(3).optional(),
@@ -41,7 +53,7 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z
   .object({
     fullName: z.string().min(1),
-    role: userRoleSchema,
+    role: adminAssignableRoleSchema,
     phone: z.string().nullable(),
     isActive: z.boolean(),
     locale: z.string(),

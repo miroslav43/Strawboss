@@ -6,10 +6,24 @@ import { supabase } from './supabase';
  * NEXT_PUBLIC_API_URL (avoids CORS when the UI is localhost and the API is remote).
  * In production builds, use the public API URL baked at build time.
  */
-const apiBaseUrl =
-  process.env.NODE_ENV === 'development'
+export function getBrowserApiBaseUrl(): string {
+  return process.env.NODE_ENV === 'development'
     ? ''
     : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001');
+}
+
+/**
+ * Absolute URL for raw `fetch()` to Nest (e.g. login helpers). `path` is the part
+ * after `/api/v1`, e.g. `profile` → `/api/v1/profile` in dev or `https://api.../api/v1/profile` in prod.
+ */
+export function apiV1Url(path: string): string {
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  const normalized = suffix.startsWith('/api/v1') ? suffix : `/api/v1${suffix}`;
+  const base = getBrowserApiBaseUrl().replace(/\/$/, '');
+  return base ? `${base}${normalized}` : normalized;
+}
+
+const apiBaseUrl = getBrowserApiBaseUrl();
 
 export const apiClient = new ApiClient({
   baseUrl: apiBaseUrl,

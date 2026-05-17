@@ -18,3 +18,9 @@ logs/
 /backend/service/uploads/
 .DS_Store
 .cursor/
+# Firebase Android client config
+apps/mobile/google-services.json
+apps/mobile/android/app/google-services.json
+# Firebase Admin / FCM service account (Expo only — never commit)
+*firebase-adminsdk*.json
+strawboss-*firebase*.json

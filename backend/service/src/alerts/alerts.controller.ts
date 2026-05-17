@@ -12,6 +12,8 @@ import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { createAlertSchema } from '@strawboss/validation';
 
 @Controller('alerts')
 export class AlertsController {
@@ -19,22 +21,26 @@ export class AlertsController {
 
   @Post()
   @Roles('admin' as UserRole)
-  create(@Body() dto: Record<string, unknown>) {
-    return this.alertsService.create(dto);
+  create(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(createAlertSchema)) dto: { category: string; severity?: string; title: string; description: string; machineId?: string | null },
+  ) {
+    return this.alertsService.create(user.organizationId, dto);
   }
 
   @Get()
   list(
+    @CurrentUser() user: RequestUser,
     @Query('category') category?: string,
     @Query('severity') severity?: string,
     @Query('isAcknowledged') isAcknowledged?: string,
   ) {
-    return this.alertsService.list({ category, severity, isAcknowledged });
+    return this.alertsService.list(user.organizationId, { category, severity, isAcknowledged });
   }
 
   @Get('unacknowledged')
-  listUnacknowledged() {
-    return this.alertsService.listUnacknowledged();
+  listUnacknowledged(@CurrentUser() user: RequestUser) {
+    return this.alertsService.listUnacknowledged(user.organizationId);
   }
 
   @Patch(':id/acknowledge')
@@ -43,6 +49,6 @@ export class AlertsController {
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.alertsService.acknowledge(id, user.id);
+    return this.alertsService.acknowledge(id, user.id, user.organizationId);
   }
 }

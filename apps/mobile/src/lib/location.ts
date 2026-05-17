@@ -94,7 +94,8 @@ async function postLocationReport(report: LocationReportDto): Promise<void> {
   await locationApiClient.post<void>('/api/v1/location/report', report);
 }
 
-async function flushPendingLocationReports(): Promise<void> {
+/** Retry outbox after failed background POSTs (e.g. offline / 401). */
+export async function flushPendingLocationReports(): Promise<void> {
   const pending = await readPendingReports();
   if (pending.length === 0) return;
 
@@ -108,6 +109,27 @@ async function flushPendingLocationReports(): Promise<void> {
     }
   }
   await writePendingReports(remaining);
+}
+
+/**
+ * One-shot foreground GPS → server (or outbox on failure). Call when the app
+ * becomes active so features like trucks-at-loader get a fresh loader ping
+ * even if background task batches were interrupted.
+ */
+export async function postCurrentLocationNow(machineId: string): Promise<void> {
+  const report = await getCurrentPosition(machineId);
+  if (!report) return;
+  try {
+    await postLocationReport(report);
+    await writeLastSuccessTimestamp();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    mobileLogger.warn('Location report failed (foreground ping), queued for retry', {
+      machineId,
+      message: msg,
+    });
+    await appendPendingReport(report);
+  }
 }
 
 function coordsToReport(machineId: string, loc: Location.LocationObject): LocationReportDto {

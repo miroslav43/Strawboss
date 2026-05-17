@@ -18,7 +18,7 @@ Strawboss/
 ├── apps/
 │   ├── admin-web/       Next.js 15 App Router dashboard
 │   └── mobile/          Expo SDK 54 + React Native mobile app
-├── supabase/migrations/ PostgreSQL schema (24 migration files)
+├── supabase/migrations/ PostgreSQL schema (37 migration files)
 ├── scripts/             Modular shell scripts for strawboss.sh
 ├── nginx/               Reverse proxy config
 ├── docker-compose.yml   Production orchestration
@@ -97,7 +97,7 @@ Each transition has a dedicated REST endpoint with:
 - **Optimistic lock** (WHERE status = $expectedStatus)
 - **Audit logging** (Winston flow + DB audit trigger)
 
-At `completed` status: **CMR document auto-generated** via BullMQ job (Puppeteer + Handlebars → PDF).
+**CMR auto-generation** (two stages via BullMQ): stage 1 at `depart` → partial PDF (status `partial`); stage 2 at `complete` → final PDF (status `generated`).
 
 See [Backend](backend.md) for endpoint details, [Domain](packages-domain.md) for state machine.
 
@@ -113,6 +113,10 @@ Mobile/Admin-web ──→ Bearer token ──→ NestJS AuthGuard (global APP_G
                                         └── ES256/RS256 verify (JWKS)
                                               │
                                               ▼
+                                        hydrateOrganizationFromJwt() fallback
+                                        (if JWT hook omits org claims, loads from DB)
+                                              │
+                                              ▼
                                         RolesGuard (global APP_GUARD)
                                               │
                                               ├── @Public() → skip auth
@@ -120,7 +124,7 @@ Mobile/Admin-web ──→ Bearer token ──→ NestJS AuthGuard (global APP_G
                                               └── @Roles('admin', 'driver') → role check
 ```
 
-**Roles**: `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`
+**Roles**: `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`
 
 **Mobile role-based routing**: Auth gate in `_layout.tsx` redirects to role-specific tab layout after login.
 
@@ -159,7 +163,7 @@ JobSchedulerService.onModuleInit()
   ├── alert-evaluation   every 15 min   → AlertsProcessor
   ├── reconciliation     every 1 hour   → ReconciliationProcessor
   ├── sync-cleanup       daily 02:00    → SyncCleanupProcessor
-  └── cmr-generation     on-demand      → CmrProcessor (triggered at trip complete)
+  └── cmr-generation     on-demand      → CmrProcessor (stage 1 at depart, stage 2 at complete)
 ```
 
 Redis is required for BullMQ (password-protected in production).

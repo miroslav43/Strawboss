@@ -3,6 +3,10 @@ import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import {
+  buildSimulatedPush,
+  type SimulatePushEvent,
+} from './simulate-push-templates';
 
 @Injectable()
 export class NotificationsService {
@@ -33,8 +37,31 @@ export class NotificationsService {
   }
 
   /**
-   * Send a push notification via Expo's push API.
+   * Send a templated simulated push (same payloads as dev simulator) to one user.
+   * Production-safe when called from admin-only routes.
    */
+  async sendSimulatedPushToUser(
+    userId: string,
+    orgId: string | null,
+    event: SimulatePushEvent,
+    vars: Record<string, string> = {},
+  ): Promise<void> {
+    if (orgId !== null) {
+      const checkRows = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM users
+        WHERE id = ${userId}::uuid
+          AND deleted_at IS NULL
+          AND organization_id = ${orgId}::uuid
+      `) as unknown as { id: string }[];
+      if (checkRows.length === 0) {
+        throw new ForbiddenException('Target user not found in your organization');
+      }
+    }
+    const { title, body, data } = buildSimulatedPush(event, vars);
+    await this.sendPush(userId, title, body, data);
+  }
+
+  /** Send a push notification via Expo's push API. */
   async sendPush(
     userId: string,
     title: string,
@@ -71,14 +98,36 @@ export class NotificationsService {
         body: JSON.stringify(messages),
       });
 
+      const raw = await response.text();
+
       if (!response.ok) {
-        const body = await response.text();
         this.winston.error('Expo push HTTP error', {
           context: 'NotificationsService',
           userId,
           status: response.status,
-          body,
+          body: raw.slice(0, 2000),
         });
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw) as {
+          data?: Array<{ status?: string; message?: string; details?: unknown }>;
+        };
+        const errors = (parsed.data ?? []).filter((r) => r.status === 'error');
+        if (errors.length > 0) {
+          this.winston.error('Expo push ticket error(s)', {
+            context: 'NotificationsService',
+            userId,
+            errors: errors.map((e) => ({
+              message: e.message,
+              details: e.details,
+            })),
+            hint: 'Upload FCM credentials for this Expo project: https://docs.expo.dev/push-notifications/fcm-credentials/',
+          });
+        }
+      } catch {
+        /* non-JSON body — ignore */
       }
     } catch (err) {
       this.winston.error('Expo push request error', {
@@ -94,8 +143,10 @@ export class NotificationsService {
 
   /**
    * Broadcast a push notification to all users, users of a specific role, or a single user.
+   * Scoped to the caller's organization.
    */
   async broadcast(
+    orgId: string | null,
     target: { kind: 'all' } | { kind: 'role'; role: string } | { kind: 'user'; userId: string },
     title: string,
     body: string,
@@ -103,17 +154,46 @@ export class NotificationsService {
     let userIds: string[];
 
     if (target.kind === 'user') {
+      if (orgId !== null) {
+        const checkRows = await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM users
+          WHERE id = ${target.userId}::uuid
+            AND deleted_at IS NULL
+            AND organization_id = ${orgId}::uuid
+        `) as unknown as { id: string }[];
+        if (checkRows.length === 0) {
+          throw new ForbiddenException('Target user not found in your organization');
+        }
+      }
       userIds = [target.userId];
     } else if (target.kind === 'role') {
-      const rows = await this.drizzleProvider.db.execute(sql`
-        SELECT id FROM users WHERE role = ${target.role} AND deleted_at IS NULL
-      `) as unknown as { id: string }[];
+      const conditions: ReturnType<typeof sql>[] = [
+        sql`role = ${target.role}`,
+        sql`deleted_at IS NULL`,
+      ];
+      if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+      const where = sql.join(conditions, sql` AND `);
+      const rows = await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM users WHERE ${where}`,
+      ) as unknown as { id: string }[];
       userIds = rows.map(r => r.id);
     } else {
-      const rows = await this.drizzleProvider.db.execute(sql`
-        SELECT DISTINCT user_id::text as id FROM device_push_tokens WHERE is_active = true
-      `) as unknown as { id: string }[];
-      userIds = rows.map(r => r.id);
+      // kind: 'all' — scope to org's device tokens via user join
+      if (orgId !== null) {
+        const rows = await this.drizzleProvider.db.execute(sql`
+          SELECT DISTINCT dpt.user_id::text AS id
+          FROM device_push_tokens dpt
+          JOIN users u ON u.id = dpt.user_id AND u.deleted_at IS NULL
+          WHERE dpt.is_active = true
+            AND u.organization_id = ${orgId}::uuid
+        `) as unknown as { id: string }[];
+        userIds = rows.map(r => r.id);
+      } else {
+        const rows = await this.drizzleProvider.db.execute(sql`
+          SELECT DISTINCT user_id::text AS id FROM device_push_tokens WHERE is_active = true
+        `) as unknown as { id: string }[];
+        userIds = rows.map(r => r.id);
+      }
     }
 
     await Promise.all(
@@ -158,17 +238,21 @@ export class NotificationsService {
     assignmentId: string,
     baleCount?: number,
     callerUserId?: string,
+    orgId?: string | null,
   ): Promise<void> {
     // Verify ownership: caller must own the assignment (or be admin — checked at controller)
     // Verify assignment exists and check ownership
     const ownerCheck = await this.drizzleProvider.db.execute(sql`
-      SELECT assigned_user_id FROM task_assignments
+      SELECT assigned_user_id, organization_id FROM task_assignments
       WHERE id = ${assignmentId}::uuid AND deleted_at IS NULL
       LIMIT 1
     `);
-    const rows = ownerCheck as unknown as { assigned_user_id: string | null }[];
+    const rows = ownerCheck as unknown as { assigned_user_id: string | null; organization_id: string | null }[];
     if (rows.length === 0) {
       throw new ForbiddenException('Assignment not found');
+    }
+    if (orgId !== null && orgId !== undefined && rows[0].organization_id !== orgId) {
+      throw new ForbiddenException('Assignment not found in your organization');
     }
     if (callerUserId && rows[0].assigned_user_id && rows[0].assigned_user_id !== callerUserId) {
       throw new ForbiddenException('You do not own this assignment');
@@ -200,14 +284,15 @@ export class NotificationsService {
     if (baleCount != null && baleCount > 0) {
       await this.drizzleProvider.db.execute(sql`
         INSERT INTO bale_productions
-          (parcel_id, baler_id, operator_id, production_date, bale_count, end_time)
+          (parcel_id, baler_id, operator_id, production_date, bale_count, end_time, organization_id)
         SELECT
           ta.parcel_id,
           ta.machine_id,
           ta.assigned_user_id,
           CURRENT_DATE,
           ${baleCount},
-          now()
+          now(),
+          ta.organization_id
         FROM task_assignments ta
         WHERE ta.id = ${assignmentId}::uuid
           AND ta.parcel_id IS NOT NULL

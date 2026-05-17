@@ -20,7 +20,7 @@ Defined in `packages/validation/src/helpers/`:
 
 ### Farm (`schemas/farm.schema.ts`)
 
-- `createFarmSchema`: `name` (string, min 1, required), `address` (string, optional).
+- `createFarmSchema`: `name` (string, min 1, required), `address` (string, optional), `phone` (optional), `fiscalCode` (optional), `registrationNumber` (optional), `bankAccount` (optional), `bankName` (optional).
 - `updateFarmSchema`: All fields from create, partial.
 
 ### User (`schemas/user.schema.ts`)
@@ -121,11 +121,11 @@ Defined in `packages/validation/src/helpers/`:
 | Schema | Required Fields | Validation Rules |
 |---|---|---|
 | `startLoadingSchema` | `loaderOperatorId` (UUID) | `loaderId` optional UUID |
-| `completeLoadingSchema` | (empty object) | -- |
-| `departSchema` | `departureOdometerKm` | nonnegative number |
+| `completeLoadingSchema` | (empty object) | `loaderSignature` optional base64/URL string |
+| `departSchema` | `departureOdometerKm`, `driverSignature` | odometer nonnegative; signature min 1 |
 | `arriveSchema` | `arrivalOdometerKm` | nonnegative number |
 | `startDeliverySchema` | -- | optional `destinationName` |
-| `confirmDeliverySchema` | `grossWeightKg` | positive number; optional `weightTicketNumber` |
+| `confirmDeliverySchema` | `grossWeightKg` | positive number; optional `weightTicketNumber`; optional `weightTicketPhotoUrl`; optional `deterioratedBalesCount` (nonneg int) |
 | `completeSchema` | `receiverName`, `receiverSignature` | both min 1 |
 | `cancelSchema` | `cancellationReason` | min 1 |
 | `disputeSchema` | `reason` | min 1 |

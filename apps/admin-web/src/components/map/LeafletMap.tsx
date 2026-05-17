@@ -110,7 +110,6 @@ function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): stri
       <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${esc(p.code)}</div>
       ${p.areaHectares != null ? `<div style="font-size:12px;color:#6b7280;">${p.areaHectares} ha</div>` : ''}
       ${p.municipality  ? `<div style="font-size:12px;color:#6b7280;">${esc(p.municipality)}</div>`  : ''}
-      ${p.ownerName     ? `<div style="font-size:12px;color:#6b7280;">${esc(p.ownerName)}</div>`     : ''}
       <div style="margin-top:4px;font-size:11px;color:#6b7280;">
         ${esc(s.harvestStatusLabel)}: ${esc(s.labelHarvestStatus(p.harvestStatus))}
       </div>

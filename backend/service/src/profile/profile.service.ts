@@ -22,16 +22,20 @@ export class ProfileService {
   async findByUserId(userId: string): Promise<User> {
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
-        id, email, phone, full_name AS "fullName",
-        role, is_active AS "isActive", locale,
-        avatar_url AS "avatarUrl",
-        last_login_at AS "lastLoginAt",
-        assigned_machine_id AS "assignedMachineId",
-        notification_prefs AS "notificationPrefs",
-        created_at AS "createdAt", updated_at AS "updatedAt",
-        deleted_at AS "deletedAt"
-      FROM users
-      WHERE id = ${userId}::uuid AND deleted_at IS NULL
+        u.id, u.email, u.phone, u.full_name AS "fullName",
+        u.role, u.is_active AS "isActive", u.locale,
+        u.avatar_url AS "avatarUrl",
+        u.last_login_at AS "lastLoginAt",
+        u.assigned_machine_id AS "assignedMachineId",
+        u.notification_prefs AS "notificationPrefs",
+        u.organization_id AS "organizationId",
+        o.slug AS "organizationSlug",
+        u.created_at AS "createdAt", u.updated_at AS "updatedAt",
+        u.deleted_at AS "deletedAt"
+      FROM users u
+      LEFT JOIN organizations o
+        ON o.id = u.organization_id AND o.deleted_at IS NULL
+      WHERE u.id = ${userId}::uuid AND u.deleted_at IS NULL
       LIMIT 1
     `);
     const rows = result as unknown as User[];
@@ -82,16 +86,32 @@ export class ProfileService {
 
   async changePassword(
     userId: string,
-    _currentPassword: string,
+    currentPassword: string,
     newPassword: string,
   ): Promise<void> {
     if (!newPassword || newPassword.length < 6) {
       throw new BadRequestException('New password must be at least 6 characters');
     }
 
-    // Ensure the user exists before hitting Supabase Auth admin API
-    // (credentials live in auth.users, not public.users).
-    await this.findByUserId(userId);
+    // Fetch the user to get their email for re-authentication
+    const user = await this.findByUserId(userId);
+
+    // Verify current password by attempting sign-in with the user client
+    const anonKey = this.configService.getOrThrow<string>('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    const supabaseUrl = this.configService.getOrThrow<string>('SUPABASE_URL');
+    const userClient = createClient(supabaseUrl, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: signInError } = await userClient.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (signInError) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    // Invalidate the verification session immediately — we don't need it
+    await userClient.auth.signOut();
+
     const { error } = await this.supabase.auth.admin.updateUserById(userId, {
       password: newPassword,
     });

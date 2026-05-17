@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 
@@ -6,14 +6,20 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class BaleProductionsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(filters?: {
-    operatorId?: string;
-    parcelId?: string;
-    dateFrom?: string;
-    dateTo?: string;
-  }) {
+  async list(
+    orgId: string | null,
+    filters?: {
+      operatorId?: string;
+      parcelId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.operatorId) {
       conditions.push(sql`operator_id = ${filters.operatorId}`);
     }
@@ -50,15 +56,21 @@ export class BaleProductionsService {
     return result;
   }
 
-  async getStats(filters?: {
-    operatorId?: string;
-    parcelId?: string;
-    dateFrom?: string;
-    dateTo?: string;
-    groupBy?: 'operator' | 'parcel' | 'date';
-  }) {
+  async getStats(
+    orgId: string | null,
+    filters?: {
+      operatorId?: string;
+      parcelId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      groupBy?: 'operator' | 'parcel' | 'date';
+    },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`bp.deleted_at IS NULL`];
 
+    if (orgId !== null) {
+      conditions.push(sql`bp.organization_id = ${orgId}::uuid`);
+    }
     if (filters?.operatorId) {
       conditions.push(sql`bp.operator_id = ${filters.operatorId}::uuid`);
     }
@@ -126,19 +138,41 @@ export class BaleProductionsService {
     return this.drizzleProvider.db.execute(query);
   }
 
-  async create(dto: Record<string, unknown>) {
+  async create(orgId: string, dto: Record<string, unknown>) {
+    if (orgId !== null) {
+      const parcelCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM parcels
+        WHERE id = ${dto.parcelId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!parcelCheck.length) throw new BadRequestException('Parcel not found in your organization');
+
+      const balerCheck = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines
+        WHERE id = ${dto.balerId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `) as unknown as { id: string }[];
+      if (!balerCheck.length) throw new BadRequestException('Baler machine not found in your organization');
+    }
+
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO bale_productions (
         id, parcel_id, baler_id, operator_id,
         production_date, bale_count, avg_bale_weight_kg,
-        start_time, end_time, farmtrack_session_id
+        start_time, end_time, farmtrack_session_id,
+        organization_id
       ) VALUES (
         gen_random_uuid(),
         ${dto.parcelId}, ${dto.balerId}, ${dto.operatorId},
         ${dto.productionDate}, ${dto.baleCount},
         ${dto.avgBaleWeightKg ?? null},
         ${dto.startTime ?? null}, ${dto.endTime ?? null},
-        ${dto.farmtrackSessionId ?? null}
+        ${dto.farmtrackSessionId ?? null},
+        ${orgId}::uuid
       ) RETURNING *`,
     );
     return result;

@@ -63,6 +63,8 @@ Global providers (registered in `AppModule.providers`):
 
 Role extraction order: `payload.app_metadata.role` -> `payload.user_role` -> `payload.role`
 
+**Organization hydration fallback**: if the JWT hook omits org claims, `hydrateOrganizationFromJwt()` loads them from the DB before attaching the user to the request.
+
 The resolved user is attached to `request.user` as `RequestUser { id, email, role }`.
 
 ### Decorators
@@ -83,12 +85,12 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 - `GET /trips/:id` -- any authenticated -- single trip by ID
 - `POST /trips` -- @Roles(admin, dispatcher) -- create a new trip (status: planned)
 - `POST /trips/:id/start-loading` -- @Roles(admin, loader_operator) -- planned -> loading
-- `POST /trips/:id/complete-loading` -- @Roles(admin, loader_operator) -- loading -> loaded (validates bale_loads > 0)
-- `POST /trips/:id/depart` -- @Roles(admin, driver) -- loaded -> in_transit (records departure odometer)
+- `POST /trips/:id/complete-loading` -- @Roles(admin, loader_operator) -- loading -> loaded (validates bale_loads > 0; saves `loaderSignatureUrl`)
+- `POST /trips/:id/depart` -- @Roles(admin, driver) -- loaded -> in_transit (records departure odometer; saves `driverSignatureUrl`; queues CMR stage 1)
 - `POST /trips/:id/arrive` -- @Roles(admin, driver) -- in_transit -> arrived (calculates odometer distance)
 - `POST /trips/:id/start-delivery` -- @Roles(admin, driver) -- arrived -> delivering
-- `POST /trips/:id/confirm-delivery` -- @Roles(admin, driver) -- delivering -> delivered (records gross weight, computes net from truck tare)
-- `POST /trips/:id/complete` -- @Roles(admin, driver) -- delivered -> completed (records receiver signature, auto-queues CMR generation)
+- `POST /trips/:id/confirm-delivery` -- @Roles(admin, driver) -- delivering -> delivered (records gross weight, computes net from truck tare; saves `deterioratedBalesCount`)
+- `POST /trips/:id/complete` -- @Roles(admin, driver) -- delivered -> completed (records receiver signature; queues CMR stage 2)
 - `POST /trips/:id/cancel` -- @Roles(admin) -- any pre-completed -> cancelled
 - `POST /trips/:id/dispute` -- @Roles(admin) -- delivered -> disputed
 - `POST /trips/:id/resolve-dispute` -- @Roles(admin) -- disputed -> completed or delivered
@@ -246,9 +248,14 @@ BullMQ processor on `sync-cleanup` queue. Deletes `sync_idempotency` records old
 
 ## CMR Generation (`src/documents/cmr/`)
 
-- `CmrService` (`cmr.service.ts`): loads `cmr.hbs` Handlebars template at construction. `generateCmr(tripId)` fetches trip + parcel + truck + driver + bale_loads, renders HTML, converts to PDF via Puppeteer (`headless: true, --no-sandbox`), stores base64 data URL
-- `CmrProcessor` (`cmr.processor.ts`): BullMQ processor on `cmr-generation` queue, calls `cmrService.generateCmr()`
-- Auto-trigger: `TripsService.complete()` adds a job to the CMR queue after marking trip completed
+Two-stage generation via BullMQ:
+
+- **Stage 1** (at `depart`): `TripsService.depart()` queues `{ tripId, stage: 1 }`. Produces a partial PDF; document status set to `partial`.
+- **Stage 2** (at `complete`): `TripsService.complete()` queues `{ tripId, stage: 2 }`. Produces the final PDF; document status set to `generated`.
+
+- `CmrService` (`cmr.service.ts`): loads `cmr.hbs` Handlebars template at construction. `generateCmr(tripId, stage)` fetches trip + parcel + truck + driver + bale_loads, renders HTML, converts to PDF via Puppeteer (`headless: true, --no-sandbox`), stores base64 data URL. Stage 1 omits driver signature; stage 2 includes it.
+- `CmrProcessor` (`cmr.processor.ts`): BullMQ processor on `cmr-generation` queue, reads `job.data.stage` and calls `cmrService.generateCmr(tripId, stage)`
+- On-demand override: `POST /trips/:tripId/generate-cmr` (`@Roles(admin, dispatcher)`).
 
 ---
 

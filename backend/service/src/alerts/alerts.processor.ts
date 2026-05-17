@@ -86,8 +86,9 @@ export class AlertsProcessor extends WorkerHost {
       });
 
       // Create alert records
+      const tripOrgId = trip.organization_id as string;
       for (const draft of alertDrafts) {
-        await this.alertsService.createFromDraft(draft);
+        await this.alertsService.createFromDraft(draft, tripOrgId);
       }
     }
 

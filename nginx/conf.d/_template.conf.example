@@ -1,0 +1,24 @@
+# Site nou — copy la `40-exemplu.conf` și editează `server_name`, cert paths, proxy.
+
+# server {
+#     listen 80;
+#     server_name exemplu.ro;
+#
+#     location /.well-known/acme-challenge/ {
+#         root /var/www/certbot;
+#     }
+#
+#     location / {
+#         return 301 https://$host$request_uri;
+#     }
+# }
+#
+# server {
+#     listen 443 ssl;
+#     server_name exemplu.ro;
+#     ssl_certificate     /etc/letsencrypt/live/exemplu.ro/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/exemplu.ro/privkey.pem;
+#     location / {
+#         proxy_pass http://upstream_backend;
+#     }
+# }

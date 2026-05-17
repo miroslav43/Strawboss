@@ -17,12 +17,12 @@ const MACHINE_COLS = sql`
   current_odometer_km       AS "currentOdometerKm",
   current_hourmeter_hrs     AS "currentHourmeterHrs",
   is_active                 AS "isActive",
-  max_payload_kg            AS "maxPayloadKg",
   max_bale_count            AS "maxBaleCount",
   tare_weight_kg            AS "tareWeightKg",
-  bales_per_hour_avg        AS "balesPerHourAvg",
   bale_weight_avg_kg        AS "baleWeightAvgKg",
-  reach_meters              AS "reachMeters",
+  owner_company_name        AS "ownerCompanyName",
+  owner_company_address     AS "ownerCompanyAddress",
+  owner_company_cui         AS "ownerCompanyCui",
   created_at                AS "createdAt",
   updated_at                AS "updatedAt",
   deleted_at                AS "deletedAt"
@@ -32,9 +32,12 @@ const MACHINE_COLS = sql`
 export class MachinesService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(filters?: { machineType?: string; isActive?: boolean }) {
+  async list(orgId: string | null, filters?: { machineType?: string; isActive?: boolean }) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
     if (filters?.machineType) {
       conditions.push(sql`machine_type = ${filters.machineType}`);
     }
@@ -49,9 +52,15 @@ export class MachinesService {
     return result;
   }
 
-  async findById(id: string) {
+  async findById(id: string, orgId: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT ${MACHINE_COLS} FROM machines WHERE id = ${id} AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT ${MACHINE_COLS} FROM machines WHERE ${where} LIMIT 1`,
     );
     const rows = result as unknown as Record<string, unknown>[];
     if (!rows.length) {
@@ -60,17 +69,19 @@ export class MachinesService {
     return rows[0];
   }
 
-  async create(dto: Record<string, unknown>) {
+  async create(orgId: string | null, dto: Record<string, unknown>) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO machines (
+        organization_id,
         machine_type, registration_plate, internal_code, make, model, year,
         fuel_type, tank_capacity_liters, farmtrack_device_id,
         current_odometer_km, current_hourmeter_hrs, is_active,
-        max_payload_kg, max_bale_count, tare_weight_kg,
-        bales_per_hour_avg, bale_weight_avg_kg, reach_meters
+        max_bale_count, tare_weight_kg, bale_weight_avg_kg,
+        owner_company_name, owner_company_address, owner_company_cui
       ) VALUES (
+        ${orgId}::uuid,
         ${dto.machineType}::machine_type,
-        ${dto.registrationPlate ?? null},
+        ${dto.registrationPlate},
         ${dto.internalCode},
         ${dto.make}, ${dto.model}, ${dto.year},
         ${dto.fuelType}::fuel_type,
@@ -79,40 +90,40 @@ export class MachinesService {
         ${dto.currentOdometerKm ?? 0},
         ${dto.currentHourmeterHrs ?? 0},
         true,
-        ${dto.maxPayloadKg ?? null},
         ${dto.maxBaleCount ?? null},
         ${dto.tareWeightKg ?? null},
-        ${dto.balesPerHourAvg ?? null},
         ${dto.baleWeightAvgKg ?? null},
-        ${dto.reachMeters ?? null}
+        ${dto.ownerCompanyName ?? null},
+        ${dto.ownerCompanyAddress ?? null},
+        ${dto.ownerCompanyCui ?? null}
       ) RETURNING ${MACHINE_COLS}`,
     );
     return (result as unknown as Record<string, unknown>[])[0];
   }
 
-  async update(id: string, dto: Record<string, unknown>) {
-    await this.findById(id);
+  async update(id: string, orgId: string | null, dto: Record<string, unknown>) {
+    await this.findById(id, orgId);
 
     const setClauses: ReturnType<typeof sql>[] = [];
     const fieldMap: Record<string, string> = {
-      machineType:         'machine_type',
-      registrationPlate:   'registration_plate',
-      internalCode:        'internal_code',
-      make:                'make',
-      model:               'model',
-      year:                'year',
-      fuelType:            'fuel_type',
-      tankCapacityLiters:  'tank_capacity_liters',
-      farmtrackDeviceId:   'farmtrack_device_id',
-      currentOdometerKm:   'current_odometer_km',
-      currentHourmeterHrs: 'current_hourmeter_hrs',
-      isActive:            'is_active',
-      maxPayloadKg:        'max_payload_kg',
-      maxBaleCount:        'max_bale_count',
-      tareWeightKg:        'tare_weight_kg',
-      balesPerHourAvg:     'bales_per_hour_avg',
-      baleWeightAvgKg:     'bale_weight_avg_kg',
-      reachMeters:         'reach_meters',
+      machineType:          'machine_type',
+      registrationPlate:    'registration_plate',
+      internalCode:         'internal_code',
+      make:                 'make',
+      model:                'model',
+      year:                 'year',
+      fuelType:             'fuel_type',
+      tankCapacityLiters:   'tank_capacity_liters',
+      farmtrackDeviceId:    'farmtrack_device_id',
+      currentOdometerKm:    'current_odometer_km',
+      currentHourmeterHrs:  'current_hourmeter_hrs',
+      isActive:             'is_active',
+      maxBaleCount:         'max_bale_count',
+      tareWeightKg:         'tare_weight_kg',
+      baleWeightAvgKg:      'bale_weight_avg_kg',
+      ownerCompanyName:     'owner_company_name',
+      ownerCompanyAddress:  'owner_company_address',
+      ownerCompanyCui:      'owner_company_cui',
     };
 
     for (const [key, column] of Object.entries(fieldMap)) {
@@ -124,26 +135,38 @@ export class MachinesService {
     }
 
     if (setClauses.length === 0) {
-      return this.findById(id);
+      return this.findById(id, orgId);
     }
 
     setClauses.push(sql`updated_at = NOW()`);
     const setClause = sql.join(setClauses, sql`, `);
 
+    const updateConditions: ReturnType<typeof sql>[] = [
+      sql`id = ${id}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) updateConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const updateWhere = sql.join(updateConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE machines SET ${setClause}
-          WHERE id = ${id} AND deleted_at IS NULL
+          WHERE ${updateWhere}
           RETURNING ${MACHINE_COLS}`,
     );
     return (result as unknown as Record<string, unknown>[])[0];
   }
 
-  async softDelete(id: string) {
-    await this.findById(id);
+  async softDelete(id: string, orgId: string | null) {
+    await this.findById(id, orgId);
+
+    const deleteConditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`];
+    if (orgId !== null) deleteConditions.push(sql`organization_id = ${orgId}::uuid`);
+    const deleteWhere = sql.join(deleteConditions, sql` AND `);
+
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE machines
           SET deleted_at = NOW(), updated_at = NOW()
-          WHERE id = ${id}
+          WHERE ${deleteWhere}
           RETURNING ${MACHINE_COLS}`,
     );
     return (result as unknown as Record<string, unknown>[])[0];

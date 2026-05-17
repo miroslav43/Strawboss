@@ -35,6 +35,7 @@ import { GeofenceModule } from './geofence/geofence.module';
 import { MobileLogsModule } from './mobile-logs/mobile-logs.module';
 import { HealthModule } from './health/health.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { DevModule } from './dev/dev.module';
 
 // Dev-only mock simulator endpoints — gated behind NODE_ENV so production
@@ -51,6 +52,7 @@ const devModules =
     HealthModule,
     ConfigModule,
     DatabaseModule,
+    OrganizationsModule,
     AuthModule,
     ParcelsModule,
     MachinesModule,

@@ -22,15 +22,17 @@ Expo SDK 54 + Expo Router. Offline-first: all writes go to local SQLite + sync q
 | `baler_operator` | `/(baler)` | `app/(baler)/_layout.tsx` |
 | `loader_operator` | `/(loader)` | `app/(loader)/_layout.tsx` |
 | `driver` | `/(driver)` | `app/(driver)/_layout.tsx` |
+| `geofence_maker` | `/(geofence-maker)` | `app/(geofence-maker)/_layout.tsx` |
 | Other/admin | `/(tabs)` | `app/(tabs)/_layout.tsx` |
 
 If `segments[0]` does not match the target segment for the user's role, the auth gate redirects.
 
-### 4 tab layouts
+### 5 tab layouts
 
 **Baler** (`app/(baler)/_layout.tsx`): Acasa (home), Consumabile, Harta, Starea Mea (stats), Profil
 **Driver** (`app/(driver)/_layout.tsx`): Cursele Mele (trips), Livrare, Harta, Combustibil, Profil
 **Loader** (`app/(loader)/_layout.tsx`): Scaneaza (scan), Incarcari (bales), Harta, Consumabile, Profil
+**Geofence Maker** (`app/(geofence-maker)/_layout.tsx`): index, farms, map, Profil
 **Admin/fallback** (`app/(tabs)/_layout.tsx`): Home, Scan, Trips, Sync, Profil
 
 All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top of all screens via `useGeofenceNotifications()`.
@@ -66,6 +68,14 @@ All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top o
 | Consumables | `consumables.tsx` | `ConsumableFlow` |
 | Profile | `profile.tsx` | `ProfileScreen` |
 
+### Geofence Maker (`app/(geofence-maker)/`)
+| Screen | File | Purpose |
+|---|---|---|
+| Home | `index.tsx` | Dashboard / overview |
+| Farms | `farms.tsx` | Farms list |
+| Map | `map.tsx` | `MapScreen` with geofence boundaries |
+| Profile | `profile.tsx` | `ProfileScreen` |
+
 ### Admin/generic (`app/(tabs)/`)
 | Screen | File | Purpose |
 |---|---|---|
@@ -80,6 +90,7 @@ All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top o
 |---|---|---|
 | Trip detail | `app/trip/[tripId].tsx` | Full trip detail with state transitions |
 | Baler production | `app/baler-ops/production.tsx` | `ProductionFlow` standalone entry |
+| Driver departure | `app/driver-ops/departure-flow.tsx` | Two-step departure flow: odometru + semnătură șofer (replaces direct depart call) |
 | Driver delivery | `app/driver-ops/delivery-flow.tsx` | `DeliveryFlow` standalone entry |
 | Loader bales | `app/loader-ops/load-bales.tsx` | `LoadingFlow` standalone entry |
 | Deliver operation | `app/operations/deliver.tsx` | Operation-based delivery |
@@ -206,7 +217,7 @@ Mounted in every role-specific tab layout (baler, driver, loader) as an absolute
 - Fetches `GET /api/v1/task-assignments/daily-plan/{today}` (returns `DailyPlanResponse` with `available`, `inProgress[]`, `done`)
 - Collects all assignments, filters client-side by `assignedUserId`
 - Sorts by `sequenceOrder`
-- Refetches every 60 seconds
+- Refetches every 30 seconds
 - Returns `{ tasks: MyTask[], isLoading, error, refetch }`
 
 ### TaskList component (`src/components/shared/TaskList.tsx`)
@@ -334,6 +345,7 @@ Cloud builds via Expo Application Services. Profile configured in `eas.json`.
 - `useGeofenceNotifications` -- see Geofence UX section
 - `useLocationTracking` -- see Location Tracking section
 - `useMyTasks` -- see Task List section
+- `useCurrentLoaderParcel` -- GPS-based active parcel detection for loader operators. GPS timeout 15s (retry 1x after 5s). Returns status: `locating` | `found` | `not_found` | `multiple_active` | `error`. `multiple_active` means >1 parcels match the GPS position.
 
 ---
 

@@ -22,8 +22,14 @@ export function useFarm(client: ApiClient, id: string) {
 export function useCreateFarm(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; address?: string }) =>
-      client.post<Farm>('/api/v1/farms', data),
+    mutationFn: (data: {
+      name: string;
+      phone: string;
+      entityType?: 'persoana_juridica' | 'persoana_fizica';
+      cui?: string;
+      apiaCode?: string;
+      address?: string;
+    }) => client.post<Farm>('/api/v1/farms', data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.farms.all });
     },
@@ -33,7 +39,10 @@ export function useCreateFarm(client: ApiClient) {
 export function useUpdateFarm(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Pick<Farm, 'name' | 'address'>> }) =>
+    mutationFn: ({ id, data }: {
+      id: string;
+      data: Partial<Pick<Farm, 'name' | 'address' | 'phone' | 'entityType' | 'cui' | 'apiaCode'>>;
+    }) =>
       client.patch<Farm>(`/api/v1/farms/${id}`, data),
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.farms.detail(id) });
