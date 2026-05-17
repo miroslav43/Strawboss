@@ -1,0 +1,58 @@
+name: Bug Scan
+
+# Rulează la fiecare push o analiză completă de bug-uri (securitate web/mobile,
+# logică, integritate date) și publică un raport ca GitHub issue.
+on:
+  push:
+    paths-ignore:
+      - '.claude/**'
+      - '**/*.md'
+      - 'docs/**'
+
+# Anulează un scan în desfășurare dacă apare un push nou pe același branch.
+concurrency:
+  group: bug-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bug-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout (cu istoric)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Claude bug-hunt
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Token OAuth dintr-un abonament Claude (claude setup-token).
+          # Alternativ: anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Repo: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Push: ${{ github.event.before }} -> ${{ github.sha }}
+
+            Fă o analiză completă de bug-uri pe schimbările din acest push.
+
+            1. Obține fișierele schimbate:
+               `git diff --name-only ${{ github.event.before }} ${{ github.sha }}`
+               Dacă `${{ github.event.before }}` e format doar din zerouri (branch nou),
+               compară cu `origin/main`. Dacă diff-ul e gol, nu crea niciun issue și oprește-te.
+            2. Invocă skill-ul `strawboss-bug-hunt` pentru analiza multi-unghi completă —
+               securitate web/backend, securitate mobilă, bug-uri de logică, integritate date,
+               calitate cod. Skill-ul dispecerizează agenții de review specializați.
+            3. Dacă există cel puțin un finding, scrie raportul consolidat într-un fișier și
+               creează UN SINGUR GitHub issue:
+               `gh issue create --label bug-scan --title "Bug scan: ${{ github.ref_name }} <short-sha>" --body-file <raport.md>`
+               Dacă nu există findings, nu crea niciun issue — afișează doar "no findings".
+
+            Nu modifica cod. Doar analizează și raportează.
+          claude_args: |
+            --allowedTools Read,Grep,Glob,Bash,Write,Task
+            --max-turns 50
