@@ -78,14 +78,15 @@ export class FuelLogsService {
 
   async create(orgId: string, dto: Record<string, unknown>) {
     if (orgId !== null) {
-      const machineCheck = await this.drizzleProvider.db.execute(sql`
+      const machineCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines
         WHERE id = ${dto.machineId}::uuid
           AND organization_id = ${orgId}::uuid
           AND deleted_at IS NULL
         LIMIT 1
-      `) as unknown as { id: string }[];
-      if (!machineCheck.length) throw new BadRequestException('Machine not found in your organization');
+      `)) as unknown as { id: string }[];
+      if (!machineCheck.length)
+        throw new BadRequestException('Machine not found in your organization');
     }
 
     const orgFilter = orgId ? sql`AND organization_id = ${orgId}::uuid` : sql``;
@@ -95,7 +96,7 @@ export class FuelLogsService {
         machine_id, operator_id, parcel_id, logged_at, fuel_type,
         quantity_liters, unit_price, total_cost, odometer_km,
         hourmeter_hrs, is_full_tank, receipt_photo_url, notes,
-        client_id, sync_version, organization_id
+        client_id, organization_id
       ) VALUES (
         ${dto.machineId}, ${dto.operatorId}, ${dto.parcelId ?? null},
         ${dto.loggedAt}, ${dto.fuelType},
@@ -103,7 +104,7 @@ export class FuelLogsService {
         ${dto.totalCost ?? null}, ${dto.odometerKm ?? null},
         ${dto.hourmeterHrs ?? null}, ${dto.isFullTank},
         ${dto.receiptPhotoUrl ?? null}, ${dto.notes ?? null},
-        ${dto.clientId ?? null}, 1,
+        ${dto.clientId ?? null},
         ${orgId}::uuid
       ) RETURNING *`,
     );
