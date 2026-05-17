@@ -665,16 +665,11 @@ export class TripsService implements OnModuleInit {
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'ARRIVE');
 
-    const departureOdometer = trip.departure_odometer_km as number | null;
-    const odometerDistance =
-      departureOdometer !== null ? dto.arrivalOdometerKm - departureOdometer : null;
-
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.arrived},
         arrival_odometer_km = ${dto.arrivalOdometerKm},
         arrival_at = NOW(),
-        odometer_distance_km = ${odometerDistance},
         updated_at = NOW()
       WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
@@ -727,14 +722,12 @@ export class TripsService implements OnModuleInit {
     );
     const truckRows = truckResult as unknown as { tare_weight_kg: number | null }[];
     const tareWeightKg = truckRows[0]?.tare_weight_kg ?? null;
-    const netWeightKg = tareWeightKg !== null ? dto.grossWeightKg - tareWeightKg : null;
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.delivered},
         gross_weight_kg = ${dto.grossWeightKg},
         tare_weight_kg = ${tareWeightKg},
-        net_weight_kg = ${netWeightKg},
         weight_ticket_number = ${dto.weightTicketNumber ?? null},
         weight_ticket_photo_url = ${dto.weightTicketPhotoUrl ?? null},
         deteriorated_bales_count = ${dto.deterioratedBalesCount ?? null},
