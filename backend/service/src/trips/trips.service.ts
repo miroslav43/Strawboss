@@ -1112,6 +1112,7 @@ export class TripsService implements OnModuleInit {
             destination_coords  = ${dest.coords_geojson ? sql`ST_GeomFromGeoJSON(${dest.coords_geojson})` : sql`NULL`},
             updated_at          = NOW()
           WHERE id = ${id}
+            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
           RETURNING *`,
     );
 
