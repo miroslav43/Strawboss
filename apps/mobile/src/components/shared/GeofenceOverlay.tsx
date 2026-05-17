@@ -1,13 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Animated,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { BigButton } from '@/components/ui/BigButton';
 import type { GeofenceAlert } from '@/hooks/useGeofenceNotifications';
@@ -21,38 +15,27 @@ interface GeofenceOverlayProps {
 /**
  * Overlay displayed on top of all screens when a geofence event occurs.
  *
- * - field_entry / deposit_entry: green/blue banner at top, auto-dismiss 5s
+ * - field_entry: green banner at top, auto-dismiss 5s
+ * - deposit_entry: bottom-sheet popup with an action to mark arrival
  * - exit_confirm: fullscreen modal with NumericPad for bale count entry
  */
-export function GeofenceOverlay({
-  alert,
-  onDismiss,
-  onConfirmParcelDone,
-}: GeofenceOverlayProps) {
+export function GeofenceOverlay({ alert, onDismiss, onConfirmParcelDone }: GeofenceOverlayProps) {
   if (!alert) return null;
 
   if (alert.type === 'exit_confirm') {
-    return (
-      <ExitConfirmModal
-        alert={alert}
-        onDismiss={onDismiss}
-        onConfirm={onConfirmParcelDone}
-      />
-    );
+    return <ExitConfirmModal alert={alert} onDismiss={onDismiss} onConfirm={onConfirmParcelDone} />;
+  }
+
+  if (alert.type === 'deposit_entry') {
+    return <DepositArrivalModal alert={alert} onDismiss={onDismiss} />;
   }
 
   return <EntryBanner alert={alert} onDismiss={onDismiss} />;
 }
 
-// ── Entry Banner (field_entry / deposit_entry) ───────────────────────
+// ── Entry Banner (field_entry) ───────────────────────────────────────
 
-function EntryBanner({
-  alert,
-  onDismiss,
-}: {
-  alert: GeofenceAlert;
-  onDismiss: () => void;
-}) {
+function EntryBanner({ alert, onDismiss }: { alert: GeofenceAlert; onDismiss: () => void }) {
   const slideAnim = useRef(new Animated.Value(-100)).current;
 
   useEffect(() => {
@@ -76,25 +59,55 @@ function EntryBanner({
     return () => clearTimeout(timer);
   }, [slideAnim, onDismiss]);
 
-  const isDeposit = alert.type === 'deposit_entry';
-  const bgColor = isDeposit ? '#1565C0' : '#2E7D32';
-  const iconName = isDeposit ? 'warehouse' : 'grain';
-  const message = isDeposit
-    ? 'Ai ajuns la depozit'
-    : `Ai început câmpul ${alert.parcelName}`;
-
   return (
     <Animated.View
       style={[
         styles.bannerContainer,
-        { backgroundColor: bgColor, transform: [{ translateY: slideAnim }] },
+        { backgroundColor: '#2E7D32', transform: [{ translateY: slideAnim }] },
       ]}
     >
       <Pressable style={styles.bannerContent} onPress={onDismiss}>
-        <MaterialCommunityIcons name={iconName} size={28} color="#FFF" />
-        <Text style={styles.bannerText}>{message}</Text>
+        <MaterialCommunityIcons name="grain" size={28} color="#FFF" />
+        <Text style={styles.bannerText}>Ai început câmpul {alert.parcelName}</Text>
       </Pressable>
     </Animated.View>
+  );
+}
+
+// ── Deposit Arrival Popup (deposit_entry) ────────────────────────────
+
+function DepositArrivalModal({
+  alert,
+  onDismiss,
+}: {
+  alert: GeofenceAlert;
+  onDismiss: () => void;
+}) {
+  const handleArrive = () => {
+    onDismiss();
+    if (alert.tripId) {
+      router.push({
+        pathname: '/driver-ops/arrival-flow',
+        params: { tripId: alert.tripId },
+      });
+    }
+  };
+
+  return (
+    <View style={styles.modalBackdrop}>
+      <View style={styles.modalContent}>
+        <View style={styles.modalHandle} />
+
+        <MaterialCommunityIcons name="warehouse" size={48} color="#1565C0" />
+        <Text style={styles.modalTitle}>Ai ajuns la depozit!</Text>
+        <Text style={styles.modalSubtitle}>Confirmă sosirea ca să poți încheia cursa.</Text>
+
+        <View style={styles.modalActions}>
+          {alert.tripId ? <BigButton title="Marchează sosirea" onPress={handleArrive} /> : null}
+          <BigButton title="Mai târziu" variant="outline" onPress={onDismiss} />
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -136,24 +149,13 @@ function ExitConfirmModal({
           <Text style={styles.modalParcelName}>{alert.parcelName}</Text>?
         </Text>
 
-        <Text style={styles.modalSubtitle}>
-          Câți baloți ai produs pe acest câmp?
-        </Text>
+        <Text style={styles.modalSubtitle}>Câți baloți ai produs pe acest câmp?</Text>
 
         <NumericPad value={baleCount} onChange={setBaleCount} maxLength={4} />
 
         <View style={styles.modalActions}>
-          <BigButton
-            title={saving ? '' : 'Confirmă'}
-            onPress={handleConfirm}
-            disabled={saving}
-          />
-          {saving && (
-            <ActivityIndicator
-              color="#FFF"
-              style={StyleSheet.absoluteFill}
-            />
-          )}
+          <BigButton title={saving ? '' : 'Confirmă'} onPress={handleConfirm} disabled={saving} />
+          {saving && <ActivityIndicator color="#FFF" style={StyleSheet.absoluteFill} />}
           <BigButton
             title="Nu am terminat"
             variant="outline"
@@ -195,7 +197,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // ── Exit Modal ──
+  // ── Modal (deposit arrival + exit confirm) ──
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',

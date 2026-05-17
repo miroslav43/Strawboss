@@ -4,6 +4,7 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
+import { todayInRomania } from '../common/date';
 
 interface ActiveAssignment {
   assignmentId: string;
@@ -14,6 +15,7 @@ interface ActiveAssignment {
   assignedUserId: string | null;
   parcelName: string | null;
   status: string;
+  tripId: string | null;
 }
 
 interface MachinePosition {
@@ -48,7 +50,7 @@ export class GeofenceService {
    * compare GPS position against parcel/deposit boundaries.
    */
   async checkMachinePositions(): Promise<void> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayInRomania();
 
     // 1. Get all active assignments for today (available or in_progress)
     const assignmentsResult = await this.drizzleProvider.db.execute(sql`
@@ -60,7 +62,8 @@ export class GeofenceService {
         ta.destination_id AS "destinationId",
         ta.assigned_user_id AS "assignedUserId",
         p.name           AS "parcelName",
-        ta.status
+        ta.status,
+        ta.trip_id       AS "tripId"
       FROM task_assignments ta
       JOIN machines m ON m.id = ta.machine_id
       LEFT JOIN parcels p ON p.id = ta.parcel_id
@@ -74,13 +77,20 @@ export class GeofenceService {
 
     // 2. Get unique machine IDs and their latest GPS positions
     const machineIds = [...new Set(assignments.map((a) => a.machineId))];
+    // Build an explicit IN-list: Drizzle expands a JS array into a
+    // comma-separated row, which Postgres reads as a `record` and refuses to
+    // cast to uuid[]. A joined list of individually-cast values is safe.
+    const machineIdList = sql.join(
+      machineIds.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
     const positionsResult = await this.drizzleProvider.db.execute(sql`
       SELECT DISTINCT ON (machine_id)
         machine_id AS "machineId",
         lat,
         lon
       FROM machine_location_events
-      WHERE machine_id = ANY(${machineIds}::uuid[])
+      WHERE machine_id IN (${machineIdList})
         AND recorded_at >= NOW() - INTERVAL '10 minutes'
       ORDER BY machine_id, recorded_at DESC
     `);
@@ -94,18 +104,23 @@ export class GeofenceService {
       const pos = posMap.get(assignment.machineId);
       if (!pos) continue;
 
-      // Determine which geofence to check
-      const geofenceId = assignment.parcelId ?? assignment.destinationId;
-      if (!geofenceId) continue;
+      // A truck task carries BOTH a source parcel and a destination deposit.
+      // Check every boundary the assignment has — entering the deposit is what
+      // tells the driver they have arrived, and it was previously never checked
+      // (the old `parcelId ?? destinationId` only ever looked at the parcel).
+      const targets: { type: 'parcel' | 'deposit'; id: string }[] = [];
+      if (assignment.parcelId) targets.push({ type: 'parcel', id: assignment.parcelId });
+      if (assignment.destinationId) {
+        targets.push({ type: 'deposit', id: assignment.destinationId });
+      }
 
-      const geofenceType: 'parcel' | 'deposit' = assignment.parcelId
-        ? 'parcel'
-        : 'deposit';
+      for (const target of targets) {
+        const geofenceId = target.id;
+        const geofenceType: 'parcel' | 'deposit' = target.type;
+        const table = geofenceType === 'parcel' ? 'parcels' : 'delivery_destinations';
 
-      const table = geofenceType === 'parcel' ? 'parcels' : 'delivery_destinations';
-
-      // Check ST_Contains
-      const containsResult = await this.drizzleProvider.db.execute(sql`
+        // Check ST_Contains
+        const containsResult = await this.drizzleProvider.db.execute(sql`
         SELECT ST_Contains(
           boundary,
           ST_SetSRID(ST_MakePoint(${pos.lon}, ${pos.lat}), 4326)
@@ -114,11 +129,11 @@ export class GeofenceService {
         WHERE id = ${geofenceId}::uuid
           AND boundary IS NOT NULL
       `);
-      const check = (containsResult as unknown as GeofenceCheck[])[0];
-      if (!check) continue;
+        const check = (containsResult as unknown as GeofenceCheck[])[0];
+        if (!check) continue;
 
-      // 4. Get last known geofence event for this machine + geofence pair
-      const lastEventResult = await this.drizzleProvider.db.execute(sql`
+        // 4. Get last known geofence event for this machine + geofence pair
+        const lastEventResult = await this.drizzleProvider.db.execute(sql`
         SELECT event_type AS "eventType"
         FROM geofence_events
         WHERE machine_id = ${assignment.machineId}::uuid
@@ -126,124 +141,126 @@ export class GeofenceService {
         ORDER BY created_at DESC
         LIMIT 1
       `);
-      const lastEvent = (lastEventResult as unknown as LastEvent[])[0];
-      const wasInside = lastEvent?.eventType === 'enter';
+        const lastEvent = (lastEventResult as unknown as LastEvent[])[0];
+        const wasInside = lastEvent?.eventType === 'enter';
 
-      // 5. Detect transitions
-      if (check.isInside && !wasInside) {
-        // ENTER event
-        await this.recordEvent(
-          assignment.machineId,
-          assignment.assignmentId,
-          geofenceType,
-          geofenceId,
-          'enter',
-          pos.lat,
-          pos.lon,
-        );
+        // 5. Detect transitions
+        if (check.isInside && !wasInside) {
+          // ENTER event
+          await this.recordEvent(
+            assignment.machineId,
+            assignment.assignmentId,
+            geofenceType,
+            geofenceId,
+            'enter',
+            pos.lat,
+            pos.lon,
+          );
 
-        // Update assignment status to in_progress
-        if (assignment.status === 'available') {
-          await this.drizzleProvider.db.execute(sql`
+          // Update assignment status to in_progress
+          if (assignment.status === 'available') {
+            await this.drizzleProvider.db.execute(sql`
             UPDATE task_assignments
             SET status = 'in_progress'::task_assignment_status,
                 actual_start = now(),
                 updated_at = now()
             WHERE id = ${assignment.assignmentId}::uuid
           `);
+            this.winston.log(
+              'flow',
+              `Machine ${assignment.machineId} entered ${geofenceType} ${geofenceId} — assignment ${assignment.assignmentId} → in_progress`,
+              {
+                context: 'GeofenceService',
+                machineId: assignment.machineId,
+                geofenceType,
+                geofenceId,
+                assignmentId: assignment.assignmentId,
+                event: 'enter',
+              },
+            );
+          }
+
+          // Notify user when entering an assigned parcel
+          if (geofenceType === 'parcel' && assignment.assignedUserId) {
+            await this.notificationsService.sendPush(
+              assignment.assignedUserId,
+              'Ai intrat pe câmp',
+              `Ai ajuns la ${assignment.parcelName ?? 'câmpul asignat'}.`,
+              {
+                type: 'field_entry',
+                assignmentId: assignment.assignmentId,
+                parcelName: assignment.parcelName,
+              },
+            );
+          }
+
+          // When a truck enters a parcel, also notify any loader/baler operator
+          // who is assigned to the same parcel today — they need to know a
+          // truck has arrived at their field so they can start loading.
+          if (
+            geofenceType === 'parcel' &&
+            assignment.machineType === 'truck' &&
+            assignment.parcelId
+          ) {
+            await this.notifyLoadersAtParcel(
+              assignment.parcelId,
+              assignment.machineId,
+              assignment.parcelName,
+              assignment.assignmentId,
+              today,
+            );
+          }
+
+          // Notify driver when truck enters deposit geofence
+          if (geofenceType === 'deposit' && assignment.assignedUserId) {
+            await this.notificationsService.sendPush(
+              assignment.assignedUserId,
+              'Ai ajuns la depozit',
+              'Confirmă sosirea ca să închei cursa.',
+              {
+                type: 'deposit_entry',
+                assignmentId: assignment.assignmentId,
+                tripId: assignment.tripId,
+              },
+            );
+          }
+        } else if (!check.isInside && wasInside) {
+          // EXIT event
+          await this.recordEvent(
+            assignment.machineId,
+            assignment.assignmentId,
+            geofenceType,
+            geofenceId,
+            'exit',
+            pos.lat,
+            pos.lon,
+          );
+
           this.winston.log(
             'flow',
-            `Machine ${assignment.machineId} entered ${geofenceType} ${geofenceId} — assignment ${assignment.assignmentId} → in_progress`,
+            `Machine ${assignment.machineId} exited ${geofenceType} ${geofenceId}`,
             {
               context: 'GeofenceService',
               machineId: assignment.machineId,
               geofenceType,
               geofenceId,
               assignmentId: assignment.assignmentId,
-              event: 'enter',
+              event: 'exit',
             },
           );
-        }
 
-        // Notify user when entering an assigned parcel
-        if (geofenceType === 'parcel' && assignment.assignedUserId) {
-          await this.notificationsService.sendPush(
-            assignment.assignedUserId,
-            'Ai intrat pe câmp',
-            `Ai ajuns la ${assignment.parcelName ?? 'câmpul asignat'}.`,
-            {
-              type: 'field_entry',
-              assignmentId: assignment.assignmentId,
-              parcelName: assignment.parcelName,
-            },
-          );
-        }
-
-        // When a truck enters a parcel, also notify any loader/baler operator
-        // who is assigned to the same parcel today — they need to know a
-        // truck has arrived at their field so they can start loading.
-        if (
-          geofenceType === 'parcel'
-          && assignment.machineType === 'truck'
-          && assignment.parcelId
-        ) {
-          await this.notifyLoadersAtParcel(
-            assignment.parcelId,
-            assignment.machineId,
-            assignment.parcelName,
-            assignment.assignmentId,
-            today,
-          );
-        }
-
-        // Notify driver when truck enters deposit geofence
-        if (geofenceType === 'deposit' && assignment.assignedUserId) {
-          await this.notificationsService.sendPush(
-            assignment.assignedUserId,
-            'Ai ajuns la depozit',
-            'Ești în zona de livrare.',
-            {
-              type: 'deposit_entry',
-              assignmentId: assignment.assignmentId,
-            },
-          );
-        }
-      } else if (!check.isInside && wasInside) {
-        // EXIT event
-        await this.recordEvent(
-          assignment.machineId,
-          assignment.assignmentId,
-          geofenceType,
-          geofenceId,
-          'exit',
-          pos.lat,
-          pos.lon,
-        );
-
-        this.winston.log(
-          'flow',
-          `Machine ${assignment.machineId} exited ${geofenceType} ${geofenceId}`,
-          {
-            context: 'GeofenceService',
-            machineId: assignment.machineId,
-            geofenceType,
-            geofenceId,
-            assignmentId: assignment.assignmentId,
-            event: 'exit',
-          },
-        );
-
-        // If baler exits a parcel, send push notification to confirm
-        if (
-          geofenceType === 'parcel' &&
-          assignment.machineType === 'baler' &&
-          assignment.assignedUserId
-        ) {
-          await this.notificationsService.sendGeofenceExitNotification(
-            assignment.assignmentId,
-            assignment.parcelName ?? 'Unknown',
-            assignment.assignedUserId,
-          );
+          // If baler exits a parcel, send push notification to confirm
+          if (
+            geofenceType === 'parcel' &&
+            assignment.machineType === 'baler' &&
+            assignment.assignedUserId
+          ) {
+            await this.notificationsService.sendGeofenceExitNotification(
+              assignment.assignmentId,
+              assignment.parcelName ?? 'Unknown',
+              assignment.assignedUserId,
+            );
+          }
         }
       }
     }
@@ -285,21 +302,18 @@ export class GeofenceService {
 
       await Promise.all(
         loaderRows.map((row) =>
-          this.notificationsService.sendPush(
-            row.userId,
-            'A sosit un camion',
-            `Camionul ${plate} a ajuns la ${where}.`,
-            {
+          this.notificationsService
+            .sendPush(row.userId, 'A sosit un camion', `Camionul ${plate} a ajuns la ${where}.`, {
               type: 'truck_arrived_at_loader',
               assignmentId: row.assignmentId,
               truckMachineId,
               truckAssignmentId,
               truckPlate: plate,
               parcelName,
-            },
-          ).catch(() => {
-            // Best-effort — push failures must not break the geofence loop.
-          }),
+            })
+            .catch(() => {
+              // Best-effort — push failures must not break the geofence loop.
+            }),
         ),
       );
 
@@ -314,15 +328,12 @@ export class GeofenceService {
         },
       );
     } catch (err) {
-      this.winston.warn(
-        `notifyLoadersAtParcel failed (parcel ${parcelId})`,
-        {
-          context: 'GeofenceService',
-          parcelId,
-          truckMachineId,
-          err: err instanceof Error ? { message: err.message } : err,
-        },
-      );
+      this.winston.warn(`notifyLoadersAtParcel failed (parcel ${parcelId})`, {
+        context: 'GeofenceService',
+        parcelId,
+        truckMachineId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
     }
   }
 

@@ -8,12 +8,15 @@ interface NotificationData {
   type?: string;
   assignmentId?: string;
   parcelName?: string;
+  tripId?: string;
 }
 
 export interface GeofenceAlert {
   type: 'field_entry' | 'exit_confirm' | 'deposit_entry';
   parcelName: string;
   assignmentId: string;
+  /** Present for deposit_entry — lets the overlay open the arrival flow. */
+  tripId?: string | null;
 }
 
 /**
@@ -32,27 +35,24 @@ export function useGeofenceNotifications() {
   }, [userId]);
 
   const dismissAlert = useCallback(() => {
-    setAlertQueue(q => q.slice(1));
+    setAlertQueue((q) => q.slice(1));
   }, []);
 
-  const confirmParcelDone = useCallback(
-    async (assignmentId: string, baleCount?: number) => {
-      mobileLogger.flow('Geofence: confirm parcel done', {
+  const confirmParcelDone = useCallback(async (assignmentId: string, baleCount?: number) => {
+    mobileLogger.flow('Geofence: confirm parcel done', {
+      assignmentId,
+      baleCount,
+    });
+    try {
+      await mobileApiClient.post('/api/v1/notifications/confirm-parcel-done', {
         assignmentId,
         baleCount,
       });
-      try {
-        await mobileApiClient.post('/api/v1/notifications/confirm-parcel-done', {
-          assignmentId,
-          baleCount,
-        });
-      } catch {
-        // Best-effort confirmation
-      }
-      setAlertQueue(q => q.slice(1));
-    },
-    [],
-  );
+    } catch {
+      // Best-effort confirmation
+    }
+    setAlertQueue((q) => q.slice(1));
+  }, []);
 
   useEffect(() => {
     // Handle foreground notifications → show UI alert
@@ -68,32 +68,43 @@ export function useGeofenceNotifications() {
             assignmentId,
             parcelName: data.parcelName,
           });
-          setAlertQueue(q => [...q, {
-            type: 'field_entry',
-            parcelName: data.parcelName ?? 'Câmp',
-            assignmentId,
-          }]);
+          setAlertQueue((q) => [
+            ...q,
+            {
+              type: 'field_entry',
+              parcelName: data.parcelName ?? 'Câmp',
+              assignmentId,
+            },
+          ]);
           break;
         case 'deposit_entry':
           mobileLogger.flow('Geofence: entered deposit', {
             assignmentId,
+            tripId: data.tripId,
           });
-          setAlertQueue(q => [...q, {
-            type: 'deposit_entry',
-            parcelName: 'Depozit',
-            assignmentId,
-          }]);
+          setAlertQueue((q) => [
+            ...q,
+            {
+              type: 'deposit_entry',
+              parcelName: 'Depozit',
+              assignmentId,
+              tripId: data.tripId ?? null,
+            },
+          ]);
           break;
         case 'geofence_exit_confirm':
           mobileLogger.flow('Geofence: exit confirm foreground', {
             assignmentId,
             parcelName: data.parcelName,
           });
-          setAlertQueue(q => [...q, {
-            type: 'exit_confirm',
-            parcelName: data.parcelName ?? 'Câmp',
-            assignmentId,
-          }]);
+          setAlertQueue((q) => [
+            ...q,
+            {
+              type: 'exit_confirm',
+              parcelName: data.parcelName ?? 'Câmp',
+              assignmentId,
+            },
+          ]);
           break;
       }
     });
@@ -107,11 +118,25 @@ export function useGeofenceNotifications() {
 
       if (data.type === 'geofence_exit_confirm') {
         // Show the exit modal so user can enter bale count
-        setAlertQueue(q => [...q, {
-          type: 'exit_confirm',
-          parcelName: data.parcelName ?? 'Câmp',
-          assignmentId,
-        }]);
+        setAlertQueue((q) => [
+          ...q,
+          {
+            type: 'exit_confirm',
+            parcelName: data.parcelName ?? 'Câmp',
+            assignmentId,
+          },
+        ]);
+      } else if (data.type === 'deposit_entry') {
+        // Tapping the deposit push opens the arrival popup.
+        setAlertQueue((q) => [
+          ...q,
+          {
+            type: 'deposit_entry',
+            parcelName: 'Depozit',
+            assignmentId,
+            tripId: data.tripId ?? null,
+          },
+        ]);
       }
     });
 
