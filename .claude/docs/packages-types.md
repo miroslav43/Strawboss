@@ -22,7 +22,7 @@ Defined in `packages/types/src/common.ts`:
 
 Extends `Timestamps`, `SoftDelete`.
 
-**Enum `UserRole`:** `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`
+**Enum `UserRole`:** `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`
 
 | Field | Type |
 |---|---|
@@ -41,7 +41,7 @@ Extends `Timestamps`, `SoftDelete`.
 
 Simple grouping entity with inline timestamps (no mixin).
 
-Fields: `id`, `name`, `address`, `createdAt`, `updatedAt`, `deletedAt`.
+Fields: `id`, `name`, `address`, `phone`, `fiscalCode`, `registrationNumber`, `bankAccount`, `bankName`, `createdAt`, `updatedAt`, `deletedAt`.
 
 ### Parcel (`entities/parcel.ts`)
 
@@ -50,7 +50,7 @@ Extends `Timestamps`, `SoftDelete`.
 **Enum `ParcelStatus`:** `active`, `inactive`
 **Enum `HarvestStatus`:** `planned`, `to_harvest`, `harvesting`, `harvested`
 
-Fields: `id`, `code`, `name`, `ownerName`, `ownerContact`, `areaHectares`, `boundary` (GeoJSON string), `centroid` (GeoPoint), `address`, `municipality`, `farmtrackGeofenceId`, `farmId`, `notes`, `isActive`, `harvestStatus`.
+Fields: `id`, `code`, `name`, `areaHectares`, `boundary` (GeoJSON string), `centroid` (GeoPoint), `address`, `municipality`, `farmtrackGeofenceId`, `farmId`, `notes`, `isActive`, `harvestStatus`.
 
 ### Machine (`entities/machine.ts`)
 
@@ -59,7 +59,7 @@ Extends `Timestamps`, `SoftDelete`.
 **Enum `MachineType`:** `truck`, `loader`, `baler`
 **Enum `FuelType`:** `diesel`, `gasoline`, `electric`
 
-Fields: `id`, `machineType`, `registrationPlate`, `internalCode`, `make`, `model`, `year`, `fuelType`, `tankCapacityLiters`, `farmtrackDeviceId`, `currentOdometerKm`, `currentHourmeterHrs`, `isActive`, `maxPayloadKg`, `maxBaleCount`, `tareWeightKg`, `balesPerHourAvg`, `baleWeightAvgKg`, `reachMeters`.
+Fields: `id`, `machineType`, `registrationPlate`, `internalCode`, `make`, `model`, `year`, `fuelType`, `tankCapacityLiters`, `farmtrackDeviceId`, `currentOdometerKm`, `currentHourmeterHrs`, `isActive`, `maxPayloadKg`, `maxBaleCount`, `tareWeightKg`, `balesPerHourAvg`, `baleWeightAvgKg`, `reachMeters`, `companyName`, `companyAddress`.
 
 ### Trip (`entities/trip.ts`)
 
@@ -67,7 +67,7 @@ Extends `Timestamps`, `SoftDelete`. The core domain entity.
 
 **Enum `TripStatus`:** `planned`, `loading`, `loaded`, `in_transit`, `arrived`, `delivering`, `delivered`, `completed`, `cancelled`, `disputed`
 
-Key fields: `tripNumber`, `status`, `sourceParcelId`, `sourceParcelAuto`, `loaderId`, `truckId`, `loaderOperatorId`, `driverId`, `baleCount`, timestamps for each phase (`loadingStartedAt` through `completedAt`), odometer readings (`departureOdometerKm`, `arrivalOdometerKm`), destination info, weight data (`grossWeightKg`, `tareWeightKg`, `netWeightKg`), receiver info (`receiverName`, `receiverSignatureUrl`), `fraudFlags`, `clientId`, `syncVersion`.
+Key fields: `tripNumber`, `status`, `sourceParcelId`, `sourceParcelAuto`, `loaderId`, `truckId`, `loaderOperatorId`, `driverId`, `baleCount`, timestamps for each phase (`loadingStartedAt` through `completedAt`), odometer readings (`departureOdometerKm`, `arrivalOdometerKm`), destination info, weight data (`grossWeightKg`, `tareWeightKg`, `netWeightKg`), receiver info (`receiverName`, `receiverSignatureUrl`), `loaderSignatureUrl` (set at complete-loading), `driverSignatureUrl` (set at depart), `deterioratedBalesCount` (set at confirm-delivery), `fraudFlags`, `clientId`, `syncVersion`.
 
 ### TaskAssignment (`entities/task-assignment.ts`)
 
@@ -115,7 +115,7 @@ Fields: `id`, `code`, `name`, `address`, `coords` (GeoPoint), `contactName`, `co
 Extends `Timestamps`, `SoftDelete`.
 
 **Enum `DocumentType`:** `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`
-**Enum `DocumentStatus`:** `pending`, `generating`, `generated`, `sent`, `failed`
+**Enum `DocumentStatus`:** `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
 
 Fields: `id`, `tripId`, `documentType`, `status`, `title`, `fileUrl`, `fileSizeBytes`, `mimeType`, `metadata` (JSONB), `generatedAt`, `sentAt`, `sentTo` (string array).
 

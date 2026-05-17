@@ -53,7 +53,19 @@ Multi-stage build (node:22-alpine):
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_API_URL` (defaults to `https://nortiauno.com`)
 
-## Nginx Configuration (`nginx/nginx.conf`)
+## Nginx Configuration (`nginx/conf.d/`)
+
+nginx config is split into per-virtual-host files under `nginx/conf.d/`:
+
+| File | Purpose |
+|---|---|
+| `10-nortiauno.com.conf` | Primary site: admin-web + backend proxy, HTTPS |
+| `20-video.tedde-auto.ro.conf` | Secondary virtual host |
+| (other `NN-*.conf` files) | Additional virtual hosts |
+
+The old monolithic `nginx/nginx.conf` has been replaced by this split layout. `nginx/nginx.conf.legacy` is kept as a backup reference.
+
+The `nginx` Docker service mounts `./nginx/conf.d:/etc/nginx/conf.d:ro`.
 
 ### HTTP Server (port 80)
 

@@ -10,8 +10,8 @@
 | Severity | Count | Status |
 |----------|-------|--------|
 | Critical | 8     | Open   |
-| High     | 10    | Open   |
-| Medium   | 4     | Open   |
+| High     | 8     | Open (H-15, H-16 fixed) |
+| Medium   | 3     | Open (M-1 fixed) |
 
 ---
 
@@ -208,7 +208,9 @@ On insert the service stamps `organization_id = orgId` on the new row but never 
 
 ---
 
-### H-15 — `TaskAssignmentsService.create`/`update` accept cross-org FKs
+### H-15 — `TaskAssignmentsService.create`/`update` accept cross-org FKs ✅ FIXED
+
+> Fixed in commit `2ff6194`. FK org verification added to `create` and `update` in `task-assignments.service.ts`.
 
 **File:** `backend/service/src/task-assignments/task-assignments.service.ts`
 
@@ -218,7 +220,9 @@ On insert the service stamps `organization_id = orgId` on the new row but never 
 
 ---
 
-### H-16 — `TripsService.create`/`registerLoad` accept cross-org FKs
+### H-16 — `TripsService.create`/`registerLoad` accept cross-org FKs ✅ FIXED
+
+> Fixed in commit `9d59495`. FK org verification added to `create` and `registerLoad` in `trips.service.ts`.
 
 **File:** `backend/service/src/trips/trips.service.ts`
 
@@ -240,7 +244,9 @@ The method signature is `changePassword(userId, _currentPassword, newPassword)`.
 
 ## Medium
 
-### M-1 — `AlertsController.create` has no input validation
+### M-1 — `AlertsController.create` has no input validation ✅ FIXED
+
+> Fixed in commit `2ff6194`. `createAlertSchema` created and `ZodValidationPipe` applied in `alerts.controller.ts`.
 
 **File:** `backend/service/src/alerts/alerts.controller.ts:20–27`
 
@@ -300,3 +306,6 @@ The owner filter restricts loader operators to seeing only `bale_loads` they per
 | H4 | `documents.service.ts` — updateStatus org guard |
 | H5 | `trips.service.ts` — generateTripNumber per-org sequence |
 | H6 | `[slug]/(dashboard)/layout.tsx` — no-org users redirected to /login |
+| H15 | `task-assignments.service.ts` — FK org verification on create/update (commit `2ff6194`) |
+| H16 | `trips.service.ts` — FK org verification on create/registerLoad (commit `9d59495`) |
+| M1 | `alerts.controller.ts` — `ZodValidationPipe` + `createAlertSchema` (commit `2ff6194`) |
