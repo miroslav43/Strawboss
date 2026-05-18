@@ -39,3 +39,15 @@ export const reportTimelinePointSchema = z.object({
   loaded: z.number().int().nonnegative(),
   delivered: z.number().int().nonnegative(),
 });
+
+const dateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Must be a YYYY-MM-DD date");
+
+export const reportQuerySchema = z.object({
+  dateFrom: dateOnlySchema.optional(),
+  dateTo: dateOnlySchema.optional(),
+  farmId: uuidSchema.optional(),
+});
+
+export type ReportQuery = z.infer<typeof reportQuerySchema>;

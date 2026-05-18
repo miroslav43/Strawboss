@@ -1,7 +1,9 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { UserRole } from '@strawboss/types';
+import { reportQuerySchema, type ReportQuery } from '@strawboss/validation';
 import { ReportsService } from './reports.service';
 import { Roles } from '../auth/roles.guard';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
 
@@ -13,38 +15,34 @@ export class ReportsController {
   @Get('farms')
   getFarms(
     @CurrentUser() user: RequestUser,
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo') dateTo?: string,
+    @Query(new ZodValidationPipe(reportQuerySchema)) query: ReportQuery,
   ) {
     return this.reportsService.getFarmReports(user.organizationId, {
-      dateFrom,
-      dateTo,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
     });
   }
 
   @Get('depots')
   getDepots(
     @CurrentUser() user: RequestUser,
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo') dateTo?: string,
+    @Query(new ZodValidationPipe(reportQuerySchema)) query: ReportQuery,
   ) {
     return this.reportsService.getDepotReports(user.organizationId, {
-      dateFrom,
-      dateTo,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
     });
   }
 
   @Get('timeline')
   getTimeline(
     @CurrentUser() user: RequestUser,
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo') dateTo?: string,
-    @Query('farmId') farmId?: string,
+    @Query(new ZodValidationPipe(reportQuerySchema)) query: ReportQuery,
   ) {
     return this.reportsService.getTimeline(
       user.organizationId,
-      { dateFrom, dateTo },
-      farmId || undefined,
+      { dateFrom: query.dateFrom, dateTo: query.dateTo },
+      query.farmId,
     );
   }
 }

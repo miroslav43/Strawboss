@@ -156,4 +156,6 @@ export {
   farmReportSchema,
   depotReportSchema,
   reportTimelinePointSchema,
+  reportQuerySchema,
 } from "./dtos/reports.schema.js";
+export type { ReportQuery } from "./dtos/reports.schema.js";
