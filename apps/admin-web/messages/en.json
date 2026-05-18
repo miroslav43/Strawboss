@@ -503,7 +503,81 @@
     "notFound": "Document not found."
   },
   "reports": {
-    "title": "Reports"
+    "title": "Reports",
+    "tabs": {
+      "farms": "Farms",
+      "depots": "Depots",
+      "rankings": "Rankings",
+      "costs": "Costs",
+      "operators": "Operators"
+    },
+    "kpi": {
+      "produced": "Produced",
+      "loaded": "Loaded",
+      "delivered": "Delivered",
+      "depotStock": "Depot stock",
+      "loss": "Loss"
+    },
+    "common": {
+      "exportCsv": "Export CSV",
+      "loading": "Loading data…",
+      "error": "Failed to load data. The backend may not be running.",
+      "noData": "No data available",
+      "bales": "bales"
+    },
+    "farms": {
+      "heading": "Production per farm",
+      "farm": "Farm",
+      "fields": "Fields",
+      "produced": "Produced",
+      "loaded": "Loaded",
+      "delivered": "Delivered",
+      "loss": "Loss %",
+      "parcel": "Field",
+      "code": "Code",
+      "noFields": "No fields in this farm.",
+      "chartTitle": "Production by farm",
+      "timelineTitle": "Loaded vs delivered over time"
+    },
+    "depots": {
+      "heading": "Depot stock",
+      "depot": "Depot",
+      "code": "Code",
+      "totalStock": "Total stock",
+      "receivedInPeriod": "Received in period",
+      "arrivingNow": "Arriving now",
+      "deliveries": "Deliveries",
+      "chartTitle": "Stock distribution",
+      "matchNote": "Depots are matched to trips by destination name."
+    },
+    "rankings": {
+      "heading": "Rankings",
+      "topFarmsByProduced": "Top farms by production",
+      "topFarmsByDelivered": "Top farms by delivery",
+      "busiestDepots": "Busiest depots",
+      "rank": "Rank"
+    },
+    "costs": {
+      "heading": "Cost report",
+      "entity": "Entity",
+      "type": "Type",
+      "fuelCost": "Fuel cost",
+      "consumableCost": "Consumable cost",
+      "total": "Total"
+    },
+    "operators": {
+      "heading": "Operator report",
+      "operator": "Operator",
+      "parcels": "Fields",
+      "totalBales": "Total bales",
+      "sessions": "Sessions",
+      "avgPerSession": "Avg / session"
+    },
+    "timeline": {
+      "produced": "Produced",
+      "loaded": "Loaded",
+      "delivered": "Delivered"
+    }
   },
   "alerts": {
     "title": "Alerts"

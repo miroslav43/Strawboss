@@ -503,7 +503,81 @@
     "notFound": "Documentul nu a fost găsit."
   },
   "reports": {
-    "title": "Rapoarte"
+    "title": "Rapoarte",
+    "tabs": {
+      "farms": "Ferme",
+      "depots": "Depozite",
+      "rankings": "Clasamente",
+      "costs": "Costuri",
+      "operators": "Operatori"
+    },
+    "kpi": {
+      "produced": "Produs",
+      "loaded": "Încărcat",
+      "delivered": "Livrat",
+      "depotStock": "Stoc depozite",
+      "loss": "Pierdere"
+    },
+    "common": {
+      "exportCsv": "Export CSV",
+      "loading": "Se încarcă datele…",
+      "error": "Eroare la încărcarea datelor. Backend-ul poate fi oprit.",
+      "noData": "Nu există date",
+      "bales": "baloți"
+    },
+    "farms": {
+      "heading": "Producție per fermă",
+      "farm": "Fermă",
+      "fields": "Terenuri",
+      "produced": "Produs",
+      "loaded": "Încărcat",
+      "delivered": "Livrat",
+      "loss": "Pierdere %",
+      "parcel": "Teren",
+      "code": "Cod",
+      "noFields": "Nu există terenuri în această fermă.",
+      "chartTitle": "Producție pe ferme",
+      "timelineTitle": "Încărcat vs livrat în timp"
+    },
+    "depots": {
+      "heading": "Stoc depozite",
+      "depot": "Depozit",
+      "code": "Cod",
+      "totalStock": "Stoc total",
+      "receivedInPeriod": "Primit în perioadă",
+      "arrivingNow": "În tranzit",
+      "deliveries": "Livrări",
+      "chartTitle": "Distribuția stocului",
+      "matchNote": "Depozitele sunt asociate curselor după numele destinației."
+    },
+    "rankings": {
+      "heading": "Clasamente",
+      "topFarmsByProduced": "Top ferme după producție",
+      "topFarmsByDelivered": "Top ferme după livrare",
+      "busiestDepots": "Cele mai active depozite",
+      "rank": "Loc"
+    },
+    "costs": {
+      "heading": "Raport costuri",
+      "entity": "Entitate",
+      "type": "Tip",
+      "fuelCost": "Cost combustibil",
+      "consumableCost": "Cost consumabile",
+      "total": "Total"
+    },
+    "operators": {
+      "heading": "Raport operatori",
+      "operator": "Operator",
+      "parcels": "Terenuri",
+      "totalBales": "Total baloți",
+      "sessions": "Sesiuni",
+      "avgPerSession": "Media / sesiune"
+    },
+    "timeline": {
+      "produced": "Produs",
+      "loaded": "Încărcat",
+      "delivered": "Livrat"
+    }
   },
   "alerts": {
     "title": "Alerte"
