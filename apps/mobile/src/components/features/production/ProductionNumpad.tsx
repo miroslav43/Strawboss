@@ -7,6 +7,7 @@ import {
   Animated,
   ActivityIndicator,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { useFocusEffect } from 'expo-router';
@@ -229,6 +230,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
   }, [parcelName, manualOverride, gpsStatus, activeParcels, gpsHit]);
 
   const handlePress = useCallback((key: PadKey) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (key === 'backspace') {
       setCount((prev) => prev.slice(0, -1));
       return;
@@ -326,6 +328,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
         queryKey: operatorStatsQueryKey(operatorId),
       });
 
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCount('');
       showToast(`Înregistrat — ${numericCount} baloți`);
     } catch (err) {

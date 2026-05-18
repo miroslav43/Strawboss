@@ -17,6 +17,27 @@ export interface PushResult {
 /** Sync queue entityTypes that bypass /sync/push and target a dedicated endpoint. */
 const DIRECT_ENDPOINT_TYPES = new Set(['register_load']);
 
+/**
+ * Parent-first ordering for the /sync/push batch (M21).
+ * Entities listed earlier in this array are sent before entities listed later,
+ * so the server can satisfy FK constraints (trips before bale_loads etc.).
+ * Entity types not listed here sort after all known types.
+ */
+const ENTITY_ORDER: readonly string[] = [
+  'trips',
+  'operations',
+  'bale_productions',
+  'fuel_logs',
+  'consumable_logs',
+  'bale_loads',
+  'task_assignments',
+];
+
+function entitySortIndex(entityType: string): number {
+  const idx = ENTITY_ORDER.indexOf(entityType);
+  return idx === -1 ? ENTITY_ORDER.length : idx;
+}
+
 /** Columns stored as INTEGER 0/1 locally but declared BOOLEAN in Postgres. */
 const BOOLEAN_FIELDS_BY_TABLE: Record<string, readonly string[]> = {
   fuel_logs: ['is_full_tank'],
@@ -64,10 +85,7 @@ async function sendRegisterLoad(
     };
   }
   try {
-    await apiClient.post<RegisterLoadResult>(
-      '/api/v1/trips/register-load',
-      payload,
-    );
+    await apiClient.post<RegisterLoadResult>('/api/v1/trips/register-load', payload);
     return { ok: true };
   } catch (err) {
     return {
@@ -113,6 +131,11 @@ export async function pushMutations(
   }
 
   if (tableEntries.length > 0) {
+    // Sort entries so parent entities (trips, operations) precede children
+    // (bale_loads, fuel_logs, etc.) — satisfies server-side FK constraints (M21).
+    // Within the same entity type, preserve original created_at ASC order from dequeue.
+    tableEntries.sort((a, b) => entitySortIndex(a.entity_type) - entitySortIndex(b.entity_type));
+
     const mutations = tableEntries.map((entry) => ({
       table: entry.entity_type,
       recordId: entry.entity_id,

@@ -10,6 +10,7 @@ export interface SyncQueueEntry {
   status: string;
   retry_count: number;
   last_error: string | null;
+  next_retry_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,10 +29,10 @@ export class SyncQueueRepo {
   /** Fix legacy rows enqueued before table name matched server SYNCABLE_TABLES. */
   async normalizeLegacyEntityTypes(): Promise<void> {
     await this.db.runAsync(
-      `UPDATE sync_queue SET entity_type = 'bale_productions' WHERE entity_type = 'bale_production'`
+      `UPDATE sync_queue SET entity_type = 'bale_productions' WHERE entity_type = 'bale_production'`,
     );
     await this.db.runAsync(
-      `UPDATE sync_queue SET entity_type = 'bale_loads' WHERE entity_type = 'bale_load'`
+      `UPDATE sync_queue SET entity_type = 'bale_loads' WHERE entity_type = 'bale_load'`,
     );
   }
 
@@ -49,7 +50,7 @@ export class SyncQueueRepo {
              last_error = 'invalid UUID (legacy entry)',
              updated_at = datetime('now')
        WHERE status IN ('pending', 'in_flight')
-         AND entity_id NOT GLOB '????????-????-????-????-????????????'`
+         AND entity_id NOT GLOB '????????-????-????-????-????????????'`,
     );
     return result.changes ?? 0;
   }
@@ -64,7 +65,7 @@ export class SyncQueueRepo {
         entry.action,
         JSON.stringify(entry.payload),
         entry.idempotencyKey,
-      ]
+      ],
     );
   }
 
@@ -72,9 +73,10 @@ export class SyncQueueRepo {
     return this.db.getAllAsync<SyncQueueEntry>(
       `SELECT * FROM sync_queue
        WHERE status = 'pending'
+         AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
        ORDER BY created_at ASC
        LIMIT ?`,
-      [limit]
+      [limit],
     );
   }
 
@@ -85,7 +87,7 @@ export class SyncQueueRepo {
       `UPDATE sync_queue
        SET status = 'in_flight', updated_at = datetime('now')
        WHERE id IN (${placeholders})`,
-      ids
+      ids,
     );
   }
 
@@ -96,19 +98,24 @@ export class SyncQueueRepo {
       `UPDATE sync_queue
        SET status = 'completed', updated_at = datetime('now')
        WHERE id IN (${placeholders})`,
-      ids
+      ids,
     );
   }
 
   async markFailed(id: number, error: string): Promise<void> {
+    // Exponential back-off: next_retry_at = now + (retry_count + 1)² × 30 s.
+    // The +1 accounts for the increment that happens in the same statement.
+    // retry_count is read as the current (pre-increment) value by SQLite so
+    // we compute: delay = (retry_count + 1)^2 * 30 seconds.
     await this.db.runAsync(
       `UPDATE sync_queue
        SET status = 'failed',
            last_error = ?,
            retry_count = retry_count + 1,
+           next_retry_at = datetime('now', '+' || CAST((retry_count + 1) * (retry_count + 1) * 30 AS TEXT) || ' seconds'),
            updated_at = datetime('now')
        WHERE id = ?`,
-      [error, id]
+      [error, id],
     );
   }
 
@@ -117,14 +124,14 @@ export class SyncQueueRepo {
    */
   async getPendingCount(): Promise<number> {
     const result = await this.db.getFirstAsync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM sync_queue WHERE status IN ('pending', 'in_flight', 'failed')`
+      `SELECT COUNT(*) as count FROM sync_queue WHERE status IN ('pending', 'in_flight', 'failed')`,
     );
     return result?.count ?? 0;
   }
 
   async getFailedCount(): Promise<number> {
     const result = await this.db.getFirstAsync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM sync_queue WHERE status = 'failed'`
+      `SELECT COUNT(*) as count FROM sync_queue WHERE status = 'failed'`,
     );
     return result?.count ?? 0;
   }
@@ -132,13 +139,13 @@ export class SyncQueueRepo {
   /** Reset all failed rows so the next sync attempts push again. */
   async retryAllFailed(): Promise<void> {
     await this.db.runAsync(
-      `UPDATE sync_queue SET status = 'pending', updated_at = datetime('now') WHERE status = 'failed'`
+      `UPDATE sync_queue SET status = 'pending', updated_at = datetime('now') WHERE status = 'failed'`,
     );
   }
 
   async getFailedEntries(): Promise<SyncQueueEntry[]> {
     return this.db.getAllAsync<SyncQueueEntry>(
-      `SELECT * FROM sync_queue WHERE status = 'failed' ORDER BY updated_at DESC`
+      `SELECT * FROM sync_queue WHERE status = 'failed' ORDER BY updated_at DESC`,
     );
   }
 
@@ -147,7 +154,7 @@ export class SyncQueueRepo {
       `UPDATE sync_queue
        SET status = 'pending', updated_at = datetime('now')
        WHERE id = ?`,
-      [id]
+      [id],
     );
   }
 
@@ -167,14 +174,27 @@ export class SyncQueueRepo {
 
   async resetInFlight(): Promise<void> {
     await this.db.runAsync(
-      `UPDATE sync_queue SET status = 'pending', updated_at = datetime('now') WHERE status = 'in_flight'`
+      `UPDATE sync_queue SET status = 'pending', updated_at = datetime('now') WHERE status = 'in_flight'`,
     );
   }
 
   async purgeCompleted(): Promise<void> {
-    await this.db.runAsync(
-      `DELETE FROM sync_queue WHERE status = 'completed'`
+    await this.db.runAsync(`DELETE FROM sync_queue WHERE status = 'completed'`);
+  }
+
+  /**
+   * Remove permanently-failed entries that have no hope of recovery:
+   * failed rows with more than 10 retries that are older than 7 days.
+   * Called from SyncManager after each cycle to keep the queue bounded.
+   */
+  async purgeStale(): Promise<number> {
+    const result = await this.db.runAsync(
+      `DELETE FROM sync_queue
+       WHERE status = 'failed'
+         AND retry_count > 10
+         AND updated_at < datetime('now', '-7 days')`,
     );
+    return result.changes ?? 0;
   }
 
   /**
@@ -185,7 +205,7 @@ export class SyncQueueRepo {
    */
   async clearFailed(): Promise<number> {
     const result = await this.db.runAsync(
-      `DELETE FROM sync_queue WHERE status IN ('failed', 'completed')`
+      `DELETE FROM sync_queue WHERE status IN ('failed', 'completed')`,
     );
     return result.changes ?? 0;
   }

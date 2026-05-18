@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
@@ -43,6 +43,9 @@ const UNIT_LABELS: Record<ConsumableType, string> = {
   twine: 'kg',
 };
 
+const STEP_ORDER: ConsumableStep[] = ['type', 'receipt', 'quantity', 'confirm'];
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
 export function ConsumableFlow({
   machineId,
   operatorId,
@@ -54,12 +57,32 @@ export function ConsumableFlow({
   const { modalProps, showModal, hideModal } = useModal();
   // If lockType is set, we start directly at the receipt step.
   const [step, setStep] = useState<ConsumableStep>(lockType ? 'receipt' : 'type');
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const prevStepRef = useRef<ConsumableStep>(lockType ? 'receipt' : 'type');
   const [consumableType, setConsumableType] = useState<ConsumableType | null>(lockType ?? null);
   const [quantity, setQuantity] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   // Non-null while the field still holds an unverified OCR suggestion.
   const [quantitySuggested, setQuantitySuggested] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const goToStep = useCallback(
+    (next: ConsumableStep) => {
+      const prevIndex = STEP_ORDER.indexOf(prevStepRef.current);
+      const nextIndex = STEP_ORDER.indexOf(next);
+      const forward = nextIndex >= prevIndex;
+      // Start off-screen on the entry side
+      slideAnim.setValue(forward ? SCREEN_WIDTH : -SCREEN_WIDTH);
+      setStep(next);
+      prevStepRef.current = next;
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    },
+    [slideAnim],
+  );
 
   const handleConfirm = useCallback(async () => {
     if (!consumableType) return;
@@ -172,7 +195,7 @@ export function ConsumableFlow({
       setQuantity('');
       setPhotoUri(null);
       setQuantitySuggested(null);
-      setStep(lockType ? 'receipt' : 'type');
+      goToStep(lockType ? 'receipt' : 'type');
       showModal({
         type: 'success',
         title: 'Salvat',
@@ -201,106 +224,119 @@ export function ConsumableFlow({
     photoUri,
     onComplete,
     queryClient,
+    goToStep,
   ]);
 
-  switch (step) {
-    case 'type':
-      return (
-        <View style={styles.container}>
-          <Text style={styles.title}>Tip Consumabil</Text>
-          <ConsumableTypeSelector
-            selected={consumableType}
-            onSelect={(type) => setConsumableType(type)}
-          />
-          <View style={styles.actions}>
-            <BigButton
-              title="Continuă"
-              onPress={() => setStep('receipt')}
-              disabled={consumableType === null}
+  const stepContent = (() => {
+    switch (step) {
+      case 'type':
+        return (
+          <View style={styles.container}>
+            <Text style={styles.title}>Tip Consumabil</Text>
+            <ConsumableTypeSelector
+              selected={consumableType}
+              onSelect={(type) => setConsumableType(type)}
             />
-            {consumableType !== null ? (
+            <View style={styles.actions}>
               <BigButton
-                title="Șterge selecția"
-                variant="outline"
-                onPress={() => setConsumableType(null)}
+                title="Continuă"
+                onPress={() => goToStep('receipt')}
+                disabled={consumableType === null}
               />
-            ) : null}
+              {consumableType !== null ? (
+                <BigButton
+                  title="Șterge selecția"
+                  variant="outline"
+                  onPress={() => setConsumableType(null)}
+                />
+              ) : null}
+            </View>
+            <AppModal {...modalProps} />
           </View>
-          <AppModal {...modalProps} />
-        </View>
-      );
+        );
 
-    case 'receipt':
-      return (
-        <View style={styles.container}>
-          <Text style={styles.title}>Bon fiscal</Text>
-          <Text style={styles.subtitle}>Fotografiază bonul — citim automat cantitatea.</Text>
-          <OcrPhotoCapture
-            mode="consumable"
-            label="Fotografie bon"
-            onResult={(uri, s) => {
-              setPhotoUri(uri);
-              if (s.quantity !== undefined) {
-                setQuantity(String(s.quantity));
-                setQuantitySuggested(s.quantity);
-              }
-            }}
-          />
-          <View style={styles.actions}>
-            <BigButton title="Continuă" onPress={() => setStep('quantity')} />
-            <BigButton title="Sari peste" variant="outline" onPress={() => setStep('quantity')} />
-          </View>
-          <AppModal {...modalProps} />
-        </View>
-      );
-
-    case 'quantity':
-      return (
-        <View style={styles.container}>
-          <Text style={styles.title}>
-            Cantitate ({consumableType ? UNIT_LABELS[consumableType] : ''})
-          </Text>
-          {quantitySuggested !== null && (
-            <OcrHint
-              value={`${quantitySuggested} ${consumableType ? UNIT_LABELS[consumableType] : ''}`}
+      case 'receipt':
+        return (
+          <View style={styles.container}>
+            <Text style={styles.title}>Bon fiscal</Text>
+            <Text style={styles.subtitle}>Fotografiază bonul — citim automat cantitatea.</Text>
+            <OcrPhotoCapture
+              mode="consumable"
+              label="Fotografie bon"
+              onResult={(uri, s) => {
+                setPhotoUri(uri);
+                if (s.quantity !== undefined) {
+                  setQuantity(String(s.quantity));
+                  setQuantitySuggested(s.quantity);
+                }
+              }}
             />
-          )}
-          <NumericPad
-            value={quantity}
-            onChange={(v) => {
-              setQuantity(v);
-              setQuantitySuggested(null);
-            }}
-            maxLength={6}
-            decimal
-          />
-          <View style={styles.actions}>
-            <BigButton
-              title="Continuă"
-              onPress={() => setStep('confirm')}
-              disabled={!quantity || quantity === '0'}
-            />
-            <BigButton title="Înapoi" variant="outline" onPress={() => setStep('receipt')} />
+            <View style={styles.actions}>
+              <BigButton title="Continuă" onPress={() => goToStep('quantity')} />
+              <BigButton
+                title="Sari peste"
+                variant="outline"
+                onPress={() => goToStep('quantity')}
+              />
+            </View>
+            <AppModal {...modalProps} />
           </View>
-          <AppModal {...modalProps} />
-        </View>
-      );
+        );
 
-    case 'confirm':
-      return (
-        <>
-          <ConsumableConfirmation
-            consumableType={consumableType as ConsumableType}
-            quantity={parseFloat(quantity)}
-            hasPhoto={photoUri !== null}
-            onConfirm={handleConfirm}
-            onBack={() => setStep('quantity')}
-            loading={saving}
-          />
-          <AppModal {...modalProps} />
-        </>
-      );
-  }
+      case 'quantity':
+        return (
+          <View style={styles.container}>
+            <Text style={styles.title}>
+              Cantitate ({consumableType ? UNIT_LABELS[consumableType] : ''})
+            </Text>
+            {quantitySuggested !== null && (
+              <OcrHint
+                value={`${quantitySuggested} ${consumableType ? UNIT_LABELS[consumableType] : ''}`}
+              />
+            )}
+            <NumericPad
+              value={quantity}
+              onChange={(v) => {
+                setQuantity(v);
+                setQuantitySuggested(null);
+              }}
+              maxLength={6}
+              decimal
+            />
+            <View style={styles.actions}>
+              <BigButton
+                title="Continuă"
+                onPress={() => goToStep('confirm')}
+                disabled={!quantity || quantity === '0'}
+              />
+              <BigButton title="Înapoi" variant="outline" onPress={() => goToStep('receipt')} />
+            </View>
+            <AppModal {...modalProps} />
+          </View>
+        );
+
+      case 'confirm':
+        return (
+          <>
+            <ConsumableConfirmation
+              consumableType={consumableType as ConsumableType}
+              quantity={parseFloat(quantity)}
+              hasPhoto={photoUri !== null}
+              onConfirm={handleConfirm}
+              onBack={() => goToStep('quantity')}
+              loading={saving}
+            />
+            <AppModal {...modalProps} />
+          </>
+        );
+    }
+  })();
+
+  return (
+    <Animated.View style={[styles.animatedWrapper, { transform: [{ translateX: slideAnim }] }]}>
+      {stepContent}
+    </Animated.View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -324,5 +360,8 @@ const styles = StyleSheet.create({
   actions: {
     gap: 12,
     marginTop: 'auto',
+  },
+  animatedWrapper: {
+    flex: 1,
   },
 });

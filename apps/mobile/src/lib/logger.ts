@@ -32,6 +32,18 @@ async function readIfExists(file: string): Promise<string> {
 const pendingLines: Map<string, string[]> = new Map();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Buffer a line for the given file. A flush is scheduled after 10 seconds of
+ * inactivity (M22 — was 2 s, causing a full read+write per log event at high
+ * frequency). The larger window batches more lines per write and eliminates
+ * the disk read on quiet periods by appending a newline-delimited chunk to
+ * whatever was written last.
+ *
+ * Note: expo-file-system/legacy writeAsStringAsync has no append flag, so we
+ * still do a read on each flush, but flushes happen far less often. For the
+ * common case (a few log events per minute) the timer never fires more than
+ * once per 10 seconds regardless of how many events arrive.
+ */
 async function appendLine(file: string, line: string): Promise<void> {
   const dir = file.slice(0, file.lastIndexOf('/'));
   await ensureDir(dir);
@@ -40,9 +52,9 @@ async function appendLine(file: string, line: string): Promise<void> {
   pending.push(line);
   pendingLines.set(file, pending);
 
-  // Debounce: flush after 2 seconds of inactivity
+  // Debounce: flush after 10 seconds of inactivity (batches more lines per write)
   if (flushTimer) clearTimeout(flushTimer);
-  flushTimer = setTimeout(flushPending, 2000);
+  flushTimer = setTimeout(flushPending, 10_000);
 }
 
 export async function flushPending(): Promise<void> {
@@ -52,7 +64,9 @@ export async function flushPending(): Promise<void> {
     try {
       const prev = await readIfExists(file);
       await FileSystem.writeAsStringAsync(file, prev ? `${prev}\n${batch}` : batch);
-    } catch { /* ignore write errors */ }
+    } catch {
+      /* ignore write errors */
+    }
   }
 }
 

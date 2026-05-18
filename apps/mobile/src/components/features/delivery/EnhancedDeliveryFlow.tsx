@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { useState, useCallback, useRef } from 'react';
+import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
@@ -14,6 +15,7 @@ import { uploadReceipt } from '@/lib/receiptUpload';
 import { mobileLogger } from '@/lib/logger';
 
 const BACKGROUND = '#F3DED8';
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 interface EnhancedDeliveryFlowProps {
   tripId: string;
@@ -67,12 +69,25 @@ export function EnhancedDeliveryFlow({
   const [receiverSignature, setReceiverSignature] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { modalProps, showModal, hideModal } = useModal();
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const prevStepRef = useRef<Step>(0);
 
   const grossWeightKg = parseFloat(netWeightValue) || 0;
 
-  const goToStep = useCallback((step: Step) => {
-    setCurrentStep(step);
-  }, []);
+  const goToStep = useCallback(
+    (step: Step) => {
+      const forward = step >= prevStepRef.current;
+      slideAnim.setValue(forward ? SCREEN_WIDTH : -SCREEN_WIDTH);
+      setCurrentStep(step);
+      prevStepRef.current = step;
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    },
+    [slideAnim],
+  );
 
   const handleHeaderBack = useCallback(() => {
     if (currentStep > 0) {
@@ -113,6 +128,7 @@ export function EnhancedDeliveryFlow({
       });
 
       mobileLogger.flow('Driver delivery: completed', { tripId });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onComplete();
     } catch (err) {
       mobileLogger.error('Driver delivery: confirmation failed', {
@@ -213,7 +229,9 @@ export function EnhancedDeliveryFlow({
   return (
     <View style={styles.flow}>
       <ScreenHeader title={STEP_TITLES[currentStep]} onBack={handleHeaderBack} />
-      <View style={styles.body}>{renderStep()}</View>
+      <Animated.View style={[styles.body, { transform: [{ translateX: slideAnim }] }]}>
+        {renderStep()}
+      </Animated.View>
       <AppModal {...modalProps} />
     </View>
   );

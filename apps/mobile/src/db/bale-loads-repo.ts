@@ -42,7 +42,7 @@ export class BaleLoadsRepo {
         data.created_at,
         data.updated_at,
         data.server_version,
-      ] as SQLiteBindValue[]
+      ] as SQLiteBindValue[],
     );
   }
 
@@ -79,14 +79,14 @@ export class BaleLoadsRepo {
         data.created_at,
         data.updated_at,
         data.server_version,
-      ] as SQLiteBindValue[]
+      ] as SQLiteBindValue[],
     );
   }
 
   async findById(id: string): Promise<LocalBaleLoad | null> {
     const result = await this.db.getFirstAsync<LocalBaleLoad>(
       `SELECT * FROM bale_loads WHERE id = ?`,
-      [id]
+      [id],
     );
     return result ?? null;
   }
@@ -94,7 +94,7 @@ export class BaleLoadsRepo {
   async listByTrip(tripId: string): Promise<LocalBaleLoad[]> {
     return this.db.getAllAsync<LocalBaleLoad>(
       `SELECT * FROM bale_loads WHERE trip_id = ? ORDER BY loaded_at DESC`,
-      [tripId]
+      [tripId],
     );
   }
 
@@ -103,17 +103,14 @@ export class BaleLoadsRepo {
    * Used by the loader UI to show today's recorded loads (including ones
    * that haven't been synced to the server yet).
    */
-  async listByOperatorSince(
-    operatorId: string,
-    sinceIso: string,
-  ): Promise<LocalBaleLoad[]> {
+  async listByOperatorSince(operatorId: string, sinceIso: string): Promise<LocalBaleLoad[]> {
     return this.db.getAllAsync<LocalBaleLoad>(
       `SELECT * FROM bale_loads
         WHERE operator_id = ?
           AND loaded_at IS NOT NULL
           AND loaded_at >= ?
         ORDER BY loaded_at DESC`,
-      [operatorId, sinceIso]
+      [operatorId, sinceIso],
     );
   }
 
@@ -125,20 +122,21 @@ export class BaleLoadsRepo {
     const result = await this.db.getFirstAsync<{ total: number | null }>(
       `SELECT COALESCE(SUM(bale_count), 0) as total
          FROM bale_loads WHERE trip_id = ?`,
-      [tripId]
+      [tripId],
     );
     return Number(result?.total ?? 0);
   }
 
-  async listAll(): Promise<LocalBaleLoad[]> {
+  async listAll(limit = 200): Promise<LocalBaleLoad[]> {
     return this.db.getAllAsync<LocalBaleLoad>(
-      `SELECT * FROM bale_loads ORDER BY loaded_at DESC`
+      `SELECT * FROM bale_loads ORDER BY loaded_at DESC LIMIT ?`,
+      [limit],
     );
   }
 
   async getMaxServerVersion(): Promise<number> {
     const result = await this.db.getFirstAsync<{ max_ver: number }>(
-      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM bale_loads`
+      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM bale_loads`,
     );
     return result?.max_ver ?? 0;
   }

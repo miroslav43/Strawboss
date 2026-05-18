@@ -8,6 +8,7 @@ import {
   Alert,
   Animated,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -227,6 +228,7 @@ export default function LoadBalesScreen() {
         void queryClient.invalidateQueries({ queryKey: ['trips', 'active'] });
         void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(userId) });
 
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSaved(true);
         setTimeout(() => router.back(), 2500);
       } catch (err) {

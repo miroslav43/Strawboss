@@ -27,6 +27,13 @@ export interface SyncResult {
  * Pull: fetches delta updates from server and merges into local SQLite.
  */
 export class SyncManager {
+  /**
+   * Mutex flag: true while a sync cycle is actively running.
+   * Prevents uploadPendingReceipts (which reads pending entries) from racing
+   * with push() (which marks the same entries in_flight and processes them).
+   */
+  private syncInProgress = false;
+
   constructor(
     private syncQueueRepo: SyncQueueRepo,
     private tripsRepo: TripsRepo,
@@ -42,56 +49,74 @@ export class SyncManager {
    * Run a full sync cycle: push pending changes, then pull updates.
    */
   async sync(): Promise<SyncResult> {
+    if (this.syncInProgress) {
+      mobileLogger.warn('Sync cycle skipped — previous cycle still in progress');
+      return { pushed: 0, pulled: 0, errors: [] };
+    }
+    this.syncInProgress = true;
     mobileLogger.flow('Sync cycle started');
 
-    // Reset any entries stuck in 'in_flight' from a previous interrupted sync
-    await this.syncQueueRepo.resetInFlight();
+    try {
+      // Reset any entries stuck in 'in_flight' from a previous interrupted sync
+      await this.syncQueueRepo.resetInFlight();
 
-    await this.syncQueueRepo.normalizeLegacyEntityTypes();
+      await this.syncQueueRepo.normalizeLegacyEntityTypes();
 
-    // Legacy entries produced with Math.random() IDs can never succeed on
-    // the server (id columns are UUID). Flag them so we don't keep retrying.
-    const invalidated = await this.syncQueueRepo.markInvalidUuidsAsFailed();
-    if (invalidated > 0) {
-      mobileLogger.flow('Sync: flagged legacy entries with invalid UUIDs', {
-        count: invalidated,
+      // Legacy entries produced with Math.random() IDs can never succeed on
+      // the server (id columns are UUID). Flag them so we don't keep retrying.
+      const invalidated = await this.syncQueueRepo.markInvalidUuidsAsFailed();
+      if (invalidated > 0) {
+        mobileLogger.flow('Sync: flagged legacy entries with invalid UUIDs', {
+          count: invalidated,
+        });
+      }
+
+      // Single purgeCompleted call per cycle (M32 — was duplicated in push() too).
+      await this.syncQueueRepo.purgeCompleted();
+
+      // Best-effort: upload receipt photos for rows that were saved offline or
+      // whose initial upload attempt failed. Any failure here is non-fatal —
+      // the mutation still pushes, just without a photo URL.
+      // uploadPendingReceipts runs BEFORE push() so it cannot race with
+      // push()'s in_flight marking (M20 — syncInProgress guards concurrent
+      // external calls; the sequential order guards within one cycle).
+      await this.uploadPendingReceipts().catch((err) => {
+        mobileLogger.error('Pre-push receipt upload pass failed', {
+          message: err instanceof Error ? err.message : String(err),
+        });
       });
+
+      const pushResult = await this.push();
+      const pullResult = await this.pull();
+
+      const errors = [...pushResult.errors, ...pullResult.errors];
+      const result: SyncResult = {
+        pushed: pushResult.count,
+        pulled: pullResult.count,
+        errors,
+      };
+
+      if (errors.length === 0) {
+        void uploadTodayMobileLogs(this.apiClient).catch(() => {
+          /* best-effort log upload */
+        });
+      }
+
+      // Prune permanently-failed entries that are too old to recover (M12).
+      await this.syncQueueRepo.purgeStale().catch(() => {
+        /* non-fatal — stale rows stay until next cycle */
+      });
+
+      mobileLogger.flow('Sync cycle finished', {
+        pushed: result.pushed,
+        pulled: result.pulled,
+        errorCount: result.errors.length,
+      });
+
+      return result;
+    } finally {
+      this.syncInProgress = false;
     }
-
-    await this.syncQueueRepo.purgeCompleted();
-
-    // Best-effort: upload receipt photos for rows that were saved offline or
-    // whose initial upload attempt failed. Any failure here is non-fatal —
-    // the mutation still pushes, just without a photo URL.
-    await this.uploadPendingReceipts().catch((err) => {
-      mobileLogger.error('Pre-push receipt upload pass failed', {
-        message: err instanceof Error ? err.message : String(err),
-      });
-    });
-
-    const pushResult = await this.push();
-    const pullResult = await this.pull();
-
-    const errors = [...pushResult.errors, ...pullResult.errors];
-    const result: SyncResult = {
-      pushed: pushResult.count,
-      pulled: pullResult.count,
-      errors,
-    };
-
-    if (errors.length === 0) {
-      void uploadTodayMobileLogs(this.apiClient).catch(() => {
-        /* best-effort log upload */
-      });
-    }
-
-    mobileLogger.flow('Sync cycle finished', {
-      pushed: result.pushed,
-      pulled: result.pulled,
-      errorCount: result.errors.length,
-    });
-
-    return result;
   }
 
   /**
@@ -118,10 +143,7 @@ export class SyncManager {
         await this.syncQueueRepo.markFailed(failed.id, failed.error);
       }
 
-      const handled = new Set([
-        ...result.completedIds,
-        ...result.failedEntries.map((f) => f.id),
-      ]);
+      const handled = new Set([...result.completedIds, ...result.failedEntries.map((f) => f.id)]);
       for (const id of batchIds) {
         if (!handled.has(id)) {
           await this.syncQueueRepo.markFailed(
@@ -131,7 +153,8 @@ export class SyncManager {
         }
       }
 
-      await this.syncQueueRepo.purgeCompleted();
+      // purgeCompleted() is called once at the start of sync(); no need to
+      // repeat it here (M32 — removed duplicate call).
 
       return { count: result.count, errors: result.errors };
     } catch (err) {
@@ -414,10 +437,7 @@ export class SyncManager {
         continue;
       }
 
-      const localUri = await this.getLocalReceiptUri(
-        entry.entity_type,
-        entry.entity_id,
-      );
+      const localUri = await this.getLocalReceiptUri(entry.entity_type, entry.entity_id);
       if (!localUri) continue;
 
       try {
@@ -441,10 +461,7 @@ export class SyncManager {
     }
   }
 
-  private async getLocalReceiptUri(
-    table: string,
-    id: string,
-  ): Promise<string | null> {
+  private async getLocalReceiptUri(table: string, id: string): Promise<string | null> {
     if (table === 'fuel_logs' && this.fuelLogsRepo) {
       const row = await this.fuelLogsRepo.findById(id);
       return row?.receipt_photo_uri ?? null;

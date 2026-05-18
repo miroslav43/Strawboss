@@ -55,6 +55,7 @@ export const TABLES = {
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_flight', 'failed', 'completed')),
     retry_count INTEGER DEFAULT 0,
     last_error TEXT,
+    next_retry_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,

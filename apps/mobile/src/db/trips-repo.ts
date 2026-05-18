@@ -52,15 +52,12 @@ export class TripsRepo {
       `INSERT INTO trips (${columns.join(', ')})
        VALUES (${placeholders})
        ON CONFLICT(id) DO UPDATE SET ${updateClauses}`,
-      values
+      values,
     );
   }
 
   async findById(id: string): Promise<LocalTrip | null> {
-    const result = await this.db.getFirstAsync<LocalTrip>(
-      `SELECT * FROM trips WHERE id = ?`,
-      [id]
-    );
+    const result = await this.db.getFirstAsync<LocalTrip>(`SELECT * FROM trips WHERE id = ?`, [id]);
     return result ?? null;
   }
 
@@ -68,20 +65,20 @@ export class TripsRepo {
     return this.db.getAllAsync<LocalTrip>(
       `SELECT * FROM trips
        WHERE status NOT IN ('completed', 'cancelled')
-       ORDER BY created_at DESC`
+       ORDER BY created_at DESC`,
     );
   }
 
-  async listAll(): Promise<LocalTrip[]> {
-    return this.db.getAllAsync<LocalTrip>(
-      `SELECT * FROM trips ORDER BY created_at DESC`
-    );
+  async listAll(limit = 200): Promise<LocalTrip[]> {
+    return this.db.getAllAsync<LocalTrip>(`SELECT * FROM trips ORDER BY created_at DESC LIMIT ?`, [
+      limit,
+    ]);
   }
 
   async updateStatus(id: string, status: string): Promise<void> {
     await this.db.runAsync(
       `UPDATE trips SET status = ?, updated_at = datetime('now') WHERE id = ?`,
-      [status, id]
+      [status, id],
     );
   }
 
@@ -89,7 +86,7 @@ export class TripsRepo {
   async acknowledge(id: string): Promise<void> {
     await this.db.runAsync(
       `UPDATE trips SET acknowledged_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-      [id]
+      [id],
     );
   }
 
@@ -108,15 +105,12 @@ export class TripsRepo {
     fields.push(`updated_at = datetime('now')`);
     values.push(id);
 
-    await this.db.runAsync(
-      `UPDATE trips SET ${fields.join(', ')} WHERE id = ?`,
-      values
-    );
+    await this.db.runAsync(`UPDATE trips SET ${fields.join(', ')} WHERE id = ?`, values);
   }
 
   async getMaxServerVersion(): Promise<number> {
     const result = await this.db.getFirstAsync<{ max_ver: number }>(
-      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM trips`
+      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM trips`,
     );
     return result?.max_ver ?? 0;
   }

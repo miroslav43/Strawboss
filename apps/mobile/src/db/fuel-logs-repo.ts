@@ -51,7 +51,7 @@ export class FuelLogsRepo {
         data.created_at,
         data.updated_at,
         data.server_version,
-      ] as SQLiteBindValue[]
+      ] as SQLiteBindValue[],
     );
   }
 
@@ -95,7 +95,7 @@ export class FuelLogsRepo {
         data.created_at,
         data.updated_at,
         data.server_version,
-      ] as SQLiteBindValue[]
+      ] as SQLiteBindValue[],
     );
   }
 
@@ -114,7 +114,7 @@ export class FuelLogsRepo {
   async findById(id: string): Promise<LocalFuelLog | null> {
     const result = await this.db.getFirstAsync<LocalFuelLog>(
       `SELECT * FROM fuel_logs WHERE id = ?`,
-      [id]
+      [id],
     );
     return result ?? null;
   }
@@ -122,19 +122,20 @@ export class FuelLogsRepo {
   async listByOperator(operatorId: string): Promise<LocalFuelLog[]> {
     return this.db.getAllAsync<LocalFuelLog>(
       `SELECT * FROM fuel_logs WHERE operator_id = ? ORDER BY logged_at DESC`,
-      [operatorId]
+      [operatorId],
     );
   }
 
-  async listAll(): Promise<LocalFuelLog[]> {
+  async listAll(limit = 200): Promise<LocalFuelLog[]> {
     return this.db.getAllAsync<LocalFuelLog>(
-      `SELECT * FROM fuel_logs ORDER BY logged_at DESC`
+      `SELECT * FROM fuel_logs ORDER BY logged_at DESC LIMIT ?`,
+      [limit],
     );
   }
 
   async getMaxServerVersion(): Promise<number> {
     const result = await this.db.getFirstAsync<{ max_ver: number }>(
-      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM fuel_logs`
+      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM fuel_logs`,
     );
     return result?.max_ver ?? 0;
   }
