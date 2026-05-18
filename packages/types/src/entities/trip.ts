@@ -1,16 +1,16 @@
-import type { Timestamps, SoftDelete, GeoPoint } from "../common.js";
+import type { Timestamps, SoftDelete, GeoPoint } from '../common.js';
 
 export enum TripStatus {
-  planned = "planned",
-  loading = "loading",
-  loaded = "loaded",
-  in_transit = "in_transit",
-  arrived = "arrived",
-  delivering = "delivering",
-  delivered = "delivered",
-  completed = "completed",
-  cancelled = "cancelled",
-  disputed = "disputed",
+  planned = 'planned',
+  loading = 'loading',
+  loaded = 'loaded',
+  in_transit = 'in_transit',
+  arrived = 'arrived',
+  delivering = 'delivering',
+  delivered = 'delivered',
+  completed = 'completed',
+  cancelled = 'cancelled',
+  disputed = 'disputed',
 }
 
 export interface Trip extends Timestamps, SoftDelete {
@@ -55,4 +55,14 @@ export interface Trip extends Timestamps, SoftDelete {
   fraudFlags: Record<string, unknown> | null;
   clientId: string | null;
   syncVersion: number;
+
+  // Enriched join labels — populated only by GET /trips/:id, optional elsewhere.
+  truckPlate?: string | null;
+  truckCode?: string | null;
+  driverName?: string | null;
+  loaderPlate?: string | null;
+  loaderCode?: string | null;
+  loaderOperatorName?: string | null;
+  sourceParcelName?: string | null;
+  sourceParcelCode?: string | null;
 }
