@@ -20,10 +20,8 @@ const FARMLESS_NAME = 'Fără fermă';
 export class ReportsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  private orgFilter(orgId: string | null, column: string) {
-    return orgId !== null
-      ? sql` AND ${sql.raw(column)} = ${orgId}::uuid`
-      : sql``;
+  private orgFilter(orgId: string | null, col: ReturnType<typeof sql>) {
+    return orgId !== null ? sql` AND ${col} = ${orgId}::uuid` : sql``;
   }
 
   /** Date-range filter on a `DATE` column (bale_productions.production_date). */
@@ -73,7 +71,7 @@ export class ReportsService {
       range,
       sql`COALESCE(t2.delivered_at, t2.completed_at)`,
     );
-    const parcelOrg = this.orgFilter(orgId, 'p.organization_id');
+    const parcelOrg = this.orgFilter(orgId, sql`p.organization_id`);
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
@@ -180,8 +178,8 @@ export class ReportsService {
     orgId: string | null,
     range?: ReportDateRange,
   ): Promise<DepotReport[]> {
-    const tripOrg = this.orgFilter(orgId, 't.organization_id');
-    const depotOrg = this.orgFilter(orgId, 'd.organization_id');
+    const tripOrg = this.orgFilter(orgId, sql`t.organization_id`);
+    const depotOrg = this.orgFilter(orgId, sql`d.organization_id`);
     const receivedFilter = this.timestampRangeFilter(
       range,
       sql`COALESCE(t.delivered_at, t.completed_at)`,
@@ -255,8 +253,8 @@ export class ReportsService {
       from = d.toISOString().slice(0, 10);
     }
 
-    const bpOrg = this.orgFilter(orgId, 'bp.organization_id');
-    const tripOrg = this.orgFilter(orgId, 't.organization_id');
+    const bpOrg = this.orgFilter(orgId, sql`bp.organization_id`);
+    const tripOrg = this.orgFilter(orgId, sql`t.organization_id`);
     const farmFilter = farmId
       ? sql` AND p.farm_id = ${farmId}::uuid`
       : sql``;
