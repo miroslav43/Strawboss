@@ -10,8 +10,7 @@ import type { Trip } from '@strawboss/types';
 export function toTripCamel(raw: unknown): Trip | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
-  const num = (v: unknown): number | null =>
-    v === null || v === undefined ? null : Number(v);
+  const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
   return {
     id: String(r.id),
@@ -58,5 +57,14 @@ export function toTripCamel(raw: unknown): Trip | null {
     createdAt: String(r.created_at ?? ''),
     updatedAt: String(r.updated_at ?? ''),
     deletedAt: (r.deleted_at as string | null) ?? null,
+    // Enriched join labels from GET /trips/:id.
+    truckPlate: (r.truck_plate as string | null) ?? null,
+    truckCode: (r.truck_code as string | null) ?? null,
+    driverName: (r.driver_name as string | null) ?? null,
+    loaderPlate: (r.loader_plate as string | null) ?? null,
+    loaderCode: (r.loader_code as string | null) ?? null,
+    loaderOperatorName: (r.loader_operator_name as string | null) ?? null,
+    sourceParcelName: (r.source_parcel_name as string | null) ?? null,
+    sourceParcelCode: (r.source_parcel_code as string | null) ?? null,
   };
 }

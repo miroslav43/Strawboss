@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Param,
-  Query,
-  Res,
-  NotFoundException,
-} from '@nestjs/common';
+import { Controller, Get, Param, Query, Res, NotFoundException } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { DocumentsService } from './documents.service';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -36,7 +29,7 @@ export class DocumentsController {
     @Res() res: FastifyReply,
   ) {
     const doc = await this.documentsService.findById(id, user.organizationId);
-    const fileUrl = doc.file_url as string | null;
+    const fileUrl = doc.fileUrl as string | null;
 
     if (!fileUrl) {
       throw new NotFoundException('Document file not available');

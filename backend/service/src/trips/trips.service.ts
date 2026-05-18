@@ -196,13 +196,32 @@ export class TripsService implements OnModuleInit {
   }
 
   async findById(id: string, orgId?: string | null) {
-    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}`, sql`deleted_at IS NULL`];
+    const conditions: ReturnType<typeof sql>[] = [sql`t.id = ${id}`, sql`t.deleted_at IS NULL`];
     if (orgId !== null && orgId !== undefined) {
-      conditions.push(sql`organization_id = ${orgId}::uuid`);
+      conditions.push(sql`t.organization_id = ${orgId}::uuid`);
     }
     const where = sql.join(conditions, sql` AND `);
+    // `t.*` keeps every trip column (internal callers rely on it); the extra
+    // LEFT JOIN labels let the admin show real names instead of raw UUIDs.
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM trips WHERE ${where} LIMIT 1`,
+      sql`SELECT
+            t.*,
+            m.registration_plate  AS truck_plate,
+            m.internal_code       AS truck_code,
+            u.full_name           AS driver_name,
+            lm.registration_plate AS loader_plate,
+            lm.internal_code      AS loader_code,
+            lo.full_name          AS loader_operator_name,
+            p.name                AS source_parcel_name,
+            p.code                AS source_parcel_code
+          FROM trips t
+          LEFT JOIN machines m  ON m.id  = t.truck_id
+          LEFT JOIN users    u  ON u.id  = t.driver_id
+          LEFT JOIN machines lm ON lm.id = t.loader_id
+          LEFT JOIN users    lo ON lo.id = t.loader_operator_id
+          LEFT JOIN parcels  p  ON p.id  = t.source_parcel_id
+          WHERE ${where}
+          LIMIT 1`,
     );
     const rows = result as unknown as Record<string, unknown>[];
     if (!rows.length) {
@@ -284,9 +303,7 @@ export class TripsService implements OnModuleInit {
     // not read the same COUNT and emit a duplicate trip_number. The lock is
     // transaction-scoped and held until the caller commits the INSERT, so the
     // caller MUST run this inside a transaction.
-    await executor.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${prefix + (orgId ?? '')}))`,
-    );
+    await executor.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${prefix + (orgId ?? '')}))`);
     const conditions: ReturnType<typeof sql>[] = [sql`trip_number LIKE ${prefix + '%'}`];
     if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);

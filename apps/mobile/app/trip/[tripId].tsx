@@ -249,7 +249,9 @@ export default function TripDetailScreen() {
                 />
               )}
 
-              {(trip.status === 'arrived' || trip.status === 'delivering') && (
+              {(trip.status === 'arrived' ||
+                trip.status === 'delivering' ||
+                trip.status === 'delivered') && (
                 <ActionCard
                   title="Livrare"
                   subtitle="Cântărire, fotografiere și semnătură primitor"
