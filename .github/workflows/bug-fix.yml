@@ -310,3 +310,39 @@ jobs:
             - Nu adăuga features sau refactoring dincolo de scope-ul finding-ului
             - Dacă ești blocat, skip și continuă — nu te opri
             - Dacă toate finding-urile sunt deferred, scrie asta clar și oprește-te fără push
+
+      # ── 5. WhatsApp + squash merge PR ────────────────────────────────────────
+      - name: WhatsApp + Squash merge PR
+        if: always()
+        env:
+          GH_TOKEN:         ${{ github.token }}
+          CALLMEBOT_PHONE:  ${{ secrets.CALLMEBOT_PHONE }}
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+          PR_NUMBER:        ${{ steps.detect.outputs.pr_number || inputs.pr_number || '3' }}
+        run: |
+          # Citește comentariul de sumar de la Opus (cel cu "## 🤖 Bug Fix")
+          COMMENT=$(gh pr view "$PR_NUMBER" --json comments \
+            --jq '[.comments[] | select(.author.login == "claude" and (.body | startswith("## 🤖 Bug Fix")))] | last | .body' \
+            2>/dev/null || echo "")
+
+          FIXED=$(echo "$COMMENT"    | grep -oP '(?<=\*\*Fixed:\*\* )[^\n]+' | head -1 || echo "N/A")
+          DEFERRED=$(echo "$COMMENT" | grep -oP '(?<=\*\*Deferred:\*\* )[^\n]+' | head -1 || echo "N/A")
+
+          # Primele 4 fix-uri, formatate compact
+          FIXES=$(echo "$COMMENT" | grep -E "^\- \`fix\(" | head -4 | \
+            sed "s/^- \`/• /" | sed "s/\` (\*\*[A-Z]-[0-9]*\*\*).*//" | sed "s/\`//g" || echo "")
+
+          # Squash merge — merge oricum, cu sau fără findings deferate
+          MERGE_STATUS="❌ merge manual necesar"
+          if gh pr merge "$PR_NUMBER" --squash --delete-branch 2>&1; then
+            MERGE_STATUS="✅ PR #${PR_NUMBER} merged (squash) → main"
+          fi
+
+          # Trimite WhatsApp dacă secretele există
+          if [ -n "$CALLMEBOT_PHONE" ] && [ -n "$CALLMEBOT_APIKEY" ]; then
+            MSG=$(printf "🤖 Bug Fix — StrawBoss\nPR #${PR_NUMBER} | claude-opus-4-7\n\n✅ Fixed: ${FIXED}\n⏭️ Deferred: ${DEFERRED}\n\n${FIXES}\n\n${MERGE_STATUS}")
+            curl -G -s "https://api.callmebot.com/whatsapp.php" \
+              --data-urlencode "phone=${CALLMEBOT_PHONE}" \
+              --data-urlencode "text=${MSG}" \
+              --data-urlencode "apikey=${CALLMEBOT_APIKEY}" || true
+          fi
