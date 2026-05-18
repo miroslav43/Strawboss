@@ -87,3 +87,4 @@ jobs:
             --data-urlencode "phone=${CALLMEBOT_PHONE}" \
             --data-urlencode "text=${MSG}" \
             --data-urlencode "apikey=${CALLMEBOT_APIKEY}" || true
+# test trigger 1779101329
