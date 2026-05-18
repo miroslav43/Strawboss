@@ -2,6 +2,28 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 
+// Project columns to camelCase — the API contract (@strawboss/types Document)
+// and the admin UI expect camelCase; a raw SELECT * returns snake_case, which
+// leaves fileUrl/documentType/etc. undefined on the client.
+const DOCUMENT_COLUMNS = sql`
+  id,
+  trip_id          AS "tripId",
+  document_type    AS "documentType",
+  status,
+  title,
+  file_url         AS "fileUrl",
+  file_size_bytes  AS "fileSizeBytes",
+  mime_type        AS "mimeType",
+  metadata,
+  generated_at     AS "generatedAt",
+  sent_at          AS "sentAt",
+  sent_to          AS "sentTo",
+  created_at       AS "createdAt",
+  updated_at       AS "updatedAt",
+  deleted_at       AS "deletedAt",
+  organization_id  AS "organizationId"
+`;
+
 @Injectable()
 export class DocumentsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
@@ -21,16 +43,13 @@ export class DocumentsService {
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM documents WHERE ${where} ORDER BY created_at DESC LIMIT 1000`,
+      sql`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE ${where} ORDER BY created_at DESC LIMIT 1000`,
     );
     return result;
   }
 
   async findById(id: string, orgId: string | null) {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}`, sql`deleted_at IS NULL`];
 
     if (orgId) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
@@ -38,7 +57,7 @@ export class DocumentsService {
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM documents WHERE ${where} LIMIT 1`,
+      sql`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE ${where} LIMIT 1`,
     );
     const rows = result as unknown as Record<string, unknown>[];
     if (!rows.length) {
@@ -73,16 +92,8 @@ export class DocumentsService {
     return result;
   }
 
-  async updateStatus(
-    id: string,
-    orgId: string | null,
-    status: string,
-    fileUrl?: string | null,
-  ) {
-    const setClauses: ReturnType<typeof sql>[] = [
-      sql`status = ${status}`,
-      sql`updated_at = NOW()`,
-    ];
+  async updateStatus(id: string, orgId: string | null, status: string, fileUrl?: string | null) {
+    const setClauses: ReturnType<typeof sql>[] = [sql`status = ${status}`, sql`updated_at = NOW()`];
 
     if (status === 'generated' || status === 'sent') {
       setClauses.push(sql`generated_at = NOW()`);
