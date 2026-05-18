@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 export interface OperatorProductionRow {
   operatorId?: string;
@@ -15,10 +16,12 @@ interface OperatorProductionChartProps {
 }
 
 export function OperatorProductionChart({ data, className }: OperatorProductionChartProps) {
+  const { t } = useI18n();
+
   if (data.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-neutral-400">
-        Nu sunt date de productie pentru operatori
+        {t('reports.operators.noData')}
       </div>
     );
   }
@@ -45,7 +48,7 @@ export function OperatorProductionChart({ data, className }: OperatorProductionC
                 {row.operatorName ?? 'N/A'}
               </span>
               <span className="text-sm font-semibold text-neutral-700">
-                {bales} baloti
+                {bales} {t('reports.common.bales')}
               </span>
             </div>
             <div className="h-4 w-full overflow-hidden rounded-full bg-neutral-100">

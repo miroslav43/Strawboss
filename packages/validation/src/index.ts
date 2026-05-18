@@ -150,3 +150,12 @@ export {
   costReportSchema,
   antiFraudReportSchema,
 } from "./dtos/dashboard.schema.js";
+
+export {
+  fieldReportSchema,
+  farmReportSchema,
+  depotReportSchema,
+  reportTimelinePointSchema,
+  reportQuerySchema,
+} from "./dtos/reports.schema.js";
+export type { ReportQuery } from "./dtos/reports.schema.js";

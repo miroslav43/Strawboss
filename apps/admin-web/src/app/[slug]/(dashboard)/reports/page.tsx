@@ -2,60 +2,43 @@
 export const dynamic = 'force-dynamic';
 
 import { useState } from 'react';
-import { useProductionReport, useCostReport, useBaleProductionStats } from '@strawboss/api';
-import type { ProductionReport, CostReport } from '@strawboss/types';
+import { Download } from 'lucide-react';
+import {
+  useFarmReports,
+  useDepotReports,
+  useReportTimeline,
+  useCostReport,
+  useBaleProductionStats,
+} from '@strawboss/api';
+import type {
+  FarmReport,
+  DepotReport,
+  ReportTimelinePoint,
+  CostReport,
+} from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ReportFilters } from '@/components/features/reports/ReportFilters';
-import { BaleCountChart } from '@/components/features/reports/BaleCountChart';
+import { ReportKpiRow } from '@/components/features/reports/ReportKpiRow';
+import { FarmReportTab } from '@/components/features/reports/FarmReportTab';
+import { DepotReportTab } from '@/components/features/reports/DepotReportTab';
+import { RankingsTab } from '@/components/features/reports/RankingsTab';
 import { CostBreakdownChart } from '@/components/features/reports/CostBreakdownChart';
 import { OperatorProductionChart } from '@/components/features/reports/OperatorProductionChart';
 import type { OperatorProductionRow } from '@/components/features/reports/OperatorProductionChart';
 import { DataTable, type Column } from '@/components/shared/DataTable';
+import { exportCsv } from '@/lib/csv';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 
-type Tab = 'production' | 'costs' | 'operators';
+type Tab = 'farms' | 'depots' | 'rankings' | 'costs' | 'operators';
 
-interface ProductionRow extends Record<string, unknown> {
-  parcelId: string;
-  parcelName: string;
-  produced: number;
-  loaded: number;
-  delivered: number;
-  lossPercentage: number;
-}
-
-const productionColumns: Column<ProductionRow>[] = [
-  {
-    key: 'parcelName',
-    header: 'Parcel',
-    sortable: true,
-    render: (row) => (
-      <span className="font-medium text-neutral-800">{row.parcelName}</span>
-    ),
-  },
-  { key: 'produced', header: 'Produced', sortable: true },
-  { key: 'loaded', header: 'Loaded', sortable: true },
-  { key: 'delivered', header: 'Delivered', sortable: true },
-  {
-    key: 'lossPercentage',
-    header: 'Loss %',
-    sortable: true,
-    render: (row) => {
-      const val = Number(row.lossPercentage);
-      return (
-        <span
-          className={cn(
-            'text-sm font-medium',
-            val > 5 ? 'text-red-600' : val > 2 ? 'text-amber-600' : 'text-green-600',
-          )}
-        >
-          {val.toFixed(1)}%
-        </span>
-      );
-    },
-  },
+const TABS: { id: Tab; labelKey: string }[] = [
+  { id: 'farms', labelKey: 'reports.tabs.farms' },
+  { id: 'depots', labelKey: 'reports.tabs.depots' },
+  { id: 'rankings', labelKey: 'reports.tabs.rankings' },
+  { id: 'costs', labelKey: 'reports.tabs.costs' },
+  { id: 'operators', labelKey: 'reports.tabs.operators' },
 ];
 
 interface CostRow extends Record<string, unknown> {
@@ -67,48 +50,6 @@ interface CostRow extends Record<string, unknown> {
   totalCost: number;
 }
 
-const costColumns: Column<CostRow>[] = [
-  {
-    key: 'entityName',
-    header: 'Entity',
-    sortable: true,
-    render: (row) => (
-      <span className="font-medium text-neutral-800">{row.entityName}</span>
-    ),
-  },
-  {
-    key: 'entityType',
-    header: 'Type',
-    render: (row) => (
-      <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-500">
-        {String(row.entityType)}
-      </span>
-    ),
-  },
-  {
-    key: 'fuelCost',
-    header: 'Fuel Cost',
-    sortable: true,
-    render: (row) => `$${Number(row.fuelCost).toLocaleString()}`,
-  },
-  {
-    key: 'consumableCost',
-    header: 'Consumable Cost',
-    sortable: true,
-    render: (row) => `$${Number(row.consumableCost).toLocaleString()}`,
-  },
-  {
-    key: 'totalCost',
-    header: 'Total',
-    sortable: true,
-    render: (row) => (
-      <span className="font-semibold text-neutral-800">
-        ${Number(row.totalCost).toLocaleString()}
-      </span>
-    ),
-  },
-];
-
 interface OperatorRow extends Record<string, unknown> {
   operatorId: string;
   operatorName: string;
@@ -118,36 +59,30 @@ interface OperatorRow extends Record<string, unknown> {
   avgPerSession: number;
 }
 
-const operatorColumns: Column<OperatorRow>[] = [
-  {
-    key: 'operatorName',
-    header: 'Operator',
-    sortable: true,
-    render: (row) => (
-      <span className="font-medium text-neutral-800">{row.operatorName}</span>
-    ),
-  },
-  { key: 'parcelCount', header: 'Parcele', sortable: true },
-  { key: 'totalBales', header: 'Total baloti', sortable: true },
-  { key: 'sessionCount', header: 'Sesiuni', sortable: true },
-  {
-    key: 'avgPerSession',
-    header: 'Media/sesiune',
-    sortable: true,
-    render: (row) => {
-      const val = Number(row.avgPerSession);
-      return (
-        <span className="text-sm font-medium text-neutral-700">
-          {Number.isFinite(val) ? val.toFixed(1) : '--'}
-        </span>
-      );
-    },
-  },
-];
+function ExportCsvButton({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
+    >
+      <Download className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
 
 export default function ReportsPage() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<Tab>('production');
+  const [tab, setTab] = useState<Tab>('farms');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -155,24 +90,175 @@ export default function ReportsPage() {
   if (dateFrom) filters.dateFrom = dateFrom;
   if (dateTo) filters.dateTo = dateTo;
   const hasFilters = Object.keys(filters).length > 0;
+  const activeFilters = hasFilters ? filters : undefined;
 
-  const productionQuery = useProductionReport(
-    apiClient,
-    hasFilters ? filters : undefined,
-  );
-  const costQuery = useCostReport(
-    apiClient,
-    hasFilters ? filters : undefined,
-  );
+  const farmQuery = useFarmReports(apiClient, activeFilters);
+  const depotQuery = useDepotReports(apiClient, activeFilters);
+  const timelineQuery = useReportTimeline(apiClient, activeFilters);
+  const costQuery = useCostReport(apiClient, activeFilters);
   const operatorStatsQuery = useBaleProductionStats(apiClient, {
     ...(hasFilters ? filters : {}),
     groupBy: 'operator',
   });
 
-  const production: ProductionReport[] = productionQuery.data ?? [];
+  const farms: FarmReport[] = farmQuery.data ?? [];
+  const depots: DepotReport[] = depotQuery.data ?? [];
+  const timeline: ReportTimelinePoint[] = timelineQuery.data ?? [];
   const costs: CostReport[] = costQuery.data ?? [];
   const operatorStatsRaw: OperatorProductionRow[] =
     (operatorStatsQuery.data ?? []) as OperatorProductionRow[];
+
+  // KPI summary — computed client-side from the farm + depot reports.
+  const totalProduced = farms.reduce((s, f) => s + f.produced, 0);
+  const totalLoaded = farms.reduce((s, f) => s + f.loaded, 0);
+  const totalDelivered = farms.reduce((s, f) => s + f.delivered, 0);
+  const totalDepotStock = depots.reduce((s, d) => s + d.totalStock, 0);
+  const lossPercentage =
+    totalProduced > 0
+      ? ((totalProduced - totalDelivered) / totalProduced) * 100
+      : 0;
+
+  const costRows: CostRow[] = costs.map((c) => ({ ...c }) as CostRow);
+  const operatorRows: OperatorRow[] = operatorStatsRaw.map((o) => {
+    const totalBales = Number(o.totalBales) || 0;
+    const sessionCount = Number(o.sessionCount) || 0;
+    return {
+      operatorId: String(o.operatorId ?? ''),
+      operatorName: String(o.operatorName ?? 'N/A'),
+      parcelCount: Number(o.parcelCount) || 0,
+      totalBales,
+      sessionCount,
+      avgPerSession: sessionCount > 0 ? totalBales / sessionCount : 0,
+    };
+  });
+
+  const costColumns: Column<CostRow>[] = [
+    {
+      key: 'entityName',
+      header: t('reports.costs.entity'),
+      sortable: true,
+      render: (row) => (
+        <span className="font-medium text-neutral-800">{row.entityName}</span>
+      ),
+    },
+    {
+      key: 'entityType',
+      header: t('reports.costs.type'),
+      render: (row) => (
+        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-500">
+          {String(row.entityType)}
+        </span>
+      ),
+    },
+    {
+      key: 'fuelCost',
+      header: t('reports.costs.fuelCost'),
+      sortable: true,
+      render: (row) => `$${row.fuelCost.toLocaleString()}`,
+    },
+    {
+      key: 'consumableCost',
+      header: t('reports.costs.consumableCost'),
+      sortable: true,
+      render: (row) => `$${row.consumableCost.toLocaleString()}`,
+    },
+    {
+      key: 'totalCost',
+      header: t('reports.costs.total'),
+      sortable: true,
+      render: (row) => (
+        <span className="font-semibold text-neutral-800">
+          ${row.totalCost.toLocaleString()}
+        </span>
+      ),
+    },
+  ];
+
+  const operatorColumns: Column<OperatorRow>[] = [
+    {
+      key: 'operatorName',
+      header: t('reports.operators.operator'),
+      sortable: true,
+      render: (row) => (
+        <span className="font-medium text-neutral-800">
+          {row.operatorName}
+        </span>
+      ),
+    },
+    {
+      key: 'parcelCount',
+      header: t('reports.operators.parcels'),
+      sortable: true,
+    },
+    {
+      key: 'totalBales',
+      header: t('reports.operators.totalBales'),
+      sortable: true,
+    },
+    {
+      key: 'sessionCount',
+      header: t('reports.operators.sessions'),
+      sortable: true,
+    },
+    {
+      key: 'avgPerSession',
+      header: t('reports.operators.avgPerSession'),
+      sortable: true,
+      render: (row) => (
+        <span className="text-sm font-medium text-neutral-700">
+          {Number.isFinite(row.avgPerSession)
+            ? row.avgPerSession.toFixed(1)
+            : '--'}
+        </span>
+      ),
+    },
+  ];
+
+  const handleExportCosts = () => {
+    exportCsv<CostRow>(
+      'costs-report',
+      [
+        { header: t('reports.costs.entity'), value: (r) => r.entityName },
+        { header: t('reports.costs.type'), value: (r) => r.entityType },
+        { header: t('reports.costs.fuelCost'), value: (r) => r.fuelCost },
+        {
+          header: t('reports.costs.consumableCost'),
+          value: (r) => r.consumableCost,
+        },
+        { header: t('reports.costs.total'), value: (r) => r.totalCost },
+      ],
+      costRows,
+    );
+  };
+
+  const handleExportOperators = () => {
+    exportCsv<OperatorRow>(
+      'operators-report',
+      [
+        {
+          header: t('reports.operators.operator'),
+          value: (r) => r.operatorName,
+        },
+        {
+          header: t('reports.operators.parcels'),
+          value: (r) => r.parcelCount,
+        },
+        {
+          header: t('reports.operators.totalBales'),
+          value: (r) => r.totalBales,
+        },
+        {
+          header: t('reports.operators.sessions'),
+          value: (r) => r.sessionCount,
+        },
+        {
+          header: t('reports.operators.avgPerSession'),
+          value: (r) => r.avgPerSession.toFixed(1),
+        },
+      ],
+      operatorRows,
+    );
+  };
 
   return (
     <div>
@@ -188,89 +274,88 @@ export default function ReportsPage() {
         />
       </div>
 
+      {/* KPI summary */}
+      <div className="mb-6">
+        <ReportKpiRow
+          produced={totalProduced}
+          loaded={totalLoaded}
+          delivered={totalDelivered}
+          depotStock={totalDepotStock}
+          lossPercentage={lossPercentage}
+        />
+      </div>
+
       {/* Tab selector */}
-      <div className="mb-6 flex gap-1 rounded-lg bg-neutral-100 p-1">
-        <button
-          onClick={() => setTab('production')}
-          className={cn(
-            'rounded-md px-4 py-2 text-sm font-medium transition-colors',
-            tab === 'production'
-              ? 'bg-white text-neutral-800 shadow-sm'
-              : 'text-neutral-500 hover:text-neutral-700',
-          )}
-        >
-          Production
-        </button>
-        <button
-          onClick={() => setTab('costs')}
-          className={cn(
-            'rounded-md px-4 py-2 text-sm font-medium transition-colors',
-            tab === 'costs'
-              ? 'bg-white text-neutral-800 shadow-sm'
-              : 'text-neutral-500 hover:text-neutral-700',
-          )}
-        >
-          Costs
-        </button>
-        <button
-          onClick={() => setTab('operators')}
-          className={cn(
-            'rounded-md px-4 py-2 text-sm font-medium transition-colors',
-            tab === 'operators'
-              ? 'bg-white text-neutral-800 shadow-sm'
-              : 'text-neutral-500 hover:text-neutral-700',
-          )}
-        >
-          Operatori
-        </button>
+      <div className="mb-6 flex flex-wrap gap-1 rounded-lg bg-neutral-100 p-1">
+        {TABS.map((tabDef) => (
+          <button
+            key={tabDef.id}
+            onClick={() => setTab(tabDef.id)}
+            className={cn(
+              'rounded-md px-4 py-2 text-sm font-medium transition-colors',
+              tab === tabDef.id
+                ? 'bg-white text-neutral-800 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-700',
+            )}
+          >
+            {t(tabDef.labelKey)}
+          </button>
+        ))}
       </div>
 
       {/* Content */}
-      {tab === 'production' && (
-        <div className="space-y-6">
-          <h2 className="text-lg font-semibold text-neutral-800">
-            Production Report
-          </h2>
-          {productionQuery.isLoading ? (
-            <div className="py-8 text-center text-sm text-neutral-400">
-              Loading production data...
-            </div>
-          ) : productionQuery.isError ? (
-            <div className="py-8 text-center text-sm text-red-500">
-              Failed to load data. The backend may not be running.
-            </div>
-          ) : (
-            <>
-              <BaleCountChart data={production} />
-              <DataTable<ProductionRow>
-                columns={productionColumns}
-                data={production.map((p) => ({ ...p }) as ProductionRow)}
-                keyExtractor={(row) => row.parcelId}
-              />
-            </>
-          )}
-        </div>
+      {tab === 'farms' && (
+        <FarmReportTab
+          farms={farms}
+          timeline={timeline}
+          isLoading={farmQuery.isLoading || timelineQuery.isLoading}
+          isError={farmQuery.isError || timelineQuery.isError}
+        />
+      )}
+
+      {tab === 'depots' && (
+        <DepotReportTab
+          depots={depots}
+          isLoading={depotQuery.isLoading}
+          isError={depotQuery.isError}
+        />
+      )}
+
+      {tab === 'rankings' && (
+        <RankingsTab
+          farms={farms}
+          depots={depots}
+          isLoading={farmQuery.isLoading || depotQuery.isLoading}
+          isError={farmQuery.isError || depotQuery.isError}
+        />
       )}
 
       {tab === 'costs' && (
         <div className="space-y-6">
-          <h2 className="text-lg font-semibold text-neutral-800">
-            Cost Report
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-neutral-800">
+              {t('reports.costs.heading')}
+            </h2>
+            <ExportCsvButton
+              label={t('reports.common.exportCsv')}
+              onClick={handleExportCosts}
+              disabled={costRows.length === 0}
+            />
+          </div>
           {costQuery.isLoading ? (
             <div className="py-8 text-center text-sm text-neutral-400">
-              Loading cost data...
+              {t('reports.common.loading')}
             </div>
           ) : costQuery.isError ? (
             <div className="py-8 text-center text-sm text-red-500">
-              Failed to load data. The backend may not be running.
+              {t('reports.common.error')}
             </div>
           ) : (
             <>
               <CostBreakdownChart data={costs} />
               <DataTable<CostRow>
                 columns={costColumns}
-                data={costs.map((c) => ({ ...c }) as CostRow)}
+                data={costRows}
                 keyExtractor={(row) => row.entityId}
               />
             </>
@@ -280,35 +365,30 @@ export default function ReportsPage() {
 
       {tab === 'operators' && (
         <div className="space-y-6">
-          <h2 className="text-lg font-semibold text-neutral-800">
-            Raport operatori
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-neutral-800">
+              {t('reports.operators.heading')}
+            </h2>
+            <ExportCsvButton
+              label={t('reports.common.exportCsv')}
+              onClick={handleExportOperators}
+              disabled={operatorRows.length === 0}
+            />
+          </div>
           {operatorStatsQuery.isLoading ? (
             <div className="py-8 text-center text-sm text-neutral-400">
-              Se incarca datele operatorilor...
+              {t('reports.common.loading')}
             </div>
           ) : operatorStatsQuery.isError ? (
             <div className="py-8 text-center text-sm text-red-500">
-              Eroare la incarcarea datelor. Backend-ul poate fi oprit.
+              {t('reports.common.error')}
             </div>
           ) : (
             <>
               <OperatorProductionChart data={operatorStatsRaw} />
               <DataTable<OperatorRow>
                 columns={operatorColumns}
-                data={operatorStatsRaw.map((o) => {
-                  const totalBales = Number(o.totalBales) || 0;
-                  const sessionCount = Number(o.sessionCount) || 0;
-                  return {
-                    operatorId: String(o.operatorId ?? ''),
-                    operatorName: String(o.operatorName ?? 'N/A'),
-                    parcelCount: Number(o.parcelCount) || 0,
-                    totalBales,
-                    sessionCount,
-                    avgPerSession:
-                      sessionCount > 0 ? totalBales / sessionCount : 0,
-                  } as OperatorRow;
-                })}
+                data={operatorRows}
                 keyExtractor={(row) => row.operatorId}
               />
             </>

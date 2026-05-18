@@ -1,0 +1,59 @@
+import { useQuery } from '@tanstack/react-query';
+import type {
+  FarmReport,
+  DepotReport,
+  ReportTimelinePoint,
+} from '@strawboss/types';
+import type { ApiClient } from '../client/api-client.js';
+import { queryKeys } from '../queries/query-keys.js';
+
+function toQueryString(filters?: Record<string, unknown>): string {
+  if (!filters) return '';
+  const entries = Object.entries(filters).filter(
+    ([, v]) => v != null && v !== '',
+  );
+  if (entries.length === 0) return '';
+  const params = new URLSearchParams(
+    entries.map(([k, v]) => [k, String(v)]),
+  );
+  return `?${params.toString()}`;
+}
+
+export function useFarmReports(
+  client: ApiClient,
+  filters?: Record<string, unknown>,
+) {
+  return useQuery({
+    queryKey: queryKeys.reports.farms(filters),
+    queryFn: () =>
+      client.get<FarmReport[]>(
+        `/api/v1/reports/farms${toQueryString(filters)}`,
+      ),
+  });
+}
+
+export function useDepotReports(
+  client: ApiClient,
+  filters?: Record<string, unknown>,
+) {
+  return useQuery({
+    queryKey: queryKeys.reports.depots(filters),
+    queryFn: () =>
+      client.get<DepotReport[]>(
+        `/api/v1/reports/depots${toQueryString(filters)}`,
+      ),
+  });
+}
+
+export function useReportTimeline(
+  client: ApiClient,
+  filters?: Record<string, unknown>,
+) {
+  return useQuery({
+    queryKey: queryKeys.reports.timeline(filters),
+    queryFn: () =>
+      client.get<ReportTimelinePoint[]>(
+        `/api/v1/reports/timeline${toQueryString(filters)}`,
+      ),
+  });
+}
