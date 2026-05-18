@@ -72,6 +72,7 @@ export class ReportsService {
       sql`COALESCE(t2.delivered_at, t2.completed_at)`,
     );
     const parcelOrg = this.orgFilter(orgId, sql`p.organization_id`);
+    const deliveredOrg = this.orgFilter(orgId, sql`t2.organization_id`);
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
@@ -99,7 +100,7 @@ export class ReportsService {
           FROM trips t2
           WHERE t2.source_parcel_id = p.id
             AND t2.status IN ('delivered', 'completed')
-            AND t2.deleted_at IS NULL
+            AND t2.deleted_at IS NULL ${deliveredOrg}
             ${deliveredFilter}
         ), 0) AS delivered
       FROM parcels p
