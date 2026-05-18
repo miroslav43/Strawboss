@@ -116,7 +116,7 @@ export default function DriverTripsScreen() {
         // Best-effort — proceed to nav even if local update fails.
       }
     }
-    if (trip.status === 'arrived' || trip.status === 'delivering') {
+    if (trip.status === 'arrived' || trip.status === 'delivering' || trip.status === 'delivered') {
       router.push(`/driver-ops/delivery-flow?tripId=${trip.id}`);
     } else {
       router.push(`/trip/${trip.id}`);

@@ -50,7 +50,9 @@ export default function ArrivalFlowScreen() {
       void queryClient.invalidateQueries({ queryKey: ['trip-alert', tripId] });
 
       mobileLogger.flow('ArrivalFlow: arrive success', { tripId });
-      router.replace('/(driver)');
+      // Land back on the trip detail so the driver sees the next action,
+      // not bounced to the home tab.
+      router.replace(`/trip/${tripId}`);
     } catch (err) {
       mobileLogger.error('ArrivalFlow: arrive failed', {
         tripId,

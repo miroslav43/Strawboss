@@ -75,63 +75,6 @@ export default function TripDetailScreen() {
     void loadTrip();
   }, [loadTrip]);
 
-  const updateTripStatus = useCallback(
-    async (newStatus: string, extraData?: Partial<LocalTrip>) => {
-      if (!tripId) return;
-      const fromStatus = trip?.status ?? 'unknown';
-      setActionLoading(true);
-      mobileLogger.flow('Trip detail: status transition start', {
-        tripId,
-        fromStatus,
-        toStatus: newStatus,
-      });
-      try {
-        // Map status to the correct API endpoint
-        const STATUS_ENDPOINTS: Record<string, string> = {
-          loading: 'start-loading',
-          loaded: 'complete-loading',
-          in_transit: 'depart',
-          arrived: 'arrive',
-          delivering: 'start-delivery',
-          delivered: 'confirm-delivery',
-          completed: 'complete',
-          cancelled: 'cancel',
-          disputed: 'dispute',
-        };
-        const endpoint = STATUS_ENDPOINTS[newStatus];
-        if (!endpoint) {
-          throw new Error(`Unknown target status: ${newStatus}`);
-        }
-
-        // Call the dedicated workflow endpoint (with proper state machine validation)
-        await mobileApiClient.post(`/api/v1/trips/${tripId}/${endpoint}`, extraData ?? {});
-
-        // Update local SQLite to reflect the new status
-        const db = await getDatabase();
-        const tripsRepo = new TripsRepo(db);
-        await tripsRepo.update(tripId, { status: newStatus, ...extraData });
-
-        await loadTrip();
-        mobileLogger.flow('Trip detail: status transition completed', {
-          tripId,
-          fromStatus,
-          toStatus: newStatus,
-        });
-      } catch (err) {
-        mobileLogger.error('Trip detail: status transition failed', {
-          tripId,
-          fromStatus,
-          toStatus: newStatus,
-          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
-        });
-        Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update trip');
-      } finally {
-        setActionLoading(false);
-      }
-    },
-    [tripId, trip, loadTrip],
-  );
-
   const assignDestination = useCallback(
     async (destinationId: string, destinationName: string, destinationAddress: string | null) => {
       if (!tripId) return;
@@ -306,10 +249,12 @@ export default function TripDetailScreen() {
                 />
               )}
 
-              {trip.status === 'arrived' && (
+              {(trip.status === 'arrived' ||
+                trip.status === 'delivering' ||
+                trip.status === 'delivered') && (
                 <ActionCard
-                  title="Începe livrarea"
-                  subtitle="Cântărire, fotografiere și semnătură"
+                  title="Livrare"
+                  subtitle="Cântărire, fotografiere și semnătură primitor"
                   icon={
                     <MaterialCommunityIcons
                       name="arrow-down-bold"
@@ -319,24 +264,8 @@ export default function TripDetailScreen() {
                   }
                   onPress={() =>
                     router.push({
-                      pathname: '/operations/deliver',
+                      pathname: '/driver-ops/delivery-flow',
                       params: { tripId: trip.id },
-                    })
-                  }
-                  variant="active"
-                />
-              )}
-
-              {trip.status === 'delivered' && (
-                <ActionCard
-                  title="Finalizează cursa"
-                  subtitle="Marchează această cursă ca finalizată"
-                  icon={
-                    <MaterialCommunityIcons name="check-bold" size={24} color={colors.primary} />
-                  }
-                  onPress={() =>
-                    updateTripStatus('completed', {
-                      completed_at: new Date().toISOString(),
                     })
                   }
                   variant="active"

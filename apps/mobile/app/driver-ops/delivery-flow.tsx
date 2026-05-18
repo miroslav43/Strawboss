@@ -51,8 +51,10 @@ export default function DriverDeliveryFlowScreen() {
     );
   }
 
+  // No SafeAreaView wrapper here — EnhancedDeliveryFlow renders its own
+  // ScreenHeader which already handles the top safe-area inset.
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <EnhancedDeliveryFlow
         tripId={tripId}
         tripNumber={trip.trip_number ?? 'Cursă'}
@@ -61,7 +63,7 @@ export default function DriverDeliveryFlowScreen() {
         onComplete={() => router.replace('/(driver)')}
         onCancel={() => router.back()}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
