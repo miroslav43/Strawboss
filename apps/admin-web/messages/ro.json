@@ -571,7 +571,8 @@
       "parcels": "Terenuri",
       "totalBales": "Total baloți",
       "sessions": "Sesiuni",
-      "avgPerSession": "Media / sesiune"
+      "avgPerSession": "Media / sesiune",
+      "noData": "Nu sunt date de producție pentru operatori"
     },
     "timeline": {
       "produced": "Produs",

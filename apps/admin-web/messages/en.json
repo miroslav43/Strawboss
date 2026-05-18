@@ -571,7 +571,8 @@
       "parcels": "Fields",
       "totalBales": "Total bales",
       "sessions": "Sessions",
-      "avgPerSession": "Avg / session"
+      "avgPerSession": "Avg / session",
+      "noData": "No production data for operators"
     },
     "timeline": {
       "produced": "Produced",
