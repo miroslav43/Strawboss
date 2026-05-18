@@ -1,8 +1,11 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { UserRole } from '@strawboss/types';
 import { ReportsService } from './reports.service';
+import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
 
+@Roles(UserRole.admin, UserRole.dispatcher)
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
