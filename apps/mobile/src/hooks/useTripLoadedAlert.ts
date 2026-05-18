@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { addNotificationListener } from '@/lib/notifications';
 import { useAuthStore } from '@/stores/auth-store';
 import { getDatabase } from '@/lib/storage';
@@ -21,6 +21,7 @@ export interface TripLoadedAlert {
 export function useTripLoadedAlert() {
   const [activeAlert, setActiveAlert] = useState<TripLoadedAlert | null>(null);
   const userId = useAuthStore((s) => s.userId);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!userId) {
@@ -75,7 +76,7 @@ export function useTripLoadedAlert() {
               destinationId: trip.destination_id,
             });
           } else {
-            // Trip not synced yet — show minimal alert with just the id.
+            // Trip not synced yet — show minimal alert immediately, retry after 3s.
             setActiveAlert({
               tripId,
               tripNumber: null,
@@ -83,6 +84,26 @@ export function useTripLoadedAlert() {
               destinationName: null,
               destinationId: null,
             });
+            retryTimerRef.current = setTimeout(() => {
+              void (async () => {
+                try {
+                  const db2 = await getDatabase();
+                  const repo2 = new TripsRepo(db2);
+                  const synced = await repo2.findById(tripId);
+                  if (synced) {
+                    setActiveAlert({
+                      tripId: synced.id,
+                      tripNumber: synced.trip_number,
+                      baleCount: synced.bale_count,
+                      destinationName: synced.destination_name,
+                      destinationId: synced.destination_id,
+                    });
+                  }
+                } catch {
+                  // Best-effort — minimal alert remains visible
+                }
+              })();
+            }, 3000);
           }
         } catch (err) {
           mobileLogger.error('useTripLoadedAlert: failed to load trip after push', { tripId, err });
@@ -90,7 +111,10 @@ export function useTripLoadedAlert() {
       })();
     });
 
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
   }, []);
 
   const dismiss = useCallback(async () => {

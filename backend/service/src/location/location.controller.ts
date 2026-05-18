@@ -17,10 +17,7 @@ export class LocationController {
    */
   @Post('report')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async report(
-    @Body() dto: LocationReportDto,
-    @CurrentUser() user: RequestUser,
-  ): Promise<void> {
+  async report(@Body() dto: LocationReportDto, @CurrentUser() user: RequestUser): Promise<void> {
     await this.locationService.reportLocation(dto, user.id, user.organizationId);
   }
 
@@ -78,6 +75,32 @@ export class LocationController {
     const windowMinutes = windowMinutesRaw ? Number(windowMinutesRaw) : undefined;
     return this.locationService.getTrucksAtLoader(
       loaderMachineId,
+      {
+        radiusM: Number.isFinite(radiusM) ? radiusM : undefined,
+        windowMinutes: Number.isFinite(windowMinutes) ? windowMinutes : undefined,
+      },
+      user.organizationId,
+    );
+  }
+
+  /**
+   * GET /api/v1/location/loaders-near-truck/:truckMachineId
+   * Driver/admin-only: loaders currently within proximity of the truck,
+   * scoped to the caller's organization. Mirror of trucks-at-loader.
+   * Optional `radiusM` (default 75) and `windowMinutes` (default 5) query params.
+   */
+  @Get('loaders-near-truck/:truckMachineId')
+  @Roles(UserRole.admin, UserRole.driver)
+  getLoadersNearTruck(
+    @Param('truckMachineId') truckMachineId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('radiusM') radiusMRaw?: string,
+    @Query('windowMinutes') windowMinutesRaw?: string,
+  ) {
+    const radiusM = radiusMRaw ? Number(radiusMRaw) : undefined;
+    const windowMinutes = windowMinutesRaw ? Number(windowMinutesRaw) : undefined;
+    return this.locationService.getLoadersNearTruck(
+      truckMachineId,
       {
         radiusM: Number.isFinite(radiusM) ? radiusM : undefined,
         windowMinutes: Number.isFinite(windowMinutes) ? windowMinutes : undefined,

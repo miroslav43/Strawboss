@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { mobileApiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store';
+import { todayInRomania } from '@/lib/date';
 
 export interface MyTask {
   id: string;
@@ -53,11 +54,6 @@ function taskHasRenderableLocation(t: MyTask): boolean {
   return parcelOk || destOk;
 }
 
-function todayDateString(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 /**
  * Fetches today's task assignments for the current user.
  * Uses the daily-plan endpoint which returns JOINed parcel/machine/destination names,
@@ -66,7 +62,7 @@ function todayDateString(): string {
 export function useMyTasks() {
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
-  const today = todayDateString();
+  const today = todayInRomania();
 
   const query = useQuery({
     queryKey: ['my-tasks', today, userId, assignedMachineId],

@@ -3,30 +3,17 @@
 import { Calendar } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { todayInRomania, tomorrowInRomania } from '@/lib/date';
 
 interface DayNavigatorProps {
   selectedDate: string;
   onDateChange: (date: string) => void;
 }
 
-function formatDate(d: Date): string {
-  return d.toISOString().split('T')[0];
-}
-
-function getToday(): string {
-  return formatDate(new Date());
-}
-
-function getTomorrow(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return formatDate(d);
-}
-
 export function DayNavigator({ selectedDate, onDateChange }: DayNavigatorProps) {
   const { t, locale } = useI18n();
-  const today = getToday();
-  const tomorrow = getTomorrow();
+  const today = todayInRomania();
+  const tomorrow = tomorrowInRomania();
 
   const displayDate = new Date(selectedDate + 'T12:00:00');
   const formattedDate = displayDate.toLocaleDateString(locale === 'ro' ? 'ro-RO' : 'en-US', {

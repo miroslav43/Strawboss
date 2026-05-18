@@ -29,6 +29,11 @@ type CompleteLoadingEvent = {
   baleCount?: number;
 };
 
+type RegisterLoadEvent = {
+  type: "REGISTER_LOAD";
+  baleCount?: number;
+};
+
 type DepartEvent = {
   type: "DEPART";
   departureOdometerKm: number;
@@ -73,6 +78,7 @@ type ResolveDisputeEvent = {
 type TripEvent =
   | StartLoadingEvent
   | CompleteLoadingEvent
+  | RegisterLoadEvent
   | DepartEvent
   | ArriveEvent
   | StartDeliveryEvent
@@ -174,6 +180,13 @@ export const tripMachine = setup({
             status: TripStatus.loading,
           }),
         },
+        REGISTER_LOAD: {
+          target: "loaded",
+          actions: assign({
+            baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
+            status: TripStatus.loaded,
+          }),
+        },
         CANCEL: {
           target: "cancelled",
           guard: "hasCancellationReason",
@@ -191,6 +204,13 @@ export const tripMachine = setup({
         COMPLETE_LOADING: {
           target: "loaded",
           guard: "hasBaleLoads",
+          actions: assign({
+            baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
+            status: TripStatus.loaded,
+          }),
+        },
+        REGISTER_LOAD: {
+          target: "loaded",
           actions: assign({
             baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
             status: TripStatus.loaded,
@@ -372,8 +392,8 @@ export function createTripMachine(
 }
 
 const transitionMap: Record<string, string[]> = {
-  [TripStatus.planned]: ["START_LOADING", "CANCEL"],
-  [TripStatus.loading]: ["COMPLETE_LOADING", "CANCEL"],
+  [TripStatus.planned]: ["START_LOADING", "REGISTER_LOAD", "CANCEL"],
+  [TripStatus.loading]: ["COMPLETE_LOADING", "REGISTER_LOAD", "CANCEL"],
   [TripStatus.loaded]: ["DEPART", "CANCEL"],
   [TripStatus.in_transit]: ["ARRIVE", "CANCEL"],
   [TripStatus.arrived]: ["START_DELIVERY", "CANCEL"],

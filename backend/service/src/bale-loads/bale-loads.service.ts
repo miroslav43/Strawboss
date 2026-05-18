@@ -48,9 +48,9 @@ export class BaleLoadsService {
     ];
     if (orgId !== null) tripConditions.push(sql`organization_id = ${orgId}::uuid`);
     const tripWhere = sql.join(tripConditions, sql` AND `);
-    const tripRows = await this.drizzleProvider.db.execute(
+    const tripRows = (await this.drizzleProvider.db.execute(
       sql`SELECT id FROM trips WHERE ${tripWhere} LIMIT 1`,
-    ) as unknown as { id: string }[];
+    )) as unknown as { id: string }[];
     if (!tripRows.length) {
       throw new NotFoundException('Trip-ul nu a fost găsit sau a fost șters');
     }
@@ -59,12 +59,12 @@ export class BaleLoadsService {
       sql`INSERT INTO bale_loads (
         trip_id, parcel_id, loader_id, operator_id,
         bale_count, loaded_at, gps_lat, gps_lon, notes,
-        client_id, sync_version, organization_id
+        client_id, organization_id
       ) VALUES (
         ${dto.tripId}, ${dto.parcelId}, ${dto.loaderId}, ${dto.operatorId},
         ${dto.baleCount}, NOW(),
         ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null},
-        ${dto.notes ?? null}, ${dto.clientId ?? null}, 1,
+        ${dto.notes ?? null}, ${dto.clientId ?? null},
         ${orgId}::uuid
       ) RETURNING *`,
     );

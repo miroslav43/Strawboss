@@ -12,6 +12,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { todayInRomania } from '../common/date';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DeliveryDestinationsService } from '../delivery-destinations/delivery-destinations.service';
 import { TripStatus } from '@strawboss/types';
@@ -72,14 +73,11 @@ export class TripsService implements OnModuleInit {
         try {
           await this.autoUpsertFromTruckTask(row.id);
         } catch (err) {
-          this.winston.warn(
-            `Auto-trip backfill failed for task ${row.id}`,
-            {
-              context: 'TripsService',
-              taskId: row.id,
-              err: err instanceof Error ? { message: err.message } : err,
-            },
-          );
+          this.winston.warn(`Auto-trip backfill failed for task ${row.id}`, {
+            context: 'TripsService',
+            taskId: row.id,
+            err: err instanceof Error ? { message: err.message } : err,
+          });
         }
       }
     } catch (err) {
@@ -91,11 +89,16 @@ export class TripsService implements OnModuleInit {
     }
   }
 
-  private async pushToDriver(tripId: string, title: string, body: string, type: string): Promise<void> {
+  private async pushToDriver(
+    tripId: string,
+    title: string,
+    body: string,
+    type: string,
+  ): Promise<void> {
     try {
-      const rows = await this.drizzleProvider.db.execute(
+      const rows = (await this.drizzleProvider.db.execute(
         sql`SELECT driver_id FROM trips WHERE id = ${tripId} AND driver_id IS NOT NULL LIMIT 1`,
-      ) as unknown as { driver_id: string }[];
+      )) as unknown as { driver_id: string }[];
       if (rows[0]?.driver_id) {
         await this.notificationsService.sendPush(rows[0].driver_id, title, body, { type, tripId });
       }
@@ -104,12 +107,7 @@ export class TripsService implements OnModuleInit {
     }
   }
 
-  private logTripFlow(
-    tripId: string,
-    event: string,
-    fromStatus: string,
-    toStatus: string,
-  ): void {
+  private logTripFlow(tripId: string, event: string, fromStatus: string, toStatus: string): void {
     this.winston.log('flow', `Trip ${tripId} ${event}: ${fromStatus} → ${toStatus}`, {
       context: 'TripsService',
       tripId,
@@ -119,15 +117,18 @@ export class TripsService implements OnModuleInit {
     });
   }
 
-  async list(orgId: string | null, filters?: {
-    status?: string; // single value OR comma-separated values (e.g. "planned,loading")
-    driverId?: string;
-    truckId?: string;
-    sourceParcelId?: string;
-    loaderOperatorId?: string;
-    dateFrom?: string;
-    dateTo?: string;
-  }) {
+  async list(
+    orgId: string | null,
+    filters?: {
+      status?: string; // single value OR comma-separated values (e.g. "planned,loading")
+      driverId?: string;
+      truckId?: string;
+      sourceParcelId?: string;
+      loaderOperatorId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`t.deleted_at IS NULL`];
 
     if (orgId !== null) {
@@ -135,7 +136,10 @@ export class TripsService implements OnModuleInit {
     }
 
     if (filters?.status) {
-      const statuses = filters.status.split(',').map((s) => s.trim()).filter(Boolean);
+      const statuses = filters.status
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       if (statuses.length === 1) {
         conditions.push(sql`t.status = ${statuses[0]}::trip_status`);
       } else if (statuses.length > 1) {
@@ -192,10 +196,7 @@ export class TripsService implements OnModuleInit {
   }
 
   async findById(id: string, orgId?: string | null) {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}`, sql`deleted_at IS NULL`];
     if (orgId !== null && orgId !== undefined) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
@@ -212,71 +213,80 @@ export class TripsService implements OnModuleInit {
 
   async create(orgId: string | null, dto: TripCreateDto) {
     if (orgId !== null) {
-      const truckCheck = await this.drizzleProvider.db.execute(sql`
+      const truckCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines WHERE id = ${dto.truckId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-      `) as unknown as { id: string }[];
+      `)) as unknown as { id: string }[];
       if (!truckCheck.length) throw new ForbiddenException('Truck not found in your organization');
 
-      const driverCheck = await this.drizzleProvider.db.execute(sql`
+      const driverCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM users WHERE id = ${dto.driverId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-      `) as unknown as { id: string }[];
-      if (!driverCheck.length) throw new ForbiddenException('Driver not found in your organization');
+      `)) as unknown as { id: string }[];
+      if (!driverCheck.length)
+        throw new ForbiddenException('Driver not found in your organization');
 
       if (dto.loaderId) {
-        const loaderCheck = await this.drizzleProvider.db.execute(sql`
+        const loaderCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM machines WHERE id = ${dto.loaderId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!loaderCheck.length) throw new ForbiddenException('Loader not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!loaderCheck.length)
+          throw new ForbiddenException('Loader not found in your organization');
       }
 
       if (dto.loaderOperatorId) {
-        const loaderOpCheck = await this.drizzleProvider.db.execute(sql`
+        const loaderOpCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM users WHERE id = ${dto.loaderOperatorId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!loaderOpCheck.length) throw new ForbiddenException('Loader operator not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!loaderOpCheck.length)
+          throw new ForbiddenException('Loader operator not found in your organization');
       }
 
       if (dto.sourceParcelId) {
-        const parcelCheck = await this.drizzleProvider.db.execute(sql`
+        const parcelCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM parcels WHERE id = ${dto.sourceParcelId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!parcelCheck.length) throw new ForbiddenException('Parcel not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!parcelCheck.length)
+          throw new ForbiddenException('Parcel not found in your organization');
       }
     }
 
-    const tripNumber = await this.generateTripNumber(orgId);
-
-    const result = await this.drizzleProvider.db.execute(
-      sql`INSERT INTO trips (
-        organization_id,
-        trip_number, status, source_parcel_id, truck_id, driver_id,
-        loader_id, loader_operator_id, destination_name,
-        destination_address, destination_coords,
-        bale_count, source_parcel_auto, sync_version
-      ) VALUES (
-        ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
-        ${tripNumber}, ${TripStatus.planned}, ${dto.sourceParcelId},
-        ${dto.truckId}, ${dto.driverId},
-        ${dto.loaderId ?? null}, ${dto.loaderOperatorId ?? null},
-        ${dto.destinationName ?? null}, ${dto.destinationAddress ?? null},
-        ${dto.destinationCoords ? JSON.stringify(dto.destinationCoords) : null},
-        0, false, 1
-      ) RETURNING *`,
-    );
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      const tripNumber = await this.generateTripNumber(orgId, tx);
+      return tx.execute(
+        sql`INSERT INTO trips (
+          organization_id,
+          trip_number, status, source_parcel_id, truck_id, driver_id,
+          loader_id, loader_operator_id, destination_name,
+          destination_address, destination_coords,
+          bale_count, source_parcel_auto
+        ) VALUES (
+          ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
+          ${tripNumber}, ${TripStatus.planned}, ${dto.sourceParcelId},
+          ${dto.truckId}, ${dto.driverId},
+          ${dto.loaderId ?? null}, ${dto.loaderOperatorId ?? null},
+          ${dto.destinationName ?? null}, ${dto.destinationAddress ?? null},
+          ${dto.destinationCoords ? JSON.stringify(dto.destinationCoords) : null},
+          0, false
+        ) RETURNING *`,
+      );
+    });
     const created = (result as unknown as Record<string, unknown>[])[0];
-    this.logTripFlow(
-      String(created?.id ?? 'unknown'),
-      'CREATE',
-      'new',
-      TripStatus.planned,
-    );
+    this.logTripFlow(String(created?.id ?? 'unknown'), 'CREATE', 'new', TripStatus.planned);
     return result;
   }
 
-  private async generateTripNumber(orgId: string | null): Promise<string> {
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+  private async generateTripNumber(
+    orgId: string | null,
+    executor: Pick<DrizzleProvider['db'], 'execute'>,
+  ): Promise<string> {
+    const dateStr = todayInRomania().replace(/-/g, '');
     const prefix = `TR-${dateStr}-`;
+    // Serialize trip-number minting per org+day: two concurrent requests must
+    // not read the same COUNT and emit a duplicate trip_number. The lock is
+    // transaction-scoped and held until the caller commits the INSERT, so the
+    // caller MUST run this inside a transaction.
+    await executor.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${prefix + (orgId ?? '')}))`,
+    );
     const conditions: ReturnType<typeof sql>[] = [sql`trip_number LIKE ${prefix + '%'}`];
     if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
@@ -284,7 +294,7 @@ export class TripsService implements OnModuleInit {
       conditions.push(sql`organization_id IS NULL`);
     }
     const where = sql.join(conditions, sql` AND `);
-    const result = await this.drizzleProvider.db.execute(
+    const result = await executor.execute(
       sql`SELECT COUNT(*)::int as count FROM trips WHERE ${where}`,
     );
     const rows = result as unknown as { count: number }[];
@@ -343,9 +353,7 @@ export class TripsService implements OnModuleInit {
     const totalBales = baleRows[0]?.total ?? 0;
 
     if (totalBales === 0) {
-      throw new BadRequestException(
-        'Cannot complete loading without any bale loads recorded',
-      );
+      throw new BadRequestException('Cannot complete loading without any bale loads recorded');
     }
 
     const result = await this.drizzleProvider.db.execute(
@@ -360,7 +368,12 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'COMPLETE_LOADING', from, TripStatus.loaded);
-    void this.pushToDriver(id, 'Transport pregătit', 'Baloții au fost încărcați. Poți pleca.', 'trip_loaded');
+    void this.pushToDriver(
+      id,
+      'Transport pregătit',
+      'Baloții au fost încărcați. Poți pleca.',
+      'trip_loaded',
+    );
     return result;
   }
 
@@ -386,20 +399,22 @@ export class TripsService implements OnModuleInit {
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
     if (orgId !== null) {
-      const truckCheck = await this.drizzleProvider.db.execute(sql`
+      const truckCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines WHERE id = ${dto.truckId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-      `) as unknown as { id: string }[];
+      `)) as unknown as { id: string }[];
       if (!truckCheck.length) throw new ForbiddenException('Truck not found in your organization');
 
-      const loaderCheck = await this.drizzleProvider.db.execute(sql`
+      const loaderCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines WHERE id = ${dto.loaderMachineId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-      `) as unknown as { id: string }[];
-      if (!loaderCheck.length) throw new ForbiddenException('Loader not found in your organization');
+      `)) as unknown as { id: string }[];
+      if (!loaderCheck.length)
+        throw new ForbiddenException('Loader not found in your organization');
 
-      const parcelCheck = await this.drizzleProvider.db.execute(sql`
+      const parcelCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM parcels WHERE id = ${dto.parcelId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-      `) as unknown as { id: string }[];
-      if (!parcelCheck.length) throw new ForbiddenException('Parcel not found in your organization');
+      `)) as unknown as { id: string }[];
+      if (!parcelCheck.length)
+        throw new ForbiddenException('Parcel not found in your organization');
     }
 
     const idempotencyTable = 'register_load';
@@ -433,9 +448,11 @@ export class TripsService implements OnModuleInit {
 
       let tripId: string;
       let created = false;
+      let fromStatus: TripStatus = TripStatus.planned;
 
       if (openRows[0]) {
         tripId = openRows[0].id;
+        fromStatus = openRows[0].status;
       } else {
         // Resolve driver from truck's permanent assignment.
         const driverRows = (await tx.execute(
@@ -448,9 +465,7 @@ export class TripsService implements OnModuleInit {
         )) as unknown as { id: string }[];
         const driverId = driverRows[0]?.id;
         if (!driverId) {
-          throw new BadRequestException(
-            'Camionul nu are șofer asignat. Contactează dispecerul.',
-          );
+          throw new BadRequestException('Camionul nu are șofer asignat. Contactează dispecerul.');
         }
 
         // Resolve destination: truck's planned task today → global default → null.
@@ -505,7 +520,7 @@ export class TripsService implements OnModuleInit {
           }
         }
 
-        const tripNumber = await this.generateTripNumber(orgId);
+        const tripNumber = await this.generateTripNumber(orgId, tx);
         const insertedTrip = (await tx.execute(
           sql`INSERT INTO trips (
                 organization_id,
@@ -514,7 +529,7 @@ export class TripsService implements OnModuleInit {
                 truck_id, driver_id,
                 loader_id, loader_operator_id,
                 destination_name, destination_address, destination_coords,
-                bale_count, sync_version
+                bale_count
               ) VALUES (
                 ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
                 ${tripNumber}, ${TripStatus.planned}::trip_status,
@@ -523,7 +538,7 @@ export class TripsService implements OnModuleInit {
                 ${dto.loaderMachineId}, ${callerId},
                 ${destName}, ${destAddress},
                 ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
-                0, 1
+                0
               )
               RETURNING id`,
         )) as unknown as { id: string }[];
@@ -545,18 +560,22 @@ export class TripsService implements OnModuleInit {
         this.logTripFlow(tripId, 'AUTO_CREATE_FROM_LOAD', 'new', TripStatus.planned);
       }
 
+      // registerLoad collapses planned|loading → loaded — validate the jump
+      // against the state machine instead of trusting the UPDATE's WHERE alone.
+      this.validateTransition(fromStatus, 'REGISTER_LOAD');
+
       // Insert the bale_load tied to this trip.
       await tx.execute(
         sql`INSERT INTO bale_loads (
               organization_id,
               id, trip_id, parcel_id, loader_id, operator_id,
-              bale_count, loaded_at, gps_lat, gps_lon, sync_version
+              bale_count, loaded_at, gps_lat, gps_lon
             ) VALUES (
               ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
               ${dto.idempotencyKey}, ${tripId}, ${dto.parcelId},
               ${dto.loaderMachineId}, ${callerId},
               ${dto.baleCount}, NOW(),
-              ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null}, 1
+              ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null}
             )`,
       );
 
@@ -574,8 +593,7 @@ export class TripsService implements OnModuleInit {
                 WHERE trip_id = ${tripId} AND deleted_at IS NULL
                   ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
               ),
-              updated_at = NOW(),
-              sync_version = sync_version + 1
+              updated_at = NOW()
             WHERE id = ${tripId}
               AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
             RETURNING *`,
@@ -664,18 +682,11 @@ export class TripsService implements OnModuleInit {
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'ARRIVE');
 
-    const departureOdometer = trip.departure_odometer_km as number | null;
-    const odometerDistance =
-      departureOdometer !== null
-        ? dto.arrivalOdometerKm - departureOdometer
-        : null;
-
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.arrived},
         arrival_odometer_km = ${dto.arrivalOdometerKm},
         arrival_at = NOW(),
-        odometer_distance_km = ${odometerDistance},
         updated_at = NOW()
       WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
@@ -683,7 +694,12 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'ARRIVE', from, TripStatus.arrived);
-    void this.pushToDriver(id, 'Ai ajuns la destinație', 'Confirmă livrarea când ești gata.', 'trip_arrived');
+    void this.pushToDriver(
+      id,
+      'Ai ajuns la destinație',
+      'Confirmă livrarea când ești gata.',
+      'trip_arrived',
+    );
     return result;
   }
 
@@ -723,15 +739,12 @@ export class TripsService implements OnModuleInit {
     );
     const truckRows = truckResult as unknown as { tare_weight_kg: number | null }[];
     const tareWeightKg = truckRows[0]?.tare_weight_kg ?? null;
-    const netWeightKg =
-      tareWeightKg !== null ? dto.grossWeightKg - tareWeightKg : null;
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.delivered},
         gross_weight_kg = ${dto.grossWeightKg},
         tare_weight_kg = ${tareWeightKg},
-        net_weight_kg = ${netWeightKg},
         weight_ticket_number = ${dto.weightTicketNumber ?? null},
         weight_ticket_photo_url = ${dto.weightTicketPhotoUrl ?? null},
         deteriorated_bales_count = ${dto.deterioratedBalesCount ?? null},
@@ -765,7 +778,12 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'COMPLETE', from, TripStatus.completed);
-    void this.pushToDriver(id, 'Transport finalizat', 'Transportul a fost completat cu succes.', 'trip_completed');
+    void this.pushToDriver(
+      id,
+      'Transport finalizat',
+      'Transportul a fost completat cu succes.',
+      'trip_completed',
+    );
 
     // CMR stage 2 — regenerate/complete the document with receiver signature
     await this.cmrQueue.add('generate', { tripId: id, orgId: orgId, stage: 2 });
@@ -812,7 +830,12 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'DISPUTE', from, TripStatus.disputed);
-    void this.pushToDriver(id, 'Dispută transport', 'Transportul tău a intrat în dispută. Contactează dispeceratul.', 'trip_disputed');
+    void this.pushToDriver(
+      id,
+      'Dispută transport',
+      'Transportul tău a intrat în dispută. Contactează dispeceratul.',
+      'trip_disputed',
+    );
     return result;
   }
 
@@ -924,30 +947,34 @@ export class TripsService implements OnModuleInit {
     if (!task.trip_id) {
       // ── INSERT path
       const taskOrgId = task.organizationId ?? null;
-      const tripNumber = await this.generateTripNumber(taskOrgId);
-      const inserted = (await this.drizzleProvider.db.execute(
-        sql`INSERT INTO trips (
-          organization_id,
-          trip_number, status, source_parcel_id, truck_id, driver_id,
-          loader_id, loader_operator_id,
-          destination_name, destination_address, destination_coords,
-          bale_count, source_parcel_auto, sync_version
-        ) VALUES (
-          ${taskOrgId ? sql`${taskOrgId}::uuid` : sql`NULL`},
-          ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
-          ${task.machine_id}, ${driverId},
-          ${loaderMachineId}, ${loaderOperatorId},
-          ${dest.name}, ${dest.address ?? null},
-          ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
-          0, false, 1
-        ) RETURNING id`,
-      )) as unknown as { id: string }[];
-      const tripId = inserted[0]?.id;
-      if (!tripId) return;
+      const tripId = await this.drizzleProvider.db.transaction(async (tx) => {
+        const tripNumber = await this.generateTripNumber(taskOrgId, tx);
+        const inserted = (await tx.execute(
+          sql`INSERT INTO trips (
+            organization_id,
+            trip_number, status, source_parcel_id, truck_id, driver_id,
+            loader_id, loader_operator_id,
+            destination_name, destination_address, destination_coords,
+            bale_count, source_parcel_auto
+          ) VALUES (
+            ${taskOrgId ? sql`${taskOrgId}::uuid` : sql`NULL`},
+            ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
+            ${task.machine_id}, ${driverId},
+            ${loaderMachineId}, ${loaderOperatorId},
+            ${dest.name}, ${dest.address ?? null},
+            ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
+            0, false
+          ) RETURNING id`,
+        )) as unknown as { id: string }[];
+        const newTripId = inserted[0]?.id;
+        if (!newTripId) return null;
 
-      await this.drizzleProvider.db.execute(
-        sql`UPDATE task_assignments SET trip_id = ${tripId}, updated_at = NOW() WHERE id = ${taskId}`,
-      );
+        await tx.execute(
+          sql`UPDATE task_assignments SET trip_id = ${newTripId}, updated_at = NOW() WHERE id = ${taskId}`,
+        );
+        return newTripId;
+      });
+      if (!tripId) return;
 
       this.logTripFlow(tripId, 'AUTO_CREATE_FROM_TASK', 'new', TripStatus.planned);
       this.winston.log('flow', `Auto-created trip ${tripId} from truck task ${taskId}`, {
@@ -1039,7 +1066,8 @@ export class TripsService implements OnModuleInit {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
 
-    if (!['planned', 'cancelled'].includes(from)) {
+    const deletableStatuses = ['planned', 'loading', 'loaded', 'cancelled'];
+    if (!deletableStatuses.includes(from)) {
       throw new BadRequestException(
         `Tripul cu status "${from}" nu poate fi șters. Anulați-l mai întâi.`,
       );
@@ -1057,14 +1085,69 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
+  /**
+   * Set or change the delivery destination for a trip still in planned/loaded status.
+   * Only the assigned driver can call this. Used when the trip was auto-created
+   * without a destination (no task assignment destination at load time).
+   */
+  async setDestination(
+    id: string,
+    orgId: string | null,
+    callerId: string,
+    dto: { destinationId: string },
+  ) {
+    const trip = await this.findById(id, orgId);
+
+    if (trip.driver_id !== callerId) {
+      throw new ForbiddenException('Only the assigned driver can set the destination');
+    }
+
+    const allowedStatuses: string[] = [TripStatus.planned, TripStatus.loaded];
+    if (!allowedStatuses.includes(trip.status as string)) {
+      throw new BadRequestException('Cannot change destination after trip has departed');
+    }
+
+    const destRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id, name, address, ST_AsGeoJSON(coords) AS coords_geojson
+          FROM delivery_destinations
+          WHERE id = ${dto.destinationId}::uuid
+            AND deleted_at IS NULL
+            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+          LIMIT 1`,
+    )) as unknown as {
+      id: string;
+      name: string;
+      address: string | null;
+      coords_geojson: string | null;
+    }[];
+
+    if (!destRows[0]) {
+      throw new NotFoundException('Destination not found in your organization');
+    }
+
+    const dest = destRows[0];
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+            destination_name    = ${dest.name},
+            destination_address = ${dest.address ?? null},
+            destination_coords  = ${dest.coords_geojson ? sql`ST_GeomFromGeoJSON(${dest.coords_geojson})` : sql`NULL`},
+            updated_at          = NOW()
+          WHERE id = ${id}
+            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+          RETURNING *`,
+    );
+
+    this.logTripFlow(id, 'SET_DESTINATION', trip.status as string, trip.status as string);
+    return (result as unknown as Record<string, unknown>[])[0];
+  }
+
   async resolveDispute(id: string, orgId: string | null, dto: ResolveDisputeDto) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'RESOLVE_DISPUTE');
 
-    const targetStatus = dto.resolvedTo === 'completed'
-      ? TripStatus.completed
-      : TripStatus.delivered;
+    const targetStatus =
+      dto.resolvedTo === 'completed' ? TripStatus.completed : TripStatus.delivered;
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET

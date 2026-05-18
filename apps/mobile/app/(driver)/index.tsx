@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,46 +16,70 @@ import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
 import { useMyTasks } from '@/hooks/useMyTasks';
+import { useNearbyLoaders } from '@/hooks/useNearbyLoaders';
 import { useSync } from '@/hooks/useSync';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 
 const STATUS_COLORS: Record<string, string> = {
-  planned:    '#1565C0',
-  loading:    '#B7791F',
-  loaded:     '#0A5C36',
+  planned: '#1565C0',
+  loading: '#B7791F',
+  loaded: '#0A5C36',
   in_transit: '#8D6E63',
-  arrived:    '#2E7D32',
+  arrived: '#2E7D32',
   delivering: '#B7791F',
-  delivered:  '#2E7D32',
-  completed:  '#5D4037',
+  delivered: '#2E7D32',
+  completed: '#5D4037',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  planned:    'Planificat',
-  loading:    'Se încarcă',
-  loaded:     'Încărcat',
+  planned: 'Planificat',
+  loading: 'Se încarcă',
+  loaded: 'Încărcat',
   in_transit: 'În drum',
-  arrived:    'Sosit',
+  arrived: 'Sosit',
   delivering: 'Se livrează',
-  delivered:  'Livrat',
-  completed:  'Finalizat',
+  delivered: 'Livrat',
+  completed: 'Finalizat',
+};
+
+// Task assignment statuses are a separate enum from trip statuses.
+const TASK_STATUS_COLORS: Record<string, string> = {
+  available: '#1565C0',
+  in_progress: '#B7791F',
+  done: '#2E7D32',
+};
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  available: 'De început',
+  in_progress: 'În lucru',
+  done: 'Finalizat',
 };
 
 export default function DriverTripsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const { tasks, refetch: refetchTasks } = useMyTasks();
+  const { data: nearbyLoaders, refetch: refetchLoaders } = useNearbyLoaders();
   const { triggerSync } = useSync();
   const [trips, setTrips] = useState<LocalTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const activeTodayTask = useMemo(() => tasks.find((t) => t.status !== 'done'), [tasks]);
+
+  const activeTrip = useMemo(
+    () => trips.find((t) => t.status !== 'completed' && t.status !== 'cancelled'),
+    [trips],
+  );
 
   const loadTrips = useCallback(async () => {
     try {
       const db = await getDatabase();
       const repo = new TripsRepo(db);
       const all = await repo.listActive();
-      const mine = userId ? all.filter((t) => t.driver_id === userId) : all;
+      // No userId yet (auth still hydrating) → show nothing rather than every
+      // driver's trips. Filtering only happens once we know who is logged in.
+      const mine = userId ? all.filter((t) => t.driver_id === userId) : [];
       setTrips(mine);
     } finally {
       setLoading(false);
@@ -63,18 +87,17 @@ export default function DriverTripsScreen() {
   }, [userId]);
 
   useEffect(() => {
+    if (!userId) return;
     void (async () => {
       await triggerSync();
       await loadTrips();
     })();
-  // triggerSync is stable (useCallback); loadTrips changes only when userId changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userId, loadTrips, triggerSync]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     await triggerSync();
-    await Promise.all([loadTrips(), refetchTasks()]);
+    await Promise.all([loadTrips(), refetchTasks(), refetchLoaders()]);
     setRefreshing(false);
   };
 
@@ -125,6 +148,84 @@ export default function DriverTripsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListHeaderComponent={
+            <View style={styles.headerCards}>
+              {/* Card 1 — Loadere din apropiere */}
+              <View style={styles.infoCard}>
+                <View style={styles.infoCardHeader}>
+                  <MaterialCommunityIcons name="excavator" size={18} color="#0A5C36" />
+                  <Text style={styles.infoCardTitle}>Loadere active</Text>
+                </View>
+                {(nearbyLoaders ?? []).length === 0 ? (
+                  <Text style={styles.infoCardEmpty}>Niciun loader în apropiere.</Text>
+                ) : (
+                  (nearbyLoaders ?? []).map((loader) => (
+                    <View key={loader.id} style={styles.loaderRow}>
+                      <MaterialCommunityIcons name="tractor" size={14} color="#5D4037" />
+                      <Text style={styles.loaderCode}>
+                        {loader.internalCode ?? loader.registrationPlate ?? '—'}
+                      </Text>
+                      <Text style={styles.loaderOperator}>{loader.operatorName ?? '—'}</Text>
+                      <Text style={styles.loaderTime}>{Math.round(loader.distanceM)} m</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+
+              {/* Card 2 — Sarcina de azi */}
+              {activeTodayTask ? (
+                <TouchableOpacity
+                  style={styles.infoCard}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    if (activeTrip) {
+                      router.push(`/trip/${activeTrip.id}`);
+                    }
+                  }}
+                >
+                  <View style={styles.infoCardHeader}>
+                    <MaterialCommunityIcons name="clipboard-list" size={18} color="#0A5C36" />
+                    <Text style={styles.infoCardTitle}>Sarcina de azi</Text>
+                    {activeTrip && (
+                      <MaterialCommunityIcons
+                        name="chevron-right"
+                        size={18}
+                        color="#8D6E63"
+                        style={{ marginLeft: 'auto' }}
+                      />
+                    )}
+                  </View>
+                  {activeTodayTask.parcelName ? (
+                    <View style={styles.taskRow}>
+                      <MaterialCommunityIcons name="map" size={14} color="#5D4037" />
+                      <Text style={styles.taskRowText}>{activeTodayTask.parcelName}</Text>
+                    </View>
+                  ) : null}
+                  {activeTodayTask.destinationName ? (
+                    <View style={styles.taskRow}>
+                      <MaterialCommunityIcons name="warehouse" size={14} color="#5D4037" />
+                      <Text style={styles.taskRowText}>{activeTodayTask.destinationName}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.taskRow}>
+                    <View
+                      style={[
+                        styles.taskStatusBadge,
+                        {
+                          backgroundColor: TASK_STATUS_COLORS[activeTodayTask.status] ?? '#5D4037',
+                        },
+                      ]}
+                    >
+                      <Text style={styles.taskStatusText}>
+                        {TASK_STATUS_LABELS[activeTodayTask.status] ?? activeTodayTask.status}
+                      </Text>
+                    </View>
+                    {!activeTrip && <Text style={styles.taskNoTrip}>Cursa nu a început încă</Text>}
+                  </View>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          }
           renderItem={({ item }) => {
             const isFresh = item.status === 'loaded' && !item.acknowledged_at;
             return (
@@ -141,7 +242,12 @@ export default function DriverTripsScreen() {
                     )}
                     <Text style={styles.tripNumber}>{item.trip_number ?? 'Cursă'}</Text>
                   </View>
-                  <View style={[styles.badge, { backgroundColor: STATUS_COLORS[item.status] ?? '#5D4037' }]}>
+                  <View
+                    style={[
+                      styles.badge,
+                      { backgroundColor: STATUS_COLORS[item.status] ?? '#5D4037' },
+                    ]}
+                  >
                     <Text style={styles.badgeText}>
                       {STATUS_LABELS[item.status] ?? item.status}
                     </Text>
@@ -238,4 +344,28 @@ const styles = StyleSheet.create({
   loadedHint: { fontSize: 12, color: '#0A5C36', fontWeight: '600' },
   emptyText: { fontSize: 15, color: '#374151', fontWeight: '500' },
   emptySubtext: { fontSize: 13, color: '#8D6E63' },
+  headerCards: { gap: 12, marginBottom: 4 },
+  infoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  infoCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  infoCardTitle: { fontSize: 14, fontWeight: '700', color: '#0A5C36' },
+  infoCardEmpty: { fontSize: 13, color: '#8D6E63', fontStyle: 'italic' },
+  loaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  loaderCode: { fontSize: 13, fontWeight: '600', color: '#374151', flexShrink: 0 },
+  loaderOperator: { fontSize: 13, color: '#5D4037', flex: 1 },
+  loaderTime: { fontSize: 11, color: '#8D6E63' },
+  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  taskRowText: { fontSize: 13, color: '#374151', flex: 1 },
+  taskStatusBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  taskStatusText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
+  taskNoTrip: { fontSize: 11, color: '#8D6E63', marginLeft: 4 },
 });

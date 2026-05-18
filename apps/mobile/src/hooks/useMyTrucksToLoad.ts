@@ -4,6 +4,7 @@ import { mobileApiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store';
 import { getDatabase } from '@/lib/storage';
 import { BaleLoadsRepo } from '@/db/bale-loads-repo';
+import { startOfDayRomaniaISO } from '@/lib/date';
 
 export interface TripToLoad {
   id: string;
@@ -37,12 +38,6 @@ interface RawParcel {
   code: string;
 }
 
-function todayStart(): string {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-
 /**
  * Fetches the trips assigned to the current user as loader_operator for today,
  * then enriches each trip with the truck plate and parcel name via parallel
@@ -60,14 +55,16 @@ export function useMyTrucksToLoad() {
     refetchInterval: 60_000,
     queryFn: async () => {
       const trips = await mobileApiClient.get<RawTrip[]>(
-        `/api/v1/trips?loaderOperatorId=${userId}&status=planned,loading,loaded&dateFrom=${todayStart()}`,
+        `/api/v1/trips?loaderOperatorId=${userId}&status=planned,loading,loaded&dateFrom=${startOfDayRomaniaISO()}`,
       );
 
       if (!trips?.length) return [];
 
       // Collect unique truck and parcel IDs to look up in parallel
       const truckIds = [...new Set(trips.map((t) => t.truck_id).filter(Boolean) as string[])];
-      const parcelIds = [...new Set(trips.map((t) => t.source_parcel_id).filter(Boolean) as string[])];
+      const parcelIds = [
+        ...new Set(trips.map((t) => t.source_parcel_id).filter(Boolean) as string[]),
+      ];
 
       const db = await getDatabase();
       const baleLoadsRepo = new BaleLoadsRepo(db);
@@ -75,24 +72,16 @@ export function useMyTrucksToLoad() {
       const [machines, parcels, localSums] = await Promise.all([
         Promise.all(
           truckIds.map((id) =>
-            mobileApiClient
-              .get<Machine>(`/api/v1/machines/${id}`)
-              .catch(() => null),
+            mobileApiClient.get<Machine>(`/api/v1/machines/${id}`).catch(() => null),
           ),
         ),
         Promise.all(
           parcelIds.map((id) =>
-            mobileApiClient
-              .get<RawParcel>(`/api/v1/parcels/${id}`)
-              .catch(() => null),
+            mobileApiClient.get<RawParcel>(`/api/v1/parcels/${id}`).catch(() => null),
           ),
         ),
         // Optimistic overlay: how many bales we've persisted locally per trip.
-        Promise.all(
-          trips.map((t) =>
-            baleLoadsRepo.sumByTrip(t.id).catch(() => 0),
-          ),
-        ),
+        Promise.all(trips.map((t) => baleLoadsRepo.sumByTrip(t.id).catch(() => 0))),
       ]);
 
       // Build lookup maps

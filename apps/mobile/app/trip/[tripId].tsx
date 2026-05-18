@@ -10,15 +10,19 @@ import {
   Pressable,
   FlatList,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDeliveryDestinations } from '@strawboss/api';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { mobileApiClient } from '@/lib/api-client';
+import { useSync } from '@/hooks/useSync';
+import { useMyTasks } from '@/hooks/useMyTasks';
+import { useRelatedMachines } from '@/hooks/useRelatedMachines';
+import { useAuthStore } from '@/stores/auth-store';
 import { TripProgress } from '@/components/shared/TripProgress';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { BigButton } from '@/components/ui/BigButton';
 import { ActionCard } from '@/components/ui/ActionCard';
@@ -28,18 +32,34 @@ import { mobileLogger } from '@/lib/logger';
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const router = useRouter();
+  const { triggerSync } = useSync();
+  const { tasks } = useMyTasks();
+  const { data: relatedMachines } = useRelatedMachines();
+  // Only the driver runs the trip workflow. Loaders, balers and others reach
+  // this screen via a notification and may only watch the trip's progress.
+  const isDriver = useAuthStore((s) => s.role) === 'driver';
   const [trip, setTrip] = useState<LocalTrip | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const destinationsQuery = useDeliveryDestinations(mobileApiClient);
 
+  // The driver's own task carries the source parcel. The loader is a sibling
+  // machine (different operator) so it only surfaces via related-machines.
+  const myDriverTask = tasks.find((t) => t.machineType !== 'loader');
+  const loaderMachine = (relatedMachines ?? []).find((m) => m.machineType === 'loader');
+
   const loadTrip = useCallback(async () => {
     if (!tripId) return;
     try {
       const db = await getDatabase();
       const repo = new TripsRepo(db);
-      const result = await repo.findById(tripId);
+      let result = await repo.findById(tripId);
+      if (!result) {
+        // Trip not in local DB yet (push arrived before sync) — trigger sync and retry once.
+        await triggerSync();
+        result = await repo.findById(tripId);
+      }
       setTrip(result);
     } catch (err) {
       mobileLogger.error('Failed to load trip from local DB', {
@@ -49,7 +69,7 @@ export default function TripDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [tripId, triggerSync]);
 
   useEffect(() => {
     void loadTrip();
@@ -84,10 +104,7 @@ export default function TripDetailScreen() {
         }
 
         // Call the dedicated workflow endpoint (with proper state machine validation)
-        await mobileApiClient.post(
-          `/api/v1/trips/${tripId}/${endpoint}`,
-          extraData ?? {},
-        );
+        await mobileApiClient.post(`/api/v1/trips/${tripId}/${endpoint}`, extraData ?? {});
 
         // Update local SQLite to reflect the new status
         const db = await getDatabase();
@@ -105,15 +122,9 @@ export default function TripDetailScreen() {
           tripId,
           fromStatus,
           toStatus: newStatus,
-          err:
-            err instanceof Error
-              ? { message: err.message, stack: err.stack }
-              : err,
+          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
         });
-        Alert.alert(
-          'Error',
-          err instanceof Error ? err.message : 'Failed to update trip',
-        );
+        Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update trip');
       } finally {
         setActionLoading(false);
       }
@@ -127,7 +138,7 @@ export default function TripDetailScreen() {
       setPickerOpen(false);
       setActionLoading(true);
       try {
-        await mobileApiClient.patch(`/api/v1/trips/${tripId}`, {
+        await mobileApiClient.post(`/api/v1/trips/${tripId}/set-destination`, {
           destinationId,
         });
         const db = await getDatabase();
@@ -144,10 +155,7 @@ export default function TripDetailScreen() {
           destinationId,
           err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
         });
-        Alert.alert(
-          'Eroare',
-          err instanceof Error ? err.message : 'Nu am putut salva depozitul.',
-        );
+        Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu am putut salva depozitul.');
       } finally {
         setActionLoading(false);
       }
@@ -157,178 +165,208 @@ export default function TripDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ headerShown: true, title: 'Trip' }} />
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading trip...</Text>
+      <View style={styles.container}>
+        <ScreenHeader title="Cursă" onBack={() => router.back()} />
+        <View style={styles.body}>
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Se încarcă...</Text>
+          </View>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!trip) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ headerShown: true, title: 'Trip' }} />
-        <View style={styles.centered}>
-          <Text style={styles.errorText}>Trip not found</Text>
-          <BigButton title="Go Back" variant="outline" onPress={() => router.back()} />
+      <View style={styles.container}>
+        <ScreenHeader title="Cursă" onBack={() => router.back()} />
+        <View style={styles.body}>
+          <View style={styles.centered}>
+            <Text style={styles.errorText}>Cursa nu a fost găsită</Text>
+            <BigButton title="Înapoi" variant="outline" onPress={() => router.back()} />
+          </View>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen
-        options={{ headerShown: true, title: trip.trip_number ?? 'Trip' }}
-      />
+    <View style={styles.container}>
+      <ScreenHeader title={trip.trip_number ?? 'Cursă'} onBack={() => router.back()} />
       <OfflineBanner />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Progress Bar */}
-        <View style={styles.card}>
-          <TripProgress currentStatus={trip.status} />
-        </View>
-
-        {/* Trip Info */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Trip Details</Text>
-            <StatusPill status={trip.status} />
+      <View style={styles.body}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Progress Bar */}
+          <View style={styles.card}>
+            <TripProgress currentStatus={trip.status} />
           </View>
 
-          {trip.trip_number && (
-            <InfoRow label="Trip Number" value={trip.trip_number} />
-          )}
-          {trip.destination_name && (
-            <InfoRow label="Destination" value={trip.destination_name} />
-          )}
-          {trip.destination_address && (
-            <InfoRow label="Address" value={trip.destination_address} />
-          )}
-          <InfoRow label="Bale Count" value={String(trip.bale_count ?? 0)} />
-          {trip.gross_weight_kg != null && (
-            <InfoRow
-              label="Gross Weight"
-              value={`${trip.gross_weight_kg} kg`}
-            />
-          )}
-          {trip.departure_at && (
-            <InfoRow
-              label="Departed"
-              value={new Date(trip.departure_at).toLocaleString()}
-            />
-          )}
-          {trip.arrival_at && (
-            <InfoRow
-              label="Arrived"
-              value={new Date(trip.arrival_at).toLocaleString()}
-            />
-          )}
-          {trip.delivered_at && (
-            <InfoRow
-              label="Delivered"
-              value={new Date(trip.delivered_at).toLocaleString()}
-            />
-          )}
-        </View>
+          {/* Trip Info */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>Detalii cursă</Text>
+              <StatusPill status={trip.status} />
+            </View>
 
-        {/* Actions */}
-        <View style={styles.actionsSection}>
-          <Text style={styles.sectionTitle}>Actions</Text>
+            {trip.trip_number && <InfoRow label="Nr. cursă" value={trip.trip_number} />}
+            {myDriverTask?.parcelName ? (
+              <InfoRow label="Parcelă" value={myDriverTask.parcelName} />
+            ) : null}
+            {loaderMachine?.machineCode ? (
+              <InfoRow label="Loader" value={loaderMachine.machineCode} />
+            ) : null}
+            {trip.destination_name && <InfoRow label="Destinație" value={trip.destination_name} />}
+            {trip.destination_address && (
+              <InfoRow label="Adresă" value={trip.destination_address} />
+            )}
+            <InfoRow label="Baloți" value={String(trip.bale_count ?? 0)} />
+            {trip.gross_weight_kg != null && (
+              <InfoRow label="Greutate brută" value={`${trip.gross_weight_kg} kg`} />
+            )}
+            {trip.departure_at && (
+              <InfoRow
+                label="Plecat la"
+                value={new Date(trip.departure_at).toLocaleString('ro-RO')}
+              />
+            )}
+            {trip.arrival_at && (
+              <InfoRow label="Sosit la" value={new Date(trip.arrival_at).toLocaleString('ro-RO')} />
+            )}
+            {trip.delivered_at && (
+              <InfoRow
+                label="Livrat la"
+                value={new Date(trip.delivered_at).toLocaleString('ro-RO')}
+              />
+            )}
+          </View>
 
-          {(trip.status === 'planned' || trip.status === 'loading') && (
-            <View style={styles.waitingCard}>
-              <MaterialCommunityIcons name="timer-sand" size={20} color={colors.neutral} />
-              <Text style={styles.waitingText}>
-                Așteaptă ca loader-ul să încarce camionul.
+          {/* Actions — only the driver runs the trip workflow */}
+          {isDriver ? (
+            <View style={styles.actionsSection}>
+              <Text style={styles.sectionTitle}>Acțiuni</Text>
+
+              {(trip.status === 'planned' || trip.status === 'loading') && (
+                <View style={styles.waitingCard}>
+                  <MaterialCommunityIcons name="timer-sand" size={20} color={colors.neutral} />
+                  <Text style={styles.waitingText}>Așteaptă ca loader-ul să încarce camionul.</Text>
+                </View>
+              )}
+
+              {trip.status === 'loaded' &&
+                !trip.destination_name &&
+                trip.destination_id == null && (
+                  <ActionCard
+                    title="Alege depozit"
+                    subtitle="Selectează destinația înainte de plecare"
+                    icon={
+                      <MaterialCommunityIcons name="warehouse" size={24} color={colors.primary} />
+                    }
+                    onPress={() => setPickerOpen(true)}
+                    variant="active"
+                  />
+                )}
+
+              {trip.status === 'loaded' &&
+                (trip.destination_name != null || trip.destination_id != null) && (
+                  <ActionCard
+                    title="Plecare"
+                    subtitle="Introduceți km și semnați pentru a pleca"
+                    icon={
+                      <MaterialCommunityIcons
+                        name="arrow-right-bold"
+                        size={24}
+                        color={colors.primary}
+                      />
+                    }
+                    onPress={() =>
+                      router.push({
+                        pathname: '/driver-ops/departure-flow',
+                        params: { tripId: trip.id },
+                      })
+                    }
+                    variant="active"
+                  />
+                )}
+
+              {trip.status === 'in_transit' && (
+                <ActionCard
+                  title="Sosit la destinație"
+                  subtitle="Introduceți km la sosire"
+                  icon={
+                    <MaterialCommunityIcons name="map-marker" size={24} color={colors.primary} />
+                  }
+                  onPress={() =>
+                    router.push({
+                      pathname: '/driver-ops/arrival-flow',
+                      params: { tripId: trip.id },
+                    })
+                  }
+                  variant="active"
+                />
+              )}
+
+              {trip.status === 'arrived' && (
+                <ActionCard
+                  title="Începe livrarea"
+                  subtitle="Cântărire, fotografiere și semnătură"
+                  icon={
+                    <MaterialCommunityIcons
+                      name="arrow-down-bold"
+                      size={24}
+                      color={colors.primary}
+                    />
+                  }
+                  onPress={() =>
+                    router.push({
+                      pathname: '/operations/deliver',
+                      params: { tripId: trip.id },
+                    })
+                  }
+                  variant="active"
+                />
+              )}
+
+              {trip.status === 'delivered' && (
+                <ActionCard
+                  title="Finalizează cursa"
+                  subtitle="Marchează această cursă ca finalizată"
+                  icon={
+                    <MaterialCommunityIcons name="check-bold" size={24} color={colors.primary} />
+                  }
+                  onPress={() =>
+                    updateTripStatus('completed', {
+                      completed_at: new Date().toISOString(),
+                    })
+                  }
+                  variant="active"
+                />
+              )}
+
+              {(trip.status === 'completed' || trip.status === 'cancelled') && (
+                <View style={styles.doneCard}>
+                  <Text style={styles.doneText}>
+                    Cursa este {trip.status === 'completed' ? 'finalizată' : 'anulată'}.
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.viewerCard}>
+              <MaterialCommunityIcons name="eye-outline" size={20} color={colors.primary} />
+              <Text style={styles.viewerText}>
+                Urmărești starea acestei curse. Acțiunile sunt efectuate de șofer.
               </Text>
             </View>
           )}
 
-          {trip.status === 'loaded' && trip.destination_id == null && (
-            <ActionCard
-              title="Alege depozit"
-              subtitle="Selectează destinația înainte de plecare"
-              icon={<MaterialCommunityIcons name="warehouse" size={24} color={colors.primary} />}
-              onPress={() => setPickerOpen(true)}
-              variant="active"
-            />
-          )}
-
-          {trip.status === 'loaded' && trip.destination_id != null && (
-            <ActionCard
-              title="Plecare"
-              subtitle="Începe transportul către depozit"
-              icon={<MaterialCommunityIcons name="arrow-right-bold" size={24} color={colors.primary} />}
-              onPress={() =>
-                updateTripStatus('in_transit', {
-                  departure_at: new Date().toISOString(),
-                })
-              }
-              variant="active"
-            />
-          )}
-
-          {trip.status === 'in_transit' && (
-            <ActionCard
-              title="Arrive at Destination"
-              subtitle="Mark arrival at delivery point"
-              icon={<MaterialCommunityIcons name="map-marker" size={24} color={colors.primary} />}
-              onPress={() =>
-                updateTripStatus('arrived', {
-                  arrival_at: new Date().toISOString(),
-                })
-              }
-              variant="active"
-            />
-          )}
-
-          {trip.status === 'arrived' && (
-            <ActionCard
-              title="Start Delivery"
-              subtitle="Weigh, photograph, and sign"
-              icon={<MaterialCommunityIcons name="arrow-down-bold" size={24} color={colors.primary} />}
-              onPress={() =>
-                router.push({
-                  pathname: '/operations/deliver',
-                  params: { tripId: trip.id },
-                })
-              }
-              variant="active"
-            />
-          )}
-
-          {trip.status === 'delivered' && (
-            <ActionCard
-              title="Complete Trip"
-              subtitle="Mark this trip as finished"
-              icon={<MaterialCommunityIcons name="check-bold" size={24} color={colors.primary} />}
-              onPress={() =>
-                updateTripStatus('completed', {
-                  completed_at: new Date().toISOString(),
-                })
-              }
-              variant="active"
-            />
-          )}
-
-          {(trip.status === 'completed' || trip.status === 'cancelled') && (
-            <View style={styles.doneCard}>
-              <Text style={styles.doneText}>
-                This trip is {trip.status}.
-              </Text>
+          {actionLoading && (
+            <View style={styles.overlay}>
+              <ActivityIndicator size="large" color={colors.white} />
             </View>
           )}
-        </View>
-
-        {actionLoading && (
-          <View style={styles.overlay}>
-            <ActivityIndicator size="large" color={colors.white} />
-          </View>
-        )}
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       <Modal
         visible={pickerOpen}
@@ -353,9 +391,7 @@ export default function TripDetailScreen() {
               data={(destinationsQuery.data ?? []).filter((d) => d.isActive !== false)}
               keyExtractor={(d) => d.id}
               ItemSeparatorComponent={() => <View style={styles.modalDivider} />}
-              ListEmptyComponent={
-                <Text style={styles.modalEmpty}>Nu există depozite active.</Text>
-              }
+              ListEmptyComponent={<Text style={styles.modalEmpty}>Nu există depozite active.</Text>}
               renderItem={({ item }) => (
                 <Pressable
                   style={styles.modalRow}
@@ -387,7 +423,7 @@ export default function TripDetailScreen() {
           )}
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -403,7 +439,13 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.primary,
+  },
+  body: {
+    flex: 1,
     backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
   centered: {
     flex: 1,
@@ -472,6 +514,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
+  },
+  viewerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.primary50,
+    borderRadius: 12,
+    padding: 14,
+  },
+  viewerText: {
+    color: colors.primary,
+    fontSize: 14,
+    flex: 1,
   },
   loadingText: {
     fontSize: 16,

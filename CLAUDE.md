@@ -130,7 +130,9 @@ Domain specialists: `backend-agent`, `db-agent`, `devops-agent`, `frontend-agent
 
 ### GitHub Actions (`.github/workflows/`)
 
-`bug-scan.yml` — on every push (excluding docs-only changes), runs `strawboss-bug-hunt` via the Claude Code GitHub Action and files a `bug-scan` GitHub issue with the findings. Requires the `CLAUDE_CODE_OAUTH_TOKEN` repo secret and the Claude GitHub App installed.
+`bug-scan.yml` — on every PR push (excluding docs-only changes), runs `strawboss-bug-hunt` via the Claude Code GitHub Action and posts the findings as a PR comment. Requires the `CLAUDE_CODE_OAUTH_TOKEN` repo secret and the Claude GitHub App installed.
+
+`bug-fix.yml` — triggered automatically after a successful Bug Scan (unless the scan was triggered by the fix bot itself, preventing loops), or manually via Actions → Bug Fix → Run workflow. Uses **claude-opus-4-7** (120 turns) to: (1) read the bug-scan PR comment, (2) save a detailed fix plan to `.claude/active-bugfix-plan.md`, (3) implement each finding with a typecheck after every fix, (4) push the commits back to the PR branch, and (5) post a summary comment. Configure `min_severity` input (default: `high`) to limit scope. Findings that require DB migrations or breaking API changes are automatically deferred.
 
 ### Scheduled routine
 

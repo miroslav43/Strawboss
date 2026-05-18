@@ -1,10 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-
-function formatDate(d: Date): string {
-  return d.toISOString().split('T')[0];
-}
+import { todayInRomania } from '@/lib/date';
 
 interface TasksDateContextType {
   selectedDate: string;
@@ -12,7 +9,7 @@ interface TasksDateContextType {
 }
 
 export const TasksDateContext = createContext<TasksDateContextType>({
-  selectedDate: formatDate(new Date()),
+  selectedDate: todayInRomania(),
   setSelectedDate: () => {},
 });
 

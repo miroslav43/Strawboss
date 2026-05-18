@@ -41,7 +41,7 @@ export function TripLoadedOverlay({ alert, onDismiss }: Props) {
 
   if (!alert) return null;
 
-  const hasDestination = Boolean(alert.destinationId);
+  const hasDestination = Boolean(alert.destinationId ?? alert.destinationName);
 
   const handleDepart = () => {
     onDismiss();

@@ -11,6 +11,7 @@ import { ReceiptThumb } from '@/components/shared/ReceiptThumb';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
+import { romaniaDateString } from '@/lib/date';
 
 /**
  * Raw backend row shape (snake_case because the controller returns the SQL
@@ -39,9 +40,8 @@ interface MachineGroup {
 /** Default window = last 30 days, which matches the mobile stats endpoint. */
 function defaultDateRange(): { from: string; to: string } {
   const now = new Date();
-  const to = now.toISOString().slice(0, 10);
-  const fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const from = fromDate.toISOString().slice(0, 10);
+  const to = romaniaDateString(now);
+  const from = romaniaDateString(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
   return { from, to };
 }
 
@@ -75,9 +75,7 @@ export default function FuelLogsPage() {
       const params = new URLSearchParams();
       if (dateFrom) params.set('dateFrom', `${dateFrom}T00:00:00Z`);
       if (dateTo) params.set('dateTo', `${dateTo}T23:59:59Z`);
-      const raw = await apiClient.get<unknown>(
-        `/api/v1/fuel-logs?${params.toString()}`,
-      );
+      const raw = await apiClient.get<unknown>(`/api/v1/fuel-logs?${params.toString()}`);
       return normalizeList<FuelLogRow>(raw);
     },
   });
@@ -91,7 +89,7 @@ export default function FuelLogsPage() {
       if (!group) {
         group = {
           machineId: key,
-          machine: row.machine_id ? machineById.get(row.machine_id) ?? null : null,
+          machine: row.machine_id ? (machineById.get(row.machine_id) ?? null) : null,
           totalLiters: 0,
           entries: [],
         };
@@ -108,10 +106,7 @@ export default function FuelLogsPage() {
     return groups;
   }, [logsQuery.data, machineById]);
 
-  const totalLiters = useMemo(
-    () => grouped.reduce((sum, g) => sum + g.totalLiters, 0),
-    [grouped],
-  );
+  const totalLiters = useMemo(() => grouped.reduce((sum, g) => sum + g.totalLiters, 0), [grouped]);
 
   const toggle = (id: string) => {
     setExpanded((prev) => {
@@ -196,9 +191,7 @@ export default function FuelLogsPage() {
                       <ChevronRight className="h-4 w-4 text-neutral-500" />
                     )}
                     <Fuel className="h-5 w-5 text-primary" />
-                    <span className="font-medium text-neutral-900">
-                      {machineLabel}
-                    </span>
+                    <span className="font-medium text-neutral-900">{machineLabel}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm">
                     <span className="text-neutral-500">
@@ -213,10 +206,7 @@ export default function FuelLogsPage() {
                 {isOpen ? (
                   <div className="divide-y divide-neutral-100 border-t border-neutral-100">
                     {group.entries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="flex items-start gap-4 px-4 py-3"
-                      >
+                      <div key={entry.id} className="flex items-start gap-4 px-4 py-3">
                         <ReceiptThumb
                           url={entry.receipt_photo_url}
                           caption={`${machineLabel} · ${formatDateTime(entry.logged_at)}`}
@@ -240,9 +230,7 @@ export default function FuelLogsPage() {
                             ) : null}
                           </div>
                           {entry.notes ? (
-                            <p className="mt-1 text-sm text-neutral-600">
-                              {entry.notes}
-                            </p>
+                            <p className="mt-1 text-sm text-neutral-600">{entry.notes}</p>
                           ) : null}
                         </div>
                         <div className="text-right">
