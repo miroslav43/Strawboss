@@ -50,6 +50,14 @@ export function NumericPad({ value, onChange, maxLength = 6, decimal = false }: 
                 style={[styles.key, (key === 'backspace' || key === 'clear') && styles.actionKey]}
                 onPress={() => handlePress(key)}
                 activeOpacity={0.6}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  key === 'backspace'
+                    ? 'Șterge ultima cifră'
+                    : key === 'clear'
+                      ? 'Șterge tot'
+                      : `Cifra ${key}`
+                }
               >
                 <Text
                   style={[

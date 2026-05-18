@@ -1,33 +1,27 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { colors } from '@strawboss/ui-tokens';
 import type { MyTask } from '@/hooks/useMyTasks';
 
 const STATUS_COLORS: Record<string, string> = {
-  available:   '#1565C0',
+  available: '#1565C0',
   in_progress: '#B7791F',
-  done:        '#2E7D32',
+  done: '#2E7D32',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  available:   'Disponibil',
+  available: 'Disponibil',
   in_progress: 'În lucru',
-  done:        'Finalizat',
+  done: 'Finalizat',
 };
 
 /** Priority color for the left border stripe. Undefined = no stripe shown. */
 const PRIORITY_COLORS: Record<string, string | undefined> = {
   urgent: '#DC2626',
-  high:   '#EA580C',
+  high: '#EA580C',
   normal: undefined,
-  low:    undefined,
+  low: undefined,
 };
 
 interface SubtitleInfo {
@@ -125,9 +119,7 @@ export function TaskList({ tasks, role }: TaskListProps) {
                     { backgroundColor: STATUS_COLORS[item.status] ?? '#5D4037' },
                   ]}
                 >
-                  <Text style={styles.badgeText}>
-                    {STATUS_LABELS[item.status] ?? item.status}
-                  </Text>
+                  <Text style={styles.badgeText}>{STATUS_LABELS[item.status] ?? item.status}</Text>
                 </View>
               </View>
               {subtitle !== null && (
@@ -189,5 +181,5 @@ const styles = StyleSheet.create({
   badge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8 },
   badgeText: { color: colors.white, fontSize: 11, fontWeight: '600' },
   subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 30 },
-  subtitle: { fontSize: 13, color: colors.neutral },
+  subtitle: { fontSize: 13, color: colors.textSecondary },
 });

@@ -11,6 +11,8 @@ export const colors = {
   info: '#1565C0',
   white: '#FFFFFF',
   black: '#000000',
+  // Accessible secondary text — contrast ≥4.5:1 on background (#F3DED8)
+  textSecondary: '#4A3728',
   // Shades for primary
   primary50: '#E8F5E9',
   primary100: '#C8E6C9',

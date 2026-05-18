@@ -1,6 +1,7 @@
 /**
- * GPS location for StrawBoss mobile: foreground helpers + Android background updates
- * (TaskManager + foreground service) posting to POST /api/v1/location/report.
+ * GPS location for StrawBoss mobile: foreground helpers + background updates
+ * (TaskManager + foreground service on Android, UIBackgroundModes on iOS)
+ * posting to POST /api/v1/location/report.
  */
 import { Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
@@ -24,6 +25,7 @@ const PENDING_REPORTS_FILE = `${doc}strawboss-pending-location-reports.json`;
 const LAST_SUCCESS_FILE = `${doc}strawboss-location-last-success.txt`;
 
 const MAX_PENDING_REPORTS = 400;
+const PENDING_REPORTS_WARN_THRESHOLD = Math.floor(MAX_PENDING_REPORTS * 0.9);
 
 const locationApiClient = new ApiClient({
   baseUrl: API_BASE_URL,
@@ -64,6 +66,12 @@ async function readPendingReports(): Promise<LocationReportDto[]> {
 }
 
 async function writePendingReports(reports: LocationReportDto[]): Promise<void> {
+  if (reports.length >= PENDING_REPORTS_WARN_THRESHOLD) {
+    mobileLogger.flow('Location pending queue near capacity — possible connectivity issue', {
+      pendingCount: reports.length,
+      maxAllowed: MAX_PENDING_REPORTS,
+    });
+  }
   const trimmed = reports.slice(-MAX_PENDING_REPORTS);
   await FileSystem.writeAsStringAsync(PENDING_REPORTS_FILE, JSON.stringify(trimmed));
 }
@@ -148,9 +156,10 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
   const { data, error } = taskBody;
   if (error) {
     mobileLogger.warn('Location background task error', {
-      message: typeof error === 'object' && error && 'message' in error
-        ? String((error as { message: unknown }).message)
-        : String(error),
+      message:
+        typeof error === 'object' && error && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : String(error),
     });
     return;
   }
@@ -188,9 +197,7 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
 });
 
 /** Request foreground location; optionally background (required for Android background tracking). */
-export async function requestLocationPermission(
-  includeBackground = false,
-): Promise<boolean> {
+export async function requestLocationPermission(includeBackground = false): Promise<boolean> {
   const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
   if (fgStatus !== Location.PermissionStatus.GRANTED) return false;
 
@@ -203,20 +210,19 @@ export async function requestLocationPermission(
 }
 
 /**
- * Foreground + background (Android). On iOS returns foreground-only grant
- * (background GPS auto-start is Android-only in this app).
+ * Foreground + background permissions for both Android and iOS.
+ * On iOS, background location requires the "Always" permission level.
  */
 export async function requestBackgroundLocationPermissions(): Promise<boolean> {
   if (Platform.OS === 'android') {
     return requestLocationPermission(true);
   }
-  const { status } = await Location.requestForegroundPermissionsAsync();
-  return status === Location.PermissionStatus.GRANTED;
+  // iOS: request background ("always") permission directly
+  const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+  return bgStatus === Location.PermissionStatus.GRANTED;
 }
 
-export async function getCurrentPosition(
-  machineId: string,
-): Promise<LocationReportDto | null> {
+export async function getCurrentPosition(machineId: string): Promise<LocationReportDto | null> {
   const { status } = await Location.getForegroundPermissionsAsync();
   if (status !== Location.PermissionStatus.GRANTED) return null;
 
@@ -240,9 +246,11 @@ export async function startLocationWatcher(
 
   return Location.watchPositionAsync(
     {
-      accuracy: Location.Accuracy.High,
+      // Balanced accuracy is sufficient for geofence and conserves battery.
+      // distanceInterval ensures we don't flood on stationary devices.
+      accuracy: Location.Accuracy.Balanced,
       timeInterval: 15_000,
-      distanceInterval: 20,
+      distanceInterval: 50,
     },
     (loc) => {
       onLocation(coordsToReport(machineId, loc));
@@ -255,12 +263,12 @@ export function stopLocationWatcher(sub: Location.LocationSubscription): void {
 }
 
 /**
- * Start Android background location updates (foreground service + TaskManager).
- * No-op on iOS (use foreground watcher or future iOS UIBackgroundModes work).
+ * Start background location updates via TaskManager.
+ * Android: uses a foreground service so the task survives when the app is backgrounded.
+ * iOS: uses UIBackgroundModes "location" (configured in app.json infoPlist).
+ * Requires background location permission on both platforms.
  */
 export async function startBackgroundLocationTracking(machineId: string): Promise<void> {
-  if (Platform.OS !== 'android') return;
-
   const fg = await Location.getForegroundPermissionsAsync();
   if (fg.status !== Location.PermissionStatus.GRANTED) {
     mobileLogger.warn('startBackgroundLocationTracking: foreground location not granted');
@@ -280,10 +288,15 @@ export async function startBackgroundLocationTracking(machineId: string): Promis
   }
 
   await Location.startLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME, {
-    accuracy: Location.Accuracy.High,
+    // Balanced accuracy is sufficient for geofence checks and conserves battery.
+    accuracy: Location.Accuracy.Balanced,
     timeInterval: 15_000,
-    distanceInterval: 20,
+    distanceInterval: 50,
     pausesUpdatesAutomatically: false,
+    // iOS-specific options (ignored on Android)
+    activityType: Location.ActivityType.OtherNavigation,
+    showsBackgroundLocationIndicator: true,
+    // Android-specific: keeps the process alive as a foreground service
     foregroundService: {
       notificationTitle: 'StrawBoss — locație activă',
       notificationBody: 'Transmitem poziția în câmp către dispecer.',
@@ -291,15 +304,10 @@ export async function startBackgroundLocationTracking(machineId: string): Promis
     },
   });
 
-  mobileLogger.flow('Background location updates started', { machineId });
+  mobileLogger.flow('Background location updates started', { machineId, platform: Platform.OS });
 }
 
 export async function stopBackgroundLocationTracking(): Promise<void> {
-  if (Platform.OS !== 'android') {
-    await clearMachineIdFile();
-    return;
-  }
-
   try {
     const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
     if (started) {
@@ -315,7 +323,6 @@ export async function stopBackgroundLocationTracking(): Promise<void> {
 }
 
 export async function isBackgroundLocationTrackingActive(): Promise<boolean> {
-  if (Platform.OS !== 'android') return false;
   try {
     return await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
   } catch {

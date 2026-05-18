@@ -20,6 +20,7 @@ import { useNearbyLoaders } from '@/hooks/useNearbyLoaders';
 import { useSync } from '@/hooks/useSync';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
+import { colors, radii } from '@strawboss/ui-tokens';
 
 const STATUS_COLORS: Record<string, string> = {
   planned: '#1565C0',
@@ -311,7 +312,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: 16,
     gap: 8,
     shadowColor: '#000',
@@ -339,15 +340,15 @@ const styles = StyleSheet.create({
   destination: { fontSize: 14, color: '#5D4037' },
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  metaText: { fontSize: 13, color: '#8D6E63' },
+  metaText: { fontSize: 13, color: colors.textSecondary },
   deliveryHint: { fontSize: 12, color: '#0A5C36', fontWeight: '600' },
   loadedHint: { fontSize: 12, color: '#0A5C36', fontWeight: '600' },
   emptyText: { fontSize: 15, color: '#374151', fontWeight: '500' },
-  emptySubtext: { fontSize: 13, color: '#8D6E63' },
+  emptySubtext: { fontSize: 13, color: colors.textSecondary },
   headerCards: { gap: 12, marginBottom: 4 },
   infoCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: 14,
     gap: 8,
     shadowColor: '#000',
@@ -358,14 +359,14 @@ const styles = StyleSheet.create({
   },
   infoCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   infoCardTitle: { fontSize: 14, fontWeight: '700', color: '#0A5C36' },
-  infoCardEmpty: { fontSize: 13, color: '#8D6E63', fontStyle: 'italic' },
+  infoCardEmpty: { fontSize: 13, color: colors.textSecondary, fontStyle: 'italic' },
   loaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   loaderCode: { fontSize: 13, fontWeight: '600', color: '#374151', flexShrink: 0 },
   loaderOperator: { fontSize: 13, color: '#5D4037', flex: 1 },
-  loaderTime: { fontSize: 11, color: '#8D6E63' },
+  loaderTime: { fontSize: 11, color: colors.textSecondary },
   taskRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   taskRowText: { fontSize: 13, color: '#374151', flex: 1 },
   taskStatusBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   taskStatusText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
-  taskNoTrip: { fontSize: 11, color: '#8D6E63', marginLeft: 4 },
+  taskNoTrip: { fontSize: 11, color: colors.textSecondary, marginLeft: 4 },
 });

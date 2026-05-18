@@ -1,9 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { AppState } from 'react-native';
-import {
-  isBackgroundLocationTrackingActive,
-  readLastLocationSuccessIso,
-} from '@/lib/location';
+import { isBackgroundLocationTrackingActive, readLastLocationSuccessIso } from '@/lib/location';
 
 interface UseLocationTrackingResult {
   /** True when Android background location updates (FGS) are active. */
@@ -28,7 +25,13 @@ export function useLocationTracking(): UseLocationTrackingResult {
     setIsTracking(active);
     const iso = await readLastLocationSuccessIso();
     setLastReportedAt(
-      iso ? new Date(iso).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null,
+      iso
+        ? new Date(iso).toLocaleTimeString('ro-RO', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          })
+        : null,
     );
   }, []);
 
@@ -36,7 +39,7 @@ export function useLocationTracking(): UseLocationTrackingResult {
     void refresh();
     const interval = setInterval(() => {
       void refresh();
-    }, 5000);
+    }, 30_000);
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void refresh();
     });

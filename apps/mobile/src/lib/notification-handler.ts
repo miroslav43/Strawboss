@@ -1,5 +1,9 @@
 import type { Notification } from 'expo-notifications';
-import { MobileNotificationCategory, MobileNotificationSeverity, MobileNotificationType } from '@/types/notifications';
+import {
+  MobileNotificationCategory,
+  MobileNotificationSeverity,
+  MobileNotificationType,
+} from '@/types/notifications';
 import { NotificationsRepo } from '../db/notifications-repo';
 import { getDatabase } from './storage';
 
@@ -35,27 +39,71 @@ function resolveTypeAndCategory(pushType: string): {
 } | null {
   switch (pushType) {
     case 'field_entry':
-      return { type: MobileNotificationType.parcel_entered, category: MobileNotificationCategory.geofence, severity: MobileNotificationSeverity.info };
+      return {
+        type: MobileNotificationType.parcel_entered,
+        category: MobileNotificationCategory.geofence,
+        severity: MobileNotificationSeverity.info,
+      };
     case 'geofence_exit_confirm':
-      return { type: MobileNotificationType.parcel_exit_confirm, category: MobileNotificationCategory.geofence, severity: MobileNotificationSeverity.warning };
+      return {
+        type: MobileNotificationType.parcel_exit_confirm,
+        category: MobileNotificationCategory.geofence,
+        severity: MobileNotificationSeverity.warning,
+      };
     case 'deposit_entry':
-      return { type: MobileNotificationType.deposit_entered, category: MobileNotificationCategory.geofence, severity: MobileNotificationSeverity.info };
+      return {
+        type: MobileNotificationType.deposit_entered,
+        category: MobileNotificationCategory.geofence,
+        severity: MobileNotificationSeverity.info,
+      };
     case 'assignment_created':
-      return { type: MobileNotificationType.assignment_created, category: MobileNotificationCategory.task, severity: MobileNotificationSeverity.info };
+      return {
+        type: MobileNotificationType.assignment_created,
+        category: MobileNotificationCategory.task,
+        severity: MobileNotificationSeverity.info,
+      };
     case 'trip_loaded':
-      return { type: MobileNotificationType.trip_loaded, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.info };
+      return {
+        type: MobileNotificationType.trip_loaded,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.info,
+      };
     case 'trip_departed':
-      return { type: MobileNotificationType.trip_departed, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.info };
+      return {
+        type: MobileNotificationType.trip_departed,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.info,
+      };
     case 'trip_arrived':
-      return { type: MobileNotificationType.trip_arrived, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.info };
+      return {
+        type: MobileNotificationType.trip_arrived,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.info,
+      };
     case 'truck_arrived_at_loader':
-      return { type: MobileNotificationType.truck_arrived_at_loader, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.info };
+      return {
+        type: MobileNotificationType.truck_arrived_at_loader,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.info,
+      };
     case 'trip_completed':
-      return { type: MobileNotificationType.trip_completed, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.success };
+      return {
+        type: MobileNotificationType.trip_completed,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.success,
+      };
     case 'trip_disputed':
-      return { type: MobileNotificationType.trip_disputed, category: MobileNotificationCategory.trip_state, severity: MobileNotificationSeverity.critical };
+      return {
+        type: MobileNotificationType.trip_disputed,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.critical,
+      };
     case 'broadcast':
-      return { type: MobileNotificationType.broadcast, category: MobileNotificationCategory.admin, severity: MobileNotificationSeverity.info };
+      return {
+        type: MobileNotificationType.broadcast,
+        category: MobileNotificationCategory.admin,
+        severity: MobileNotificationSeverity.info,
+      };
     default:
       return null;
   }
@@ -71,7 +119,24 @@ export async function handleIncomingPush(notification: Notification): Promise<vo
   const resolved = resolveTypeAndCategory(pushType);
   if (!resolved) return;
 
-  const id = (data.id as string | undefined) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // Prefer an explicit id from the server (ideal — avoids all client-side derivation).
+  // When absent, derive a deterministic key from the notification's semantic content so
+  // that INSERT OR IGNORE in SQLite suppresses duplicates across retries/re-deliveries.
+  // Format: "<pushType>-<assignmentId|tripId|title-hash>" — stable for the same event.
+  const serverId = data.id as string | undefined;
+  const id =
+    serverId ??
+    (() => {
+      const anchor = data.assignmentId ?? data.tripId ?? null;
+      if (anchor) return `${pushType}-${anchor}`;
+      // Fallback: hash title+body for broadcasts and other types without a domain id
+      const raw = `${content.title ?? ''}|${content.body ?? ''}|${pushType}`;
+      let h = 0;
+      for (let i = 0; i < raw.length; i++) {
+        h = (Math.imul(31, h) + raw.charCodeAt(i)) | 0;
+      }
+      return `${pushType}-${(h >>> 0).toString(16)}`;
+    })();
 
   try {
     const db = await getDatabase();

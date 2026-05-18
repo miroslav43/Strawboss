@@ -26,7 +26,7 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { BigButton } from '@/components/ui/BigButton';
 import { ActionCard } from '@/components/ui/ActionCard';
-import { colors } from '@strawboss/ui-tokens';
+import { colors, radii } from '@strawboss/ui-tokens';
 import { mobileLogger } from '@/lib/logger';
 
 export default function TripDetailScreen() {
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 16,
     gap: 12,
     shadowColor: '#000',
@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
   },
   doneCard: {
     backgroundColor: colors.primary50,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 20,
     alignItems: 'center',
   },
@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: colors.primary50,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 14,
   },
   viewerText: {
@@ -472,14 +472,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: radii.md,
   },
   waitingCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     backgroundColor: colors.primary50,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 14,
   },
   waitingText: {
@@ -498,8 +498,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     maxHeight: '70%',
     backgroundColor: colors.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
     paddingBottom: 24,
   },
   modalHeader: {

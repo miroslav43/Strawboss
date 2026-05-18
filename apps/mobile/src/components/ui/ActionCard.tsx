@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors } from '@strawboss/ui-tokens';
+import { colors, radii } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 
 interface ActionCardProps {
@@ -40,12 +40,7 @@ export function ActionCard({
           {title}
         </Text>
         {subtitle && (
-          <Text
-            style={[
-              styles.subtitle,
-              variant === 'completed' && styles.completedSubtitle,
-            ]}
-          >
+          <Text style={[styles.subtitle, variant === 'completed' && styles.completedSubtitle]}>
             {subtitle}
           </Text>
         )}
@@ -70,7 +65,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
-    borderRadius: 20,
+    borderRadius: radii.xl,
     padding: scale(18),
     gap: 16,
     shadowColor: '#000',
@@ -90,7 +85,7 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: ICON_SIZE,
     height: ICON_SIZE,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',

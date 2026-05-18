@@ -137,10 +137,28 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [profileReady, setProfileReady] = useState(false); // true once profile fetch settled
+  // Track whether the Zustand persist middleware has finished reading from
+  // SecureStore. Until hydration is complete, `role` may be null even for a
+  // returning user, so we must not fire a profile fetch prematurely.
+  const [storeHydrated, setStoreHydrated] = useState(() => useAuthStore.persist.hasHydrated());
   const { role, setProfile } = useAuthStore();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const activeUserIdRef = useRef<string | null>(null);
   const { modalProps, showModal, hideModal } = useModal();
+
+  // Subscribe to hydration completion once (runs at most once per mount).
+  useEffect(() => {
+    if (storeHydrated) return;
+    const unsub = useAuthStore.persist.onFinishHydration(() => {
+      setStoreHydrated(true);
+    });
+    // Re-check synchronously in case hydration completed between the useState
+    // initializer and this effect running.
+    if (useAuthStore.persist.hasHydrated()) {
+      setStoreHydrated(true);
+    }
+    return unsub;
+  }, [storeHydrated]);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -189,11 +207,16 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Fetch profile once authenticated (and not already loaded)
+  // Fetch profile once authenticated (and not already loaded).
+  // We also wait for the Zustand persist store to finish hydrating so that a
+  // persisted `role` from a previous session is available before we decide
+  // whether to hit the network — this is what makes offline cold-boot work.
   useEffect(() => {
-    if (!isAuthenticated || role) {
-      if (!isAuthenticated) return;
-      // role already set from a previous fetch — mark as ready
+    if (!isAuthenticated || !storeHydrated) return;
+
+    if (role) {
+      // role already set — either from hydrated persist storage (offline boot)
+      // or from a prior fetch in the same session; mark as ready immediately.
       setProfileReady(true);
       return;
     }
@@ -253,7 +276,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       cancelled = true;
       clearWatchdog();
     };
-  }, [isAuthenticated, role, setProfile]);
+  }, [isAuthenticated, storeHydrated, role, setProfile]);
 
   // Intercept all incoming pushes → persist to local notifications table
   useEffect(() => {
