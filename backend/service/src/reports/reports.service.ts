@@ -258,13 +258,14 @@ export class ReportsService {
       }
     }
 
-    const to = range?.dateTo ?? new Date().toISOString().slice(0, 10);
-    let from = range?.dateFrom;
-    if (!from) {
-      const d = new Date(`${to}T00:00:00.000Z`);
-      d.setUTCDate(d.getUTCDate() - 29);
-      from = d.toISOString().slice(0, 10);
-    }
+    // Upper bound: explicit dateTo, else the database's CURRENT_DATE — avoids
+    // a UTC-vs-local off-by-one that drops the current day for users ahead of UTC.
+    const toExpr = range?.dateTo
+      ? sql`${range.dateTo}::date`
+      : sql`CURRENT_DATE`;
+    const fromExpr = range?.dateFrom
+      ? sql`${range.dateFrom}::date`
+      : sql`(${toExpr} - 29)`;
 
     const bpOrg = this.orgFilter(orgId, sql`bp.organization_id`);
     const tripOrg = this.orgFilter(orgId, sql`t.organization_id`);
@@ -274,7 +275,7 @@ export class ReportsService {
 
     const result = await this.drizzleProvider.db.execute(sql`
       WITH dates AS (
-        SELECT generate_series(${from}::date, ${to}::date, '1 day')::date AS d
+        SELECT generate_series(${fromExpr}, ${toExpr}, '1 day')::date AS d
       )
       SELECT
         to_char(dates.d, 'YYYY-MM-DD') AS "date",
