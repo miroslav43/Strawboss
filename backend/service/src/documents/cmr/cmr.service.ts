@@ -198,11 +198,15 @@ export class CmrService {
         baleLoadCount: baleLoads.length,
       });
 
-      // 5. Render PDF with Puppeteer
+      // 5. Render PDF with Puppeteer.
+      // In Docker (Alpine) there is no bundled Chrome — PUPPETEER_EXECUTABLE_PATH
+      // points at the system Chromium installed in the image. Unset locally,
+      // where Puppeteer falls back to its own downloaded browser.
       const puppeteer = await import('puppeteer');
       const browser = await puppeteer.launch({
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       });
       let pdfBuffer: Uint8Array;
       try {
@@ -222,12 +226,16 @@ export class CmrService {
 
       await this.documentsService.updateStatus(docId, orgId, finalStatus, fileUrl);
 
-      this.winston.log('flow', `CMR stage-${stage} generated for trip ${trip.trip_number as string}`, {
-        context: 'CmrService',
-        tripId,
-        documentId: docId,
-        stage,
-      });
+      this.winston.log(
+        'flow',
+        `CMR stage-${stage} generated for trip ${trip.trip_number as string}`,
+        {
+          context: 'CmrService',
+          tripId,
+          documentId: docId,
+          stage,
+        },
+      );
 
       return {
         documentId: docId,
