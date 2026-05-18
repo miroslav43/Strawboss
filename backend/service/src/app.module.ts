@@ -24,6 +24,7 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { LocationModule } from './location/location.module';
 import { AdminUsersModule } from './admin-users/admin-users.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { ReportsModule } from './reports/reports.module';
 import { JobsModule } from './jobs/jobs.module';
 import { TrpcModule } from './trpc/trpc.module';
 import { ProfileModule } from './profile/profile.module';
@@ -70,6 +71,7 @@ const devModules =
     LocationModule,
     AdminUsersModule,
     DashboardModule,
+    ReportsModule,
     JobsModule,
     TrpcModule,
     ProfileModule,
