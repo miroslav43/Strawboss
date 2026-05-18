@@ -66,13 +66,14 @@ jobs:
             --max-turns 50
 
       - name: Notificare WhatsApp — bug-scan
-        if: ${{ secrets.CALLMEBOT_PHONE != '' && secrets.CALLMEBOT_APIKEY != '' }}
         env:
           GH_TOKEN:         ${{ github.token }}
           CALLMEBOT_PHONE:  ${{ secrets.CALLMEBOT_PHONE }}
           CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
           PR_NUM:           ${{ github.event.pull_request.number }}
         run: |
+          # Skip dacă secretele nu sunt configurate
+          if [ -z "$CALLMEBOT_PHONE" ] || [ -z "$CALLMEBOT_APIKEY" ]; then exit 0; fi
           # Extrage linia de findings din ultimul comentariu Claude de pe PR
           FINDINGS_LINE="raport disponibil pe GitHub"
           if [ -n "$PR_NUM" ]; then
