@@ -5,9 +5,13 @@ export interface CsvColumn<T> {
   value: (row: T) => string | number | null | undefined;
 }
 
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+
 function escapeCell(raw: string | number | null | undefined): string {
   const s = raw == null ? '' : String(raw);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const safe =
+    typeof raw === 'string' && FORMULA_PREFIX.test(s) ? `'${s}` : s;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 /**
