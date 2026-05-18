@@ -13,6 +13,21 @@ import { DocumentType, DocumentStatus } from '@strawboss/types';
 export class CmrService {
   private readonly template: HandlebarsTemplateDelegate;
 
+  /**
+   * Signature URLs are embedded as <img src> in the CMR template and fetched
+   * by headless Chromium. Only inline base64 PNG/JPEG data URLs are accepted —
+   * any http/https/file URL is dropped to prevent SSRF / data exfiltration.
+   */
+  private static readonly SIGNATURE_URL_PATTERN =
+    /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
+
+  private sanitizeSignatureUrl(value: unknown): string | null {
+    return typeof value === 'string' &&
+      CmrService.SIGNATURE_URL_PATTERN.test(value)
+      ? value
+      : null;
+  }
+
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly documentsService: DocumentsService,
@@ -191,9 +206,11 @@ export class CmrService {
             ? new Date(trip.delivered_at as string).toLocaleString('ro-RO')
             : 'N/A',
         receiverName: isStage1 ? null : (trip.receiver_name ?? 'N/A'),
-        loaderSignatureUrl: trip.loader_signature_url ?? null,
-        driverSignatureUrl: trip.driver_signature_url ?? null,
-        receiverSignatureUrl: isStage1 ? null : (trip.receiver_signature_url ?? null),
+        loaderSignatureUrl: this.sanitizeSignatureUrl(trip.loader_signature_url),
+        driverSignatureUrl: this.sanitizeSignatureUrl(trip.driver_signature_url),
+        receiverSignatureUrl: isStage1
+          ? null
+          : this.sanitizeSignatureUrl(trip.receiver_signature_url),
         deliveryNotes: trip.delivery_notes ?? '',
         baleLoadCount: baleLoads.length,
       });
@@ -211,6 +228,18 @@ export class CmrService {
       let pdfBuffer: Uint8Array;
       try {
         const page = await browser.newPage();
+        // Block every outbound request from the rendered page. The CMR template
+        // only needs inline data: resources; any http/https/file URL that slips
+        // into a signature field must not be fetched (SSRF / data exfil).
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+          const url = req.url();
+          const allowed =
+            url.startsWith('data:') ||
+            url.startsWith('about:') ||
+            url.startsWith('blob:');
+          (allowed ? req.continue() : req.abort()).catch(() => {});
+        });
         await page.setContent(html, { waitUntil: 'networkidle0' });
         pdfBuffer = await page.pdf({
           format: 'A4',
