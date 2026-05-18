@@ -64,3 +64,25 @@ jobs:
           claude_args: |
             --allowedTools Read,Grep,Glob,Bash,Write,Task
             --max-turns 50
+
+      - name: Notificare WhatsApp — bug-scan
+        if: ${{ secrets.CALLMEBOT_PHONE != '' && secrets.CALLMEBOT_APIKEY != '' }}
+        env:
+          GH_TOKEN:         ${{ github.token }}
+          CALLMEBOT_PHONE:  ${{ secrets.CALLMEBOT_PHONE }}
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+          PR_NUM:           ${{ github.event.pull_request.number }}
+        run: |
+          # Extrage linia de findings din ultimul comentariu Claude de pe PR
+          FINDINGS_LINE="raport disponibil pe GitHub"
+          if [ -n "$PR_NUM" ]; then
+            COMMENT=$(gh pr view "$PR_NUM" --json comments \
+              --jq '.comments | map(select(.author.login == "claude")) | last | .body' 2>/dev/null || echo "")
+            FINDINGS_LINE=$(echo "$COMMENT" | grep -o 'Findings:.*$' | head -1 | sed 's/\*\*//g' || echo "raport disponibil pe GitHub")
+          fi
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          MSG=$(printf "🔍 Bug Scan — StrawBoss\nPR #${PR_NUM:-N/A} | ${BRANCH}\n\n${FINDINGS_LINE}\n\n⚡ Bug Fix automat pornit (Opus)")
+          curl -G -s "https://api.callmebot.com/whatsapp.php" \
+            --data-urlencode "phone=${CALLMEBOT_PHONE}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "apikey=${CALLMEBOT_APIKEY}" || true
