@@ -44,14 +44,10 @@ export class ReportsService {
   ) {
     const parts: ReturnType<typeof sql>[] = [];
     if (range?.dateFrom) {
-      parts.push(
-        sql`${colExpr} >= ${`${range.dateFrom}T00:00:00.000Z`}::timestamptz`,
-      );
+      parts.push(sql`${colExpr} >= ${range.dateFrom}::date`);
     }
     if (range?.dateTo) {
-      parts.push(
-        sql`${colExpr} <= ${`${range.dateTo}T23:59:59.999Z`}::timestamptz`,
-      );
+      parts.push(sql`${colExpr} < (${range.dateTo}::date + 1)`);
     }
     if (parts.length === 0) return sql``;
     return sql` AND ${sql.join(parts, sql` AND `)}`;
