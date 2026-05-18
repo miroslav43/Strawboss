@@ -42,7 +42,8 @@
     "consumableLogs": "Consumabile",
     "settings": "Setări",
     "collapseSidebar": "Restrânge meniul",
-    "expandSidebar": "Extinde meniul"
+    "expandSidebar": "Extinde meniul",
+    "commandCenter": "Centru de comandă"
   },
   "topBar": {
     "toggleMenu": "Comută meniul",
@@ -533,6 +534,7 @@
     },
     "common": {
       "exportCsv": "Export CSV",
+      "exportPdf": "Export PDF",
       "loading": "Se încarcă datele…",
       "error": "Eroare la încărcarea datelor. Backend-ul poate fi oprit.",
       "noData": "Nu există date",
@@ -613,6 +615,47 @@
       "critical": "Critic"
     },
     "tripLink": "Cursă"
+  },
+  "machineDetail": {
+    "loading": "Se încarcă mașina…",
+    "notFound": "Mașina nu a fost găsită",
+    "loadError": "Eroare la încărcarea datelor mașinii.",
+    "back": "Înapoi la mașini",
+    "info": "Date mașină",
+    "plate": "Nr. înmatriculare",
+    "fuel": "Combustibil",
+    "tank": "Capacitate rezervor",
+    "odometer": "Odometru",
+    "hourmeter": "Contor ore",
+    "owner": "Firmă proprietară",
+    "gpsStatus": "Ultima poziție GPS",
+    "gpsLat": "Latitudine",
+    "gpsLon": "Longitudine",
+    "gpsTime": "Înregistrat la",
+    "gpsOperator": "Operator",
+    "gpsSpeed": "Viteză",
+    "gpsNoData": "Nicio dată GPS",
+    "activityChart": "Activitate curse — ultimele 7 zile",
+    "fuelLast7d": "Consum combustibil — ultimele 7 zile",
+    "noFuelLogs": "Niciun consum înregistrat în această perioadă.",
+    "fuelEntries": "{{count}} înregistrări",
+    "recentTrips": "Curse recente",
+    "noTrips": "Nicio cursă găsită pentru această mașină.",
+    "alertLog": "Jurnal alerte",
+    "noAlerts": "Nicio alertă pentru această mașină."
+  },
+  "commandCenter": {
+    "title": "Centru de comandă",
+    "liveMap": "Hartă live",
+    "activeTrips": "Curse active",
+    "noActiveTrips": "Nicio cursă activă în acest moment.",
+    "tripStatus": "Stare",
+    "tripTruck": "Camion",
+    "tripDriver": "Șofer",
+    "tripSource": "Sursă",
+    "tripDest": "Destinație",
+    "tripBales": "Baloți",
+    "viewTrip": "Vezi cursa"
   },
   "machines": {
     "title": "Mașini",

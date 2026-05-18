@@ -42,7 +42,8 @@
     "consumableLogs": "Consumables",
     "settings": "Settings",
     "collapseSidebar": "Collapse sidebar",
-    "expandSidebar": "Expand sidebar"
+    "expandSidebar": "Expand sidebar",
+    "commandCenter": "Command Center"
   },
   "topBar": {
     "toggleMenu": "Toggle menu",
@@ -533,6 +534,7 @@
     },
     "common": {
       "exportCsv": "Export CSV",
+      "exportPdf": "Export PDF",
       "loading": "Loading data…",
       "error": "Failed to load data. The backend may not be running.",
       "noData": "No data available",
@@ -613,6 +615,47 @@
       "critical": "Critical"
     },
     "tripLink": "Trip"
+  },
+  "machineDetail": {
+    "loading": "Loading machine…",
+    "notFound": "Machine not found",
+    "loadError": "Failed to load machine data.",
+    "back": "Back to machines",
+    "info": "Machine info",
+    "plate": "Registration",
+    "fuel": "Fuel type",
+    "tank": "Tank capacity",
+    "odometer": "Odometer",
+    "hourmeter": "Hour meter",
+    "owner": "Owner company",
+    "gpsStatus": "Last GPS position",
+    "gpsLat": "Latitude",
+    "gpsLon": "Longitude",
+    "gpsTime": "Recorded at",
+    "gpsOperator": "Operator",
+    "gpsSpeed": "Speed",
+    "gpsNoData": "No GPS data",
+    "activityChart": "Trip activity — last 7 days",
+    "fuelLast7d": "Fuel usage — last 7 days",
+    "noFuelLogs": "No fuel logs in this period.",
+    "fuelEntries": "{{count}} entries",
+    "recentTrips": "Recent trips",
+    "noTrips": "No trips found for this machine.",
+    "alertLog": "Alert log",
+    "noAlerts": "No alerts for this machine."
+  },
+  "commandCenter": {
+    "title": "Command Center",
+    "liveMap": "Live map",
+    "activeTrips": "Active trips",
+    "noActiveTrips": "No active trips right now.",
+    "tripStatus": "Status",
+    "tripTruck": "Truck",
+    "tripDriver": "Driver",
+    "tripSource": "Source",
+    "tripDest": "Destination",
+    "tripBales": "Bales",
+    "viewTrip": "View trip"
   },
   "machines": {
     "title": "Machines",

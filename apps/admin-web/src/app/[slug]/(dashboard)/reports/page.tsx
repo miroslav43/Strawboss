@@ -1,8 +1,8 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Download, FileText } from 'lucide-react';
 import {
   useFarmReports,
   useDepotReports,
@@ -259,135 +259,256 @@ export default function ReportsPage() {
     );
   };
 
+  const handleExportPdf = useCallback(() => {
+    window.print();
+  }, []);
+
+  const periodLabel =
+    dateFrom || dateTo ? `${dateFrom || '…'} – ${dateTo || '…'}` : new Date().toLocaleDateString();
+
   return (
     <div>
-      <PageHeader title={t('reports.title')} />
+      {/* ── Print-only report layout ───────────────────────────────────────
+          Visible only when window.print() is called. The main UI is hidden
+          via @media print in globals.css (print:hidden on the dashboard shell).
+      ──────────────────────────────────────────────────────────────────── */}
+      <div className="hidden print:block print:text-black">
+        <div className="mb-6 border-b pb-4">
+          <h1 className="text-2xl font-bold">StrawBoss — {t('reports.title')}</h1>
+          <p className="mt-1 text-sm text-neutral-500">{periodLabel}</p>
+        </div>
 
-      {/* Filters */}
-      <div className="mb-6">
-        <ReportFilters
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onDateFromChange={setDateFrom}
-          onDateToChange={setDateTo}
-        />
+        {/* KPI summary */}
+        <div className="mb-6 grid grid-cols-5 gap-4">
+          {[
+            { label: t('reports.kpi.produced'), value: totalProduced },
+            { label: t('reports.kpi.loaded'), value: totalLoaded },
+            { label: t('reports.kpi.delivered'), value: totalDelivered },
+            { label: t('reports.kpi.depotStock'), value: totalDepotStock },
+            { label: t('reports.kpi.loss'), value: `${lossPercentage.toFixed(1)}%` },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded border p-3 text-center">
+              <p className="text-xl font-bold">{value}</p>
+              <p className="text-xs text-neutral-500">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Farms table */}
+        {farms.length > 0 && (
+          <div className="mb-6">
+            <h2 className="mb-2 text-base font-semibold">{t('reports.farms.heading')}</h2>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b bg-neutral-50">
+                  <th className="px-2 py-1 text-left">{t('reports.farms.farm')}</th>
+                  <th className="px-2 py-1 text-right">{t('reports.farms.produced')}</th>
+                  <th className="px-2 py-1 text-right">{t('reports.farms.loaded')}</th>
+                  <th className="px-2 py-1 text-right">{t('reports.farms.delivered')}</th>
+                  <th className="px-2 py-1 text-right">{t('reports.farms.loss')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {farms.map((f) => {
+                  const loss =
+                    f.produced > 0
+                      ? (((f.produced - f.delivered) / f.produced) * 100).toFixed(1)
+                      : '0.0';
+                  return (
+                    <tr key={f.farmId ?? f.farmName} className="border-b">
+                      <td className="px-2 py-1 font-medium">{f.farmName}</td>
+                      <td className="px-2 py-1 text-right">{f.produced}</td>
+                      <td className="px-2 py-1 text-right">{f.loaded}</td>
+                      <td className="px-2 py-1 text-right">{f.delivered}</td>
+                      <td className="px-2 py-1 text-right">{loss}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Depots table */}
+        {depots.length > 0 && (
+          <div className="mb-6">
+            <h2 className="mb-2 text-base font-semibold">{t('reports.depots.heading')}</h2>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b bg-neutral-50">
+                  <th className="px-2 py-1 text-left">{t('reports.depots.depot')}</th>
+                  <th className="px-2 py-1 text-right">{t('reports.depots.totalStock')}</th>
+                  <th className="px-2 py-1 text-right">{t('reports.depots.receivedInPeriod')}</th>
+                  <th className="px-2 py-1 text-right">{t('reports.depots.arrivingNow')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {depots.map((d) => (
+                  <tr key={d.depotId} className="border-b">
+                    <td className="px-2 py-1 font-medium">{d.depotName}</td>
+                    <td className="px-2 py-1 text-right">{d.totalStock}</td>
+                    <td className="px-2 py-1 text-right">{d.receivedInPeriod}</td>
+                    <td className="px-2 py-1 text-right">{d.arrivingNow}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <p className="mt-8 text-xs text-neutral-400">
+          {t('reports.title')} · {new Date().toLocaleString()}
+        </p>
       </div>
 
-      {/* KPI summary */}
-      <div className="mb-6">
-        <ReportKpiRow
-          produced={totalProduced}
-          loaded={totalLoaded}
-          delivered={totalDelivered}
-          depotStock={totalDepotStock}
-          lossPercentage={lossPercentage}
+      {/* ── Screen-only UI (hidden on print) ───────────────────────────── */}
+      <div className="print:hidden">
+        <PageHeader
+          title={t('reports.title')}
+          actions={
+            <button
+              onClick={handleExportPdf}
+              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+            >
+              <FileText className="h-4 w-4" />
+              {t('reports.common.exportPdf')}
+            </button>
+          }
         />
-      </div>
 
-      {/* Tab selector */}
-      <div className="mb-6 flex flex-wrap gap-1 rounded-lg bg-neutral-100 p-1">
-        {TABS.map((tabDef) => (
-          <button
-            key={tabDef.id}
-            onClick={() => setTab(tabDef.id)}
-            className={cn(
-              'rounded-md px-4 py-2 text-sm font-medium transition-colors',
-              tab === tabDef.id
-                ? 'bg-white text-neutral-800 shadow-sm'
-                : 'text-neutral-500 hover:text-neutral-700',
+        {/* Filters */}
+        <div className="mb-6">
+          <ReportFilters
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
+          />
+        </div>
+
+        {/* KPI summary */}
+        <div className="mb-6">
+          <ReportKpiRow
+            produced={totalProduced}
+            loaded={totalLoaded}
+            delivered={totalDelivered}
+            depotStock={totalDepotStock}
+            lossPercentage={lossPercentage}
+          />
+        </div>
+
+        {/* Tab selector */}
+        <div className="mb-6 flex flex-wrap gap-1 rounded-lg bg-neutral-100 p-1">
+          {TABS.map((tabDef) => (
+            <button
+              key={tabDef.id}
+              onClick={() => setTab(tabDef.id)}
+              className={cn(
+                'rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                tab === tabDef.id
+                  ? 'bg-white text-neutral-800 shadow-sm'
+                  : 'text-neutral-500 hover:text-neutral-700',
+              )}
+            >
+              {t(tabDef.labelKey)}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        {tab === 'farms' && (
+          <FarmReportTab
+            farms={farms}
+            timeline={timeline}
+            isLoading={farmQuery.isLoading || timelineQuery.isLoading}
+            isError={farmQuery.isError || timelineQuery.isError}
+          />
+        )}
+
+        {tab === 'depots' && (
+          <DepotReportTab
+            depots={depots}
+            isLoading={depotQuery.isLoading}
+            isError={depotQuery.isError}
+          />
+        )}
+
+        {tab === 'rankings' && (
+          <RankingsTab
+            farms={farms}
+            depots={depots}
+            isLoading={farmQuery.isLoading || depotQuery.isLoading}
+            isError={farmQuery.isError || depotQuery.isError}
+          />
+        )}
+
+        {tab === 'costs' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-neutral-800">
+                {t('reports.costs.heading')}
+              </h2>
+              <ExportCsvButton
+                label={t('reports.common.exportCsv')}
+                onClick={handleExportCosts}
+                disabled={costRows.length === 0}
+              />
+            </div>
+            {costQuery.isLoading ? (
+              <div className="py-8 text-center text-sm text-neutral-400">
+                {t('reports.common.loading')}
+              </div>
+            ) : costQuery.isError ? (
+              <div className="py-8 text-center text-sm text-red-500">
+                {t('reports.common.error')}
+              </div>
+            ) : (
+              <>
+                <CostBreakdownChart data={costs} />
+                <DataTable<CostRow>
+                  columns={costColumns}
+                  data={costRows}
+                  keyExtractor={(row) => row.entityId}
+                />
+              </>
             )}
-          >
-            {t(tabDef.labelKey)}
-          </button>
-        ))}
+          </div>
+        )}
+
+        {tab === 'operators' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-neutral-800">
+                {t('reports.operators.heading')}
+              </h2>
+              <ExportCsvButton
+                label={t('reports.common.exportCsv')}
+                onClick={handleExportOperators}
+                disabled={operatorRows.length === 0}
+              />
+            </div>
+            {operatorStatsQuery.isLoading ? (
+              <div className="py-8 text-center text-sm text-neutral-400">
+                {t('reports.common.loading')}
+              </div>
+            ) : operatorStatsQuery.isError ? (
+              <div className="py-8 text-center text-sm text-red-500">
+                {t('reports.common.error')}
+              </div>
+            ) : (
+              <>
+                <OperatorProductionChart data={operatorStatsRaw} />
+                <DataTable<OperatorRow>
+                  columns={operatorColumns}
+                  data={operatorRows}
+                  keyExtractor={(row) => row.operatorId}
+                />
+              </>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Content */}
-      {tab === 'farms' && (
-        <FarmReportTab
-          farms={farms}
-          timeline={timeline}
-          isLoading={farmQuery.isLoading || timelineQuery.isLoading}
-          isError={farmQuery.isError || timelineQuery.isError}
-        />
-      )}
-
-      {tab === 'depots' && (
-        <DepotReportTab
-          depots={depots}
-          isLoading={depotQuery.isLoading}
-          isError={depotQuery.isError}
-        />
-      )}
-
-      {tab === 'rankings' && (
-        <RankingsTab
-          farms={farms}
-          depots={depots}
-          isLoading={farmQuery.isLoading || depotQuery.isLoading}
-          isError={farmQuery.isError || depotQuery.isError}
-        />
-      )}
-
-      {tab === 'costs' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-neutral-800">{t('reports.costs.heading')}</h2>
-            <ExportCsvButton
-              label={t('reports.common.exportCsv')}
-              onClick={handleExportCosts}
-              disabled={costRows.length === 0}
-            />
-          </div>
-          {costQuery.isLoading ? (
-            <div className="py-8 text-center text-sm text-neutral-400">
-              {t('reports.common.loading')}
-            </div>
-          ) : costQuery.isError ? (
-            <div className="py-8 text-center text-sm text-red-500">{t('reports.common.error')}</div>
-          ) : (
-            <>
-              <CostBreakdownChart data={costs} />
-              <DataTable<CostRow>
-                columns={costColumns}
-                data={costRows}
-                keyExtractor={(row) => row.entityId}
-              />
-            </>
-          )}
-        </div>
-      )}
-
-      {tab === 'operators' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-neutral-800">
-              {t('reports.operators.heading')}
-            </h2>
-            <ExportCsvButton
-              label={t('reports.common.exportCsv')}
-              onClick={handleExportOperators}
-              disabled={operatorRows.length === 0}
-            />
-          </div>
-          {operatorStatsQuery.isLoading ? (
-            <div className="py-8 text-center text-sm text-neutral-400">
-              {t('reports.common.loading')}
-            </div>
-          ) : operatorStatsQuery.isError ? (
-            <div className="py-8 text-center text-sm text-red-500">{t('reports.common.error')}</div>
-          ) : (
-            <>
-              <OperatorProductionChart data={operatorStatsRaw} />
-              <DataTable<OperatorRow>
-                columns={operatorColumns}
-                data={operatorRows}
-                keyExtractor={(row) => row.operatorId}
-              />
-            </>
-          )}
-        </div>
-      )}
+      {/* end print:hidden */}
     </div>
   );
 }

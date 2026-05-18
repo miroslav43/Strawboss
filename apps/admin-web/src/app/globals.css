@@ -1,9 +1,22 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
   /* Primary brand color — agriculture green */
-  --color-primary:     #4f7942;
+  --color-primary: #4f7942;
   --color-primary-700: #3a5a30;
+}
+
+/* Print layout — hide shell, show only the report content */
+@media print {
+  aside,
+  header,
+  [data-print-hidden] {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
 }
 
 /* Parcel map labels — permanent tooltips on polygons */

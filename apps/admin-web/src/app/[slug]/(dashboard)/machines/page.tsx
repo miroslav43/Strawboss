@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { Fragment, useState, useMemo } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import {
   Plus,
   Pencil,
@@ -641,6 +642,8 @@ function useDeleteMachine() {
 
 export default function MachinesPage() {
   const { t } = useI18n();
+  const router = useRouter();
+  const params = useParams<{ slug: string }>();
   const { data: machinesRaw, isLoading, isError } = useMachines(apiClient);
   const deleteMachine = useDeleteMachine();
 
@@ -839,7 +842,8 @@ export default function MachinesPage() {
                   {group.machines.map((m) => (
                     <tr
                       key={m.id}
-                      className={`hover:bg-neutral-50 ${!m.isActive ? 'opacity-50' : ''}`}
+                      className={`cursor-pointer hover:bg-neutral-50 ${!m.isActive ? 'opacity-50' : ''}`}
+                      onClick={() => router.push(`/${params.slug}/machines/${m.id}`)}
                     >
                       <td className="px-4 py-3 font-mono text-sm font-semibold text-neutral-800">
                         {m.internalCode}
@@ -855,7 +859,10 @@ export default function MachinesPage() {
                                 <button
                                   type="button"
                                   title="Schimbă iconița (deschide editare)"
-                                  onClick={() => setEditTarget(m)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditTarget(m);
+                                  }}
                                   style={{ background: def.color }}
                                   className="h-6 w-6 shrink-0 rounded-md flex items-center justify-center hover:scale-110 transition-transform"
                                   // Safe: SVG string is a compile-time constant from machine-icons.ts
@@ -888,14 +895,20 @@ export default function MachinesPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => setEditTarget(m)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditTarget(m);
+                            }}
                             className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-primary"
                             title="Editează"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => setDeleteTarget(m)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(m);
+                            }}
                             disabled={deleteMachine.isPending}
                             className="rounded-md p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
                             title="Șterge"

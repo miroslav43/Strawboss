@@ -21,6 +21,7 @@ import {
   Warehouse,
   Fuel,
   Package,
+  MonitorDot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
@@ -28,6 +29,7 @@ import { SidebarLink } from './SidebarLink';
 
 function buildNavItems(slug: string) {
   return [
+    { href: `/${slug}/command-center`, icon: MonitorDot, labelKey: 'nav.commandCenter' as const },
     { href: `/${slug}/operations`, icon: Activity, labelKey: 'nav.operations' as const },
     { href: `/${slug}/tasks`, icon: KanbanSquare, labelKey: 'nav.tasks' as const },
     { href: `/${slug}/trips`, icon: Truck, labelKey: 'nav.trips' as const },

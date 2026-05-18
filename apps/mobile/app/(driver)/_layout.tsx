@@ -6,7 +6,13 @@ import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
 import { useTripLoadedAlert } from '@/hooks/useTripLoadedAlert';
 import { TripLoadedOverlay } from '@/components/features/driver/TripLoadedOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
-import { makeTabBarStyle, tabBarLabelStyle, tabBarActiveTintColor, tabBarInactiveTintColor } from '@/constants/tabBarConfig';
+import { SyncQueueBannerHost } from '@/components/shared/SyncQueueBannerHost';
+import {
+  makeTabBarStyle,
+  tabBarLabelStyle,
+  tabBarActiveTintColor,
+  tabBarInactiveTintColor,
+} from '@/constants/tabBarConfig';
 
 export default function DriverTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
@@ -15,78 +21,79 @@ export default function DriverTabLayout() {
 
   return (
     <SafeAreaProvider>
-    <View style={{ flex: 1 }}>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor,
-          tabBarInactiveTintColor,
-          tabBarStyle: makeTabBarStyle(insets.bottom),
-          tabBarLabelStyle,
-        }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'Cursele Mele',
-            tabBarAccessibilityLabel: 'Cursele mele',
-            tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="truck" focused={focused} color={color} size={size} />
-            ),
+      <View style={{ flex: 1 }}>
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarActiveTintColor,
+            tabBarInactiveTintColor,
+            tabBarStyle: makeTabBarStyle(insets.bottom),
+            tabBarLabelStyle,
           }}
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: 'Cursele Mele',
+              tabBarAccessibilityLabel: 'Cursele mele',
+              tabBarIcon: ({ color, size, focused }) => (
+                <TabBarIcon name="truck" focused={focused} color={color} size={size} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="delivery"
+            options={{
+              title: 'Livrare',
+              tabBarAccessibilityLabel: 'Livrare',
+              tabBarIcon: ({ color, size, focused }) => (
+                <TabBarIcon name="clipboard-list" focused={focused} color={color} size={size} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="map"
+            options={{
+              title: 'Hartă',
+              tabBarAccessibilityLabel: 'Hartă',
+              tabBarIcon: ({ color, size, focused }) => (
+                <TabBarIcon name="map" focused={focused} color={color} size={size} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="fuel"
+            options={{
+              title: 'Combustibil',
+              tabBarAccessibilityLabel: 'Combustibil',
+              tabBarIcon: ({ color, size, focused }) => (
+                <TabBarIcon name="gas-station" focused={focused} color={color} size={size} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="profile"
+            options={{
+              title: 'Profil',
+              tabBarAccessibilityLabel: 'Profilul meu',
+              tabBarIcon: ({ color, size, focused }) => (
+                <TabBarIcon name="account" focused={focused} color={color} size={size} />
+              ),
+            }}
+          />
+        </Tabs>
+        <GeofenceOverlay
+          alert={activeAlert}
+          onDismiss={dismissAlert}
+          onConfirmParcelDone={confirmParcelDone}
         />
-        <Tabs.Screen
-          name="delivery"
-          options={{
-            title: 'Livrare',
-            tabBarAccessibilityLabel: 'Livrare',
-            tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="clipboard-list" focused={focused} color={color} size={size} />
-            ),
-          }}
+        <TripLoadedOverlay
+          alert={tripAlert}
+          onDismiss={() => void dismissTripAlert()}
+          onDeparted={onDeparted}
         />
-        <Tabs.Screen
-          name="map"
-          options={{
-            title: 'Hartă',
-            tabBarAccessibilityLabel: 'Hartă',
-            tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="map" focused={focused} color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="fuel"
-          options={{
-            title: 'Combustibil',
-            tabBarAccessibilityLabel: 'Combustibil',
-            tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="gas-station" focused={focused} color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: 'Profil',
-            tabBarAccessibilityLabel: 'Profilul meu',
-            tabBarIcon: ({ color, size, focused }) => (
-              <TabBarIcon name="account" focused={focused} color={color} size={size} />
-            ),
-          }}
-        />
-      </Tabs>
-      <GeofenceOverlay
-        alert={activeAlert}
-        onDismiss={dismissAlert}
-        onConfirmParcelDone={confirmParcelDone}
-      />
-      <TripLoadedOverlay
-        alert={tripAlert}
-        onDismiss={() => void dismissTripAlert()}
-        onDeparted={onDeparted}
-      />
-    </View>
+        <SyncQueueBannerHost />
+      </View>
     </SafeAreaProvider>
   );
 }
