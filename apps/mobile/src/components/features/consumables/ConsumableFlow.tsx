@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
 import { OcrPhotoCapture } from '../../shared/OcrPhotoCapture';
@@ -49,6 +51,7 @@ export function ConsumableFlow({
   lockType,
 }: ConsumableFlowProps) {
   const queryClient = useQueryClient();
+  const { modalProps, showModal, hideModal } = useModal();
   // If lockType is set, we start directly at the receipt step.
   const [step, setStep] = useState<ConsumableStep>(lockType ? 'receipt' : 'type');
   const [consumableType, setConsumableType] = useState<ConsumableType | null>(lockType ?? null);
@@ -170,13 +173,21 @@ export function ConsumableFlow({
       setPhotoUri(null);
       setQuantitySuggested(null);
       setStep(lockType ? 'receipt' : 'type');
-      Alert.alert(
-        'Salvat',
-        `${qty} ${UNIT_LABELS[savedType]} înregistrat. În coadă sync: ${pendingCount}.`,
-      );
+      showModal({
+        type: 'success',
+        title: 'Salvat',
+        message: `${qty} ${UNIT_LABELS[savedType]} înregistrat. În coadă sync: ${pendingCount}.`,
+        autoDismiss: true,
+        onConfirm: hideModal,
+      });
       onComplete();
     } catch (err) {
-      Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu s-a putut salva consumabilul');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: err instanceof Error ? err.message : 'Nu s-a putut salva consumabilul',
+        onConfirm: hideModal,
+      });
     } finally {
       setSaving(false);
     }
@@ -215,6 +226,7 @@ export function ConsumableFlow({
               />
             ) : null}
           </View>
+          <AppModal {...modalProps} />
         </View>
       );
 
@@ -238,6 +250,7 @@ export function ConsumableFlow({
             <BigButton title="Continuă" onPress={() => setStep('quantity')} />
             <BigButton title="Sari peste" variant="outline" onPress={() => setStep('quantity')} />
           </View>
+          <AppModal {...modalProps} />
         </View>
       );
 
@@ -269,19 +282,23 @@ export function ConsumableFlow({
             />
             <BigButton title="Înapoi" variant="outline" onPress={() => setStep('receipt')} />
           </View>
+          <AppModal {...modalProps} />
         </View>
       );
 
     case 'confirm':
       return (
-        <ConsumableConfirmation
-          consumableType={consumableType as ConsumableType}
-          quantity={parseFloat(quantity)}
-          hasPhoto={photoUri !== null}
-          onConfirm={handleConfirm}
-          onBack={() => setStep('quantity')}
-          loading={saving}
-        />
+        <>
+          <ConsumableConfirmation
+            consumableType={consumableType as ConsumableType}
+            quantity={parseFloat(quantity)}
+            hasPhoto={photoUri !== null}
+            onConfirm={handleConfirm}
+            onBack={() => setStep('quantity')}
+            loading={saving}
+          />
+          <AppModal {...modalProps} />
+        </>
       );
   }
 }

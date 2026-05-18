@@ -7,12 +7,13 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
   RefreshControl,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,7 +23,7 @@ import { FarmEntityType } from '@strawboss/types';
 
 const ENTITY_LABELS: Record<FarmEntityType, string> = {
   [FarmEntityType.persoana_juridica]: 'Persoană juridică',
-  [FarmEntityType.persoana_fizica]:   'Persoană fizică',
+  [FarmEntityType.persoana_fizica]: 'Persoană fizică',
 };
 import { mobileApiClient } from '@/lib/api-client';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
@@ -30,17 +31,17 @@ import { AssignFarmModal } from '@/components/geofence-maker/AssignFarmModal';
 import { colors } from '@strawboss/ui-tokens';
 
 const HARVEST_LABELS: Record<string, string> = {
-  planned:    'Planificat',
+  planned: 'Planificat',
   to_harvest: 'De recoltat',
   harvesting: 'În recoltare',
-  harvested:  'Recoltat',
+  harvested: 'Recoltat',
 };
 
 const HARVEST_COLORS: Record<string, string> = {
-  planned:    '#6B7280',
+  planned: '#6B7280',
   to_harvest: '#D97706',
   harvesting: '#2563EB',
-  harvested:  '#16A34A',
+  harvested: '#16A34A',
 };
 
 export default function FarmsScreen() {
@@ -48,29 +49,41 @@ export default function FarmsScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  const [expandedId, setExpandedId]       = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
-  const [farmName, setFarmName]           = useState('');
-  const [farmPhone, setFarmPhone]         = useState('');
+  const [farmName, setFarmName] = useState('');
+  const [farmPhone, setFarmPhone] = useState('');
   const [farmEntityType, setFarmEntityType] = useState<FarmEntityType | ''>('');
-  const [farmCui, setFarmCui]             = useState('');
-  const [farmApia, setFarmApia]           = useState('');
-  const [farmAddress, setFarmAddress]     = useState('');
-  const [isSaving, setIsSaving]           = useState(false);
-  const [refreshing, setRefreshing]       = useState(false);
+  const [farmCui, setFarmCui] = useState('');
+  const [farmApia, setFarmApia] = useState('');
+  const [farmAddress, setFarmAddress] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [assignParcelId, setAssignParcelId] = useState<string | null>(null);
+  const { modalProps, showModal, hideModal } = useModal();
 
-  const goToMap = useCallback((parcelId: string) => {
-    router.push({ pathname: '/(geofence-maker)/map', params: { focusParcelId: parcelId } });
-  }, [router]);
+  const goToMap = useCallback(
+    (parcelId: string) => {
+      router.push({ pathname: '/(geofence-maker)/map', params: { focusParcelId: parcelId } });
+    },
+    [router],
+  );
 
-  const { data: farms = [], isLoading: farmsLoading, refetch: refetchFarms } = useQuery({
+  const {
+    data: farms = [],
+    isLoading: farmsLoading,
+    refetch: refetchFarms,
+  } = useQuery({
     queryKey: ['farms'],
     queryFn: () => mobileApiClient.get<Farm[]>('/api/v1/farms'),
     staleTime: 2 * 60_000,
   });
 
-  const { data: parcels = [], isLoading: parcelsLoading, refetch: refetchParcels } = useQuery({
+  const {
+    data: parcels = [],
+    isLoading: parcelsLoading,
+    refetch: refetchParcels,
+  } = useQuery({
     queryKey: ['geofence-editor-parcels'],
     queryFn: () => mobileApiClient.get<Parcel[]>('/api/v1/parcels'),
     staleTime: 2 * 60_000,
@@ -82,9 +95,9 @@ export default function FarmsScreen() {
     setRefreshing(false);
   }, [refetchFarms, refetchParcels]);
 
-  const parcelsByFarm = useCallback((farmId: string) =>
-    parcels.filter((p) => p.farmId === farmId),
-    [parcels]
+  const parcelsByFarm = useCallback(
+    (farmId: string) => parcels.filter((p) => p.farmId === farmId),
+    [parcels],
   );
 
   const unassignedParcels = parcels.filter((p) => !p.farmId);
@@ -101,29 +114,48 @@ export default function FarmsScreen() {
 
   async function handleCreate() {
     if (!farmName.trim()) {
-      Alert.alert('Eroare', 'Numele fermei este obligatoriu.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Numele fermei este obligatoriu.',
+        onConfirm: hideModal,
+      });
       return;
     }
     if (!farmPhone.trim()) {
-      Alert.alert('Eroare', 'Numărul de telefon este obligatoriu.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Numărul de telefon este obligatoriu.',
+        onConfirm: hideModal,
+      });
       return;
     }
     setIsSaving(true);
     try {
       await mobileApiClient.post('/api/v1/farms', {
-        name:       farmName.trim(),
-        phone:      farmPhone.trim(),
+        name: farmName.trim(),
+        phone: farmPhone.trim(),
         entityType: farmEntityType || undefined,
-        cui:        farmCui.trim() || undefined,
-        apiaCode:   farmApia.trim() || undefined,
-        address:    farmAddress.trim() || undefined,
+        cui: farmCui.trim() || undefined,
+        apiaCode: farmApia.trim() || undefined,
+        address: farmAddress.trim() || undefined,
       });
       await queryClient.invalidateQueries({ queryKey: ['farms'] });
-      setFarmName(''); setFarmPhone(''); setFarmEntityType('');
-      setFarmCui(''); setFarmApia(''); setFarmAddress('');
+      setFarmName('');
+      setFarmPhone('');
+      setFarmEntityType('');
+      setFarmCui('');
+      setFarmApia('');
+      setFarmAddress('');
       setCreateVisible(false);
     } catch {
-      Alert.alert('Eroare', 'Nu s-a putut crea ferma. Încearcă din nou.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Nu s-a putut crea ferma. Încearcă din nou.',
+        onConfirm: hideModal,
+      });
     } finally {
       setIsSaving(false);
     }
@@ -151,7 +183,13 @@ export default function FarmsScreen() {
       <ScrollView
         style={styles.body}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 16 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
       >
         {isLoading ? (
           <View style={styles.loadingRow}>
@@ -188,7 +226,9 @@ export default function FarmsScreen() {
                     {farm.phone ? <Text style={styles.farmAddr}>📞 {farm.phone}</Text> : null}
                     {farm.address ? <Text style={styles.farmAddr}>{farm.address}</Text> : null}
                     {farm.cui ? <Text style={styles.farmAddr}>CUI: {farm.cui}</Text> : null}
-                    {farm.apiaCode ? <Text style={styles.farmAddr}>APIA: {farm.apiaCode}</Text> : null}
+                    {farm.apiaCode ? (
+                      <Text style={styles.farmAddr}>APIA: {farm.apiaCode}</Text>
+                    ) : null}
                     <Text style={styles.farmMeta}>{farmParcels.length} câmpuri</Text>
                   </View>
                   <MaterialCommunityIcons
@@ -252,9 +292,22 @@ export default function FarmsScreen() {
       </ScrollView>
 
       {/* Create farm modal */}
-      <Modal visible={createVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setCreateVisible(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={[styles.modalContainer, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 8 }]}>
+      <Modal
+        visible={createVisible}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setCreateVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View
+            style={[
+              styles.modalContainer,
+              { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 8 },
+            ]}
+          >
             <View style={styles.modalTitleRow}>
               <Text style={styles.modalTitle}>Fermă nouă</Text>
               <TouchableOpacity onPress={() => setCreateVisible(false)} hitSlop={12}>
@@ -267,7 +320,9 @@ export default function FarmsScreen() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.inputLabel}>Nume fermă <Text style={{ color: '#DC2626' }}>*</Text></Text>
+              <Text style={styles.inputLabel}>
+                Nume fermă <Text style={{ color: '#DC2626' }}>*</Text>
+              </Text>
               <TextInput
                 style={styles.input}
                 value={farmName}
@@ -278,7 +333,9 @@ export default function FarmsScreen() {
                 autoFocus
               />
 
-              <Text style={styles.inputLabel}>Telefon <Text style={{ color: '#DC2626' }}>*</Text></Text>
+              <Text style={styles.inputLabel}>
+                Telefon <Text style={{ color: '#DC2626' }}>*</Text>
+              </Text>
               <TextInput
                 style={styles.input}
                 value={farmPhone}
@@ -292,22 +349,50 @@ export default function FarmsScreen() {
               <Text style={styles.inputLabel}>Tip entitate</Text>
               <View style={styles.entitySegmentRow}>
                 <TouchableOpacity
-                  style={[styles.entitySegmentBtn, farmEntityType === FarmEntityType.persoana_juridica && styles.entitySegmentBtnActive]}
-                  onPress={() => setFarmEntityType(
-                    farmEntityType === FarmEntityType.persoana_juridica ? '' : FarmEntityType.persoana_juridica
-                  )}
+                  style={[
+                    styles.entitySegmentBtn,
+                    farmEntityType === FarmEntityType.persoana_juridica &&
+                      styles.entitySegmentBtnActive,
+                  ]}
+                  onPress={() =>
+                    setFarmEntityType(
+                      farmEntityType === FarmEntityType.persoana_juridica
+                        ? ''
+                        : FarmEntityType.persoana_juridica,
+                    )
+                  }
                 >
-                  <Text style={[styles.entitySegmentText, farmEntityType === FarmEntityType.persoana_juridica && styles.entitySegmentTextActive]}>
+                  <Text
+                    style={[
+                      styles.entitySegmentText,
+                      farmEntityType === FarmEntityType.persoana_juridica &&
+                        styles.entitySegmentTextActive,
+                    ]}
+                  >
                     Persoană juridică
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.entitySegmentBtn, farmEntityType === FarmEntityType.persoana_fizica && styles.entitySegmentBtnActive]}
-                  onPress={() => setFarmEntityType(
-                    farmEntityType === FarmEntityType.persoana_fizica ? '' : FarmEntityType.persoana_fizica
-                  )}
+                  style={[
+                    styles.entitySegmentBtn,
+                    farmEntityType === FarmEntityType.persoana_fizica &&
+                      styles.entitySegmentBtnActive,
+                  ]}
+                  onPress={() =>
+                    setFarmEntityType(
+                      farmEntityType === FarmEntityType.persoana_fizica
+                        ? ''
+                        : FarmEntityType.persoana_fizica,
+                    )
+                  }
                 >
-                  <Text style={[styles.entitySegmentText, farmEntityType === FarmEntityType.persoana_fizica && styles.entitySegmentTextActive]}>
+                  <Text
+                    style={[
+                      styles.entitySegmentText,
+                      farmEntityType === FarmEntityType.persoana_fizica &&
+                        styles.entitySegmentTextActive,
+                    ]}
+                  >
                     Persoană fizică
                   </Text>
                 </TouchableOpacity>
@@ -375,6 +460,7 @@ export default function FarmsScreen() {
         parcelId={assignParcelId}
         onClose={() => setAssignParcelId(null)}
       />
+      <AppModal {...modalProps} />
     </View>
   );
 }
@@ -401,10 +487,14 @@ function ParcelRow({
       <View style={{ flex: 1 }}>
         <View style={styles.parcelNameRow}>
           <Text style={styles.parcelCode}>{code}</Text>
-          <Text style={styles.parcelName} numberOfLines={1}>{name}</Text>
+          <Text style={styles.parcelName} numberOfLines={1}>
+            {name}
+          </Text>
         </View>
         <View style={styles.parcelMeta}>
-          <Text style={[styles.parcelStatusBadge, { color: statusColor, borderColor: statusColor }]}>
+          <Text
+            style={[styles.parcelStatusBadge, { color: statusColor, borderColor: statusColor }]}
+          >
             {statusLabel}
           </Text>
           <Text style={styles.parcelArea}>{area} ha</Text>
@@ -441,51 +531,151 @@ function ParcelRow({
 
 const styles = StyleSheet.create({
   outer: { flex: 1 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
   addBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  body: { flex: 1, backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  body: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
   content: { padding: 16, gap: 12 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 24 },
   loadingText: { fontSize: 14, color: '#5D4037' },
-  emptyCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 24, alignItems: 'center', gap: 8 },
+  emptyCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: '#374151' },
   emptySub: { fontSize: 13, color: '#8D6E63', textAlign: 'center', lineHeight: 18 },
-  farmCard: { backgroundColor: '#FFF', borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  farmCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
   farmHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
-  farmIconWrap: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#E8F5EE', alignItems: 'center', justifyContent: 'center' },
+  farmIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E8F5EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   farmName: { fontSize: 17, fontWeight: '700', color: '#111827' },
   farmAddr: { fontSize: 13, color: '#6B7280', marginTop: 1 },
-  entityChip: { alignSelf: 'flex-start', marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, backgroundColor: '#E8F5EE' },
-  entityChipText: { fontSize: 10, fontWeight: '700', color: '#0A5C36', textTransform: 'uppercase', letterSpacing: 0.4 },
+  entityChip: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#E8F5EE',
+  },
+  entityChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0A5C36',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   farmMeta: { fontSize: 12, color: colors.tertiary, marginTop: 2 },
-  parcelList: { borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingHorizontal: 14, paddingBottom: 8 },
+  parcelList: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+  },
   noParcelText: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingVertical: 12 },
-  parcelRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 8 },
+  parcelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    gap: 8,
+  },
   parcelNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   parcelCode: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', letterSpacing: 0.5 },
   parcelName: { fontSize: 14, fontWeight: '600', color: '#111827', flex: 1 },
   parcelMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  parcelStatusBadge: { fontSize: 11, fontWeight: '600', borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  parcelStatusBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
   parcelArea: { fontSize: 12, color: '#6B7280' },
   parcelActions: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 4 },
   iconBtn: { padding: 6, borderRadius: 6 },
   modalContainer: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 20 },
-  modalTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
   modalTitle: { fontSize: 20, fontWeight: '700', color: '#0A5C36' },
   inputLabel: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6, marginTop: 16 },
-  input: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: '#111827', backgroundColor: '#FAFAFA' },
+  input: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#FAFAFA',
+  },
   entitySegmentRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   entitySegmentBtn: {
-    flex: 1, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8,
-    borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#F9FAFB', alignItems: 'center',
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
   },
   entitySegmentBtnActive: { borderColor: '#0A5C36', backgroundColor: '#ECFDF5' },
   entitySegmentText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
   entitySegmentTextActive: { color: '#0A5C36', fontWeight: '700' },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 32 },
-  modalCancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center' },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+  },
   modalCancelText: { fontSize: 15, fontWeight: '600', color: '#374151' },
-  modalSaveBtn: { flex: 2, paddingVertical: 14, borderRadius: 10, backgroundColor: '#0A5C36', alignItems: 'center' },
+  modalSaveBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: '#0A5C36',
+    alignItems: 'center',
+  },
   modalSaveBtnDisabled: { backgroundColor: '#9CA3AF' },
   modalSaveText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

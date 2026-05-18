@@ -1,6 +1,9 @@
 FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
+# Puppeteer's bundled Chrome is glibc-based and won't run on Alpine (musl);
+# skip the download — the runtime stage uses the system Chromium instead.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -48,7 +51,9 @@ COPY --from=builder /app/packages/domain/node_modules ./packages/domain/node_mod
 
 WORKDIR /app/backend/service
 EXPOSE 3001
-RUN apk add --no-cache wget
+# wget — container healthcheck. chromium + deps — CMR PDF rendering (Puppeteer).
+RUN apk add --no-cache wget chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 RUN mkdir -p /app/logs /app/uploads/avatars /app/uploads/receipts \
   && chown -R appuser:appgroup /app/logs /app/uploads

@@ -5,10 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { BigButton } from '@/components/ui/BigButton';
@@ -21,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 export default function ArrivalFlowScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const queryClient = useQueryClient();
+  const { modalProps, showModal } = useModal();
 
   const [odometerStr, setOdometerStr] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -31,7 +33,11 @@ export default function ArrivalFlowScreen() {
   const handleSubmit = useCallback(async () => {
     if (!tripId) return;
     if (!odometerValid) {
-      Alert.alert('Eroare', 'Introduceți kilometrajul la sosire.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Introduceți kilometrajul la sosire.',
+      });
       return;
     }
     setSubmitting(true);
@@ -44,20 +50,24 @@ export default function ArrivalFlowScreen() {
       void queryClient.invalidateQueries({ queryKey: ['trip-alert', tripId] });
 
       mobileLogger.flow('ArrivalFlow: arrive success', { tripId });
-      router.replace('/(driver)');
+      // Land back on the trip detail so the driver sees the next action,
+      // not bounced to the home tab.
+      router.replace(`/trip/${tripId}`);
     } catch (err) {
       mobileLogger.error('ArrivalFlow: arrive failed', {
         tripId,
         err: err instanceof Error ? err.message : String(err),
       });
-      Alert.alert(
-        'Eroare',
-        err instanceof Error ? err.message : 'Nu s-a putut marca sosirea. Încearcă din nou.',
-      );
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message:
+          err instanceof Error ? err.message : 'Nu s-a putut marca sosirea. Încearcă din nou.',
+      });
     } finally {
       setSubmitting(false);
     }
-  }, [tripId, odometerKm, odometerValid, queryClient]);
+  }, [tripId, odometerKm, odometerValid, queryClient, showModal]);
 
   return (
     <KeyboardAvoidingView
@@ -92,6 +102,7 @@ export default function ArrivalFlowScreen() {
         />
         <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
       </ScrollView>
+      <AppModal {...modalProps} />
     </KeyboardAvoidingView>
   );
 }

@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   StyleSheet,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -25,6 +26,7 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [savingId, setSavingId] = useState<string | null>(null);
+  const { modalProps, showModal, hideModal } = useModal();
 
   const { data: farms = [], isLoading } = useQuery({
     queryKey: ['farms'],
@@ -42,15 +44,30 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
       await queryClient.invalidateQueries({ queryKey: ['farms'] });
       onClose();
     } catch {
-      Alert.alert('Eroare', 'Nu s-a putut asigna ferma. Încearcă din nou.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Nu s-a putut asigna ferma. Încearcă din nou.',
+        onConfirm: hideModal,
+      });
     } finally {
       setSavingId(null);
     }
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 }]}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View
+        style={[
+          styles.container,
+          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 },
+        ]}
+      >
         <View style={styles.titleRow}>
           <Text style={styles.title}>Asignează fermă</Text>
           <TouchableOpacity onPress={onClose} hitSlop={12} disabled={savingId !== null}>
@@ -66,7 +83,9 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
         ) : (
           <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
             {farms.length === 0 ? (
-              <Text style={styles.emptyText}>Nicio fermă disponibilă. Creează una întâi din tab-ul Ferme.</Text>
+              <Text style={styles.emptyText}>
+                Nicio fermă disponibilă. Creează una întâi din tab-ul Ferme.
+              </Text>
             ) : (
               farms.map((farm) => {
                 const isSavingThis = savingId === farm.id;
@@ -97,6 +116,7 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
             )}
           </ScrollView>
         )}
+        <AppModal {...modalProps} />
       </View>
     </Modal>
   );
@@ -104,17 +124,45 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 20 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 20, fontWeight: '700', color: '#0A5C36' },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 24, justifyContent: 'center' },
-  loadingText: { fontSize: 14, color: '#5D4037' },
-  emptyText: { textAlign: 'center', color: '#9CA3AF', fontSize: 14, paddingVertical: 32, paddingHorizontal: 12 },
-  farmItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 14, paddingHorizontal: 4,
-    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  farmIconWrap: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#E8F5EE', alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 20, fontWeight: '700', color: '#0A5C36' },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 24,
+    justifyContent: 'center',
+  },
+  loadingText: { fontSize: 14, color: '#5D4037' },
+  emptyText: {
+    textAlign: 'center',
+    color: '#9CA3AF',
+    fontSize: 14,
+    paddingVertical: 32,
+    paddingHorizontal: 12,
+  },
+  farmItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  farmIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E8F5EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   farmName: { fontSize: 16, fontWeight: '600', color: '#111827' },
   farmSub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
 });

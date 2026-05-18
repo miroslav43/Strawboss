@@ -40,36 +40,40 @@ export default function DepartureFlowScreen() {
     setStep('signature');
   }, [odometerValid]);
 
-  const handleSignature = useCallback(async (driverSignature: string) => {
-    if (!tripId) return;
-    setSubmitting(true);
-    try {
-      await mobileApiClient.post(`/api/v1/trips/${tripId}/depart`, {
-        departureOdometerKm: odometerKm,
-        driverSignature,
-      });
+  const handleSignature = useCallback(
+    async (driverSignature: string) => {
+      if (!tripId) return;
+      setSubmitting(true);
+      try {
+        await mobileApiClient.post(`/api/v1/trips/${tripId}/depart`, {
+          departureOdometerKm: odometerKm,
+          driverSignature,
+        });
 
-      void queryClient.invalidateQueries({ queryKey: ['trips'] });
-      void queryClient.invalidateQueries({ queryKey: ['my-trips'] });
-      void queryClient.invalidateQueries({ queryKey: ['trip-alert', tripId] });
+        void queryClient.invalidateQueries({ queryKey: ['trips'] });
+        void queryClient.invalidateQueries({ queryKey: ['my-trips'] });
+        void queryClient.invalidateQueries({ queryKey: ['trip-alert', tripId] });
 
-      mobileLogger.flow('DepartureFlow: depart success', { tripId });
+        mobileLogger.flow('DepartureFlow: depart success', { tripId });
 
-      router.replace('/(driver)');
-    } catch (err) {
-      mobileLogger.error('DepartureFlow: depart failed', {
-        tripId,
-        err: err instanceof Error ? err.message : String(err),
-      });
-      Alert.alert(
-        'Eroare',
-        err instanceof Error ? err.message : 'Nu s-a putut porni cursa. Încearcă din nou.',
-      );
-      setStep('odometer');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [tripId, odometerKm, queryClient]);
+        // Land back on the trip detail so the driver sees the next action.
+        router.replace(`/trip/${tripId}`);
+      } catch (err) {
+        mobileLogger.error('DepartureFlow: depart failed', {
+          tripId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        Alert.alert(
+          'Eroare',
+          err instanceof Error ? err.message : 'Nu s-a putut porni cursa. Încearcă din nou.',
+        );
+        setStep('odometer');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [tripId, odometerKm, queryClient],
+  );
 
   if (step === 'signature') {
     return (
@@ -78,7 +82,9 @@ export default function DepartureFlowScreen() {
         <View style={[styles.body, { flex: 1 }]}>
           <View style={styles.infoRow}>
             <MaterialCommunityIcons name="counter" size={18} color={colors.primary} />
-            <Text style={styles.infoText}>Km plecare: <Text style={styles.infoValue}>{odometerStr}</Text></Text>
+            <Text style={styles.infoText}>
+              Km plecare: <Text style={styles.infoValue}>{odometerStr}</Text>
+            </Text>
           </View>
           <Text style={styles.sigHint}>
             Semnează pentru a confirma plecarea și a genera documentul CMR.
@@ -88,11 +94,7 @@ export default function DepartureFlowScreen() {
             onSave={(sig) => void handleSignature(sig)}
           />
           {submitting ? null : (
-            <BigButton
-              title="Înapoi"
-              onPress={() => setStep('odometer')}
-              variant="outline"
-            />
+            <BigButton title="Înapoi" onPress={() => setStep('odometer')} variant="outline" />
           )}
         </View>
       </View>
@@ -127,11 +129,7 @@ export default function DepartureFlowScreen() {
           onPress={handleOdometerNext}
           disabled={!odometerValid}
         />
-        <BigButton
-          title="Anulează"
-          onPress={() => router.back()}
-          variant="outline"
-        />
+        <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
       </ScrollView>
     </KeyboardAvoidingView>
   );

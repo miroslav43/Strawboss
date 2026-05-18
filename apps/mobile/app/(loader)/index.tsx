@@ -9,8 +9,9 @@ import {
   RefreshControl,
   ActivityIndicator,
   Modal,
-  Alert,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { QRScanner } from '@/components/shared/QRScanner';
@@ -46,6 +47,7 @@ export default function LoaderHomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
+  const { modalProps, showModal, hideModal } = useModal();
 
   // Other tasks available for parcel switch — all today's tasks except the currently active parcel.
   const otherTasks = useMemo(() => {
@@ -87,62 +89,86 @@ export default function LoaderHomeScreen() {
   );
 
   // Core API call — idempotent for already-in_progress tasks.
-  const doStartTask = useCallback(async (task: MyTask) => {
-    setStartingTaskId(task.id);
-    try {
-      await mobileApiClient.post(`/api/v1/task-assignments/${task.id}/start`, {});
-      // Force immediate refetch so the banner flips to 'resolved' without waiting
-      // for the 30s polling cycle. parcel.refresh() resets GPS on top of that.
-      await queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-      parcel.refresh();
-    } catch (err) {
-      mobileLogger.error('Failed to start/confirm task', {
-        taskId: task.id,
-        err: err instanceof Error ? err.message : String(err),
-      });
-      Alert.alert('Eroare', 'Nu s-a putut porni sarcina. Încearcă din nou.');
-    } finally {
-      setStartingTaskId(null);
-    }
-  }, [parcel, queryClient]);
+  const doStartTask = useCallback(
+    async (task: MyTask) => {
+      setStartingTaskId(task.id);
+      try {
+        await mobileApiClient.post(`/api/v1/task-assignments/${task.id}/start`, {});
+        // Force immediate refetch so the banner flips to 'resolved' without waiting
+        // for the 30s polling cycle. parcel.refresh() resets GPS on top of that.
+        await queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+        parcel.refresh();
+      } catch (err) {
+        mobileLogger.error('Failed to start/confirm task', {
+          taskId: task.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        showModal({
+          type: 'error',
+          title: 'Eroare',
+          message: 'Nu s-a putut porni sarcina. Încearcă din nou.',
+          onConfirm: hideModal,
+        });
+      } finally {
+        setStartingTaskId(null);
+      }
+    },
+    [parcel, queryClient, showModal, hideModal],
+  );
 
   // Used by needs_start banner: confirm before starting a new task.
-  const handleStartTask = useCallback((task: MyTask) => {
-    Alert.alert(
-      'Confirmare teren',
-      `Pornești lucrul pe "${task.parcelName ?? 'Parcelă'}"?\n\nAsigurați-vă că sunteți pe terenul corect.`,
-      [
-        { text: 'Anulează', style: 'cancel' },
-        { text: 'Da, pornește', onPress: () => void doStartTask(task) },
-      ],
-    );
-  }, [doStartTask]);
+  const handleStartTask = useCallback(
+    (task: MyTask) => {
+      showModal({
+        type: 'confirm',
+        title: 'Confirmare teren',
+        message: `Pornești lucrul pe "${task.parcelName ?? 'Parcelă'}"?\n\nAsigurați-vă că sunteți pe terenul corect.`,
+        confirmText: 'Da, pornește',
+        onConfirm: () => {
+          void doStartTask(task);
+          hideModal();
+        },
+        onCancel: hideModal,
+      });
+    },
+    [doStartTask, showModal, hideModal],
+  );
 
   // Used by multiple_active banner: GPS failed to disambiguate — operator picks manually.
-  const handlePickActiveTask = useCallback((task: MyTask) => {
-    Alert.alert(
-      'Confirmă terenul activ',
-      `Lucrezi acum pe "${task.parcelName ?? 'Parcelă'}"?`,
-      [
-        { text: 'Nu', style: 'cancel' },
-        { text: 'Da, acesta e terenul meu', onPress: () => void doStartTask(task) },
-      ],
-    );
-  }, [doStartTask]);
+  const handlePickActiveTask = useCallback(
+    (task: MyTask) => {
+      showModal({
+        type: 'confirm',
+        title: 'Confirmă terenul activ',
+        message: `Lucrezi acum pe "${task.parcelName ?? 'Parcelă'}"?`,
+        confirmText: 'Da, acesta e terenul meu',
+        cancelText: 'Nu',
+        onConfirm: () => {
+          void doStartTask(task);
+          hideModal();
+        },
+        onCancel: hideModal,
+      });
+    },
+    [doStartTask, showModal, hideModal],
+  );
 
   // Used by resolved banner "Schimbă terenul" link.
   const handleChangeParcel = useCallback(() => {
     if (otherTasks.length === 0) return;
 
     const pickTask = (task: MyTask) => {
-      Alert.alert(
-        'Confirmare schimbare teren',
-        `Treci pe "${task.parcelName ?? 'Parcelă'}"?\n\nTerenul curent va rămâne activ în sistem.`,
-        [
-          { text: 'Anulează', style: 'cancel' },
-          { text: 'Da, schimbă', onPress: () => void doStartTask(task) },
-        ],
-      );
+      showModal({
+        type: 'confirm',
+        title: 'Confirmare schimbare teren',
+        message: `Treci pe "${task.parcelName ?? 'Parcelă'}"?\n\nTerenul curent va rămâne activ în sistem.`,
+        confirmText: 'Da, schimbă',
+        onConfirm: () => {
+          void doStartTask(task);
+          hideModal();
+        },
+        onCancel: hideModal,
+      });
     };
 
     if (otherTasks.length === 1) {
@@ -150,19 +176,23 @@ export default function LoaderHomeScreen() {
       return;
     }
 
-    // Multiple choices: first show a picker alert, then confirmation.
-    Alert.alert(
-      'Schimbă terenul',
-      `Teren curent: ${parcel.parcelName ?? 'necunoscut'}\n\nAlege terenul pe care mergi:`,
-      [
-        ...otherTasks.slice(0, 3).map((t) => ({
-          text: t.parcelName ?? 'Parcelă',
-          onPress: () => pickTask(t),
-        })),
-        { text: 'Anulează', style: 'cancel' as const },
-      ],
-    );
-  }, [otherTasks, parcel.parcelName, doStartTask]);
+    // Multiple choices: show confirm for the first candidate, listing all options in the message.
+    const taskList = otherTasks
+      .slice(0, 3)
+      .map((t) => `• ${t.parcelName ?? 'Parcelă'}`)
+      .join('\n');
+    showModal({
+      type: 'confirm',
+      title: 'Schimbă terenul',
+      message: `Teren curent: ${parcel.parcelName ?? 'necunoscut'}\n\nAlege terenul pe care mergi:\n${taskList}`,
+      confirmText: otherTasks[0].parcelName ?? 'Parcelă',
+      onConfirm: () => {
+        pickTask(otherTasks[0]);
+        hideModal();
+      },
+      onCancel: hideModal,
+    });
+  }, [otherTasks, parcel.parcelName, doStartTask, showModal, hideModal]);
 
   return (
     <View style={styles.outer}>
@@ -180,7 +210,11 @@ export default function LoaderHomeScreen() {
         style={styles.body}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
         }
       >
         <ParcelBanner
@@ -245,7 +279,11 @@ export default function LoaderHomeScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
+      <Modal
+        visible={scannerOpen}
+        animationType="slide"
+        onRequestClose={() => setScannerOpen(false)}
+      >
         <View style={styles.modalRoot}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Scanează camion</Text>
@@ -269,6 +307,7 @@ export default function LoaderHomeScreen() {
         onClose={() => setProblemOpen(false)}
         machineId={assignedMachineId ?? undefined}
       />
+      <AppModal {...modalProps} />
     </View>
   );
 }
@@ -307,9 +346,7 @@ function ParcelBanner({
         </View>
         <Text style={styles.parcelName}>{parcel.parcelName}</Text>
         <Text style={styles.parcelHint}>
-          {parcel.source === 'gps'
-            ? 'Detectat automat după poziție'
-            : 'Sarcină în lucru'}
+          {parcel.source === 'gps' ? 'Detectat automat după poziție' : 'Sarcină în lucru'}
         </Text>
         {otherTasks.length > 0 && (
           <TouchableOpacity style={styles.changeParcelBtn} onPress={onChangeParcel}>
@@ -346,7 +383,11 @@ function ParcelBanner({
               {isStarting ? (
                 <ActivityIndicator size="small" color={colors.primary} />
               ) : (
-                <MaterialCommunityIcons name="check-circle-outline" size={20} color={colors.primary} />
+                <MaterialCommunityIcons
+                  name="check-circle-outline"
+                  size={20}
+                  color={colors.primary}
+                />
               )}
             </TouchableOpacity>
           );
@@ -362,9 +403,7 @@ function ParcelBanner({
           <MaterialCommunityIcons name="play-circle-outline" size={20} color="#B7791F" />
           <Text style={[styles.parcelLabel, { color: '#B7791F' }]}>Începe lucrul</Text>
         </View>
-        <Text style={styles.parcelHint}>
-          Alege parcela pe care lucrezi astăzi:
-        </Text>
+        <Text style={styles.parcelHint}>Alege parcela pe care lucrezi astăzi:</Text>
         {parcel.candidates.map((task) => {
           const isStarting = startingTaskId === task.id;
           return (
@@ -396,9 +435,7 @@ function ParcelBanner({
         <MaterialCommunityIcons name="map-marker-off" size={20} color="#991B1B" />
         <Text style={[styles.parcelLabel, { color: '#991B1B' }]}>Niciun teren asignat</Text>
       </View>
-      <Text style={styles.parcelHint}>
-        Cere dispecerului să te asigneze pe o parcelă astăzi.
-      </Text>
+      <Text style={styles.parcelHint}>Cere dispecerului să te asigneze pe o parcelă astăzi.</Text>
     </View>
   );
 }
@@ -478,7 +515,12 @@ const styles = StyleSheet.create({
     borderLeftColor: '#B7791F',
   },
   parcelHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  parcelLabel: { fontSize: 12, fontWeight: '600', color: colors.primary, textTransform: 'uppercase' },
+  parcelLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+    textTransform: 'uppercase',
+  },
   parcelName: { fontSize: 20, fontWeight: '700', color: '#0A5C36', marginTop: 2 },
   parcelHint: { fontSize: 13, color: '#5D4037' },
   changeParcelBtn: {

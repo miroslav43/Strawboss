@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import {
-  Alert,
   ActivityIndicator,
+  Alert,
   Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { User } from '@strawboss/types';
@@ -38,6 +40,7 @@ interface AvatarPickerProps {
 export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerProps) {
   const [uploading, setUploading] = useState(false);
   const { isConnected } = useNetworkStatus();
+  const { modalProps, showModal, hideModal } = useModal();
 
   const resolvedUrl = mobileApiClient.resolveAssetUrl(avatarUrl);
   const initial = fullName?.trim().charAt(0)?.toUpperCase() || '?';
@@ -49,12 +52,15 @@ export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerPr
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') {
-      Alert.alert(
-        'Permisiune necesară',
-        source === 'camera'
-          ? 'Pentru a face o poză trebuie să permiți accesul la cameră.'
-          : 'Pentru a alege o poză trebuie să permiți accesul la galerie.',
-      );
+      showModal({
+        type: 'warning',
+        title: 'Permisiune necesară',
+        message:
+          source === 'camera'
+            ? 'Pentru a face o poză trebuie să permiți accesul la cameră.'
+            : 'Pentru a alege o poză trebuie să permiți accesul la galerie.',
+        onConfirm: hideModal,
+      });
       return;
     }
 
@@ -92,10 +98,7 @@ export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerPr
   const handlePress = () => {
     if (uploading) return;
     if (!isConnected) {
-      Alert.alert(
-        'Ești offline',
-        'Conectează-te la internet pentru a schimba poza de profil.',
-      );
+      Alert.alert('Ești offline', 'Conectează-te la internet pentru a schimba poza de profil.');
       return;
     }
     Alert.alert(

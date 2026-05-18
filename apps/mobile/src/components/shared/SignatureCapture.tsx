@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
 import { BigButton } from '../ui/BigButton';
@@ -11,6 +11,12 @@ interface SignatureCaptureProps {
 
 export function SignatureCapture({ onSave, label }: SignatureCaptureProps) {
   const ref = useRef<SignatureViewRef>(null);
+
+  // Start every signature on a blank canvas — no strokes carried over from a
+  // previous signer or a previous mount of this component.
+  useEffect(() => {
+    ref.current?.clearSignature();
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -31,10 +37,7 @@ export function SignatureCapture({ onSave, label }: SignatureCaptureProps) {
           />
         </View>
         <View style={styles.actionButton}>
-          <BigButton
-            title="Confirm"
-            onPress={() => ref.current?.readSignature()}
-          />
+          <BigButton title="Confirm" onPress={() => ref.current?.readSignature()} />
         </View>
       </View>
     </View>

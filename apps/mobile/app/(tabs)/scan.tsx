@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { scale } from '@/utils/responsive';
@@ -12,6 +14,7 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const router = useRouter();
+  const { modalProps, showModal, hideModal } = useModal();
 
   const handleBarCodeScanned = ({ data }: { data: string }) => {
     if (scanned) return;
@@ -33,9 +36,15 @@ export default function ScanScreen() {
 
     // Treat as raw trip ID
     if (data.length > 0) {
-      Alert.alert('Scanned', `Code: ${data}`, [
-        { text: 'OK', onPress: () => setScanned(false) },
-      ]);
+      showModal({
+        type: 'confirm',
+        title: 'Scanned',
+        message: `Code: ${data}`,
+        onConfirm: () => {
+          setScanned(false);
+          hideModal();
+        },
+      });
     } else {
       setScanned(false);
     }
@@ -63,30 +72,28 @@ export default function ScanScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.cameraContainer}>
-        <CameraView
-          style={styles.camera}
-          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-        />
-        <View style={styles.overlay}>
-          <View style={[styles.scanFrame, { width: FRAME_SIZE, height: FRAME_SIZE }]} />
-          <Text style={styles.scanText}>
-            Point camera at a StrawBoss QR code
-          </Text>
+    <>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.cameraContainer}>
+          <CameraView
+            style={styles.camera}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          />
+          <View style={styles.overlay}>
+            <View style={[styles.scanFrame, { width: FRAME_SIZE, height: FRAME_SIZE }]} />
+            <Text style={styles.scanText}>Point camera at a StrawBoss QR code</Text>
+          </View>
         </View>
-      </View>
 
-      {scanned && (
-        <TouchableOpacity
-          style={styles.rescanButton}
-          onPress={() => setScanned(false)}
-        >
-          <Text style={styles.buttonText}>Scan Again</Text>
-        </TouchableOpacity>
-      )}
-    </SafeAreaView>
+        {scanned && (
+          <TouchableOpacity style={styles.rescanButton} onPress={() => setScanned(false)}>
+            <Text style={styles.buttonText}>Scan Again</Text>
+          </TouchableOpacity>
+        )}
+      </SafeAreaView>
+      <AppModal {...modalProps} />
+    </>
   );
 }
 

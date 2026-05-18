@@ -4,10 +4,11 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Animated,
   ActivityIndicator,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -51,6 +52,7 @@ const GPS_REFRESH_MS = 45_000;
 export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps) {
   const { tasks } = useMyTasks();
   const queryClient = useQueryClient();
+  const { modalProps, showModal, hideModal } = useModal();
   const parcelQuery = useActiveParcels();
   const activeParcels: ActiveParcel[] | undefined = parcelQuery.data as ActiveParcel[] | undefined;
   const parcelsLoading = parcelQuery.isLoading;
@@ -331,7 +333,12 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
         parcelId,
         err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
-      Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu s-a putut salva producția');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: err instanceof Error ? err.message : 'Nu s-a putut salva producția',
+        onConfirm: hideModal,
+      });
     } finally {
       setSaving(false);
     }
@@ -487,6 +494,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       >
         <Text style={styles.saveButtonText}>{saving ? 'Se salvează…' : 'SALVEAZĂ PRODUCȚIE'}</Text>
       </TouchableOpacity>
+      <AppModal {...modalProps} />
     </View>
   );
 }

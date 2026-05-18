@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { useQueryClient } from '@tanstack/react-query';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
@@ -25,6 +27,7 @@ type FuelStep = 'receipt' | 'liters' | 'odometer-photo' | 'odometer' | 'confirm'
 
 export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: FuelEntryFlowProps) {
   const queryClient = useQueryClient();
+  const { modalProps, showModal, hideModal } = useModal();
   const [step, setStep] = useState<FuelStep>('receipt');
   const [liters, setLiters] = useState('');
   const [odometer, setOdometer] = useState('');
@@ -112,13 +115,21 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
       setLitersSuggested(null);
       setKmSuggested(null);
       setStep('receipt');
-      Alert.alert(
-        'Salvat',
-        `${quantityLiters} L alimentare înregistrată. În coadă sync: ${pendingCount}.`,
-      );
+      showModal({
+        type: 'success',
+        title: 'Salvat',
+        message: `${quantityLiters} L alimentare înregistrată. În coadă sync: ${pendingCount}.`,
+        autoDismiss: true,
+        onConfirm: hideModal,
+      });
       onComplete();
     } catch (err) {
-      Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu s-a putut salva alimentarea');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: err instanceof Error ? err.message : 'Nu s-a putut salva alimentarea',
+        onConfirm: hideModal,
+      });
     } finally {
       setSaving(false);
     }
@@ -258,6 +269,7 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
               <Text style={styles.backText}>Înapoi</Text>
             </TouchableOpacity>
           </View>
+          <AppModal {...modalProps} />
         </View>
       );
   }

@@ -6,13 +6,14 @@ import {
   TouchableOpacity,
   Pressable,
   ActivityIndicator,
-  Alert,
   Animated,
   PanResponder,
   type GestureResponderEvent,
   type LayoutChangeEvent,
   type PanResponderGestureState,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { openExternalNavigation } from '@/lib/routing';
 
 interface ParcelInfo {
@@ -76,6 +77,7 @@ export function ParcelInfoSheet({
   // we keep translateY at 0 so the sheet is fully visible.
   const [sheetHeight, setSheetHeight] = useState(0);
   const [mode, setMode] = useState<SheetMode>('full');
+  const { modalProps, showModal, hideModal } = useModal();
 
   const translateY = useRef(new Animated.Value(0)).current;
   const modeRef = useRef<SheetMode>('full');
@@ -194,7 +196,12 @@ export function ParcelInfoSheet({
     try {
       await openExternalNavigation(parcel.centroidLat!, parcel.centroidLon!);
     } catch {
-      Alert.alert('Eroare', 'Nu s-a putut deschide Google Maps sau navigația.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Nu s-a putut deschide Google Maps sau navigația.',
+        onConfirm: hideModal,
+      });
     }
   };
 
@@ -215,9 +222,7 @@ export function ParcelInfoSheet({
       pointerEvents={isPeek ? 'box-none' : 'auto'}
     >
       {/* Dismiss-on-backdrop only in full mode. */}
-      {!isPeek ? (
-        <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
-      ) : null}
+      {!isPeek ? <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} /> : null}
 
       <Animated.View
         style={[styles.sheet, { transform: [{ translateY }] }]}
@@ -229,9 +234,7 @@ export function ParcelInfoSheet({
         </View>
 
         <Text style={styles.name}>{parcel.name || parcel.code}</Text>
-        {parcel.name && parcel.code ? (
-          <Text style={styles.code}>{parcel.code}</Text>
-        ) : null}
+        {parcel.name && parcel.code ? <Text style={styles.code}>{parcel.code}</Text> : null}
 
         {routeSummary != null ? (
           <View style={styles.routeSummaryBox}>
@@ -253,10 +256,7 @@ export function ParcelInfoSheet({
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[
-                  styles.navButton,
-                  (!hasCoords || !hasUserLocation) && styles.btnDisabled,
-                ]}
+                style={[styles.navButton, (!hasCoords || !hasUserLocation) && styles.btnDisabled]}
                 onPress={onPreviewRoute}
                 disabled={!hasCoords || !hasUserLocation || isLoadingRoute}
               >
@@ -348,6 +348,7 @@ export function ParcelInfoSheet({
           </>
         )}
       </Animated.View>
+      <AppModal {...modalProps} />
     </View>
   );
 }

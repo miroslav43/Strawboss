@@ -1,12 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  StyleSheet,
-} from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,7 +9,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import type { Parcel } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
-import { GeofenceEditorView, type GeofenceEditorViewHandle } from '@/components/map/GeofenceEditorView';
+import {
+  GeofenceEditorView,
+  type GeofenceEditorViewHandle,
+} from '@/components/map/GeofenceEditorView';
 import { CreateParcelModal } from '@/components/geofence-maker/CreateParcelModal';
 import { CreateDepositModal } from '@/components/geofence-maker/CreateDepositModal';
 import type { GeofenceEditorEvent, ParcelMapData, DestinationMapData } from '@/map/map-bridge';
@@ -32,7 +30,8 @@ interface DeliveryDestination {
 function toLatLon(raw: unknown): { lat: number; lon: number } | null {
   if (raw == null || typeof raw !== 'object') return null;
   const obj = raw as { lat?: unknown; lon?: unknown; coordinates?: unknown };
-  if (typeof obj.lat === 'number' && typeof obj.lon === 'number') return { lat: obj.lat, lon: obj.lon };
+  if (typeof obj.lat === 'number' && typeof obj.lon === 'number')
+    return { lat: obj.lat, lon: obj.lon };
   if (Array.isArray(obj.coordinates) && obj.coordinates.length >= 2) {
     const [lon, lat] = obj.coordinates;
     if (typeof lon === 'number' && typeof lat === 'number') return { lat, lon };
@@ -47,11 +46,12 @@ export default function GeofenceMakerMapScreen() {
   const router = useRouter();
   const { focusParcelId } = useLocalSearchParams<{ focusParcelId?: string }>();
 
-  const [mapReady, setMapReady]       = useState(false);
-  const [locating, setLocating]       = useState(false);
-  const [drawMode, setDrawMode]       = useState<DrawMode>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [drawMode, setDrawMode] = useState<DrawMode>(null);
   const [drawnGeojson, setDrawnGeojson] = useState<object | null>(null);
-  const [isSaving, setIsSaving]       = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const { modalProps, showModal, hideModal } = useModal();
 
   const { data: parcels } = useQuery({
     queryKey: ['geofence-editor-parcels'],
@@ -84,7 +84,14 @@ export default function GeofenceMakerMapScreen() {
     if (deposits?.length) {
       const destData: DestinationMapData[] = deposits.map((d) => {
         const center = toLatLon(d.coords);
-        return { id: d.id, name: d.name, code: d.code, boundary: d.boundary, lat: center?.lat, lon: center?.lon };
+        return {
+          id: d.id,
+          name: d.name,
+          code: d.code,
+          boundary: d.boundary,
+          lat: center?.lat,
+          lon: center?.lon,
+        };
       });
       mapRef.current?.sendCommand({ type: 'SET_DESTINATIONS', destinations: destData });
     }
@@ -130,70 +137,107 @@ export default function GeofenceMakerMapScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Locație', 'Activează permisiunea de locație.');
+        showModal({
+          type: 'warning',
+          title: 'Locație',
+          message: 'Activează permisiunea de locație.',
+          onConfirm: hideModal,
+        });
         return;
       }
       setLocating(true);
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      mapRef.current?.sendCommand({ type: 'SET_USER_LOCATION', lat: loc.coords.latitude, lon: loc.coords.longitude });
+      mapRef.current?.sendCommand({
+        type: 'SET_USER_LOCATION',
+        lat: loc.coords.latitude,
+        lon: loc.coords.longitude,
+      });
     } catch {
-      Alert.alert('Eroare', 'Nu s-a putut obține locația.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Nu s-a putut obține locația.',
+        onConfirm: hideModal,
+      });
     } finally {
       setLocating(false);
     }
-  }, []);
+  }, [showModal, hideModal]);
 
-  const handleSaveParcel = useCallback(async (data: {
-    name: string;
-    farmId: string | null;
-    municipality: string;
-    notes: string;
-  }) => {
-    if (!drawnGeojson) return;
-    setIsSaving(true);
-    try {
-      await mobileApiClient.post('/api/v1/parcels', {
-        ...data,
-        boundary: JSON.stringify(drawnGeojson),
-      });
-      await queryClient.invalidateQueries({ queryKey: ['geofence-editor-parcels'] });
-      await queryClient.invalidateQueries({ queryKey: ['map-parcels'] });
-      setDrawMode(null);
-      setDrawnGeojson(null);
-      Alert.alert('Succes', 'Câmpul a fost creat cu geofence-ul desenat.');
-    } catch {
-      Alert.alert('Eroare', 'Nu s-a putut salva câmpul. Încearcă din nou.');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [drawnGeojson, queryClient]);
+  const handleSaveParcel = useCallback(
+    async (data: { name: string; farmId: string | null; municipality: string; notes: string }) => {
+      if (!drawnGeojson) return;
+      setIsSaving(true);
+      try {
+        await mobileApiClient.post('/api/v1/parcels', {
+          ...data,
+          boundary: JSON.stringify(drawnGeojson),
+        });
+        await queryClient.invalidateQueries({ queryKey: ['geofence-editor-parcels'] });
+        await queryClient.invalidateQueries({ queryKey: ['map-parcels'] });
+        setDrawMode(null);
+        setDrawnGeojson(null);
+        showModal({
+          type: 'success',
+          title: 'Succes',
+          message: 'Câmpul a fost creat cu geofence-ul desenat.',
+          onConfirm: hideModal,
+          autoDismiss: true,
+        });
+      } catch {
+        showModal({
+          type: 'error',
+          title: 'Eroare',
+          message: 'Nu s-a putut salva câmpul. Încearcă din nou.',
+          onConfirm: hideModal,
+        });
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [drawnGeojson, queryClient, showModal, hideModal],
+  );
 
-  const handleSaveDeposit = useCallback(async (data: {
-    code: string;
-    name: string;
-    address: string;
-    contactName: string;
-    contactPhone: string;
-    isDefault: boolean;
-  }) => {
-    if (!drawnGeojson) return;
-    setIsSaving(true);
-    try {
-      await mobileApiClient.post('/api/v1/delivery-destinations', {
-        ...data,
-        boundary: JSON.stringify(drawnGeojson),
-      });
-      await queryClient.invalidateQueries({ queryKey: ['geofence-editor-deposits'] });
-      await queryClient.invalidateQueries({ queryKey: ['map-destinations'] });
-      setDrawMode(null);
-      setDrawnGeojson(null);
-      Alert.alert('Succes', 'Depozitul a fost creat cu geofence-ul desenat.');
-    } catch {
-      Alert.alert('Eroare', 'Nu s-a putut salva depozitul. Încearcă din nou.');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [drawnGeojson, queryClient]);
+  const handleSaveDeposit = useCallback(
+    async (data: {
+      code: string;
+      name: string;
+      address: string;
+      contactName: string;
+      contactPhone: string;
+      isDefault: boolean;
+    }) => {
+      if (!drawnGeojson) return;
+      setIsSaving(true);
+      try {
+        await mobileApiClient.post('/api/v1/delivery-destinations', {
+          ...data,
+          boundary: JSON.stringify(drawnGeojson),
+        });
+        await queryClient.invalidateQueries({ queryKey: ['geofence-editor-deposits'] });
+        await queryClient.invalidateQueries({ queryKey: ['map-destinations'] });
+        setDrawMode(null);
+        setDrawnGeojson(null);
+        showModal({
+          type: 'success',
+          title: 'Succes',
+          message: 'Depozitul a fost creat cu geofence-ul desenat.',
+          onConfirm: hideModal,
+          autoDismiss: true,
+        });
+      } catch {
+        showModal({
+          type: 'error',
+          title: 'Eroare',
+          message: 'Nu s-a putut salva depozitul. Încearcă din nou.',
+          onConfirm: hideModal,
+        });
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [drawnGeojson, queryClient, showModal, hideModal],
+  );
 
   const handleCloseParcelModal = useCallback(() => {
     setDrawMode(null);
@@ -205,11 +249,12 @@ export default function GeofenceMakerMapScreen() {
     setDrawnGeojson(null);
   }, []);
 
-  const bannerText = drawMode === 'parcel'
-    ? 'Trasează conturul câmpului pe hartă'
-    : drawMode === 'deposit'
-    ? 'Trasează conturul depozitului pe hartă'
-    : 'Apasă un buton pentru a adăuga un câmp sau depozit';
+  const bannerText =
+    drawMode === 'parcel'
+      ? 'Trasează conturul câmpului pe hartă'
+      : drawMode === 'deposit'
+        ? 'Trasează conturul depozitului pe hartă'
+        : 'Apasă un buton pentru a adăuga un câmp sau depozit';
 
   const bannerColor = drawMode ? '#FEF9C3' : '#ECFDF5';
   const bannerBorder = drawMode ? '#FDE047' : '#A7F3D0';
@@ -218,7 +263,12 @@ export default function GeofenceMakerMapScreen() {
   return (
     <View style={styles.container}>
       {/* Info banner */}
-      <View style={[styles.banner, { top: insets.top + 8, backgroundColor: bannerColor, borderColor: bannerBorder }]}>
+      <View
+        style={[
+          styles.banner,
+          { top: insets.top + 8, backgroundColor: bannerColor, borderColor: bannerBorder },
+        ]}
+      >
         <MaterialCommunityIcons
           name={drawMode ? 'draw' : 'information-outline'}
           size={16}
@@ -292,6 +342,7 @@ export default function GeofenceMakerMapScreen() {
         onClose={handleCloseDepositModal}
         isSaving={isSaving}
       />
+      <AppModal {...modalProps} />
     </View>
   );
 }

@@ -7,8 +7,9 @@ import {
   StyleSheet,
   Pressable,
   RefreshControl,
-  Alert,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { nativeColors } from '@strawboss/ui-tokens/native';
@@ -20,9 +21,11 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear()
-    && a.getMonth() === b.getMonth()
-    && a.getDate() === b.getDate();
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
 function formatDayHeader(ts: number): string {
@@ -52,11 +55,16 @@ function groupByDay(items: MobileNotification[]): { date: string; data: MobileNo
 
 function severityColor(severity: MobileNotificationSeverity): string {
   switch (severity) {
-    case MobileNotificationSeverity.critical: return nativeColors.danger;
-    case MobileNotificationSeverity.warning: return nativeColors.warning;
-    case MobileNotificationSeverity.success: return nativeColors.success;
-    case MobileNotificationSeverity.info: return nativeColors.info;
-    default: return nativeColors.info;
+    case MobileNotificationSeverity.critical:
+      return nativeColors.danger;
+    case MobileNotificationSeverity.warning:
+      return nativeColors.warning;
+    case MobileNotificationSeverity.success:
+      return nativeColors.success;
+    case MobileNotificationSeverity.info:
+      return nativeColors.info;
+    default:
+      return nativeColors.info;
   }
 }
 
@@ -64,18 +72,30 @@ function typeIcon(
   type: MobileNotificationType,
 ): React.ComponentProps<typeof MaterialCommunityIcons>['name'] {
   switch (type) {
-    case MobileNotificationType.parcel_entered: return 'tractor';
-    case MobileNotificationType.parcel_exit_confirm: return 'help-circle';
-    case MobileNotificationType.deposit_entered: return 'warehouse';
-    case MobileNotificationType.assignment_created: return 'clipboard-list';
-    case MobileNotificationType.truck_arrived_at_loader: return 'truck';
-    case MobileNotificationType.trip_loaded: return 'package-variant';
-    case MobileNotificationType.trip_departed: return 'truck-fast';
-    case MobileNotificationType.trip_arrived: return 'map-marker-check';
-    case MobileNotificationType.trip_completed: return 'check-circle';
-    case MobileNotificationType.trip_disputed: return 'alert-circle';
-    case MobileNotificationType.broadcast: return 'bullhorn';
-    default: return 'bell';
+    case MobileNotificationType.parcel_entered:
+      return 'tractor';
+    case MobileNotificationType.parcel_exit_confirm:
+      return 'help-circle';
+    case MobileNotificationType.deposit_entered:
+      return 'warehouse';
+    case MobileNotificationType.assignment_created:
+      return 'clipboard-list';
+    case MobileNotificationType.truck_arrived_at_loader:
+      return 'truck';
+    case MobileNotificationType.trip_loaded:
+      return 'package-variant';
+    case MobileNotificationType.trip_departed:
+      return 'truck-fast';
+    case MobileNotificationType.trip_arrived:
+      return 'map-marker-check';
+    case MobileNotificationType.trip_completed:
+      return 'check-circle';
+    case MobileNotificationType.trip_disputed:
+      return 'alert-circle';
+    case MobileNotificationType.broadcast:
+      return 'bullhorn';
+    default:
+      return 'bell';
   }
 }
 
@@ -103,10 +123,7 @@ function NotificationItem({ item, onPress, onLongPress }: NotificationItemProps)
       </View>
       <View style={styles.itemContent}>
         <View style={styles.itemHeader}>
-          <Text
-            style={[styles.itemTitle, item.isRead && styles.itemTitleRead]}
-            numberOfLines={1}
-          >
+          <Text style={[styles.itemTitle, item.isRead && styles.itemTitleRead]} numberOfLines={1}>
             {item.title}
           </Text>
           <Text style={styles.itemTime}>{formatTime(item.createdAt)}</Text>
@@ -125,6 +142,7 @@ export default function NotificationsScreen() {
   const { items, unreadCount, markAsRead, markAllAsRead, deleteNotification, refresh } =
     useNotifications();
   const [refreshing, setRefreshing] = useState(false);
+  const { modalProps, showModal, hideModal } = useModal();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -141,7 +159,9 @@ export default function NotificationsScreen() {
         void markAsRead(item.id);
       }
       try {
-        const data = item.dataJson ? (JSON.parse(item.dataJson) as { tripId?: string; assignmentId?: string }) : null;
+        const data = item.dataJson
+          ? (JSON.parse(item.dataJson) as { tripId?: string; assignmentId?: string })
+          : null;
         if (data?.tripId) {
           router.push(`/trip/${data.tripId}`);
         }
@@ -154,22 +174,19 @@ export default function NotificationsScreen() {
 
   const handleLongPress = useCallback(
     (item: MobileNotification) => {
-      Alert.alert(
-        'Șterge notificarea?',
-        item.title,
-        [
-          { text: 'Anulează', style: 'cancel' },
-          {
-            text: 'Șterge',
-            style: 'destructive',
-            onPress: () => {
-              void deleteNotification(item.id);
-            },
-          },
-        ],
-      );
+      showModal({
+        type: 'confirm',
+        title: 'Șterge notificarea?',
+        message: item.title,
+        confirmText: 'Șterge',
+        onConfirm: () => {
+          void deleteNotification(item.id);
+          hideModal();
+        },
+        onCancel: hideModal,
+      });
     },
-    [deleteNotification],
+    [deleteNotification, showModal, hideModal],
   );
 
   const handleMarkAllRead = useCallback(() => {
@@ -213,9 +230,7 @@ export default function NotificationsScreen() {
               color={nativeColors.neutral300}
             />
             <Text style={styles.emptyTitle}>Nu ai notificări</Text>
-            <Text style={styles.emptyBody}>
-              Notificările despre cursele tale vor apărea aici.
-            </Text>
+            <Text style={styles.emptyBody}>Notificările despre cursele tale vor apărea aici.</Text>
           </View>
         </View>
       ) : (
@@ -247,6 +262,7 @@ export default function NotificationsScreen() {
           )}
         />
       )}
+      <AppModal {...modalProps} />
     </View>
   );
 }
