@@ -72,17 +72,67 @@ jobs:
           CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
           PR_NUM:           ${{ github.event.pull_request.number }}
         run: |
-          # Skip dacă secretele nu sunt configurate
           if [ -z "$CALLMEBOT_PHONE" ] || [ -z "$CALLMEBOT_APIKEY" ]; then exit 0; fi
-          # Extrage linia de findings din ultimul comentariu Claude de pe PR
-          FINDINGS_LINE="raport disponibil pe GitHub"
+          COMMENT=""
           if [ -n "$PR_NUM" ]; then
             COMMENT=$(gh pr view "$PR_NUM" --json comments \
               --jq '.comments | map(select(.author.login == "claude")) | last | .body' 2>/dev/null || echo "")
-            FINDINGS_LINE=$(echo "$COMMENT" | grep -o 'Findings:.*$' | head -1 | sed 's/\*\*//g' || echo "raport disponibil pe GitHub")
           fi
           BRANCH="${{ github.head_ref || github.ref_name }}"
-          MSG=$(printf "🔍 Bug Scan — StrawBoss\nPR #${PR_NUM:-N/A} | ${BRANCH}\n\n${FINDINGS_LINE}\n\n⚡ Bug Fix automat pornit (Opus)")
+          cat > /tmp/parse_bugscan.py << 'PYEOF'
+          import os, re, sys
+          comment = os.environ.get('COMMENT', '')
+          branch  = os.environ.get('BRANCH', '')
+          pr_num  = os.environ.get('PR_NUM', 'N/A')
+          def get_sec(text, start, ends):
+              s = text.find(start)
+              if s < 0: return ''
+              e = len(text)
+              for em in ends:
+                  p = text.find(em, s + 1)
+                  if 0 < p < e: e = p
+              return text[s:e]
+          def findings(sec):
+              out = []
+              for part in re.split(r'\n(?=###)', sec)[1:]:
+                  hm = re.match(r'###\s+(\[.*?\])\s+`([^`]+)`', part.strip())
+                  if not hm: continue
+                  cat = hm.group(1)
+                  loc = hm.group(2).rsplit('/', 1)[-1]
+                  bm  = re.search(r'\*\*Bug:\*\*\s*([^\n*]{1,55})', part)
+                  desc = (' — ' + bm.group(1).strip()) if bm else ''
+                  out.append(f'{cat} {loc}{desc}')
+              return out
+          def cnt(sec): return len(re.findall(r'\n###\s+', sec))
+          ends = ['## \U0001f7e0','## \U0001f7e1','## \U0001f7e2','## ✅']
+          C = findings(get_sec(comment, '## \U0001f534', ends))
+          H = findings(get_sec(comment, '## \U0001f7e0', ends[1:]))
+          M = cnt(get_sec(comment, '## \U0001f7e1', ends[2:]))
+          L = cnt(get_sec(comment, '## \U0001f7e2', ['## ✅']))
+          if not C and not H and M == 0 and L == 0:
+              m = re.search(r'Findings:.*', comment)
+              fb = m.group(0) if m else 'raport pe GitHub'
+              print(f'\U0001f50d Bug Scan — StrawBoss\nPR #{pr_num} | {branch}\n\n{fb}\n\n⚡ Bug Fix pornit (Opus)')
+              sys.exit(0)
+          lines = [f'\U0001f50d Bug Scan — StrawBoss', f'PR #{pr_num} | {branch}', '']
+          if C:
+              lines.append(f'\U0001f534 Critical ({len(C)}):')
+              for f in C[:3]: lines.append(f'• {f[:80]}')
+              if len(C) > 3: lines.append(f'  ...+{len(C)-3} more')
+              lines.append('')
+          if H:
+              lines.append(f'\U0001f7e0 High ({len(H)}):')
+              for f in H[:5]: lines.append(f'• {f[:80]}')
+              if len(H) > 5: lines.append(f'  ...+{len(H)-5} more')
+              lines.append('')
+          parts = []
+          if M: parts.append(f'\U0001f7e1 Medium: {M}')
+          if L: parts.append(f'\U0001f7e2 Low: {L}')
+          if parts: lines += ['   '.join(parts), '']
+          lines.append('⚡ Bug Fix pornit (Opus)')
+          print('\n'.join(lines))
+          PYEOF
+          MSG=$(COMMENT="$COMMENT" BRANCH="$BRANCH" PR_NUM="${PR_NUM:-N/A}" python3 /tmp/parse_bugscan.py)
           curl -G -s "https://api.callmebot.com/whatsapp.php" \
             --data-urlencode "phone=${CALLMEBOT_PHONE}" \
             --data-urlencode "text=${MSG}" \
