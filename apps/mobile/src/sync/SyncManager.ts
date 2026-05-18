@@ -11,6 +11,7 @@ import { TaskAssignmentsRepo, type LocalTaskAssignment } from '../db/task-assign
 import { pushMutations } from './push';
 import { pullUpdates } from './pull';
 import { mergeRecords } from './conflict';
+import { notifyDivergentFields } from './conflict-notify';
 import { uploadTodayMobileLogs } from './mobile-log-upload';
 import { uploadReceipt } from '../lib/receiptUpload';
 
@@ -133,7 +134,7 @@ export class SyncManager {
       batchIds = entries.map((e) => e.id);
       await this.syncQueueRepo.markInFlight(batchIds);
 
-      const result = await pushMutations(entries, this.apiClient);
+      const result = await pushMutations(entries, this.apiClient, this.tripsRepo);
 
       if (result.completedIds.length > 0) {
         await this.syncQueueRepo.markCompleted(result.completedIds);
@@ -269,18 +270,22 @@ export class SyncManager {
     if (update.table === 'trips') {
       const existing = await this.tripsRepo.findById(update.recordId);
       if (existing) {
-        const merged = mergeRecords(
+        const { merged, divergentFields } = mergeRecords(
           update.table,
           update.recordId,
           existing as unknown as Record<string, unknown>,
           { ...update.data, server_version: update.serverVersion },
         );
+        // Server confirmed the trip state — clear the local pending-transition flag.
+        (merged as Record<string, unknown>)['has_pending_transition'] = 0;
         await this.tripsRepo.upsert(merged as unknown as LocalTrip);
+        await notifyDivergentFields(update.table, update.recordId, divergentFields);
       } else {
         await this.tripsRepo.upsert({
           ...update.data,
           id: update.recordId,
           server_version: update.serverVersion,
+          has_pending_transition: 0,
         } as unknown as LocalTrip);
       }
       return;
@@ -289,13 +294,14 @@ export class SyncManager {
     if (update.table === 'bale_productions' && this.baleProductionsRepo) {
       const existing = await this.baleProductionsRepo.findById(update.recordId);
       if (existing) {
-        const merged = mergeRecords(
+        const { merged, divergentFields } = mergeRecords(
           update.table,
           update.recordId,
           existing as unknown as Record<string, unknown>,
           { ...update.data, server_version: update.serverVersion },
         );
         await this.baleProductionsRepo.upsert(merged as unknown as LocalBaleProduction);
+        await notifyDivergentFields(update.table, update.recordId, divergentFields);
       } else {
         await this.baleProductionsRepo.upsert({
           ...update.data,
@@ -309,13 +315,14 @@ export class SyncManager {
     if (update.table === 'fuel_logs' && this.fuelLogsRepo) {
       const existing = await this.fuelLogsRepo.findById(update.recordId);
       if (existing) {
-        const merged = mergeRecords(
+        const { merged, divergentFields } = mergeRecords(
           update.table,
           update.recordId,
           existing as unknown as Record<string, unknown>,
           { ...update.data, server_version: update.serverVersion },
         );
         await this.fuelLogsRepo.upsert(merged as unknown as LocalFuelLog);
+        await notifyDivergentFields(update.table, update.recordId, divergentFields);
       } else {
         await this.fuelLogsRepo.upsert({
           ...update.data,
@@ -329,13 +336,14 @@ export class SyncManager {
     if (update.table === 'consumable_logs' && this.consumableLogsRepo) {
       const existing = await this.consumableLogsRepo.findById(update.recordId);
       if (existing) {
-        const merged = mergeRecords(
+        const { merged, divergentFields } = mergeRecords(
           update.table,
           update.recordId,
           existing as unknown as Record<string, unknown>,
           { ...update.data, server_version: update.serverVersion },
         );
         await this.consumableLogsRepo.upsert(merged as unknown as LocalConsumableLog);
+        await notifyDivergentFields(update.table, update.recordId, divergentFields);
       } else {
         await this.consumableLogsRepo.upsert({
           ...update.data,
@@ -349,13 +357,14 @@ export class SyncManager {
     if (update.table === 'bale_loads' && this.baleLoadsRepo) {
       const existing = await this.baleLoadsRepo.findById(update.recordId);
       if (existing) {
-        const merged = mergeRecords(
+        const { merged, divergentFields } = mergeRecords(
           update.table,
           update.recordId,
           existing as unknown as Record<string, unknown>,
           { ...update.data, server_version: update.serverVersion },
         );
         await this.baleLoadsRepo.upsert(merged as unknown as LocalBaleLoad);
+        await notifyDivergentFields(update.table, update.recordId, divergentFields);
       } else {
         await this.baleLoadsRepo.upsert({
           ...update.data,
@@ -369,13 +378,14 @@ export class SyncManager {
     if (update.table === 'task_assignments' && this.taskAssignmentsRepo) {
       const existing = await this.taskAssignmentsRepo.findById(update.recordId);
       if (existing) {
-        const merged = mergeRecords(
+        const { merged, divergentFields } = mergeRecords(
           update.table,
           update.recordId,
           existing as unknown as Record<string, unknown>,
           { ...update.data, server_version: update.serverVersion },
         );
         await this.taskAssignmentsRepo.upsert(merged as unknown as LocalTaskAssignment);
+        await notifyDivergentFields(update.table, update.recordId, divergentFields);
       } else {
         await this.taskAssignmentsRepo.upsert({
           ...update.data,

@@ -12,6 +12,7 @@ import type { TrendingDay } from '@strawboss/api';
 import { Wheat, Truck, Cog, Bell } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/features/dashboard/KpiCard';
+import type { KpiTrend } from '@/components/features/dashboard/KpiCard';
 import { TrendingChart } from '@/components/features/dashboard/TrendingChart';
 import { TopOperators } from '@/components/features/dashboard/TopOperators';
 import type { OperatorStat } from '@/components/features/dashboard/TopOperators';
@@ -20,6 +21,29 @@ import { apiClient } from '@/lib/api';
 import { todayInRomania } from '@/lib/date';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { useI18n } from '@/lib/i18n';
+
+/** Compute a trend badge comparing today vs yesterday from the trending array. */
+function computeTrend(
+  trending: TrendingDay[],
+  field: 'bales' | 'tripsCompleted',
+  vsLabel: string,
+): KpiTrend | undefined {
+  if (trending.length < 2) return undefined;
+  // trending is ordered oldest→newest; last = today, second-to-last = yesterday
+  const sorted = [...trending].sort((a, b) => a.date.localeCompare(b.date));
+  const today = sorted[sorted.length - 1];
+  const yesterday = sorted[sorted.length - 2];
+  if (!today || !yesterday) return undefined;
+  const current = today[field];
+  const prev = yesterday[field];
+  if (prev === 0) return { delta: current, direction: current > 0 ? 'up' : 'flat', label: vsLabel };
+  const pct = Math.round(((current - prev) / prev) * 100);
+  return {
+    delta: pct,
+    direction: pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat',
+    label: vsLabel,
+  };
+}
 
 export default function DashboardPage() {
   const { t } = useI18n();
@@ -38,6 +62,11 @@ export default function DashboardPage() {
   const operatorStats: OperatorStat[] = (operatorStatsQuery.data ?? []) as OperatorStat[];
   // W14: use normalizeList so both array and {data:[]} shapes are handled
   const trips: Trip[] = normalizeList<Trip>(tripsQuery.data);
+
+  // FW-4: compute trends from historical data
+  const vsYesterday = t('dashboard.trendVsYesterday');
+  const balesTrend = computeTrend(trending, 'bales', vsYesterday);
+  const tripsTrend = computeTrend(trending, 'tripsCompleted', vsYesterday);
 
   return (
     <div>
@@ -59,12 +88,14 @@ export default function DashboardPage() {
               label={t('dashboard.balesToday')}
               value={overview?.balesToday ?? '--'}
               subtitle={t('dashboard.tripsCompleted', { count: overview?.tripsCompleted ?? 0 })}
+              trend={balesTrend}
             />
             <KpiCard
               icon={Truck}
               label={t('dashboard.activeTrips')}
               value={overview?.activeTrips ?? '--'}
               subtitle={t('dashboard.tripsToday', { count: overview?.tripsToday ?? 0 })}
+              trend={tripsTrend}
             />
             <KpiCard
               icon={Cog}

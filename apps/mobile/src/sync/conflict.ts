@@ -7,19 +7,53 @@ export interface ConflictInfo {
 }
 
 /**
+ * FM-3: Structured result from resolveConflict — which value wins and whether
+ * the field had a meaningful divergence the user should be notified about.
+ */
+export interface ConflictResolution {
+  winner: 'local' | 'server';
+  /** True when the server overwrote a non-null local value with a different value. */
+  diverged: boolean;
+}
+
+/**
+ * Fields that are editable by the user on-device and whose overwrite is worth
+ * notifying about (FM-3). Only fields where user input is meaningful.
+ */
+const USER_EDITABLE_FIELDS: ReadonlySet<string> = new Set([
+  'bale_count',
+  'parcel_id',
+  'notes',
+  'gross_weight_kg',
+  'tare_weight_kg',
+  'quantity',
+  'quantity_liters',
+  'avg_bale_weight_kg',
+]);
+
+/**
+ * Fields where the local value should be kept when local is strictly newer
+ * (comparing updated_at timestamps). Applied only for text/notes fields.
+ */
+const LWW_BY_TIMESTAMP_FIELDS: ReadonlySet<string> = new Set(['notes']);
+
+/**
  * Resolve a field-level conflict between local and server values.
  *
  * Strategy: Field-level last-write-wins (LWW) with domain exceptions.
  * - Server always wins for status fields (authoritative state machine).
- * - Server always wins for aggregate counts (bale_count on trips).
- * - Server always wins for sync_version (monotonically increasing).
- * - Otherwise, default to server for safety.
+ * - Server always wins for aggregate counts & sync_version.
+ * - For `notes` (text edited by user): compare updated_at; keep newer.
+ * - Otherwise: server wins, but we record whether divergence occurred.
  *
- * Future enhancement: compare updated_at timestamps for true LWW
- * on non-critical fields where local edits should be preserved.
+ * Returns both the winner and a `diverged` flag used by FM-3 notifications.
  */
-export function resolveConflict(conflict: ConflictInfo): 'local' | 'server' {
-  // Server always wins for authoritative fields
+export function resolveConflict(
+  conflict: ConflictInfo,
+  localUpdatedAt?: string,
+  serverUpdatedAt?: string,
+): ConflictResolution {
+  // Server always wins for authoritative state-machine / version fields.
   const serverWinsFields = [
     'status',
     'bale_count',
@@ -28,27 +62,69 @@ export function resolveConflict(conflict: ConflictInfo): 'local' | 'server' {
     'completed_at',
     'cancelled_at',
     'cancellation_reason',
+    'has_pending_transition',
+    'delivery_step_progress',
+    'delivery_draft_json',
+    'acknowledged_at',
   ];
 
   if (serverWinsFields.includes(conflict.field)) {
-    return 'server';
+    // bale_count is user-relevant — flag divergence so UI can notify.
+    const diverged =
+      conflict.field === 'bale_count' &&
+      conflict.localValue != null &&
+      conflict.serverValue != null &&
+      conflict.localValue !== conflict.serverValue;
+    return { winner: 'server', diverged };
   }
 
-  // Default to server for safety -- prevents data divergence
-  return 'server';
+  // For text fields with user-authored content (e.g. `notes`): if we have
+  // updated_at timestamps, keep whichever was written most recently.
+  if (LWW_BY_TIMESTAMP_FIELDS.has(conflict.field) && localUpdatedAt && serverUpdatedAt) {
+    const localTs = Date.parse(localUpdatedAt);
+    const serverTs = Date.parse(serverUpdatedAt);
+    if (!isNaN(localTs) && !isNaN(serverTs) && localTs > serverTs) {
+      return { winner: 'local', diverged: false };
+    }
+  }
+
+  // For all user-editable fields, the server wins but we flag divergence.
+  const diverged =
+    USER_EDITABLE_FIELDS.has(conflict.field) &&
+    conflict.localValue != null &&
+    conflict.serverValue != null &&
+    JSON.stringify(conflict.localValue) !== JSON.stringify(conflict.serverValue);
+
+  return { winner: 'server', diverged };
+}
+
+/**
+ * FM-3: A single field where the server value overwrote a user-entered local value.
+ */
+export interface DivergentField {
+  field: string;
+  localValue: unknown;
+  serverValue: unknown;
 }
 
 /**
  * Apply conflict resolution to merge a server record with a local record.
- * Returns the merged record.
+ * Returns the merged record AND the list of fields where the server overwrote
+ * a non-trivial local value (used by FM-3 to emit notifications).
  */
 export function mergeRecords(
   table: string,
   recordId: string,
   localRecord: Record<string, unknown>,
   serverRecord: Record<string, unknown>,
-): Record<string, unknown> {
+): { merged: Record<string, unknown>; divergentFields: DivergentField[] } {
   const merged: Record<string, unknown> = { ...localRecord };
+  const divergentFields: DivergentField[] = [];
+
+  const localUpdatedAt =
+    typeof localRecord['updated_at'] === 'string' ? localRecord['updated_at'] : undefined;
+  const serverUpdatedAt =
+    typeof serverRecord['updated_at'] === 'string' ? serverRecord['updated_at'] : undefined;
 
   for (const [field, serverValue] of Object.entries(serverRecord)) {
     const localValue = localRecord[field];
@@ -58,19 +134,20 @@ export function mergeRecords(
       continue;
     }
 
-    const resolution = resolveConflict({
-      table,
-      recordId,
-      localValue,
-      serverValue,
-      field,
-    });
+    const resolution = resolveConflict(
+      { table, recordId, localValue, serverValue, field },
+      localUpdatedAt,
+      serverUpdatedAt,
+    );
 
-    if (resolution === 'server') {
+    if (resolution.winner === 'server') {
       merged[field] = serverValue;
+      if (resolution.diverged) {
+        divergentFields.push({ field, localValue, serverValue });
+      }
     }
     // 'local' keeps the existing value in merged
   }
 
-  return merged;
+  return { merged, divergentFields };
 }

@@ -714,7 +714,8 @@
     "activeMachines": "Active machines",
     "newAlerts": "New alerts",
     "recentTrips": "Recent trips",
-    "noRecentTrips": "No recent trips"
+    "noRecentTrips": "No recent trips",
+    "trendVsYesterday": "% vs yesterday"
   },
   "realtime": {
     "reconnecting": "Reconnecting to live data…",

@@ -14,20 +14,24 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { SignatureCapture } from '@/components/shared/SignatureCapture';
-import { mobileApiClient } from '@/lib/api-client';
+import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
 import { mobileLogger } from '@/lib/logger';
 import { colors } from '@strawboss/ui-tokens';
-import { useQueryClient } from '@tanstack/react-query';
+import { useTripTransition } from '@/hooks/useTripTransition';
+import { getDatabase } from '@/lib/storage';
+import { TripsRepo } from '@/db/trips-repo';
 
 type Step = 'odometer' | 'signature';
 
 export default function DepartureFlowScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  const queryClient = useQueryClient();
 
   const [step, setStep] = useState<Step>('odometer');
   const [odometerStr, setOdometerStr] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pendingSync, setPendingSync] = useState(false);
+
+  const { enqueueTransition } = useTripTransition();
 
   const odometerKm = parseFloat(odometerStr);
   const odometerValid = !isNaN(odometerKm) && odometerKm >= 0;
@@ -45,18 +49,30 @@ export default function DepartureFlowScreen() {
       if (!tripId) return;
       setSubmitting(true);
       try {
-        await mobileApiClient.post(`/api/v1/trips/${tripId}/depart`, {
-          departureOdometerKm: odometerKm,
-          driverSignature,
+        // Read current local trip status for pre-validation.
+        const db = await getDatabase();
+        const tripsRepo = new TripsRepo(db);
+        const trip = await tripsRepo.findById(tripId);
+        const currentStatus = trip?.status ?? 'loaded';
+
+        await enqueueTransition({
+          tripId,
+          currentStatus,
+          transition: 'depart',
+          body: {
+            departureOdometerKm: odometerKm,
+            driverSignature,
+          },
+          localMeta: {
+            departure_odometer_km: odometerKm,
+            departure_at: new Date().toISOString(),
+          },
         });
 
-        void queryClient.invalidateQueries({ queryKey: ['trips'] });
-        void queryClient.invalidateQueries({ queryKey: ['my-trips'] });
-        void queryClient.invalidateQueries({ queryKey: ['trip-alert', tripId] });
+        mobileLogger.flow('DepartureFlow: depart enqueued offline-first', { tripId });
+        setPendingSync(true);
 
-        mobileLogger.flow('DepartureFlow: depart success', { tripId });
-
-        // Land back on the trip detail so the driver sees the next action.
+        // Navigate immediately — the local state is already updated.
         router.replace(`/trip/${tripId}`);
       } catch (err) {
         mobileLogger.error('DepartureFlow: depart failed', {
@@ -72,7 +88,7 @@ export default function DepartureFlowScreen() {
         setSubmitting(false);
       }
     },
-    [tripId, odometerKm, queryClient],
+    [tripId, odometerKm, enqueueTransition],
   );
 
   if (step === 'signature') {
@@ -86,6 +102,11 @@ export default function DepartureFlowScreen() {
               Km plecare: <Text style={styles.infoValue}>{odometerStr}</Text>
             </Text>
           </View>
+          {pendingSync && (
+            <View style={styles.badgeRow}>
+              <PendingTransitionBadge />
+            </View>
+          )}
           <Text style={styles.sigHint}>
             Semnează pentru a confirma plecarea și a genera documentul CMR.
           </Text>
@@ -171,6 +192,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     padding: 16,
+    paddingBottom: 4,
+  },
+  badgeRow: {
+    paddingHorizontal: 16,
     paddingBottom: 4,
   },
   infoText: { fontSize: 15, color: '#5D4037' },

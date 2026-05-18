@@ -33,6 +33,17 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   // 'next_retry_at' enables exponential back-off for failed sync entries.
   // NULL means "retry immediately" (existing rows) — no data migration needed.
   await addColumnIfMissing(db, 'sync_queue', 'next_retry_at', 'TEXT');
+  // 'has_pending_transition' flags trips whose state machine transition has been
+  // applied optimistically locally but not yet confirmed by the server.
+  // Used by the UI to show a "will be sent on reconnect" badge (FM-1).
+  await addColumnIfMissing(db, 'trips', 'has_pending_transition', 'INTEGER DEFAULT 0');
+  // Delivery flow progress: stores the last completed delivery step so that
+  // after a crash/close the flow can show a resume banner (FM-1).
+  // Values: NULL = not started, 0–2 = step number completed.
+  await addColumnIfMissing(db, 'trips', 'delivery_step_progress', 'INTEGER');
+  // Stores serialized delivery data (weight, bales, photo URL, receiver) so
+  // the driver does not have to re-enter if the app crashes mid-flow (FM-1).
+  await addColumnIfMissing(db, 'trips', 'delivery_draft_json', 'TEXT');
 
   // Create indexes for common queries
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_operations_trip_id ON operations(trip_id)`);

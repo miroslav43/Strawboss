@@ -25,13 +25,22 @@ export function useProductionReport(client: ApiClient, filters?: Record<string, 
   });
 }
 
-export function useCostReport(client: ApiClient, filters?: Record<string, unknown>) {
+export interface CostReportOptions {
+  enabled?: boolean;
+}
+
+export function useCostReport(
+  client: ApiClient,
+  filters?: Record<string, unknown>,
+  options?: CostReportOptions,
+) {
   return useQuery({
     queryKey: queryKeys.dashboard.costs(filters),
     queryFn: () => {
       const params = filters ? `?${new URLSearchParams(filters as Record<string, string>)}` : '';
       return client.get<CostReport[]>(`/api/v1/dashboard/costs${params}`);
     },
+    enabled: options?.enabled,
   });
 }
 

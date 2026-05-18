@@ -28,6 +28,12 @@ export interface LocalTrip {
   completed_at: string | null;
   /** Local-only: when the driver tapped the trip card to dismiss the NOU badge. */
   acknowledged_at: string | null;
+  /** FM-1: 1 when a transition was applied locally but not yet confirmed by server. */
+  has_pending_transition: number | null;
+  /** FM-1: last completed delivery step (0=weight, 1=bales, 2=photo, 3=signature). */
+  delivery_step_progress: number | null;
+  /** FM-1: JSON blob with in-progress delivery data for crash recovery. */
+  delivery_draft_json: string | null;
   created_at: string;
   updated_at: string;
   server_version: number;
@@ -117,5 +123,65 @@ export class TripsRepo {
 
   async delete(id: string): Promise<void> {
     await this.db.runAsync(`DELETE FROM trips WHERE id = ?`, [id]);
+  }
+
+  /**
+   * FM-1: Apply a state machine transition optimistically to the local trip.
+   * Updates status and any metadata fields that belong to that transition,
+   * and marks `has_pending_transition = 1` so the UI can show a sync badge.
+   */
+  async applyTransitionLocally(
+    id: string,
+    newStatus: string,
+    meta?: Partial<LocalTrip>,
+  ): Promise<void> {
+    const fields: string[] = [
+      'status = ?',
+      'has_pending_transition = 1',
+      `updated_at = datetime('now')`,
+    ];
+    const values: (string | number | null)[] = [newStatus];
+
+    if (meta) {
+      for (const [key, value] of Object.entries(meta)) {
+        if (key === 'id') continue;
+        fields.push(`${key} = ?`);
+        values.push(value != null ? (value as string | number | null) : null);
+      }
+    }
+
+    values.push(id);
+    await this.db.runAsync(`UPDATE trips SET ${fields.join(', ')} WHERE id = ?`, values);
+  }
+
+  /**
+   * FM-1: Clear the pending transition flag once the server has confirmed
+   * the transition (called by SyncManager after successful push).
+   */
+  async clearPendingTransitionFlag(id: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE trips SET has_pending_transition = 0, updated_at = datetime('now') WHERE id = ?`,
+      [id],
+    );
+  }
+
+  /**
+   * FM-1: Persist delivery draft data for crash recovery.
+   */
+  async saveDeliveryDraft(id: string, step: number, draftJson: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE trips SET delivery_step_progress = ?, delivery_draft_json = ?, updated_at = datetime('now') WHERE id = ?`,
+      [step, draftJson, id],
+    );
+  }
+
+  /**
+   * FM-1: Clear delivery draft after successful completion.
+   */
+  async clearDeliveryDraft(id: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE trips SET delivery_step_progress = NULL, delivery_draft_json = NULL, updated_at = datetime('now') WHERE id = ?`,
+      [id],
+    );
   }
 }

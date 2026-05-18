@@ -40,6 +40,9 @@ export const TABLES = {
     delivered_at TEXT,
     completed_at TEXT,
     acknowledged_at TEXT,
+    has_pending_transition INTEGER DEFAULT 0,
+    delivery_step_progress INTEGER,
+    delivery_draft_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     server_version INTEGER DEFAULT 0

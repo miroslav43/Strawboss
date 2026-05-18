@@ -10,12 +10,7 @@ import {
   useCostReport,
   useBaleProductionStats,
 } from '@strawboss/api';
-import type {
-  FarmReport,
-  DepotReport,
-  ReportTimelinePoint,
-  CostReport,
-} from '@strawboss/types';
+import type { FarmReport, DepotReport, ReportTimelinePoint, CostReport } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ReportFilters } from '@/components/features/reports/ReportFilters';
 import { ReportKpiRow } from '@/components/features/reports/ReportKpiRow';
@@ -92,21 +87,37 @@ export default function ReportsPage() {
   const hasFilters = Object.keys(filters).length > 0;
   const activeFilters = hasFilters ? filters : undefined;
 
-  const farmQuery = useFarmReports(apiClient, activeFilters);
-  const depotQuery = useDepotReports(apiClient, activeFilters);
-  const timelineQuery = useReportTimeline(apiClient, activeFilters);
-  const costQuery = useCostReport(apiClient, activeFilters);
-  const operatorStatsQuery = useBaleProductionStats(apiClient, {
-    ...(hasFilters ? filters : {}),
-    groupBy: 'operator',
+  // W17: each query only runs when its tab is active (or when farms/depots/rankings share data)
+  const isFarmsOrRankings = tab === 'farms' || tab === 'rankings';
+  const isDepotsOrRankings = tab === 'depots' || tab === 'rankings';
+
+  const farmQuery = useFarmReports(apiClient, activeFilters, {
+    enabled: isFarmsOrRankings,
   });
+  const depotQuery = useDepotReports(apiClient, activeFilters, {
+    enabled: isDepotsOrRankings,
+  });
+  const timelineQuery = useReportTimeline(apiClient, activeFilters, {
+    enabled: tab === 'farms',
+  });
+  const costQuery = useCostReport(apiClient, activeFilters, {
+    enabled: tab === 'costs',
+  });
+  const operatorStatsQuery = useBaleProductionStats(
+    apiClient,
+    {
+      ...(hasFilters ? filters : {}),
+      groupBy: 'operator',
+    },
+    { enabled: tab === 'operators' },
+  );
 
   const farms: FarmReport[] = farmQuery.data ?? [];
   const depots: DepotReport[] = depotQuery.data ?? [];
   const timeline: ReportTimelinePoint[] = timelineQuery.data ?? [];
   const costs: CostReport[] = costQuery.data ?? [];
-  const operatorStatsRaw: OperatorProductionRow[] =
-    (operatorStatsQuery.data ?? []) as OperatorProductionRow[];
+  const operatorStatsRaw: OperatorProductionRow[] = (operatorStatsQuery.data ??
+    []) as OperatorProductionRow[];
 
   // KPI summary — computed client-side from the farm + depot reports.
   const totalProduced = farms.reduce((s, f) => s + f.produced, 0);
@@ -114,9 +125,7 @@ export default function ReportsPage() {
   const totalDelivered = farms.reduce((s, f) => s + f.delivered, 0);
   const totalDepotStock = depots.reduce((s, d) => s + d.totalStock, 0);
   const lossPercentage =
-    totalProduced > 0
-      ? ((totalProduced - totalDelivered) / totalProduced) * 100
-      : 0;
+    totalProduced > 0 ? ((totalProduced - totalDelivered) / totalProduced) * 100 : 0;
 
   const costRows: CostRow[] = costs.map((c) => ({ ...c }) as CostRow);
   const operatorRows: OperatorRow[] = operatorStatsRaw.map((o) => {
@@ -137,9 +146,7 @@ export default function ReportsPage() {
       key: 'entityName',
       header: t('reports.costs.entity'),
       sortable: true,
-      render: (row) => (
-        <span className="font-medium text-neutral-800">{row.entityName}</span>
-      ),
+      render: (row) => <span className="font-medium text-neutral-800">{row.entityName}</span>,
     },
     {
       key: 'entityType',
@@ -167,9 +174,7 @@ export default function ReportsPage() {
       header: t('reports.costs.total'),
       sortable: true,
       render: (row) => (
-        <span className="font-semibold text-neutral-800">
-          ${row.totalCost.toLocaleString()}
-        </span>
+        <span className="font-semibold text-neutral-800">${row.totalCost.toLocaleString()}</span>
       ),
     },
   ];
@@ -179,11 +184,7 @@ export default function ReportsPage() {
       key: 'operatorName',
       header: t('reports.operators.operator'),
       sortable: true,
-      render: (row) => (
-        <span className="font-medium text-neutral-800">
-          {row.operatorName}
-        </span>
-      ),
+      render: (row) => <span className="font-medium text-neutral-800">{row.operatorName}</span>,
     },
     {
       key: 'parcelCount',
@@ -206,9 +207,7 @@ export default function ReportsPage() {
       sortable: true,
       render: (row) => (
         <span className="text-sm font-medium text-neutral-700">
-          {Number.isFinite(row.avgPerSession)
-            ? row.avgPerSession.toFixed(1)
-            : '--'}
+          {Number.isFinite(row.avgPerSession) ? row.avgPerSession.toFixed(1) : '--'}
         </span>
       ),
     },
@@ -333,9 +332,7 @@ export default function ReportsPage() {
       {tab === 'costs' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-neutral-800">
-              {t('reports.costs.heading')}
-            </h2>
+            <h2 className="text-lg font-semibold text-neutral-800">{t('reports.costs.heading')}</h2>
             <ExportCsvButton
               label={t('reports.common.exportCsv')}
               onClick={handleExportCosts}
@@ -347,9 +344,7 @@ export default function ReportsPage() {
               {t('reports.common.loading')}
             </div>
           ) : costQuery.isError ? (
-            <div className="py-8 text-center text-sm text-red-500">
-              {t('reports.common.error')}
-            </div>
+            <div className="py-8 text-center text-sm text-red-500">{t('reports.common.error')}</div>
           ) : (
             <>
               <CostBreakdownChart data={costs} />
@@ -380,9 +375,7 @@ export default function ReportsPage() {
               {t('reports.common.loading')}
             </div>
           ) : operatorStatsQuery.isError ? (
-            <div className="py-8 text-center text-sm text-red-500">
-              {t('reports.common.error')}
-            </div>
+            <div className="py-8 text-center text-sm text-red-500">{t('reports.common.error')}</div>
           ) : (
             <>
               <OperatorProductionChart data={operatorStatsRaw} />

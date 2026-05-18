@@ -65,6 +65,19 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'geofence_events' }, () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
       })
+      // FW-5: invalidate machine location cache so map stays live
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'machine_locations' }, () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.location.machines() });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'machines' }, (payload) => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.machines.all });
+        const recordId =
+          (payload.new as { id?: string } | undefined)?.id ??
+          (payload.old as { id?: string } | undefined)?.id;
+        if (recordId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.machines.detail(recordId) });
+        }
+      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           if (retryCountRef.current > 0) {

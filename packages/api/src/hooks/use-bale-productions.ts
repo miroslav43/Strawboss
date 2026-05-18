@@ -37,7 +37,15 @@ export interface BaleProductionStatsFilters {
   groupBy?: 'operator' | 'parcel' | 'date';
 }
 
-export function useBaleProductionStats(client: ApiClient, filters?: BaleProductionStatsFilters) {
+export interface BaleProductionStatsOptions {
+  enabled?: boolean;
+}
+
+export function useBaleProductionStats(
+  client: ApiClient,
+  filters?: BaleProductionStatsFilters,
+  options?: BaleProductionStatsOptions,
+) {
   const params = new URLSearchParams();
   if (filters?.operatorId) params.set('operatorId', filters.operatorId);
   if (filters?.parcelId) params.set('parcelId', filters.parcelId);
@@ -50,6 +58,7 @@ export function useBaleProductionStats(client: ApiClient, filters?: BaleProducti
   return useQuery({
     queryKey: queryKeys.baleProductions.stats(filters as Record<string, unknown> | undefined),
     queryFn: () => client.get<Record<string, unknown>[]>(url),
+    enabled: options?.enabled,
   });
 }
 

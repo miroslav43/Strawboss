@@ -714,7 +714,8 @@
     "activeMachines": "Mașini active",
     "newAlerts": "Alerte noi",
     "recentTrips": "Curse recente",
-    "noRecentTrips": "Nu sunt curse recente"
+    "noRecentTrips": "Nu sunt curse recente",
+    "trendVsYesterday": "% față de ieri"
   },
   "realtime": {
     "reconnecting": "Se reconectează la datele live…",
