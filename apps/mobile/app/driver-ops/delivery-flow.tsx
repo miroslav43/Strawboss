@@ -26,6 +26,11 @@ export default function DriverDeliveryFlowScreen() {
             tripId,
             status: found.status,
           });
+          // A delivered/completed trip has no interactive flow left — re-running
+          // it would force the driver to re-enter weight, photo and signature.
+          if (found.status === 'delivered' || found.status === 'completed') {
+            router.replace('/(driver)');
+          }
         }
       })
       .finally(() => setLoading(false));
