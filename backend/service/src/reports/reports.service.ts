@@ -127,7 +127,9 @@ export class ReportsService {
         loaded,
         delivered,
         lossPercentage:
-          produced > 0 ? ((produced - delivered) / produced) * 100 : 0,
+          produced > 0
+            ? Math.max(0, ((produced - delivered) / produced) * 100)
+            : 0,
       };
 
       let farm = farmsMap.get(key);
@@ -156,7 +158,10 @@ export class ReportsService {
     for (const farm of farms) {
       farm.lossPercentage =
         farm.produced > 0
-          ? ((farm.produced - farm.delivered) / farm.produced) * 100
+          ? Math.max(
+              0,
+              ((farm.produced - farm.delivered) / farm.produced) * 100,
+            )
           : 0;
     }
 
