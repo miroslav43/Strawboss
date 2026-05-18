@@ -17,6 +17,7 @@ export enum AlertSeverity {
 
 export interface Alert extends Timestamps {
   id: string;
+  organizationId: string;
   category: AlertCategory;
   severity: AlertSeverity;
   title: string;

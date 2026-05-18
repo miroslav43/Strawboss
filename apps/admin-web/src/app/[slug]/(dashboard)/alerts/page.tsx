@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic';
 import { useState, useCallback } from 'react';
 import { useAlerts, useAcknowledgeAlert } from '@strawboss/api';
 import { AlertCategory, AlertSeverity } from '@strawboss/types';
-import type { Alert, PaginatedResponse } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AlertList } from '@/components/features/alerts/AlertList';
 import { apiClient } from '@/lib/api';
@@ -42,14 +41,13 @@ export default function AlertsPage() {
   const filters: Record<string, string> = {};
   if (categoryFilter) filters.category = categoryFilter;
   if (severityFilter) filters.severity = severityFilter;
-  if (ackFilter) filters.acknowledged = ackFilter;
+  if (ackFilter) filters.isAcknowledged = ackFilter;
   const hasFilters = Object.keys(filters).length > 0;
 
   const alertsQuery = useAlerts(apiClient, hasFilters ? filters : undefined);
   const acknowledgeMutation = useAcknowledgeAlert(apiClient);
 
-  const alertsResponse = alertsQuery.data as PaginatedResponse<Alert> | undefined;
-  const alerts = alertsResponse?.data ?? [];
+  const alerts = alertsQuery.data ?? [];
 
   const handleAcknowledge = useCallback(
     (id: string) => {

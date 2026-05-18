@@ -1,8 +1,10 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useParams, useRouter } from 'next/navigation';
 import { Menu, Bell, LogOut } from 'lucide-react';
+import { useUnacknowledgedAlerts } from '@strawboss/api';
 import { supabase } from '@/lib/supabase';
+import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 const BREADCRUMB_SEGMENT_KEYS: Record<string, string> = {
@@ -40,9 +42,14 @@ interface TopBarProps {
 
 export function TopBar({ onMenuClick }: TopBarProps) {
   const pathname = usePathname();
+  const params = useParams();
   const router = useRouter();
   const { t } = useI18n();
   const breadcrumb = deriveBreadcrumb(pathname, t);
+
+  const slug = typeof params.slug === 'string' ? params.slug : '';
+  const { data: unackAlerts } = useUnacknowledgedAlerts(apiClient);
+  const alertCount = unackAlerts?.length ?? 0;
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -64,10 +71,17 @@ export function TopBar({ onMenuClick }: TopBarProps) {
 
       <div className="flex items-center gap-2">
         <button
+          type="button"
+          onClick={() => slug && router.push(`/${slug}/alerts`)}
           className="relative rounded-md p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
           aria-label={t('topBar.notifications')}
         >
           <Bell className="h-5 w-5" />
+          {alertCount > 0 && (
+            <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
+              {alertCount > 99 ? '99+' : alertCount}
+            </span>
+          )}
         </button>
         <button
           type="button"
