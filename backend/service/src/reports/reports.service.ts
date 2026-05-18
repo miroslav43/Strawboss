@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import type {
@@ -245,6 +245,17 @@ export class ReportsService {
     range?: ReportDateRange,
     farmId?: string,
   ): Promise<ReportTimelinePoint[]> {
+    const MAX_RANGE_DAYS = 366;
+    if (range?.dateFrom && range?.dateTo) {
+      const spanDays =
+        (Date.parse(range.dateTo) - Date.parse(range.dateFrom)) / 86_400_000;
+      if (spanDays > MAX_RANGE_DAYS) {
+        throw new BadRequestException(
+          `Date range exceeds ${MAX_RANGE_DAYS} days`,
+        );
+      }
+    }
+
     const to = range?.dateTo ?? new Date().toISOString().slice(0, 10);
     let from = range?.dateFrom;
     if (!from) {
