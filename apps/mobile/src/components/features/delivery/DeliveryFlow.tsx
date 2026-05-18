@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { WeightInput } from './WeightInput';
 import { WeightTicketPhoto } from './WeightTicketPhoto';
 import { SignatureStep } from './SignatureStep';
@@ -27,6 +28,7 @@ export function DeliveryFlow({ tripId, onComplete }: DeliveryFlowProps) {
   const [weight, setWeight] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [signatures, setSignatures] = useState<Signatures>({});
+  const { modalProps, showModal, hideModal } = useModal();
 
   const handleComplete = useCallback(async () => {
     const grossWeight = parseFloat(weight);
@@ -80,45 +82,47 @@ export function DeliveryFlow({ tripId, onComplete }: DeliveryFlowProps) {
     } catch (err) {
       mobileLogger.error('Delivery flow: save failed', {
         tripId,
-        err:
-          err instanceof Error
-            ? { message: err.message, stack: err.stack }
-            : err,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
-      Alert.alert(
-        'Error',
-        err instanceof Error ? err.message : 'Failed to save delivery data',
-      );
+      showModal({
+        type: 'error',
+        title: 'Error',
+        message: err instanceof Error ? err.message : 'Failed to save delivery data',
+        onConfirm: hideModal,
+      });
     }
   }, [tripId, weight, photoUri, signatures, onComplete]);
 
   switch (step) {
     case 'weight':
       return (
-        <WeightInput
-          value={weight}
-          onChange={setWeight}
-          onConfirm={() => setStep('photo')}
-        />
+        <>
+          <WeightInput value={weight} onChange={setWeight} onConfirm={() => setStep('photo')} />
+          <AppModal {...modalProps} />
+        </>
       );
     case 'photo':
       return (
-        <WeightTicketPhoto
-          onCapture={(uri) => {
-            setPhotoUri(uri);
-            setStep('signatures');
-          }}
-        />
+        <>
+          <WeightTicketPhoto
+            onCapture={(uri) => {
+              setPhotoUri(uri);
+              setStep('signatures');
+            }}
+          />
+          <AppModal {...modalProps} />
+        </>
       );
     case 'signatures':
       return (
-        <SignatureStep
-          signatures={signatures}
-          onSign={(role, sig) =>
-            setSignatures((prev) => ({ ...prev, [role]: sig }))
-          }
-          onComplete={handleComplete}
-        />
+        <>
+          <SignatureStep
+            signatures={signatures}
+            onSign={(role, sig) => setSignatures((prev) => ({ ...prev, [role]: sig }))}
+            onComplete={handleComplete}
+          />
+          <AppModal {...modalProps} />
+        </>
       );
   }
 }

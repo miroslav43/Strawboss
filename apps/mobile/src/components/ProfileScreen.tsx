@@ -8,9 +8,10 @@ import {
   ActivityIndicator,
   ScrollView,
   RefreshControl,
-  Alert,
   Vibration,
 } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,19 +30,19 @@ import { useSync } from '@/hooks/useSync';
 import { useTapSequence } from '@/hooks/useTapSequence';
 
 const ROLE_LABEL: Record<string, string> = {
-  driver:           'Șofer',
-  loader_operator:  'Operator Încărcător',
-  baler_operator:   'Operator Balotieră',
-  dispatcher:       'Dispecer',
-  admin:            'Administrator',
-  geofence_maker:   'Desenator Geofence',
+  driver: 'Șofer',
+  loader_operator: 'Operator Încărcător',
+  baler_operator: 'Operator Balotieră',
+  dispatcher: 'Dispecer',
+  admin: 'Administrator',
+  geofence_maker: 'Desenator Geofence',
 };
 
 type MachineIconName = 'wrench' | 'grain' | 'truck' | 'map-marker';
 const MACHINE_MDI: Record<string, MachineIconName> = {
   loader: 'wrench',
-  baler:  'grain',
-  truck:  'truck',
+  baler: 'grain',
+  truck: 'truck',
 };
 
 export function ProfileScreen() {
@@ -49,6 +50,7 @@ export function ProfileScreen() {
   const { devSyncVisible, revealSync, hideSync } = useDevModeStore();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const { modalProps, showModal, hideModal } = useModal();
   const { isConnected } = useNetworkStatus();
   const {
     pendingCount: queueCount,
@@ -102,10 +104,13 @@ export function ProfileScreen() {
       if (devSyncVisible) return;
       Vibration.vibrate(30);
       revealSync();
-      Alert.alert(
-        'Sincronizare activată',
-        'Controlul de sincronizare va fi vizibil până la închiderea aplicației.',
-      );
+      showModal({
+        type: 'success',
+        title: 'Sincronizare activată',
+        message: 'Controlul de sincronizare va fi vizibil până la închiderea aplicației.',
+        autoDismiss: true,
+        onConfirm: hideModal,
+      });
     },
   });
 
@@ -127,34 +132,39 @@ export function ProfileScreen() {
   const showStats = !!profile?.id && OPERATOR_ROLES.has(profile.role);
 
   const handleClearFailedQueue = useCallback(() => {
-    Alert.alert(
-      'Șterge coada eșuată',
-      'Înregistrările eșuate vor fi șterse definitiv de pe telefon. Cele deja trimise pe server rămân neschimbate. Continui?',
-      [
-        { text: 'Anulează', style: 'cancel' },
-        {
-          text: 'Șterge',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const deleted = await clearFailedQueue();
-              Alert.alert(
-                'Gata',
-                deleted > 0
-                  ? `S-au șters ${deleted} înregistrări din coadă.`
-                  : 'Nu existau înregistrări eșuate.',
-              );
-            } catch (err) {
-              Alert.alert(
-                'Eroare',
-                err instanceof Error ? err.message : 'Nu s-a putut șterge coada.',
-              );
-            }
-          },
-        },
-      ],
-    );
-  }, [clearFailedQueue]);
+    showModal({
+      type: 'confirm',
+      title: 'Șterge coada eșuată',
+      message:
+        'Înregistrările eșuate vor fi șterse definitiv de pe telefon. Cele deja trimise pe server rămân neschimbate. Continui?',
+      confirmText: 'Șterge',
+      cancelText: 'Anulează',
+      onCancel: hideModal,
+      onConfirm: async () => {
+        hideModal();
+        try {
+          const deleted = await clearFailedQueue();
+          showModal({
+            type: 'success',
+            title: 'Gata',
+            message:
+              deleted > 0
+                ? `S-au șters ${deleted} înregistrări din coadă.`
+                : 'Nu existau înregistrări eșuate.',
+            autoDismiss: true,
+            onConfirm: hideModal,
+          });
+        } catch (err) {
+          showModal({
+            type: 'error',
+            title: 'Eroare',
+            message: err instanceof Error ? err.message : 'Nu s-a putut șterge coada.',
+            onConfirm: hideModal,
+          });
+        }
+      },
+    });
+  }, [clearFailedQueue, showModal, hideModal]);
 
   return (
     <View style={styles.outerContainer}>
@@ -176,9 +186,7 @@ export function ProfileScreen() {
                 style={styles.roleBadge}
                 accessibilityLabel={ROLE_LABEL[profile.role] ?? profile.role}
               >
-                <Text style={styles.roleText}>
-                  {ROLE_LABEL[profile.role] ?? profile.role}
-                </Text>
+                <Text style={styles.roleText}>{ROLE_LABEL[profile.role] ?? profile.role}</Text>
               </Pressable>
             </>
           ) : (
@@ -191,7 +199,11 @@ export function ProfileScreen() {
         style={styles.body}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
         }
       >
         {devSyncVisible ? (
@@ -203,20 +215,15 @@ export function ProfileScreen() {
             </View>
             <View style={styles.syncRow}>
               <Text style={styles.syncLabel}>În coadă</Text>
-              <Text
-                style={[
-                  styles.syncValue,
-                  queueCount > 0 ? styles.syncValueHighlight : null,
-                ]}
-              >
+              <Text style={[styles.syncValue, queueCount > 0 ? styles.syncValueHighlight : null]}>
                 {queueCount}
               </Text>
             </View>
             {failedQueueCount > 0 ? (
               <Text style={styles.syncFailedHint}>
                 Ultimul sync a eșuat pentru {failedQueueCount}{' '}
-                {failedQueueCount === 1 ? 'înregistrare' : 'înregistrări'} — folosește butonul de mai
-                jos.
+                {failedQueueCount === 1 ? 'înregistrare' : 'înregistrări'} — folosește butonul de
+                mai jos.
               </Text>
             ) : null}
             <View style={styles.syncRow}>
@@ -225,9 +232,7 @@ export function ProfileScreen() {
                 {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : '—'}
               </Text>
             </View>
-            {syncing ? (
-              <Text style={styles.syncHint}>Se sincronizează…</Text>
-            ) : null}
+            {syncing ? <Text style={styles.syncHint}>Se sincronizează…</Text> : null}
             <TouchableOpacity
               style={styles.syncButton}
               onPress={() => void triggerSync()}
@@ -298,6 +303,7 @@ export function ProfileScreen() {
           <Text style={styles.logoutText}>Deconectare</Text>
         </TouchableOpacity>
       </ScrollView>
+      <AppModal {...modalProps} />
     </View>
   );
 }

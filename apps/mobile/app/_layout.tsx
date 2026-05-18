@@ -5,22 +5,19 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import {
-  Alert,
-  AppState,
-  Platform,
-  View,
-  Text,
-  Image,
-  ActivityIndicator,
-  StyleSheet,
-} from 'react-native';
+import { AppState, Platform, View, Text, Image, ActivityIndicator, StyleSheet } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { getDatabase, clearLocalData } from '@/lib/storage';
 import { getSupabaseClient } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
 import { mobileApiClient } from '@/lib/api-client';
 import { cleanupOldMobileLogFiles } from '@/lib/logger';
-import { registerForPushNotifications, addNotificationListener, addNotificationResponseListener } from '@/lib/notifications';
+import {
+  registerForPushNotifications,
+  addNotificationListener,
+  addNotificationResponseListener,
+} from '@/lib/notifications';
 import { handleIncomingPush } from '@/lib/notification-handler';
 import { NotificationsRepo } from '@/db/notifications-repo';
 import {
@@ -30,10 +27,7 @@ import {
   startBackgroundLocationTracking,
   stopBackgroundLocationTracking,
 } from '@/lib/location';
-import {
-  registerBackgroundSyncTask,
-  unregisterBackgroundSyncTask,
-} from '@/lib/background-sync';
+import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/background-sync';
 import type { User } from '@strawboss/types';
 import { debugIngest } from '@/lib/debug-ingest';
 
@@ -51,10 +45,10 @@ const queryClient = new QueryClient({
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const ROLE_ROUTES: Record<string, string> = {
-  baler_operator:  '/(baler)',
+  baler_operator: '/(baler)',
   loader_operator: '/(loader)',
-  driver:          '/(driver)',
-  geofence_maker:  '/(geofence-maker)',
+  driver: '/(driver)',
+  geofence_maker: '/(geofence-maker)',
 };
 
 function LoadingSplash() {
@@ -101,6 +95,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const { role, setProfile } = useAuthStore();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const activeUserIdRef = useRef<string | null>(null);
+  const { modalProps, showModal, hideModal } = useModal();
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -111,7 +106,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       {
         hasSupabaseUrl: !!process.env.EXPO_PUBLIC_SUPABASE_URL,
       },
-      'H5'
+      'H5',
     );
     // #endregion
     supabase.auth
@@ -122,7 +117,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           'app/_layout.tsx:AuthGate',
           'getSession ok',
           { hasSession: !!data.session },
-          'H5'
+          'H5',
         );
         // #endregion
         if (data.session) {
@@ -142,7 +137,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           'app/_layout.tsx:AuthGate',
           'getSession catch',
           { err: err instanceof Error ? err.message : String(err) },
-          'H5'
+          'H5',
         );
         // #endregion
         if (__DEV__) {
@@ -199,7 +194,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         'app/_layout.tsx:AuthGate',
         'profile fetch watchdog fired',
         { ms: Date.now() - t0 },
-        'L3'
+        'L3',
       );
       // #endregion
       setProfileReady(true);
@@ -222,12 +217,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           assignedMachineId: profile.assignedMachineId ?? null,
         });
         // #region agent log
-        debugIngest(
-          'app/_layout.tsx:AuthGate',
-          'profile fetch ok',
-          { ms: Date.now() - t0 },
-          'L3'
-        );
+        debugIngest('app/_layout.tsx:AuthGate', 'profile fetch ok', { ms: Date.now() - t0 }, 'L3');
         // #endregion
       })
       .catch(async (err) => {
@@ -241,15 +231,16 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             ms: Date.now() - t0,
             err: err instanceof Error ? err.message : String(err),
           },
-          'L3'
+          'L3',
         );
         // #endregion
         if (__DEV__) console.warn('[StrawBoss] Profile fetch failed', err);
-        Alert.alert(
-          'Eroare de conectare',
-          'Nu s-a putut încărca profilul. Verificați conexiunea și reconectați-vă.',
-          [{ text: 'OK' }]
-        );
+        showModal({
+          type: 'error',
+          title: 'Eroare de conectare',
+          message: 'Nu s-a putut încărca profilul. Verificați conexiunea și reconectați-vă.',
+          onConfirm: hideModal,
+        });
         const supabase = getSupabaseClient();
         await supabase.auth.signOut();
         if (!cancelled) {
@@ -265,7 +256,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           'app/_layout.tsx:AuthGate',
           'profile fetch finally',
           { ms: Date.now() - t0 },
-          'L3'
+          'L3',
         );
         // #endregion
         setProfileReady(true);
@@ -313,8 +304,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     registerForPushNotifications()
       .then((token) => {
         if (__DEV__) {
-          if (token) console.info('[StrawBoss] DEV: push token registered:', token.slice(0, 40) + '...');
-          else console.info('[StrawBoss] DEV: no push token — local notifications only (run `npx eas init` to enable push)');
+          if (token)
+            console.info('[StrawBoss] DEV: push token registered:', token.slice(0, 40) + '...');
+          else
+            console.info(
+              '[StrawBoss] DEV: no push token — local notifications only (run `npx eas init` to enable push)',
+            );
         }
         if (token) {
           mobileApiClient
@@ -382,7 +377,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         role: role ?? null,
         seg0: segments[0] ?? null,
       },
-      'H5'
+      'H5',
     );
     // #endregion
   }, [isAuthenticated, profileReady, role, segments]);
@@ -400,9 +395,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     // Authenticated — determine correct destination once profile is settled
     if (!profileReady) return; // Wait for profile fetch to complete
 
-    const destination = role
-      ? (ROLE_ROUTES[role] ?? '/(tabs)')
-      : '/(tabs)';
+    const destination = role ? (ROLE_ROUTES[role] ?? '/(tabs)') : '/(tabs)';
 
     if (inAuthGroup) {
       // On login screen — navigate to role-specific route now that profile is ready
@@ -423,7 +416,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, profileReady, role, segments, router]);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <AppModal {...modalProps} />
+    </>
+  );
 }
 
 export default function RootLayout() {
@@ -435,30 +433,20 @@ export default function RootLayout() {
       'app/_layout.tsx:RootLayout',
       'dbReady changed',
       { dbReady, showing: dbReady ? 'AuthGate' : 'LoadingSplash' },
-      'H1'
+      'H1',
     );
     // #endregion
   }, [dbReady]);
 
   useEffect(() => {
     // #region agent log
-    debugIngest(
-      'app/_layout.tsx:RootLayout',
-      'bootstrap useEffect start',
-      { __DEV__ },
-      'H1'
-    );
+    debugIngest('app/_layout.tsx:RootLayout', 'bootstrap useEffect start', { __DEV__ }, 'H1');
     // #endregion
     let cancelled = false;
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
       // #region agent log
-      debugIngest(
-        'app/_layout.tsx:RootLayout',
-        'dbReady timeout 20s fired',
-        {},
-        'H1'
-      );
+      debugIngest('app/_layout.tsx:RootLayout', 'dbReady timeout 20s fired', {}, 'H1');
       // #endregion
       if (__DEV__) {
         console.warn('[StrawBoss] getDatabase exceeded 20s — unblocking UI');
@@ -476,7 +464,7 @@ export default function RootLayout() {
           'app/_layout.tsx:RootLayout',
           'getDatabase promise catch',
           { err: err instanceof Error ? err.message : String(err) },
-          'H1'
+          'H1',
         );
         // #endregion
         if (__DEV__) console.warn('[StrawBoss] getDatabase failed', err);
@@ -485,12 +473,7 @@ export default function RootLayout() {
         if (cancelled) return;
         clearTimeout(timeoutId);
         // #region agent log
-        debugIngest(
-          'app/_layout.tsx:RootLayout',
-          'getDatabase finally → setDbReady',
-          {},
-          'H1'
-        );
+        debugIngest('app/_layout.tsx:RootLayout', 'getDatabase finally → setDbReady', {}, 'H1');
         // #endregion
         setDbReady(true);
       });
@@ -504,22 +487,12 @@ export default function RootLayout() {
   useEffect(() => {
     if (!dbReady) return;
     // #region agent log
-    debugIngest(
-      'app/_layout.tsx:RootLayout',
-      'calling SplashScreen.hideAsync',
-      {},
-      'H3'
-    );
+    debugIngest('app/_layout.tsx:RootLayout', 'calling SplashScreen.hideAsync', {}, 'H3');
     // #endregion
     void SplashScreen.hideAsync().then(
       () => {
         // #region agent log
-        debugIngest(
-          'app/_layout.tsx:RootLayout',
-          'SplashScreen.hideAsync resolved',
-          {},
-          'H3'
-        );
+        debugIngest('app/_layout.tsx:RootLayout', 'SplashScreen.hideAsync resolved', {}, 'H3');
         // #endregion
       },
       (e) => {
@@ -528,10 +501,10 @@ export default function RootLayout() {
           'app/_layout.tsx:RootLayout',
           'SplashScreen.hideAsync rejected',
           { err: e instanceof Error ? e.message : String(e) },
-          'H3'
+          'H3',
         );
         // #endregion
-      }
+      },
     );
   }, [dbReady]);
 
@@ -557,7 +530,10 @@ export default function RootLayout() {
       {dbReady ? (
         <AuthGate>
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="notifications" options={{ presentation: 'card', animation: 'slide_from_right' }} />
+            <Stack.Screen
+              name="notifications"
+              options={{ presentation: 'card', animation: 'slide_from_right' }}
+            />
           </Stack>
         </AuthGate>
       ) : (

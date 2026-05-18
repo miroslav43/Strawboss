@@ -1,5 +1,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Alert, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,7 +13,12 @@ import { useAuthStore } from '@/stores/auth-store';
 import { calculateRoute, haversineKm } from '@/lib/routing';
 import { MapView, type MapViewHandle } from './MapView';
 import { ParcelInfoSheet } from './ParcelInfoSheet';
-import type { MapEvent, ParcelMapData, DestinationMapData, MachineMarkerData } from '@/map/map-bridge';
+import type {
+  MapEvent,
+  ParcelMapData,
+  DestinationMapData,
+  MachineMarkerData,
+} from '@/map/map-bridge';
 
 interface DeliveryDestination {
   id: string;
@@ -41,9 +48,7 @@ interface MapScreenProps {
  * even though some TypeScript types model it as `{ lat, lon }`. Accept both
  * shapes and return `null` for anything unusable.
  */
-function toLatLon(
-  raw: unknown,
-): { lat: number; lon: number } | null {
+function toLatLon(raw: unknown): { lat: number; lon: number } | null {
   if (raw == null || typeof raw !== 'object') return null;
   const obj = raw as {
     lat?: unknown;
@@ -68,6 +73,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  const { modalProps, showModal, hideModal } = useModal();
   const mapRef = useRef<MapViewHandle>(null);
   const pendingRecenterRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
@@ -116,8 +122,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
       let tooltipLabel = base;
       if (userLocation) {
         const km = haversineKm(userLocation, { lat: m.lat, lon: m.lon });
-        const kmStr =
-          km < 10 ? km.toFixed(1).replace('.', ',') : String(Math.round(km));
+        const kmStr = km < 10 ? km.toFixed(1).replace('.', ',') : String(Math.round(km));
         tooltipLabel = `${base} · ≈${kmStr} km`;
       }
       return {
@@ -140,23 +145,20 @@ export function MapScreen({ focusId }: MapScreenProps) {
     setRouteInfo(null);
   }, []);
 
-  const pushUserToMap = useCallback(
-    (lat: number, lon: number, accuracyM: number | null) => {
-      mapRef.current?.sendCommand({
-        type: 'SET_USER_LOCATION',
-        lat,
-        lon,
-        ...(accuracyM != null ? { accuracy: accuracyM } : {}),
-      });
-      mapRef.current?.sendCommand({
-        type: 'CENTER_ON',
-        lat,
-        lon,
-        zoom: MAP_USER_ZOOM,
-      });
-    },
-    [],
-  );
+  const pushUserToMap = useCallback((lat: number, lon: number, accuracyM: number | null) => {
+    mapRef.current?.sendCommand({
+      type: 'SET_USER_LOCATION',
+      lat,
+      lon,
+      ...(accuracyM != null ? { accuracy: accuracyM } : {}),
+    });
+    mapRef.current?.sendCommand({
+      type: 'CENTER_ON',
+      lat,
+      lon,
+      zoom: MAP_USER_ZOOM,
+    });
+  }, []);
 
   const fetchAndCenterUser = useCallback(
     async (opts: { alertOnFailure: boolean; showProgress?: boolean }) => {
@@ -164,18 +166,19 @@ export function MapScreen({ focusId }: MapScreenProps) {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           if (opts.alertOnFailure) {
-            Alert.alert(
-              'Locație',
-              'Activează permisiunea de locație pentru a te repoziționa pe hartă.',
-            );
+            showModal({
+              type: 'warning',
+              title: 'Locație',
+              message: 'Activează permisiunea de locație pentru a te repoziționa pe hartă.',
+              onConfirm: hideModal,
+            });
           }
           return;
         }
         if (opts.showProgress) setLocating(true);
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
         const acc = loc.coords.accuracy;
-        const accuracyM =
-          acc != null && Number.isFinite(acc) && acc > 0 ? acc : null;
+        const accuracyM = acc != null && Number.isFinite(acc) && acc > 0 ? acc : null;
         const next = {
           lat: loc.coords.latitude,
           lon: loc.coords.longitude,
@@ -189,13 +192,18 @@ export function MapScreen({ focusId }: MapScreenProps) {
         }
       } catch {
         if (opts.alertOnFailure) {
-          Alert.alert('Eroare', 'Nu s-a putut obține locația curentă.');
+          showModal({
+            type: 'error',
+            title: 'Eroare',
+            message: 'Nu s-a putut obține locația curentă.',
+            onConfirm: hideModal,
+          });
         }
       } finally {
         if (opts.showProgress) setLocating(false);
       }
     },
-    [mapReady, pushUserToMap],
+    [mapReady, pushUserToMap, showModal, hideModal],
   );
 
   useEffect(() => {
@@ -228,8 +236,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
           setUserLocation({
             lat: loc.coords.latitude,
             lon: loc.coords.longitude,
-            accuracyM:
-              acc != null && Number.isFinite(acc) && acc > 0 ? acc : null,
+            accuracyM: acc != null && Number.isFinite(acc) && acc > 0 ? acc : null,
           });
         }
       } catch {
@@ -348,11 +355,21 @@ export function MapScreen({ focusId }: MapScreenProps) {
 
   const handleNavigateOnMap = useCallback(async () => {
     if (!selectedItem || !userLocation) {
-      Alert.alert('Eroare', 'Locația curentă nu este disponibilă.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Locația curentă nu este disponibilă.',
+        onConfirm: hideModal,
+      });
       return;
     }
     if (selectedItem.centroidLat == null || selectedItem.centroidLon == null) {
-      Alert.alert('Eroare', 'Coordonatele destinației nu sunt disponibile.');
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: 'Coordonatele destinației nu sunt disponibile.',
+        onConfirm: hideModal,
+      });
       return;
     }
 
@@ -378,10 +395,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
       // Fallback: straight line
       mapRef.current?.sendCommand({
         type: 'SET_ROUTE',
-        points: [
-          userLocation,
-          { lat: selectedItem.centroidLat, lon: selectedItem.centroidLon },
-        ],
+        points: [userLocation, { lat: selectedItem.centroidLat, lon: selectedItem.centroidLon }],
       });
       const approxKm = haversineKm(userLocation, {
         lat: selectedItem.centroidLat,
@@ -391,9 +405,14 @@ export function MapScreen({ focusId }: MapScreenProps) {
         distanceKm: approxKm,
         durationMin: 0,
       });
-      Alert.alert('Info', 'Ruta detaliată necesită internet. Se afișează linie directă.');
+      showModal({
+        type: 'confirm',
+        title: 'Info',
+        message: 'Ruta detaliată necesită internet. Se afișează linie directă.',
+        onConfirm: hideModal,
+      });
     }
-  }, [selectedItem, userLocation]);
+  }, [selectedItem, userLocation, showModal, hideModal]);
 
   const handleDismiss = useCallback(() => {
     handleReset();
@@ -439,6 +458,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
           <MaterialCommunityIcons name="crosshairs-gps" size={24} color="#0A5C36" />
         )}
       </TouchableOpacity>
+      <AppModal {...modalProps} />
     </View>
   );
 }

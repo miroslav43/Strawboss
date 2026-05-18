@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
-import { Alert, View, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { useModal } from '@/hooks/useModal';
+import { AppModal } from '@/components/shared/AppModal';
 import { WeightInput } from './WeightInput';
 import { WeightTicketPhoto } from './WeightTicketPhoto';
 import { SignatureStep } from './SignatureStep';
@@ -53,6 +55,7 @@ export function EnhancedDeliveryFlow({
   const [receiverName, setReceiverName] = useState('');
   const [signatures, setSignatures] = useState<Signatures>({});
   const [loading, setLoading] = useState(false);
+  const { modalProps, showModal, hideModal } = useModal();
 
   const grossWeightKg = parseFloat(netWeightValue) || 0;
   const signatureUri = signatures.receiver ?? null;
@@ -69,9 +72,7 @@ export function EnhancedDeliveryFlow({
   );
 
   const handleSignaturesComplete = useCallback(() => {
-    const name = signatures.receiver
-      ? 'Client semnat'
-      : 'Client';
+    const name = signatures.receiver ? 'Client semnat' : 'Client';
     setReceiverName(name);
     goToStep(4);
   }, [signatures.receiver, goToStep]);
@@ -89,35 +90,28 @@ export function EnhancedDeliveryFlow({
         deterioratedBalesCount: deterioratedBales,
         weightTicketPhotoUrl: ticketPhotoUri ?? '',
       };
-      await mobileApiClient.post(
-        `/api/v1/trips/${tripId}/confirm-delivery`,
-        confirmPayload,
-      );
+      await mobileApiClient.post(`/api/v1/trips/${tripId}/confirm-delivery`, confirmPayload);
       mobileLogger.flow('Driver enhanced delivery: confirm-delivery success', { tripId });
 
       // Step 2: complete — receiver name + signature → triggers CMR stage 2
-      await mobileApiClient.post(
-        `/api/v1/trips/${tripId}/complete`,
-        {
-          receiverName,
-          receiverSignature: signatureUri ?? '',
-        },
-      );
+      await mobileApiClient.post(`/api/v1/trips/${tripId}/complete`, {
+        receiverName,
+        receiverSignature: signatureUri ?? '',
+      });
       mobileLogger.flow('Driver enhanced delivery: complete success', { tripId });
 
       onComplete();
     } catch (err) {
       mobileLogger.error('Driver enhanced delivery: delivery confirmation failed', {
         tripId,
-        err:
-          err instanceof Error
-            ? { message: err.message, stack: err.stack }
-            : err,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
-      Alert.alert(
-        'Eroare',
-        err instanceof Error ? err.message : 'Nu s-a putut confirma livrarea.',
-      );
+      showModal({
+        type: 'error',
+        title: 'Eroare',
+        message: err instanceof Error ? err.message : 'Nu s-a putut confirma livrarea.',
+        onConfirm: hideModal,
+      });
     } finally {
       setLoading(false);
     }
@@ -146,54 +140,67 @@ export function EnhancedDeliveryFlow({
             onChange={setNetWeightValue}
             onConfirm={() => goToStep(1)}
           />
+          <AppModal {...modalProps} />
         </View>
       );
 
     case 1:
       return (
-        <DeterioratedBalesInput
-          baleCount={deterioratedBales}
-          onBaleCountChange={setDeterioratedBales}
-          totalBales={baleCount}
-          onNext={() => goToStep(2)}
-          onBack={() => goToStep(0)}
-        />
+        <>
+          <DeterioratedBalesInput
+            baleCount={deterioratedBales}
+            onBaleCountChange={setDeterioratedBales}
+            totalBales={baleCount}
+            onNext={() => goToStep(2)}
+            onBack={() => goToStep(0)}
+          />
+          <AppModal {...modalProps} />
+        </>
       );
 
     case 2:
       return (
-        <WeightTicketPhoto
-          onCapture={(uri) => {
-            setTicketPhotoUri(uri);
-            goToStep(3);
-          }}
-        />
+        <>
+          <WeightTicketPhoto
+            onCapture={(uri) => {
+              setTicketPhotoUri(uri);
+              goToStep(3);
+            }}
+          />
+          <AppModal {...modalProps} />
+        </>
       );
 
     case 3:
       return (
-        <SignatureStep
-          signatures={signatures}
-          onSign={handleSignatureSign}
-          onComplete={handleSignaturesComplete}
-        />
+        <>
+          <SignatureStep
+            signatures={signatures}
+            onSign={handleSignatureSign}
+            onComplete={handleSignaturesComplete}
+          />
+          <AppModal {...modalProps} />
+        </>
       );
 
     case 4:
       return (
-        <CmrConfirmation
-          tripNumber={tripNumber}
-          baleCount={baleCount}
-          deterioratedBales={deterioratedBales}
-          netWeightKg={grossWeightKg}
-          receiverName={receiverName}
-          destinationName={destinationName}
-          hasTicketPhoto={ticketPhotoUri !== null}
-          hasSignature={signatureUri !== null}
-          onConfirm={handleConfirm}
-          onBack={() => goToStep(3)}
-          loading={loading}
-        />
+        <>
+          <CmrConfirmation
+            tripNumber={tripNumber}
+            baleCount={baleCount}
+            deterioratedBales={deterioratedBales}
+            netWeightKg={grossWeightKg}
+            receiverName={receiverName}
+            destinationName={destinationName}
+            hasTicketPhoto={ticketPhotoUri !== null}
+            hasSignature={signatureUri !== null}
+            onConfirm={handleConfirm}
+            onBack={() => goToStep(3)}
+            loading={loading}
+          />
+          <AppModal {...modalProps} />
+        </>
       );
   }
 }
