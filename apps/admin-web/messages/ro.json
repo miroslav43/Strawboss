@@ -98,7 +98,8 @@
       "trips": "Actualizări curse",
       "tripsDesc": "Notificări când se schimbă starea curselor",
       "digest": "Rezumat zilnic",
-      "digestDesc": "Rezumat zilnic al tuturor operațiunilor"
+      "digestDesc": "Rezumat zilnic al tuturor operațiunilor",
+      "comingSoon": "În curând"
     },
     "system": {
       "title": "Sistem",
@@ -714,6 +715,14 @@
     "newAlerts": "Alerte noi",
     "recentTrips": "Curse recente",
     "noRecentTrips": "Nu sunt curse recente"
+  },
+  "realtime": {
+    "reconnecting": "Se reconectează la datele live…",
+    "disconnected": "Conexiunea live a fost pierdută.",
+    "reconnectButton": "Reconectează"
+  },
+  "auth": {
+    "checkingSession": "Se verifică sesiunea…"
   },
   "common_table": {
     "noData": "Nu există date"

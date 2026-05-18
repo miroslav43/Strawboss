@@ -3,7 +3,19 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import dynamicImport from 'next/dynamic';
-import { MapPin, Plus, XCircle, ChevronLeft, ChevronRight, X, AlertTriangle, Wheat, Map, FolderOpen, CheckCircle2 } from 'lucide-react';
+import {
+  MapPin,
+  Plus,
+  XCircle,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  AlertTriangle,
+  Wheat,
+  Map,
+  FolderOpen,
+  CheckCircle2,
+} from 'lucide-react';
 import area from '@turf/area';
 import { polygon as turfPolygon, multiPolygon as turfMultiPolygon } from '@turf/helpers';
 import {
@@ -15,7 +27,12 @@ import {
   useFarms,
   useDeliveryDestinations,
 } from '@strawboss/api';
-import type { Parcel, MachineLastLocation, RoutePoint, DeliveryDestination } from '@strawboss/types';
+import type {
+  Parcel,
+  MachineLastLocation,
+  RoutePoint,
+  DeliveryDestination,
+} from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RouteHistoryPanel } from '@/components/map/RouteHistoryPanel';
 import { DepositGeofenceModal } from '@/components/map/DepositGeofenceModal';
@@ -51,13 +68,9 @@ function calcHectares(geometry: GeoJSON.Geometry): number | null {
   try {
     let feature: GeoJSON.Feature | null = null;
     if (geometry.type === 'Polygon') {
-      feature = turfPolygon(
-        (geometry as GeoJSON.Polygon).coordinates,
-      );
+      feature = turfPolygon((geometry as GeoJSON.Polygon).coordinates);
     } else if (geometry.type === 'MultiPolygon') {
-      feature = turfMultiPolygon(
-        (geometry as GeoJSON.MultiPolygon).coordinates,
-      );
+      feature = turfMultiPolygon((geometry as GeoJSON.MultiPolygon).coordinates);
     }
     if (!feature) return null;
     return Math.round((area(feature) / 10_000) * 100) / 100;
@@ -86,10 +99,7 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
   const previewHa = useMemo(() => calcHectares(geometry), [geometry]);
 
   const handleSave = () => {
-    createParcel.mutate(
-      { boundary: JSON.stringify(geometry) },
-      { onSuccess: () => onClose() },
-    );
+    createParcel.mutate({ boundary: JSON.stringify(geometry) }, { onSuccess: () => onClose() });
   };
 
   return (
@@ -165,7 +175,14 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
             {createParcel.isPending ? (
               <>
                 <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
                 {t('map.saving')}
@@ -202,19 +219,15 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
 
     for (let i = 0; i < parcels.length; i++) {
       const p = parcels[i];
-      await new Promise<void>((resolve) => {
-        createParcel.mutate(
-          {
-            boundary: JSON.stringify(p.boundary),
-            name: p.name || undefined,
-            municipality: p.municipality || undefined,
-          },
-          {
-            onSuccess: () => resolve(),
-            onError: () => { failed++; resolve(); },
-          },
-        );
-      });
+      try {
+        await createParcel.mutateAsync({
+          boundary: JSON.stringify(p.boundary),
+          name: p.name || undefined,
+          municipality: p.municipality || undefined,
+        });
+      } catch {
+        failed++;
+      }
       setProgress({ done: i + 1, failed });
     }
 
@@ -284,7 +297,10 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
               <CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-green-600" />
               {t('map.importSuccess', { ok: progress.done - progress.failed })}
               {progress.failed > 0 && (
-                <>, <AlertTriangle className="inline h-3 w-3 text-amber-500" /> {t('map.importFailed', { n: progress.failed })}</>
+                <>
+                  , <AlertTriangle className="inline h-3 w-3 text-amber-500" />{' '}
+                  {t('map.importFailed', { n: progress.failed })}
+                </>
               )}
             </p>
           </div>
@@ -319,7 +335,14 @@ function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
                 {importing ? (
                   <>
                     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
                     {t('map.importingEllipsis')}
@@ -350,10 +373,10 @@ interface EditParcelInfoModalProps {
 
 function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
   const { t } = useI18n();
-  const [name,         setName]         = useState(parcel.name ?? '');
+  const [name, setName] = useState(parcel.name ?? '');
   const [municipality, setMunicipality] = useState(parcel.municipality ?? '');
   const [areaHectares, setAreaHectares] = useState(parcel.areaHectares?.toString() ?? '');
-  const [notes,        setNotes]        = useState(parcel.notes ?? '');
+  const [notes, setNotes] = useState(parcel.notes ?? '');
 
   const updateParcel = useUpdateParcel(apiClient);
 
@@ -363,10 +386,10 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
       {
         id: parcel.id,
         data: {
-          name:         name.trim()         || undefined,
+          name: name.trim() || undefined,
           municipality: municipality.trim() || undefined,
-          areaHectares: areaHectares        ? Number(areaHectares) : undefined,
-          notes:        notes.trim()        || null,
+          areaHectares: areaHectares ? Number(areaHectares) : undefined,
+          notes: notes.trim() || null,
         },
       },
       { onSuccess: () => onClose() },
@@ -378,15 +401,39 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-neutral-800">{t('map.editField')}</h2>
-          <button onClick={onClose} className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100">
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100"
+          >
             <XCircle className="h-5 w-5" />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
-          <FormField label={t('map.fieldName')} value={name} onChange={setName} placeholder={t('parcels.form.placeholders.name')} />
-          <FormField label={t('map.municipality')} value={municipality} onChange={setMunicipality} placeholder={t('parcels.form.placeholders.municipality')} />
-          <FormField label={t('map.areaHa')} value={areaHectares} onChange={setAreaHectares} type="number" placeholder={t('parcels.form.placeholders.area')} />
-          <FormField label={t('map.notes')} value={notes} onChange={setNotes} placeholder={t('parcels.form.placeholders.notes')} />
+          <FormField
+            label={t('map.fieldName')}
+            value={name}
+            onChange={setName}
+            placeholder={t('parcels.form.placeholders.name')}
+          />
+          <FormField
+            label={t('map.municipality')}
+            value={municipality}
+            onChange={setMunicipality}
+            placeholder={t('parcels.form.placeholders.municipality')}
+          />
+          <FormField
+            label={t('map.areaHa')}
+            value={areaHectares}
+            onChange={setAreaHectares}
+            type="number"
+            placeholder={t('parcels.form.placeholders.area')}
+          />
+          <FormField
+            label={t('map.notes')}
+            value={notes}
+            onChange={setNotes}
+            placeholder={t('parcels.form.placeholders.notes')}
+          />
 
           {updateParcel.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -395,8 +442,11 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
           )}
           <div className="flex justify-end gap-3 pt-2">
             <ModalCancelBtn onClick={onClose} />
-            <button type="submit" disabled={updateParcel.isPending}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-60">
+            <button
+              type="submit"
+              disabled={updateParcel.isPending}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-60"
+            >
               {updateParcel.isPending ? t('map.savingShort') : t('map.save')}
             </button>
           </div>
@@ -409,16 +459,28 @@ function EditParcelInfoModal({ parcel, onClose }: EditParcelInfoModalProps) {
 // ── Shared form helpers ────────────────────────────────────────────────────
 
 function FormField({
-  label, value, onChange, required, type = 'text', placeholder,
+  label,
+  value,
+  onChange,
+  required,
+  type = 'text',
+  placeholder,
 }: {
-  label: string; value: string; onChange: (v: string) => void;
-  required?: boolean; type?: string; placeholder?: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+  type?: string;
+  placeholder?: string;
 }) {
   return (
     <div>
       <label className="block text-sm font-medium text-neutral-700">{label}</label>
       <input
-        type={type} required={required} placeholder={placeholder} value={value}
+        type={type}
+        required={required}
+        placeholder={placeholder}
+        value={value}
         onChange={(e) => onChange(e.target.value)}
         className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
       />
@@ -429,8 +491,11 @@ function FormField({
 function ModalCancelBtn({ onClick }: { onClick: () => void }) {
   const { t } = useI18n();
   return (
-    <button type="button" onClick={onClick}
-      className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+    >
       {t('map.cancel')}
     </button>
   );
@@ -440,44 +505,50 @@ function ModalCancelBtn({ onClick }: { onClick: () => void }) {
 
 export default function MapPage() {
   const { t } = useI18n();
-  const { data: parcelsRaw, isLoading: parcelsLoading }  = useParcels(apiClient);
-  const { data: machines = [] }                          = useMachineLocations(apiClient);
-  const { data: farmsRaw = [] }                          = useFarms(apiClient);
-  const { data: depositsRaw = [] }                       = useDeliveryDestinations(apiClient);
-  const deleteParcel                                     = useDeleteParcel(apiClient);
+  const { data: parcelsRaw, isLoading: parcelsLoading } = useParcels(apiClient);
+  const { data: machines = [] } = useMachineLocations(apiClient);
+  const { data: farmsRaw = [] } = useFarms(apiClient);
+  const { data: depositsRaw = [] } = useDeliveryDestinations(apiClient);
+  const deleteParcel = useDeleteParcel(apiClient);
 
   const { prefs: iconPrefs } = useMachineIconPrefs();
 
-  const [selectedParcelId,   setSelectedParcelId]   = useState<string | null>(null);
-  const [editParcel,         setEditParcel]          = useState<Parcel | null>(null);
-  const [editingParcelInfo,  setEditingParcelInfo]   = useState<Parcel | null>(null);
-  const [drawnGeometry,         setDrawnGeometry]         = useState<GeoJSON.Geometry | null>(null);
-  const [drawnDepositGeometry,  setDrawnDepositGeometry] = useState<GeoJSON.Geometry | null>(null);
-  const [drawMode,              setDrawMode]              = useState<'parcel' | 'deposit' | null>(null);
-  const [deleteError,           setDeleteError]           = useState<string | null>(null);
-  const [selectedMachineId,  setSelectedMachineId]  = useState<string | null>(null);
-  const [routePoints,        setRoutePoints]         = useState<RoutePoint[] | undefined>(undefined);
-  const [navigateToParcelId,  setNavigateToParcelId]  = useState<string | null>(null);
+  const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
+  const [editParcel, setEditParcel] = useState<Parcel | null>(null);
+  const [editingParcelInfo, setEditingParcelInfo] = useState<Parcel | null>(null);
+  const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Geometry | null>(null);
+  const [drawnDepositGeometry, setDrawnDepositGeometry] = useState<GeoJSON.Geometry | null>(null);
+  const [drawMode, setDrawMode] = useState<'parcel' | 'deposit' | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+  const [routePoints, setRoutePoints] = useState<RoutePoint[] | undefined>(undefined);
+  const [navigateToParcelId, setNavigateToParcelId] = useState<string | null>(null);
   const [navigateToMachineId, setNavigateToMachineId] = useState<string | null>(null);
-  const [kmlParcels,         setKmlParcels]          = useState<KmlParsedParcel[] | null>(null);
+  const [kmlParcels, setKmlParcels] = useState<KmlParsedParcel[] | null>(null);
 
   // Visibility toggles
-  const [hiddenFarmIds,    setHiddenFarmIds]    = useState<Set<string>>(new Set());
-  const [hiddenParcelIds,  setHiddenParcelIds]  = useState<Set<string>>(new Set());
+  const [hiddenFarmIds, setHiddenFarmIds] = useState<Set<string>>(new Set());
+  const [hiddenParcelIds, setHiddenParcelIds] = useState<Set<string>>(new Set());
   const [hiddenMachineIds, setHiddenMachineIds] = useState<Set<string>>(new Set());
-  const [mapSidebarOpen,   setMapSidebarOpen]   = useState(true);
+  const [mapSidebarOpen, setMapSidebarOpen] = useState(true);
 
   const hiddenFarmIdsRef = useRef(hiddenFarmIds);
-  useEffect(() => { hiddenFarmIdsRef.current = hiddenFarmIds; }, [hiddenFarmIds]);
+  useEffect(() => {
+    hiddenFarmIdsRef.current = hiddenFarmIds;
+  }, [hiddenFarmIds]);
 
   const parcels = (
-    Array.isArray(parcelsRaw) ? parcelsRaw : (parcelsRaw as { data?: Parcel[] })?.data ?? []
+    Array.isArray(parcelsRaw) ? parcelsRaw : ((parcelsRaw as { data?: Parcel[] })?.data ?? [])
   ) as Parcel[];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const farms = (Array.isArray(farmsRaw) ? farmsRaw : (farmsRaw as any)?.data ?? []) as import('@strawboss/types').Farm[];
+  const farms = (
+    Array.isArray(farmsRaw) ? farmsRaw : ((farmsRaw as any)?.data ?? [])
+  ) as import('@strawboss/types').Farm[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const deposits = (Array.isArray(depositsRaw) ? depositsRaw : (depositsRaw as any)?.data ?? []) as DeliveryDestination[];
+  const deposits = (
+    Array.isArray(depositsRaw) ? depositsRaw : ((depositsRaw as any)?.data ?? [])
+  ) as DeliveryDestination[];
 
   useEffect(() => {
     if (editParcel) setDrawMode(null);
@@ -489,22 +560,25 @@ export default function MapPage() {
     setEditingParcelInfo(parcel);
   }, []);
 
-  const handleParcelDelete = useCallback((id: string) => {
-    const parcel = parcels.find((p) => p.id === id);
-    const label  = parcel?.name ?? parcel?.code ?? id;
-    if (!confirm(t('map.deleteParcelConfirm', { label }))) return;
-    setDeleteError(null);
-    deleteParcel.mutate(id, {
-      onError: (err) => {
-        const msg = (err as Error)?.message ?? t('map.deleteFailed');
-        clientLogger.error('Map: delete parcel failed', {
-          parcelId: id,
-          message: msg,
-        });
-        setDeleteError(t('map.deleteErrorWithMessage', { message: msg }));
-      },
-    });
-  }, [parcels, deleteParcel, t]);
+  const handleParcelDelete = useCallback(
+    (id: string) => {
+      const parcel = parcels.find((p) => p.id === id);
+      const label = parcel?.name ?? parcel?.code ?? id;
+      if (!confirm(t('map.deleteParcelConfirm', { label }))) return;
+      setDeleteError(null);
+      deleteParcel.mutate(id, {
+        onError: (err) => {
+          const msg = (err as Error)?.message ?? t('map.deleteFailed');
+          clientLogger.error('Map: delete parcel failed', {
+            parcelId: id,
+            message: msg,
+          });
+          setDeleteError(t('map.deleteErrorWithMessage', { message: msg }));
+        },
+      });
+    },
+    [parcels, deleteParcel, t],
+  );
 
   const handleNewParcelDrawn = useCallback((geometry: GeoJSON.Geometry) => {
     setDrawMode(null);
@@ -545,33 +619,37 @@ export default function MapPage() {
     setEditParcel(parcel);
   }, []);
 
-  const handleToggleFarm = useCallback((farmId: string) => {
-    const farmParcelIds = parcels
-      .filter((p) => p.farmId === farmId)
-      .map((p) => p.id);
+  const handleToggleFarm = useCallback(
+    (farmId: string) => {
+      const farmParcelIds = parcels.filter((p) => p.farmId === farmId).map((p) => p.id);
 
-    setHiddenFarmIds((prev) => {
-      const next = new Set(prev);
-      const willHide = !prev.has(farmId);
-      if (willHide) next.add(farmId); else next.delete(farmId);
-      return next;
-    });
-
-    setHiddenParcelIds((prev) => {
-      const next = new Set(prev);
-      // Use ref to avoid stale closure over hiddenFarmIds
-      const willHide = !hiddenFarmIdsRef.current.has(farmId);
-      farmParcelIds.forEach((id) => {
-        if (willHide) next.add(id); else next.delete(id);
+      setHiddenFarmIds((prev) => {
+        const next = new Set(prev);
+        const willHide = !prev.has(farmId);
+        if (willHide) next.add(farmId);
+        else next.delete(farmId);
+        return next;
       });
-      return next;
-    });
-  }, [parcels]);
+
+      setHiddenParcelIds((prev) => {
+        const next = new Set(prev);
+        // Use ref to avoid stale closure over hiddenFarmIds
+        const willHide = !hiddenFarmIdsRef.current.has(farmId);
+        farmParcelIds.forEach((id) => {
+          if (willHide) next.add(id);
+          else next.delete(id);
+        });
+        return next;
+      });
+    },
+    [parcels],
+  );
 
   const handleToggleParcel = useCallback((parcelId: string) => {
     setHiddenParcelIds((prev) => {
       const next = new Set(prev);
-      if (next.has(parcelId)) next.delete(parcelId); else next.add(parcelId);
+      if (next.has(parcelId)) next.delete(parcelId);
+      else next.add(parcelId);
       return next;
     });
   }, []);
@@ -579,7 +657,8 @@ export default function MapPage() {
   const handleToggleMachineVisibility = useCallback((machineId: string) => {
     setHiddenMachineIds((prev) => {
       const next = new Set(prev);
-      if (next.has(machineId)) next.delete(machineId); else next.add(machineId);
+      if (next.has(machineId)) next.delete(machineId);
+      else next.add(machineId);
       return next;
     });
   }, []);
@@ -590,7 +669,12 @@ export default function MapPage() {
       {deleteError && (
         <div className="mx-4 mt-2 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
           <span>{deleteError}</span>
-          <button onClick={() => setDeleteError(null)} className="ml-3 text-red-400 hover:text-red-600"><X className="h-4 w-4" /></button>
+          <button
+            onClick={() => setDeleteError(null)}
+            className="ml-3 text-red-400 hover:text-red-600"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 
@@ -677,8 +761,12 @@ export default function MapPage() {
           {selectedMachineId && (
             <RouteHistoryPanel
               machineId={selectedMachineId}
-              machineCode={machines.find((m) => m.machineId === selectedMachineId)?.machineCode ?? null}
-              machineType={machines.find((m) => m.machineId === selectedMachineId)?.machineType ?? null}
+              machineCode={
+                machines.find((m) => m.machineId === selectedMachineId)?.machineCode ?? null
+              }
+              machineType={
+                machines.find((m) => m.machineId === selectedMachineId)?.machineType ?? null
+              }
               onClose={handleCloseRoute}
               onRouteData={setRoutePoints}
             />
@@ -701,13 +789,14 @@ export default function MapPage() {
 
       {/* Edit-parcel-info modal */}
       {editingParcelInfo && (
-        <EditParcelInfoModal parcel={editingParcelInfo} onClose={() => setEditingParcelInfo(null)} />
+        <EditParcelInfoModal
+          parcel={editingParcelInfo}
+          onClose={() => setEditingParcelInfo(null)}
+        />
       )}
 
       {/* KML import modal */}
-      {kmlParcels && (
-        <KmlImportModal parcels={kmlParcels} onClose={() => setKmlParcels(null)} />
-      )}
+      {kmlParcels && <KmlImportModal parcels={kmlParcels} onClose={() => setKmlParcels(null)} />}
     </div>
   );
 }

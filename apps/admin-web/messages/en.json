@@ -98,7 +98,8 @@
       "trips": "Trip updates",
       "tripsDesc": "Receive notifications when trip statuses change",
       "digest": "Daily digest",
-      "digestDesc": "Get a daily summary of all operations"
+      "digestDesc": "Get a daily summary of all operations",
+      "comingSoon": "Coming soon"
     },
     "system": {
       "title": "System",
@@ -714,6 +715,14 @@
     "newAlerts": "New alerts",
     "recentTrips": "Recent trips",
     "noRecentTrips": "No recent trips"
+  },
+  "realtime": {
+    "reconnecting": "Reconnecting to live data…",
+    "disconnected": "Live data connection lost.",
+    "reconnectButton": "Reconnect"
+  },
+  "auth": {
+    "checkingSession": "Checking session…"
   },
   "common_table": {
     "noData": "No data available"
