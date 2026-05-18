@@ -5,7 +5,16 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { AppState, Platform, View, Text, Image, ActivityIndicator, StyleSheet } from 'react-native';
+import {
+  AppState,
+  Platform,
+  View,
+  Text,
+  Image,
+  ActivityIndicator,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { getDatabase, clearLocalData } from '@/lib/storage';
@@ -29,7 +38,6 @@ import {
 } from '@/lib/location';
 import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/background-sync';
 import type { User } from '@strawboss/types';
-import { debugIngest } from '@/lib/debug-ingest';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -67,6 +75,24 @@ function LoadingSplash() {
   );
 }
 
+function DbErrorScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <View style={splash.container}>
+      <Image
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        source={require('../assets/splash-inline.png')}
+        style={splash.logo}
+        accessible={false}
+      />
+      <Text style={splash.title}>StrawBoss</Text>
+      <Text style={splash.errorMessage}>Baza de date nu a putut fi inițializată.</Text>
+      <TouchableOpacity style={splash.retryButton} onPress={onRetry} activeOpacity={0.8}>
+        <Text style={splash.retryButtonText}>Reîncearcă</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 const splash = StyleSheet.create({
   container: {
     flex: 1,
@@ -85,6 +111,25 @@ const splash = StyleSheet.create({
     fontWeight: '700',
     color: '#0A5C36',
   },
+  errorMessage: {
+    marginTop: 24,
+    fontSize: 16,
+    color: '#C62828',
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: '#0A5C36',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -99,27 +144,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const supabase = getSupabaseClient();
-    // #region agent log
-    debugIngest(
-      'app/_layout.tsx:AuthGate',
-      'getSession start',
-      {
-        hasSupabaseUrl: !!process.env.EXPO_PUBLIC_SUPABASE_URL,
-      },
-      'H5',
-    );
-    // #endregion
     supabase.auth
       .getSession()
       .then(({ data }) => {
-        // #region agent log
-        debugIngest(
-          'app/_layout.tsx:AuthGate',
-          'getSession ok',
-          { hasSession: !!data.session },
-          'H5',
-        );
-        // #endregion
         if (data.session) {
           if (activeUserIdRef.current && activeUserIdRef.current !== data.session.user.id) {
             void clearLocalData().catch(() => {});
@@ -132,14 +159,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         setIsAuthenticated(!!data.session);
       })
       .catch((err) => {
-        // #region agent log
-        debugIngest(
-          'app/_layout.tsx:AuthGate',
-          'getSession catch',
-          { err: err instanceof Error ? err.message : String(err) },
-          'H5',
-        );
-        // #endregion
         if (__DEV__) {
           console.warn('[StrawBoss] getSession failed, sending user to login', err);
         }
@@ -183,20 +202,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     let profileFetchFailed = false;
     const t0 = Date.now();
     const profileTimeoutMs = 20_000;
-    // #region agent log
-    debugIngest('app/_layout.tsx:AuthGate', 'profile fetch start', {}, 'L3');
-    // #endregion
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
       if (cancelled) return;
-      // #region agent log
-      debugIngest(
-        'app/_layout.tsx:AuthGate',
-        'profile fetch watchdog fired',
-        { ms: Date.now() - t0 },
-        'L3',
-      );
-      // #endregion
       setProfileReady(true);
     }, profileTimeoutMs);
 
@@ -216,24 +224,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           userId: profile.id,
           assignedMachineId: profile.assignedMachineId ?? null,
         });
-        // #region agent log
-        debugIngest('app/_layout.tsx:AuthGate', 'profile fetch ok', { ms: Date.now() - t0 }, 'L3');
-        // #endregion
+        if (__DEV__) console.info('[StrawBoss] Profile fetch ok', { ms: Date.now() - t0 });
       })
       .catch(async (err) => {
         if (cancelled) return;
         profileFetchFailed = true;
-        // #region agent log
-        debugIngest(
-          'app/_layout.tsx:AuthGate',
-          'profile fetch error',
-          {
-            ms: Date.now() - t0,
-            err: err instanceof Error ? err.message : String(err),
-          },
-          'L3',
-        );
-        // #endregion
         if (__DEV__) console.warn('[StrawBoss] Profile fetch failed', err);
         showModal({
           type: 'error',
@@ -251,14 +246,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       .finally(() => {
         clearWatchdog();
         if (cancelled || profileFetchFailed) return;
-        // #region agent log
-        debugIngest(
-          'app/_layout.tsx:AuthGate',
-          'profile fetch finally',
-          { ms: Date.now() - t0 },
-          'L3',
-        );
-        // #endregion
         setProfileReady(true);
       });
 
@@ -367,22 +354,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, profileReady, role, assignedMachineId]);
 
   useEffect(() => {
-    // #region agent log
-    debugIngest(
-      'app/_layout.tsx:AuthGate',
-      'auth snapshot',
-      {
-        isAuthenticated,
-        profileReady,
-        role: role ?? null,
-        seg0: segments[0] ?? null,
-      },
-      'H5',
-    );
-    // #endregion
-  }, [isAuthenticated, profileReady, role, segments]);
-
-  useEffect(() => {
     if (isAuthenticated === null) return; // Session check still pending
 
     const inAuthGroup = segments[0] === '(auth)';
@@ -424,89 +395,50 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+type DbState = 'loading' | 'ready' | 'error';
+
 export default function RootLayout() {
-  const [dbReady, setDbReady] = useState(false);
+  const [dbState, setDbState] = useState<DbState>('loading');
+  // incrementing this key triggers a retry attempt
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    // #region agent log
-    debugIngest(
-      'app/_layout.tsx:RootLayout',
-      'dbReady changed',
-      { dbReady, showing: dbReady ? 'AuthGate' : 'LoadingSplash' },
-      'H1',
-    );
-    // #endregion
-  }, [dbReady]);
-
-  useEffect(() => {
-    // #region agent log
-    debugIngest('app/_layout.tsx:RootLayout', 'bootstrap useEffect start', { __DEV__ }, 'H1');
-    // #endregion
+    setDbState('loading');
     let cancelled = false;
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
-      // #region agent log
-      debugIngest('app/_layout.tsx:RootLayout', 'dbReady timeout 20s fired', {}, 'H1');
-      // #endregion
       if (__DEV__) {
         console.warn('[StrawBoss] getDatabase exceeded 20s — unblocking UI');
       }
-      setDbReady(true);
+      // On timeout we do NOT mark as ready — force the error screen so the
+      // user can retry explicitly.
+      setDbState('error');
     }, 20_000);
 
     getDatabase()
       .then(() => {
-        if (__DEV__) console.warn('[StrawBoss] getDatabase OK');
+        if (cancelled) return;
+        if (__DEV__) console.info('[StrawBoss] getDatabase OK');
+        clearTimeout(timeoutId);
+        setDbState('ready');
       })
       .catch((err) => {
-        // #region agent log
-        debugIngest(
-          'app/_layout.tsx:RootLayout',
-          'getDatabase promise catch',
-          { err: err instanceof Error ? err.message : String(err) },
-          'H1',
-        );
-        // #endregion
-        if (__DEV__) console.warn('[StrawBoss] getDatabase failed', err);
-      })
-      .finally(() => {
         if (cancelled) return;
+        if (__DEV__) console.warn('[StrawBoss] getDatabase failed', err);
         clearTimeout(timeoutId);
-        // #region agent log
-        debugIngest('app/_layout.tsx:RootLayout', 'getDatabase finally → setDbReady', {}, 'H1');
-        // #endregion
-        setDbReady(true);
+        setDbState('error');
       });
 
     return () => {
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, []);
+  }, [retryCount]);
 
   useEffect(() => {
-    if (!dbReady) return;
-    // #region agent log
-    debugIngest('app/_layout.tsx:RootLayout', 'calling SplashScreen.hideAsync', {}, 'H3');
-    // #endregion
-    void SplashScreen.hideAsync().then(
-      () => {
-        // #region agent log
-        debugIngest('app/_layout.tsx:RootLayout', 'SplashScreen.hideAsync resolved', {}, 'H3');
-        // #endregion
-      },
-      (e) => {
-        // #region agent log
-        debugIngest(
-          'app/_layout.tsx:RootLayout',
-          'SplashScreen.hideAsync rejected',
-          { err: e instanceof Error ? e.message : String(e) },
-          'H3',
-        );
-        // #endregion
-      },
-    );
-  }, [dbReady]);
+    if (dbState !== 'ready') return;
+    void SplashScreen.hideAsync().catch(() => {});
+  }, [dbState]);
 
   useEffect(() => {
     void cleanupOldMobileLogFiles();
@@ -525,9 +457,13 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  if (dbState === 'error') {
+    return <DbErrorScreen onRetry={() => setRetryCount((n) => n + 1)} />;
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
-      {dbReady ? (
+      {dbState === 'ready' ? (
         <AuthGate>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen

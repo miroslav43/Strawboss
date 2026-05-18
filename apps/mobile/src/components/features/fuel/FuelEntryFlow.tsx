@@ -15,20 +15,43 @@ import { generateUuid } from '@/lib/uuid';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 import { colors } from '@strawboss/ui-tokens';
 
+// Photo steps come before their numeric step so OCR can pre-fill the field.
+type FuelStep = 'receipt' | 'liters' | 'odometer-photo' | 'odometer' | 'confirm';
+
+export const FUEL_STEP_TITLES: Record<FuelStep, string> = {
+  receipt: 'Bon de combustibil',
+  liters: 'Litri alimentați',
+  'odometer-photo': 'Foto bord (opțional)',
+  odometer: 'Citire odometru (km)',
+  confirm: 'Confirmare alimentare',
+};
+
 interface FuelEntryFlowProps {
   machineId: string | null;
   operatorId: string;
   onComplete: () => void;
   onCancel: () => void;
+  onStepChange?: (title: string) => void;
 }
 
-// Photo steps come before their numeric step so OCR can pre-fill the field.
-type FuelStep = 'receipt' | 'liters' | 'odometer-photo' | 'odometer' | 'confirm';
-
-export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: FuelEntryFlowProps) {
+export function FuelEntryFlow({
+  machineId,
+  operatorId,
+  onComplete,
+  onCancel,
+  onStepChange,
+}: FuelEntryFlowProps) {
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
   const [step, setStep] = useState<FuelStep>('receipt');
+
+  const goToStep = useCallback(
+    (next: FuelStep) => {
+      setStep(next);
+      onStepChange?.(FUEL_STEP_TITLES[next]);
+    },
+    [onStepChange],
+  );
   const [liters, setLiters] = useState('');
   const [odometer, setOdometer] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -114,7 +137,7 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
       setPhotoUri(null);
       setLitersSuggested(null);
       setKmSuggested(null);
-      setStep('receipt');
+      goToStep('receipt');
       showModal({
         type: 'success',
         title: 'Salvat',
@@ -133,13 +156,12 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
     } finally {
       setSaving(false);
     }
-  }, [machineId, operatorId, liters, odometer, photoUri, onComplete, queryClient]);
+  }, [machineId, operatorId, liters, odometer, photoUri, onComplete, queryClient, goToStep]);
 
   switch (step) {
     case 'receipt':
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Bon de combustibil</Text>
           <Text style={styles.subtitle}>Fotografiază bonul — citim automat litrii.</Text>
           <OcrPhotoCapture
             mode="fuel"
@@ -153,7 +175,7 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
             }}
           />
           <View style={styles.actions}>
-            <BigButton title="Continuă" onPress={() => setStep('liters')} />
+            <BigButton title="Continuă" onPress={() => goToStep('liters')} />
             <BigButton title="Anulează" variant="outline" onPress={onCancel} />
           </View>
         </View>
@@ -162,7 +184,6 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
     case 'liters':
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Litri alimentați</Text>
           {litersSuggested !== null && <OcrHint value={`${litersSuggested} L`} />}
           <NumericPad
             value={liters}
@@ -176,10 +197,10 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
           <View style={styles.actions}>
             <BigButton
               title="Continuă"
-              onPress={() => setStep('odometer-photo')}
+              onPress={() => goToStep('odometer-photo')}
               disabled={!liters || liters === '0'}
             />
-            <BigButton title="Înapoi" variant="outline" onPress={() => setStep('receipt')} />
+            <BigButton title="Înapoi" variant="outline" onPress={() => goToStep('receipt')} />
           </View>
         </View>
       );
@@ -187,7 +208,6 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
     case 'odometer-photo':
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Foto bord (opțional)</Text>
           <Text style={styles.subtitle}>
             Fotografiază kilometrajul de la bord — îl citim automat.
           </Text>
@@ -202,8 +222,8 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
             }}
           />
           <View style={styles.actions}>
-            <BigButton title="Continuă" onPress={() => setStep('odometer')} />
-            <BigButton title="Sari peste" variant="outline" onPress={() => setStep('odometer')} />
+            <BigButton title="Continuă" onPress={() => goToStep('odometer')} />
+            <BigButton title="Sari peste" variant="outline" onPress={() => goToStep('odometer')} />
           </View>
         </View>
       );
@@ -211,7 +231,6 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
     case 'odometer':
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Citire odometru (km)</Text>
           {kmSuggested !== null && <OcrHint value={`${kmSuggested} km`} />}
           <NumericPad
             value={odometer}
@@ -225,10 +244,14 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
           <View style={styles.actions}>
             <BigButton
               title="Continuă"
-              onPress={() => setStep('confirm')}
+              onPress={() => goToStep('confirm')}
               disabled={!odometer || odometer === '0'}
             />
-            <BigButton title="Înapoi" variant="outline" onPress={() => setStep('odometer-photo')} />
+            <BigButton
+              title="Înapoi"
+              variant="outline"
+              onPress={() => goToStep('odometer-photo')}
+            />
           </View>
         </View>
       );
@@ -236,8 +259,6 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
     case 'confirm':
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Confirmare Alimentare</Text>
-
           <View style={styles.summaryCard}>
             <View style={styles.row}>
               <Text style={styles.label}>Litri</Text>
@@ -265,7 +286,7 @@ export function FuelEntryFlow({ machineId, operatorId, onComplete, onCancel }: F
 
           <View style={styles.actions}>
             <BigButton title="Salvează" onPress={handleConfirm} loading={saving} />
-            <TouchableOpacity onPress={() => setStep('odometer')} style={styles.backButton}>
+            <TouchableOpacity onPress={() => goToStep('odometer')} style={styles.backButton}>
               <Text style={styles.backText}>Înapoi</Text>
             </TouchableOpacity>
           </View>

@@ -288,24 +288,34 @@ export default function GeofenceMakerMapScreen() {
       {!drawMode && (
         <View style={[styles.fabStack, { bottom: 16 + insets.bottom }]}>
           <TouchableOpacity
-            style={[styles.fab, styles.fabParcel]}
+            style={[styles.fab, styles.fabParcel, isSaving && styles.fabDisabled]}
             onPress={() => startDraw('parcel')}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel="Adaugă câmp nou"
+            disabled={isSaving}
           >
-            <MaterialCommunityIcons name="shape-polygon-plus" size={22} color="#fff" />
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialCommunityIcons name="shape-polygon-plus" size={22} color="#fff" />
+            )}
             <Text style={styles.fabLabel}>Câmp nou</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.fab, styles.fabDeposit]}
+            style={[styles.fab, styles.fabDeposit, isSaving && styles.fabDisabled]}
             onPress={() => startDraw('deposit')}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel="Adaugă depozit nou"
+            disabled={isSaving}
           >
-            <MaterialCommunityIcons name="warehouse" size={22} color="#fff" />
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialCommunityIcons name="warehouse" size={22} color="#fff" />
+            )}
             <Text style={styles.fabLabel}>Depozit nou</Text>
           </TouchableOpacity>
         </View>
@@ -359,7 +369,7 @@ const styles = StyleSheet.create({
     gap: 6,
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -369,8 +379,8 @@ const styles = StyleSheet.create({
   },
   bannerText: {
     flex: 1,
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
   },
   cancelDrawBtn: {
     paddingHorizontal: 10,
@@ -403,6 +413,7 @@ const styles = StyleSheet.create({
   },
   fabParcel: { backgroundColor: '#0A5C36' },
   fabDeposit: { backgroundColor: '#1565C0' },
+  fabDisabled: { opacity: 0.5 },
   fabLabel: { fontSize: 14, fontWeight: '700', color: '#fff' },
   locateFab: {
     position: 'absolute',

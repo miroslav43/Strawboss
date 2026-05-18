@@ -14,11 +14,7 @@ import {
   Truck,
   Wheat,
 } from 'lucide-react';
-import {
-  useMachines,
-  useCreateMachine,
-  useUpdateMachine,
-} from '@strawboss/api';
+import { useMachines, useCreateMachine, useUpdateMachine, queryKeys } from '@strawboss/api';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { MachineType, FuelType } from '@strawboss/types';
 import type { Machine } from '@strawboss/types';
@@ -38,17 +34,23 @@ const TYPE_ORDER: MachineType[] = [MachineType.truck, MachineType.loader, Machin
 
 const TYPE_LABELS: Record<MachineType, string> = {
   [MachineType.loader]: 'Încărcătoare',
-  [MachineType.baler]:  'Balotiere',
-  [MachineType.truck]:  'Camioane',
+  [MachineType.baler]: 'Balotiere',
+  [MachineType.truck]: 'Camioane',
 };
 
 const TYPE_LABEL_SINGULAR: Record<MachineType, string> = {
   [MachineType.loader]: 'Încărcător',
-  [MachineType.baler]:  'Balotieră',
-  [MachineType.truck]:  'Camion',
+  [MachineType.baler]: 'Balotieră',
+  [MachineType.truck]: 'Camion',
 };
 
-function MachineTypeIcon({ type, className = 'h-4 w-4' }: { type: MachineType; className?: string }) {
+function MachineTypeIcon({
+  type,
+  className = 'h-4 w-4',
+}: {
+  type: MachineType;
+  className?: string;
+}) {
   if (type === MachineType.truck) return <Truck className={className} />;
   if (type === MachineType.loader) return <Wrench className={className} />;
   return <Wheat className={className} />;
@@ -56,24 +58,24 @@ function MachineTypeIcon({ type, className = 'h-4 w-4' }: { type: MachineType; c
 
 const TYPE_COLORS: Record<MachineType, string> = {
   [MachineType.loader]: 'bg-blue-100 text-blue-700',
-  [MachineType.baler]:  'bg-amber-100 text-amber-700',
-  [MachineType.truck]:  'bg-green-100 text-green-700',
+  [MachineType.baler]: 'bg-amber-100 text-amber-700',
+  [MachineType.truck]: 'bg-green-100 text-green-700',
 };
 
 const TYPE_STAT_COLORS: Record<MachineType, string> = {
   [MachineType.loader]: 'bg-blue-50',
-  [MachineType.baler]:  'bg-amber-50',
-  [MachineType.truck]:  'bg-green-50',
+  [MachineType.baler]: 'bg-amber-50',
+  [MachineType.truck]: 'bg-green-50',
 };
 
 const TYPE_PREFIX: Record<MachineType, string> = {
   [MachineType.loader]: 'L',
-  [MachineType.baler]:  'B',
-  [MachineType.truck]:  'T',
+  [MachineType.baler]: 'B',
+  [MachineType.truck]: 'T',
 };
 
 const FUEL_LABELS: Record<FuelType, string> = {
-  [FuelType.diesel]:   'Diesel',
+  [FuelType.diesel]: 'Diesel',
   [FuelType.gasoline]: 'Benzină',
   [FuelType.electric]: 'Electric',
 };
@@ -118,55 +120,55 @@ interface MachineFormState {
 
 function blankForm(machines: Machine[], type: MachineType = MachineType.loader): MachineFormState {
   return {
-    machineType:        type,
-    internalCode:       nextCode(machines, type),
-    registrationPlate:  '',
-    make:               '',
-    model:              '',
-    year:               String(new Date().getFullYear()),
-    fuelType:           FuelType.diesel,
+    machineType: type,
+    internalCode: nextCode(machines, type),
+    registrationPlate: '',
+    make: '',
+    model: '',
+    year: String(new Date().getFullYear()),
+    fuelType: FuelType.diesel,
     tankCapacityLiters: '',
-    maxBaleCount:       '',
-    ownerCompanyName:   '',
+    maxBaleCount: '',
+    ownerCompanyName: '',
     ownerCompanyAddress: '',
-    ownerCompanyCui:    '',
-    isActive:           true,
+    ownerCompanyCui: '',
+    isActive: true,
   };
 }
 
 function formToPayload(f: MachineFormState): Partial<Machine> {
   return {
-    machineType:          f.machineType,
-    internalCode:         f.internalCode.trim(),
-    registrationPlate:    f.registrationPlate.trim(),
-    make:                 f.make.trim(),
-    model:                f.model.trim(),
-    year:                 Number(f.year),
-    fuelType:             f.fuelType,
-    tankCapacityLiters:   Number(f.tankCapacityLiters),
-    maxBaleCount:         f.maxBaleCount ? Number(f.maxBaleCount) : null,
-    ownerCompanyName:     f.ownerCompanyName.trim()    || null,
-    ownerCompanyAddress:  f.ownerCompanyAddress.trim() || null,
-    ownerCompanyCui:      f.ownerCompanyCui.trim()     || null,
-    isActive:             f.isActive,
+    machineType: f.machineType,
+    internalCode: f.internalCode.trim(),
+    registrationPlate: f.registrationPlate.trim(),
+    make: f.make.trim(),
+    model: f.model.trim(),
+    year: Number(f.year),
+    fuelType: f.fuelType,
+    tankCapacityLiters: Number(f.tankCapacityLiters),
+    maxBaleCount: f.maxBaleCount ? Number(f.maxBaleCount) : null,
+    ownerCompanyName: f.ownerCompanyName.trim() || null,
+    ownerCompanyAddress: f.ownerCompanyAddress.trim() || null,
+    ownerCompanyCui: f.ownerCompanyCui.trim() || null,
+    isActive: f.isActive,
   } as Partial<Machine>;
 }
 
 function machineToForm(m: Machine): MachineFormState {
   return {
-    machineType:         m.machineType,
-    internalCode:        m.internalCode ?? '',
-    registrationPlate:   m.registrationPlate ?? '',
-    make:                m.make,
-    model:               m.model,
-    year:                String(m.year),
-    fuelType:            m.fuelType,
-    tankCapacityLiters:  m.tankCapacityLiters != null ? String(m.tankCapacityLiters) : '',
-    maxBaleCount:        m.maxBaleCount  != null ? String(m.maxBaleCount)  : '',
-    ownerCompanyName:    m.ownerCompanyName    ?? '',
+    machineType: m.machineType,
+    internalCode: m.internalCode ?? '',
+    registrationPlate: m.registrationPlate ?? '',
+    make: m.make,
+    model: m.model,
+    year: String(m.year),
+    fuelType: m.fuelType,
+    tankCapacityLiters: m.tankCapacityLiters != null ? String(m.tankCapacityLiters) : '',
+    maxBaleCount: m.maxBaleCount != null ? String(m.maxBaleCount) : '',
+    ownerCompanyName: m.ownerCompanyName ?? '',
     ownerCompanyAddress: m.ownerCompanyAddress ?? '',
-    ownerCompanyCui:     m.ownerCompanyCui     ?? '',
-    isActive:            m.isActive,
+    ownerCompanyCui: m.ownerCompanyCui ?? '',
+    isActive: m.isActive,
   };
 }
 
@@ -180,13 +182,20 @@ const selectCls =
   'rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 ' +
   'focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
 
-function Field({ label, children, required }: {
-  label: string; children: React.ReactNode; required?: boolean;
+function Field({
+  label,
+  children,
+  required,
+}: {
+  label: string;
+  children: React.ReactNode;
+  required?: boolean;
 }) {
   return (
     <div>
       <label className="block text-sm font-medium text-neutral-700">
-        {label}{required && <span className="ml-0.5 text-red-500">*</span>}
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
       </label>
       <div className="mt-1">{children}</div>
     </div>
@@ -201,19 +210,27 @@ function ErrorBanner({ message }: { message?: string }) {
   );
 }
 
-function ModalFooter({ onCancel, submitLabel, disabled }: {
-  onCancel: () => void; submitLabel: string; disabled: boolean;
+function ModalFooter({
+  onCancel,
+  submitLabel,
+  disabled,
+}: {
+  onCancel: () => void;
+  submitLabel: string;
+  disabled: boolean;
 }) {
   return (
     <div className="flex justify-end gap-3 pt-2">
       <button
-        type="button" onClick={onCancel}
+        type="button"
+        onClick={onCancel}
         className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
       >
         Anulează
       </button>
       <button
-        type="submit" disabled={disabled}
+        type="submit"
+        disabled={disabled}
         className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-60"
       >
         {submitLabel}
@@ -222,8 +239,14 @@ function ModalFooter({ onCancel, submitLabel, disabled }: {
   );
 }
 
-function ModalShell({ title, onClose, children }: {
-  title: string; onClose: () => void; children: React.ReactNode;
+function ModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
@@ -233,7 +256,10 @@ function ModalShell({ title, onClose, children }: {
             <Wrench className="h-5 w-5 text-primary" />
             {title}
           </h2>
-          <button onClick={onClose} className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100">
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100"
+          >
             <XCircle className="h-5 w-5" />
           </button>
         </div>
@@ -270,38 +296,49 @@ function MachineForm({
           className={inputCls}
         >
           {Object.values(MachineType).map((t) => (
-            <option key={t} value={t}>{TYPE_LABEL_SINGULAR[t]}</option>
+            <option key={t} value={t}>
+              {TYPE_LABEL_SINGULAR[t]}
+            </option>
           ))}
         </select>
       </Field>
 
       <Field label="Cod intern" required>
         <input
-          required value={form.internalCode}
+          required
+          value={form.internalCode}
           onChange={(e) => onChange({ internalCode: e.target.value })}
-          className={inputCls} placeholder="ex. L-01"
+          className={inputCls}
+          placeholder="ex. L-01"
         />
       </Field>
 
       <Field label="Marcă" required>
         <input
-          required value={form.make}
+          required
+          value={form.make}
           onChange={(e) => onChange({ make: e.target.value })}
-          className={inputCls} placeholder="JCB"
+          className={inputCls}
+          placeholder="JCB"
         />
       </Field>
 
       <Field label="Model" required>
         <input
-          required value={form.model}
+          required
+          value={form.model}
           onChange={(e) => onChange({ model: e.target.value })}
-          className={inputCls} placeholder="531-70"
+          className={inputCls}
+          placeholder="531-70"
         />
       </Field>
 
       <Field label="An fabricație" required>
         <input
-          required type="number" min={1990} max={2100}
+          required
+          type="number"
+          min={1990}
+          max={2100}
           value={form.year}
           onChange={(e) => onChange({ year: e.target.value })}
           className={inputCls}
@@ -310,9 +347,11 @@ function MachineForm({
 
       <Field label="Nr. înmatriculare" required>
         <input
-          required value={form.registrationPlate}
+          required
+          value={form.registrationPlate}
           onChange={(e) => onChange({ registrationPlate: e.target.value })}
-          className={inputCls} placeholder="OS-1234-AB"
+          className={inputCls}
+          placeholder="OS-1234-AB"
         />
       </Field>
 
@@ -323,24 +362,34 @@ function MachineForm({
           className={inputCls}
         >
           {Object.values(FuelType).map((f) => (
-            <option key={f} value={f}>{FUEL_LABELS[f]}</option>
+            <option key={f} value={f}>
+              {FUEL_LABELS[f]}
+            </option>
           ))}
         </select>
       </Field>
 
       <Field label="Capacitate rezervor (L)" required>
         <input
-          required type="number" min={0}
+          required
+          type="number"
+          min={0}
           value={form.tankCapacityLiters}
           onChange={(e) => onChange({ tankCapacityLiters: e.target.value })}
-          className={inputCls} placeholder="120"
+          className={inputCls}
+          placeholder="120"
         />
       </Field>
 
       <Field label="Nr. max. baloți">
-        <input type="number" min={0} value={form.maxBaleCount}
+        <input
+          type="number"
+          min={0}
+          value={form.maxBaleCount}
           onChange={(e) => onChange({ maxBaleCount: e.target.value })}
-          className={inputCls} placeholder="—" />
+          className={inputCls}
+          placeholder="—"
+        />
       </Field>
 
       <div className="col-span-2 border-t border-neutral-200 pt-2">
@@ -349,22 +398,31 @@ function MachineForm({
         </p>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Denumire firmă">
-            <input value={form.ownerCompanyName}
+            <input
+              value={form.ownerCompanyName}
               onChange={(e) => onChange({ ownerCompanyName: e.target.value })}
-              className={inputCls} placeholder="SC Agro SRL" />
+              className={inputCls}
+              placeholder="SC Agro SRL"
+            />
           </Field>
 
           <Field label="CUI firmă">
-            <input value={form.ownerCompanyCui}
+            <input
+              value={form.ownerCompanyCui}
               onChange={(e) => onChange({ ownerCompanyCui: e.target.value })}
-              className={inputCls} placeholder="RO12345678" />
+              className={inputCls}
+              placeholder="RO12345678"
+            />
           </Field>
 
           <div className="col-span-2">
             <Field label="Adresă firmă">
-              <input value={form.ownerCompanyAddress}
+              <input
+                value={form.ownerCompanyAddress}
                 onChange={(e) => onChange({ ownerCompanyAddress: e.target.value })}
-                className={inputCls} placeholder="Str. Exemplu nr. 1, Timișoara" />
+                className={inputCls}
+                placeholder="Str. Exemplu nr. 1, Timișoara"
+              />
             </Field>
           </div>
         </div>
@@ -373,11 +431,15 @@ function MachineForm({
       {showIsActive && (
         <div className="col-span-2 flex items-center gap-2">
           <input
-            id="isActive" type="checkbox" checked={form.isActive}
+            id="isActive"
+            type="checkbox"
+            checked={form.isActive}
             onChange={(e) => onChange({ isActive: e.target.checked })}
             className="accent-primary"
           />
-          <label htmlFor="isActive" className="text-sm text-neutral-700">Mașină activă</label>
+          <label htmlFor="isActive" className="text-sm text-neutral-700">
+            Mașină activă
+          </label>
         </div>
       )}
     </div>
@@ -386,7 +448,10 @@ function MachineForm({
 
 // ── Create modal ──────────────────────────────────────────────────────────
 
-function CreateMachineModal({ onClose, allMachines }: {
+function CreateMachineModal({
+  onClose,
+  allMachines,
+}: {
   onClose: () => void;
   allMachines: Machine[];
 }) {
@@ -435,10 +500,7 @@ function EditMachineModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    update.mutate(
-      { id: machine.id, data: formToPayload(form) },
-      { onSuccess: () => onClose() },
-    );
+    update.mutate({ id: machine.id, data: formToPayload(form) }, { onSuccess: () => onClose() });
   };
 
   const code = machine.internalCode || machine.id.slice(0, 8);
@@ -505,13 +567,17 @@ function DeleteDialog({
           </div>
           <div className="flex justify-end gap-3">
             <button
-              type="button" onClick={onCancel} disabled={isPending}
+              type="button"
+              onClick={onCancel}
+              disabled={isPending}
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
             >
               Anulează
             </button>
             <button
-              type="button" onClick={onConfirm} disabled={isPending}
+              type="button"
+              onClick={onConfirm}
+              disabled={isPending}
               className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
             >
               <Trash2 className="h-4 w-4" />
@@ -528,7 +594,9 @@ function DeleteDialog({
 
 function TypeBadge({ type }: { type: MachineType }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_COLORS[type]}`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_COLORS[type]}`}
+    >
       <MachineTypeIcon type={type} className="h-3 w-3" />
       {TYPE_LABEL_SINGULAR[type]}
     </span>
@@ -537,8 +605,16 @@ function TypeBadge({ type }: { type: MachineType }) {
 
 // ── Stat card ─────────────────────────────────────────────────────────────
 
-function StatCard({ icon, value, label, color }: {
-  icon: React.ReactNode; value: number | string; label: string; color: string;
+function StatCard({
+  icon,
+  value,
+  label,
+  color,
+}: {
+  icon: React.ReactNode;
+  value: number | string;
+  label: string;
+  color: string;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
@@ -557,7 +633,7 @@ function useDeleteMachine() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.delete<void>(`/api/v1/machines/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['machines'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.machines.all }),
   });
 }
 
@@ -572,19 +648,19 @@ export default function MachinesPage() {
 
   const { setVariant: setIconVariant, getVariant } = useMachineIconPrefs();
 
-  const [showCreate,   setShowCreate]   = useState(false);
-  const [editTarget,   setEditTarget]   = useState<Machine | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<Machine | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Machine | null>(null);
-  const [search,       setSearch]       = useState('');
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [fuelFilter,   setFuelFilter]   = useState<FuelType | 'all'>('all');
+  const [fuelFilter, setFuelFilter] = useState<FuelType | 'all'>('all');
 
   // ── Stats (unfiltered) ───────────────────────────────────────────────
   const totalMachines = machines.length;
   const activeMachines = machines.filter((m) => m.isActive).length;
-  const truckCount  = machines.filter((m) => m.machineType === MachineType.truck).length;
+  const truckCount = machines.filter((m) => m.machineType === MachineType.truck).length;
   const loaderCount = machines.filter((m) => m.machineType === MachineType.loader).length;
-  const balerCount  = machines.filter((m) => m.machineType === MachineType.baler).length;
+  const balerCount = machines.filter((m) => m.machineType === MachineType.baler).length;
 
   // ── Filtered + grouped ───────────────────────────────────────────────
   const groups = useMemo(() => {
@@ -597,8 +673,7 @@ export default function MachinesPage() {
         m.model.toLowerCase().includes(q) ||
         (m.registrationPlate ?? '').toLowerCase().includes(q);
       const matchStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'active' ? m.isActive : !m.isActive);
+        statusFilter === 'all' || (statusFilter === 'active' ? m.isActive : !m.isActive);
       const matchFuel = fuelFilter === 'all' || m.fuelType === fuelFilter;
       return matchSearch && matchStatus && matchFuel;
     });
@@ -640,31 +715,31 @@ export default function MachinesPage() {
         <StatCard
           icon={<Wrench className="h-4 w-4 text-neutral-600" />}
           value={totalMachines}
-          label="Total mașini"
+          label={t('machines.statTotal')}
           color="bg-neutral-100"
         />
         <StatCard
           icon={<CheckCircle2 className="h-4 w-4 text-green-600" />}
           value={activeMachines}
-          label="Active"
+          label={t('machines.statActive')}
           color="bg-green-50"
         />
         <StatCard
           icon={<Truck className="h-4 w-4 text-green-600" />}
           value={truckCount}
-          label="Camioane"
+          label={t('machines.statTrucks')}
           color={TYPE_STAT_COLORS[MachineType.truck]}
         />
         <StatCard
           icon={<Wrench className="h-4 w-4 text-blue-600" />}
           value={loaderCount}
-          label="Încărcătoare"
+          label={t('machines.statLoaders')}
           color={TYPE_STAT_COLORS[MachineType.loader]}
         />
         <StatCard
           icon={<Wheat className="h-4 w-4 text-amber-600" />}
           value={balerCount}
-          label="Balotiere"
+          label={t('machines.statBalers')}
           color={TYPE_STAT_COLORS[MachineType.baler]}
         />
       </div>
@@ -694,7 +769,9 @@ export default function MachinesPage() {
         >
           <option value="all">Orice combustibil</option>
           {Object.values(FuelType).map((f) => (
-            <option key={f} value={f}>{FUEL_LABELS[f]}</option>
+            <option key={f} value={f}>
+              {FUEL_LABELS[f]}
+            </option>
           ))}
         </select>
         <span className="ml-auto text-xs text-neutral-400">
@@ -718,13 +795,13 @@ export default function MachinesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">
-                <th className="px-4 py-3">Cod</th>
-                <th className="px-4 py-3">Tip</th>
-                <th className="px-4 py-3">Marcă / Model</th>
-                <th className="px-4 py-3">Nr. înmatriculare</th>
-                <th className="px-4 py-3">Combustibil</th>
-                <th className="px-4 py-3">Stare</th>
-                <th className="px-4 py-3 text-right">Acțiuni</th>
+                <th className="px-4 py-3">{t('machines.colCode')}</th>
+                <th className="px-4 py-3">{t('machines.colType')}</th>
+                <th className="px-4 py-3">{t('machines.colMakeModel')}</th>
+                <th className="px-4 py-3">{t('machines.colPlate')}</th>
+                <th className="px-4 py-3">{t('machines.colFuel')}</th>
+                <th className="px-4 py-3">{t('machines.colStatus')}</th>
+                <th className="px-4 py-3 text-right">{t('machines.colActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
@@ -760,28 +837,32 @@ export default function MachinesPage() {
 
                   {/* Group rows */}
                   {group.machines.map((m) => (
-                    <tr key={m.id} className={`hover:bg-neutral-50 ${!m.isActive ? 'opacity-50' : ''}`}>
+                    <tr
+                      key={m.id}
+                      className={`hover:bg-neutral-50 ${!m.isActive ? 'opacity-50' : ''}`}
+                    >
                       <td className="px-4 py-3 font-mono text-sm font-semibold text-neutral-800">
                         {m.internalCode}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           {/* Current icon preview for this machine */}
-                          {MACHINE_ICONS[m.machineType as MapMachineType] && (() => {
-                            const def = MACHINE_ICONS[m.machineType as MapMachineType];
-                            const v = getVariant(m.id);
-                            return (
-                              <button
-                                type="button"
-                                title="Schimbă iconița (deschide editare)"
-                                onClick={() => setEditTarget(m)}
-                                style={{ background: def.color }}
-                                className="h-6 w-6 shrink-0 rounded-md flex items-center justify-center hover:scale-110 transition-transform"
-                                // Safe: SVG string is a compile-time constant from machine-icons.ts
-                                dangerouslySetInnerHTML={{ __html: def.variants[v] }}
-                              />
-                            );
-                          })()}
+                          {MACHINE_ICONS[m.machineType as MapMachineType] &&
+                            (() => {
+                              const def = MACHINE_ICONS[m.machineType as MapMachineType];
+                              const v = getVariant(m.id);
+                              return (
+                                <button
+                                  type="button"
+                                  title="Schimbă iconița (deschide editare)"
+                                  onClick={() => setEditTarget(m)}
+                                  style={{ background: def.color }}
+                                  className="h-6 w-6 shrink-0 rounded-md flex items-center justify-center hover:scale-110 transition-transform"
+                                  // Safe: SVG string is a compile-time constant from machine-icons.ts
+                                  dangerouslySetInnerHTML={{ __html: def.variants[v] }}
+                                />
+                              );
+                            })()}
                           <TypeBadge type={m.machineType} />
                         </div>
                       </td>

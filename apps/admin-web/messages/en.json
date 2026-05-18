@@ -492,7 +492,19 @@
     "backToTrips": "Back to trips",
     "loadingDetail": "Loading trip details…",
     "loadError": "Failed to load trip. The backend may not be running.",
-    "notFound": "Trip not found."
+    "notFound": "Trip not found.",
+    "status": {
+      "planned": "Planned",
+      "loading": "Loading",
+      "loaded": "Loaded",
+      "in_transit": "In Transit",
+      "arrived": "Arrived",
+      "delivering": "Delivering",
+      "delivered": "Delivered",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "disputed": "Disputed"
+    }
   },
   "documents": {
     "title": "Documents",
@@ -581,11 +593,41 @@
     }
   },
   "alerts": {
-    "title": "Alerts"
+    "title": "Alerts",
+    "noAlerts": "No alerts to show",
+    "acknowledge": "Acknowledge",
+    "acknowledging": "Acknowledging...",
+    "acknowledged": "Acknowledged",
+    "category": {
+      "fraud": "Fraud",
+      "anomaly": "Anomaly",
+      "maintenance": "Maintenance",
+      "safety": "Safety",
+      "system": "System"
+    },
+    "severity": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "tripLink": "Trip"
   },
   "machines": {
     "title": "Machines",
-    "newMachine": "New machine"
+    "newMachine": "New machine",
+    "statTotal": "Total machines",
+    "statActive": "Active",
+    "statTrucks": "Trucks",
+    "statLoaders": "Loaders",
+    "statBalers": "Balers",
+    "colCode": "Code",
+    "colType": "Type",
+    "colMakeModel": "Make / Model",
+    "colPlate": "Registration no.",
+    "colFuel": "Fuel",
+    "colStatus": "Status",
+    "colActions": "Actions"
   },
   "deposits": {
     "title": "Deposits",
@@ -641,6 +683,102 @@
   },
   "accounts": {
     "title": "Accounts",
-    "newUser": "New user"
+    "newUser": "New user",
+    "statTotal": "Total accounts",
+    "statActive": "Active accounts",
+    "statAdmins": "Administrators",
+    "statOperators": "Operators",
+    "role": {
+      "super_admin": "Super Admin",
+      "admin": "Admin",
+      "dispatcher": "Dispatcher",
+      "baler_operator": "Baler Operator",
+      "loader_operator": "Loader Operator",
+      "driver": "Driver",
+      "geofence_maker": "Geofence Maker"
+    },
+    "machineType": {
+      "loader": "Loader",
+      "baler": "Baler",
+      "truck": "Truck"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "loading": "Loading data...",
+    "balesToday": "Bales today",
+    "tripsCompleted": "{{count}} completed trips",
+    "activeTrips": "Active trips",
+    "tripsToday": "{{count}} total today",
+    "activeMachines": "Active machines",
+    "newAlerts": "New alerts",
+    "recentTrips": "Recent trips",
+    "noRecentTrips": "No recent trips"
+  },
+  "common_table": {
+    "noData": "No data available"
+  },
+  "trips_status": {
+    "planned": "Planned",
+    "loading": "Loading",
+    "loaded": "Loaded",
+    "in_transit": "In Transit",
+    "arrived": "Arrived",
+    "delivering": "Delivering",
+    "delivered": "Delivered",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "disputed": "Disputed"
+  },
+  "trip_detail": {
+    "trip": "Trip",
+    "transport": "Transport",
+    "route": "Route",
+    "load": "Load",
+    "weight": "Weight",
+    "timestamps": "Timestamps",
+    "delivery": "Delivery",
+    "truck": "Truck",
+    "driver": "Driver",
+    "loader": "Loader",
+    "loaderOperator": "Loader Operator",
+    "sourceParcel": "Source Parcel",
+    "destination": "Destination",
+    "destinationAddress": "Destination Address",
+    "departureOdometer": "Departure Odometer",
+    "arrivalOdometer": "Arrival Odometer",
+    "odometerDistance": "Odometer Distance",
+    "gpsDistance": "GPS Distance",
+    "bales": "Bales",
+    "loadingStarted": "Loading Started",
+    "loadingCompleted": "Loading Completed",
+    "grossWeight": "Gross Weight",
+    "tareWeight": "Tare Weight",
+    "netWeight": "Net Weight",
+    "weightTicket": "Weight Ticket #",
+    "departed": "Departed",
+    "arrived": "Arrived",
+    "delivered": "Delivered",
+    "completed": "Completed",
+    "created": "Created",
+    "receiver": "Receiver",
+    "notes": "Notes"
+  },
+  "trips_list": {
+    "colTripNumber": "Trip #",
+    "colStatus": "Status",
+    "colTruck": "Truck",
+    "colDriver": "Driver",
+    "colSource": "Source",
+    "colDestination": "Destination",
+    "colBales": "Bales",
+    "colCreated": "Created"
+  },
+  "realtime": {
+    "disconnected": "Live updates disconnected",
+    "reconnect": "Reconnect"
+  },
+  "auth": {
+    "loading": "Verifying session..."
   }
 }

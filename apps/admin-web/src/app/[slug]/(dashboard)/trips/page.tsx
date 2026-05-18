@@ -2,27 +2,31 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useMemo } from 'react';
-import { Search } from 'lucide-react';
 import { useTrips } from '@strawboss/api';
 import { TripStatus } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TripList, type TripRow } from '@/components/features/trips/TripList';
+import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
 
 export default function TripsPage() {
   const { t } = useI18n();
+
+  // W26: use trips.status.* i18n keys instead of raw string replace
   const statusOptions = useMemo(
     () => [
       { value: '', label: t('trips.allStatuses') },
       ...Object.values(TripStatus).map((s) => ({
         value: s,
-        label: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        label: t(`trips.status.${s}`),
       })),
     ],
     [t],
   );
+
+  // W12: search state fed through SearchInput (debounce is inside SearchInput)
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -49,17 +53,12 @@ export default function TripsPage() {
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-          <input
-            type="text"
-            placeholder="Search trip number..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-md border border-neutral-200 bg-white py-1.5 pl-8 pr-3 text-sm text-neutral-700 placeholder:text-neutral-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </div>
+        {/* Search — SearchInput has 300 ms debounce built-in */}
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t('trips.searchPlaceholder')}
+        />
 
         {/* Status filter */}
         <select
@@ -79,28 +78,22 @@ export default function TripsPage() {
           type="date"
           value={dateFrom}
           onChange={(e) => setDateFrom(e.target.value)}
-          placeholder="From"
           className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
-        <span className="text-xs text-neutral-400">to</span>
+        <span className="text-xs text-neutral-400">{t('fuelLogs.dateTo').toLowerCase()}</span>
         <input
           type="date"
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
-          placeholder="To"
           className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
 
       {/* Trip list */}
       {tripsQuery.isLoading ? (
-        <div className="py-8 text-center text-sm text-neutral-400">
-          Loading trips...
-        </div>
+        <div className="py-8 text-center text-sm text-neutral-400">{t('common.loading')}</div>
       ) : tripsQuery.isError ? (
-        <div className="py-8 text-center text-sm text-red-500">
-          Failed to load trips. The backend may not be running.
-        </div>
+        <div className="py-8 text-center text-sm text-red-500">{t('trips.loadError')}</div>
       ) : (
         <TripList trips={trips} />
       )}

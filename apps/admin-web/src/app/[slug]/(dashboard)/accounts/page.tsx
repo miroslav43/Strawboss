@@ -53,47 +53,49 @@ const GROUP_ORDER: UserRole[] = [
   UserRole.geofence_maker,
 ];
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  [UserRole.super_admin]:     'Super Admin',
-  [UserRole.admin]:           'Admin',
-  [UserRole.dispatcher]:      'Dispatcher',
-  [UserRole.baler_operator]:  'Baler Operator',
-  [UserRole.loader_operator]: 'Loader Operator',
-  [UserRole.driver]:          'Driver',
-  [UserRole.geofence_maker]:  'Geofence Maker',
+/** i18n key suffixes for each role — resolved via t('accounts.role.<key>') */
+const ROLE_LABEL_KEYS: Record<UserRole, string> = {
+  [UserRole.super_admin]: 'accounts.role.super_admin',
+  [UserRole.admin]: 'accounts.role.admin',
+  [UserRole.dispatcher]: 'accounts.role.dispatcher',
+  [UserRole.baler_operator]: 'accounts.role.baler_operator',
+  [UserRole.loader_operator]: 'accounts.role.loader_operator',
+  [UserRole.driver]: 'accounts.role.driver',
+  [UserRole.geofence_maker]: 'accounts.role.geofence_maker',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
-  [UserRole.super_admin]:     'bg-red-100 text-red-700',
-  [UserRole.admin]:           'bg-purple-100 text-purple-700',
-  [UserRole.dispatcher]:      'bg-indigo-100 text-indigo-700',
-  [UserRole.baler_operator]:  'bg-amber-100 text-amber-700',
+  [UserRole.super_admin]: 'bg-red-100 text-red-700',
+  [UserRole.admin]: 'bg-purple-100 text-purple-700',
+  [UserRole.dispatcher]: 'bg-indigo-100 text-indigo-700',
+  [UserRole.baler_operator]: 'bg-amber-100 text-amber-700',
   [UserRole.loader_operator]: 'bg-blue-100 text-blue-700',
-  [UserRole.driver]:          'bg-green-100 text-green-700',
-  [UserRole.geofence_maker]:  'bg-teal-100 text-teal-700',
+  [UserRole.driver]: 'bg-green-100 text-green-700',
+  [UserRole.geofence_maker]: 'bg-teal-100 text-teal-700',
 };
 
 const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
-  [UserRole.super_admin]:     <Shield className="h-3.5 w-3.5 text-red-500" />,
-  [UserRole.admin]:           <Shield className="h-3.5 w-3.5 text-purple-500" />,
-  [UserRole.dispatcher]:      <Shield className="h-3.5 w-3.5 text-indigo-500" />,
-  [UserRole.baler_operator]:  <span className="text-sm">*</span>,
+  [UserRole.super_admin]: <Shield className="h-3.5 w-3.5 text-red-500" />,
+  [UserRole.admin]: <Shield className="h-3.5 w-3.5 text-purple-500" />,
+  [UserRole.dispatcher]: <Shield className="h-3.5 w-3.5 text-indigo-500" />,
+  [UserRole.baler_operator]: <span className="text-sm">*</span>,
   [UserRole.loader_operator]: <span className="text-sm">#</span>,
-  [UserRole.driver]:          <span className="text-sm">&gt;</span>,
-  [UserRole.geofence_maker]:  <span className="text-sm">&#9676;</span>,
+  [UserRole.driver]: <span className="text-sm">&gt;</span>,
+  [UserRole.geofence_maker]: <span className="text-sm">&#9676;</span>,
 };
 
 /** Machine type required for each operator role. */
 const ROLE_TO_MACHINE_TYPE: Partial<Record<UserRole, MachineType>> = {
   [UserRole.loader_operator]: MachineType.loader,
-  [UserRole.baler_operator]:  MachineType.baler,
-  [UserRole.driver]:          MachineType.truck,
+  [UserRole.baler_operator]: MachineType.baler,
+  [UserRole.driver]: MachineType.truck,
 };
 
-const MACHINE_TYPE_LABELS: Record<MachineType, string> = {
-  [MachineType.loader]: 'Incarcator',
-  [MachineType.baler]:  'Balotiera',
-  [MachineType.truck]:  'Camion',
+/** i18n key for each machine type — resolved via t('accounts.machineType.<key>') */
+const MACHINE_TYPE_LABEL_KEYS: Record<MachineType, string> = {
+  [MachineType.loader]: 'accounts.machineType.loader',
+  [MachineType.baler]: 'accounts.machineType.baler',
+  [MachineType.truck]: 'accounts.machineType.truck',
 };
 
 // ── Shared UI atoms ───────────────────────────────────────────────────────
@@ -125,7 +127,8 @@ function FormField({
   return (
     <div>
       <label className="block text-sm font-medium text-neutral-700">
-        {label}{required && <span className="ml-0.5 text-red-500">*</span>}
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
       </label>
       <div className="mt-1">{children}</div>
     </div>
@@ -133,10 +136,13 @@ function FormField({
 }
 
 function RoleBadge({ role }: { role: string }) {
+  const { t } = useI18n();
   const safeRole = (role in UserRole ? role : 'driver') as UserRole;
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS[safeRole]}`}>
-      {ROLE_LABELS[safeRole] ?? role}
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS[safeRole]}`}
+    >
+      {t(ROLE_LABEL_KEYS[safeRole]) ?? role}
     </span>
   );
 }
@@ -160,12 +166,12 @@ function deriveCredentials(fullName: string): DerivedCredentials | null {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length !== 2) return null;
   const [rawSurname, rawFirstname] = parts;
-  const surname   = slugifyClient(rawSurname);
+  const surname = slugifyClient(rawSurname);
   const firstname = slugifyClient(rawFirstname);
   if (!surname || !firstname) return null;
   return {
     username: firstname[0] + surname,
-    email:    `${firstname}.${surname}@nortiauno.ro`,
+    email: `${firstname}.${surname}@nortiauno.ro`,
   };
 }
 
@@ -197,7 +203,7 @@ function StatCard({
 
 function PinCell({ pin }: { pin: string | null }) {
   const [visible, setVisible] = useState(false);
-  const [copied, setCopied]   = useState(false);
+  const [copied, setCopied] = useState(false);
 
   if (!pin) return <span className="text-xs text-neutral-300">—</span>;
 
@@ -220,7 +226,9 @@ function PinCell({ pin }: { pin: string | null }) {
       </button>
       <button
         type="button"
-        onClick={() => { void handleCopy(); }}
+        onClick={() => {
+          void handleCopy();
+        }}
         className="rounded p-0.5 text-neutral-400 hover:text-neutral-600"
         title="Copiază PIN"
       >
@@ -255,7 +263,8 @@ function DeactivateDialog({
             <div>
               <p className="font-semibold text-neutral-800">Dezactivezi contul?</p>
               <p className="text-sm text-neutral-500">
-                <span className="font-medium">{user.fullName}</span> nu va mai putea accesa aplicatia.
+                <span className="font-medium">{user.fullName}</span> nu va mai putea accesa
+                aplicatia.
               </p>
             </div>
           </div>
@@ -282,17 +291,18 @@ function DeactivateDialog({
 // ── Create account modal ──────────────────────────────────────────────────
 
 interface CreateForm {
-  fullName:         string;
-  role:             UserRole;
-  phone:            string;
+  fullName: string;
+  role: UserRole;
+  phone: string;
   usernameOverride: string;
 }
 
 function CreateAccountModal({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<CreateForm>({
-    fullName:         '',
-    role:             UserRole.driver,
-    phone:            '',
+    fullName: '',
+    role: UserRole.driver,
+    phone: '',
     usernameOverride: '',
   });
 
@@ -305,8 +315,8 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     const payload: CreateUserPayload = {
       fullName: form.fullName,
-      role:     form.role,
-      phone:    form.phone || null,
+      role: form.role,
+      phone: form.phone || null,
       ...(form.usernameOverride ? { usernameOverride: form.usernameOverride } : {}),
     };
     createUser.mutate(payload, { onSuccess: () => onClose() });
@@ -317,7 +327,10 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-neutral-800">Cont nou</h2>
-          <button onClick={onClose} className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100">
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100"
+          >
             <XCircle className="h-5 w-5" />
           </button>
         </div>
@@ -328,7 +341,9 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
               required
               type="text"
               value={form.fullName}
-              onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value, usernameOverride: '' }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, fullName: e.target.value, usernameOverride: '' }))
+              }
               className={inputCls}
               placeholder="Maletici Miroslav"
             />
@@ -346,7 +361,9 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
               className={inputCls}
             >
               {ALL_ROLES.map((role) => (
-                <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+                <option key={role} value={role}>
+                  {t(ROLE_LABEL_KEYS[role])}
+                </option>
               ))}
             </select>
           </FormField>
@@ -394,7 +411,9 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
                 {/* Email — read-only */}
                 <div className="flex items-center gap-2">
                   <span className="w-24 shrink-0 text-xs text-neutral-500">Email:</span>
-                  <span className="font-mono text-sm text-neutral-600 truncate">{preview.email}</span>
+                  <span className="font-mono text-sm text-neutral-600 truncate">
+                    {preview.email}
+                  </span>
                 </div>
 
                 {/* PIN — shown as ???? since it is server-generated */}
@@ -415,7 +434,9 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
           )}
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className={cancelBtnCls}>Anuleaza</button>
+            <button type="button" onClick={onClose} className={cancelBtnCls}>
+              Anuleaza
+            </button>
             <button
               type="submit"
               disabled={createUser.isPending || !preview}
@@ -435,19 +456,20 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
 
 interface EditForm {
   username: string;
-  pin:      string;
+  pin: string;
   fullName: string;
-  role:     UserRole;
-  phone:    string;
+  role: UserRole;
+  phone: string;
 }
 
 function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<EditForm>({
     username: user.username ?? '',
-    pin:      user.pin      ?? '',
+    pin: user.pin ?? '',
     fullName: user.fullName,
-    role:     user.role,
-    phone:    user.phone    ?? '',
+    role: user.role,
+    phone: user.phone ?? '',
   });
   const [showPin, setShowPin] = useState(false);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
@@ -458,8 +480,8 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     e.preventDefault();
     const data: UpdateUserPayload = {
       fullName: form.fullName || undefined,
-      role:     form.role,
-      phone:    form.phone || null,
+      role: form.role,
+      phone: form.phone || null,
     };
     if (form.username && form.username !== user.username) {
       data.username = form.username;
@@ -513,7 +535,10 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
           <h2 className="text-base font-semibold text-neutral-800">
             Editeaza — <span className="text-primary">{user.fullName}</span>
           </h2>
-          <button onClick={onClose} className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100">
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100"
+          >
             <XCircle className="h-5 w-5" />
           </button>
         </div>
@@ -544,7 +569,9 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
 
           <FormField label="Nume complet" required>
             <input
-              required type="text" value={form.fullName}
+              required
+              type="text"
+              value={form.fullName}
               onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
               className={inputCls}
             />
@@ -557,16 +584,20 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
               className={inputCls}
             >
               {ALL_ROLES.map((role) => (
-                <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+                <option key={role} value={role}>
+                  {t(ROLE_LABEL_KEYS[role])}
+                </option>
               ))}
             </select>
           </FormField>
 
           <FormField label="Telefon (optional)">
             <input
-              type="tel" value={form.phone}
+              type="tel"
+              value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-              className={inputCls} placeholder="+40 7xx xxx xxx"
+              className={inputCls}
+              placeholder="+40 7xx xxx xxx"
             />
           </FormField>
 
@@ -577,7 +608,8 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
 
             <FormField label="Username">
               <input
-                type="text" value={form.username}
+                type="text"
+                value={form.username}
                 onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
                 className={inputCls}
                 placeholder="mmaletici"
@@ -618,7 +650,9 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
           )}
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className={cancelBtnCls}>Anuleaza</button>
+            <button type="button" onClick={onClose} className={cancelBtnCls}>
+              Anuleaza
+            </button>
             <button type="submit" disabled={updateUser.isPending} className={submitBtnCls}>
               {updateUser.isPending ? 'Se salveaza...' : 'Salveaza'}
             </button>
@@ -631,13 +665,8 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
 
 // ── Assign machine modal ──────────────────────────────────────────────────
 
-function AssignMachineModal({
-  user,
-  onClose,
-}: {
-  user: User;
-  onClose: () => void;
-}) {
+function AssignMachineModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const { t } = useI18n();
   const requiredType = ROLE_TO_MACHINE_TYPE[user.role];
   const { data: machinesRaw } = useMachines(apiClient);
 
@@ -666,7 +695,10 @@ function AssignMachineModal({
           <h2 className="text-base font-semibold text-neutral-800">
             Asigneaza masina — <span className="text-primary">{user.fullName}</span>
           </h2>
-          <button onClick={onClose} className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100">
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100"
+          >
             <XCircle className="h-5 w-5" />
           </button>
         </div>
@@ -674,25 +706,31 @@ function AssignMachineModal({
         <div className="p-6">
           {requiredType && (
             <p className="mb-4 text-sm text-neutral-500">
-              Rolul <strong>{ROLE_LABELS[user.role]}</strong> poate fi legat doar de o masina de tip{' '}
-              <strong>{MACHINE_TYPE_LABELS[requiredType]}</strong>.
+              Rolul <strong>{t(ROLE_LABEL_KEYS[user.role])}</strong> poate fi legat doar de o mașină
+              de tip <strong>{t(MACHINE_TYPE_LABEL_KEYS[requiredType])}</strong>.
             </p>
           )}
 
           {compatible.length === 0 ? (
             <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              Nicio masina compatibila activa.{' '}
+              Nicio mașină compatibilă activă.{' '}
               {requiredType
-                ? `Adauga o masina de tip "${MACHINE_TYPE_LABELS[requiredType]}" in pagina Masini.`
-                : 'Adauga masini in pagina Masini.'}
+                ? `Adaugă o mașină de tip "${t(MACHINE_TYPE_LABEL_KEYS[requiredType])}" în pagina Mașini.`
+                : 'Adaugă mașini în pagina Mașini.'}
             </p>
           ) : (
             <div className="space-y-2">
-              <label className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
-                selected === null ? 'border-primary bg-primary/5' : 'border-neutral-200 hover:bg-neutral-50'
-              }`}>
+              <label
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                  selected === null
+                    ? 'border-primary bg-primary/5'
+                    : 'border-neutral-200 hover:bg-neutral-50'
+                }`}
+              >
                 <input
-                  type="radio" name="machine" value=""
+                  type="radio"
+                  name="machine"
+                  value=""
                   checked={selected === null}
                   onChange={() => setSelected(null)}
                   className="accent-primary"
@@ -710,7 +748,9 @@ function AssignMachineModal({
                   }`}
                 >
                   <input
-                    type="radio" name="machine" value={m.id}
+                    type="radio"
+                    name="machine"
+                    value={m.id}
                     checked={selected === m.id}
                     onChange={() => setSelected(m.id)}
                     className="accent-primary"
@@ -718,7 +758,8 @@ function AssignMachineModal({
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-neutral-800">{m.internalCode}</p>
                     <p className="text-xs text-neutral-400">
-                      {m.make} {m.model}{m.registrationPlate ? ` · ${m.registrationPlate}` : ''}
+                      {m.make} {m.model}
+                      {m.registrationPlate ? ` · ${m.registrationPlate}` : ''}
                     </p>
                   </div>
                 </label>
@@ -734,7 +775,9 @@ function AssignMachineModal({
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-4">
-          <button type="button" onClick={onClose} className={cancelBtnCls}>Anuleaza</button>
+          <button type="button" onClick={onClose} className={cancelBtnCls}>
+            Anuleaza
+          </button>
           <button
             onClick={handleSave}
             disabled={updateUser.isPending || compatible.length === 0}
@@ -753,16 +796,16 @@ function AssignMachineModal({
 
 export default function AccountsPage() {
   const { t } = useI18n();
-  const [showCreate,       setShowCreate]       = useState(false);
-  const [editTarget,       setEditTarget]       = useState<User | null>(null);
-  const [assignTarget,     setAssignTarget]     = useState<User | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [assignTarget, setAssignTarget] = useState<User | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
-  const [search,           setSearch]           = useState('');
-  const [statusFilter,     setStatusFilter]     = useState<'all' | 'active' | 'inactive'>('all');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   const { data: usersRaw, isLoading, isError } = useAdminUsers(apiClient);
-  const { data: machinesRaw }                  = useMachines(apiClient);
-  const deactivate                             = useDeactivateUser(apiClient);
+  const { data: machinesRaw } = useMachines(apiClient);
+  const deactivate = useDeactivateUser(apiClient);
 
   const users: User[] = Array.isArray(usersRaw)
     ? (usersRaw as User[])
@@ -775,9 +818,9 @@ export default function AccountsPage() {
   const machineMap = new Map(allMachines.map((m) => [m.id, m]));
 
   // ── Stats (unfiltered) ───────────────────────────────────────────────
-  const totalUsers    = users.length;
-  const activeUsers   = users.filter((u) => u.isActive).length;
-  const adminCount    = users.filter((u) => u.role === UserRole.admin).length;
+  const totalUsers = users.length;
+  const activeUsers = users.filter((u) => u.isActive).length;
+  const adminCount = users.filter((u) => u.role === UserRole.admin).length;
   const operatorCount = users.filter((u) => u.role !== UserRole.admin).length;
 
   // ── Filtered + grouped ───────────────────────────────────────────────
@@ -791,8 +834,7 @@ export default function AccountsPage() {
         (u.username ?? '').toLowerCase().includes(q) ||
         (u.phone ?? '').includes(q);
       const matchStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'active' ? u.isActive : !u.isActive);
+        statusFilter === 'all' || (statusFilter === 'active' ? u.isActive : !u.isActive);
       return matchSearch && matchStatus;
     });
 
@@ -833,25 +875,25 @@ export default function AccountsPage() {
         <StatCard
           icon={<Users className="h-4 w-4 text-neutral-600" />}
           value={totalUsers}
-          label="Total conturi"
+          label={t('accounts.statTotal')}
           color="bg-neutral-100"
         />
         <StatCard
           icon={<CheckCircle2 className="h-4 w-4 text-green-600" />}
           value={activeUsers}
-          label="Conturi active"
+          label={t('accounts.statActive')}
           color="bg-green-50"
         />
         <StatCard
           icon={<Shield className="h-4 w-4 text-purple-600" />}
           value={adminCount}
-          label="Administratori"
+          label={t('accounts.statAdmins')}
           color="bg-purple-50"
         />
         <StatCard
           icon={<UserCheck className="h-4 w-4 text-blue-600" />}
           value={operatorCount}
-          label="Operatori"
+          label={t('accounts.statOperators')}
           color="bg-blue-50"
         />
       </div>
@@ -925,7 +967,7 @@ export default function AccountsPage() {
                       <div className="flex items-center gap-2">
                         {ROLE_GROUP_ICONS[group.role]}
                         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                          {ROLE_LABELS[group.role]}
+                          {t(ROLE_LABEL_KEYS[group.role])}
                         </span>
                         <span className="rounded-full bg-neutral-200 px-1.5 py-0.5 text-xs text-neutral-600">
                           {group.users.length}
@@ -939,10 +981,17 @@ export default function AccountsPage() {
                     const assignedMachine = user.assignedMachineId
                       ? machineMap.get(user.assignedMachineId)
                       : null;
-                    const canAssign = user.role !== UserRole.admin && user.role !== UserRole.dispatcher && user.role !== UserRole.geofence_maker && user.isActive;
+                    const canAssign =
+                      user.role !== UserRole.admin &&
+                      user.role !== UserRole.dispatcher &&
+                      user.role !== UserRole.geofence_maker &&
+                      user.isActive;
 
                     return (
-                      <tr key={user.id} className={`hover:bg-neutral-50 ${!user.isActive ? 'opacity-50' : ''}`}>
+                      <tr
+                        key={user.id}
+                        className={`hover:bg-neutral-50 ${!user.isActive ? 'opacity-50' : ''}`}
+                      >
                         <td className="px-4 py-3 font-medium text-neutral-800">
                           <div className="flex items-center gap-2">
                             <UserAvatar user={user} size="sm" />
@@ -954,7 +1003,9 @@ export default function AccountsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <span className="font-mono text-sm text-neutral-600">
-                            {user.username ?? <span className="text-neutral-300 not-italic italic">—</span>}
+                            {user.username ?? (
+                              <span className="text-neutral-300 not-italic italic">—</span>
+                            )}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-neutral-500 text-xs">{user.email}</td>
@@ -1034,8 +1085,8 @@ export default function AccountsPage() {
       )}
 
       {/* Modals */}
-      {showCreate  && <CreateAccountModal onClose={() => setShowCreate(false)} />}
-      {editTarget  && <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} />}
+      {showCreate && <CreateAccountModal onClose={() => setShowCreate(false)} />}
+      {editTarget && <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} />}
       {assignTarget && (
         <AssignMachineModal user={assignTarget} onClose={() => setAssignTarget(null)} />
       )}

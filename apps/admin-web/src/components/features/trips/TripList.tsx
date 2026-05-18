@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { apiClient } from '@/lib/api';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * Shape of a single trip row as returned by `GET /api/v1/trips`.
@@ -37,11 +38,7 @@ export interface TripRow extends Record<string, unknown> {
 }
 
 function truckLabel(row: TripRow): string {
-  return (
-    row.truck_plate ||
-    row.truck_code ||
-    (row.truck_id ? `${row.truck_id.slice(0, 8)}…` : '—')
-  );
+  return row.truck_plate || row.truck_code || (row.truck_id ? `${row.truck_id.slice(0, 8)}…` : '—');
 }
 
 function driverLabel(row: TripRow): string {
@@ -57,69 +54,63 @@ function sourceLabel(row: TripRow): string {
   );
 }
 
-const baseColumns: Column<TripRow>[] = [
-  {
-    key: 'trip_number',
-    header: 'Trip #',
-    sortable: true,
-    render: (row) => (
-      <span className="font-medium text-neutral-800">
-        {row.trip_number ?? '—'}
-      </span>
-    ),
-  },
-  {
-    key: 'status',
-    header: 'Status',
-    render: (row) => <StatusBadge status={row.status} />,
-  },
-  {
-    key: 'truck_plate',
-    header: 'Truck',
-    render: (row) => (
-      <span className="text-xs text-neutral-700">{truckLabel(row)}</span>
-    ),
-  },
-  {
-    key: 'driver_name',
-    header: 'Driver',
-    render: (row) => (
-      <span className="text-xs text-neutral-700">{driverLabel(row)}</span>
-    ),
-  },
-  {
-    key: 'source_parcel_name',
-    header: 'Source',
-    render: (row) => (
-      <span className="text-xs text-neutral-700">{sourceLabel(row)}</span>
-    ),
-  },
-  {
-    key: 'destination_name',
-    header: 'Destination',
-    render: (row) => (
-      <span className="text-xs text-neutral-700">
-        {row.destination_name ?? 'TBD'}
-      </span>
-    ),
-  },
-  {
-    key: 'bale_count',
-    header: 'Bales',
-    sortable: true,
-    render: (row) => <span>{Number(row.bale_count ?? 0)}</span>,
-  },
-  {
-    key: 'created_at',
-    header: 'Created',
-    sortable: true,
-    render: (row) => (
-      <span className="text-xs text-neutral-500">
-        {new Date(String(row.created_at)).toLocaleDateString()}
-      </span>
-    ),
-  },
-];
+type TFunc = (key: string) => string;
+
+function buildColumns(t: TFunc): Column<TripRow>[] {
+  return [
+    {
+      key: 'trip_number',
+      header: t('trips_list.colTripNumber'),
+      sortable: true,
+      render: (row) => (
+        <span className="font-medium text-neutral-800">{row.trip_number ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: t('trips_list.colStatus'),
+      render: (row) => <StatusBadge status={row.status} />,
+    },
+    {
+      key: 'truck_plate',
+      header: t('trips_list.colTruck'),
+      render: (row) => <span className="text-xs text-neutral-700">{truckLabel(row)}</span>,
+    },
+    {
+      key: 'driver_name',
+      header: t('trips_list.colDriver'),
+      render: (row) => <span className="text-xs text-neutral-700">{driverLabel(row)}</span>,
+    },
+    {
+      key: 'source_parcel_name',
+      header: t('trips_list.colSource'),
+      render: (row) => <span className="text-xs text-neutral-700">{sourceLabel(row)}</span>,
+    },
+    {
+      key: 'destination_name',
+      header: t('trips_list.colDestination'),
+      render: (row) => (
+        <span className="text-xs text-neutral-700">{row.destination_name ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'bale_count',
+      header: t('trips_list.colBales'),
+      sortable: true,
+      render: (row) => <span>{Number(row.bale_count ?? 0)}</span>,
+    },
+    {
+      key: 'created_at',
+      header: t('trips_list.colCreated'),
+      sortable: true,
+      render: (row) => (
+        <span className="text-xs text-neutral-500">
+          {new Date(String(row.created_at)).toLocaleDateString()}
+        </span>
+      ),
+    },
+  ];
+}
 
 interface TripListProps {
   trips: TripRow[];
@@ -128,10 +119,11 @@ interface TripListProps {
 export function TripList({ trips }: TripListProps) {
   const router = useRouter();
   const slug = useOrgSlug();
+  const { t } = useI18n();
   const deleteTrip = useDeleteTrip(apiClient);
 
   const columns: Column<TripRow>[] = [
-    ...baseColumns,
+    ...buildColumns(t),
     {
       key: 'actions',
       header: '',
@@ -142,10 +134,7 @@ export function TripList({ trips }: TripListProps) {
             // Don't trigger row click when tapping trash
             e.stopPropagation();
             const label = row.trip_number ?? row.id.slice(0, 8);
-            if (
-              typeof window !== 'undefined' &&
-              window.confirm(`Șterge cursa ${label}?`)
-            ) {
+            if (typeof window !== 'undefined' && window.confirm(`Șterge cursa ${label}?`)) {
               deleteTrip.mutate(row.id);
             }
           }}

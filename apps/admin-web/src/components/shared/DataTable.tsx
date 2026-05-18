@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 export interface Column<T> {
   key: string;
@@ -16,6 +17,8 @@ interface DataTableProps<T> {
   data: T[];
   keyExtractor: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** Optional override for the empty-state message. Falls back to i18n key `common_table.noData`. */
+  emptyMessage?: string;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -25,7 +28,9 @@ export function DataTable<T extends Record<string, unknown>>({
   data,
   keyExtractor,
   onRowClick,
+  emptyMessage,
 }: DataTableProps<T>) {
+  const { t } = useI18n();
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
 
@@ -41,17 +46,19 @@ export function DataTable<T extends Record<string, unknown>>({
     [sortKey],
   );
 
-  const sortedData = sortKey
-    ? [...data].sort((a, b) => {
-        const aVal = a[sortKey];
-        const bVal = b[sortKey];
-        if (aVal == null && bVal == null) return 0;
-        if (aVal == null) return 1;
-        if (bVal == null) return -1;
-        const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        return sortDir === 'asc' ? cmp : -cmp;
-      })
-    : data;
+  // W22: memoize the sort so it only re-runs when data, sortKey, or sortDir change.
+  const sortedData = useMemo(() => {
+    if (!sortKey) return data;
+    return [...data].sort((a, b) => {
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+      const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [data, sortKey, sortDir]);
 
   return (
     <div className="overflow-x-auto rounded-lg border border-neutral-200">
@@ -69,11 +76,13 @@ export function DataTable<T extends Record<string, unknown>>({
               >
                 <div className="flex items-center gap-1">
                   {col.header}
-                  {col.sortable && sortKey === col.key && (
-                    sortDir === 'asc'
-                      ? <ChevronUp className="h-3 w-3" />
-                      : <ChevronDown className="h-3 w-3" />
-                  )}
+                  {col.sortable &&
+                    sortKey === col.key &&
+                    (sortDir === 'asc' ? (
+                      <ChevronUp className="h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3" />
+                    ))}
                 </div>
               </th>
             ))}
@@ -98,11 +107,8 @@ export function DataTable<T extends Record<string, unknown>>({
           ))}
           {sortedData.length === 0 && (
             <tr>
-              <td
-                colSpan={columns.length}
-                className="px-4 py-8 text-center text-neutral-400"
-              >
-                No data available
+              <td colSpan={columns.length} className="px-4 py-8 text-center text-neutral-400">
+                {emptyMessage ?? t('common_table.noData')}
               </td>
             </tr>
           )}

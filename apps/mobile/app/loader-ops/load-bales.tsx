@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Animated,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -81,14 +82,15 @@ export default function LoadBalesScreen() {
       setSnapshotParcelId(parcel.parcelId);
       setSnapshotParcelName(parcel.parcelName);
     }
-  // Only run when parcel resolves; snapshot is intentionally frozen after first capture.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Only run when parcel resolves; snapshot is intentionally frozen after first capture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parcel.status, parcel.parcelId]);
 
   const [baleCountStr, setBaleCountStr] = useState('');
   const [saving, setSaving] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
   const [saved, setSaved] = useState(false);
+  const successScale = useRef(new Animated.Value(0.5)).current;
 
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
   const gpsRef = useRef<{ lon: number; lat: number } | null>(null);
@@ -155,91 +157,94 @@ export default function LoadBalesScreen() {
 
   const fullTruckCount = truck?.maxBaleCount ?? FULL_TRUCK_FALLBACK;
 
-  const handleSignatureConfirm = useCallback(async (loaderSignature: string) => {
-    if (!userId || !assignedMachineId || !truckId) return;
-    // Use the snapshot parcelId — immune to background refresh changing the active parcel.
-    if (!snapshotParcelId) return;
+  const handleSignatureConfirm = useCallback(
+    async (loaderSignature: string) => {
+      if (!userId || !assignedMachineId || !truckId) return;
+      // Use the snapshot parcelId — immune to background refresh changing the active parcel.
+      if (!snapshotParcelId) return;
 
-    setSaving(true);
-    try {
-      const idempotencyKey = generateUuid();
-      const gps = gpsRef.current;
-      const payload = {
-        truckId,
-        loaderMachineId: assignedMachineId,
-        parcelId: snapshotParcelId,
-        baleCount,
-        gpsLat: gps?.lat,
-        gpsLon: gps?.lon,
-        idempotencyKey,
-        loaderSignature,
-      };
+      setSaving(true);
+      try {
+        const idempotencyKey = generateUuid();
+        const gps = gpsRef.current;
+        const payload = {
+          truckId,
+          loaderMachineId: assignedMachineId,
+          parcelId: snapshotParcelId,
+          baleCount,
+          gpsLat: gps?.lat,
+          gpsLon: gps?.lon,
+          idempotencyKey,
+          loaderSignature,
+        };
 
-      if (isOnline) {
-        const result = await mobileApiClient.post<RegisterLoadResponse>(
-          '/api/v1/trips/register-load',
-          payload,
+        if (isOnline) {
+          const result = await mobileApiClient.post<RegisterLoadResponse>(
+            '/api/v1/trips/register-load',
+            payload,
+          );
+          await applyOptimistic({
+            baleLoadId: result.baleLoadId,
+            tripId: result.trip.id,
+            truckId,
+            parcelId: snapshotParcelId,
+            loaderMachineId: assignedMachineId,
+            operatorId: userId,
+            baleCount,
+            gps,
+          });
+          mobileLogger.flow('Loader register-load: online success', {
+            tripId: result.trip.id,
+            baleLoadId: result.baleLoadId,
+            created: result.created,
+          });
+        } else {
+          const localTripId = `local:${truckId}`;
+          await applyOptimistic({
+            baleLoadId: idempotencyKey,
+            tripId: localTripId,
+            truckId,
+            parcelId: snapshotParcelId,
+            loaderMachineId: assignedMachineId,
+            operatorId: userId,
+            baleCount,
+            gps,
+          });
+          const db = await getDatabase();
+          const queue = new SyncQueueRepo(db);
+          await queue.enqueue({
+            entityType: 'register_load',
+            entityId: idempotencyKey,
+            action: 'register',
+            payload,
+            idempotencyKey: `register_load_${idempotencyKey}`,
+          });
+          mobileLogger.flow('Loader register-load: offline queued', { idempotencyKey });
+        }
+
+        void queryClient.invalidateQueries({ queryKey: ['bale-loads', 'my', userId] });
+        void queryClient.invalidateQueries({ queryKey: ['trips-to-load', userId] });
+        void queryClient.invalidateQueries({ queryKey: ['trips', 'active'] });
+        void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(userId) });
+
+        setSaved(true);
+        setTimeout(() => router.back(), 2500);
+      } catch (err) {
+        mobileLogger.error('Loader register-load failed', {
+          truckId,
+          err: err instanceof Error ? { message: err.message } : err,
+        });
+        setShowSignature(false);
+        Alert.alert(
+          'Eroare',
+          err instanceof Error ? err.message : 'Nu s-a putut înregistra încărcarea.',
         );
-        await applyOptimistic({
-          baleLoadId: result.baleLoadId,
-          tripId: result.trip.id,
-          truckId,
-          parcelId: snapshotParcelId,
-          loaderMachineId: assignedMachineId,
-          operatorId: userId,
-          baleCount,
-          gps,
-        });
-        mobileLogger.flow('Loader register-load: online success', {
-          tripId: result.trip.id,
-          baleLoadId: result.baleLoadId,
-          created: result.created,
-        });
-      } else {
-        const localTripId = `local:${truckId}`;
-        await applyOptimistic({
-          baleLoadId: idempotencyKey,
-          tripId: localTripId,
-          truckId,
-          parcelId: snapshotParcelId,
-          loaderMachineId: assignedMachineId,
-          operatorId: userId,
-          baleCount,
-          gps,
-        });
-        const db = await getDatabase();
-        const queue = new SyncQueueRepo(db);
-        await queue.enqueue({
-          entityType: 'register_load',
-          entityId: idempotencyKey,
-          action: 'register',
-          payload,
-          idempotencyKey: `register_load_${idempotencyKey}`,
-        });
-        mobileLogger.flow('Loader register-load: offline queued', { idempotencyKey });
+      } finally {
+        setSaving(false);
       }
-
-      void queryClient.invalidateQueries({ queryKey: ['bale-loads', 'my', userId] });
-      void queryClient.invalidateQueries({ queryKey: ['trips-to-load', userId] });
-      void queryClient.invalidateQueries({ queryKey: ['trips', 'active'] });
-      void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(userId) });
-
-      setSaved(true);
-      setTimeout(() => router.back(), 1500);
-    } catch (err) {
-      mobileLogger.error('Loader register-load failed', {
-        truckId,
-        err: err instanceof Error ? { message: err.message } : err,
-      });
-      setShowSignature(false);
-      Alert.alert(
-        'Eroare',
-        err instanceof Error ? err.message : 'Nu s-a putut înregistra încărcarea.',
-      );
-    } finally {
-      setSaving(false);
-    }
-  }, [userId, assignedMachineId, truckId, snapshotParcelId, baleCount, isOnline, queryClient]);
+    },
+    [userId, assignedMachineId, truckId, snapshotParcelId, baleCount, isOnline, queryClient],
+  );
 
   const truckLabel = truck
     ? (truck.registrationPlate ?? truck.internalCode)
@@ -248,11 +253,19 @@ export default function LoadBalesScreen() {
       : 'Camion necunoscut';
 
   if (saved) {
+    Animated.spring(successScale, {
+      toValue: 1,
+      friction: 6,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
     return (
       <View style={styles.outerContainer}>
         <ScreenHeader title="Camion plin" />
         <View style={[styles.body, styles.centered]}>
-          <MaterialCommunityIcons name="check-circle" size={72} color={colors.primary} />
+          <Animated.View style={{ transform: [{ scale: successScale }] }}>
+            <MaterialCommunityIcons name="check-circle" size={72} color={colors.primary} />
+          </Animated.View>
           <Text style={styles.successText}>Înregistrat!</Text>
           <Text style={styles.successSubtext}>Cursa a fost generată pentru șofer.</Text>
         </View>
@@ -277,11 +290,7 @@ export default function LoadBalesScreen() {
             onSave={(sig) => void handleSignatureConfirm(sig)}
           />
           {saving ? null : (
-            <BigButton
-              title="Renunță"
-              onPress={() => setShowSignature(false)}
-              variant="outline"
-            />
+            <BigButton title="Renunță" onPress={() => setShowSignature(false)} variant="outline" />
           )}
         </View>
       </View>
@@ -467,7 +476,12 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
   },
-  parcelLabel: { fontSize: 11, fontWeight: '600', color: colors.tertiary, textTransform: 'uppercase' },
+  parcelLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.tertiary,
+    textTransform: 'uppercase',
+  },
   parcelName: { fontSize: 16, fontWeight: '700', color: '#0A5C36', marginTop: 2 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: '#5D4037', marginTop: 4 },
   fullTruckButton: {

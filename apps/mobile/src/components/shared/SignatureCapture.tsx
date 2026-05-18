@@ -31,13 +31,13 @@ export function SignatureCapture({ onSave, label }: SignatureCaptureProps) {
       <View style={styles.actions}>
         <View style={styles.actionButton}>
           <BigButton
-            title="Clear"
+            title="Șterge"
             variant="outline"
             onPress={() => ref.current?.clearSignature()}
           />
         </View>
         <View style={styles.actionButton}>
-          <BigButton title="Confirm" onPress={() => ref.current?.readSignature()} />
+          <BigButton title="Confirmă" onPress={() => ref.current?.readSignature()} />
         </View>
       </View>
     </View>

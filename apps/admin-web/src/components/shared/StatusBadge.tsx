@@ -1,5 +1,8 @@
+'use client';
+
 import { TripStatus } from '@strawboss/types';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 const statusStyles: Record<TripStatus, string> = {
   [TripStatus.planned]: 'bg-neutral-100 text-neutral-700',
@@ -14,25 +17,13 @@ const statusStyles: Record<TripStatus, string> = {
   [TripStatus.disputed]: 'bg-red-100 text-red-800',
 };
 
-const statusLabels: Record<TripStatus, string> = {
-  [TripStatus.planned]: 'Planned',
-  [TripStatus.loading]: 'Loading',
-  [TripStatus.loaded]: 'Loaded',
-  [TripStatus.in_transit]: 'In Transit',
-  [TripStatus.arrived]: 'Arrived',
-  [TripStatus.delivering]: 'Delivering',
-  [TripStatus.delivered]: 'Delivered',
-  [TripStatus.completed]: 'Completed',
-  [TripStatus.cancelled]: 'Cancelled',
-  [TripStatus.disputed]: 'Disputed',
-};
-
 interface StatusBadgeProps {
   status: TripStatus;
   className?: string;
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
+  const { t } = useI18n();
   return (
     <span
       className={cn(
@@ -41,7 +32,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         className,
       )}
     >
-      {statusLabels[status]}
+      {t(`trips.status.${status}`)}
     </span>
   );
 }
