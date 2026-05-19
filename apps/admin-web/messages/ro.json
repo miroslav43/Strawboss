@@ -826,12 +826,5 @@
     "colDestination": "Destinație",
     "colBales": "Baloți",
     "colCreated": "Creat"
-  },
-  "realtime": {
-    "disconnected": "Actualizări live deconectate",
-    "reconnect": "Reconectează"
-  },
-  "auth": {
-    "loading": "Se verifică sesiunea..."
   }
 }
