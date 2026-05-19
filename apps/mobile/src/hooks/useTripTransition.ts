@@ -114,7 +114,10 @@ export function useTripTransition(): UseTripTransitionResult {
       const idempotencyKey = `trip_transition_${tripId}_${transition}`;
       const payload: TripTransitionPayload = { transition, tripId, body };
 
-      await syncQueueRepo.enqueue({
+      // enqueueOrUpdate: if a previous attempt failed with bad data (e.g. wrong
+      // weight), an operator-side retry should supersede the queued payload
+      // instead of colliding with the UNIQUE idempotency_key constraint.
+      await syncQueueRepo.enqueueOrUpdate({
         entityType: 'trip_transition',
         entityId: tripId,
         action: 'update',

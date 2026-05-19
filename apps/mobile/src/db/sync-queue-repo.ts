@@ -69,6 +69,33 @@ export class SyncQueueRepo {
     );
   }
 
+  /**
+   * Enqueue or update a row keyed by idempotency_key, allowing the caller to
+   * supersede a failed/pending entry with a corrected payload. Required for
+   * trip transitions where a retry with fixed data (e.g. corrected weight)
+   * would otherwise hit the UNIQUE constraint and leave the queue stuck on
+   * the bad value. Rows already in_flight or completed are left untouched.
+   */
+  async enqueueOrUpdate(entry: EnqueueInput): Promise<void> {
+    const existing = await this.db.getFirstAsync<{ id: number; status: string }>(
+      `SELECT id, status FROM sync_queue WHERE idempotency_key = ?`,
+      [entry.idempotencyKey],
+    );
+    if (!existing) {
+      await this.enqueue(entry);
+      return;
+    }
+    if (existing.status === 'pending' || existing.status === 'failed') {
+      await this.db.runAsync(
+        `UPDATE sync_queue
+           SET payload = ?, status = 'pending', last_error = NULL,
+               retry_count = 0, next_retry_at = NULL, updated_at = datetime('now')
+         WHERE id = ?`,
+        [JSON.stringify(entry.payload), existing.id],
+      );
+    }
+  }
+
   async dequeue(limit: number = 50): Promise<SyncQueueEntry[]> {
     return this.db.getAllAsync<SyncQueueEntry>(
       `SELECT * FROM sync_queue
