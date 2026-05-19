@@ -603,6 +603,13 @@
     "acknowledge": "Acknowledge",
     "acknowledging": "Acknowledging...",
     "acknowledged": "Acknowledged",
+    "loading": "Loading alerts...",
+    "loadError": "Failed to load alerts. The backend may not be running.",
+    "filterAllCategories": "All Categories",
+    "filterAllSeverities": "All Severities",
+    "filterAll": "All",
+    "filterUnacknowledged": "Unacknowledged",
+    "filterAcknowledged": "Acknowledged",
     "category": {
       "fraud": "Fraud",
       "anomaly": "Anomaly",

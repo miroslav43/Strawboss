@@ -603,6 +603,13 @@
     "acknowledge": "Confirmă",
     "acknowledging": "Se confirmă...",
     "acknowledged": "Confirmată",
+    "loading": "Se încarcă alertele...",
+    "loadError": "Eroare la încărcarea alertelor. Backend-ul ar putea să nu ruleze.",
+    "filterAllCategories": "Toate categoriile",
+    "filterAllSeverities": "Toate severitățile",
+    "filterAll": "Toate",
+    "filterUnacknowledged": "Neconfirmate",
+    "filterAcknowledged": "Confirmate",
     "category": {
       "fraud": "Fraudă",
       "anomaly": "Anomalie",
