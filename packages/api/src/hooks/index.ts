@@ -106,6 +106,13 @@ export {
 } from './use-admin-users.js';
 export type { CreateUserPayload, UpdateUserPayload } from './use-admin-users.js';
 
+export {
+  useSuperAdminUsers,
+  useCreateSuperAdminUser,
+  useUpdateSuperAdminUser,
+  useDeactivateSuperAdminUser,
+} from './use-super-admin-users.js';
+
 export { useMachineLocations } from './use-machine-locations.js';
 export { useRouteHistory } from './use-route-history.js';
 export {
