@@ -36,6 +36,7 @@ import {
   startBackgroundLocationTracking,
   stopBackgroundLocationTracking,
 } from '@/lib/location';
+import { checkMachineInactivity } from '@/lib/inactivity-alarm';
 import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/background-sync';
 import type { User } from '@strawboss/types';
 
@@ -473,6 +474,9 @@ export default function RootLayout() {
           void (async () => {
             await flushPendingLocationReports();
             await postCurrentLocationNow(assignedMachineId);
+            // FM-16: check inactivity after the location flush so the
+            // last-success timestamp is as fresh as possible before comparing.
+            await checkMachineInactivity(assignedMachineId);
           })();
         }
       }

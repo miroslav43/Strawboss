@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useDevModeStore } from '@/stores/dev-mode-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { OperatorStats } from '@/components/features/stats/OperatorStats';
+import { TodayActivityCard } from '@/components/features/activity/TodayActivityCard';
 import { AvatarPicker } from '@/components/shared/AvatarPicker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSync } from '@/hooks/useSync';
@@ -301,6 +302,8 @@ export function ProfileScreen() {
             <OperatorStats operatorId={profile.id} role={profile.role} />
           </View>
         ) : null}
+
+        {showStats && profile ? <TodayActivityCard operatorId={profile.id} /> : null}
 
         {/* FM-8: High-contrast (sunlight) mode toggle */}
         <View style={styles.card}>

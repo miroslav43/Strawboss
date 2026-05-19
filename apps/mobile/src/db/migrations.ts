@@ -15,6 +15,8 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync(TABLES.bale_loads);
   await db.execAsync(TABLES.task_assignments);
   await db.execAsync(TABLES.notifications);
+  // FM-13 — offline parcel geometry cache (idempotent via IF NOT EXISTS)
+  await db.execAsync(TABLES.parcels);
 
   // Additive column migrations for users upgrading from older builds. SQLite
   // does not support `ADD COLUMN IF NOT EXISTS`, so we swallow the duplicate
@@ -84,6 +86,8 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync(
     `CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read)`,
   );
+  // FM-13 — parcel geometry cache indexes
+  await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_parcels_cached_at ON parcels(cached_at)`);
 }
 
 async function addColumnIfMissing(

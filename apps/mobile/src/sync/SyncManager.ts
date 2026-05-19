@@ -8,6 +8,7 @@ import { FuelLogsRepo, type LocalFuelLog } from '../db/fuel-logs-repo';
 import { ConsumableLogsRepo, type LocalConsumableLog } from '../db/consumable-logs-repo';
 import { BaleLoadsRepo, type LocalBaleLoad } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo, type LocalTaskAssignment } from '../db/task-assignments-repo';
+import { ParcelsRepo, type LocalParcel } from '../db/parcels-repo';
 import { pushMutations } from './push';
 import { pullUpdates } from './pull';
 import { mergeRecords } from './conflict';
@@ -44,6 +45,7 @@ export class SyncManager {
     private consumableLogsRepo?: ConsumableLogsRepo,
     private baleLoadsRepo?: BaleLoadsRepo,
     private taskAssignmentsRepo?: TaskAssignmentsRepo,
+    private parcelsRepo?: ParcelsRepo,
   ) {}
 
   /**
@@ -210,6 +212,9 @@ export class SyncManager {
       consumable_logs: 0,
       bale_loads: 0,
       task_assignments: 0,
+      // FM-13: request parcel geometry updates on every pull (no server_version
+      // column on parcels table — always send 0 to get all assigned parcels)
+      parcels: 0,
     };
 
     try {
@@ -393,6 +398,27 @@ export class SyncManager {
           server_version: update.serverVersion,
         } as unknown as LocalTaskAssignment);
       }
+    }
+
+    // FM-13 — cache parcel geometry received via pull for offline map rendering
+    if (update.table === 'parcels' && this.parcelsRepo && update.data) {
+      const d = update.data;
+      const centroid = d['centroid'] ?? d['centroid_json'] ?? null;
+      await this.parcelsRepo.upsert({
+        id: update.recordId,
+        name: String(d['name'] ?? ''),
+        code: String(d['code'] ?? ''),
+        area_hectares: typeof d['area_hectares'] === 'number' ? d['area_hectares'] : null,
+        municipality: typeof d['municipality'] === 'string' ? d['municipality'] : null,
+        harvest_status: typeof d['harvest_status'] === 'string' ? d['harvest_status'] : null,
+        centroid_json:
+          centroid !== null && centroid !== undefined ? JSON.stringify(centroid) : null,
+        geometry:
+          d['boundary'] !== null && d['boundary'] !== undefined
+            ? JSON.stringify(d['boundary'])
+            : null,
+        cached_at: new Date().toISOString(),
+      } as LocalParcel);
     }
   }
 

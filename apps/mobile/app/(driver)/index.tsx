@@ -14,6 +14,8 @@ import { TaskList } from '@/components/shared/TaskList';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
+import { TripProgress } from '@/components/shared/TripProgress';
+import { BigButton } from '@/components/ui/BigButton';
 import { useAuthStore } from '@/stores/auth-store';
 import { useMyTasks } from '@/hooks/useMyTasks';
 import { useNearbyLoaders } from '@/hooks/useNearbyLoaders';
@@ -58,6 +60,180 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   done: 'Finalizat',
 };
 
+// ---- FM-12: Active trip status ordering ------------------------------------
+// Trips in these statuses are considered "active". We rank them so the most
+// advanced / most actionable trip is shown first in the sticky widget.
+const ACTIVE_STATUSES = new Set([
+  'loading',
+  'loaded',
+  'in_transit',
+  'arrived',
+  'delivering',
+  'delivered',
+]);
+
+const STATUS_RANK: Record<string, number> = {
+  delivered: 6,
+  delivering: 5,
+  arrived: 4,
+  in_transit: 3,
+  loaded: 2,
+  loading: 1,
+};
+
+/**
+ * From a list of trips, pick the most relevant active trip to feature:
+ * highest status rank wins; ties broken by most-recently-updated.
+ */
+function pickFeaturedTrip(trips: LocalTrip[]): LocalTrip | null {
+  const active = trips.filter((t) => ACTIVE_STATUSES.has(t.status));
+  if (active.length === 0) return null;
+  return active.reduce((best, t) => {
+    const rankDiff = (STATUS_RANK[t.status] ?? 0) - (STATUS_RANK[best.status] ?? 0);
+    if (rankDiff > 0) return t;
+    if (rankDiff < 0) return best;
+    // Same rank — prefer most recently updated
+    return t.updated_at > best.updated_at ? t : best;
+  });
+}
+
+/** Returns the label for the next actionable button on the active trip widget. */
+function getActionLabel(status: string): string | null {
+  switch (status) {
+    case 'loaded':
+      return 'Pleacă';
+    case 'in_transit':
+      return 'Marchează sosire';
+    case 'arrived':
+      return 'Începe livrare';
+    case 'delivering':
+      return 'Confirmă livrare';
+    case 'delivered':
+      return 'Finalizează';
+    default:
+      return null;
+  }
+}
+
+// ---- FM-12: ActiveTripCard component ----------------------------------------
+
+interface ActiveTripCardProps {
+  trip: LocalTrip;
+  onPress: (trip: LocalTrip) => void;
+  themeColors: ReturnType<typeof useTheme>['colors'];
+}
+
+function ActiveTripCard({ trip, onPress, themeColors }: ActiveTripCardProps) {
+  const actionLabel = getActionLabel(trip.status);
+  const statusColor = STATUS_COLORS[trip.status] ?? '#5D4037';
+  const statusLabel = STATUS_LABELS[trip.status] ?? trip.status;
+
+  return (
+    <View style={[activeTripStyles.card, { backgroundColor: themeColors.white }]}>
+      {/* Header row */}
+      <View style={activeTripStyles.headerRow}>
+        <View style={activeTripStyles.headerLeft}>
+          <MaterialCommunityIcons name="truck-fast" size={16} color={colors.primary} />
+          <Text style={activeTripStyles.sectionLabel}>Cursa activă</Text>
+        </View>
+        <View style={[activeTripStyles.statusBadge, { backgroundColor: statusColor }]}>
+          <Text style={activeTripStyles.statusBadgeText}>{statusLabel}</Text>
+        </View>
+      </View>
+
+      {/* Trip number + destination */}
+      <View style={activeTripStyles.tripInfoRow}>
+        <Text style={activeTripStyles.tripNumber}>{trip.trip_number ?? 'Cursă'}</Text>
+        {trip.destination_name ? (
+          <View style={activeTripStyles.destinationRow}>
+            <MaterialCommunityIcons name="map-marker-outline" size={14} color="#5D4037" />
+            <Text style={activeTripStyles.destination} numberOfLines={1}>
+              {trip.destination_name}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* Bale count */}
+      <View style={activeTripStyles.metaRow}>
+        <MaterialCommunityIcons name="grain" size={13} color="#8D6E63" />
+        <Text style={activeTripStyles.metaText}>{trip.bale_count} baloți</Text>
+      </View>
+
+      {/* Trip progress bar */}
+      <TripProgress currentStatus={trip.status} />
+
+      {/* Action button — only shown when there is a clear next step */}
+      {actionLabel ? (
+        <BigButton title={actionLabel} onPress={() => onPress(trip)} variant="primary" />
+      ) : (
+        <TouchableOpacity
+          style={activeTripStyles.viewButton}
+          onPress={() => onPress(trip)}
+          activeOpacity={0.8}
+        >
+          <Text style={activeTripStyles.viewButtonText}>Vezi detalii</Text>
+          <MaterialCommunityIcons name="chevron-right" size={16} color={colors.primary} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+const activeTripStyles = StyleSheet.create({
+  card: {
+    borderRadius: radii.lg,
+    padding: 16,
+    gap: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.13,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statusBadge: {
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+  tripInfoRow: { gap: 4 },
+  tripNumber: { fontSize: 18, fontWeight: '700', color: '#111' },
+  destinationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  destination: { fontSize: 13, color: '#5D4037', flex: 1 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaText: { fontSize: 13, color: colors.textSecondary },
+  viewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+  },
+  viewButtonText: { fontSize: 14, fontWeight: '600', color: colors.primary },
+});
+
+// ---- Main screen ------------------------------------------------------------
+
 export default function DriverTripsScreen() {
   const { colors: themeColors } = useTheme();
   const userId = useAuthStore((s) => s.userId);
@@ -70,10 +246,14 @@ export default function DriverTripsScreen() {
 
   const activeTodayTask = useMemo(() => tasks.find((t) => t.status !== 'done'), [tasks]);
 
+  // Legacy activeTrip for the "Sarcina de azi" card navigation
   const activeTrip = useMemo(
     () => trips.find((t) => t.status !== 'completed' && t.status !== 'cancelled'),
     [trips],
   );
+
+  // FM-12: The most relevant active trip for the sticky widget
+  const featuredTrip = useMemo(() => pickFeaturedTrip(trips), [trips]);
 
   const loadTrips = useCallback(async () => {
     try {
@@ -104,7 +284,7 @@ export default function DriverTripsScreen() {
     setRefreshing(false);
   };
 
-  const handleTripPress = async (trip: LocalTrip) => {
+  const handleTripPress = useCallback(async (trip: LocalTrip) => {
     if (!trip.acknowledged_at) {
       try {
         const db = await getDatabase();
@@ -124,7 +304,7 @@ export default function DriverTripsScreen() {
     } else {
       router.push(`/trip/${trip.id}`);
     }
-  };
+  }, []);
 
   return (
     <View style={styles.outerContainer}>
@@ -153,7 +333,18 @@ export default function DriverTripsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListHeaderComponent={
             <View style={styles.headerCards}>
-              {/* Card 1 — Loadere din apropiere */}
+              {/* FM-12 — Sticky active trip widget, shown only when there is a
+                  genuinely active trip (loading/loaded/in_transit/arrived/delivering/delivered).
+                  Sits above all other header cards so it is always visible without scrolling. */}
+              {featuredTrip ? (
+                <ActiveTripCard
+                  trip={featuredTrip}
+                  onPress={(t) => void handleTripPress(t)}
+                  themeColors={themeColors}
+                />
+              ) : null}
+
+              {/* Card — Loadere din apropiere */}
               <View style={[styles.infoCard, { backgroundColor: themeColors.white }]}>
                 <View style={styles.infoCardHeader}>
                   <MaterialCommunityIcons name="excavator" size={18} color="#0A5C36" />
@@ -175,7 +366,7 @@ export default function DriverTripsScreen() {
                 )}
               </View>
 
-              {/* Card 2 — Sarcina de azi */}
+              {/* Card — Sarcina de azi */}
               {activeTodayTask ? (
                 <TouchableOpacity
                   style={[styles.infoCard, { backgroundColor: themeColors.white }]}

@@ -156,4 +156,21 @@ export const TABLES = {
     read_at INTEGER,
     created_at INTEGER NOT NULL
   )`,
+
+  // FM-13 — local parcel geometry cache for offline map rendering.
+  // Populated during pull sync from task_assignments that carry parcel data.
+  // `geometry` stores the GeoJSON boundary as a JSON string (TEXT).
+  // `harvest_status` mirrors the server field so the map can colour-code parcels.
+  // `cached_at` lets us expire stale geometry on next pull.
+  parcels: `CREATE TABLE IF NOT EXISTS parcels (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL,
+    area_hectares REAL,
+    municipality TEXT,
+    harvest_status TEXT,
+    centroid_json TEXT,
+    geometry TEXT,
+    cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
 } as const;
