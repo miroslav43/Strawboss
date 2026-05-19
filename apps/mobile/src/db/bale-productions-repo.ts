@@ -120,4 +120,28 @@ export class BaleProductionsRepo {
     );
     return result?.max_ver ?? 0;
   }
+
+  /**
+   * FM-4: Delete a locally-created record that has not yet been synced.
+   * Called during the undo window before the sync queue entry is dispatched.
+   */
+  async deleteLocal(id: string): Promise<void> {
+    await this.db.runAsync(`DELETE FROM bale_productions WHERE id = ?`, [id]);
+  }
+
+  /**
+   * FM-5: Find productions for a given parcel on a given date.
+   * Used for duplicate-detection before saving a new production entry.
+   */
+  async findByParcelAndDate(
+    parcelId: string,
+    productionDate: string,
+  ): Promise<LocalBaleProduction[]> {
+    return this.db.getAllAsync<LocalBaleProduction>(
+      `SELECT * FROM bale_productions
+       WHERE parcel_id = ? AND production_date = ?
+       ORDER BY created_at DESC`,
+      [parcelId, productionDate],
+    );
+  }
 }

@@ -220,4 +220,30 @@ export class SyncQueueRepo {
     const result = await this.db.runAsync(`DELETE FROM sync_queue`);
     return result.changes ?? 0;
   }
+
+  /**
+   * FM-4: Delete a sync queue entry only if it is still `pending` (not yet
+   * sent). Returns true if the row was found and deleted, false if it was
+   * already in_flight or completed (i.e. undo is no longer possible).
+   */
+  async deletePendingEntry(idempotencyKey: string): Promise<boolean> {
+    const result = await this.db.runAsync(
+      `DELETE FROM sync_queue
+       WHERE idempotency_key = ? AND status = 'pending'`,
+      [idempotencyKey],
+    );
+    return (result.changes ?? 0) > 0;
+  }
+
+  /**
+   * FM-4: Check whether a sync queue entry with the given idempotency key
+   * is still `pending` (not yet dispatched to the server).
+   */
+  async isEntryPending(idempotencyKey: string): Promise<boolean> {
+    const row = await this.db.getFirstAsync<{ status: string }>(
+      `SELECT status FROM sync_queue WHERE idempotency_key = ?`,
+      [idempotencyKey],
+    );
+    return row?.status === 'pending';
+  }
 }

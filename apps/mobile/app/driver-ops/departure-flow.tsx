@@ -15,6 +15,7 @@ import { BigButton } from '@/components/ui/BigButton';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { SignatureCapture } from '@/components/shared/SignatureCapture';
 import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
+import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
 import { mobileLogger } from '@/lib/logger';
 import { colors } from '@strawboss/ui-tokens';
 import { useTripTransition } from '@/hooks/useTripTransition';
@@ -30,6 +31,9 @@ export default function DepartureFlowScreen() {
   const [odometerStr, setOdometerStr] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [pendingSync, setPendingSync] = useState(false);
+  // FM-6: countdown state
+  const [countdownVisible, setCountdownVisible] = useState(false);
+  const [pendingSignature, setPendingSignature] = useState<string | null>(null);
 
   const { enqueueTransition } = useTripTransition();
 
@@ -44,52 +48,65 @@ export default function DepartureFlowScreen() {
     setStep('signature');
   }, [odometerValid]);
 
-  const handleSignature = useCallback(
-    async (driverSignature: string) => {
-      if (!tripId) return;
-      setSubmitting(true);
-      try {
-        // Read current local trip status for pre-validation.
-        const db = await getDatabase();
-        const tripsRepo = new TripsRepo(db);
-        const trip = await tripsRepo.findById(tripId);
-        const currentStatus = trip?.status ?? 'loaded';
+  // FM-6: called when the driver draws the signature — shows the countdown instead
+  // of executing depart immediately.
+  const handleSignatureCaptured = useCallback((sig: string) => {
+    setPendingSignature(sig);
+    setCountdownVisible(true);
+  }, []);
 
-        await enqueueTransition({
-          tripId,
-          currentStatus,
-          transition: 'depart',
-          body: {
-            departureOdometerKm: odometerKm,
-            driverSignature,
-          },
-          localMeta: {
-            departure_odometer_km: odometerKm,
-            departure_at: new Date().toISOString(),
-          },
-        });
+  const handleCountdownCancel = useCallback(() => {
+    setCountdownVisible(false);
+    setPendingSignature(null);
+  }, []);
 
-        mobileLogger.flow('DepartureFlow: depart enqueued offline-first', { tripId });
-        setPendingSync(true);
+  // Actual depart logic — runs after countdown expires (FM-6).
+  const executeDepart = useCallback(async () => {
+    setCountdownVisible(false);
+    const driverSignature = pendingSignature;
+    setPendingSignature(null);
+    if (!tripId || !driverSignature) return;
+    setSubmitting(true);
+    try {
+      // Read current local trip status for pre-validation.
+      const db = await getDatabase();
+      const tripsRepo = new TripsRepo(db);
+      const trip = await tripsRepo.findById(tripId);
+      const currentStatus = trip?.status ?? 'loaded';
 
-        // Navigate immediately — the local state is already updated.
-        router.replace(`/trip/${tripId}`);
-      } catch (err) {
-        mobileLogger.error('DepartureFlow: depart failed', {
-          tripId,
-          err: err instanceof Error ? err.message : String(err),
-        });
-        Alert.alert(
-          'Eroare',
-          err instanceof Error ? err.message : 'Nu s-a putut porni cursa. Încearcă din nou.',
-        );
-        setStep('odometer');
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [tripId, odometerKm, enqueueTransition],
-  );
+      await enqueueTransition({
+        tripId,
+        currentStatus,
+        transition: 'depart',
+        body: {
+          departureOdometerKm: odometerKm,
+          driverSignature,
+        },
+        localMeta: {
+          departure_odometer_km: odometerKm,
+          departure_at: new Date().toISOString(),
+        },
+      });
+
+      mobileLogger.flow('DepartureFlow: depart enqueued offline-first', { tripId });
+      setPendingSync(true);
+
+      // Navigate immediately — the local state is already updated.
+      router.replace(`/trip/${tripId}`);
+    } catch (err) {
+      mobileLogger.error('DepartureFlow: depart failed', {
+        tripId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      Alert.alert(
+        'Eroare',
+        err instanceof Error ? err.message : 'Nu s-a putut porni cursa. Încearcă din nou.',
+      );
+      setStep('odometer');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [tripId, odometerKm, enqueueTransition, pendingSignature]);
 
   if (step === 'signature') {
     return (
@@ -110,14 +127,19 @@ export default function DepartureFlowScreen() {
           <Text style={styles.sigHint}>
             Semnează pentru a confirma plecarea și a genera documentul CMR.
           </Text>
-          <SignatureCapture
-            label="Semnătura șoferului"
-            onSave={(sig) => void handleSignature(sig)}
-          />
+          <SignatureCapture label="Semnătura șoferului" onSave={handleSignatureCaptured} />
           {submitting ? null : (
             <BigButton title="Înapoi" onPress={() => setStep('odometer')} variant="outline" />
           )}
         </View>
+        {/* FM-6: countdown overlay — shown after signature is captured */}
+        <ConfirmCountdown
+          visible={countdownVisible}
+          actionLabel="Plecare din câmp"
+          countdownSeconds={3}
+          onConfirmed={() => void executeDepart()}
+          onCancel={handleCountdownCancel}
+        />
       </View>
     );
   }

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
+import { UndoToast } from '@/components/shared/UndoToast';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
 import { StepIndicator } from '../../ui/StepIndicator';
@@ -17,6 +18,7 @@ import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { uploadReceipt } from '@/lib/receiptUpload';
 import { generateUuid } from '@/lib/uuid';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
+import { useUndoableSave } from '@/hooks/useUndoableSave';
 import { colors } from '@strawboss/ui-tokens';
 
 type ConsumableType = 'diesel' | 'twine';
@@ -58,6 +60,23 @@ export function ConsumableFlow({
   const { modalProps, showModal, hideModal } = useModal();
   // If lockType is set, we start directly at the receipt step.
   const [step, setStep] = useState<ConsumableStep>(lockType ? 'receipt' : 'type');
+
+  // FM-4: undo hook — type-agnostic; the actual repo deletion is resolved at save time
+  // via a ref that holds the entity type ('fuel_logs' | 'consumable_logs').
+  const savedEntityTypeRef = useRef<'fuel_logs' | 'consumable_logs'>('consumable_logs');
+  const { showUndo, toastState } = useUndoableSave({
+    onDeleteLocal: async (entityId) => {
+      const db = await getDatabase();
+      if (savedEntityTypeRef.current === 'fuel_logs') {
+        const repo = new FuelLogsRepo(db);
+        await repo.deleteLocal(entityId);
+      } else {
+        const repo = new ConsumableLogsRepo(db);
+        await repo.deleteLocal(entityId);
+      }
+      void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(operatorId) });
+    },
+  });
   const slideAnim = useRef(new Animated.Value(0)).current;
   const prevStepRef = useRef<ConsumableStep>(lockType ? 'receipt' : 'type');
   const [consumableType, setConsumableType] = useState<ConsumableType | null>(lockType ?? null);
@@ -89,6 +108,8 @@ export function ConsumableFlow({
     if (!consumableType) return;
     const savedType = consumableType;
     setSaving(true);
+    // FM-4: track which repo to delete from during undo
+    savedEntityTypeRef.current = savedType === 'diesel' ? 'fuel_logs' : 'consumable_logs';
     try {
       const db = await getDatabase();
       const syncQueue = new SyncQueueRepo(db);
@@ -187,7 +208,6 @@ export function ConsumableFlow({
         });
       }
 
-      const pendingCount = await syncQueue.getPendingCount();
       void queryClient.invalidateQueries({
         queryKey: operatorStatsQueryKey(operatorId),
       });
@@ -197,13 +217,15 @@ export function ConsumableFlow({
       setPhotoUri(null);
       setQuantitySuggested(null);
       goToStep(lockType ? 'receipt' : 'type');
-      showModal({
-        type: 'success',
-        title: 'Salvat',
-        message: `${qty} ${UNIT_LABELS[savedType]} înregistrat. În coadă sync: ${pendingCount}.`,
-        autoDismiss: true,
-        onConfirm: hideModal,
+
+      // FM-4: show undo toast (replaces auto-dismiss success modal)
+      const idempotencyKey = savedType === 'diesel' ? `fuel_logs_${id}` : `consumable_logs_${id}`;
+      showUndo({
+        entityId: id,
+        idempotencyKey,
+        label: `Înregistrat — ${qty} ${UNIT_LABELS[savedType]}`,
       });
+
       onComplete();
     } catch (err) {
       showModal({
@@ -226,6 +248,7 @@ export function ConsumableFlow({
     onComplete,
     queryClient,
     goToStep,
+    showUndo,
   ]);
 
   const stepContent = (() => {
@@ -345,6 +368,7 @@ export function ConsumableFlow({
       <Animated.View style={[styles.animatedWrapper, { transform: [{ translateX: slideAnim }] }]}>
         {stepContent}
       </Animated.View>
+      <UndoToast state={toastState} bottomOffset={24} />
     </View>
   );
 }

@@ -140,4 +140,26 @@ export class BaleLoadsRepo {
     );
     return result?.max_ver ?? 0;
   }
+
+  /**
+   * FM-5: Find bale loads for a given (truckId, parcelId) pair created
+   * within the last `withinMinutes` minutes. Used for duplicate detection
+   * before registering a new load.
+   */
+  async findRecentByTruckParcel(
+    truckId: string,
+    parcelId: string,
+    withinMinutes: number = 10,
+  ): Promise<LocalBaleLoad[]> {
+    return this.db.getAllAsync<LocalBaleLoad>(
+      `SELECT * FROM bale_loads
+       WHERE trip_id IN (
+         SELECT id FROM trips WHERE truck_id = ?
+       )
+       AND parcel_id = ?
+       AND loaded_at >= datetime('now', ? || ' minutes')
+       ORDER BY loaded_at DESC`,
+      [truckId, parcelId, `-${withinMinutes}`],
+    );
+  }
 }

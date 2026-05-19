@@ -18,6 +18,8 @@ import { BigButton } from '@/components/ui/BigButton';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { SignatureCapture } from '@/components/shared/SignatureCapture';
+import { AppModal } from '@/components/shared/AppModal';
+import { useModal } from '@/hooks/useModal';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { mobileApiClient } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
@@ -72,6 +74,7 @@ export default function LoadBalesScreen() {
   const { isConnected: isOnline } = useNetworkStatus();
   const queryClient = useQueryClient();
   const parcel = useCurrentLoaderParcel();
+  const { modalProps, showModal, hideModal } = useModal();
 
   // Snapshot the resolved parcel at mount so a background refresh mid-load
   // doesn't silently change which parcel the bales get registered against.
@@ -157,6 +160,42 @@ export default function LoadBalesScreen() {
   }, []);
 
   const fullTruckCount = truck?.maxBaleCount ?? FULL_TRUCK_FALLBACK;
+
+  // FM-5: duplicate detection — check for a recent bale_load on same (truckId, parcelId).
+  // Uses snapshotParcelId directly (parcelReady = snapshotParcelId !== null, declared later).
+  const handleRegisterPress = useCallback(async () => {
+    if (baleCount <= 0 || !snapshotParcelId || !truckId) {
+      setShowSignature(true);
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      const baleLoadsRepo = new BaleLoadsRepo(db);
+      const recent = await baleLoadsRepo.findRecentByTruckParcel(truckId, snapshotParcelId, 10);
+      if (recent.length > 0) {
+        const totalBales = recent.reduce((acc, l) => acc + l.bale_count, 0);
+        const minutesAgo = Math.round(
+          (Date.now() - new Date(recent[0]!.loaded_at ?? recent[0]!.created_at).getTime()) / 60_000,
+        );
+        showModal({
+          type: 'warning',
+          title: 'Încărcare recentă detectată',
+          message: `Ai înregistrat deja ${totalBales} baloți pe acest camion și teren acum ${minutesAgo} min. Continui cu o nouă înregistrare?`,
+          confirmText: 'Da, continuă',
+          cancelText: 'Anulează',
+          onConfirm: () => {
+            hideModal();
+            setShowSignature(true);
+          },
+          onCancel: hideModal,
+        });
+        return;
+      }
+    } catch {
+      // Non-fatal — proceed if duplicate check fails
+    }
+    setShowSignature(true);
+  }, [baleCount, truckId, snapshotParcelId, showModal, hideModal]);
 
   const handleSignatureConfirm = useCallback(
     async (loaderSignature: string) => {
@@ -365,11 +404,12 @@ export default function LoadBalesScreen() {
 
         <BigButton
           title="Înregistrează"
-          onPress={() => setShowSignature(true)}
+          onPress={() => void handleRegisterPress()}
           disabled={baleCount <= 0 || !parcelReady}
         />
         <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
       </ScrollView>
+      <AppModal {...modalProps} />
     </View>
   );
 }

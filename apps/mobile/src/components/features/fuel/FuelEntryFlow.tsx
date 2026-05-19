@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
+import { UndoToast } from '@/components/shared/UndoToast';
 import { useQueryClient } from '@tanstack/react-query';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
@@ -14,6 +15,7 @@ import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { uploadReceipt } from '@/lib/receiptUpload';
 import { generateUuid } from '@/lib/uuid';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
+import { useUndoableSave } from '@/hooks/useUndoableSave';
 import { colors } from '@strawboss/ui-tokens';
 
 // Photo steps come before their numeric step so OCR can pre-fill the field.
@@ -48,6 +50,16 @@ export function FuelEntryFlow({
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
   const [step, setStep] = useState<FuelStep>('receipt');
+
+  // FM-4: undo hook — deletes the fuel_logs row + sync queue entry
+  const { showUndo, toastState } = useUndoableSave({
+    onDeleteLocal: async (entityId) => {
+      const db = await getDatabase();
+      const repo = new FuelLogsRepo(db);
+      await repo.deleteLocal(entityId);
+      void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(operatorId) });
+    },
+  });
 
   const goToStep = useCallback(
     (next: FuelStep) => {
@@ -130,8 +142,6 @@ export function FuelEntryFlow({
         idempotencyKey: `fuel_logs_${id}`,
       });
 
-      const pendingCount = await syncQueue.getPendingCount();
-
       void queryClient.invalidateQueries({
         queryKey: operatorStatsQueryKey(operatorId),
       });
@@ -142,13 +152,14 @@ export function FuelEntryFlow({
       setLitersSuggested(null);
       setKmSuggested(null);
       goToStep('receipt');
-      showModal({
-        type: 'success',
-        title: 'Salvat',
-        message: `${quantityLiters} L alimentare înregistrată. În coadă sync: ${pendingCount}.`,
-        autoDismiss: true,
-        onConfirm: hideModal,
+
+      // FM-4: show undo toast (replaces auto-dismiss success modal)
+      showUndo({
+        entityId: id,
+        idempotencyKey: `fuel_logs_${id}`,
+        label: `Înregistrat — ${quantityLiters} L combustibil`,
       });
+
       onComplete();
     } catch (err) {
       showModal({
@@ -160,7 +171,17 @@ export function FuelEntryFlow({
     } finally {
       setSaving(false);
     }
-  }, [machineId, operatorId, liters, odometer, photoUri, onComplete, queryClient, goToStep]);
+  }, [
+    machineId,
+    operatorId,
+    liters,
+    odometer,
+    photoUri,
+    onComplete,
+    queryClient,
+    goToStep,
+    showUndo,
+  ]);
 
   const stepIndex = FUEL_STEP_ORDER.indexOf(step);
 
@@ -311,6 +332,7 @@ export function FuelEntryFlow({
     <View style={styles.wrapper}>
       <StepIndicator totalSteps={FUEL_STEP_ORDER.length} currentStep={stepIndex} />
       {stepContent}
+      <UndoToast state={toastState} bottomOffset={24} />
     </View>
   );
 }

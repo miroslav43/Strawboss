@@ -139,4 +139,12 @@ export class FuelLogsRepo {
     );
     return result?.max_ver ?? 0;
   }
+
+  /**
+   * FM-4: Delete a locally-created record that has not yet been synced.
+   * Called during the undo window before the sync queue entry is dispatched.
+   */
+  async deleteLocal(id: string): Promise<void> {
+    await this.db.runAsync(`DELETE FROM fuel_logs WHERE id = ?`, [id]);
+  }
 }
