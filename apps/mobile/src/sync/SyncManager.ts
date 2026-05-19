@@ -398,6 +398,7 @@ export class SyncManager {
           server_version: update.serverVersion,
         } as unknown as LocalTaskAssignment);
       }
+      return;
     }
 
     // FM-13 — cache parcel geometry received via pull for offline map rendering
