@@ -130,6 +130,22 @@ export class AlertsService {
   }
 
   async createFromDraft(draft: AlertDraft, orgId: string) {
+    // Skip insert if an unacknowledged alert with the same (trip_id, category)
+    // already exists — the evaluation job runs every 15 minutes and would
+    // otherwise spam duplicates for the same persistent anomaly.
+    if (draft.tripId) {
+      const existing = await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM alerts
+            WHERE trip_id = ${draft.tripId}::uuid
+              AND category = ${draft.category}
+              AND is_acknowledged = false
+              AND organization_id = ${orgId}::uuid
+            LIMIT 1`,
+      );
+      if ((existing as unknown as Record<string, unknown>[]).length > 0) {
+        return existing;
+      }
+    }
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO alerts (
         category, severity, title, description,
