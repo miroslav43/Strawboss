@@ -81,6 +81,7 @@
     "placeholderEmail": "admin@strawboss.app",
     "errors": {
       "unknownUser": "Utilizator inexistent. Verifică datele introduse.",
+      "invalidCredentials": "Utilizator sau parolă incorectă. Încearcă din nou.",
       "noOrganization": "Contul tău nu are o organizație asignată. Contactează administratorul."
     }
   },

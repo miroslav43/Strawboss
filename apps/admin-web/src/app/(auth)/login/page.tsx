@@ -6,6 +6,7 @@ import { Eye, EyeOff, User, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { apiV1Url } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
+import { clientLogger } from '@/lib/client-logger';
 import { resolveOrganizationSlugForSession } from '@/lib/resolve-organization-slug';
 
 /** Resolve a username to an email via the backend. Returns null on failure. */
@@ -68,13 +69,12 @@ export default function LoginPage() {
     const trimmed = login.trim();
     const isUsername = !trimmed.includes('@');
 
-    // Resolve username → email if the field doesn't contain '@'.
-    const email = await resolveLogin(trimmed);
-    if (!email) {
-      setError(t('login.errors.unknownUser'));
-      setLoading(false);
-      return;
-    }
+    // Resolve username → email when the field doesn't contain '@'. On
+    // resolution failure we still call Supabase with a synthetic address so
+    // every failure path returns the same generic error (and roughly the same
+    // timing), avoiding a username-enumeration oracle.
+    const resolved = await resolveLogin(trimmed);
+    const email = resolved ?? `__unknown__${Date.now()}@invalid.strawboss.local`;
 
     // Operators/drivers log in with username + 4-digit PIN → pad to satisfy
     // Supabase Auth's min-6-char policy. Admins with email + long password
@@ -87,7 +87,12 @@ export default function LoginPage() {
     });
 
     if (authError) {
-      setError(authError.message);
+      clientLogger.warn('login.signInWithPassword failed', {
+        code: authError.code,
+        status: authError.status,
+        message: authError.message,
+      });
+      setError(t('login.errors.invalidCredentials'));
       setLoading(false);
       return;
     }

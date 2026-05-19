@@ -81,6 +81,7 @@
     "placeholderEmail": "admin@strawboss.app",
     "errors": {
       "unknownUser": "Username not found. Please check the details you entered.",
+      "invalidCredentials": "Invalid username or password. Please try again.",
       "noOrganization": "Your account has no assigned organization. Contact the administrator."
     }
   },
