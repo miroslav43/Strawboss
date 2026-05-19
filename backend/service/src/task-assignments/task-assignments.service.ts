@@ -11,7 +11,6 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TripsService } from '../trips/trips.service';
-import { todayInRomania } from '../common/date';
 
 @Injectable()
 export class TaskAssignmentsService {
