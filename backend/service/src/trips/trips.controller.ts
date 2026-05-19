@@ -86,7 +86,7 @@ export class TripsController {
   @Delete(':id')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.tripsService.softDelete(id, user.organizationId);
+    return this.tripsService.softDelete(id, user.organizationId, user.role as UserRole);
   }
 
   /**
