@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 import {
@@ -65,10 +65,19 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
   const navItems = buildNavItems(slug);
   const bottomItems = buildBottomItems(slug);
 
-  // W19: close the mobile drawer whenever the user navigates to a new page
+  // W19: close the mobile drawer whenever the user navigates to a new page.
+  // Refs keep open/onToggle out of deps so the effect only fires on pathname
+  // change — adding either to deps would close the drawer immediately after
+  // the user opens it, since the parent passes a fresh onToggle on every
+  // render.
+  const openRef = useRef(open);
+  const onToggleRef = useRef(onToggle);
+  openRef.current = open;
+  onToggleRef.current = onToggle;
+
   useEffect(() => {
-    if (open) {
-      onToggle();
+    if (openRef.current) {
+      onToggleRef.current();
     }
   }, [pathname]);
 
