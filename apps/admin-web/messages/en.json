@@ -67,11 +67,23 @@
   },
   "login": {
     "title": "StrawBoss Admin",
+    "subtitle": "Sign in to continue",
     "email": "Email",
     "password": "Password",
+    "usernameOrEmail": "Username or email",
+    "passwordOrPin": "Password or PIN",
+    "usernamePlaceholder": "username or admin@email.com",
+    "passwordPlaceholder": "4-digit PIN or password",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
     "signIn": "Sign in",
     "signingIn": "Signing in…",
-    "placeholderEmail": "admin@strawboss.app"
+    "placeholderEmail": "admin@strawboss.app",
+    "errors": {
+      "unknownUser": "Username not found. Please check the details you entered.",
+      "invalidCredentials": "Invalid username or password. Please try again.",
+      "noOrganization": "Your account has no assigned organization. Contact the administrator."
+    }
   },
   "settings": {
     "title": "Settings",

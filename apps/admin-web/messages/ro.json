@@ -67,11 +67,23 @@
   },
   "login": {
     "title": "StrawBoss Admin",
+    "subtitle": "Autentifică-te pentru a continua",
     "email": "E-mail",
     "password": "Parolă",
+    "usernameOrEmail": "Utilizator sau e-mail",
+    "passwordOrPin": "Parolă sau PIN",
+    "usernamePlaceholder": "utilizator sau admin@email.com",
+    "passwordPlaceholder": "PIN 4 cifre sau parolă",
+    "showPassword": "Arată parola",
+    "hidePassword": "Ascunde parola",
     "signIn": "Autentificare",
     "signingIn": "Se autentifică…",
-    "placeholderEmail": "admin@strawboss.app"
+    "placeholderEmail": "admin@strawboss.app",
+    "errors": {
+      "unknownUser": "Utilizator inexistent. Verifică datele introduse.",
+      "invalidCredentials": "Utilizator sau parolă incorectă. Încearcă din nou.",
+      "noOrganization": "Contul tău nu are o organizație asignată. Contactează administratorul."
+    }
   },
   "settings": {
     "title": "Setări",
