@@ -69,7 +69,7 @@ export default function LoginPage() {
     // Resolve username → email if the field doesn't contain '@'.
     const email = await resolveLogin(trimmed);
     if (!email) {
-      setError('Username inexistent. Verifica datele introduse.');
+      setError(t('login.usernameNotFound'));
       setLoading(false);
       return;
     }
@@ -106,7 +106,7 @@ export default function LoginPage() {
       appMeta?.organization_slug ??
       (signInData.session ? await resolveOrganizationSlugForSession(signInData.session) : null);
     if (!orgSlug) {
-      setError('Contul tău nu are o organizație asignată. Contactează administratorul.');
+      setError(t('login.noOrgAssigned'));
       setLoading(false);
       return;
     }

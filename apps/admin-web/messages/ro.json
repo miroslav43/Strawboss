@@ -72,7 +72,9 @@
     "password": "Parolă",
     "signIn": "Autentificare",
     "signingIn": "Se autentifică…",
-    "placeholderEmail": "admin@strawboss.app"
+    "placeholderEmail": "admin@strawboss.app",
+    "usernameNotFound": "Username inexistent. Verifică datele introduse.",
+    "noOrgAssigned": "Contul tău nu are o organizație asignată. Contactează administratorul."
   },
   "settings": {
     "title": "Setări",

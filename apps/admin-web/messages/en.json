@@ -72,7 +72,9 @@
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in…",
-    "placeholderEmail": "admin@strawboss.app"
+    "placeholderEmail": "admin@strawboss.app",
+    "usernameNotFound": "Username not found. Please check your credentials.",
+    "noOrgAssigned": "Your account has no organization assigned. Contact your administrator."
   },
   "settings": {
     "title": "Settings",
