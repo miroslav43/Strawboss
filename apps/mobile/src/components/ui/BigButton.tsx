@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { colors, radii } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
+import { useTheme } from '@/lib/theme';
 
 interface BigButtonProps {
   title: string;
@@ -50,22 +51,39 @@ export function BigButton({
   disabled = false,
   loading = false,
 }: BigButtonProps) {
-  const vs = variantStyles[variant];
+  const { colors: themeColors } = useTheme();
+
+  // In high-contrast mode, outline variant gets a thicker, darker border so it
+  // remains visible on the white background without fill.
+  const outlineStyle: ViewStyle =
+    variant === 'outline' ? { borderColor: themeColors.primary, borderWidth: 2 } : {};
+
+  const containerBg: ViewStyle = (() => {
+    switch (variant) {
+      case 'primary':
+        return { backgroundColor: themeColors.primary };
+      case 'secondary':
+        return { backgroundColor: themeColors.secondary };
+      case 'danger':
+        return { backgroundColor: themeColors.danger };
+      case 'outline':
+        return { backgroundColor: 'transparent', ...outlineStyle };
+    }
+  })();
+
+  const textColor = variant === 'outline' ? themeColors.primary : themeColors.white;
 
   return (
     <TouchableOpacity
-      style={[styles.container, vs.container, disabled && styles.disabled]}
+      style={[styles.container, containerBg, disabled && styles.disabled]}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.7}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === 'outline' ? colors.primary : colors.white}
-          size="small"
-        />
+        <ActivityIndicator color={textColor} size="small" />
       ) : (
-        <Text style={[styles.text, vs.text]}>{title}</Text>
+        <Text style={[styles.text, { color: textColor }]}>{title}</Text>
       )}
     </TouchableOpacity>
   );

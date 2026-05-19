@@ -21,6 +21,7 @@ import { useSync } from '@/hooks/useSync';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { colors, radii } from '@strawboss/ui-tokens';
+import { useTheme } from '@/lib/theme';
 
 const STATUS_COLORS: Record<string, string> = {
   planned: '#1565C0',
@@ -58,6 +59,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 };
 
 export default function DriverTripsScreen() {
+  const { colors: themeColors } = useTheme();
   const userId = useAuthStore((s) => s.userId);
   const { tasks, refetch: refetchTasks } = useMyTasks();
   const { data: nearbyLoaders, refetch: refetchLoaders } = useNearbyLoaders();
@@ -139,12 +141,12 @@ export default function DriverTripsScreen() {
       </ScreenHeader>
 
       {loading ? (
-        <View style={[styles.body, styles.centered]}>
-          <ActivityIndicator color="#0A5C36" />
+        <View style={[styles.body, { backgroundColor: themeColors.background }, styles.centered]}>
+          <ActivityIndicator color={themeColors.primary} />
         </View>
       ) : (
         <FlatList
-          style={styles.body}
+          style={[styles.body, { backgroundColor: themeColors.background }]}
           data={trips}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
@@ -152,7 +154,7 @@ export default function DriverTripsScreen() {
           ListHeaderComponent={
             <View style={styles.headerCards}>
               {/* Card 1 — Loadere din apropiere */}
-              <View style={styles.infoCard}>
+              <View style={[styles.infoCard, { backgroundColor: themeColors.white }]}>
                 <View style={styles.infoCardHeader}>
                   <MaterialCommunityIcons name="excavator" size={18} color="#0A5C36" />
                   <Text style={styles.infoCardTitle}>Loadere active</Text>
@@ -176,7 +178,7 @@ export default function DriverTripsScreen() {
               {/* Card 2 — Sarcina de azi */}
               {activeTodayTask ? (
                 <TouchableOpacity
-                  style={styles.infoCard}
+                  style={[styles.infoCard, { backgroundColor: themeColors.white }]}
                   activeOpacity={0.75}
                   onPress={() => {
                     if (activeTrip) {
@@ -231,7 +233,11 @@ export default function DriverTripsScreen() {
             const isFresh = item.status === 'loaded' && !item.acknowledged_at;
             return (
               <TouchableOpacity
-                style={[styles.card, isFresh && styles.cardFresh]}
+                style={[
+                  styles.card,
+                  { backgroundColor: themeColors.white },
+                  isFresh && styles.cardFresh,
+                ]}
                 onPress={() => void handleTripPress(item)}
               >
                 <View style={styles.cardHeader}>

@@ -5,6 +5,7 @@ import { AppModal } from '@/components/shared/AppModal';
 import { useQueryClient } from '@tanstack/react-query';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
+import { StepIndicator } from '../../ui/StepIndicator';
 import { OcrPhotoCapture } from '../../shared/OcrPhotoCapture';
 import { OcrHint } from '../../shared/OcrHint';
 import { getDatabase } from '@/lib/storage';
@@ -25,6 +26,9 @@ export const FUEL_STEP_TITLES: Record<FuelStep, string> = {
   odometer: 'Citire odometru (km)',
   confirm: 'Confirmare alimentare',
 };
+
+/** Ordered steps used for FM-10 step indicator position tracking. */
+const FUEL_STEP_ORDER: FuelStep[] = ['receipt', 'liters', 'odometer-photo', 'odometer', 'confirm'];
 
 interface FuelEntryFlowProps {
   machineId: string | null;
@@ -158,145 +162,163 @@ export function FuelEntryFlow({
     }
   }, [machineId, operatorId, liters, odometer, photoUri, onComplete, queryClient, goToStep]);
 
-  switch (step) {
-    case 'receipt':
-      return (
-        <View style={styles.container}>
-          <Text style={styles.subtitle}>Fotografiază bonul — citim automat litrii.</Text>
-          <OcrPhotoCapture
-            mode="fuel"
-            label="Fotografie bon"
-            onResult={(uri, s) => {
-              setPhotoUri(uri);
-              if (s.liters !== undefined) {
-                setLiters(String(s.liters));
-                setLitersSuggested(s.liters);
-              }
-            }}
-          />
-          <View style={styles.actions}>
-            <BigButton title="Continuă" onPress={() => goToStep('liters')} />
-            <BigButton title="Anulează" variant="outline" onPress={onCancel} />
-          </View>
-        </View>
-      );
+  const stepIndex = FUEL_STEP_ORDER.indexOf(step);
 
-    case 'liters':
-      return (
-        <View style={styles.container}>
-          {litersSuggested !== null && <OcrHint value={`${litersSuggested} L`} />}
-          <NumericPad
-            value={liters}
-            onChange={(v) => {
-              setLiters(v);
-              setLitersSuggested(null);
-            }}
-            maxLength={6}
-            decimal
-          />
-          <View style={styles.actions}>
-            <BigButton
-              title="Continuă"
-              onPress={() => goToStep('odometer-photo')}
-              disabled={!liters || liters === '0'}
+  const stepContent = (() => {
+    switch (step) {
+      case 'receipt':
+        return (
+          <View style={styles.container}>
+            <Text style={styles.subtitle}>Fotografiază bonul — citim automat litrii.</Text>
+            <OcrPhotoCapture
+              mode="fuel"
+              label="Fotografie bon"
+              onResult={(uri, s) => {
+                setPhotoUri(uri);
+                if (s.liters !== undefined) {
+                  setLiters(String(s.liters));
+                  setLitersSuggested(s.liters);
+                }
+              }}
             />
-            <BigButton title="Înapoi" variant="outline" onPress={() => goToStep('receipt')} />
+            <View style={styles.actions}>
+              <BigButton title="Continuă" onPress={() => goToStep('liters')} />
+              <BigButton title="Anulează" variant="outline" onPress={onCancel} />
+            </View>
           </View>
-        </View>
-      );
+        );
 
-    case 'odometer-photo':
-      return (
-        <View style={styles.container}>
-          <Text style={styles.subtitle}>
-            Fotografiază kilometrajul de la bord — îl citim automat.
-          </Text>
-          <OcrPhotoCapture
-            mode="odometer"
-            label="Fotografie bord"
-            onResult={(_uri, s) => {
-              if (s.km !== undefined) {
-                setOdometer(String(s.km));
-                setKmSuggested(s.km);
-              }
-            }}
-          />
-          <View style={styles.actions}>
-            <BigButton title="Continuă" onPress={() => goToStep('odometer')} />
-            <BigButton title="Sari peste" variant="outline" onPress={() => goToStep('odometer')} />
-          </View>
-        </View>
-      );
-
-    case 'odometer':
-      return (
-        <View style={styles.container}>
-          {kmSuggested !== null && <OcrHint value={`${kmSuggested} km`} />}
-          <NumericPad
-            value={odometer}
-            onChange={(v) => {
-              setOdometer(v);
-              setKmSuggested(null);
-            }}
-            maxLength={7}
-            decimal
-          />
-          <View style={styles.actions}>
-            <BigButton
-              title="Continuă"
-              onPress={() => goToStep('confirm')}
-              disabled={!odometer || odometer === '0'}
+      case 'liters':
+        return (
+          <View style={styles.container}>
+            {litersSuggested !== null && <OcrHint value={`${litersSuggested} L`} />}
+            <NumericPad
+              value={liters}
+              onChange={(v) => {
+                setLiters(v);
+                setLitersSuggested(null);
+              }}
+              maxLength={6}
+              decimal
             />
-            <BigButton
-              title="Înapoi"
-              variant="outline"
-              onPress={() => goToStep('odometer-photo')}
-            />
+            <View style={styles.actions}>
+              <BigButton
+                title="Continuă"
+                onPress={() => goToStep('odometer-photo')}
+                disabled={!liters || liters === '0'}
+              />
+              <BigButton title="Înapoi" variant="outline" onPress={() => goToStep('receipt')} />
+            </View>
           </View>
-        </View>
-      );
+        );
 
-    case 'confirm':
-      return (
-        <View style={styles.container}>
-          <View style={styles.summaryCard}>
-            <View style={styles.row}>
-              <Text style={styles.label}>Litri</Text>
-              <View style={styles.valueRow}>
-                <Text style={styles.valueHighlight}>{liters}</Text>
-                <Text style={styles.unit}>L</Text>
+      case 'odometer-photo':
+        return (
+          <View style={styles.container}>
+            <Text style={styles.subtitle}>
+              Fotografiază kilometrajul de la bord — îl citim automat.
+            </Text>
+            <OcrPhotoCapture
+              mode="odometer"
+              label="Fotografie bord"
+              onResult={(_uri, s) => {
+                if (s.km !== undefined) {
+                  setOdometer(String(s.km));
+                  setKmSuggested(s.km);
+                }
+              }}
+            />
+            <View style={styles.actions}>
+              <BigButton title="Continuă" onPress={() => goToStep('odometer')} />
+              <BigButton
+                title="Sari peste"
+                variant="outline"
+                onPress={() => goToStep('odometer')}
+              />
+            </View>
+          </View>
+        );
+
+      case 'odometer':
+        return (
+          <View style={styles.container}>
+            {kmSuggested !== null && <OcrHint value={`${kmSuggested} km`} />}
+            <NumericPad
+              value={odometer}
+              onChange={(v) => {
+                setOdometer(v);
+                setKmSuggested(null);
+              }}
+              maxLength={7}
+              decimal
+            />
+            <View style={styles.actions}>
+              <BigButton
+                title="Continuă"
+                onPress={() => goToStep('confirm')}
+                disabled={!odometer || odometer === '0'}
+              />
+              <BigButton
+                title="Înapoi"
+                variant="outline"
+                onPress={() => goToStep('odometer-photo')}
+              />
+            </View>
+          </View>
+        );
+
+      case 'confirm':
+        return (
+          <View style={styles.container}>
+            <View style={styles.summaryCard}>
+              <View style={styles.row}>
+                <Text style={styles.label}>Litri</Text>
+                <View style={styles.valueRow}>
+                  <Text style={styles.valueHighlight}>{liters}</Text>
+                  <Text style={styles.unit}>L</Text>
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={styles.label}>Odometru</Text>
+                <View style={styles.valueRow}>
+                  <Text style={styles.value}>{odometer}</Text>
+                  <Text style={styles.unit}>km</Text>
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={styles.label}>Fotografie</Text>
+                <Text style={[styles.value, photoUri ? styles.photoPresent : styles.photoAbsent]}>
+                  {photoUri ? 'Adăugată' : 'Nu'}
+                </Text>
               </View>
             </View>
-            <View style={styles.divider} />
-            <View style={styles.row}>
-              <Text style={styles.label}>Odometru</Text>
-              <View style={styles.valueRow}>
-                <Text style={styles.value}>{odometer}</Text>
-                <Text style={styles.unit}>km</Text>
-              </View>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.row}>
-              <Text style={styles.label}>Fotografie</Text>
-              <Text style={[styles.value, photoUri ? styles.photoPresent : styles.photoAbsent]}>
-                {photoUri ? 'Adăugată' : 'Nu'}
-              </Text>
-            </View>
-          </View>
 
-          <View style={styles.actions}>
-            <BigButton title="Salvează" onPress={handleConfirm} loading={saving} />
-            <TouchableOpacity onPress={() => goToStep('odometer')} style={styles.backButton}>
-              <Text style={styles.backText}>Înapoi</Text>
-            </TouchableOpacity>
+            <View style={styles.actions}>
+              <BigButton title="Salvează" onPress={handleConfirm} loading={saving} />
+              <TouchableOpacity onPress={() => goToStep('odometer')} style={styles.backButton}>
+                <Text style={styles.backText}>Înapoi</Text>
+              </TouchableOpacity>
+            </View>
+            <AppModal {...modalProps} />
           </View>
-          <AppModal {...modalProps} />
-        </View>
-      );
-  }
+        );
+    }
+  })();
+
+  return (
+    <View style={styles.wrapper}>
+      <StepIndicator totalSteps={FUEL_STEP_ORDER.length} currentStep={stepIndex} />
+      {stepContent}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     padding: 24,

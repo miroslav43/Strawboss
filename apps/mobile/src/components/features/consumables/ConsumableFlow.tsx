@@ -5,6 +5,7 @@ import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
+import { StepIndicator } from '../../ui/StepIndicator';
 import { OcrPhotoCapture } from '../../shared/OcrPhotoCapture';
 import { OcrHint } from '../../shared/OcrHint';
 import { ConsumableTypeSelector } from '../../shared/ConsumableTypeSelector';
@@ -332,14 +333,26 @@ export function ConsumableFlow({
     }
   })();
 
+  const currentStepIndex = STEP_ORDER.indexOf(step);
+  // When lockType is set, the 'type' step is skipped — show 3 steps starting
+  // from 'receipt'. We subtract 1 from the total and the current index.
+  const effectiveTotal = lockType ? STEP_ORDER.length - 1 : STEP_ORDER.length;
+  const effectiveIndex = lockType ? Math.max(0, currentStepIndex - 1) : currentStepIndex;
+
   return (
-    <Animated.View style={[styles.animatedWrapper, { transform: [{ translateX: slideAnim }] }]}>
-      {stepContent}
-    </Animated.View>
+    <View style={styles.outerWrapper}>
+      <StepIndicator totalSteps={effectiveTotal} currentStep={effectiveIndex} />
+      <Animated.View style={[styles.animatedWrapper, { transform: [{ translateX: slideAnim }] }]}>
+        {stepContent}
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outerWrapper: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     padding: 24,

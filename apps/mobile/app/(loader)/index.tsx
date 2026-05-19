@@ -27,6 +27,7 @@ import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
 import { colors, radii } from '@strawboss/ui-tokens';
 import type { TruckAtLoader } from '@strawboss/api';
+import { useTheme } from '@/lib/theme';
 
 /**
  * Loader home: never asks the operator to pick a field on first load.
@@ -37,6 +38,7 @@ import type { TruckAtLoader } from '@strawboss/api';
  *  • Footer: QR scanner fallback for trucks not in the geofence list.
  */
 export default function LoaderHomeScreen() {
+  const { colors: themeColors } = useTheme();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const parcel = useCurrentLoaderParcel();
   const { tasks } = useMyTasks();
@@ -207,13 +209,13 @@ export default function LoaderHomeScreen() {
       />
 
       <ScrollView
-        style={styles.body}
+        style={[styles.body, { backgroundColor: themeColors.background }]}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.primary}
+            tintColor={themeColors.primary}
           />
         }
       >

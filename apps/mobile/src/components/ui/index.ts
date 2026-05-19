@@ -3,3 +3,4 @@ export { NumericPad } from './NumericPad';
 export { ActionCard } from './ActionCard';
 export { StatusPill } from './StatusPill';
 export { TabBarIcon } from './TabBarIcon';
+export { StepIndicator } from './StepIndicator';

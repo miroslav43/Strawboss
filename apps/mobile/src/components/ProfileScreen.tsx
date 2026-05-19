@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   Pressable,
+  Switch,
   StyleSheet,
   ActivityIndicator,
   ScrollView,
@@ -23,6 +24,7 @@ import { getSupabaseClient } from '@/lib/auth';
 import { clearLocalData } from '@/lib/storage';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDevModeStore } from '@/stores/dev-mode-store';
+import { useThemeStore } from '@/stores/theme-store';
 import { OperatorStats } from '@/components/features/stats/OperatorStats';
 import { AvatarPicker } from '@/components/shared/AvatarPicker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
@@ -48,6 +50,7 @@ const MACHINE_MDI: Record<string, MachineIconName> = {
 export function ProfileScreen() {
   const { clear } = useAuthStore();
   const { devSyncVisible, revealSync, hideSync } = useDevModeStore();
+  const { highContrast, toggleHighContrast } = useThemeStore();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const { modalProps, showModal, hideModal } = useModal();
@@ -299,6 +302,35 @@ export function ProfileScreen() {
           </View>
         ) : null}
 
+        {/* FM-8: High-contrast (sunlight) mode toggle */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Afișaj</Text>
+          <View style={styles.preferenceRow}>
+            <View style={styles.preferenceTextWrap}>
+              <MaterialCommunityIcons
+                name="weather-sunny"
+                size={18}
+                color={highContrast ? colors.warning : colors.neutral}
+                style={styles.preferenceIcon}
+              />
+              <View style={styles.preferenceLabelWrap}>
+                <Text style={styles.preferenceLabel}>Mod lumină puternică</Text>
+                <Text style={styles.preferenceHint}>
+                  Fundal alb, text negru — mai lizibil în soare
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={highContrast}
+              onValueChange={toggleHighContrast}
+              trackColor={{ false: colors.neutral200, true: colors.primary }}
+              thumbColor={highContrast ? colors.white : colors.neutral100}
+              accessibilityLabel="Activează modul contrast ridicat"
+              accessibilityRole="switch"
+            />
+          </View>
+        </View>
+
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
           <Text style={styles.logoutText}>Deconectare</Text>
         </TouchableOpacity>
@@ -425,6 +457,36 @@ const styles = StyleSheet.create({
   machineDetail: { fontSize: 13, color: colors.neutral },
   machinePlate: { fontSize: 12, color: '#9ca3af' },
   noMachine: { fontSize: 14, color: '#8D6E63', fontStyle: 'italic' },
+  preferenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 12,
+  },
+  preferenceTextWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  preferenceIcon: {
+    marginTop: 2,
+  },
+  preferenceLabelWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  preferenceLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.black,
+  },
+  preferenceHint: {
+    fontSize: 12,
+    color: colors.neutral,
+    lineHeight: 16,
+  },
   logoutButton: {
     backgroundColor: colors.danger,
     borderRadius: LOGOUT_RADIUS,

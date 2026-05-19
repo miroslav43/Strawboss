@@ -5,6 +5,7 @@ import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
+import { StepIndicator } from '@/components/ui/StepIndicator';
 import { WeightInput } from './WeightInput';
 import { WeightTicketPhoto } from './WeightTicketPhoto';
 import { SignatureStep } from './SignatureStep';
@@ -374,6 +375,7 @@ export function EnhancedDeliveryFlow({
   return (
     <View style={styles.flow}>
       <ScreenHeader title={STEP_TITLES[currentStep]} onBack={handleHeaderBack} />
+      <StepIndicator totalSteps={5} currentStep={currentStep} />
       <Animated.View style={[styles.body, { transform: [{ translateX: slideAnim }] }]}>
         {renderStep()}
       </Animated.View>

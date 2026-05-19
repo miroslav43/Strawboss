@@ -3,6 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { colors } from '@strawboss/ui-tokens';
 import type { MyTask } from '@/hooks/useMyTasks';
+import { useTheme } from '@/lib/theme';
 
 const STATUS_COLORS: Record<string, string> = {
   available: '#1565C0',
@@ -36,10 +37,14 @@ interface TaskListProps {
 }
 
 export function TaskList({ tasks, role }: TaskListProps) {
+  const { colors: themeColors } = useTheme();
+
   if (tasks.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>Nicio sarcină asignată pentru azi.</Text>
+      <View style={[styles.emptyContainer, { backgroundColor: themeColors.white }]}>
+        <Text style={[styles.emptyText, { color: themeColors.neutral400 }]}>
+          Nicio sarcină asignată pentru azi.
+        </Text>
       </View>
     );
   }
@@ -76,7 +81,7 @@ export function TaskList({ tasks, role }: TaskListProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Sarcini Azi</Text>
+      <Text style={[styles.sectionTitle, { color: themeColors.primary }]}>Sarcini Azi</Text>
       <FlatList
         data={tasks}
         keyExtractor={(item) => item.id}
@@ -89,6 +94,7 @@ export function TaskList({ tasks, role }: TaskListProps) {
             <TouchableOpacity
               style={[
                 styles.card,
+                { backgroundColor: themeColors.white },
                 priorityColor !== undefined && {
                   borderLeftWidth: 3,
                   borderLeftColor: priorityColor,
@@ -98,8 +104,10 @@ export function TaskList({ tasks, role }: TaskListProps) {
             >
               <View style={styles.cardHeader}>
                 <View style={styles.titleRow}>
-                  <View style={styles.sequenceCircle}>
-                    <Text style={styles.sequence}>{item.sequenceOrder}</Text>
+                  <View style={[styles.sequenceCircle, { backgroundColor: themeColors.primary50 }]}>
+                    <Text style={[styles.sequence, { color: themeColors.primary }]}>
+                      {item.sequenceOrder}
+                    </Text>
                   </View>
                   {priorityColor !== undefined && (
                     <MaterialCommunityIcons
@@ -109,14 +117,14 @@ export function TaskList({ tasks, role }: TaskListProps) {
                       accessibilityLabel={item.priority === 'urgent' ? 'Urgent' : 'Prioritate mare'}
                     />
                   )}
-                  <Text style={styles.taskName} numberOfLines={1}>
+                  <Text style={[styles.taskName, { color: themeColors.black }]} numberOfLines={1}>
                     {getTaskLabel(item)}
                   </Text>
                 </View>
                 <View
                   style={[
                     styles.badge,
-                    { backgroundColor: STATUS_COLORS[item.status] ?? '#5D4037' },
+                    { backgroundColor: STATUS_COLORS[item.status] ?? themeColors.neutral },
                   ]}
                 >
                   <Text style={styles.badgeText}>{STATUS_LABELS[item.status] ?? item.status}</Text>
@@ -127,9 +135,11 @@ export function TaskList({ tasks, role }: TaskListProps) {
                   <MaterialCommunityIcons
                     name={subtitle.icon}
                     size={13}
-                    color={colors.neutral400}
+                    color={themeColors.neutral400}
                   />
-                  <Text style={styles.subtitle}>{subtitle.text}</Text>
+                  <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
+                    {subtitle.text}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>

@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { NotificationBell } from './NotificationBell';
+import { useTheme } from '@/lib/theme';
 
 interface ScreenHeaderProps {
   /** Big white title displayed on the green surface. */
@@ -35,10 +36,17 @@ const TITLE_SIZE = fontScale(24);
  * in-screen title). Keeps the notification bell accessible on the right.
  */
 export function ScreenHeader({ title, children, right, onBack, style }: ScreenHeaderProps) {
+  const { colors: themeColors } = useTheme();
   const rightNode = right === undefined ? <NotificationBell /> : right;
 
+  // In high-contrast mode the header background shifts to a darker primary so
+  // it still reads as "primary green" but with higher contrast against the white
+  // body below. Text stays white (primary is dark enough in both palettes).
   return (
-    <SafeAreaView style={[styles.safeArea, style]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: themeColors.primary }, style]}
+      edges={['top']}
+    >
       <View style={styles.row}>
         {onBack ? (
           <Pressable
