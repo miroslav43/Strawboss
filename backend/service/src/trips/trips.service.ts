@@ -15,7 +15,7 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DeliveryDestinationsService } from '../delivery-destinations/delivery-destinations.service';
-import { TripStatus } from '@strawboss/types';
+import { TripStatus, type UserRole } from '@strawboss/types';
 import { QUEUE_CMR_GENERATION } from '../jobs/queues';
 import type {
   TripCreateDto,
@@ -1078,16 +1078,21 @@ export class TripsService implements OnModuleInit {
    * future admin edit on the task can re-trigger auto-creation cleanly.
    *
    * Idempotent: if the trip is already soft-deleted, throws 404.
+   *
+   * Dispatchers can only delete trips in pre-execution statuses; admins may
+   * delete a trip in any status (including completed/disputed) for cleanup.
    */
-  async softDelete(id: string, orgId: string | null) {
+  async softDelete(id: string, orgId: string | null, userRole: UserRole) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
 
-    const deletableStatuses = ['planned', 'loading', 'loaded', 'cancelled'];
-    if (!deletableStatuses.includes(from)) {
-      throw new BadRequestException(
-        `Tripul cu status "${from}" nu poate fi șters. Anulați-l mai întâi.`,
-      );
+    if (userRole !== 'admin') {
+      const deletableStatuses = ['planned', 'loading', 'loaded', 'cancelled'];
+      if (!deletableStatuses.includes(from)) {
+        throw new BadRequestException(
+          `Tripul cu status "${from}" nu poate fi șters. Anulați-l mai întâi.`,
+        );
+      }
     }
 
     await this.drizzleProvider.db.execute(
