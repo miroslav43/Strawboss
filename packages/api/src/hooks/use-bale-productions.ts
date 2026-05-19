@@ -22,9 +22,10 @@ function buildQuery(filters: BaleProductionFilters): string {
 
 export function useBaleProductions(client: ApiClient, filters?: BaleProductionFilters) {
   return useQuery({
-    queryKey: filters?.operatorId
-      ? queryKeys.baleProductions.byOperator(filters.operatorId)
-      : queryKeys.baleProductions.list(filters as Record<string, unknown>),
+    // Always key by the full filter set — the request URL includes all
+    // filters, so two calls sharing only operatorId would otherwise hit the
+    // same cache entry and return stale parcel/date-filtered data.
+    queryKey: queryKeys.baleProductions.list(filters as Record<string, unknown>),
     queryFn: () => client.get<BaleProduction[]>(buildQuery(filters ?? {})),
   });
 }
