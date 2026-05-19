@@ -6,18 +6,35 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 import { RealtimeProvider } from '@/lib/realtime';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
+import { RealtimeStatusBanner } from '@/components/layout/RealtimeStatusBanner';
 import { ProfileLocaleHydration } from '@/components/layout/ProfileLocaleHydration';
 import { supabase } from '@/lib/supabase';
 import { resolveOrganizationSlugForSession } from '@/lib/resolve-organization-slug';
+import { useI18n } from '@/lib/i18n';
+
+// Separated so it can use useI18n (which needs I18nProvider above it).
+function LoadingScreen() {
+  const { t } = useI18n();
+  return (
+    <div className="flex h-screen flex-col items-center justify-center gap-3 bg-neutral-50">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <span className="text-sm text-neutral-500">{t('auth.checkingSession')}</span>
+    </div>
+  );
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const params = useParams<{ slug: string }>();
   const queryClient = useQueryClient();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // W19: start collapsed so mobile doesn't flash an open drawer on first render.
+  // On sm+ the sidebar is always visible via sm:translate-x-0; open only controls
+  // the desktop width (w-60 vs w-16) and the mobile drawer slide-in.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const activeUserIdRef = useRef<string | null>(null);
 
@@ -113,13 +130,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <RealtimeProvider>
       {!ready ? (
-        <div className="flex h-screen items-center justify-center bg-neutral-50" />
+        <LoadingScreen />
       ) : (
         <div className="flex h-screen">
           <ProfileLocaleHydration />
-          <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+
+          {/* W19: mobile overlay — shown only when sidebar open on small screens */}
+          {sidebarOpen && (
+            <div
+              className="fixed inset-0 z-20 bg-black/40 sm:hidden"
+              aria-hidden="true"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+
+          <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
+
           <div className="flex flex-1 flex-col overflow-hidden">
-            <TopBar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+            <TopBar onMenuClick={() => setSidebarOpen((v) => !v)} />
+            {/* W15: realtime disconnection banner */}
+            <RealtimeStatusBanner />
             <main className="flex-1 overflow-y-auto p-6">{children}</main>
           </div>
         </div>

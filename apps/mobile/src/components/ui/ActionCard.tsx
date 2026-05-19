@@ -1,7 +1,8 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors } from '@strawboss/ui-tokens';
+import { colors, radii } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
+import { useTheme } from '@/lib/theme';
 
 interface ActionCardProps {
   title: string;
@@ -18,23 +19,30 @@ export function ActionCard({
   onPress,
   variant = 'default',
 }: ActionCardProps) {
+  const { colors: themeColors } = useTheme();
+
   return (
     <TouchableOpacity
       style={[
         styles.container,
-        variant === 'active' && styles.active,
-        variant === 'completed' && styles.completed,
+        { backgroundColor: themeColors.white },
+        variant === 'active' && [
+          styles.active,
+          { backgroundColor: themeColors.primary50, borderColor: themeColors.primary },
+        ],
+        variant === 'completed' && [styles.completed, { backgroundColor: themeColors.primary50 }],
       ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={styles.iconContainer}>{icon}</View>
+      <View style={[styles.iconContainer, { backgroundColor: themeColors.surface }]}>{icon}</View>
       <View style={styles.content}>
         <Text
           style={[
             styles.title,
-            variant === 'active' && styles.activeTitle,
-            variant === 'completed' && styles.completedTitle,
+            { color: themeColors.black },
+            variant === 'active' && [styles.activeTitle, { color: themeColors.primary }],
+            variant === 'completed' && [styles.completedTitle, { color: themeColors.success }],
           ]}
         >
           {title}
@@ -43,7 +51,8 @@ export function ActionCard({
           <Text
             style={[
               styles.subtitle,
-              variant === 'completed' && styles.completedSubtitle,
+              { color: themeColors.neutral },
+              variant === 'completed' && [styles.completedSubtitle, { color: themeColors.success }],
             ]}
           >
             {subtitle}
@@ -54,7 +63,7 @@ export function ActionCard({
         <MaterialCommunityIcons
           name="check-circle"
           size={24}
-          color={colors.success}
+          color={themeColors.success}
           accessibilityLabel="Finalizat"
         />
       )}
@@ -70,7 +79,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
-    borderRadius: 20,
+    borderRadius: radii.xl,
     padding: scale(18),
     gap: 16,
     shadowColor: '#000',
@@ -90,7 +99,7 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: ICON_SIZE,
     height: ICON_SIZE,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',

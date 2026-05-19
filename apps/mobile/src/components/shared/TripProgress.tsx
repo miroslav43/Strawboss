@@ -14,14 +14,14 @@ const STEPS = [
 ] as const;
 
 const STEP_LABELS: Record<string, string> = {
-  planned:    'Plan',
-  loading:    'Load',
-  loaded:     'Loaded',
-  in_transit: 'Transit',
-  arrived:    'Arrive',
-  delivering: 'Deliver',
-  delivered:  'Done',
-  completed:  'Complete',
+  planned: 'Planificat',
+  loading: 'Încărcare',
+  loaded: 'Încărcat',
+  in_transit: 'În drum',
+  arrived: 'Sosit',
+  delivering: 'Livrare',
+  delivered: 'Livrat',
+  completed: 'Finalizat',
 };
 
 interface TripProgressProps {
@@ -58,8 +58,8 @@ export function TripProgress({ currentStatus }: TripProgressProps) {
       <View style={styles.stepsRow}>
         {STEPS.map((step, index) => {
           const isCompleted = index < currentIndex;
-          const isCurrent   = index === currentIndex;
-          const isFuture    = index > currentIndex;
+          const isCurrent = index === currentIndex;
+          const isFuture = index > currentIndex;
 
           return (
             <View key={step} style={styles.stepItem}>
@@ -68,35 +68,26 @@ export function TripProgress({ currentStatus }: TripProgressProps) {
                   <View
                     style={[
                       styles.line,
-                      isCompleted || isCurrent
-                        ? styles.lineCompleted
-                        : styles.lineFuture,
+                      isCompleted || isCurrent ? styles.lineCompleted : styles.lineFuture,
                     ]}
                   />
                 )}
                 {isCurrent ? (
                   <Animated.View
-                    style={[
-                      styles.dot,
-                      styles.dotCurrent,
-                      { transform: [{ scale: pulseAnim }] },
-                    ]}
+                    style={[styles.dot, styles.dotCurrent, { transform: [{ scale: pulseAnim }] }]}
                   />
                 ) : (
                   <View
                     style={[
                       styles.dot,
                       isCompleted && styles.dotCompleted,
-                      isFuture    && styles.dotFuture,
+                      isFuture && styles.dotFuture,
                     ]}
                   />
                 )}
                 {index < STEPS.length - 1 && (
                   <View
-                    style={[
-                      styles.line,
-                      isCompleted ? styles.lineCompleted : styles.lineFuture,
-                    ]}
+                    style={[styles.line, isCompleted ? styles.lineCompleted : styles.lineFuture]}
                   />
                 )}
               </View>
@@ -104,7 +95,7 @@ export function TripProgress({ currentStatus }: TripProgressProps) {
                 style={[
                   styles.label,
                   isCurrent && styles.labelCurrent,
-                  isFuture  && styles.labelFuture,
+                  isFuture && styles.labelFuture,
                 ]}
               >
                 {STEP_LABELS[step] ?? step}

@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 
@@ -9,13 +10,9 @@ interface NumericPadProps {
   decimal?: boolean;
 }
 
-export function NumericPad({
-  value,
-  onChange,
-  maxLength = 6,
-  decimal = false,
-}: NumericPadProps) {
+export function NumericPad({ value, onChange, maxLength = 6, decimal = false }: NumericPadProps) {
   const handlePress = (key: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (key === 'backspace') {
       onChange(value.slice(0, -1));
       return;
@@ -50,18 +47,22 @@ export function NumericPad({
             {row.map((key) => (
               <TouchableOpacity
                 key={key}
-                style={[
-                  styles.key,
-                  (key === 'backspace' || key === 'clear') && styles.actionKey,
-                ]}
+                style={[styles.key, (key === 'backspace' || key === 'clear') && styles.actionKey]}
                 onPress={() => handlePress(key)}
                 activeOpacity={0.6}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  key === 'backspace'
+                    ? 'Șterge ultima cifră'
+                    : key === 'clear'
+                      ? 'Șterge tot'
+                      : `Cifra ${key}`
+                }
               >
                 <Text
                   style={[
                     styles.keyText,
-                    (key === 'backspace' || key === 'clear') &&
-                      styles.actionKeyText,
+                    (key === 'backspace' || key === 'clear') && styles.actionKeyText,
                   ]}
                 >
                   {key === 'backspace' ? '\u232B' : key === 'clear' ? 'C' : key}

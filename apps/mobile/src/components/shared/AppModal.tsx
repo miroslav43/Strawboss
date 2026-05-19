@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { View, Text, Pressable, Modal, StyleSheet, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { scale, fontScale } from '@/utils/responsive';
+import { radii } from '@strawboss/ui-tokens';
 
 export type AppModalType = 'error' | 'warning' | 'success' | 'confirm';
 
@@ -152,7 +153,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 320,
     backgroundColor: '#fff',
-    borderRadius: scale(16),
+    borderRadius: radii.lg,
     overflow: 'hidden',
   },
   accent: {
@@ -190,7 +191,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   btn: {
-    borderRadius: scale(12),
+    borderRadius: radii.md,
     paddingVertical: scale(12),
     paddingHorizontal: scale(16),
     alignItems: 'center',

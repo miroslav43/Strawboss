@@ -1,8 +1,13 @@
 import { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
 import { BigButton } from '../ui/BigButton';
 import { colors } from '@strawboss/ui-tokens';
+
+const CANVAS_HEIGHT = Math.min(
+  280,
+  Math.max(180, Math.round(Dimensions.get('window').height * 0.25)),
+);
 
 interface SignatureCaptureProps {
   onSave: (signature: string) => void;
@@ -31,13 +36,13 @@ export function SignatureCapture({ onSave, label }: SignatureCaptureProps) {
       <View style={styles.actions}>
         <View style={styles.actionButton}>
           <BigButton
-            title="Clear"
+            title="Șterge"
             variant="outline"
             onPress={() => ref.current?.clearSignature()}
           />
         </View>
         <View style={styles.actionButton}>
-          <BigButton title="Confirm" onPress={() => ref.current?.readSignature()} />
+          <BigButton title="Confirmă" onPress={() => ref.current?.readSignature()} />
         </View>
       </View>
     </View>
@@ -54,7 +59,7 @@ const styles = StyleSheet.create({
     color: colors.neutral,
   },
   canvasContainer: {
-    height: 200,
+    height: CANVAS_HEIGHT,
     borderWidth: 1,
     borderColor: colors.neutral200,
     borderRadius: 8,

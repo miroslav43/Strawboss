@@ -14,18 +14,22 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
-import { mobileApiClient } from '@/lib/api-client';
+import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
 import { mobileLogger } from '@/lib/logger';
 import { colors } from '@strawboss/ui-tokens';
-import { useQueryClient } from '@tanstack/react-query';
+import { useTripTransition } from '@/hooks/useTripTransition';
+import { getDatabase } from '@/lib/storage';
+import { TripsRepo } from '@/db/trips-repo';
 
 export default function ArrivalFlowScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  const queryClient = useQueryClient();
   const { modalProps, showModal } = useModal();
 
   const [odometerStr, setOdometerStr] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pendingSync, setPendingSync] = useState(false);
+
+  const { enqueueTransition } = useTripTransition();
 
   const odometerKm = parseFloat(odometerStr);
   const odometerValid = !isNaN(odometerKm) && odometerKm >= 0;
@@ -42,16 +46,25 @@ export default function ArrivalFlowScreen() {
     }
     setSubmitting(true);
     try {
-      await mobileApiClient.post(`/api/v1/trips/${tripId}/arrive`, {
-        arrivalOdometerKm: odometerKm,
+      const db = await getDatabase();
+      const tripsRepo = new TripsRepo(db);
+      const trip = await tripsRepo.findById(tripId);
+      const currentStatus = trip?.status ?? 'in_transit';
+
+      await enqueueTransition({
+        tripId,
+        currentStatus,
+        transition: 'arrive',
+        body: { arrivalOdometerKm: odometerKm },
+        localMeta: {
+          arrival_odometer_km: odometerKm,
+          arrival_at: new Date().toISOString(),
+        },
       });
 
-      void queryClient.invalidateQueries({ queryKey: ['trips'] });
-      void queryClient.invalidateQueries({ queryKey: ['trip-alert', tripId] });
+      mobileLogger.flow('ArrivalFlow: arrive enqueued offline-first', { tripId });
+      setPendingSync(true);
 
-      mobileLogger.flow('ArrivalFlow: arrive success', { tripId });
-      // Land back on the trip detail so the driver sees the next action,
-      // not bounced to the home tab.
       router.replace(`/trip/${tripId}`);
     } catch (err) {
       mobileLogger.error('ArrivalFlow: arrive failed', {
@@ -67,7 +80,7 @@ export default function ArrivalFlowScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [tripId, odometerKm, odometerValid, queryClient, showModal]);
+  }, [tripId, odometerKm, odometerValid, enqueueTransition, showModal]);
 
   return (
     <KeyboardAvoidingView
@@ -93,6 +106,12 @@ export default function ArrivalFlowScreen() {
             onSubmitEditing={() => void handleSubmit()}
           />
         </View>
+
+        {pendingSync && (
+          <View style={styles.badgeRow}>
+            <PendingTransitionBadge />
+          </View>
+        )}
 
         <BigButton
           title="Confirmă sosirea"
@@ -137,5 +156,8 @@ const styles = StyleSheet.create({
     color: '#0A5C36',
     marginTop: 4,
     backgroundColor: '#F9FFF9',
+  },
+  badgeRow: {
+    paddingHorizontal: 4,
   },
 });

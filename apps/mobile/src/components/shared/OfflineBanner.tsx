@@ -16,9 +16,7 @@ export function OfflineBanner() {
         color={colors.white}
         accessibilityLabel="Fără conexiune"
       />
-      <Text style={styles.text}>
-        Offline — changes will sync when connected
-      </Text>
+      <Text style={styles.text}>Offline — modificările se vor sincroniza când ești conectat</Text>
     </View>
   );
 }

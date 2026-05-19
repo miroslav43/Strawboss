@@ -22,9 +22,10 @@ function buildQuery(filters: BaleProductionFilters): string {
 
 export function useBaleProductions(client: ApiClient, filters?: BaleProductionFilters) {
   return useQuery({
-    queryKey: filters?.operatorId
-      ? queryKeys.baleProductions.byOperator(filters.operatorId)
-      : queryKeys.baleProductions.list(filters as Record<string, unknown>),
+    // Always key by the full filter set — the request URL includes all
+    // filters, so two calls sharing only operatorId would otherwise hit the
+    // same cache entry and return stale parcel/date-filtered data.
+    queryKey: queryKeys.baleProductions.list(filters as Record<string, unknown>),
     queryFn: () => client.get<BaleProduction[]>(buildQuery(filters ?? {})),
   });
 }
@@ -37,7 +38,15 @@ export interface BaleProductionStatsFilters {
   groupBy?: 'operator' | 'parcel' | 'date';
 }
 
-export function useBaleProductionStats(client: ApiClient, filters?: BaleProductionStatsFilters) {
+export interface BaleProductionStatsOptions {
+  enabled?: boolean;
+}
+
+export function useBaleProductionStats(
+  client: ApiClient,
+  filters?: BaleProductionStatsFilters,
+  options?: BaleProductionStatsOptions,
+) {
   const params = new URLSearchParams();
   if (filters?.operatorId) params.set('operatorId', filters.operatorId);
   if (filters?.parcelId) params.set('parcelId', filters.parcelId);
@@ -50,6 +59,7 @@ export function useBaleProductionStats(client: ApiClient, filters?: BaleProducti
   return useQuery({
     queryKey: queryKeys.baleProductions.stats(filters as Record<string, unknown> | undefined),
     queryFn: () => client.get<Record<string, unknown>[]>(url),
+    enabled: options?.enabled,
   });
 }
 

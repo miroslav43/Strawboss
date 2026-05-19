@@ -1,5 +1,7 @@
+import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { BigButton } from '../../ui/BigButton';
+import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
 
 const PRIMARY = '#0A5C36';
 const BACKGROUND = '#F3DED8';
@@ -49,8 +51,24 @@ export function CmrConfirmation({
   onBack,
   loading,
 }: CmrConfirmationProps) {
-  const ticketDisplay = hasTicketPhoto ? '\u2713' : '\u2717';
-  const signatureDisplay = hasSignature ? '\u2713' : '\u2717';
+  const ticketDisplay = hasTicketPhoto ? '✓' : '✗';
+  const signatureDisplay = hasSignature ? '✓' : '✗';
+
+  // FM-6: countdown before executing the irreversible CMR confirmation
+  const [countdownVisible, setCountdownVisible] = useState(false);
+
+  const handleConfirmPress = useCallback(() => {
+    setCountdownVisible(true);
+  }, []);
+
+  const handleCountdownConfirmed = useCallback(() => {
+    setCountdownVisible(false);
+    onConfirm();
+  }, [onConfirm]);
+
+  const handleCountdownCancel = useCallback(() => {
+    setCountdownVisible(false);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -88,16 +106,23 @@ export function CmrConfirmation({
       <View style={styles.actions}>
         <BigButton
           title="Confirmă livrare"
-          onPress={onConfirm}
+          onPress={handleConfirmPress}
           loading={loading}
           disabled={loading}
         />
         <TouchableOpacity onPress={onBack} style={styles.backLink} disabled={loading}>
-          <Text style={[styles.backLinkText, loading && styles.backLinkDisabled]}>
-            Înapoi
-          </Text>
+          <Text style={[styles.backLinkText, loading && styles.backLinkDisabled]}>Înapoi</Text>
         </TouchableOpacity>
       </View>
+
+      {/* FM-6: countdown overlay for irreversible CMR confirmation */}
+      <ConfirmCountdown
+        visible={countdownVisible}
+        actionLabel="Confirmare CMR"
+        countdownSeconds={3}
+        onConfirmed={handleCountdownConfirmed}
+        onCancel={handleCountdownCancel}
+      />
     </View>
   );
 }

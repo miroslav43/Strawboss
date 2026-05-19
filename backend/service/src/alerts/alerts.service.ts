@@ -3,6 +3,27 @@ import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import type { AlertDraft } from '@strawboss/domain';
 
+/** All alert columns aliased to camelCase so the API is consistent. */
+const ALERT_COLS = sql`
+  id,
+  category,
+  severity,
+  title,
+  description,
+  related_table        AS "relatedTable",
+  related_record_id    AS "relatedRecordId",
+  trip_id              AS "tripId",
+  machine_id           AS "machineId",
+  data,
+  is_acknowledged      AS "isAcknowledged",
+  acknowledged_by      AS "acknowledgedBy",
+  acknowledged_at      AS "acknowledgedAt",
+  resolution_notes     AS "resolutionNotes",
+  organization_id      AS "organizationId",
+  created_at           AS "createdAt",
+  updated_at           AS "updatedAt"
+`;
+
 @Injectable()
 export class AlertsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
@@ -15,7 +36,7 @@ export class AlertsService {
       isAcknowledged?: string;
     },
   ) {
-    const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
+    const conditions: ReturnType<typeof sql>[] = [];
 
     if (orgId) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
@@ -33,14 +54,14 @@ export class AlertsService {
 
     if (conditions.length === 0) {
       const result = await this.drizzleProvider.db.execute(
-        sql`SELECT * FROM alerts ORDER BY created_at DESC LIMIT 100`,
+        sql`SELECT ${ALERT_COLS} FROM alerts ORDER BY created_at DESC LIMIT 100`,
       );
       return result;
     }
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM alerts WHERE ${where} ORDER BY created_at DESC LIMIT 100`,
+      sql`SELECT ${ALERT_COLS} FROM alerts WHERE ${where} ORDER BY created_at DESC LIMIT 100`,
     );
     return result;
   }
@@ -48,12 +69,12 @@ export class AlertsService {
   async listUnacknowledged(orgId: string | null) {
     if (orgId) {
       const result = await this.drizzleProvider.db.execute(
-        sql`SELECT * FROM alerts WHERE is_acknowledged = false AND organization_id = ${orgId}::uuid ORDER BY created_at DESC`,
+        sql`SELECT ${ALERT_COLS} FROM alerts WHERE is_acknowledged = false AND organization_id = ${orgId}::uuid ORDER BY created_at DESC`,
       );
       return result;
     }
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT * FROM alerts WHERE is_acknowledged = false ORDER BY created_at DESC`,
+      sql`SELECT ${ALERT_COLS} FROM alerts WHERE is_acknowledged = false ORDER BY created_at DESC`,
     );
     return result;
   }
@@ -78,10 +99,15 @@ export class AlertsService {
     const updateWhere = sql.join(updateConditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(sql`
       UPDATE alerts
-      SET acknowledged_at = NOW(), acknowledged_by = ${userId}::uuid, updated_at = NOW()
+      SET is_acknowledged = true,
+          acknowledged_at = NOW(),
+          acknowledged_by = ${userId}::uuid,
+          updated_at = NOW()
       WHERE ${updateWhere}
+      RETURNING ${ALERT_COLS}
     `);
-    return result;
+    const updated = result as unknown as Record<string, unknown>[];
+    return updated[0];
   }
 
   async create(orgId: string | null, dto: Record<string, unknown>) {
@@ -97,14 +123,29 @@ export class AlertsService {
         ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
         NOW(), NOW()
       )
-      RETURNING id, category, severity, title, description,
-        machine_id AS "machineId",
-        created_at AS "createdAt"`,
+      RETURNING ${ALERT_COLS}`,
     );
-    return result;
+    const created = result as unknown as Record<string, unknown>[];
+    return created[0];
   }
 
   async createFromDraft(draft: AlertDraft, orgId: string) {
+    // Skip insert if an unacknowledged alert with the same (trip_id, category)
+    // already exists — the evaluation job runs every 15 minutes and would
+    // otherwise spam duplicates for the same persistent anomaly.
+    if (draft.tripId) {
+      const existing = await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM alerts
+            WHERE trip_id = ${draft.tripId}::uuid
+              AND category = ${draft.category}
+              AND is_acknowledged = false
+              AND organization_id = ${orgId}::uuid
+            LIMIT 1`,
+      );
+      if ((existing as unknown as Record<string, unknown>[]).length > 0) {
+        return existing;
+      }
+    }
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO alerts (
         category, severity, title, description,

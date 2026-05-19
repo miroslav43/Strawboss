@@ -3,7 +3,12 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback } from 'react';
 import { User, Bell, MonitorCog, Lock, Check, AlertCircle, Loader2 } from 'lucide-react';
-import { useProfile, useUpdateProfile, useChangePassword, useUpdateProfileLocale } from '@strawboss/api';
+import {
+  useProfile,
+  useUpdateProfile,
+  useChangePassword,
+  useUpdateProfileLocale,
+} from '@strawboss/api';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiClient } from '@/lib/api';
 import { useI18n, type Locale } from '@/lib/i18n';
@@ -189,9 +194,8 @@ export default function SettingsPage() {
   const [passwordValidation, setPasswordValidation] = useState('');
   const passwordFb = useFeedback();
 
-  // Notification prefs state
-  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(defaultNotifPrefs);
-  const notifFb = useFeedback();
+  // Notification prefs state — read-only until backend surfaces notificationPrefs on User
+  const [notifPrefs] = useState<NotifPrefs>(defaultNotifPrefs);
 
   // Hydrate form state from profile data
   useEffect(() => {
@@ -199,18 +203,6 @@ export default function SettingsPage() {
       setFullName(profile.fullName ?? '');
       setPhone(profile.phone ?? '');
       setSelectedLocale((profile.locale as Locale) === 'ro' ? 'ro' : 'en');
-
-      const prefs = (profile as unknown as Record<string, unknown>).notificationPrefs as
-        | Record<string, boolean>
-        | undefined;
-      if (prefs && typeof prefs === 'object') {
-        setNotifPrefs({
-          email: prefs.email ?? defaultNotifPrefs.email,
-          critical: prefs.critical ?? defaultNotifPrefs.critical,
-          trips: prefs.trips ?? defaultNotifPrefs.trips,
-          digest: prefs.digest ?? defaultNotifPrefs.digest,
-        });
-      }
     }
   }, [profile]);
 
@@ -268,24 +260,10 @@ export default function SettingsPage() {
   };
 
   /* ---- Notification prefs save ---- */
-  const handleToggleNotif = (key: keyof NotifPrefs) => {
-    const next = { ...notifPrefs, [key]: !notifPrefs[key] };
-    setNotifPrefs(next);
-  };
-
-  const handleSaveNotifs = () => {
-    notifFb.clear();
-    updateProfile.mutate(
-      { notificationPrefs: notifPrefs as unknown as Record<string, boolean> },
-      {
-        onSuccess: () => {
-          notifFb.show('success', t('settings.feedback.notifSaved'));
-        },
-        onError: () => {
-          notifFb.show('error', t('settings.feedback.notifError'));
-        },
-      },
-    );
+  // notificationPrefs is not returned on the User type — backend does not
+  // persist or surface this field yet. Toggles are disabled until supported.
+  const handleToggleNotif = (_key: keyof NotifPrefs) => {
+    // no-op until backend supports notificationPrefs on the User entity
   };
 
   /* ---- Loading state ---- */
@@ -414,9 +392,7 @@ export default function SettingsPage() {
                 'hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60',
               )}
             >
-              {updateProfile.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
+              {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {updateProfile.isPending
                 ? t('settings.feedback.saving')
                 : t('settings.profile.saveProfile')}
@@ -498,10 +474,7 @@ export default function SettingsPage() {
             <button
               type="button"
               disabled={
-                changePassword.isPending ||
-                !currentPassword ||
-                !newPassword ||
-                !confirmPassword
+                changePassword.isPending || !currentPassword || !newPassword || !confirmPassword
               }
               onClick={handleChangePassword}
               className={cn(
@@ -509,9 +482,7 @@ export default function SettingsPage() {
                 'hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60',
               )}
             >
-              {changePassword.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
+              {changePassword.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {changePassword.isPending
                 ? t('settings.password.changing')
                 : t('settings.password.changePassword')}
@@ -525,55 +496,54 @@ export default function SettingsPage() {
           description={t('settings.notifications.description')}
           icon={Bell}
         >
+          {/* W16: notificationPrefs is not on the User type — backend does not
+              persist or return this field yet. All toggles are disabled. */}
+          <div className="mb-3 flex items-center gap-2">
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+              {t('settings.notifications.comingSoon')}
+            </span>
+          </div>
           <div className="divide-y divide-neutral-100">
             <ToggleRow
               label={t('settings.notifications.email')}
               description={t('settings.notifications.emailDesc')}
               checked={notifPrefs.email}
               onChange={() => handleToggleNotif('email')}
+              disabled
             />
             <ToggleRow
               label={t('settings.notifications.critical')}
               description={t('settings.notifications.criticalDesc')}
               checked={notifPrefs.critical}
               onChange={() => handleToggleNotif('critical')}
+              disabled
             />
             <ToggleRow
               label={t('settings.notifications.trips')}
               description={t('settings.notifications.tripsDesc')}
               checked={notifPrefs.trips}
               onChange={() => handleToggleNotif('trips')}
+              disabled
             />
             <ToggleRow
               label={t('settings.notifications.digest')}
               description={t('settings.notifications.digestDesc')}
               checked={notifPrefs.digest}
               onChange={() => handleToggleNotif('digest')}
+              disabled
             />
           </div>
-
-          {notifFb.type && (
-            <div className="mt-4">
-              <FeedbackBanner type={notifFb.type} message={notifFb.message} />
-            </div>
-          )}
 
           <div className="mt-4 flex justify-end">
             <button
               type="button"
-              disabled={updateProfile.isPending}
-              onClick={handleSaveNotifs}
+              disabled
               className={cn(
                 'flex items-center gap-2 rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white',
-                'hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60',
+                'cursor-not-allowed opacity-40',
               )}
             >
-              {updateProfile.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
-              {updateProfile.isPending
-                ? t('settings.feedback.saving')
-                : t('common.save')}
+              {t('common.save')}
             </button>
           </div>
         </SettingsSection>

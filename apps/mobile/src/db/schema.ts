@@ -40,6 +40,9 @@ export const TABLES = {
     delivered_at TEXT,
     completed_at TEXT,
     acknowledged_at TEXT,
+    has_pending_transition INTEGER DEFAULT 0,
+    delivery_step_progress INTEGER,
+    delivery_draft_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     server_version INTEGER DEFAULT 0
@@ -55,6 +58,7 @@ export const TABLES = {
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_flight', 'failed', 'completed')),
     retry_count INTEGER DEFAULT 0,
     last_error TEXT,
+    next_retry_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
@@ -151,5 +155,22 @@ export const TABLES = {
     is_read INTEGER NOT NULL DEFAULT 0,
     read_at INTEGER,
     created_at INTEGER NOT NULL
+  )`,
+
+  // FM-13 — local parcel geometry cache for offline map rendering.
+  // Populated during pull sync from task_assignments that carry parcel data.
+  // `geometry` stores the GeoJSON boundary as a JSON string (TEXT).
+  // `harvest_status` mirrors the server field so the map can colour-code parcels.
+  // `cached_at` lets us expire stale geometry on next pull.
+  parcels: `CREATE TABLE IF NOT EXISTS parcels (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL,
+    area_hectares REAL,
+    municipality TEXT,
+    harvest_status TEXT,
+    centroid_json TEXT,
+    geometry TEXT,
+    cached_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
 } as const;

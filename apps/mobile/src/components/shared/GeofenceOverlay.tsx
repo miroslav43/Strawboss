@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { NumericPad } from '@/components/ui/NumericPad';
@@ -154,8 +154,7 @@ function ExitConfirmModal({
         <NumericPad value={baleCount} onChange={setBaleCount} maxLength={4} />
 
         <View style={styles.modalActions}>
-          <BigButton title={saving ? '' : 'Confirmă'} onPress={handleConfirm} disabled={saving} />
-          {saving && <ActivityIndicator color="#FFF" style={StyleSheet.absoluteFill} />}
+          <BigButton title="Confirmă" onPress={handleConfirm} loading={saving} />
           <BigButton
             title="Nu am terminat"
             variant="outline"

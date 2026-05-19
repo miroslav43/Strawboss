@@ -11,12 +11,14 @@ import {
   Download,
 } from 'lucide-react';
 import type { Trip, Document as StrawbossDocument } from '@strawboss/types';
+import { TripStatus } from '@strawboss/types';
 import { useDocuments } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { TripTimeline } from '@/components/shared/TripTimeline';
 import { SignatureDisplay } from '@/components/shared/SignatureDisplay';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 interface TripDetailProps {
   trip: Trip;
@@ -55,8 +57,13 @@ function Section({
   );
 }
 
+// W25: only fetch documents when the trip is in delivered or completed state.
+const DOCS_RELEVANT_STATUSES: TripStatus[] = [TripStatus.delivered, TripStatus.completed];
+
 export function TripDetail({ trip, className }: TripDetailProps) {
-  const { data: documents } = useDocuments(apiClient, trip.id);
+  const { t } = useI18n();
+  const docsEnabled = DOCS_RELEVANT_STATUSES.includes(trip.status);
+  const { data: documents } = useDocuments(apiClient, docsEnabled ? trip.id : undefined);
   const cmrDoc = documents?.find(
     (d: StrawbossDocument) => d.documentType === 'cmr' && d.status === 'generated',
   );
@@ -66,7 +73,9 @@ export function TripDetail({ trip, className }: TripDetailProps) {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-xl font-bold text-neutral-800">Trip {trip.tripNumber}</h2>
+          <h2 className="text-xl font-bold text-neutral-800">
+            {t('trip_detail.trip')} {trip.tripNumber}
+          </h2>
           <p className="mt-1 text-xs text-neutral-500">ID: {trip.id}</p>
         </div>
         <StatusBadge status={trip.status} className="text-sm" />
@@ -80,22 +89,25 @@ export function TripDetail({ trip, className }: TripDetailProps) {
       {/* Info sections */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Transport info */}
-        <Section title="Transport" icon={Truck}>
+        <Section title={t('trip_detail.transport')} icon={Truck}>
           <div className="divide-y divide-neutral-100">
             <InfoRow
-              label="Truck"
+              label={t('trip_detail.truck')}
               value={trip.truckPlate ?? trip.truckCode ?? shortId(trip.truckId)}
             />
-            <InfoRow label="Driver" value={trip.driverName ?? shortId(trip.driverId)} />
+            <InfoRow
+              label={t('trip_detail.driver')}
+              value={trip.driverName ?? shortId(trip.driverId)}
+            />
             {trip.loaderId && (
               <InfoRow
-                label="Loader"
+                label={t('trip_detail.loader')}
                 value={trip.loaderCode ?? trip.loaderPlate ?? shortId(trip.loaderId)}
               />
             )}
             {trip.loaderOperatorId && (
               <InfoRow
-                label="Loader Operator"
+                label={t('trip_detail.loaderOperator')}
                 value={trip.loaderOperatorName ?? shortId(trip.loaderOperatorId)}
               />
             )}
@@ -103,45 +115,45 @@ export function TripDetail({ trip, className }: TripDetailProps) {
         </Section>
 
         {/* Route info */}
-        <Section title="Route" icon={MapPin}>
+        <Section title={t('trip_detail.route')} icon={MapPin}>
           <div className="divide-y divide-neutral-100">
             <InfoRow
-              label="Source Parcel"
+              label={t('trip_detail.sourceParcel')}
               value={trip.sourceParcelName ?? trip.sourceParcelCode ?? shortId(trip.sourceParcelId)}
             />
-            <InfoRow label="Destination" value={trip.destinationName} />
-            <InfoRow label="Destination Address" value={trip.destinationAddress} />
+            <InfoRow label={t('trip_detail.destination')} value={trip.destinationName} />
+            <InfoRow label={t('trip_detail.destinationAddress')} value={trip.destinationAddress} />
             <InfoRow
-              label="Departure Odometer"
+              label={t('trip_detail.departureOdometer')}
               value={trip.departureOdometerKm != null ? `${trip.departureOdometerKm} km` : null}
             />
             <InfoRow
-              label="Arrival Odometer"
+              label={t('trip_detail.arrivalOdometer')}
               value={trip.arrivalOdometerKm != null ? `${trip.arrivalOdometerKm} km` : null}
             />
             <InfoRow
-              label="Odometer Distance"
+              label={t('trip_detail.odometerDistance')}
               value={trip.odometerDistanceKm != null ? `${trip.odometerDistanceKm} km` : null}
             />
             <InfoRow
-              label="GPS Distance"
+              label={t('trip_detail.gpsDistance')}
               value={trip.gpsDistanceKm != null ? `${trip.gpsDistanceKm} km` : null}
             />
           </div>
         </Section>
 
         {/* Load info */}
-        <Section title="Load" icon={Package}>
+        <Section title={t('trip_detail.load')} icon={Package}>
           <div className="divide-y divide-neutral-100">
-            <InfoRow label="Bales" value={trip.baleCount} />
+            <InfoRow label={t('trip_detail.bales')} value={trip.baleCount} />
             <InfoRow
-              label="Loading Started"
+              label={t('trip_detail.loadingStarted')}
               value={
                 trip.loadingStartedAt ? new Date(trip.loadingStartedAt).toLocaleString() : null
               }
             />
             <InfoRow
-              label="Loading Completed"
+              label={t('trip_detail.loadingCompleted')}
               value={
                 trip.loadingCompletedAt ? new Date(trip.loadingCompletedAt).toLocaleString() : null
               }
@@ -150,25 +162,27 @@ export function TripDetail({ trip, className }: TripDetailProps) {
         </Section>
 
         {/* Weight info */}
-        <Section title="Weight" icon={Weight}>
+        <Section title={t('trip_detail.weight')} icon={Weight}>
           <div className="divide-y divide-neutral-100">
             <InfoRow
-              label="Gross Weight"
+              label={t('trip_detail.grossWeight')}
               value={trip.grossWeightKg != null ? `${trip.grossWeightKg} kg` : null}
             />
             <InfoRow
-              label="Tare Weight"
+              label={t('trip_detail.tareWeight')}
               value={trip.tareWeightKg != null ? `${trip.tareWeightKg} kg` : null}
             />
             <InfoRow
-              label="Net Weight"
+              label={t('trip_detail.netWeight')}
               value={trip.netWeightKg != null ? `${trip.netWeightKg} kg` : null}
             />
-            <InfoRow label="Weight Ticket #" value={trip.weightTicketNumber} />
+            <InfoRow label={t('trip_detail.weightTicket')} value={trip.weightTicketNumber} />
           </div>
           {trip.weightTicketPhotoUrl && (
             <div className="mt-3">
-              <p className="mb-1.5 text-xs font-medium text-neutral-500">Poză bon de cântar</p>
+              <p className="mb-1.5 text-xs font-medium text-neutral-500">
+                {t('trip_detail.weightTicket')}
+              </p>
               <a
                 href={apiClient.resolveAssetUrl(trip.weightTicketPhotoUrl) ?? '#'}
                 target="_blank"
@@ -177,7 +191,7 @@ export function TripDetail({ trip, className }: TripDetailProps) {
               >
                 <img
                   src={apiClient.resolveAssetUrl(trip.weightTicketPhotoUrl) ?? ''}
-                  alt="Bon de cântar"
+                  alt={t('trip_detail.weightTicket')}
                   className="max-h-56 w-auto rounded-lg border border-neutral-200 object-contain transition hover:opacity-90"
                 />
               </a>
@@ -186,33 +200,36 @@ export function TripDetail({ trip, className }: TripDetailProps) {
         </Section>
 
         {/* Timestamps */}
-        <Section title="Timestamps" icon={Clock}>
+        <Section title={t('trip_detail.timestamps')} icon={Clock}>
           <div className="divide-y divide-neutral-100">
             <InfoRow
-              label="Departed"
+              label={t('trip_detail.departed')}
               value={trip.departureAt ? new Date(trip.departureAt).toLocaleString() : null}
             />
             <InfoRow
-              label="Arrived"
+              label={t('trip_detail.arrived')}
               value={trip.arrivalAt ? new Date(trip.arrivalAt).toLocaleString() : null}
             />
             <InfoRow
-              label="Delivered"
+              label={t('trip_detail.delivered')}
               value={trip.deliveredAt ? new Date(trip.deliveredAt).toLocaleString() : null}
             />
             <InfoRow
-              label="Completed"
+              label={t('trip_detail.completed')}
               value={trip.completedAt ? new Date(trip.completedAt).toLocaleString() : null}
             />
-            <InfoRow label="Created" value={new Date(trip.createdAt).toLocaleString()} />
+            <InfoRow
+              label={t('trip_detail.created')}
+              value={new Date(trip.createdAt).toLocaleString()}
+            />
           </div>
         </Section>
 
         {/* Delivery info */}
-        <Section title="Delivery" icon={FileText}>
+        <Section title={t('trip_detail.delivery')} icon={FileText}>
           <div className="divide-y divide-neutral-100">
-            <InfoRow label="Receiver" value={trip.receiverName} />
-            <InfoRow label="Notes" value={trip.deliveryNotes} />
+            <InfoRow label={t('trip_detail.receiver')} value={trip.receiverName} />
+            <InfoRow label={t('trip_detail.notes')} value={trip.deliveryNotes} />
           </div>
         </Section>
 
@@ -249,7 +266,7 @@ export function TripDetail({ trip, className }: TripDetailProps) {
         )}
 
         {/* Documents / CMR */}
-        {(trip.status === 'delivered' || trip.status === 'completed') && (
+        {docsEnabled && (
           <Section title="Documente" icon={Download}>
             <div className="divide-y divide-neutral-100">
               {cmrDoc ? (

@@ -114,29 +114,32 @@ export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerPr
   };
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={handlePress}
-      accessibilityLabel="Schimbă poza de profil"
-      accessibilityRole="button"
-      style={styles.wrapper}
-    >
-      <View style={styles.avatarCircle}>
-        {resolvedUrl ? (
-          <Image source={{ uri: resolvedUrl }} style={styles.image} />
-        ) : (
-          <Text style={styles.initial}>{initial}</Text>
-        )}
-        {uploading ? (
-          <View style={styles.uploadingOverlay}>
-            <ActivityIndicator color="#FFFFFF" />
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.editBadge}>
-        <MaterialCommunityIcons name="camera" size={14} color={colors.primary} />
-      </View>
-    </TouchableOpacity>
+    <>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={handlePress}
+        accessibilityLabel="Schimbă poza de profil"
+        accessibilityRole="button"
+        style={styles.wrapper}
+      >
+        <View style={styles.avatarCircle}>
+          {resolvedUrl ? (
+            <Image source={{ uri: resolvedUrl }} style={styles.image} />
+          ) : (
+            <Text style={styles.initial}>{initial}</Text>
+          )}
+          {uploading ? (
+            <View style={styles.uploadingOverlay}>
+              <ActivityIndicator color="#FFFFFF" />
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.editBadge}>
+          <MaterialCommunityIcons name="camera" size={14} color={colors.primary} />
+        </View>
+      </TouchableOpacity>
+      <AppModal {...modalProps} />
+    </>
   );
 }
 

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useCallback } from 'react';
+import { createContext, useContext, useEffect, useRef, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { queryKeys } from '@strawboss/api';
@@ -7,14 +7,32 @@ import { clientLogger } from '@/lib/client-logger';
 
 const MAX_RETRIES = 10;
 
+export type RealtimeStatus = 'connected' | 'reconnecting' | 'disconnected';
+
+interface RealtimeContextValue {
+  realtimeStatus: RealtimeStatus;
+  reconnect: () => void;
+}
+
+const RealtimeContext = createContext<RealtimeContextValue>({
+  realtimeStatus: 'connected',
+  reconnect: () => undefined,
+});
+
+export function useRealtimeStatus() {
+  return useContext(RealtimeContext);
+}
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const retryCountRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connected');
 
   const subscribe = useCallback(() => {
-    const channel = supabase.channel('db-changes')
+    const channel = supabase
+      .channel('db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, (payload) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
         const recordId =
@@ -30,14 +48,35 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.alerts.all });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'parcel_daily_status' }, () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.parcelDailyStatus.all });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_destinations' }, () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.deliveryDestinations.all });
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'parcel_daily_status' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.parcelDailyStatus.all });
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'delivery_destinations' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.deliveryDestinations.all });
+        },
+      )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'geofence_events' }, () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
+      })
+      // FW-5: invalidate machine location cache so map stays live
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'machine_locations' }, () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.location.machines() });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'machines' }, (payload) => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.machines.all });
+        const recordId =
+          (payload.new as { id?: string } | undefined)?.id ??
+          (payload.old as { id?: string } | undefined)?.id;
+        if (recordId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.machines.detail(recordId) });
+        }
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -49,6 +88,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             queryClient.invalidateQueries();
           }
           retryCountRef.current = 0;
+          setRealtimeStatus('connected');
           return;
         }
 
@@ -63,12 +103,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           channelRef.current = null;
 
           if (retryCountRef.current >= MAX_RETRIES) {
-            console.error(
+            clientLogger.error(
               `Supabase Realtime: giving up after ${MAX_RETRIES} reconnect attempts`,
             );
+            setRealtimeStatus('disconnected');
             return;
           }
 
+          setRealtimeStatus('reconnecting');
           const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
           retryCountRef.current += 1;
 
@@ -81,6 +123,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     channelRef.current = channel;
     return channel;
   }, [queryClient]);
+
+  const reconnect = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+    retryCountRef.current = 0;
+    setRealtimeStatus('reconnecting');
+    channelRef.current = subscribe();
+  }, [subscribe]);
 
   useEffect(() => {
     channelRef.current = subscribe();
@@ -97,5 +153,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     };
   }, [subscribe]);
 
-  return <>{children}</>;
+  return (
+    <RealtimeContext.Provider value={{ realtimeStatus, reconnect }}>
+      {children}
+    </RealtimeContext.Provider>
+  );
 }

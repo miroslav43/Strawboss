@@ -1,19 +1,29 @@
-import { useState, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
+import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
+import { StepIndicator } from '@/components/ui/StepIndicator';
 import { WeightInput } from './WeightInput';
 import { WeightTicketPhoto } from './WeightTicketPhoto';
 import { SignatureStep } from './SignatureStep';
 import { DeterioratedBalesInput } from './DeterioratedBalesInput';
 import { CmrConfirmation } from './CmrConfirmation';
 import { WhatsAppLink } from '@/components/shared/WhatsAppLink';
-import { mobileApiClient } from '@/lib/api-client';
 import { uploadReceipt } from '@/lib/receiptUpload';
+import { uploadSignature } from '@/lib/signatureUpload';
 import { mobileLogger } from '@/lib/logger';
+import { getDatabase } from '@/lib/storage';
+import { TripsRepo } from '@/db/trips-repo';
+import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { useSync } from '@/hooks/useSync';
+import { useQueryClient } from '@tanstack/react-query';
+import type { TripTransitionPayload } from '@/sync/push';
 
 const BACKGROUND = '#F3DED8';
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 interface EnhancedDeliveryFlowProps {
   tripId: string;
@@ -36,18 +46,37 @@ const STEP_TITLES: Record<Step, string> = {
 };
 
 /**
- * POST a trip transition, tolerating the "transition not allowed from status"
- * error — that means a previous (partially-failed) attempt already performed
- * this step. Any other error (validation, network) is rethrown.
+ * FM-1: Delivery draft — persisted to SQLite so the flow can resume after a crash.
  */
-async function postTolerant(url: string, body: unknown): Promise<void> {
-  try {
-    await mobileApiClient.post(url, body);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (/not allowed from status/i.test(message)) return;
-    throw err;
-  }
+interface DeliveryDraft {
+  netWeightValue: string;
+  deterioratedBales: number;
+  ticketPhotoUri: string | null;
+  ticketUrl: string | null;
+  receiverName: string;
+  receiverSignature: string | null;
+}
+
+/**
+ * FM-1: Enqueue a single trip transition to the sync queue.
+ * Idempotency key: `trip_transition_${tripId}_${transition}` — stable across
+ * retries, so a crash between two transitions doesn't create duplicate entries.
+ */
+async function enqueueTripTransition(
+  tripId: string,
+  transition: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const db = await getDatabase();
+  const syncQueueRepo = new SyncQueueRepo(db);
+  const payload: TripTransitionPayload = { transition, tripId, body };
+  await syncQueueRepo.enqueue({
+    entityType: 'trip_transition',
+    entityId: tripId,
+    action: 'update',
+    payload,
+    idempotencyKey: `trip_transition_${tripId}_${transition}`,
+  });
 }
 
 export function EnhancedDeliveryFlow({
@@ -66,13 +95,97 @@ export function EnhancedDeliveryFlow({
   const [receiverName, setReceiverName] = useState('');
   const [receiverSignature, setReceiverSignature] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const { modalProps, showModal, hideModal } = useModal();
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const prevStepRef = useRef<Step>(0);
+  const { triggerSync } = useSync();
+  const queryClient = useQueryClient();
 
   const grossWeightKg = parseFloat(netWeightValue) || 0;
 
-  const goToStep = useCallback((step: Step) => {
-    setCurrentStep(step);
-  }, []);
+  // FM-1: On mount, restore any persisted draft so the driver can resume.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const db = await getDatabase();
+        const tripsRepo = new TripsRepo(db);
+        const trip = await tripsRepo.findById(tripId);
+        if (
+          trip?.delivery_draft_json &&
+          trip.delivery_step_progress != null &&
+          trip.delivery_step_progress >= 0
+        ) {
+          const draft = JSON.parse(trip.delivery_draft_json) as Partial<DeliveryDraft>;
+          if (draft.netWeightValue != null) setNetWeightValue(draft.netWeightValue);
+          if (draft.deterioratedBales != null) setDeterioratedBales(draft.deterioratedBales);
+          if (draft.ticketPhotoUri != null) setTicketPhotoUri(draft.ticketPhotoUri);
+          if (draft.receiverName != null) setReceiverName(draft.receiverName);
+          if (draft.receiverSignature != null) setReceiverSignature(draft.receiverSignature);
+          // Resume at the step after the last completed one (capped at step 4).
+          const resumeStep = Math.min(trip.delivery_step_progress + 1, 4) as Step;
+          setCurrentStep(resumeStep);
+          prevStepRef.current = resumeStep;
+          mobileLogger.flow('EnhancedDeliveryFlow: resumed from draft', {
+            tripId,
+            resumeStep,
+          });
+        }
+      } catch (err) {
+        mobileLogger.warn('EnhancedDeliveryFlow: failed to restore draft', {
+          tripId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setDraftLoaded(true);
+      }
+    })();
+  }, [tripId]);
+
+  /**
+   * FM-1: Persist current draft to SQLite after each step advance so the
+   * driver can resume if the app is killed before the final confirmation.
+   */
+  const persistDraft = useCallback(
+    async (completedStep: number) => {
+      const draft: DeliveryDraft = {
+        netWeightValue,
+        deterioratedBales,
+        ticketPhotoUri,
+        ticketUrl: null,
+        receiverName,
+        receiverSignature,
+      };
+      try {
+        const db = await getDatabase();
+        const tripsRepo = new TripsRepo(db);
+        await tripsRepo.saveDeliveryDraft(tripId, completedStep, JSON.stringify(draft));
+      } catch (err) {
+        // Non-fatal — the flow continues; draft may not resume perfectly after crash.
+        mobileLogger.warn('EnhancedDeliveryFlow: failed to persist draft', {
+          tripId,
+          completedStep,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [tripId, netWeightValue, deterioratedBales, ticketPhotoUri, receiverName, receiverSignature],
+  );
+
+  const goToStep = useCallback(
+    (step: Step) => {
+      const forward = step >= prevStepRef.current;
+      slideAnim.setValue(forward ? SCREEN_WIDTH : -SCREEN_WIDTH);
+      setCurrentStep(step);
+      prevStepRef.current = step;
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    },
+    [slideAnim],
+  );
 
   const handleHeaderBack = useCallback(() => {
     if (currentStep > 0) {
@@ -84,7 +197,7 @@ export function EnhancedDeliveryFlow({
 
   const handleConfirm = useCallback(async () => {
     setLoading(true);
-    mobileLogger.flow('Driver delivery: confirming', { tripId, tripNumber });
+    mobileLogger.flow('Driver delivery: confirming offline-first', { tripId, tripNumber });
     try {
       // Upload the weigh-ticket photo (best-effort — empty URL if it fails).
       let ticketUrl = '';
@@ -97,22 +210,70 @@ export function EnhancedDeliveryFlow({
         }
       }
 
-      // The state machine requires: arrived → delivering → delivered → completed.
-      // start-delivery / confirm-delivery are tolerant so a retry after a
-      // partial failure does not crash on an already-done step.
-      await postTolerant(`/api/v1/trips/${tripId}/start-delivery`, {});
-      await postTolerant(`/api/v1/trips/${tripId}/confirm-delivery`, {
+      // M9: Attempt binary upload of the receiver signature PNG before
+      // enqueuing the transition.  Falls back to the raw base64 string if the
+      // upload fails (offline / server error) — the backend accepts both.
+      let receiverSignatureValue = receiverSignature ?? '';
+      if (receiverSignature) {
+        try {
+          receiverSignatureValue = await uploadSignature(receiverSignature, 'receiver');
+          mobileLogger.flow('EnhancedDeliveryFlow: receiver signature uploaded as binary', {
+            tripId,
+          });
+        } catch {
+          // Offline or upload error — fall back to base64 (backward-compatible).
+          mobileLogger.info(
+            'EnhancedDeliveryFlow: signature binary upload failed, falling back to base64',
+            { tripId },
+          );
+        }
+      }
+
+      // FM-1: Apply transitions optimistically in local SQLite, then enqueue each.
+      // Order matters — start-delivery → confirm-delivery → complete.
+      // Idempotency keys are stable so retrying is safe.
+      const db = await getDatabase();
+      const tripsRepo = new TripsRepo(db);
+
+      // 1. start-delivery: arrived → delivering
+      await tripsRepo.applyTransitionLocally(tripId, 'delivering');
+      await enqueueTripTransition(tripId, 'start-delivery', {});
+
+      // 2. confirm-delivery: delivering → delivered
+      await tripsRepo.applyTransitionLocally(tripId, 'delivered', {
+        gross_weight_kg: grossWeightKg,
+        delivered_at: new Date().toISOString(),
+      });
+      await enqueueTripTransition(tripId, 'confirm-delivery', {
         grossWeightKg,
         deterioratedBalesCount: deterioratedBales,
         weightTicketPhotoUrl: ticketUrl,
       });
-      // complete is strict — real errors (e.g. missing data) surface here.
-      await mobileApiClient.post(`/api/v1/trips/${tripId}/complete`, {
+
+      // 3. complete: delivered → completed
+      await tripsRepo.applyTransitionLocally(tripId, 'completed', {
+        receiver_name: receiverName.trim(),
+        completed_at: new Date().toISOString(),
+      });
+      await enqueueTripTransition(tripId, 'complete', {
         receiverName: receiverName.trim(),
-        receiverSignature: receiverSignature ?? '',
+        receiverSignature: receiverSignatureValue,
       });
 
-      mobileLogger.flow('Driver delivery: completed', { tripId });
+      // FM-1: Clear the delivery draft — flow completed successfully.
+      await tripsRepo.clearDeliveryDraft(tripId);
+
+      mobileLogger.flow('Driver delivery: all transitions enqueued offline-first', { tripId });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Invalidate queries so the driver index list reflects the new status.
+      void queryClient.invalidateQueries({ queryKey: ['trips'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-trips'] });
+      void queryClient.invalidateQueries({ queryKey: ['trip-alert', tripId] });
+
+      // Best-effort sync.
+      void triggerSync().catch(() => {});
+
       onComplete();
     } catch (err) {
       mobileLogger.error('Driver delivery: confirmation failed', {
@@ -137,9 +298,14 @@ export function EnhancedDeliveryFlow({
     tripId,
     tripNumber,
     onComplete,
+    triggerSync,
+    queryClient,
     showModal,
     hideModal,
   ]);
+
+  // Don't render until draft restoration is complete (avoids step flicker).
+  if (!draftLoaded) return null;
 
   const renderStep = () => {
     switch (currentStep) {
@@ -154,7 +320,10 @@ export function EnhancedDeliveryFlow({
             <WeightInput
               value={netWeightValue}
               onChange={setNetWeightValue}
-              onConfirm={() => goToStep(1)}
+              onConfirm={() => {
+                void persistDraft(0);
+                goToStep(1);
+              }}
             />
           </>
         );
@@ -164,7 +333,10 @@ export function EnhancedDeliveryFlow({
             baleCount={deterioratedBales}
             onBaleCountChange={setDeterioratedBales}
             totalBales={baleCount}
-            onNext={() => goToStep(2)}
+            onNext={() => {
+              void persistDraft(1);
+              goToStep(2);
+            }}
             onBack={() => goToStep(0)}
           />
         );
@@ -173,10 +345,12 @@ export function EnhancedDeliveryFlow({
           <WeightTicketPhoto
             onCapture={(uri) => {
               setTicketPhotoUri(uri);
+              void persistDraft(2);
               goToStep(3);
             }}
             onSkip={() => {
               setTicketPhotoUri(null);
+              void persistDraft(2);
               goToStep(3);
             }}
           />
@@ -188,24 +362,32 @@ export function EnhancedDeliveryFlow({
             onReceiverNameChange={setReceiverName}
             receiverSignature={receiverSignature}
             onSign={setReceiverSignature}
-            onComplete={() => goToStep(4)}
+            onComplete={() => {
+              void persistDraft(3);
+              goToStep(4);
+            }}
           />
         );
       case 4:
         return (
-          <CmrConfirmation
-            tripNumber={tripNumber}
-            baleCount={baleCount}
-            deterioratedBales={deterioratedBales}
-            netWeightKg={grossWeightKg}
-            receiverName={receiverName}
-            destinationName={destinationName}
-            hasTicketPhoto={ticketPhotoUri !== null}
-            hasSignature={receiverSignature !== null}
-            onConfirm={handleConfirm}
-            onBack={() => goToStep(3)}
-            loading={loading}
-          />
+          <>
+            <View style={styles.pendingBadgeRow}>
+              <PendingTransitionBadge />
+            </View>
+            <CmrConfirmation
+              tripNumber={tripNumber}
+              baleCount={baleCount}
+              deterioratedBales={deterioratedBales}
+              netWeightKg={grossWeightKg}
+              receiverName={receiverName}
+              destinationName={destinationName}
+              hasTicketPhoto={ticketPhotoUri !== null}
+              hasSignature={receiverSignature !== null}
+              onConfirm={handleConfirm}
+              onBack={() => goToStep(3)}
+              loading={loading}
+            />
+          </>
         );
     }
   };
@@ -213,7 +395,10 @@ export function EnhancedDeliveryFlow({
   return (
     <View style={styles.flow}>
       <ScreenHeader title={STEP_TITLES[currentStep]} onBack={handleHeaderBack} />
-      <View style={styles.body}>{renderStep()}</View>
+      <StepIndicator totalSteps={5} currentStep={currentStep} />
+      <Animated.View style={[styles.body, { transform: [{ translateX: slideAnim }] }]}>
+        {renderStep()}
+      </Animated.View>
       <AppModal {...modalProps} />
     </View>
   );
@@ -231,5 +416,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 4,
+  },
+  pendingBadgeRow: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  resumeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#A5D6A7',
+  },
+  resumeText: {
+    fontSize: 13,
+    color: '#2E7D32',
+    flex: 1,
   },
 });

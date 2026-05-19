@@ -91,7 +91,9 @@ cmd_mobile__build__local() {
   pnpm --filter @strawboss/api build
 
   info "expo prebuild --platform android..."
-  ( cd "$mobile_dir" && pnpm exec dotenv -e "$dotenv_file" -- pnpm exec expo prebuild --platform android )
+  # Use the workspace-local dotenv-cli explicitly: a system-wide python-dotenv on
+  # PATH would otherwise be picked up by `pnpm exec dotenv` and reject `-e <file>`.
+  ( cd "$mobile_dir" && ./node_modules/.bin/dotenv -e "$dotenv_file" -- pnpm exec expo prebuild --platform android )
 
   local gradle_task="assembleDebug" out_sub="debug"
   if [ "$variant" = "release" ]; then
@@ -119,7 +121,7 @@ cmd_mobile__build__local() {
   fi
 
   info "Gradle: ./gradlew $gradle_task (with $dotenv_file for bundled EXPO_PUBLIC_*)"
-  ( cd "$mobile_dir" && pnpm exec dotenv -e "$dotenv_file" -- sh -c "cd android && ./gradlew $gradle_task" )
+  ( cd "$mobile_dir" && ./node_modules/.bin/dotenv -e "$dotenv_file" -- sh -c "cd android && ./gradlew $gradle_task" )
 
   local apk_dir="$mobile_dir/android/app/build/outputs/apk/$out_sub"
   echo ""

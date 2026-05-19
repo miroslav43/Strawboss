@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { addNotificationResponseListener, addNotificationListener } from '@/lib/notifications';
 import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
@@ -19,14 +19,21 @@ export interface GeofenceAlert {
   tripId?: string | null;
 }
 
+/** Minimum ms between two alerts for the same type+assignmentId key. */
+const GEOFENCE_ALERT_DEBOUNCE_MS = 60_000;
+
 /**
  * Listens for geofence-related notifications and exposes an active alert
  * that the UI can display (banner for entry, modal for exit confirmation).
+ * Duplicate alerts for the same event within 60 s are suppressed to handle
+ * GPS oscillation near boundary edges.
  */
 export function useGeofenceNotifications() {
   const [alertQueue, setAlertQueue] = useState<GeofenceAlert[]>([]);
   const activeAlert = alertQueue[0] ?? null;
   const userId = useAuthStore((s) => s.userId);
+  /** Tracks the last time each alert key (type:assignmentId) was enqueued. */
+  const lastAlertAt = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!userId) {
@@ -55,12 +62,33 @@ export function useGeofenceNotifications() {
   }, []);
 
   useEffect(() => {
+    /**
+     * Returns true and records the timestamp if the alert should be shown.
+     * Returns false if the same type+assignmentId was already enqueued within
+     * GEOFENCE_ALERT_DEBOUNCE_MS — suppresses GPS-oscillation duplicates.
+     */
+    const shouldEnqueue = (type: string, assignmentId: string): boolean => {
+      const key = `${type}:${assignmentId}`;
+      const now = Date.now();
+      const last = lastAlertAt.current.get(key) ?? 0;
+      if (now - last < GEOFENCE_ALERT_DEBOUNCE_MS) {
+        mobileLogger.flow('Geofence: suppressed duplicate alert (debounce)', {
+          key,
+          elapsedMs: now - last,
+        });
+        return false;
+      }
+      lastAlertAt.current.set(key, now);
+      return true;
+    };
+
     // Handle foreground notifications → show UI alert
     const fgSubscription = addNotificationListener((notification) => {
       const data = notification.request.content.data as NotificationData | undefined;
       if (!data?.type || !data.assignmentId) return;
 
       const assignmentId = data.assignmentId;
+      if (!shouldEnqueue(data.type, assignmentId)) return;
 
       switch (data.type) {
         case 'field_entry':
@@ -109,12 +137,15 @@ export function useGeofenceNotifications() {
       }
     });
 
-    // Handle notification taps (app was in background)
+    // Handle notification taps (app was in background).
+    // Taps are intentional user actions — debounce still applies to prevent
+    // double-enqueue if the OS delivers both a foreground and a tap event.
     const tapSubscription = addNotificationResponseListener((response) => {
       const data = response.notification.request.content.data as NotificationData | undefined;
       if (!data?.type || !data.assignmentId) return;
 
       const assignmentId = data.assignmentId;
+      if (!shouldEnqueue(data.type, assignmentId)) return;
 
       if (data.type === 'geofence_exit_confirm') {
         // Show the exit modal so user can enter bale count

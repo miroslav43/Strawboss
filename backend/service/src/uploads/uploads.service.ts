@@ -66,6 +66,17 @@ export interface SaveAvatarResult {
   sizeBytes: number;
 }
 
+export interface SaveSignatureInput {
+  mimetype: string;
+  stream: Readable;
+}
+
+export interface SaveSignatureResult {
+  url: string;
+  key: string;
+  sizeBytes: number;
+}
+
 /** Resolves the root directory for file uploads (env-driven, with a dev default). */
 export function resolveUploadsRoot(configService: ConfigService): string {
   const fromEnv = configService.get<string>('UPLOADS_ROOT');
@@ -106,9 +117,7 @@ export class UploadsService {
       bytesWritten += chunk.length;
       if (bytesWritten > MAX_BYTES) {
         input.stream.destroy(
-          new PayloadTooLargeException(
-            `File exceeds max size of ${MAX_BYTES} bytes`,
-          ),
+          new PayloadTooLargeException(`File exceeds max size of ${MAX_BYTES} bytes`),
         );
       }
     });
@@ -120,9 +129,7 @@ export class UploadsService {
         /* already gone */
       });
       if (err instanceof PayloadTooLargeException) throw err;
-      throw new InternalServerErrorException(
-        err instanceof Error ? err.message : 'Upload failed',
-      );
+      throw new InternalServerErrorException(err instanceof Error ? err.message : 'Upload failed');
     }
 
     // URL is relative to the API origin so mobile/admin can use their normal
@@ -162,9 +169,7 @@ export class UploadsService {
       bytesRead += buf.length;
       if (bytesRead > MAX_BYTES) {
         input.stream.destroy();
-        throw new PayloadTooLargeException(
-          `File exceeds max size of ${MAX_BYTES} bytes`,
-        );
+        throw new PayloadTooLargeException(`File exceeds max size of ${MAX_BYTES} bytes`);
       }
       chunks.push(buf);
     }
@@ -205,6 +210,60 @@ export class UploadsService {
       url: `/api/v1/uploads/${key}?v=${version}`,
       key,
       sizeBytes: output.length,
+    };
+  }
+
+  /**
+   * Save a delivery/departure signature image (PNG from the mobile canvas).
+   *
+   * Signatures are stored as-is under `UPLOADS_ROOT/signatures/` and served
+   * at `/api/v1/uploads/signatures/<uuid>.png`. The returned `url` is what
+   * mobile clients pass as `driverSignature` / `receiverSignature` in trip
+   * transition DTOs — instead of embedding the raw base64 in the JSON body.
+   *
+   * Accepted MIME types match what the React Native canvas produces: PNG and
+   * JPEG. WebP is also accepted for forward compat.
+   */
+  async saveSignature(input: SaveSignatureInput): Promise<SaveSignatureResult> {
+    const ext = ALLOWED_MIMES[input.mimetype];
+    if (!ext) {
+      throw new BadRequestException(
+        `Unsupported file type '${input.mimetype}'. Allowed: ${Object.keys(ALLOWED_MIMES).join(', ')}`,
+      );
+    }
+
+    const dir = path.join(this.uploadsRoot, 'signatures');
+    await fsp.mkdir(dir, { recursive: true });
+
+    const key = `signatures/${randomUUID()}.${ext}`;
+    const absolute = path.join(this.uploadsRoot, key);
+
+    let bytesWritten = 0;
+    const ws = createWriteStream(absolute);
+
+    input.stream.on('data', (chunk: Buffer) => {
+      bytesWritten += chunk.length;
+      if (bytesWritten > MAX_BYTES) {
+        input.stream.destroy(
+          new PayloadTooLargeException(`File exceeds max size of ${MAX_BYTES} bytes`),
+        );
+      }
+    });
+
+    try {
+      await pipeline(input.stream, ws);
+    } catch (err) {
+      await fsp.unlink(absolute).catch(() => {
+        /* already gone */
+      });
+      if (err instanceof PayloadTooLargeException) throw err;
+      throw new InternalServerErrorException(err instanceof Error ? err.message : 'Upload failed');
+    }
+
+    return {
+      url: `/api/v1/uploads/${key}`,
+      key,
+      sizeBytes: bytesWritten,
     };
   }
 }

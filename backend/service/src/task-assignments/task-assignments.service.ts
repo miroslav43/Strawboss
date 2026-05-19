@@ -29,14 +29,11 @@ export class TaskAssignmentsService {
     try {
       await this.tripsService.autoUpsertFromTruckTask(taskId);
     } catch (err) {
-      this.winston.error(
-        `autoUpsertFromTruckTask failed for task ${taskId}`,
-        {
-          context: 'TaskAssignmentsService',
-          taskId,
-          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
-        },
-      );
+      this.winston.error(`autoUpsertFromTruckTask failed for task ${taskId}`, {
+        context: 'TaskAssignmentsService',
+        taskId,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
     }
   }
 
@@ -44,23 +41,23 @@ export class TaskAssignmentsService {
     try {
       await this.tripsService.autoCancelForTruckTask(taskId);
     } catch (err) {
-      this.winston.error(
-        `autoCancelForTruckTask failed for task ${taskId}`,
-        {
-          context: 'TaskAssignmentsService',
-          taskId,
-          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
-        },
-      );
+      this.winston.error(`autoCancelForTruckTask failed for task ${taskId}`, {
+        context: 'TaskAssignmentsService',
+        taskId,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
     }
   }
 
-  async list(orgId: string | null, filters?: {
-    assignmentDate?: string;
-    machineId?: string;
-    assignedUserId?: string;
-    status?: string;
-  }) {
+  async list(
+    orgId: string | null,
+    filters?: {
+      assignmentDate?: string;
+      machineId?: string;
+      assignedUserId?: string;
+      status?: string;
+    },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
     if (orgId !== null) {
@@ -84,6 +81,94 @@ export class TaskAssignmentsService {
       sql`SELECT * FROM task_assignments WHERE ${where} ORDER BY sequence_order ASC, created_at DESC LIMIT 1000`,
     );
     return result;
+  }
+
+  /**
+   * Returns task assignments for a specific date that belong to the
+   * authenticated operator — either directly assigned (`assigned_user_id`)
+   * or linked via the machine permanently assigned to that user
+   * (`users.assigned_machine_id`). Always scoped to the caller's org.
+   *
+   * This is the server-side-filtered counterpart of the daily-plan endpoint
+   * so the mobile `useMyTasks` hook does not have to fetch the full daily plan
+   * and filter client-side.
+   *
+   * Response shape: flat array of task assignment rows with the same JOINed
+   * fields as `getDailyPlan` produces, sorted by `sequenceOrder ASC`.
+   */
+  async getMyTasks(
+    orgId: string | null,
+    userId: string,
+    date: string,
+  ): Promise<Record<string, unknown>[]> {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`ta.assignment_date = ${date}`,
+      sql`ta.deleted_at IS NULL`,
+      // Include rows assigned directly to this user OR where the machine is
+      // permanently assigned to this user (mirrors the mobile client-side filter).
+      sql`(
+        ta.assigned_user_id = ${userId}::uuid
+        OR ta.machine_id IN (
+          SELECT id FROM machines
+          WHERE assigned_user_id = ${userId}::uuid
+            AND deleted_at IS NULL
+        )
+      )`,
+    ];
+
+    if (orgId !== null) {
+      conditions.push(sql`ta.organization_id = ${orgId}::uuid`);
+    }
+
+    const where = sql.join(conditions, sql` AND `);
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`SELECT
+        ta.id,
+        ta.assignment_date       AS "assignmentDate",
+        ta.machine_id            AS "machineId",
+        ta.parcel_id             AS "parcelId",
+        ta.assigned_user_id      AS "assignedUserId",
+        ta.priority,
+        ta.sequence_order        AS "sequenceOrder",
+        ta.status,
+        ta.parent_assignment_id  AS "parentAssignmentId",
+        ta.destination_id        AS "destinationId",
+        ta.estimated_start       AS "estimatedStart",
+        ta.estimated_end         AS "estimatedEnd",
+        ta.actual_start          AS "actualStart",
+        ta.actual_end            AS "actualEnd",
+        ta.notes,
+        ta.created_at            AS "createdAt",
+        ta.updated_at            AS "updatedAt",
+        m.internal_code          AS "machineCode",
+        m.machine_type           AS "machineType",
+        m.registration_plate     AS "registrationPlate",
+        p.name                   AS "parcelName",
+        p.code                   AS "parcelCode",
+        u.full_name              AS "assignedUserName",
+        dd.name                  AS "destinationName",
+        dd.code                  AS "destinationCode"
+      FROM task_assignments ta
+      JOIN machines m ON ta.machine_id = m.id
+      LEFT JOIN parcels p ON ta.parcel_id = p.id
+      LEFT JOIN users u ON ta.assigned_user_id = u.id
+      LEFT JOIN delivery_destinations dd ON ta.destination_id = dd.id
+      WHERE ${where}
+      ORDER BY ta.sequence_order ASC, ta.created_at ASC
+      LIMIT 200`,
+    );
+
+    this.winston.info(
+      `getMyTasks userId=${userId} date=${date} rows=${(result as unknown[]).length}`,
+      {
+        context: 'TaskAssignmentsService',
+        userId,
+        date,
+      },
+    );
+
+    return result as unknown as Record<string, unknown>[];
   }
 
   async getBoard(orgId: string | null, date: string) {
@@ -253,12 +338,15 @@ export class TaskAssignmentsService {
     const doneRows = rows.filter((r) => r.status === 'done');
 
     // Build parcel groups for in_progress
-    const parcelGroups = new Map<string, {
-      parcelId: string;
-      parcelName: string;
-      parcelCode: string;
-      assignments: Record<string, unknown>[];
-    }>();
+    const parcelGroups = new Map<
+      string,
+      {
+        parcelId: string;
+        parcelName: string;
+        parcelCode: string;
+        assignments: Record<string, unknown>[];
+      }
+    >();
 
     for (const row of inProgressRows) {
       const pId = row.parcelId as string;
@@ -403,10 +491,7 @@ export class TaskAssignmentsService {
   }
 
   async findById(id: string, orgId?: string | null) {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}`, sql`deleted_at IS NULL`];
     if (orgId !== null && orgId !== undefined) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
@@ -425,10 +510,7 @@ export class TaskAssignmentsService {
    * UNIQUE (assignment_date, machine_id, sequence_order) includes soft-deleted rows.
    * Always allocate the next order so re-assigning the same machine on a date never collides.
    */
-  private async nextSequenceOrder(
-    assignmentDate: string,
-    machineId: string,
-  ): Promise<number> {
+  private async nextSequenceOrder(assignmentDate: string, machineId: string): Promise<number> {
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT COALESCE(MAX(sequence_order), -1) + 1 AS n
       FROM task_assignments
@@ -443,37 +525,42 @@ export class TaskAssignmentsService {
     const machineId = dto.machineId as string;
 
     if (orgId !== null) {
-      const machineCheck = await this.drizzleProvider.db.execute(sql`
+      const machineCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines WHERE id = ${machineId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-      `) as unknown as { id: string }[];
-      if (!machineCheck.length) throw new ForbiddenException('Machine not found in your organization');
+      `)) as unknown as { id: string }[];
+      if (!machineCheck.length)
+        throw new ForbiddenException('Machine not found in your organization');
 
       if (dto.parcelId) {
-        const parcelCheck = await this.drizzleProvider.db.execute(sql`
+        const parcelCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM parcels WHERE id = ${dto.parcelId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!parcelCheck.length) throw new ForbiddenException('Parcel not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!parcelCheck.length)
+          throw new ForbiddenException('Parcel not found in your organization');
       }
 
       if (dto.assignedUserId) {
-        const userCheck = await this.drizzleProvider.db.execute(sql`
+        const userCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM users WHERE id = ${dto.assignedUserId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!userCheck.length) throw new ForbiddenException('Assigned user not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!userCheck.length)
+          throw new ForbiddenException('Assigned user not found in your organization');
       }
 
       if (dto.destinationId) {
-        const destCheck = await this.drizzleProvider.db.execute(sql`
+        const destCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM delivery_destinations WHERE id = ${dto.destinationId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!destCheck.length) throw new ForbiddenException('Destination not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!destCheck.length)
+          throw new ForbiddenException('Destination not found in your organization');
       }
 
       if (dto.parentAssignmentId) {
-        const parentCheck = await this.drizzleProvider.db.execute(sql`
+        const parentCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM task_assignments WHERE id = ${dto.parentAssignmentId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!parentCheck.length) throw new ForbiddenException('Parent assignment not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!parentCheck.length)
+          throw new ForbiddenException('Parent assignment not found in your organization');
       }
     }
 
@@ -497,7 +584,11 @@ export class TaskAssignmentsService {
       ) RETURNING *`,
     );
 
-    const rows = result as unknown as { id: string; assigned_user_id: string | null; parcel_id: string | null }[];
+    const rows = result as unknown as {
+      id: string;
+      assigned_user_id: string | null;
+      parcel_id: string | null;
+    }[];
     const assignedUserId = rows[0]?.assigned_user_id;
     if (assignedUserId) {
       void this.sendAssignmentPush(assignedUserId, rows[0]?.parcel_id ?? null, rows[0]?.id);
@@ -512,13 +603,17 @@ export class TaskAssignmentsService {
     return result;
   }
 
-  private async sendAssignmentPush(userId: string, parcelId: string | null, assignmentId: string): Promise<void> {
+  private async sendAssignmentPush(
+    userId: string,
+    parcelId: string | null,
+    assignmentId: string,
+  ): Promise<void> {
     try {
       let parcelName = 'parcelă nouă';
       if (parcelId) {
-        const parcelRows = await this.drizzleProvider.db.execute(
+        const parcelRows = (await this.drizzleProvider.db.execute(
           sql`SELECT name FROM parcels WHERE id = ${parcelId} LIMIT 1`,
-        ) as unknown as { name: string }[];
+        )) as unknown as { name: string }[];
         if (parcelRows[0]?.name) parcelName = parcelRows[0].name;
       }
       await this.notificationsService.sendPush(
@@ -543,43 +638,47 @@ export class TaskAssignmentsService {
 
   async update(id: string, orgId: string | null, dto: Record<string, unknown>) {
     const before = await this.findById(id, orgId);
-    const prevStatus =
-      typeof before.status === 'string' ? before.status : undefined;
+    const prevStatus = typeof before.status === 'string' ? before.status : undefined;
 
     if (orgId !== null) {
       if (dto.machineId) {
-        const machineCheck = await this.drizzleProvider.db.execute(sql`
+        const machineCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM machines WHERE id = ${dto.machineId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!machineCheck.length) throw new ForbiddenException('Machine not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!machineCheck.length)
+          throw new ForbiddenException('Machine not found in your organization');
       }
 
       if (dto.parcelId) {
-        const parcelCheck = await this.drizzleProvider.db.execute(sql`
+        const parcelCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM parcels WHERE id = ${dto.parcelId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!parcelCheck.length) throw new ForbiddenException('Parcel not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!parcelCheck.length)
+          throw new ForbiddenException('Parcel not found in your organization');
       }
 
       if (dto.assignedUserId) {
-        const userCheck = await this.drizzleProvider.db.execute(sql`
+        const userCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM users WHERE id = ${dto.assignedUserId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!userCheck.length) throw new ForbiddenException('Assigned user not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!userCheck.length)
+          throw new ForbiddenException('Assigned user not found in your organization');
       }
 
       if (dto.destinationId) {
-        const destCheck = await this.drizzleProvider.db.execute(sql`
+        const destCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM delivery_destinations WHERE id = ${dto.destinationId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!destCheck.length) throw new ForbiddenException('Destination not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!destCheck.length)
+          throw new ForbiddenException('Destination not found in your organization');
       }
 
       if (dto.parentAssignmentId) {
-        const parentCheck = await this.drizzleProvider.db.execute(sql`
+        const parentCheck = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM task_assignments WHERE id = ${dto.parentAssignmentId as string}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-        `) as unknown as { id: string }[];
-        if (!parentCheck.length) throw new ForbiddenException('Parent assignment not found in your organization');
+        `)) as unknown as { id: string }[];
+        if (!parentCheck.length)
+          throw new ForbiddenException('Parent assignment not found in your organization');
       }
     }
 
@@ -604,9 +703,7 @@ export class TaskAssignmentsService {
     for (const [key, column] of Object.entries(fieldMap)) {
       if (key in dto) {
         if (key === 'status') {
-          setClauses.push(
-            sql`${sql.raw(column)} = ${dto[key] as string}::task_assignment_status`,
-          );
+          setClauses.push(sql`${sql.raw(column)} = ${dto[key] as string}::task_assignment_status`);
         } else {
           setClauses.push(
             sql`${sql.raw(column)} = ${dto[key] as string | number | boolean | null}`,
@@ -633,16 +730,12 @@ export class TaskAssignmentsService {
     );
 
     if ('status' in dto && typeof dto.status === 'string' && prevStatus) {
-      this.winston.log(
-        'flow',
-        `Task assignment ${id} status ${prevStatus} → ${dto.status}`,
-        {
-          context: 'TaskAssignmentsService',
-          assignmentId: id,
-          fromStatus: prevStatus,
-          toStatus: dto.status,
-        },
-      );
+      this.winston.log('flow', `Task assignment ${id} status ${prevStatus} → ${dto.status}`, {
+        context: 'TaskAssignmentsService',
+        assignmentId: id,
+        fromStatus: prevStatus,
+        toStatus: dto.status,
+      });
     }
 
     // Re-sync trip whenever the wiring changes (truck, parent loader, or destination).
@@ -693,12 +786,9 @@ export class TaskAssignmentsService {
     if (!row) {
       throw new NotFoundException('Task assignment not found');
     }
-    const isOwner =
-      row.assigned_user_id === callerId || row.machine_user_id === callerId;
+    const isOwner = row.assigned_user_id === callerId || row.machine_user_id === callerId;
     if (!isOwner) {
-      throw new BadRequestException(
-        'Nu poți porni o sarcină care nu îți este asignată.',
-      );
+      throw new BadRequestException('Nu poți porni o sarcină care nu îți este asignată.');
     }
     if (row.status === 'done') {
       throw new BadRequestException(
@@ -713,8 +803,7 @@ export class TaskAssignmentsService {
 
   async updateStatus(id: string, status: string, orgId?: string | null) {
     const before = await this.findById(id, orgId);
-    const prevStatus =
-      typeof before.status === 'string' ? before.status : 'unknown';
+    const prevStatus = typeof before.status === 'string' ? before.status : 'unknown';
 
     const setClauses: ReturnType<typeof sql>[] = [
       sql`status = ${status}::task_assignment_status`,
@@ -723,9 +812,7 @@ export class TaskAssignmentsService {
 
     // Auto-set actual_start/actual_end timestamps
     if (status === 'in_progress') {
-      setClauses.push(
-        sql`actual_start = COALESCE(actual_start, NOW())`,
-      );
+      setClauses.push(sql`actual_start = COALESCE(actual_start, NOW())`);
     } else if (status === 'done') {
       setClauses.push(sql`actual_end = NOW()`);
     } else if (status === 'available') {
@@ -738,10 +825,7 @@ export class TaskAssignmentsService {
 
     const setClause = sql.join(setClauses, sql`, `);
 
-    const whereConditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}`,
-      sql`deleted_at IS NULL`,
-    ];
+    const whereConditions: ReturnType<typeof sql>[] = [sql`id = ${id}`, sql`deleted_at IS NULL`];
     if (orgId !== null && orgId !== undefined) {
       whereConditions.push(sql`organization_id = ${orgId}::uuid`);
     }
@@ -756,16 +840,12 @@ export class TaskAssignmentsService {
       await this.cascadeToAvailable(id, orgId);
     }
 
-    this.winston.log(
-      'flow',
-      `Task assignment ${id} updateStatus ${prevStatus} → ${status}`,
-      {
-        context: 'TaskAssignmentsService',
-        assignmentId: id,
-        fromStatus: prevStatus,
-        toStatus: status,
-      },
-    );
+    this.winston.log('flow', `Task assignment ${id} updateStatus ${prevStatus} → ${status}`, {
+      context: 'TaskAssignmentsService',
+      assignmentId: id,
+      fromStatus: prevStatus,
+      toStatus: status,
+    });
 
     return result;
   }

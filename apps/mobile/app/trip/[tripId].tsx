@@ -15,19 +15,22 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDeliveryDestinations } from '@strawboss/api';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
-import { mobileApiClient } from '@/lib/api-client';
+import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { useSync } from '@/hooks/useSync';
 import { useMyTasks } from '@/hooks/useMyTasks';
 import { useRelatedMachines } from '@/hooks/useRelatedMachines';
 import { useAuthStore } from '@/stores/auth-store';
 import { TripProgress } from '@/components/shared/TripProgress';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { BigButton } from '@/components/ui/BigButton';
 import { ActionCard } from '@/components/ui/ActionCard';
-import { colors } from '@strawboss/ui-tokens';
+import { colors, radii } from '@strawboss/ui-tokens';
 import { mobileLogger } from '@/lib/logger';
+import { mobileApiClient } from '@/lib/api-client';
+import type { TripTransitionPayload } from '@/sync/push';
 
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -81,17 +84,42 @@ export default function TripDetailScreen() {
       setPickerOpen(false);
       setActionLoading(true);
       try {
-        await mobileApiClient.post(`/api/v1/trips/${tripId}/set-destination`, {
-          destinationId,
-        });
+        // FM-1: Offline-first — write locally then enqueue for server sync.
         const db = await getDatabase();
         const repo = new TripsRepo(db);
+        const syncQueueRepo = new SyncQueueRepo(db);
+
+        // Update destination fields locally (no status change for set-destination).
         await repo.update(tripId, {
           destination_id: destinationId,
           destination_name: destinationName,
           destination_address: destinationAddress,
         });
+
+        // Enqueue the transition for the server.
+        const payload: TripTransitionPayload = {
+          transition: 'set-destination',
+          tripId,
+          body: { destinationId },
+        };
+        await syncQueueRepo.enqueue({
+          entityType: 'trip_transition',
+          entityId: tripId,
+          action: 'update',
+          payload,
+          idempotencyKey: `trip_transition_${tripId}_set-destination_${destinationId}`,
+        });
+
+        mobileLogger.flow('Trip detail: set-destination enqueued offline-first', {
+          tripId,
+          destinationId,
+        });
+
+        // Reload local trip to update the UI immediately.
         await loadTrip();
+
+        // Best-effort sync.
+        void triggerSync().catch(() => {});
       } catch (err) {
         mobileLogger.error('Trip detail: assign destination failed', {
           tripId,
@@ -103,7 +131,7 @@ export default function TripDetailScreen() {
         setActionLoading(false);
       }
     },
-    [tripId, loadTrip],
+    [tripId, loadTrip, triggerSync],
   );
 
   if (loading) {
@@ -151,6 +179,12 @@ export default function TripDetailScreen() {
               <Text style={styles.cardTitle}>Detalii cursă</Text>
               <StatusPill status={trip.status} />
             </View>
+            {/* FM-1: Show badge when a local transition is awaiting sync */}
+            {trip.has_pending_transition === 1 && (
+              <View style={styles.pendingBadgeRow}>
+                <PendingTransitionBadge />
+              </View>
+            )}
 
             {trip.trip_number && <InfoRow label="Nr. cursă" value={trip.trip_number} />}
             {myDriverTask?.parcelName ? (
@@ -390,7 +424,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 16,
     gap: 12,
     shadowColor: '#000',
@@ -403,6 +437,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  pendingBadgeRow: {
+    marginTop: -4,
   },
   cardTitle: {
     fontSize: 18,
@@ -435,7 +472,7 @@ const styles = StyleSheet.create({
   },
   doneCard: {
     backgroundColor: colors.primary50,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 20,
     alignItems: 'center',
   },
@@ -449,7 +486,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: colors.primary50,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 14,
   },
   viewerText: {
@@ -472,14 +509,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: radii.md,
   },
   waitingCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     backgroundColor: colors.primary50,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 14,
   },
   waitingText: {
@@ -498,8 +535,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     maxHeight: '70%',
     backgroundColor: colors.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
     paddingBottom: 24,
   },
   modalHeader: {

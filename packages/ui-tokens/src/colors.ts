@@ -11,6 +11,8 @@ export const colors = {
   info: '#1565C0',
   white: '#FFFFFF',
   black: '#000000',
+  // Accessible secondary text — contrast ≥4.5:1 on background (#F3DED8)
+  textSecondary: '#4A3728',
   // Shades for primary
   primary50: '#E8F5E9',
   primary100: '#C8E6C9',
@@ -34,3 +36,54 @@ export const colors = {
   neutral800: '#2C1B14',
   neutral900: '#1A0F0B',
 } as const;
+
+/**
+ * High-contrast palette for "Mod lumină puternică" (FM-8).
+ *
+ * Design goals:
+ *  - Pure white background (contrast with dark text > 15:1)
+ *  - Black / very dark text for all body copy
+ *  - Buttons retain solid borders so they remain visible without fill
+ *  - Primary action color darkened to #084A2B (≥ 4.5:1 on white)
+ *
+ * Components that consume the theme via `useTheme()` can switch between
+ * `colors` (default) and `colorsHighContrast` at runtime.
+ */
+export const colorsHighContrast = {
+  primary: '#084A2B',
+  secondary: '#155D35',
+  tertiary: '#3E2723',
+  neutral: '#1A0F0B',
+  background: '#FFFFFF',
+  surface: '#F5F5F5',
+  danger: '#B71C1C',
+  warning: '#7B4F00',
+  success: '#1B5E20',
+  info: '#0D47A1',
+  white: '#FFFFFF',
+  black: '#000000',
+  textSecondary: '#212121',
+  primary50: '#E8F5E9',
+  primary100: '#C8E6C9',
+  primary200: '#A5D6A7',
+  primary300: '#81C784',
+  primary400: '#66BB6A',
+  primary500: '#084A2B',
+  primary600: '#063D23',
+  primary700: '#04311B',
+  primary800: '#032413',
+  primary900: '#01180C',
+  neutral50: '#FAFAFA',
+  neutral100: '#F0F0F0',
+  neutral200: '#D6D6D6',
+  neutral300: '#B0B0B0',
+  neutral400: '#757575',
+  neutral500: '#212121',
+  neutral600: '#1A1A1A',
+  neutral700: '#141414',
+  neutral800: '#0D0D0D',
+  neutral900: '#070707',
+} as const;
+
+/** Union type covering both palette shapes. */
+export type ColorPalette = typeof colors | typeof colorsHighContrast;

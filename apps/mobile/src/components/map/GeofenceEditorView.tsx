@@ -1,5 +1,5 @@
 import { useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { GeofenceEditorCommand, GeofenceEditorEvent } from '@/map/map-bridge';
 import { serializeEditorCommand, parseGeofenceEditorEvent } from '@/map/map-bridge';
@@ -19,6 +19,7 @@ export const GeofenceEditorView = forwardRef<GeofenceEditorViewHandle, GeofenceE
   function GeofenceEditorView({ onEvent, onReady, style }, ref) {
     const webViewRef = useRef<WebView>(null);
     const [loading, setLoading] = useState(true);
+    const [hasError, setHasError] = useState(false);
 
     useImperativeHandle(ref, () => ({
       sendCommand(cmd: GeofenceEditorCommand) {
@@ -40,6 +41,17 @@ export const GeofenceEditorView = forwardRef<GeofenceEditorViewHandle, GeofenceE
       [onEvent, onReady],
     );
 
+    const handleError = useCallback(() => {
+      setLoading(false);
+      setHasError(true);
+    }, []);
+
+    const handleRetry = useCallback(() => {
+      setHasError(false);
+      setLoading(true);
+      webViewRef.current?.reload();
+    }, []);
+
     return (
       <View style={[styles.container, style]}>
         <WebView
@@ -56,12 +68,20 @@ export const GeofenceEditorView = forwardRef<GeofenceEditorViewHandle, GeofenceE
           showsVerticalScrollIndicator={false}
           startInLoadingState={false}
           mixedContentMode="never"
-          onError={() => setLoading(false)}
+          onError={handleError}
         />
-        {loading && (
+        {loading && !hasError && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator color="#0A5C36" size="large" />
-            <Text style={styles.loadingText}>Se înarcă harta...</Text>
+            <Text style={styles.loadingText}>Se încarcă harta...</Text>
+          </View>
+        )}
+        {hasError && (
+          <View style={styles.loadingOverlay}>
+            <Text style={styles.errorText}>Harta nu s-a putut încărca. Reîncearcă.</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={handleRetry} activeOpacity={0.8}>
+              <Text style={styles.retryButtonText}>Reîncearcă</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -80,4 +100,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: { fontSize: 14, color: '#5D4037' },
+  errorText: {
+    fontSize: 15,
+    color: '#C62828',
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  retryButton: {
+    backgroundColor: '#0A5C36',
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
 });

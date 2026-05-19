@@ -40,7 +40,7 @@ export class BaleProductionsRepo {
         data.created_at,
         data.updated_at,
         data.server_version,
-      ] as SQLiteBindValue[]
+      ] as SQLiteBindValue[],
     );
   }
 
@@ -75,14 +75,14 @@ export class BaleProductionsRepo {
         data.created_at,
         data.updated_at,
         data.server_version,
-      ] as SQLiteBindValue[]
+      ] as SQLiteBindValue[],
     );
   }
 
   async findById(id: string): Promise<LocalBaleProduction | null> {
     const result = await this.db.getFirstAsync<LocalBaleProduction>(
       `SELECT * FROM bale_productions WHERE id = ?`,
-      [id]
+      [id],
     );
     return result ?? null;
   }
@@ -90,20 +90,58 @@ export class BaleProductionsRepo {
   async listByOperator(operatorId: string): Promise<LocalBaleProduction[]> {
     return this.db.getAllAsync<LocalBaleProduction>(
       `SELECT * FROM bale_productions WHERE operator_id = ? ORDER BY production_date DESC`,
-      [operatorId]
+      [operatorId],
     );
   }
 
   async listAll(): Promise<LocalBaleProduction[]> {
     return this.db.getAllAsync<LocalBaleProduction>(
-      `SELECT * FROM bale_productions ORDER BY production_date DESC`
+      `SELECT * FROM bale_productions ORDER BY production_date DESC`,
     );
+  }
+
+  /**
+   * FM-7: Returns the sum of bale_count for a given operator on a given
+   * production_date. Used by FieldActiveNumpad to show the daily counter.
+   */
+  async getTodayTotalForOperator(operatorId: string, productionDate: string): Promise<number> {
+    const result = await this.db.getFirstAsync<{ total: number }>(
+      `SELECT COALESCE(SUM(bale_count), 0) as total
+       FROM bale_productions
+       WHERE operator_id = ? AND production_date = ?`,
+      [operatorId, productionDate],
+    );
+    return result?.total ?? 0;
   }
 
   async getMaxServerVersion(): Promise<number> {
     const result = await this.db.getFirstAsync<{ max_ver: number }>(
-      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM bale_productions`
+      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM bale_productions`,
     );
     return result?.max_ver ?? 0;
+  }
+
+  /**
+   * FM-4: Delete a locally-created record that has not yet been synced.
+   * Called during the undo window before the sync queue entry is dispatched.
+   */
+  async deleteLocal(id: string): Promise<void> {
+    await this.db.runAsync(`DELETE FROM bale_productions WHERE id = ?`, [id]);
+  }
+
+  /**
+   * FM-5: Find productions for a given parcel on a given date.
+   * Used for duplicate-detection before saving a new production entry.
+   */
+  async findByParcelAndDate(
+    parcelId: string,
+    productionDate: string,
+  ): Promise<LocalBaleProduction[]> {
+    return this.db.getAllAsync<LocalBaleProduction>(
+      `SELECT * FROM bale_productions
+       WHERE parcel_id = ? AND production_date = ?
+       ORDER BY created_at DESC`,
+      [parcelId, productionDate],
+    );
   }
 }

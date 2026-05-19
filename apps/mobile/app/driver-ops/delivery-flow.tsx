@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { BigButton } from '@/components/ui/BigButton';
 import { useEffect, useState } from 'react';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
@@ -51,6 +52,13 @@ export default function DriverDeliveryFlowScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
           <Text style={styles.errorText}>Cursa nu a fost găsită.</Text>
+          <View style={styles.backButtonContainer}>
+            <BigButton
+              variant="outline"
+              title="Înapoi la curse"
+              onPress={() => router.replace('/(driver)')}
+            />
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -76,4 +84,5 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F3DED8' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   errorText: { color: '#C62828', fontSize: 14, textAlign: 'center' },
+  backButtonContainer: { width: '80%', marginTop: 8 },
 });

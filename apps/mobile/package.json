@@ -48,6 +48,11 @@
     "react-native-screens": "~4.16.0",
     "react-native-signature-canvas": "^4.7.0",
     "react-native-webview": "~13.13.0",
+    "expo-haptics": "~15.0.7",
+    "expo-keep-awake": "~15.0.7",
+    "expo-print": "~15.0.7",
+    "expo-secure-store": "~15.0.7",
+    "expo-sharing": "~14.0.7",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

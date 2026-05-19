@@ -26,12 +26,7 @@ export {
   useDeleteParcel,
 } from './use-parcels.js';
 
-export {
-  useMachines,
-  useMachine,
-  useCreateMachine,
-  useUpdateMachine,
-} from './use-machines.js';
+export { useMachines, useMachine, useCreateMachine, useUpdateMachine } from './use-machines.js';
 
 export {
   useTaskAssignments,
@@ -52,27 +47,13 @@ export {
   useDeleteParcelDailyStatusForDate,
 } from './use-parcel-daily-status.js';
 
-export {
-  useBaleLoads,
-  useCreateBaleLoad,
-} from './use-bale-loads.js';
+export { useBaleLoads, useCreateBaleLoad } from './use-bale-loads.js';
 
-export {
-  useFuelLogs,
-  useCreateFuelLog,
-} from './use-fuel-logs.js';
+export { useFuelLogs, useCreateFuelLog } from './use-fuel-logs.js';
 
-export {
-  useDocuments,
-  useDocument,
-  useGenerateCmr,
-} from './use-documents.js';
+export { useDocuments, useDocument, useGenerateCmr } from './use-documents.js';
 
-export {
-  useAlerts,
-  useUnacknowledgedAlerts,
-  useAcknowledgeAlert,
-} from './use-alerts.js';
+export { useAlerts, useUnacknowledgedAlerts, useAcknowledgeAlert } from './use-alerts.js';
 
 export {
   useDashboardOverview,
@@ -81,19 +62,11 @@ export {
   useCostReport,
   useAntiFraudReport,
 } from './use-dashboard.js';
-export type { TrendingDay } from './use-dashboard.js';
+export type { TrendingDay, CostReportOptions } from './use-dashboard.js';
 
-export {
-  useSession,
-  useLogin,
-  useLogout,
-} from './use-auth.js';
+export { useSession, useLogin, useLogout } from './use-auth.js';
 
-export {
-  useSyncStatus,
-  useSyncPush,
-  useSyncPull,
-} from './use-sync.js';
+export { useSyncStatus, useSyncPush, useSyncPull } from './use-sync.js';
 
 export type { SyncStatus } from './use-sync.js';
 
@@ -121,7 +94,11 @@ export {
   useBaleProductionStats,
   useCreateBaleProduction,
 } from './use-bale-productions.js';
-export type { BaleProductionFilters, BaleProductionStatsFilters } from './use-bale-productions.js';
+export type {
+  BaleProductionFilters,
+  BaleProductionStatsFilters,
+  BaleProductionStatsOptions,
+} from './use-bale-productions.js';
 
 export {
   useDeliveryDestinations,
@@ -140,8 +117,5 @@ export {
   useAssignParcelToFarm,
 } from './use-farms.js';
 
-export {
-  useFarmReports,
-  useDepotReports,
-  useReportTimeline,
-} from './use-reports.js';
+export { useFarmReports, useDepotReports, useReportTimeline } from './use-reports.js';
+export type { ReportQueryOptions } from './use-reports.js';

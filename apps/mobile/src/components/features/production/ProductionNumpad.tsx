@@ -1,14 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Animated,
-  ActivityIndicator,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
+import { UndoToast } from '@/components/shared/UndoToast';
 import { useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -23,6 +18,7 @@ import { generateUuid } from '@/lib/uuid';
 import { todayInRomania } from '@/lib/date';
 import { useMyTasks } from '@/hooks/useMyTasks';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
+import { useUndoableSave } from '@/hooks/useUndoableSave';
 import {
   useActiveParcels,
   findParcelAtLocation,
@@ -71,9 +67,6 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
   const [lastAccuracyM, setLastAccuracyM] = useState<number | null>(null);
 
   const [saving, setSaving] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const toastOpacity = useRef(new Animated.Value(0)).current;
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const taskOnlyParcel = useMemo(() => {
     const withParcel = tasks.filter((t) => t.parcelId !== null && t.parcelName !== null);
@@ -169,13 +162,16 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
     }
   }, [manualOverride, activeParcels, taskOnlyParcel, gpsHit, gpsStatus]);
 
-  useEffect(() => {
-    return () => {
-      if (toastTimer.current !== null) {
-        clearTimeout(toastTimer.current);
-      }
-    };
-  }, []);
+  // FM-4: undo hook — deletes the bale_productions row + sync queue entry
+  const { showUndo, toastState } = useUndoableSave({
+    onDeleteLocal: async (entityId) => {
+      const db = await getDatabase();
+      const repo = new BaleProductionsRepo(db);
+      await repo.deleteLocal(entityId);
+      void queryClient.invalidateQueries({ queryKey: ['bale-productions'] });
+      void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(operatorId) });
+    },
+  });
 
   const subtitle = useMemo(() => {
     if (manualOverride) {
@@ -229,6 +225,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
   }, [parcelName, manualOverride, gpsStatus, activeParcels, gpsHit]);
 
   const handlePress = useCallback((key: PadKey) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (key === 'backspace') {
       setCount((prev) => prev.slice(0, -1));
       return;
@@ -244,28 +241,6 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
     });
   }, []);
 
-  const showToast = useCallback(
-    (message: string) => {
-      setToastMessage(message);
-      Animated.timing(toastOpacity, {
-        toValue: 1,
-        duration: 160,
-        useNativeDriver: true,
-      }).start();
-      if (toastTimer.current !== null) {
-        clearTimeout(toastTimer.current);
-      }
-      toastTimer.current = setTimeout(() => {
-        Animated.timing(toastOpacity, {
-          toValue: 0,
-          duration: 240,
-          useNativeDriver: true,
-        }).start(() => setToastMessage(null));
-      }, 1800);
-    },
-    [toastOpacity],
-  );
-
   const numericCount = useMemo(() => {
     const n = parseInt(count, 10);
     return Number.isFinite(n) ? n : 0;
@@ -273,7 +248,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
 
   const canSave = !saving && numericCount > 0 && parcelId !== null;
 
-  const handleSave = useCallback(async () => {
+  const doSave = useCallback(async () => {
     if (!canSave || parcelId === null) return;
     setSaving(true);
     mobileLogger.flow('Baler production: saving local record', {
@@ -326,8 +301,15 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
         queryKey: operatorStatsQueryKey(operatorId),
       });
 
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCount('');
-      showToast(`Înregistrat — ${numericCount} baloți`);
+
+      // FM-4: show undo toast
+      showUndo({
+        entityId: id,
+        idempotencyKey: `bale_productions_${id}`,
+        label: `Înregistrat — ${numericCount} baloți`,
+      });
     } catch (err) {
       mobileLogger.error('Baler production: save failed', {
         parcelId,
@@ -342,7 +324,50 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
     } finally {
       setSaving(false);
     }
-  }, [canSave, parcelId, balerId, operatorId, numericCount, queryClient, showToast]);
+  }, [
+    canSave,
+    parcelId,
+    balerId,
+    operatorId,
+    numericCount,
+    queryClient,
+    showUndo,
+    showModal,
+    hideModal,
+  ]);
+
+  // FM-5: duplicate detection — check for existing production on same (parcelId, date)
+  const handleSave = useCallback(async () => {
+    if (!canSave || parcelId === null) return;
+    try {
+      const db = await getDatabase();
+      const productionsRepo = new BaleProductionsRepo(db);
+      const productionDate = todayInRomania();
+      const existing = await productionsRepo.findByParcelAndDate(parcelId, productionDate);
+      if (existing.length > 0) {
+        const totalExisting = existing.reduce((acc, p) => acc + p.bale_count, 0);
+        const minutesAgo = Math.round(
+          (Date.now() - new Date(existing[0]!.created_at).getTime()) / 60_000,
+        );
+        showModal({
+          type: 'warning',
+          title: 'Producție deja înregistrată',
+          message: `Ai înregistrat deja ${totalExisting} baloți pe acest teren azi (acum ${minutesAgo} min). Continui cu o nouă înregistrare?`,
+          confirmText: 'Da, continuă',
+          cancelText: 'Anulează',
+          onConfirm: () => {
+            hideModal();
+            void doSave();
+          },
+          onCancel: hideModal,
+        });
+        return;
+      }
+    } catch {
+      // Non-fatal — proceed with save even if duplicate check fails
+    }
+    await doSave();
+  }, [canSave, parcelId, showModal, hideModal, doSave]);
 
   const onManualPick = useCallback(
     (id: string, name: string) => {
@@ -479,12 +504,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
         ))}
       </View>
 
-      {toastMessage !== null && (
-        <Animated.View style={[styles.toast, { opacity: toastOpacity }]}>
-          <MaterialCommunityIcons name="check-circle" size={18} color={colors.white} />
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </Animated.View>
-      )}
+      <UndoToast state={toastState} bottomOffset={80} />
 
       <TouchableOpacity
         style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
@@ -667,28 +687,6 @@ const styles = StyleSheet.create({
   actionKeyText: {
     fontSize: 30,
     color: colors.neutral,
-  },
-  toast: {
-    position: 'absolute',
-    bottom: 96,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.success,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  toastText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '700',
   },
   saveButton: {
     backgroundColor: colors.primary,

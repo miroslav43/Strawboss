@@ -1,36 +1,13 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useAlerts, useAcknowledgeAlert } from '@strawboss/api';
 import { AlertCategory, AlertSeverity } from '@strawboss/types';
-import type { Alert, PaginatedResponse } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AlertList } from '@/components/features/alerts/AlertList';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-
-const categoryOptions = [
-  { value: '', label: 'All Categories' },
-  ...Object.values(AlertCategory).map((c) => ({
-    value: c,
-    label: c.charAt(0).toUpperCase() + c.slice(1),
-  })),
-];
-
-const severityOptions = [
-  { value: '', label: 'All Severities' },
-  ...Object.values(AlertSeverity).map((s) => ({
-    value: s,
-    label: s.charAt(0).toUpperCase() + s.slice(1),
-  })),
-];
-
-const ackOptions = [
-  { value: '', label: 'All' },
-  { value: 'false', label: 'Unacknowledged' },
-  { value: 'true', label: 'Acknowledged' },
-];
 
 export default function AlertsPage() {
   const { t } = useI18n();
@@ -39,17 +16,47 @@ export default function AlertsPage() {
   const [ackFilter, setAckFilter] = useState('');
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
 
+  const categoryOptions = useMemo(
+    () => [
+      { value: '', label: t('alerts.filterAllCategories') },
+      ...Object.values(AlertCategory).map((c) => ({
+        value: c,
+        label: t(`alerts.category.${c}`),
+      })),
+    ],
+    [t],
+  );
+
+  const severityOptions = useMemo(
+    () => [
+      { value: '', label: t('alerts.filterAllSeverities') },
+      ...Object.values(AlertSeverity).map((s) => ({
+        value: s,
+        label: t(`alerts.severity.${s}`),
+      })),
+    ],
+    [t],
+  );
+
+  const ackOptions = useMemo(
+    () => [
+      { value: '', label: t('alerts.filterAll') },
+      { value: 'false', label: t('alerts.filterUnacknowledged') },
+      { value: 'true', label: t('alerts.filterAcknowledged') },
+    ],
+    [t],
+  );
+
   const filters: Record<string, string> = {};
   if (categoryFilter) filters.category = categoryFilter;
   if (severityFilter) filters.severity = severityFilter;
-  if (ackFilter) filters.acknowledged = ackFilter;
+  if (ackFilter) filters.isAcknowledged = ackFilter;
   const hasFilters = Object.keys(filters).length > 0;
 
   const alertsQuery = useAlerts(apiClient, hasFilters ? filters : undefined);
   const acknowledgeMutation = useAcknowledgeAlert(apiClient);
 
-  const alertsResponse = alertsQuery.data as PaginatedResponse<Alert> | undefined;
-  const alerts = alertsResponse?.data ?? [];
+  const alerts = alertsQuery.data ?? [];
 
   const handleAcknowledge = useCallback(
     (id: string) => {
@@ -110,11 +117,11 @@ export default function AlertsPage() {
       {/* Alerts list */}
       {alertsQuery.isLoading ? (
         <div className="py-8 text-center text-sm text-neutral-400">
-          Loading alerts...
+          {t('alerts.loading')}
         </div>
       ) : alertsQuery.isError ? (
         <div className="py-8 text-center text-sm text-red-500">
-          Failed to load alerts. The backend may not be running.
+          {t('alerts.loadError')}
         </div>
       ) : (
         <AlertList

@@ -10,6 +10,7 @@ import { FuelLogsRepo } from '../db/fuel-logs-repo';
 import { ConsumableLogsRepo } from '../db/consumable-logs-repo';
 import { BaleLoadsRepo } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo } from '../db/task-assignments-repo';
+import { ParcelsRepo } from '../db/parcels-repo';
 import { SyncManager } from '../sync/SyncManager';
 import { useNetworkStatus } from './useNetworkStatus';
 
@@ -33,10 +34,7 @@ export function useSync() {
     try {
       const db = await getDatabase();
       const repo = new SyncQueueRepo(db);
-      const [count, failed] = await Promise.all([
-        repo.getPendingCount(),
-        repo.getFailedCount(),
-      ]);
+      const [count, failed] = await Promise.all([repo.getPendingCount(), repo.getFailedCount()]);
       setPendingCount(count);
       setFailedQueueCount(failed);
     } catch {
@@ -67,6 +65,7 @@ export function useSync() {
       const consumableLogsRepo = new ConsumableLogsRepo(db);
       const baleLoadsRepo = new BaleLoadsRepo(db);
       const taskAssignmentsRepo = new TaskAssignmentsRepo(db);
+      const parcelsRepo = new ParcelsRepo(db);
       const manager = new SyncManager(
         syncQueueRepo,
         tripsRepo,
@@ -76,6 +75,7 @@ export function useSync() {
         consumableLogsRepo,
         baleLoadsRepo,
         taskAssignmentsRepo,
+        parcelsRepo,
       );
 
       const result = await manager.sync();
@@ -149,13 +149,18 @@ export function useSync() {
     return () => clearInterval(interval);
   }, [refreshPendingCount]);
 
-  // Auto-sync when coming back online with pending changes
+  // Auto-sync when coming back online with pending changes.
+  // isConnected starts as null (network state not yet known — M33) so we
+  // must not treat null as "online" and trigger a premature sync cycle.
   useEffect(() => {
+    if (isConnected === null) {
+      // Network state not yet determined — wait for first real event.
+      return;
+    }
     if (!isConnected) {
       wasDisconnected.current = true;
       return;
     }
-
     if (wasDisconnected.current && pendingCount > 0) {
       wasDisconnected.current = false;
       void triggerSync();

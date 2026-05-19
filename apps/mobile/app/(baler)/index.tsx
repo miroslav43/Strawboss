@@ -13,8 +13,10 @@ import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyTasks } from '@/hooks/useMyTasks';
+import { useTheme } from '@/lib/theme';
 
 export default function BalerHomeScreen() {
+  const { colors: themeColors } = useTheme();
   const { profile, isLoading } = useProfile();
   const { tasks, refetch: refetchTasks } = useMyTasks();
   const [refreshing, setRefreshing] = useState(false);
@@ -39,14 +41,12 @@ export default function BalerHomeScreen() {
         {isLoading ? (
           <ActivityIndicator color="#FFFFFF" style={styles.loader} />
         ) : (
-          <Text style={styles.subtitle}>
-            {profile?.fullName ?? 'Operator'}
-          </Text>
+          <Text style={styles.subtitle}>{profile?.fullName ?? 'Operator'}</Text>
         )}
       </ScreenHeader>
 
       <ScrollView
-        style={styles.body}
+        style={[styles.body, { backgroundColor: themeColors.background }]}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >

@@ -1,11 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import * as Location from 'expo-location';
 import { useAuthStore } from '@/stores/auth-store';
-import {
-  useActiveParcels,
-  findParcelAtLocation,
-  type ActiveParcel,
-} from './useActiveParcels';
+import { useActiveParcels, findParcelAtLocation, type ActiveParcel } from './useActiveParcels';
 import { useMyTasks, type MyTask } from './useMyTasks';
 import { mobileLogger } from '@/lib/logger';
 
@@ -73,10 +69,12 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
           if (!cancelled) setGpsStatus('unavailable');
           return;
         }
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: GPS_TIMEOUT_MS,
-        });
+        const loc = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('GPS timeout')), GPS_TIMEOUT_MS),
+          ),
+        ]);
         if (cancelled) return;
         setGps({ lat: loc.coords.latitude, lon: loc.coords.longitude });
         setGpsStatus('ready');
@@ -130,9 +128,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   const myMachineTasks = tasks.filter(
     (t) => assignedMachineId != null && t.machineId === assignedMachineId,
   );
-  const inProgress = myMachineTasks.filter(
-    (t) => t.status === 'in_progress' && !!t.parcelId,
-  );
+  const inProgress = myMachineTasks.filter((t) => t.status === 'in_progress' && !!t.parcelId);
 
   // Tier 1: exactly one in_progress task → resolved without GPS.
   if (inProgress.length === 1) {
@@ -184,9 +180,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   }
 
   // Tier 4: no in_progress → offer available tasks or declare unavailable.
-  const available = myMachineTasks.filter(
-    (t) => t.status === 'available' && !!t.parcelId,
-  );
+  const available = myMachineTasks.filter((t) => t.status === 'available' && !!t.parcelId);
   return {
     status: available.length ? 'needs_start' : 'unavailable',
     parcelId: null,

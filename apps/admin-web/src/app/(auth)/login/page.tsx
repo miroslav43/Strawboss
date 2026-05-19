@@ -14,12 +14,12 @@ async function resolveLogin(login: string): Promise<string | null> {
   if (login.includes('@')) return login;
   try {
     const res = await fetch(apiV1Url('/auth/resolve'), {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ login }),
+      body: JSON.stringify({ login }),
     });
     if (!res.ok) return null;
-    const data = await res.json() as { email?: string };
+    const data = (await res.json()) as { email?: string };
     return data.email ?? null;
   } catch {
     return null;
@@ -97,21 +97,21 @@ export default function LoginPage() {
       return;
     }
 
-    const appMeta = signInData.session?.user.app_metadata as {
-      role?: string;
-      organization_slug?: string;
-    } | undefined;
+    const appMeta = signInData.session?.user.app_metadata as
+      | {
+          role?: string;
+          organization_slug?: string;
+        }
+      | undefined;
 
     if (appMeta?.role === 'super_admin') {
       router.push('/super-admin');
       return;
     }
 
-    let orgSlug =
+    const orgSlug =
       appMeta?.organization_slug ??
-      (signInData.session
-        ? await resolveOrganizationSlugForSession(signInData.session)
-        : null);
+      (signInData.session ? await resolveOrganizationSlugForSession(signInData.session) : null);
     if (!orgSlug) {
       setError(t('login.errors.noOrganization'));
       setLoading(false);

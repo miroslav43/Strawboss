@@ -1,15 +1,17 @@
+import { useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { FuelEntryFlow } from '@/components/features/fuel/FuelEntryFlow';
+import { FuelEntryFlow, FUEL_STEP_TITLES } from '@/components/features/fuel/FuelEntryFlow';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
 
 export default function DriverFuelScreen() {
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  const [stepTitle, setStepTitle] = useState(FUEL_STEP_TITLES.receipt);
 
   return (
     <View style={styles.outerContainer}>
-      <ScreenHeader title="Combustibil" />
+      <ScreenHeader title={stepTitle} />
       <View style={styles.body}>
         {!userId ? (
           <View style={styles.centered}>
@@ -19,8 +21,10 @@ export default function DriverFuelScreen() {
           <FuelEntryFlow
             machineId={assignedMachineId}
             operatorId={userId}
+            onStepChange={setStepTitle}
             onComplete={() => {
-              // Stay on tab
+              // Stay on tab — reset to first step title
+              setStepTitle(FUEL_STEP_TITLES.receipt);
             }}
             onCancel={() => {
               // No-op on tab screen

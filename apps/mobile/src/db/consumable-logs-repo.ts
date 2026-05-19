@@ -45,7 +45,7 @@ export class ConsumableLogsRepo {
         data.created_at,
         data.updated_at,
         data.server_version,
-      ] as SQLiteBindValue[]
+      ] as SQLiteBindValue[],
     );
   }
 
@@ -83,7 +83,7 @@ export class ConsumableLogsRepo {
         data.created_at,
         data.updated_at,
         data.server_version,
-      ] as SQLiteBindValue[]
+      ] as SQLiteBindValue[],
     );
   }
 
@@ -102,7 +102,7 @@ export class ConsumableLogsRepo {
   async findById(id: string): Promise<LocalConsumableLog | null> {
     const result = await this.db.getFirstAsync<LocalConsumableLog>(
       `SELECT * FROM consumable_logs WHERE id = ?`,
-      [id]
+      [id],
     );
     return result ?? null;
   }
@@ -110,20 +110,28 @@ export class ConsumableLogsRepo {
   async listByOperator(operatorId: string): Promise<LocalConsumableLog[]> {
     return this.db.getAllAsync<LocalConsumableLog>(
       `SELECT * FROM consumable_logs WHERE operator_id = ? ORDER BY logged_at DESC`,
-      [operatorId]
+      [operatorId],
     );
   }
 
   async listAll(): Promise<LocalConsumableLog[]> {
     return this.db.getAllAsync<LocalConsumableLog>(
-      `SELECT * FROM consumable_logs ORDER BY logged_at DESC`
+      `SELECT * FROM consumable_logs ORDER BY logged_at DESC`,
     );
   }
 
   async getMaxServerVersion(): Promise<number> {
     const result = await this.db.getFirstAsync<{ max_ver: number }>(
-      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM consumable_logs`
+      `SELECT COALESCE(MAX(server_version), 0) as max_ver FROM consumable_logs`,
     );
     return result?.max_ver ?? 0;
+  }
+
+  /**
+   * FM-4: Delete a locally-created record that has not yet been synced.
+   * Called during the undo window before the sync queue entry is dispatched.
+   */
+  async deleteLocal(id: string): Promise<void> {
+    await this.db.runAsync(`DELETE FROM consumable_logs WHERE id = ?`, [id]);
   }
 }

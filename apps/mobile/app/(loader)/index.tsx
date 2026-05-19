@@ -25,8 +25,9 @@ import { useTrucksAtLoader } from '@/hooks/useTrucksAtLoader';
 import { useMyTasks, type MyTask } from '@/hooks/useMyTasks';
 import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
-import { colors } from '@strawboss/ui-tokens';
+import { colors, radii } from '@strawboss/ui-tokens';
 import type { TruckAtLoader } from '@strawboss/api';
+import { useTheme } from '@/lib/theme';
 
 /**
  * Loader home: never asks the operator to pick a field on first load.
@@ -37,6 +38,7 @@ import type { TruckAtLoader } from '@strawboss/api';
  *  • Footer: QR scanner fallback for trucks not in the geofence list.
  */
 export default function LoaderHomeScreen() {
+  const { colors: themeColors } = useTheme();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const parcel = useCurrentLoaderParcel();
   const { tasks } = useMyTasks();
@@ -207,13 +209,13 @@ export default function LoaderHomeScreen() {
       />
 
       <ScrollView
-        style={styles.body}
+        style={[styles.body, { backgroundColor: themeColors.background }]}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.primary}
+            tintColor={themeColors.primary}
           />
         }
       >
@@ -495,7 +497,7 @@ const styles = StyleSheet.create({
 
   parcelBanner: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: 16,
     gap: 4,
     shadowColor: '#000',
@@ -508,7 +510,7 @@ const styles = StyleSheet.create({
   },
   parcelBannerPrompt: {
     backgroundColor: '#FEF3C7',
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: 16,
     gap: 8,
     borderLeftWidth: 4,
@@ -522,7 +524,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   parcelName: { fontSize: 20, fontWeight: '700', color: '#0A5C36', marginTop: 2 },
-  parcelHint: { fontSize: 13, color: '#5D4037' },
+  parcelHint: { fontSize: 13, color: colors.textSecondary },
   changeParcelBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -533,7 +535,7 @@ const styles = StyleSheet.create({
   changeParcelText: { fontSize: 13, color: colors.primary, fontWeight: '600' },
   candidateBtn: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: radii.md,
     paddingVertical: 12,
     paddingHorizontal: 14,
     flexDirection: 'row',
@@ -555,7 +557,7 @@ const styles = StyleSheet.create({
 
   truckCard: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -574,17 +576,17 @@ const styles = StyleSheet.create({
   },
   truckPlate: { fontSize: 18, fontWeight: '700', color: '#0A5C36' },
   truckMeta: { fontSize: 13, color: '#5D4037', marginTop: 1 },
-  truckDistance: { fontSize: 12, color: colors.tertiary, marginTop: 2 },
+  truckDistance: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 
   emptyCard: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: 20,
     alignItems: 'center',
     gap: 6,
   },
   emptyTitle: { fontSize: 15, fontWeight: '600', color: '#374151' },
-  emptySub: { fontSize: 13, color: '#8D6E63', textAlign: 'center', lineHeight: 18 },
+  emptySub: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', lineHeight: 18 },
 
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
   loadingText: { fontSize: 14, color: '#5D4037' },
@@ -596,7 +598,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: radii.md,
     paddingVertical: 14,
     borderWidth: 1,
     borderColor: '#E5E7EB',

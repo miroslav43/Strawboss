@@ -14,15 +14,11 @@ export function WeightInput({ value, onChange, onConfirm }: WeightInputProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Enter gross weight (kg)</Text>
+      <Text style={styles.label}>Introduceți greutatea brută (kg)</Text>
       <Text style={styles.value}>{value || '0'} kg</Text>
       <NumericPad value={value} onChange={onChange} maxLength={8} decimal />
       <View style={styles.buttonContainer}>
-        <BigButton
-          title="Continue"
-          onPress={onConfirm}
-          disabled={!isValid}
-        />
+        <BigButton title="Continuă" onPress={onConfirm} disabled={!isValid} />
       </View>
     </View>
   );
