@@ -4,9 +4,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   type ViewStyle,
-  type TextStyle,
 } from 'react-native';
-import { colors, radii } from '@strawboss/ui-tokens';
+import { radii } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { useTheme } from '@/lib/theme';
 
@@ -17,32 +16,6 @@ interface BigButtonProps {
   disabled?: boolean;
   loading?: boolean;
 }
-
-const variantStyles: Record<
-  NonNullable<BigButtonProps['variant']>,
-  { container: ViewStyle; text: TextStyle }
-> = {
-  primary: {
-    container: { backgroundColor: colors.primary },
-    text: { color: colors.white },
-  },
-  secondary: {
-    container: { backgroundColor: colors.secondary },
-    text: { color: colors.white },
-  },
-  danger: {
-    container: { backgroundColor: colors.danger },
-    text: { color: colors.white },
-  },
-  outline: {
-    container: {
-      backgroundColor: 'transparent',
-      borderWidth: 2,
-      borderColor: colors.primary,
-    },
-    text: { color: colors.primary },
-  },
-};
 
 export function BigButton({
   title,

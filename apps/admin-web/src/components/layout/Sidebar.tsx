@@ -70,7 +70,6 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
     if (open) {
       onToggle();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   return (

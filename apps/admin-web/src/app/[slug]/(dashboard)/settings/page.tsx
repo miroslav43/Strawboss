@@ -266,10 +266,6 @@ export default function SettingsPage() {
     // no-op until backend supports notificationPrefs on the User entity
   };
 
-  const handleSaveNotifs = () => {
-    // no-op: notificationPrefs is not in UpdateProfilePayload / User type
-  };
-
   /* ---- Loading state ---- */
   if (profileQuery.isLoading) {
     return (

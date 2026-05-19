@@ -87,7 +87,6 @@ export default function LoadBalesScreen() {
       setSnapshotParcelName(parcel.parcelName);
     }
     // Only run when parcel resolves; snapshot is intentionally frozen after first capture.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parcel.status, parcel.parcelId]);
 
   const [baleCountStr, setBaleCountStr] = useState('');

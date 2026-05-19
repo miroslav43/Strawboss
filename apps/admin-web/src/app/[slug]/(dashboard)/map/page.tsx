@@ -541,13 +541,11 @@ export default function MapPage() {
     Array.isArray(parcelsRaw) ? parcelsRaw : ((parcelsRaw as { data?: Parcel[] })?.data ?? [])
   ) as Parcel[];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const farms = (
-    Array.isArray(farmsRaw) ? farmsRaw : ((farmsRaw as any)?.data ?? [])
+    Array.isArray(farmsRaw) ? farmsRaw : ((farmsRaw as { data?: unknown[] })?.data ?? [])
   ) as import('@strawboss/types').Farm[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const deposits = (
-    Array.isArray(depositsRaw) ? depositsRaw : ((depositsRaw as any)?.data ?? [])
+    Array.isArray(depositsRaw) ? depositsRaw : ((depositsRaw as { data?: unknown[] })?.data ?? [])
   ) as DeliveryDestination[];
 
   useEffect(() => {

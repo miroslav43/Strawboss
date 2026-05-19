@@ -68,7 +68,6 @@ export function MiniMap({ lat, lon, label }: MiniMapProps) {
       }
     };
     // Re-run only when coordinates change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lon]);
 
   return (

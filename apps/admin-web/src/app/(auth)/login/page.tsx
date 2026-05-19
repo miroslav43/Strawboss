@@ -12,12 +12,12 @@ async function resolveLogin(login: string): Promise<string | null> {
   if (login.includes('@')) return login;
   try {
     const res = await fetch(apiV1Url('/auth/resolve'), {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ login }),
+      body: JSON.stringify({ login }),
     });
     if (!res.ok) return null;
-    const data = await res.json() as { email?: string };
+    const data = (await res.json()) as { email?: string };
     return data.email ?? null;
   } catch {
     return null;
@@ -36,10 +36,10 @@ function pinToAuthPassword(pin: string): string {
 export default function LoginPage() {
   const { t } = useI18n();
   const router = useRouter();
-  const [login,    setLogin]    = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [error,    setError]    = useState<string | null>(null);
-  const [loading,  setLoading]  = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     void supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -90,21 +90,21 @@ export default function LoginPage() {
       return;
     }
 
-    const appMeta = signInData.session?.user.app_metadata as {
-      role?: string;
-      organization_slug?: string;
-    } | undefined;
+    const appMeta = signInData.session?.user.app_metadata as
+      | {
+          role?: string;
+          organization_slug?: string;
+        }
+      | undefined;
 
     if (appMeta?.role === 'super_admin') {
       router.push('/super-admin');
       return;
     }
 
-    let orgSlug =
+    const orgSlug =
       appMeta?.organization_slug ??
-      (signInData.session
-        ? await resolveOrganizationSlugForSession(signInData.session)
-        : null);
+      (signInData.session ? await resolveOrganizationSlugForSession(signInData.session) : null);
     if (!orgSlug) {
       setError('Contul tău nu are o organizație asignată. Contactează administratorul.');
       setLoading(false);
@@ -126,9 +126,7 @@ export default function LoginPage() {
           aria-hidden
         />
       </div>
-      <h1 className="mb-6 text-center text-2xl font-bold text-primary">
-        {t('login.title')}
-      </h1>
+      <h1 className="mb-6 text-center text-2xl font-bold text-primary">{t('login.title')}</h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -164,9 +162,7 @@ export default function LoginPage() {
           />
         </div>
 
-        {error && (
-          <p className="text-sm text-danger">{error}</p>
-        )}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <button
           type="submit"
