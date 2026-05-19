@@ -17,6 +17,7 @@ import { SignatureCapture } from '@/components/shared/SignatureCapture';
 import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
 import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
 import { mobileLogger } from '@/lib/logger';
+import { uploadSignature } from '@/lib/signatureUpload';
 import { colors } from '@strawboss/ui-tokens';
 import { useTripTransition } from '@/hooks/useTripTransition';
 import { getDatabase } from '@/lib/storage';
@@ -68,6 +69,20 @@ export default function DepartureFlowScreen() {
     if (!tripId || !driverSignature) return;
     setSubmitting(true);
     try {
+      // M9: Attempt binary upload of the signature PNG.  On success the body
+      // will carry the server URL; on any error (offline / server failure) we
+      // fall back to sending the raw base64 string — the backend accepts both.
+      let signatureValue = driverSignature;
+      try {
+        signatureValue = await uploadSignature(driverSignature, 'driver');
+        mobileLogger.flow('DepartureFlow: driver signature uploaded as binary', { tripId });
+      } catch {
+        // Offline or upload error — fall back to base64 (backward-compatible).
+        mobileLogger.info('DepartureFlow: signature binary upload failed, falling back to base64', {
+          tripId,
+        });
+      }
+
       // Read current local trip status for pre-validation.
       const db = await getDatabase();
       const tripsRepo = new TripsRepo(db);
@@ -80,7 +95,7 @@ export default function DepartureFlowScreen() {
         transition: 'depart',
         body: {
           departureOdometerKm: odometerKm,
-          driverSignature,
+          driverSignature: signatureValue,
         },
         localMeta: {
           departure_odometer_km: odometerKm,

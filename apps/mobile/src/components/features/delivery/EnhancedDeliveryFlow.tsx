@@ -13,6 +13,7 @@ import { DeterioratedBalesInput } from './DeterioratedBalesInput';
 import { CmrConfirmation } from './CmrConfirmation';
 import { WhatsAppLink } from '@/components/shared/WhatsAppLink';
 import { uploadReceipt } from '@/lib/receiptUpload';
+import { uploadSignature } from '@/lib/signatureUpload';
 import { mobileLogger } from '@/lib/logger';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
@@ -209,6 +210,25 @@ export function EnhancedDeliveryFlow({
         }
       }
 
+      // M9: Attempt binary upload of the receiver signature PNG before
+      // enqueuing the transition.  Falls back to the raw base64 string if the
+      // upload fails (offline / server error) — the backend accepts both.
+      let receiverSignatureValue = receiverSignature ?? '';
+      if (receiverSignature) {
+        try {
+          receiverSignatureValue = await uploadSignature(receiverSignature, 'receiver');
+          mobileLogger.flow('EnhancedDeliveryFlow: receiver signature uploaded as binary', {
+            tripId,
+          });
+        } catch {
+          // Offline or upload error — fall back to base64 (backward-compatible).
+          mobileLogger.info(
+            'EnhancedDeliveryFlow: signature binary upload failed, falling back to base64',
+            { tripId },
+          );
+        }
+      }
+
       // FM-1: Apply transitions optimistically in local SQLite, then enqueue each.
       // Order matters — start-delivery → confirm-delivery → complete.
       // Idempotency keys are stable so retrying is safe.
@@ -237,7 +257,7 @@ export function EnhancedDeliveryFlow({
       });
       await enqueueTripTransition(tripId, 'complete', {
         receiverName: receiverName.trim(),
-        receiverSignature: receiverSignature ?? '',
+        receiverSignature: receiverSignatureValue,
       });
 
       // FM-1: Clear the delivery draft — flow completed successfully.

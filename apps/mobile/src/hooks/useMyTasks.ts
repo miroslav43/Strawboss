@@ -29,18 +29,6 @@ export interface MyTask {
   destinationCode: string | null;
 }
 
-interface DailyPlanResponse {
-  date: string;
-  /** Unassigned machines (admin board use). Mobile should ignore this field. */
-  available: unknown[];
-  inProgress: { parcelId: string; parcelName: string; assignments: MyTask[] }[];
-  done: MyTask[];
-  /** Task assignments without a parcel (e.g. trucks planned without a source field). */
-  unassignedToParcel?: MyTask[];
-  /** Task assignments with status='available' — the ones mobile shows as "start task" prompts. */
-  availableTasks?: MyTask[];
-}
-
 /** Drop placeholder / admin-empty rows with no field or destination to show or open on the map. */
 function taskHasRenderableLocation(t: MyTask): boolean {
   const parcelOk =
@@ -55,43 +43,29 @@ function taskHasRenderableLocation(t: MyTask): boolean {
 }
 
 /**
- * Fetches today's task assignments for the current user.
- * Uses the daily-plan endpoint which returns JOINed parcel/machine/destination names,
- * then filters client-side by assignedUserId.
+ * M40: Fetches today's task assignments for the current user via the
+ * server-side filtered endpoint `GET /api/v1/task-assignments/my-tasks?date=YYYY-MM-DD`.
+ *
+ * This replaces the previous implementation that fetched the full daily plan
+ * and filtered client-side by `assignedUserId`.  The new endpoint returns only
+ * the assignments belonging to the authenticated user, reducing payload size.
+ *
+ * Return shape is identical to the previous implementation so all existing
+ * consumers of `useMyTasks` continue to work without changes.
  */
 export function useMyTasks() {
   const userId = useAuthStore((s) => s.userId);
-  const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const today = todayInRomania();
 
   const query = useQuery({
-    queryKey: ['my-tasks', today, userId, assignedMachineId],
+    queryKey: ['my-tasks', today, userId],
     queryFn: async () => {
-      const plan = await mobileApiClient.get<DailyPlanResponse>(
-        `/api/v1/task-assignments/daily-plan/${today}`,
+      const tasks = await mobileApiClient.get<MyTask[]>(
+        `/api/v1/task-assignments/my-tasks?date=${today}`,
       );
 
-      const all: MyTask[] = [];
-      if (plan.availableTasks) all.push(...plan.availableTasks);
-      if (plan.inProgress) {
-        for (const group of plan.inProgress) {
-          all.push(...group.assignments);
-        }
-      }
-      if (plan.done) all.push(...plan.done);
-      if (plan.unassignedToParcel) all.push(...plan.unassignedToParcel);
-
-      const mine = userId
-        ? all.filter(
-            (t) =>
-              t.assignedUserId === userId ||
-              (assignedMachineId !== null && t.machineId === assignedMachineId),
-          )
-        : [];
-
-      mine.sort((a, b) => a.sequenceOrder - b.sequenceOrder);
-
-      return mine.filter(taskHasRenderableLocation);
+      const sorted = [...tasks].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+      return sorted.filter(taskHasRenderableLocation);
     },
     enabled: !!userId,
     refetchInterval: 30_000,
