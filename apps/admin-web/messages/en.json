@@ -826,12 +826,5 @@
     "colDestination": "Destination",
     "colBales": "Bales",
     "colCreated": "Created"
-  },
-  "realtime": {
-    "disconnected": "Live updates disconnected",
-    "reconnect": "Reconnect"
-  },
-  "auth": {
-    "loading": "Verifying session..."
   }
 }
