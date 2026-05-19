@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Building2, Plus, ExternalLink } from 'lucide-react';
+import { Loader2, Building2, Plus, ExternalLink, Users } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 
 interface Organization {
@@ -72,6 +72,7 @@ export default function OrganizationsPage() {
                 <th className="px-5 py-3 text-left">Name</th>
                 <th className="px-5 py-3 text-left">Slug</th>
                 <th className="px-5 py-3 text-left">Dashboard</th>
+                <th className="px-5 py-3 text-left">Users</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
@@ -86,6 +87,15 @@ export default function OrganizationsPage() {
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       /{org.slug}/
+                    </a>
+                  </td>
+                  <td className="px-5 py-3">
+                    <a
+                      href={`/super-admin/organizations/${org.id}/users`}
+                      className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-400 hover:text-neutral-900"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      Manage users
                     </a>
                   </td>
                 </tr>
