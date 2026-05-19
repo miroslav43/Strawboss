@@ -38,6 +38,7 @@ import {
 } from '@/lib/location';
 import { checkMachineInactivity } from '@/lib/inactivity-alarm';
 import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/background-sync';
+import { hasSeenOnboarding } from './onboarding';
 import type { User } from '@strawboss/types';
 
 const queryClient = new QueryClient({
@@ -145,6 +146,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const { role, setProfile } = useAuthStore();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const activeUserIdRef = useRef<string | null>(null);
+  // FM-17: tracks whether the onboarding check has been performed for the
+  // current session so we fire it at most once per login.
+  const onboardingCheckedRef = useRef(false);
   const { modalProps, showModal, hideModal } = useModal();
 
   // Subscribe to hydration completion once (runs at most once per mount).
@@ -190,6 +194,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         queryClient.clear();
         useAuthStore.getState().clear();
         activeUserIdRef.current = null;
+        onboardingCheckedRef.current = false;
         setProfileReady(false);
         setIsAuthenticated(false);
         return;
@@ -393,6 +398,25 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const destination = role ? (ROLE_ROUTES[role] ?? '/(tabs)') : '/(tabs)';
 
     if (inAuthGroup) {
+      // FM-17: check onboarding once per login, before navigating to the role home.
+      // We do this asynchronously and fall through to the role home on any error
+      // so a SecureStore failure never blocks boot.
+      if (role && !onboardingCheckedRef.current) {
+        onboardingCheckedRef.current = true;
+        void (async () => {
+          try {
+            const seen = await hasSeenOnboarding(role);
+            if (!seen) {
+              router.replace('/onboarding' as Parameters<typeof router.replace>[0]);
+              return;
+            }
+          } catch {
+            // Non-fatal: fall through to normal role home navigation
+          }
+          router.replace(destination as Parameters<typeof router.replace>[0]);
+        })();
+        return;
+      }
       // On login screen — navigate to role-specific route now that profile is ready
       router.replace(destination as Parameters<typeof router.replace>[0]);
       return;
@@ -495,6 +519,16 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen
               name="notifications"
+              options={{ presentation: 'card', animation: 'slide_from_right' }}
+            />
+            {/* FM-17: onboarding shown once per role after first login */}
+            <Stack.Screen
+              name="onboarding"
+              options={{ presentation: 'card', animation: 'fade', gestureEnabled: false }}
+            />
+            {/* FM-14: daily PDF report — accessible from ProfileScreen */}
+            <Stack.Screen
+              name="daily-report"
               options={{ presentation: 'card', animation: 'slide_from_right' }}
             />
           </Stack>

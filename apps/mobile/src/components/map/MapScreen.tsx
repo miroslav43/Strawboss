@@ -7,12 +7,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
-import type { Parcel } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store';
 import { calculateRoute, haversineKm } from '@/lib/routing';
 import { MapView, type MapViewHandle } from './MapView';
 import { ParcelInfoSheet } from './ParcelInfoSheet';
+import { useCachedParcels } from '@/hooks/useCachedParcels';
 import type {
   MapEvent,
   ParcelMapData,
@@ -90,12 +90,8 @@ export function MapScreen({ focusId }: MapScreenProps) {
   } | null>(null);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch parcels
-  const { data: parcels } = useQuery({
-    queryKey: ['map-parcels'],
-    queryFn: () => mobileApiClient.get<Parcel[]>('/api/v1/parcels'),
-    staleTime: 5 * 60_000,
-  });
+  // FM-13: Use cached parcels (API when online, SQLite cache when offline).
+  const { parcels: cachedParcels, fromCache: parcelsFromCache } = useCachedParcels();
 
   // Fetch delivery destinations
   const { data: destinations } = useQuery({
@@ -254,17 +250,17 @@ export function MapScreen({ focusId }: MapScreenProps) {
     };
   }, []);
 
-  // Send data to map when ready
+  // Send data to map when ready (FM-13: uses cachedParcels — works online + offline)
   useEffect(() => {
     if (!mapReady) return;
 
-    if (parcels?.length) {
-      const parcelData: ParcelMapData[] = parcels.map((p) => ({
+    if (cachedParcels.length) {
+      const parcelData: ParcelMapData[] = cachedParcels.map((p) => ({
         id: p.id,
         name: p.name,
         code: p.code,
-        harvestStatus: p.harvestStatus,
-        areaHectares: p.areaHectares,
+        harvestStatus: p.harvestStatus ?? '',
+        areaHectares: p.areaHectares ?? 0,
         boundary: p.boundary,
       }));
       mapRef.current?.sendCommand({ type: 'SET_PARCELS', parcels: parcelData });
@@ -284,7 +280,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
       });
       mapRef.current?.sendCommand({ type: 'SET_DESTINATIONS', destinations: destData });
     }
-  }, [mapReady, parcels, destinations]);
+  }, [mapReady, cachedParcels, destinations]);
 
   // Send machine markers to map (others only; distance label updates with userLocation)
   useEffect(() => {
@@ -317,7 +313,8 @@ export function MapScreen({ focusId }: MapScreenProps) {
   const handleMapEvent = useCallback(
     (event: MapEvent) => {
       if (event.type === 'PARCEL_TAPPED') {
-        const parcel = parcels?.find((p) => p.id === event.parcelId);
+        // FM-13: look up from cachedParcels (available online and offline)
+        const parcel = cachedParcels.find((p) => p.id === event.parcelId);
         if (parcel) {
           mapRef.current?.sendCommand({ type: 'CLEAR_ROUTE' });
           setRouteInfo(null);
@@ -326,9 +323,9 @@ export function MapScreen({ focusId }: MapScreenProps) {
             id: parcel.id,
             name: parcel.name,
             code: parcel.code,
-            areaHectares: parcel.areaHectares,
-            municipality: parcel.municipality,
-            harvestStatus: parcel.harvestStatus,
+            areaHectares: parcel.areaHectares ?? undefined,
+            municipality: parcel.municipality ?? undefined,
+            harvestStatus: parcel.harvestStatus ?? undefined,
             centroidLat: center?.lat,
             centroidLon: center?.lon,
           });
@@ -350,7 +347,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
         }
       }
     },
-    [parcels, destinations],
+    [cachedParcels, destinations],
   );
 
   const handleNavigateOnMap = useCallback(async () => {
@@ -423,6 +420,13 @@ export function MapScreen({ focusId }: MapScreenProps) {
   return (
     <View style={styles.container}>
       <MapView ref={mapRef} onEvent={handleMapEvent} onReady={handleMapReady} />
+      {/* FM-13: Offline cache banner — visible when parcels come from SQLite */}
+      {parcelsFromCache && (
+        <View style={styles.offlineBanner} pointerEvents="none">
+          <MaterialCommunityIcons name="database-off-outline" size={14} color="#5D4037" />
+          <Text style={styles.offlineBannerText}>Parcele din cache local (offline)</Text>
+        </View>
+      )}
       {showOverlayControls && (
         <TouchableOpacity
           style={styles.resetFab}
@@ -476,6 +480,26 @@ interface SelectedMapItem {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  // FM-13: Offline cache indicator shown below the map top edge
+  offlineBanner: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(243, 222, 216, 0.92)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D7CCC8',
+  },
+  offlineBannerText: {
+    fontSize: 12,
+    color: '#5D4037',
+    fontWeight: '500',
+  },
   resetFab: {
     position: 'absolute',
     top: 12,
