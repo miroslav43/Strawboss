@@ -10,6 +10,7 @@ import { FuelLogsRepo } from '../db/fuel-logs-repo';
 import { ConsumableLogsRepo } from '../db/consumable-logs-repo';
 import { BaleLoadsRepo } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo } from '../db/task-assignments-repo';
+import { ParcelsRepo } from '../db/parcels-repo';
 import { SyncManager } from '../sync/SyncManager';
 import { useNetworkStatus } from './useNetworkStatus';
 
@@ -64,6 +65,7 @@ export function useSync() {
       const consumableLogsRepo = new ConsumableLogsRepo(db);
       const baleLoadsRepo = new BaleLoadsRepo(db);
       const taskAssignmentsRepo = new TaskAssignmentsRepo(db);
+      const parcelsRepo = new ParcelsRepo(db);
       const manager = new SyncManager(
         syncQueueRepo,
         tripsRepo,
@@ -73,6 +75,7 @@ export function useSync() {
         consumableLogsRepo,
         baleLoadsRepo,
         taskAssignmentsRepo,
+        parcelsRepo,
       );
 
       const result = await manager.sync();
