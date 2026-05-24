@@ -2,6 +2,7 @@
 
 import { useEffect, useReducer } from 'react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 // 30 s mobile heartbeat + 60 s grace → 90 s window.
 const ONLINE_WINDOW_MS = 90 * 1000;
@@ -36,18 +37,20 @@ export interface UserPresenceDotProps {
  */
 export function UserPresenceDot({ lastSeenAt, className }: UserPresenceDotProps) {
   useTick();
+  const { t, locale } = useI18n();
   const isOnline = lastSeenAt
     ? Date.now() - new Date(lastSeenAt).getTime() < ONLINE_WINDOW_MS
     : false;
+  const title = lastSeenAt
+    ? isOnline
+      ? t('tasks.online.online')
+      : t('tasks.online.lastSeen', {
+          when: new Date(lastSeenAt).toLocaleString(locale === 'ro' ? 'ro-RO' : 'en-US'),
+        })
+    : t('tasks.online.neverSeen');
   return (
     <span
-      title={
-        lastSeenAt
-          ? isOnline
-            ? 'Conectat'
-            : `Ultima activitate: ${new Date(lastSeenAt).toLocaleString('ro-RO')}`
-          : 'Niciodată conectat'
-      }
+      title={title}
       className={cn(
         'inline-block h-2 w-2 rounded-full ring-1 ring-white',
         isOnline ? 'bg-green-500 animate-pulse' : 'bg-neutral-300',
