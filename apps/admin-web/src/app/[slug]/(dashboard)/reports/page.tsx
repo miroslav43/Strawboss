@@ -17,6 +17,7 @@ import { ReportKpiRow } from '@/components/features/reports/ReportKpiRow';
 import { FarmReportTab } from '@/components/features/reports/FarmReportTab';
 import { DepotReportTab } from '@/components/features/reports/DepotReportTab';
 import { RankingsTab } from '@/components/features/reports/RankingsTab';
+import { KmPerTruckTab } from '@/components/features/reports/KmPerTruckTab';
 import { CostBreakdownChart } from '@/components/features/reports/CostBreakdownChart';
 import { OperatorProductionChart } from '@/components/features/reports/OperatorProductionChart';
 import type { OperatorProductionRow } from '@/components/features/reports/OperatorProductionChart';
@@ -26,7 +27,7 @@ import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 
-type Tab = 'farms' | 'depots' | 'rankings' | 'costs' | 'operators';
+type Tab = 'farms' | 'depots' | 'rankings' | 'costs' | 'operators' | 'kmPerTruck';
 
 const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'farms', labelKey: 'reports.tabs.farms' },
@@ -34,6 +35,7 @@ const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'rankings', labelKey: 'reports.tabs.rankings' },
   { id: 'costs', labelKey: 'reports.tabs.costs' },
   { id: 'operators', labelKey: 'reports.tabs.operators' },
+  { id: 'kmPerTruck', labelKey: 'reports.tabs.kmPerTruck' },
 ];
 
 interface CostRow extends Record<string, unknown> {
@@ -474,6 +476,8 @@ export default function ReportsPage() {
             )}
           </div>
         )}
+
+        {tab === 'kmPerTruck' && <KmPerTruckTab dateFrom={dateFrom} dateTo={dateTo} />}
 
         {tab === 'operators' && (
           <div className="space-y-6">

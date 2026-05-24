@@ -19,7 +19,8 @@ export const queryKeys = {
     list: (filters?: Record<string, unknown>) => ['taskAssignments', 'list', filters] as const,
     byDate: (date: string) => ['taskAssignments', 'date', date] as const,
     dailyPlan: (date: string) => ['taskAssignments', 'dailyPlan', date] as const,
-    byMachineType: (date: string, machineType: string) => ['taskAssignments', 'byMachineType', date, machineType] as const,
+    byMachineType: (date: string, machineType: string) =>
+      ['taskAssignments', 'byMachineType', date, machineType] as const,
   },
   parcelDailyStatus: {
     all: ['parcelDailyStatus'] as const,
@@ -45,17 +46,21 @@ export const queryKeys = {
   },
   dashboard: {
     overview: () => ['dashboard', 'overview'] as const,
-    production: (filters?: Record<string, unknown>) => ['dashboard', 'production', filters] as const,
+    production: (filters?: Record<string, unknown>) =>
+      ['dashboard', 'production', filters] as const,
     costs: (filters?: Record<string, unknown>) => ['dashboard', 'costs', filters] as const,
     antiFraud: () => ['dashboard', 'antiFraud'] as const,
     trending: () => ['dashboard', 'trending'] as const,
   },
   location: {
     machines: () => ['location', 'machines'] as const,
-    route: (machineId: string, from: string, to: string) => ['location', 'route', machineId, from, to] as const,
+    route: (machineId: string, from: string, to: string) =>
+      ['location', 'route', machineId, from, to] as const,
     related: () => ['location', 'related-machines'] as const,
     trucksAtLoader: (loaderMachineId: string) =>
       ['location', 'trucks-at-loader', loaderMachineId] as const,
+    kmByDay: (machineId: string, from: string, to: string) =>
+      ['location', 'km-by-day', machineId, from, to] as const,
   },
   auth: {
     session: () => ['auth', 'session'] as const,
@@ -70,8 +75,8 @@ export const queryKeys = {
     stats: (filters?: Record<string, unknown>) => ['baleProductions', 'stats', filters] as const,
   },
   farms: {
-    all:    ['farms'] as const,
-    list:   (filters?: Record<string, unknown>) => ['farms', 'list', filters] as const,
+    all: ['farms'] as const,
+    list: (filters?: Record<string, unknown>) => ['farms', 'list', filters] as const,
     detail: (id: string) => ['farms', 'detail', id] as const,
   },
   deliveryDestinations: {

@@ -84,6 +84,21 @@ export class LocationController {
   }
 
   /**
+   * GET /api/v1/location/machines/:machineId/km-by-day?from=...&to=...
+   * Admin-only: per-day kilometre totals for one machine (T18).
+   */
+  @Get('machines/:machineId/km-by-day')
+  @Roles(UserRole.admin)
+  getKmByDay(
+    @Param('machineId') machineId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.locationService.getKmByDay(machineId, from, to, user.organizationId);
+  }
+
+  /**
    * GET /api/v1/location/loaders-near-truck/:truckMachineId
    * Driver/admin-only: loaders currently within proximity of the truck,
    * scoped to the caller's organization. Mirror of trucks-at-loader.

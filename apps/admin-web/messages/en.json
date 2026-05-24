@@ -556,7 +556,17 @@
       "depots": "Depots",
       "rankings": "Rankings",
       "costs": "Costs",
-      "operators": "Operators"
+      "operators": "Operators",
+      "kmPerTruck": "Km per truck"
+    },
+    "kmPerTruck": {
+      "title": "Kilometres travelled per truck per day",
+      "selectMachines": "Select trucks",
+      "allTrucks": "All trucks",
+      "noMachines": "No trucks in this organization.",
+      "totalKm": "{{km}} km",
+      "export": "Export CSV",
+      "empty": "No GPS data in the selected range."
     },
     "kpi": {
       "produced": "Produced",

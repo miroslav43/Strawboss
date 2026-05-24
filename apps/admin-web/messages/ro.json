@@ -556,7 +556,17 @@
       "depots": "Depozite",
       "rankings": "Clasamente",
       "costs": "Costuri",
-      "operators": "Operatori"
+      "operators": "Operatori",
+      "kmPerTruck": "Km / camion"
+    },
+    "kmPerTruck": {
+      "title": "Kilometri parcurși per camion pe zi",
+      "selectMachines": "Selectează camioane",
+      "allTrucks": "Toate camioanele",
+      "noMachines": "Nu există camioane în organizație.",
+      "totalKm": "{{km}} km",
+      "export": "Export CSV",
+      "empty": "Nu există date GPS în intervalul selectat."
     },
     "kpi": {
       "produced": "Produs",
