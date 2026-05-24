@@ -34,9 +34,15 @@ interface TaskListProps {
   tasks: MyTask[];
   /** Role determines how each task card renders and what happens on tap */
   role: 'baler_operator' | 'loader_operator' | 'driver' | string;
+  /**
+   * T5 — optional override for tap behaviour. When provided, called instead of
+   * the default map-focus navigation. Used by the baler home to route taps to
+   * the parcel detail screen.
+   */
+  onTaskPress?: (task: MyTask) => void;
 }
 
-export function TaskList({ tasks, role }: TaskListProps) {
+export function TaskList({ tasks, role, onTaskPress }: TaskListProps) {
   const { colors: themeColors } = useTheme();
 
   if (tasks.length === 0) {
@@ -50,6 +56,10 @@ export function TaskList({ tasks, role }: TaskListProps) {
   }
 
   const handlePress = (task: MyTask) => {
+    if (onTaskPress) {
+      onTaskPress(task);
+      return;
+    }
     const rolePrefix =
       role === 'baler_operator'
         ? '(baler)'
@@ -62,6 +72,17 @@ export function TaskList({ tasks, role }: TaskListProps) {
   };
 
   const getTaskLabel = (task: MyTask): string => {
+    // T9.3 — for baler operators, prefer the parcel `code` over the (deprecated)
+    // `name` so the home cards match the rest of the app's identifier strategy.
+    if (role === 'baler_operator') {
+      return (
+        task.parcelCode ??
+        task.parcelName ??
+        task.destinationCode ??
+        task.destinationName ??
+        `Sarcina #${task.sequenceOrder}`
+      );
+    }
     if (task.parcelName) return task.parcelName;
     if (task.destinationName) return task.destinationName;
     if (task.parcelCode) return task.parcelCode;

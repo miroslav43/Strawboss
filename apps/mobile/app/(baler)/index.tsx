@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,13 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { router } from 'expo-router';
 import { TaskList } from '@/components/shared/TaskList';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useProfile } from '@/hooks/useProfile';
-import { useMyTasks } from '@/hooks/useMyTasks';
+import { useMyTasks, type MyTask } from '@/hooks/useMyTasks';
 import { useTheme } from '@/lib/theme';
 
 export default function BalerHomeScreen() {
@@ -26,6 +27,17 @@ export default function BalerHomeScreen() {
     await refetchTasks();
     setRefreshing(false);
   };
+
+  // T5 — tapping a baler task opens the parcel detail screen when a parcel is
+  // attached; falls back to the existing map-focus behaviour for destination-
+  // only assignments (rare for balers but kept for safety).
+  const handleBalerTaskPress = useCallback((task: MyTask) => {
+    if (task.parcelId) {
+      router.push(`/(baler)/parcel/${task.parcelId}`);
+    } else {
+      router.push(`/(baler)/map?focusId=${task.destinationId ?? ''}`);
+    }
+  }, []);
 
   return (
     <View style={styles.outerContainer}>
@@ -50,7 +62,7 @@ export default function BalerHomeScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <TaskList tasks={tasks} role="baler_operator" />
+        <TaskList tasks={tasks} role="baler_operator" onTaskPress={handleBalerTaskPress} />
       </ScrollView>
     </View>
   );
