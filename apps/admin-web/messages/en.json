@@ -221,7 +221,14 @@
     "route1d": "1d",
     "route3d": "3d",
     "route7d": "7d",
-    "routeGpsTrack": "— GPS track"
+    "routeGpsTrack": "— GPS track",
+    "liveStatus": {
+      "live": "LIVE",
+      "reconnecting": "Reconnecting…",
+      "offline": "Offline",
+      "lastUpdateAgo": "Last update: {{ago}}",
+      "onlineCount": "{{n}} online · {{off}} offline"
+    }
   },
   "mapList": {
     "parcels": "Fields / parcels",

@@ -42,6 +42,8 @@ import { useI18n } from '@/lib/i18n';
 import { clientLogger } from '@/lib/client-logger';
 import { useMachineIconPrefs } from '@/hooks/useMachineIconPrefs';
 import { useLocalStorageState } from '@/hooks/useLocalStorageState';
+import { LiveStatusPill } from '@/components/map/LiveStatusPill';
+import { useRealtimeStatus } from '@/lib/realtime';
 
 // Leaflet cannot run on the server — disable SSR for the map component.
 const LeafletMap = dynamicImport(
@@ -344,6 +346,12 @@ export default function MapPage() {
   const { data: farmsRaw = [] } = useFarms(apiClient);
   const { data: depositsRaw = [] } = useDeliveryDestinations(apiClient);
   const deleteParcel = useDeleteParcel(apiClient);
+  const { realtimeStatus } = useRealtimeStatus();
+
+  // T8 — log realtime status transitions for live-tracking visibility.
+  useEffect(() => {
+    clientLogger.info('Map: realtime status changed', { status: realtimeStatus });
+  }, [realtimeStatus]);
 
   const { prefs: iconPrefs } = useMachineIconPrefs();
 
@@ -577,6 +585,10 @@ export default function MapPage() {
 
         {/* Right panel: map */}
         <div className="relative min-w-0 flex-1">
+          {/* T8 — Live status pill (top-left overlay) */}
+          <div className="absolute left-3 top-3 z-[1000]">
+            <LiveStatusPill machines={machines} realtimeStatus={realtimeStatus} />
+          </div>
           <LeafletMap
             parcels={parcels}
             machines={machines}

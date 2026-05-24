@@ -221,7 +221,14 @@
     "route1d": "1zi",
     "route3d": "3zi",
     "route7d": "7zi",
-    "routeGpsTrack": "— traseu GPS"
+    "routeGpsTrack": "— traseu GPS",
+    "liveStatus": {
+      "live": "LIVE",
+      "reconnecting": "Reconectare…",
+      "offline": "Offline",
+      "lastUpdateAgo": "Ultima actualizare: {{ago}}",
+      "onlineCount": "{{n}} online · {{off}} offline"
+    }
   },
   "mapList": {
     "parcels": "Câmpuri / parcele",
