@@ -102,6 +102,9 @@ export default function LoadBalesScreen() {
 
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
   const gpsRef = useRef<{ lon: number; lat: number } | null>(null);
+  // Stable across retries — sync_idempotency on the server dedupes only when
+  // the same key is replayed. Regenerated only after a confirmed success.
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const baleCount = parseInt(baleCountStr, 10) || 0;
 
@@ -258,7 +261,10 @@ export default function LoadBalesScreen() {
 
       setSaving(true);
       try {
-        const idempotencyKey = generateUuid();
+        if (!idempotencyKeyRef.current) {
+          idempotencyKeyRef.current = generateUuid();
+        }
+        const idempotencyKey = idempotencyKeyRef.current;
         const gps = gpsRef.current;
         const payload = {
           truckId,
@@ -321,6 +327,7 @@ export default function LoadBalesScreen() {
         void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(userId) });
 
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        idempotencyKeyRef.current = null;
         setSaved(true);
         setTimeout(() => router.back(), 2500);
       } catch (err) {
