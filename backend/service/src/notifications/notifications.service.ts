@@ -3,10 +3,7 @@ import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import {
-  buildSimulatedPush,
-  type SimulatePushEvent,
-} from './simulate-push-templates';
+import { buildSimulatedPush, type SimulatePushEvent } from './simulate-push-templates';
 
 @Injectable()
 export class NotificationsService {
@@ -47,12 +44,12 @@ export class NotificationsService {
     vars: Record<string, string> = {},
   ): Promise<void> {
     if (orgId !== null) {
-      const checkRows = await this.drizzleProvider.db.execute(sql`
+      const checkRows = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM users
         WHERE id = ${userId}::uuid
           AND deleted_at IS NULL
           AND organization_id = ${orgId}::uuid
-      `) as unknown as { id: string }[];
+      `)) as unknown as { id: string }[];
       if (checkRows.length === 0) {
         throw new ForbiddenException('Target user not found in your organization');
       }
@@ -133,10 +130,7 @@ export class NotificationsService {
       this.winston.error('Expo push request error', {
         context: 'NotificationsService',
         userId,
-        err:
-          err instanceof Error
-            ? { message: err.message, stack: err.stack }
-            : err,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
     }
   }
@@ -155,12 +149,12 @@ export class NotificationsService {
 
     if (target.kind === 'user') {
       if (orgId !== null) {
-        const checkRows = await this.drizzleProvider.db.execute(sql`
+        const checkRows = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM users
           WHERE id = ${target.userId}::uuid
             AND deleted_at IS NULL
             AND organization_id = ${orgId}::uuid
-        `) as unknown as { id: string }[];
+        `)) as unknown as { id: string }[];
         if (checkRows.length === 0) {
           throw new ForbiddenException('Target user not found in your organization');
         }
@@ -173,33 +167,31 @@ export class NotificationsService {
       ];
       if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
       const where = sql.join(conditions, sql` AND `);
-      const rows = await this.drizzleProvider.db.execute(
+      const rows = (await this.drizzleProvider.db.execute(
         sql`SELECT id FROM users WHERE ${where}`,
-      ) as unknown as { id: string }[];
-      userIds = rows.map(r => r.id);
+      )) as unknown as { id: string }[];
+      userIds = rows.map((r) => r.id);
     } else {
       // kind: 'all' — scope to org's device tokens via user join
       if (orgId !== null) {
-        const rows = await this.drizzleProvider.db.execute(sql`
+        const rows = (await this.drizzleProvider.db.execute(sql`
           SELECT DISTINCT dpt.user_id::text AS id
           FROM device_push_tokens dpt
           JOIN users u ON u.id = dpt.user_id AND u.deleted_at IS NULL
           WHERE dpt.is_active = true
             AND u.organization_id = ${orgId}::uuid
-        `) as unknown as { id: string }[];
-        userIds = rows.map(r => r.id);
+        `)) as unknown as { id: string }[];
+        userIds = rows.map((r) => r.id);
       } else {
-        const rows = await this.drizzleProvider.db.execute(sql`
+        const rows = (await this.drizzleProvider.db.execute(sql`
           SELECT DISTINCT user_id::text AS id FROM device_push_tokens WHERE is_active = true
-        `) as unknown as { id: string }[];
-        userIds = rows.map(r => r.id);
+        `)) as unknown as { id: string }[];
+        userIds = rows.map((r) => r.id);
       }
     }
 
     await Promise.all(
-      userIds.map(uid =>
-        this.sendPush(uid, title, body, { type: 'broadcast' }).catch(() => {}),
-      ),
+      userIds.map((uid) => this.sendPush(uid, title, body, { type: 'broadcast' }).catch(() => {})),
     );
 
     this.winston.log('info', `Broadcast sent to ${userIds.length} user(s)`, {
@@ -217,26 +209,28 @@ export class NotificationsService {
     parcelName: string,
     userId: string,
   ): Promise<void> {
-    await this.sendPush(
-      userId,
-      'Confirmare recoltare',
-      `Este câmpul ${parcelName} gata?`,
-      {
-        type: 'geofence_exit_confirm',
-        assignmentId,
-        parcelName,
-      },
-    );
+    await this.sendPush(userId, 'Confirmare recoltare', `Este câmpul ${parcelName} gata?`, {
+      type: 'geofence_exit_confirm',
+      assignmentId,
+      parcelName,
+    });
   }
 
   /**
    * Confirm a parcel is done (called from mobile notification response).
-   * Sets assignment status = done, parcel harvest_status = harvested,
-   * and optionally records bale production if baleCount is provided.
+   * Sets assignment status = done; parcel harvest_status either to
+   * `partial_harvested` or `harvested` depending on `finishState` (T6 exit,
+   * T9.10). Optionally records bale production if `baleCount` is provided.
+   *
+   * The DB trigger `trg_prevent_harvest_status_downgrade` (migration 00042)
+   * silently no-ops when a higher rank is already set (e.g. parcel already
+   * `in_loading`); we catch its `check_violation` and proceed so the
+   * assignment still completes.
    */
   async confirmParcelDone(
     assignmentId: string,
     baleCount?: number,
+    finishState: 'partial' | 'total' = 'total',
     callerUserId?: string,
     orgId?: string | null,
   ): Promise<void> {
@@ -247,7 +241,10 @@ export class NotificationsService {
       WHERE id = ${assignmentId}::uuid AND deleted_at IS NULL
       LIMIT 1
     `);
-    const rows = ownerCheck as unknown as { assigned_user_id: string | null; organization_id: string | null }[];
+    const rows = ownerCheck as unknown as {
+      assigned_user_id: string | null;
+      organization_id: string | null;
+    }[];
     if (rows.length === 0) {
       throw new ForbiddenException('Assignment not found');
     }
@@ -258,7 +255,11 @@ export class NotificationsService {
       throw new ForbiddenException('You do not own this assignment');
     }
 
-    // Update the assignment status to done
+    // T9.10 — partial vs total maps to the new harvest_status values.
+    const harvestTarget = finishState === 'partial' ? 'partial_harvested' : 'harvested';
+
+    // Update the assignment status to done (always — partial harvest still
+    // ends THIS visit; a new assignment can re-visit the parcel later).
     await this.drizzleProvider.db.execute(sql`
       UPDATE task_assignments
       SET status = 'done'::task_assignment_status,
@@ -268,17 +269,32 @@ export class NotificationsService {
         AND deleted_at IS NULL
     `);
 
-    // Set the parcel harvest_status to harvested
-    await this.drizzleProvider.db.execute(sql`
-      UPDATE parcels
-      SET harvest_status = 'harvested'::parcel_harvest_status,
-          updated_at = now()
-      WHERE id = (
-        SELECT parcel_id FROM task_assignments
-        WHERE id = ${assignmentId}::uuid
-      )
-        AND deleted_at IS NULL
-    `);
+    // Set the parcel harvest_status; downgrade trigger may block if a later
+    // state was already reached. We swallow the check_violation so the
+    // assignment side-effect (done) still commits and is observable.
+    try {
+      await this.drizzleProvider.db.execute(sql`
+        UPDATE parcels
+        SET harvest_status = ${harvestTarget}::harvest_status,
+            updated_at = now()
+        WHERE id = (
+          SELECT parcel_id FROM task_assignments
+          WHERE id = ${assignmentId}::uuid
+        )
+          AND deleted_at IS NULL
+      `);
+    } catch (err) {
+      const pgCode = (err as { code?: string } | undefined)?.code;
+      if (pgCode === '23514') {
+        this.winston.warn('confirmParcelDone: harvest_status update refused by downgrade trigger', {
+          context: 'NotificationsService',
+          assignmentId,
+          targetStatus: harvestTarget,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     // Record bale production if count was provided
     if (baleCount != null && baleCount > 0) {
@@ -303,7 +319,133 @@ export class NotificationsService {
         context: 'NotificationsService',
         assignmentId,
         baleCount,
+        finishState,
       });
     }
+  }
+
+  /**
+   * Confirm baler operator entry into a parcel (T6 — 10 s auto-confirm).
+   *
+   * Idempotent. Sets assignment status -> in_progress (only if still
+   * `available`) and parcel harvest_status -> `harvesting` (the DB downgrade
+   * trigger silently rejects this update when a higher state already exists).
+   *
+   * Caller must own the assignment OR be admin (enforced at controller).
+   */
+  async confirmParcelEntry(
+    assignmentId: string,
+    callerUserId?: string,
+    orgId?: string | null,
+  ): Promise<void> {
+    const ownerCheck = await this.drizzleProvider.db.execute(sql`
+      SELECT assigned_user_id, organization_id FROM task_assignments
+      WHERE id = ${assignmentId}::uuid AND deleted_at IS NULL
+      LIMIT 1
+    `);
+    const rows = ownerCheck as unknown as {
+      assigned_user_id: string | null;
+      organization_id: string | null;
+    }[];
+    if (rows.length === 0) {
+      throw new ForbiddenException('Assignment not found');
+    }
+    if (orgId !== null && orgId !== undefined && rows[0].organization_id !== orgId) {
+      throw new ForbiddenException('Assignment not found in your organization');
+    }
+    if (callerUserId && rows[0].assigned_user_id && rows[0].assigned_user_id !== callerUserId) {
+      throw new ForbiddenException('You do not own this assignment');
+    }
+
+    // Optimistically flip the assignment to in_progress only if still available.
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE task_assignments
+      SET status = 'in_progress'::task_assignment_status,
+          actual_start = COALESCE(actual_start, now()),
+          updated_at = now()
+      WHERE id = ${assignmentId}::uuid
+        AND deleted_at IS NULL
+        AND status = 'available'::task_assignment_status
+    `);
+
+    // Advance the parcel to harvesting. The downgrade trigger silently
+    // blocks this when the parcel is already past harvesting; we treat that
+    // as success since the goal (capturing the entry) is reached.
+    try {
+      await this.drizzleProvider.db.execute(sql`
+        UPDATE parcels
+        SET harvest_status = 'harvesting'::harvest_status,
+            updated_at = now()
+        WHERE id = (
+          SELECT parcel_id FROM task_assignments
+          WHERE id = ${assignmentId}::uuid
+        )
+          AND deleted_at IS NULL
+      `);
+    } catch (err) {
+      const pgCode = (err as { code?: string } | undefined)?.code;
+      if (pgCode !== '23514') throw err;
+    }
+
+    this.winston.log('flow', 'parcels.harvest.entry_confirmed', {
+      context: 'NotificationsService',
+      assignmentId,
+    });
+  }
+
+  /**
+   * T6 enter: 10 s auto-confirm popup. Carries the parcel code + crop type so
+   * the mobile overlay can render a context-rich countdown.
+   */
+  async sendBalerFieldEntryConfirm(
+    userId: string,
+    assignmentId: string,
+    parcel: {
+      id: string;
+      code: string;
+      name: string | null;
+      cropType: string | null;
+    },
+  ): Promise<void> {
+    const cropLabel = parcel.cropType ?? 'cultură necunoscută';
+    await this.sendPush(
+      userId,
+      'Începi balotarea?',
+      `Parcela ${parcel.code} — ${cropLabel}. Confirmare automată în 10 s.`,
+      {
+        type: 'field_entry_confirm',
+        assignmentId,
+        parcelId: parcel.id,
+        parcelCode: parcel.code,
+        parcelName: parcel.name,
+        cropType: parcel.cropType,
+      },
+    );
+  }
+
+  /**
+   * T6 exit: loud horn + production-entry CTA. The mobile push handler reads
+   * `_channelId` to route the notification through the dedicated `baler-exit`
+   * Android channel registered in app.json (custom sound, bypass DND).
+   */
+  async sendBalerFieldExitProduction(
+    userId: string,
+    assignmentId: string,
+    parcel: { id: string; code: string; name: string | null },
+  ): Promise<void> {
+    await this.sendPush(
+      userId,
+      'Ai ieșit din parcelă',
+      `Introdu numărul de baloți pentru ${parcel.code}.`,
+      {
+        type: 'field_exit_production',
+        assignmentId,
+        parcelId: parcel.id,
+        parcelCode: parcel.code,
+        parcelName: parcel.name,
+        // Hint to mobile to use the `baler-exit` notification channel.
+        _channelId: 'baler-exit',
+      },
+    );
   }
 }
