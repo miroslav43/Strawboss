@@ -32,7 +32,7 @@ import type {
   RegisterLoadDto,
   RegisterLoadResult,
 } from '@strawboss/types';
-import { getAvailableTransitions } from '@strawboss/domain';
+import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss/domain';
 
 @Injectable()
 export class TripsService implements OnModuleInit {
@@ -580,6 +580,63 @@ export class TripsService implements OnModuleInit {
       // registerLoad collapses planned|loading → loaded — validate the jump
       // against the state machine instead of trusting the UPDATE's WHERE alone.
       this.validateTransition(fromStatus, 'REGISTER_LOAD');
+
+      // Business rules (gate behind STRAWBOSS_BALE_VALIDATION_ENABLED for fast rollback):
+      //  A. Cannot load more bales than remain unloaded on the parcel.
+      //  B. Cannot load more bales than the truck's capacity (per-truck override on
+      //     machines.max_bale_count, falling back to DEFAULT_MAX_BALES_PER_TRUCK = 33).
+      // Both checks run inside the same `tx` as the bale_loads INSERT so concurrent
+      // loaders racing on the same parcel/truck cannot both pass.
+      if (process.env.STRAWBOSS_BALE_VALIDATION_ENABLED !== 'false') {
+        const availabilityRows = (await tx.execute(
+          sql`SELECT
+                COALESCE((SELECT SUM(bale_count) FROM bale_productions
+                          WHERE parcel_id = ${dto.parcelId}
+                            AND deleted_at IS NULL
+                            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS produced,
+                COALESCE((SELECT SUM(bale_count) FROM bale_loads
+                          WHERE parcel_id = ${dto.parcelId}
+                            AND deleted_at IS NULL
+                            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS loaded`,
+        )) as unknown as { produced: number; loaded: number }[];
+        const produced = Number(availabilityRows[0]?.produced ?? 0);
+        const loaded = Number(availabilityRows[0]?.loaded ?? 0);
+        const remaining = produced - loaded;
+
+        if (remaining <= 0) {
+          throw new BadRequestException({
+            error: 'parcel_fully_loaded',
+            message: 'Pe parcela aceasta toți baloții au fost deja încărcați.',
+            produced,
+            loaded,
+            remaining,
+          });
+        }
+        if (dto.baleCount > remaining) {
+          throw new BadRequestException({
+            error: 'bale_count_exceeds_remaining',
+            message: `Pe parcelă au mai rămas ${remaining} baloți disponibili.`,
+            produced,
+            loaded,
+            remaining,
+          });
+        }
+
+        const truckCapRows = (await tx.execute(
+          sql`SELECT max_bale_count FROM machines
+               WHERE id = ${dto.truckId}::uuid AND deleted_at IS NULL
+               LIMIT 1`,
+        )) as unknown as { max_bale_count: number | null }[];
+        const truckCap = truckCapRows[0]?.max_bale_count ?? DEFAULT_MAX_BALES_PER_TRUCK;
+
+        if (dto.baleCount > truckCap) {
+          throw new BadRequestException({
+            error: 'bale_count_exceeds_truck_capacity',
+            message: `Camionul are capacitatea maximă ${truckCap} baloți.`,
+            truckCap,
+          });
+        }
+      }
 
       // Insert the bale_load tied to this trip.
       await tx.execute(

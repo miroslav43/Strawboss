@@ -9,7 +9,6 @@ import { StepIndicator } from '@/components/ui/StepIndicator';
 import { WeightInput } from './WeightInput';
 import { WeightTicketPhoto } from './WeightTicketPhoto';
 import { SignatureStep } from './SignatureStep';
-import { DeterioratedBalesInput } from './DeterioratedBalesInput';
 import { CmrConfirmation } from './CmrConfirmation';
 import { WhatsAppLink } from '@/components/shared/WhatsAppLink';
 import { uploadReceipt } from '@/lib/receiptUpload';
@@ -35,14 +34,16 @@ interface EnhancedDeliveryFlowProps {
   onCancel: () => void;
 }
 
-type Step = 0 | 1 | 2 | 3 | 4;
+type Step = 0 | 1 | 2 | 3;
+
+const TOTAL_STEPS = 4;
+const LAST_STEP: Step = 3;
 
 const STEP_TITLES: Record<Step, string> = {
   0: 'Greutate',
-  1: 'Baloți deteriorați',
-  2: 'Bon de cântar',
-  3: 'Semnătură primitor',
-  4: 'Confirmare livrare',
+  1: 'Bon de cântar',
+  2: 'Semnătură primitor',
+  3: 'Confirmare livrare',
 };
 
 /**
@@ -50,7 +51,6 @@ const STEP_TITLES: Record<Step, string> = {
  */
 interface DeliveryDraft {
   netWeightValue: string;
-  deterioratedBales: number;
   ticketPhotoUri: string | null;
   ticketUrl: string | null;
   receiverName: string;
@@ -90,7 +90,6 @@ export function EnhancedDeliveryFlow({
 }: EnhancedDeliveryFlowProps) {
   const [currentStep, setCurrentStep] = useState<Step>(0);
   const [netWeightValue, setNetWeightValue] = useState('');
-  const [deterioratedBales, setDeterioratedBales] = useState(0);
   const [ticketPhotoUri, setTicketPhotoUri] = useState<string | null>(null);
   const [receiverName, setReceiverName] = useState('');
   const [receiverSignature, setReceiverSignature] = useState<string | null>(null);
@@ -118,12 +117,13 @@ export function EnhancedDeliveryFlow({
         ) {
           const draft = JSON.parse(trip.delivery_draft_json) as Partial<DeliveryDraft>;
           if (draft.netWeightValue != null) setNetWeightValue(draft.netWeightValue);
-          if (draft.deterioratedBales != null) setDeterioratedBales(draft.deterioratedBales);
           if (draft.ticketPhotoUri != null) setTicketPhotoUri(draft.ticketPhotoUri);
           if (draft.receiverName != null) setReceiverName(draft.receiverName);
           if (draft.receiverSignature != null) setReceiverSignature(draft.receiverSignature);
-          // Resume at the step after the last completed one (capped at step 4).
-          const resumeStep = Math.min(trip.delivery_step_progress + 1, 4) as Step;
+          // Resume at the step after the last completed one, clamped to the
+          // new total. Existing drafts written before the damaged-bales step
+          // was removed may carry a step value of up to 4 — clamp to LAST_STEP.
+          const resumeStep = Math.min(trip.delivery_step_progress + 1, LAST_STEP) as Step;
           setCurrentStep(resumeStep);
           prevStepRef.current = resumeStep;
           mobileLogger.flow('EnhancedDeliveryFlow: resumed from draft', {
@@ -150,7 +150,6 @@ export function EnhancedDeliveryFlow({
     async (completedStep: number) => {
       const draft: DeliveryDraft = {
         netWeightValue,
-        deterioratedBales,
         ticketPhotoUri,
         ticketUrl: null,
         receiverName,
@@ -169,7 +168,7 @@ export function EnhancedDeliveryFlow({
         });
       }
     },
-    [tripId, netWeightValue, deterioratedBales, ticketPhotoUri, receiverName, receiverSignature],
+    [tripId, netWeightValue, ticketPhotoUri, receiverName, receiverSignature],
   );
 
   const goToStep = useCallback(
@@ -246,7 +245,7 @@ export function EnhancedDeliveryFlow({
       });
       await enqueueTripTransition(tripId, 'confirm-delivery', {
         grossWeightKg,
-        deterioratedBalesCount: deterioratedBales,
+        deterioratedBalesCount: null,
         weightTicketPhotoUrl: ticketUrl,
       });
 
@@ -291,7 +290,6 @@ export function EnhancedDeliveryFlow({
     }
   }, [
     grossWeightKg,
-    deterioratedBales,
     ticketPhotoUri,
     receiverName,
     receiverSignature,
@@ -329,33 +327,20 @@ export function EnhancedDeliveryFlow({
         );
       case 1:
         return (
-          <DeterioratedBalesInput
-            baleCount={deterioratedBales}
-            onBaleCountChange={setDeterioratedBales}
-            totalBales={baleCount}
-            onNext={() => {
-              void persistDraft(1);
-              goToStep(2);
-            }}
-            onBack={() => goToStep(0)}
-          />
-        );
-      case 2:
-        return (
           <WeightTicketPhoto
             onCapture={(uri) => {
               setTicketPhotoUri(uri);
-              void persistDraft(2);
-              goToStep(3);
+              void persistDraft(1);
+              goToStep(2);
             }}
             onSkip={() => {
               setTicketPhotoUri(null);
-              void persistDraft(2);
-              goToStep(3);
+              void persistDraft(1);
+              goToStep(2);
             }}
           />
         );
-      case 3:
+      case 2:
         return (
           <SignatureStep
             receiverName={receiverName}
@@ -363,12 +348,12 @@ export function EnhancedDeliveryFlow({
             receiverSignature={receiverSignature}
             onSign={setReceiverSignature}
             onComplete={() => {
-              void persistDraft(3);
-              goToStep(4);
+              void persistDraft(2);
+              goToStep(3);
             }}
           />
         );
-      case 4:
+      case 3:
         return (
           <>
             <View style={styles.pendingBadgeRow}>
@@ -377,14 +362,13 @@ export function EnhancedDeliveryFlow({
             <CmrConfirmation
               tripNumber={tripNumber}
               baleCount={baleCount}
-              deterioratedBales={deterioratedBales}
               netWeightKg={grossWeightKg}
               receiverName={receiverName}
               destinationName={destinationName}
               hasTicketPhoto={ticketPhotoUri !== null}
               hasSignature={receiverSignature !== null}
               onConfirm={handleConfirm}
-              onBack={() => goToStep(3)}
+              onBack={() => goToStep(2)}
               loading={loading}
             />
           </>
@@ -395,7 +379,7 @@ export function EnhancedDeliveryFlow({
   return (
     <View style={styles.flow}>
       <ScreenHeader title={STEP_TITLES[currentStep]} onBack={handleHeaderBack} />
-      <StepIndicator totalSteps={5} currentStep={currentStep} />
+      <StepIndicator totalSteps={TOTAL_STEPS} currentStep={currentStep} />
       <Animated.View style={[styles.body, { transform: [{ translateX: slideAnim }] }]}>
         {renderStep()}
       </Animated.View>

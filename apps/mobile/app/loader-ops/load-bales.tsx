@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Image,
   Alert,
   Animated,
 } from 'react-native';
@@ -17,11 +18,11 @@ import type { Machine } from '@strawboss/types';
 import { BigButton } from '@/components/ui/BigButton';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
-import { SignatureCapture } from '@/components/shared/SignatureCapture';
 import { AppModal } from '@/components/shared/AppModal';
 import { useModal } from '@/hooks/useModal';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
-import { mobileApiClient } from '@/lib/api-client';
+import { mobileApiClient, resolveApiUrl } from '@/lib/api-client';
+import { ApiError } from '@strawboss/api';
 import { getDatabase } from '@/lib/storage';
 import { BaleLoadsRepo } from '@/db/bale-loads-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
@@ -34,7 +35,10 @@ import { colors } from '@strawboss/ui-tokens';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 
 const GPS_TIMEOUT_MS = 15_000;
-const FULL_TRUCK_FALLBACK = 24;
+// Mirrors DEFAULT_MAX_BALES_PER_TRUCK in @strawboss/domain. Inlined (not
+// imported) to keep `xstate` and other domain-only deps out of the mobile
+// bundle — same pattern as useTripTransition mirroring the trip state machine.
+const DEFAULT_MAX_BALES_PER_TRUCK = 33;
 
 type GpsStatus = 'idle' | 'loading' | 'denied' | 'unavailable' | 'ok';
 
@@ -71,6 +75,7 @@ export default function LoadBalesScreen() {
   }>();
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
   const { isConnected: isOnline } = useNetworkStatus();
   const queryClient = useQueryClient();
   const parcel = useCurrentLoaderParcel();
@@ -158,7 +163,7 @@ export default function LoadBalesScreen() {
     };
   }, []);
 
-  const fullTruckCount = truck?.maxBaleCount ?? FULL_TRUCK_FALLBACK;
+  const fullTruckCount = truck?.maxBaleCount ?? DEFAULT_MAX_BALES_PER_TRUCK;
 
   // FM-5: duplicate detection — check for a recent bale_load on same (truckId, parcelId).
   // Uses snapshotParcelId directly (parcelReady = snapshotParcelId !== null, declared later).
@@ -193,8 +198,57 @@ export default function LoadBalesScreen() {
     } catch {
       // Non-fatal — proceed if duplicate check fails
     }
+
+    // Pre-check vs server's bale availability so we surface a clear UI message
+    // BEFORE the operator signs. Best-effort: skipped offline and on fetch
+    // errors — the backend is still the source of truth and will reject.
+    if (isOnline) {
+      try {
+        const availability = await mobileApiClient.get<{
+          produced: number;
+          loaded: number;
+          remaining: number;
+        }>(`/api/v1/parcels/${snapshotParcelId}/bale-availability`);
+        const remaining = Number(availability.remaining ?? 0);
+
+        if (remaining <= 0) {
+          showModal({
+            type: 'warning',
+            title: 'Parcelă încărcată complet',
+            message:
+              'Pe acest teren toți baloții au fost deja încărcați. Alege alt teren sau anunță dispecerul.',
+            confirmText: 'Am înțeles',
+            onConfirm: hideModal,
+          });
+          return;
+        }
+        if (baleCount > remaining) {
+          showModal({
+            type: 'warning',
+            title: 'Cantitate prea mare pentru parcelă',
+            message: `Pe parcelă au mai rămas doar ${remaining} baloți disponibili. Reduceți cantitatea sau alegeți alt teren.`,
+            confirmText: 'Am înțeles',
+            onConfirm: hideModal,
+          });
+          return;
+        }
+        if (baleCount > fullTruckCount) {
+          showModal({
+            type: 'warning',
+            title: 'Capacitate camion depășită',
+            message: `Camionul poate transporta maxim ${fullTruckCount} baloți.`,
+            confirmText: 'Am înțeles',
+            onConfirm: hideModal,
+          });
+          return;
+        }
+      } catch {
+        // Network/auth glitch — let the server-side validation reject if needed.
+      }
+    }
+
     setShowSignature(true);
-  }, [baleCount, truckId, snapshotParcelId, showModal, hideModal]);
+  }, [baleCount, truckId, snapshotParcelId, isOnline, fullTruckCount, showModal, hideModal]);
 
   const handleSignatureConfirm = useCallback(
     async (loaderSignature: string) => {
@@ -275,6 +329,41 @@ export default function LoadBalesScreen() {
           err: err instanceof Error ? { message: err.message } : err,
         });
         setShowSignature(false);
+
+        // Surface structured business-rule errors with the exact numbers the
+        // server reported, so the operator sees how many bales actually remain
+        // or what the truck capacity is — not just a generic "Eroare".
+        if (err instanceof ApiError && err.data && typeof err.data === 'object') {
+          const body = err.data as {
+            error?: string;
+            message?: string;
+            remaining?: number;
+            truckCap?: number;
+          };
+          if (body.error === 'bale_count_exceeds_remaining') {
+            Alert.alert(
+              'Cantitate prea mare pentru parcelă',
+              body.message ?? `Pe parcelă au mai rămas ${body.remaining ?? 0} baloți disponibili.`,
+            );
+            return;
+          }
+          if (body.error === 'parcel_fully_loaded') {
+            Alert.alert(
+              'Parcelă încărcată complet',
+              body.message ?? 'Pe acest teren toți baloții au fost deja încărcați.',
+            );
+            return;
+          }
+          if (body.error === 'bale_count_exceeds_truck_capacity') {
+            Alert.alert(
+              'Capacitate camion depășită',
+              body.message ??
+                `Camionul are capacitatea maximă ${body.truckCap ?? fullTruckCount} baloți.`,
+            );
+            return;
+          }
+        }
+
         Alert.alert(
           'Eroare',
           err instanceof Error ? err.message : 'Nu s-a putut înregistra încărcarea.',
@@ -317,7 +406,7 @@ export default function LoadBalesScreen() {
     return (
       <View style={styles.outerContainer}>
         <ScreenHeader title="Semnătură operator" />
-        <View style={[styles.body, { flex: 1 }]}>
+        <ScrollView style={[styles.body, { flex: 1 }]} contentContainerStyle={styles.sigContent}>
           <View style={styles.sigHeader}>
             <MaterialCommunityIcons name="pen" size={20} color={colors.primary} />
             <Text style={styles.sigTitle}>Semnează încărcarea</Text>
@@ -325,14 +414,42 @@ export default function LoadBalesScreen() {
           <Text style={styles.sigHint}>
             Confirmă că ai încărcat {baleCount} baloți în camionul {truckLabel}.
           </Text>
-          <SignatureCapture
-            label="Semnătura operatorului încărcător"
-            onSave={(sig) => void handleSignatureConfirm(sig)}
+          <View style={styles.specimenCard}>
+            <Text style={styles.specimenLabel}>Specimen semnătură</Text>
+            {signatureSpecimenUrl ? (
+              <Image
+                source={{ uri: resolveApiUrl(signatureSpecimenUrl) }}
+                style={styles.specimenImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <Text style={styles.specimenMissing}>Nu ai încă un specimen.</Text>
+            )}
+          </View>
+          <BigButton
+            title="Semnează cu specimen"
+            onPress={() => {
+              if (!signatureSpecimenUrl) {
+                Alert.alert(
+                  'Specimen lipsă',
+                  'Nu ai încă un specimen de semnătură. Creează unul din profil.',
+                  [
+                    {
+                      text: 'Creează specimen',
+                      onPress: () => router.replace('/specimen-capture?mode=redo'),
+                    },
+                  ],
+                );
+                return;
+              }
+              void handleSignatureConfirm(signatureSpecimenUrl);
+            }}
+            disabled={saving}
           />
           {saving ? null : (
             <BigButton title="Renunță" onPress={() => setShowSignature(false)} variant="outline" />
           )}
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -544,4 +661,31 @@ const styles = StyleSheet.create({
   sigHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, paddingBottom: 4 },
   sigTitle: { fontSize: 18, fontWeight: '700', color: colors.primary },
   sigHint: { fontSize: 14, color: '#5D4037', paddingHorizontal: 16, paddingBottom: 12 },
+  sigContent: { padding: 16, gap: 12 },
+  specimenCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    gap: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+  },
+  specimenLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#5D4037',
+    textTransform: 'uppercase',
+  },
+  specimenImage: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#F9F5F2',
+    borderRadius: 8,
+  },
+  specimenMissing: {
+    fontSize: 14,
+    color: '#C62828',
+    paddingVertical: 24,
+    textAlign: 'center',
+  },
 });

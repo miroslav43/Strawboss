@@ -48,8 +48,23 @@ cmd_docker__up() {
   header "Starting Docker services"
   require_cmd docker
   _ensure_env
+  _ensure_docker_volume_perms
   docker compose up -d "$@"
   success "Docker services started."
+}
+
+# @cmd docker:fix-volume-perms "Fix logs/ + uploads/ ownership for Docker (appuser UID 100)"
+cmd_docker__fix__volume__perms() {
+  header "Docker volume permissions"
+  _ensure_docker_volume_perms
+  success "logs/ and uploads/ are owned by UID ${DOCKER_APP_UID} (container appuser)."
+  if id "${STRAWBOSS_DEV_USER:-miro}" &>/dev/null && command -v setfacl &>/dev/null; then
+    info "ACL grants ${STRAWBOSS_DEV_USER:-miro} read/write on new files under logs/ and uploads/."
+  fi
+  if docker compose ps --status running backend 2>/dev/null | grep -q backend; then
+    info "Restarting backend to pick up log file handles..."
+    docker compose restart backend
+  fi
 }
 
 # @cmd docker:down "Stop Docker services [svc...]"

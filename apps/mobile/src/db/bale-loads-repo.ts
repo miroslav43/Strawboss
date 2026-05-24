@@ -142,6 +142,14 @@ export class BaleLoadsRepo {
   }
 
   /**
+   * Drop the local row in response to a server-emitted tombstone.
+   * Idempotent: deleting a missing row is a no-op.
+   */
+  async delete(id: string): Promise<void> {
+    await this.db.runAsync(`DELETE FROM bale_loads WHERE id = ?`, [id]);
+  }
+
+  /**
    * FM-5: Find bale loads for a given (truckId, parcelId) pair created
    * within the last `withinMinutes` minutes. Used for duplicate detection
    * before registering a new load.

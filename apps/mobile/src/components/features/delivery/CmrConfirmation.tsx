@@ -12,7 +12,6 @@ const ROW_BORDER = '#D0C8C2';
 interface CmrConfirmationProps {
   tripNumber: string;
   baleCount: number;
-  deterioratedBales: number;
   netWeightKg: number;
   receiverName: string;
   destinationName: string;
@@ -41,7 +40,6 @@ function SummaryRow({ label, value, valueStyle }: SummaryRowProps) {
 export function CmrConfirmation({
   tripNumber,
   baleCount,
-  deterioratedBales,
   netWeightKg,
   receiverName,
   destinationName,
@@ -83,11 +81,6 @@ export function CmrConfirmation({
           <SummaryRow label="Cursă" value={tripNumber} />
           <SummaryRow label="Destinație" value={destinationName} />
           <SummaryRow label="Baloți" value={String(baleCount)} />
-          <SummaryRow
-            label="Baloți deteriorați"
-            value={String(deterioratedBales)}
-            valueStyle={deterioratedBales > 0 ? styles.dangerText : undefined}
-          />
           <SummaryRow label="Greutate netă" value={`${netWeightKg} kg`} />
           <SummaryRow label="Client" value={receiverName} />
           <SummaryRow

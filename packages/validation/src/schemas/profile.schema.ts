@@ -1,8 +1,8 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 /** Admin UI locale — stored on users.locale, drives i18n in admin-web. */
 export const updateProfileLocaleSchema = z.object({
-  locale: z.enum(["en", "ro"]),
+  locale: z.enum(['en', 'ro']),
 });
 
 export const updateProfileSchema = z.object({
@@ -10,6 +10,7 @@ export const updateProfileSchema = z.object({
   phone: z.string().nullable().optional(),
   locale: z.enum(['en', 'ro']).optional(),
   notificationPrefs: z.record(z.boolean()).optional(),
+  signatureSpecimenUrl: z.string().nullable().optional(),
 });
 
 export const changePasswordSchema = z.object({

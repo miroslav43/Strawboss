@@ -6,13 +6,16 @@ interface AuthProfile {
   role: string;
   userId: string;
   assignedMachineId: string | null;
+  signatureSpecimenUrl: string | null;
 }
 
 interface AuthStore {
   role: string | null;
   userId: string | null;
   assignedMachineId: string | null;
+  signatureSpecimenUrl: string | null;
   setProfile: (profile: AuthProfile) => void;
+  setSignatureSpecimenUrl: (url: string | null) => void;
   clear: () => void;
 }
 
@@ -39,6 +42,7 @@ interface PersistedAuthState {
   userId: string | null;
   role: string | null;
   assignedMachineId: string | null;
+  signatureSpecimenUrl: string | null;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -47,14 +51,22 @@ export const useAuthStore = create<AuthStore>()(
       role: null,
       userId: null,
       assignedMachineId: null,
+      signatureSpecimenUrl: null,
       setProfile: (profile) =>
         set({
           role: profile.role,
           userId: profile.userId,
           assignedMachineId: profile.assignedMachineId,
+          signatureSpecimenUrl: profile.signatureSpecimenUrl,
         }),
+      setSignatureSpecimenUrl: (url) => set({ signatureSpecimenUrl: url }),
       clear: () => {
-        set({ role: null, userId: null, assignedMachineId: null });
+        set({
+          role: null,
+          userId: null,
+          assignedMachineId: null,
+          signatureSpecimenUrl: null,
+        });
         // Also wipe the persisted storage entry so the next cold boot does
         // not rehydrate a stale session for a different user.
         useAuthStore.persist.clearStorage();
@@ -68,8 +80,9 @@ export const useAuthStore = create<AuthStore>()(
         userId: state.userId,
         role: state.role,
         assignedMachineId: state.assignedMachineId,
+        signatureSpecimenUrl: state.signatureSpecimenUrl,
       }),
-      version: 1,
+      version: 2,
     },
   ),
 );

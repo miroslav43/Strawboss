@@ -10,7 +10,9 @@ import {
   ScrollView,
   RefreshControl,
   Vibration,
+  Image,
 } from 'react-native';
+import { resolveApiUrl } from '@/lib/api-client';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -307,6 +309,37 @@ export function ProfileScreen() {
 
         {showStats && profile ? <TodayActivityCard operatorId={profile.id} /> : null}
 
+        {profile ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Specimen de semnătură</Text>
+            <View style={styles.specimenRow}>
+              {profile.signatureSpecimenUrl ? (
+                <Image
+                  source={{ uri: resolveApiUrl(profile.signatureSpecimenUrl) }}
+                  style={styles.specimenImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={[styles.specimenImage, styles.specimenEmpty]}>
+                  <Text style={styles.specimenEmptyText}>Nu ai încă un specimen.</Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity
+              style={styles.specimenButton}
+              activeOpacity={0.85}
+              onPress={() => router.push('/specimen-capture?mode=redo')}
+              accessibilityRole="button"
+              accessibilityLabel="Schimbă specimenul de semnătură"
+            >
+              <MaterialCommunityIcons name="signature-freehand" size={18} color={colors.primary} />
+              <Text style={styles.specimenButtonText}>
+                {profile.signatureSpecimenUrl ? 'Schimbă specimenul' : 'Creează specimen'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* FM-14: Daily PDF report entry point — available to all operator roles */}
         {showStats ? (
           <TouchableOpacity
@@ -535,4 +568,26 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   logoutText: { color: colors.white, fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
+  specimenRow: { width: '100%' },
+  specimenImage: {
+    width: '100%',
+    height: 100,
+    backgroundColor: '#F9F5F2',
+    borderRadius: 8,
+  },
+  specimenEmpty: { alignItems: 'center', justifyContent: 'center' },
+  specimenEmptyText: { color: '#8D6E63', fontSize: 13, fontStyle: 'italic' },
+  specimenButton: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    width: '100%',
+  },
+  specimenButtonText: { color: colors.primary, fontSize: 15, fontWeight: '700' },
 });

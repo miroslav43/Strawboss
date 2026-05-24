@@ -94,6 +94,7 @@ export {
   useUpdateProfile,
   useChangePassword,
   useUploadAvatar,
+  useUploadSpecimen,
 } from './use-profile.js';
 
 export {

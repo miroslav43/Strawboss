@@ -16,9 +16,7 @@ cmd_setup() {
   pnpm install
   success "Dependencies installed."
 
-  # Bind-mounted upload dirs must exist on the host before `docker compose up`
-  # so Docker does not create them as root and break the non-root container user.
-  mkdir -p "$STRAWBOSS_ROOT/uploads/avatars" "$STRAWBOSS_ROOT/uploads/receipts"
+  _ensure_docker_volume_perms
 
   _build_packages
 
@@ -92,6 +90,8 @@ cmd_prod() {
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
     --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
   success "Docker images built."
+
+  _ensure_docker_volume_perms
 
   info "Starting all services..."
   docker compose up -d

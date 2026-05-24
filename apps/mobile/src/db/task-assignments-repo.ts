@@ -99,4 +99,12 @@ export class TaskAssignmentsRepo {
     );
     return result?.max_ver ?? 0;
   }
+
+  /**
+   * Drop the local row in response to a server-emitted tombstone.
+   * Idempotent: deleting a missing row is a no-op.
+   */
+  async delete(id: string): Promise<void> {
+    await this.db.runAsync(`DELETE FROM task_assignments WHERE id = ?`, [id]);
+  }
 }

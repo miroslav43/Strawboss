@@ -1,16 +1,26 @@
 import type { ApiClient } from '@strawboss/api';
-import type { SyncPullRequest, SyncResponse, SyncResult } from '@strawboss/types';
+import type {
+  SyncPullRequest,
+  SyncResponse,
+  SyncResult,
+  SyncTombstone,
+} from '@strawboss/types';
 
 export interface PullResult {
   count: number;
   errors: string[];
   updates: SyncResult[];
+  /** Tombstones for soft-deleted rows. Empty when the server didn't emit them. */
+  deletions: SyncTombstone[];
   serverTime: string | null;
 }
 
 /**
  * Pull delta updates from the server.
  * Sends the last known version for each table and receives new/updated records.
+ * When the server includes a `deletions[]` array (gated by the `X-Sync-Caps`
+ * header on the request), we forward it so the SyncManager can delete the
+ * matching local rows.
  */
 export async function pullUpdates(
   lastVersions: Record<string, number>,
@@ -24,6 +34,7 @@ export async function pullUpdates(
       count: response.results.length,
       errors: [],
       updates: response.results,
+      deletions: response.deletions ?? [],
       serverTime: response.serverTime,
     };
   } catch (err) {
@@ -32,6 +43,7 @@ export async function pullUpdates(
       count: 0,
       errors: [message],
       updates: [],
+      deletions: [],
       serverTime: null,
     };
   }

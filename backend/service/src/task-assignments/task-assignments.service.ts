@@ -106,11 +106,16 @@ export class TaskAssignmentsService {
       sql`ta.deleted_at IS NULL`,
       // Include rows assigned directly to this user OR where the machine is
       // permanently assigned to this user (mirrors the mobile client-side filter).
+      // The "permanently assigned" link lives on `users.assigned_machine_id`,
+      // NOT on `machines.assigned_user_id` (which doesn't exist) — without the
+      // table qualifier Postgres silently outer-resolves to `ta.assigned_user_id`,
+      // so the OR branch never matches and operators get an empty list.
       sql`(
         ta.assigned_user_id = ${userId}::uuid
         OR ta.machine_id IN (
-          SELECT id FROM machines
-          WHERE assigned_user_id = ${userId}::uuid
+          SELECT assigned_machine_id FROM users
+          WHERE id = ${userId}::uuid
+            AND assigned_machine_id IS NOT NULL
             AND deleted_at IS NULL
         )
       )`,

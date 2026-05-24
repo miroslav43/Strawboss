@@ -77,6 +77,20 @@ export interface SaveSignatureResult {
   sizeBytes: number;
 }
 
+export interface SaveSpecimenInput {
+  userId: string;
+  mimetype: string;
+  stream: Readable;
+}
+
+export interface SaveSpecimenResult {
+  /** Public URL to use as `users.signature_specimen_url`, including a `?v=` cache-buster. */
+  url: string;
+  /** Storage key relative to the uploads root (without the cache-buster). */
+  key: string;
+  sizeBytes: number;
+}
+
 /** Resolves the root directory for file uploads (env-driven, with a dev default). */
 export function resolveUploadsRoot(configService: ConfigService): string {
   const fromEnv = configService.get<string>('UPLOADS_ROOT');
@@ -262,6 +276,63 @@ export class UploadsService {
 
     return {
       url: `/api/v1/uploads/${key}`,
+      key,
+      sizeBytes: bytesWritten,
+    };
+  }
+
+  /**
+   * Save (or replace) a user's signature specimen.
+   *
+   * Stored canonically as `uploads/specimens/{userId}.png` (overwrites every
+   * upload) so trip rows that reference the URL stay valid across re-captures.
+   * A `?v={timestamp}` cache-buster is appended so clients pick up the new
+   * image immediately after the user redoes their specimen.
+   *
+   * We accept the canvas output as-is (PNG/JPEG/WebP) without re-encoding —
+   * signatures are tiny line drawings; sharp resizing would only add cost
+   * without visible benefit.
+   */
+  async saveSpecimen(input: SaveSpecimenInput): Promise<SaveSpecimenResult> {
+    const ext = ALLOWED_MIMES[input.mimetype];
+    if (!ext) {
+      throw new BadRequestException(
+        `Unsupported file type '${input.mimetype}'. Allowed: ${Object.keys(ALLOWED_MIMES).join(', ')}`,
+      );
+    }
+
+    const dir = path.join(this.uploadsRoot, 'specimens');
+    await fsp.mkdir(dir, { recursive: true });
+
+    // Canonical filename — one file per user, overwrites on re-upload.
+    const key = `specimens/${input.userId}.${ext}`;
+    const absolute = path.join(this.uploadsRoot, key);
+
+    let bytesWritten = 0;
+    const ws = createWriteStream(absolute);
+
+    input.stream.on('data', (chunk: Buffer) => {
+      bytesWritten += chunk.length;
+      if (bytesWritten > MAX_BYTES) {
+        input.stream.destroy(
+          new PayloadTooLargeException(`File exceeds max size of ${MAX_BYTES} bytes`),
+        );
+      }
+    });
+
+    try {
+      await pipeline(input.stream, ws);
+    } catch (err) {
+      await fsp.unlink(absolute).catch(() => {
+        /* already gone */
+      });
+      if (err instanceof PayloadTooLargeException) throw err;
+      throw new InternalServerErrorException(err instanceof Error ? err.message : 'Upload failed');
+    }
+
+    const version = Date.now();
+    return {
+      url: `/api/v1/uploads/${key}?v=${version}`,
       key,
       sizeBytes: bytesWritten,
     };

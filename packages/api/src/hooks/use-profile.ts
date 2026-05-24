@@ -16,15 +16,14 @@ export function useProfile(client: ApiClient) {
 export function useUpdateProfileLocale(client: ApiClient) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (locale: 'en' | 'ro') =>
-      client.patch<User>('/api/v1/profile', { locale }),
+    mutationFn: (locale: 'en' | 'ro') => client.patch<User>('/api/v1/profile', { locale }),
     onSuccess: (user) => {
       qc.setQueryData(profileKey, user);
     },
   });
 }
 
-/** Update profile fields: fullName, phone, locale, notificationPrefs, avatarUrl. */
+/** Update profile fields: fullName, phone, locale, notificationPrefs, avatarUrl, signatureSpecimenUrl. */
 export function useUpdateProfile(client: ApiClient) {
   const qc = useQueryClient();
   return useMutation({
@@ -34,6 +33,7 @@ export function useUpdateProfile(client: ApiClient) {
       locale?: 'en' | 'ro';
       notificationPrefs?: Record<string, boolean>;
       avatarUrl?: string | null;
+      signatureSpecimenUrl?: string | null;
     }) => client.patch<User>('/api/v1/profile', dto),
     onSuccess: (user) => {
       qc.setQueryData(profileKey, user);
@@ -57,8 +57,23 @@ export function useChangePassword(client: ApiClient) {
 export function useUploadAvatar(client: ApiClient) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (formData: FormData) =>
-      client.upload<User>('/api/v1/profile/avatar', formData),
+    mutationFn: (formData: FormData) => client.upload<User>('/api/v1/profile/avatar', formData),
+    onSuccess: (user) => {
+      qc.setQueryData(profileKey, user);
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
+}
+
+/**
+ * Upload the current user's signature specimen. Expects a `FormData` with a
+ * single `file` field (PNG/JPEG/WebP). The server writes a canonical
+ * `uploads/specimens/{userId}.png` and returns the updated user.
+ */
+export function useUploadSpecimen(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (formData: FormData) => client.upload<User>('/api/v1/profile/specimen', formData),
     onSuccess: (user) => {
       qc.setQueryData(profileKey, user);
       void qc.invalidateQueries({ queryKey: ['admin', 'users'] });

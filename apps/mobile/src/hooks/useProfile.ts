@@ -22,6 +22,7 @@ export function useProfile() {
         role: query.data.role,
         userId: query.data.id,
         assignedMachineId: query.data.assignedMachineId ?? null,
+        signatureSpecimenUrl: query.data.signatureSpecimenUrl ?? null,
       });
     }
   }, [query.data, setProfile]);

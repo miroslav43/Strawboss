@@ -173,4 +173,15 @@ export const TABLES = {
     geometry TEXT,
     cached_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
+
+  // Persisted sync cursors per table. Needed because once the SyncManager
+  // applies a tombstone it `DELETE`s the local row, so `MAX(server_version)`
+  // on the table no longer reflects the highest version the client has seen.
+  // Without this table, tombstones would be re-delivered on every pull cycle
+  // forever (LIMIT 1000 could then starve fresh updates).
+  sync_cursors: `CREATE TABLE IF NOT EXISTS sync_cursors (
+    table_name TEXT PRIMARY KEY,
+    server_version INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
 } as const;

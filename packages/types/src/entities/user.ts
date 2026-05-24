@@ -1,13 +1,13 @@
-import type { Timestamps, SoftDelete } from "../common.js";
+import type { Timestamps, SoftDelete } from '../common.js';
 
 export enum UserRole {
-  super_admin = "super_admin",
-  admin = "admin",
-  dispatcher = "dispatcher",
-  baler_operator = "baler_operator",
-  loader_operator = "loader_operator",
-  driver = "driver",
-  geofence_maker = "geofence_maker",
+  super_admin = 'super_admin',
+  admin = 'admin',
+  dispatcher = 'dispatcher',
+  baler_operator = 'baler_operator',
+  loader_operator = 'loader_operator',
+  driver = 'driver',
+  geofence_maker = 'geofence_maker',
 }
 
 export interface User extends Timestamps, SoftDelete {
@@ -21,6 +21,7 @@ export interface User extends Timestamps, SoftDelete {
   isActive: boolean;
   locale: string;
   avatarUrl: string | null;
+  signatureSpecimenUrl: string | null;
   lastLoginAt: string | null;
   assignedMachineId: string | null;
   /** Present on profile API responses when joined from organizations. */

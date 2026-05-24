@@ -1,0 +1,32 @@
+﻿1. sistem ca la google earth pt points in geofance manager, account pe mobile 
+2.   sa se inchida si deschida alea de pe harta, gen alea din stanga sa terenurile fermele etc, sa poata sa fie deschise si inchise si sa fie mai compact
+3. Buton ul de add deposit, sa fie ca cel de la add terein cu un plus sa aiba mai mult sens cu un +
+4. Sa se vada in admin task uri, cand un user e conected 
+5. cand dai pe parcela pe balotiera sa ma duca la parcela. din acasa pe apk mobile         
+6. Cand intra balotiera in parcela asignata (nu conteaza ordinea) primieste notificare pop up, incepi balotarea in aceasta parcela cu ( deci are 10 secunde timp sa confirme sau cancel) si la iesire din geofence, sa apara tot asa un pop up + notificare, sa introduca nr de baloti, aici sa faca un sunet tare. Practic la iesire sa fie pagina de productie unde sa introduca baloti creati, Un buton la baeler cand iese, sa selecteze daca o parcela e partial finalizata, sau total finalizata
+7. aici o logica de ierarhie la campuri de exemplu cum ai status, partial balotata, nu poate anula statusul de balotat, dar balotat poate suprascrie partial balotat.
+8. sa apara pe harta admin si locatiile etc(harta de pe mobile)
+9. La camp: 
+   1. adaugare tip cultura, dropdown cu grau, orz, rapita, plante de nutret.
+   2. Scos status camp (activ/inactiv)
+   3. Numele campului va fii doar numarul respectiv
+   10. Harvested camp: 
+      1. cand intra baeler sa fie harvesting (in curs de balotat) ( balotare in curs)
+      2. abia cand iese sa aiba de ales, daca a terminat parcela sau nu de balotata
+      3. Status teren, poate sa fie in incarcare, sau incarcat. Dupa ce i incarcat e completed. 
+      4. sa fie status uri pe camp uri si partiale si post, si sa apara cam peste tot unde s campurile si status urile lor. 
+   4.    11. KML ar trebui adaugate de la tab ul de ferme, si atunci sa se asigneze direct la o ferma
+
+   12. Cont depozit pe mobile, sa poti vedea un inventar, cu ce ai in depozit ca nr de baloti, sa poti vedea ce vine la depozit
+
+   13. O cursa creata sa se intampla de mai multe ori, pana cand counter ul de baloti pe parcela ajunge la 0. aici as vrea sa vad counter ul la task uri, odata la loader si odata la camion. la fiecare creare noua de cursa sa se creeze un trip. Dar camion ul sa nu fie rechemat la loader decat daca loader ul il cheama, pracitc loader ul v-a primii o notificare cum ca camion ul a descarcat si finalizat cursa, si daca sa il cheme inapoi pe loader sau nu. 
+   14. La camioane dupa ce o descarcat sa primeasca loader ul o notificare daca l recheama sau nu pe camion la el. Daca nu l cheama, si un truck e idle, sa primeasca admin notificare
+
+   15. La camion ar trebui cumva adauge mai multe curse pe zi din task uri. 
+
+   16. buton cand dai pe cursa de pe driver sa aiba maps catre pozitia loaderului, gen sa deschida un google maps daca vrea sa i dai un buton. 
+
+
+   17. La combustibil, doar litri alimentat si poza contor cand termina alimentarea. 
+
+   18. Rapoarte, sa apara km parcursi de un km pe zi in functie de linia de gps.

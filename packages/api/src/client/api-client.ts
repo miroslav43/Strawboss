@@ -10,6 +10,13 @@ export interface ApiClientConfig {
     message: string;
     data?: unknown;
   }) => void;
+  /**
+   * Static headers sent on every request. Used by the mobile client to
+   * declare capabilities (e.g. `X-Sync-Caps: tombstones-v1`) the server
+   * inspects when deciding the response shape. Standard headers
+   * (`Content-Type`, `Authorization`) take precedence.
+   */
+  defaultHeaders?: Record<string, string>;
 }
 
 export class ApiClient {
@@ -37,6 +44,7 @@ export class ApiClient {
     const token = await this.config.getToken();
     const hasBody = body !== undefined;
     const buildHeaders = (t: string | null) => ({
+      ...(this.config.defaultHeaders ?? {}),
       ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...(t ? { Authorization: `Bearer ${t}` } : {}),
     });
@@ -108,6 +116,7 @@ export class ApiClient {
   async upload<T>(path: string, formData: FormData): Promise<T> {
     const token = await this.config.getToken();
     const buildUploadHeaders = (t: string | null) => ({
+      ...(this.config.defaultHeaders ?? {}),
       ...(t ? { Authorization: `Bearer ${t}` } : {}),
     });
     const res = await fetch(`${this.config.baseUrl}${path}`, {

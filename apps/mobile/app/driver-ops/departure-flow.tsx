@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
+  Image,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -13,13 +14,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
-import { SignatureCapture } from '@/components/shared/SignatureCapture';
 import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
 import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
 import { mobileLogger } from '@/lib/logger';
-import { uploadSignature } from '@/lib/signatureUpload';
 import { colors } from '@strawboss/ui-tokens';
 import { useTripTransition } from '@/hooks/useTripTransition';
+import { useAuthStore } from '@/stores/auth-store';
+import { resolveApiUrl } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
 
@@ -37,6 +38,7 @@ export default function DepartureFlowScreen() {
   const [pendingSignature, setPendingSignature] = useState<string | null>(null);
 
   const { enqueueTransition } = useTripTransition();
+  const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
 
   const odometerKm = parseFloat(odometerStr);
   const odometerValid = !isNaN(odometerKm) && odometerKm >= 0;
@@ -49,12 +51,27 @@ export default function DepartureFlowScreen() {
     setStep('signature');
   }, [odometerValid]);
 
-  // FM-6: called when the driver draws the signature — shows the countdown instead
-  // of executing depart immediately.
-  const handleSignatureCaptured = useCallback((sig: string) => {
-    setPendingSignature(sig);
+  // Sign-with-specimen: trigger countdown using the saved specimen URL instead
+  // of capturing a fresh canvas signature.
+  const handleSignWithSpecimen = useCallback(() => {
+    if (!signatureSpecimenUrl) {
+      // Defensive — should not happen because AuthGate forces specimen capture
+      // for drivers before they can reach the trip flow.
+      Alert.alert(
+        'Specimen lipsă',
+        'Nu ai încă un specimen de semnătură. Creează unul din profil.',
+        [
+          {
+            text: 'Mergi la profil',
+            onPress: () => router.replace('/specimen-capture?mode=redo'),
+          },
+        ],
+      );
+      return;
+    }
+    setPendingSignature(signatureSpecimenUrl);
     setCountdownVisible(true);
-  }, []);
+  }, [signatureSpecimenUrl]);
 
   const handleCountdownCancel = useCallback(() => {
     setCountdownVisible(false);
@@ -69,19 +86,10 @@ export default function DepartureFlowScreen() {
     if (!tripId || !driverSignature) return;
     setSubmitting(true);
     try {
-      // M9: Attempt binary upload of the signature PNG.  On success the body
-      // will carry the server URL; on any error (offline / server failure) we
-      // fall back to sending the raw base64 string — the backend accepts both.
-      let signatureValue = driverSignature;
-      try {
-        signatureValue = await uploadSignature(driverSignature, 'driver');
-        mobileLogger.flow('DepartureFlow: driver signature uploaded as binary', { tripId });
-      } catch {
-        // Offline or upload error — fall back to base64 (backward-compatible).
-        mobileLogger.info('DepartureFlow: signature binary upload failed, falling back to base64', {
-          tripId,
-        });
-      }
+      // Specimen URL flows through verbatim — the backend stores it as-is in
+      // `trips.driver_signature_url`, identical to how it handled freshly
+      // captured base64 signatures before.
+      const signatureValue = driverSignature;
 
       // Read current local trip status for pre-validation.
       const db = await getDatabase();
@@ -127,7 +135,10 @@ export default function DepartureFlowScreen() {
     return (
       <View style={styles.outer}>
         <ScreenHeader title="Semnătură șofer" />
-        <View style={[styles.body, { flex: 1 }]}>
+        <ScrollView
+          style={[styles.body, { flex: 1 }]}
+          contentContainerStyle={styles.signatureContent}
+        >
           <View style={styles.infoRow}>
             <MaterialCommunityIcons name="counter" size={18} color={colors.primary} />
             <Text style={styles.infoText}>
@@ -140,14 +151,30 @@ export default function DepartureFlowScreen() {
             </View>
           )}
           <Text style={styles.sigHint}>
-            Semnează pentru a confirma plecarea și a genera documentul CMR.
+            Confirmă plecarea folosind specimenul de semnătură salvat.
           </Text>
-          <SignatureCapture label="Semnătura șoferului" onSave={handleSignatureCaptured} />
+          <View style={styles.specimenCard}>
+            <Text style={styles.specimenLabel}>Specimen semnătură</Text>
+            {signatureSpecimenUrl ? (
+              <Image
+                source={{ uri: resolveApiUrl(signatureSpecimenUrl) }}
+                style={styles.specimenImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <Text style={styles.specimenMissing}>Nu ai încă un specimen.</Text>
+            )}
+          </View>
+          <BigButton
+            title="Semnează cu specimen"
+            onPress={handleSignWithSpecimen}
+            disabled={submitting}
+          />
           {submitting ? null : (
             <BigButton title="Înapoi" onPress={() => setStep('odometer')} variant="outline" />
           )}
-        </View>
-        {/* FM-6: countdown overlay — shown after signature is captured */}
+        </ScrollView>
+        {/* FM-6: countdown overlay — shown after specimen is selected */}
         <ConfirmCountdown
           visible={countdownVisible}
           actionLabel="Plecare din câmp"
@@ -238,4 +265,32 @@ const styles = StyleSheet.create({
   infoText: { fontSize: 15, color: '#5D4037' },
   infoValue: { fontWeight: '700', color: '#0A5C36' },
   sigHint: { fontSize: 14, color: '#5D4037', paddingHorizontal: 16, paddingBottom: 8 },
+  signatureContent: { padding: 16, gap: 12 },
+  specimenCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    gap: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    alignItems: 'center',
+  },
+  specimenLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#5D4037',
+    textTransform: 'uppercase',
+    alignSelf: 'flex-start',
+  },
+  specimenImage: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#F9F5F2',
+    borderRadius: 8,
+  },
+  specimenMissing: {
+    fontSize: 14,
+    color: '#C62828',
+    paddingVertical: 24,
+  },
 });

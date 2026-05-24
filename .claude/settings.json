@@ -41,9 +41,6 @@
       "WebSearch(*)"
     ]
   },
-  "enabledPlugins": {
-    "skill-creator@claude-plugins-official": true
-  },
   "hooks": {
     "PreToolUse": [
       {
@@ -77,5 +74,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true
   }
 }

@@ -11,6 +11,7 @@ import { ConsumableLogsRepo } from '../db/consumable-logs-repo';
 import { BaleLoadsRepo } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo } from '../db/task-assignments-repo';
 import { ParcelsRepo } from '../db/parcels-repo';
+import { SyncCursorsRepo } from '../db/sync-cursors-repo';
 import { SyncManager } from '../sync/SyncManager';
 import { useNetworkStatus } from './useNetworkStatus';
 
@@ -56,6 +57,8 @@ export function useSync() {
       const apiClient = new ApiClient({
         baseUrl: API_BASE_URL,
         getToken: async () => data.session?.access_token ?? null,
+        // Advertise tombstone support so /sync/pull returns deletions[].
+        defaultHeaders: { 'X-Sync-Caps': 'tombstones-v1' },
       });
 
       const syncQueueRepo = new SyncQueueRepo(db);
@@ -66,6 +69,7 @@ export function useSync() {
       const baleLoadsRepo = new BaleLoadsRepo(db);
       const taskAssignmentsRepo = new TaskAssignmentsRepo(db);
       const parcelsRepo = new ParcelsRepo(db);
+      const syncCursorsRepo = new SyncCursorsRepo(db);
       const manager = new SyncManager(
         syncQueueRepo,
         tripsRepo,
@@ -76,6 +80,7 @@ export function useSync() {
         baleLoadsRepo,
         taskAssignmentsRepo,
         parcelsRepo,
+        syncCursorsRepo,
       );
 
       const result = await manager.sync();

@@ -25,6 +25,7 @@ export class ProfileService {
         u.id, u.email, u.phone, u.full_name AS "fullName",
         u.role, u.is_active AS "isActive", u.locale,
         u.avatar_url AS "avatarUrl",
+        u.signature_specimen_url AS "signatureSpecimenUrl",
         u.last_login_at AS "lastLoginAt",
         u.assigned_machine_id AS "assignedMachineId",
         u.notification_prefs AS "notificationPrefs",
@@ -53,6 +54,7 @@ export class ProfileService {
       locale?: 'en' | 'ro';
       notificationPrefs?: Record<string, boolean>;
       avatarUrl?: string | null;
+      signatureSpecimenUrl?: string | null;
     },
   ): Promise<User> {
     await this.findByUserId(userId);
@@ -73,6 +75,9 @@ export class ProfileService {
     }
     if (dto.avatarUrl !== undefined) {
       sets.push(sql`avatar_url = ${dto.avatarUrl}`);
+    }
+    if (dto.signatureSpecimenUrl !== undefined) {
+      sets.push(sql`signature_specimen_url = ${dto.signatureSpecimenUrl}`);
     }
 
     const setClause = sql.join(sets, sql`, `);
@@ -117,9 +122,7 @@ export class ProfileService {
     });
 
     if (error) {
-      throw new BadRequestException(
-        error.message || 'Failed to change password',
-      );
+      throw new BadRequestException(error.message || 'Failed to change password');
     }
   }
 }

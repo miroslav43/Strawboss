@@ -12,6 +12,7 @@ import { FuelLogsRepo } from '../db/fuel-logs-repo';
 import { ConsumableLogsRepo } from '../db/consumable-logs-repo';
 import { BaleLoadsRepo } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo } from '../db/task-assignments-repo';
+import { SyncCursorsRepo } from '../db/sync-cursors-repo';
 import { SyncManager } from './SyncManager';
 import { NotificationsRepo } from '../db/notifications-repo';
 import {
@@ -38,6 +39,8 @@ export async function runBackgroundSyncCycle(): Promise<void> {
   const apiClient = new ApiClient({
     baseUrl: API_BASE_URL,
     getToken: getAuthToken,
+    // Advertise tombstone support so /sync/pull returns deletions[].
+    defaultHeaders: { 'X-Sync-Caps': 'tombstones-v1' },
   });
 
   const db = await getDatabase();
@@ -48,6 +51,7 @@ export async function runBackgroundSyncCycle(): Promise<void> {
   const consumableLogsRepo = new ConsumableLogsRepo(db);
   const baleLoadsRepo = new BaleLoadsRepo(db);
   const taskAssignmentsRepo = new TaskAssignmentsRepo(db);
+  const syncCursorsRepo = new SyncCursorsRepo(db);
 
   const manager = new SyncManager(
     syncQueueRepo,
@@ -58,6 +62,8 @@ export async function runBackgroundSyncCycle(): Promise<void> {
     consumableLogsRepo,
     baleLoadsRepo,
     taskAssignmentsRepo,
+    undefined,
+    syncCursorsRepo,
   );
 
   const result = await manager.sync();

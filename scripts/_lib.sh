@@ -220,6 +220,35 @@ _build_packages() {
   success "Shared packages built."
 }
 
+# UID/GID of `appuser` in Dockerfile.backend / Dockerfile.admin (Alpine adduser).
+readonly DOCKER_APP_UID=100
+readonly DOCKER_APP_GID=101
+
+# Host bind mounts ./logs and ./uploads must be writable by the container user.
+# Do NOT `chown -R miro:miro` over these dirs — backend will crash with EACCES.
+# Optional: grant the dev user read/write via ACL (numeric UID avoids dhcpcd/messagebus names).
+_ensure_docker_volume_perms() {
+  local log_root="$STRAWBOSS_ROOT/logs"
+  local upload_root="$STRAWBOSS_ROOT/uploads"
+  local dev_user="${STRAWBOSS_DEV_USER:-miro}"
+
+  mkdir -p \
+    "$upload_root/avatars" "$upload_root/receipts" \
+    "$log_root/web/all" "$log_root/web/error" "$log_root/web/warn" \
+    "$log_root/web/info" "$log_root/web/debug" "$log_root/web/flow" "$log_root/web/http" \
+    "$log_root/mobile/all" "$log_root/mobile/error" "$log_root/mobile/warn" \
+    "$log_root/mobile/info" "$log_root/mobile/flow" "$log_root/mobile/debug"
+
+  chown -R "${DOCKER_APP_UID}:${DOCKER_APP_GID}" "$log_root" "$upload_root"
+  chmod -R u+rwX,g+rwX,o+rX "$log_root" "$upload_root"
+
+  if command -v setfacl &>/dev/null && id "$dev_user" &>/dev/null; then
+    setfacl -R -m "u:${dev_user}:rwx" "$log_root" "$upload_root" 2>/dev/null || true
+    setfacl -R -d -m "u:${dev_user}:rwx" "$log_root" "$upload_root" 2>/dev/null || true
+    setfacl -R -d -m "u:${DOCKER_APP_UID}:rwx" "$log_root" "$upload_root" 2>/dev/null || true
+  fi
+}
+
 _ensure_dev_redis() {
   if ! command -v docker &>/dev/null; then
     warn "Docker not found — install Redis on localhost:6379 yourself."

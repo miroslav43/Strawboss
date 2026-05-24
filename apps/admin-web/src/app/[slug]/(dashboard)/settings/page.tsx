@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback } from 'react';
-import { User, Bell, MonitorCog, Lock, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { User, Bell, MonitorCog, Lock, Check, AlertCircle, Loader2, Signature } from 'lucide-react';
 import {
   useProfile,
   useUpdateProfile,
@@ -10,6 +10,7 @@ import {
   useUpdateProfileLocale,
 } from '@strawboss/api';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { SpecimenSection } from '@/components/features/profile/SpecimenSection';
 import { apiClient } from '@/lib/api';
 import { useI18n, type Locale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -489,6 +490,17 @@ export default function SettingsPage() {
             </button>
           </div>
         </SettingsSection>
+
+        {/* ── Signature specimen ── */}
+        {profile ? (
+          <SettingsSection
+            title="Specimen de semnătură"
+            description="Folosit pentru semnătura ta pe cursele înregistrate de pe mobile."
+            icon={Signature}
+          >
+            <SpecimenSection profile={profile} />
+          </SettingsSection>
+        ) : null}
 
         {/* ── Notifications ── */}
         <SettingsSection

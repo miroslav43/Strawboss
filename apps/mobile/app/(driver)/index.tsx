@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { TaskList } from '@/components/shared/TaskList';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
@@ -316,9 +315,7 @@ export default function DriverTripsScreen() {
             <NotificationBell />
           </View>
         }
-      >
-        <TaskList tasks={tasks} role="driver" />
-      </ScreenHeader>
+      />
 
       {loading ? (
         <View style={[styles.body, { backgroundColor: themeColors.background }, styles.centered]}>

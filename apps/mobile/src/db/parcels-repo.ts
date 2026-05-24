@@ -87,4 +87,12 @@ export class ParcelsRepo {
       `-${maxAgeDays} days`,
     ]);
   }
+
+  /**
+   * Drop the local row in response to a server-emitted tombstone.
+   * Idempotent: deleting a missing row is a no-op.
+   */
+  async delete(id: string): Promise<void> {
+    await this.db.runAsync(`DELETE FROM parcels WHERE id = ?`, [id]);
+  }
 }

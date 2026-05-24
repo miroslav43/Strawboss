@@ -145,6 +145,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const [storeHydrated, setStoreHydrated] = useState(() => useAuthStore.persist.hasHydrated());
   const { role, setProfile } = useAuthStore();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
   const activeUserIdRef = useRef<string | null>(null);
   // FM-17: tracks whether the onboarding check has been performed for the
   // current session so we fire it at most once per login.
@@ -252,6 +253,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           role: profile.role,
           userId: profile.id,
           assignedMachineId: profile.assignedMachineId ?? null,
+          signatureSpecimenUrl: profile.signatureSpecimenUrl ?? null,
         });
         if (__DEV__) console.info('[StrawBoss] Profile fetch ok', { ms: Date.now() - t0 });
       })
@@ -397,6 +399,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
     const destination = role ? (ROLE_ROUTES[role] ?? '/(tabs)') : '/(tabs)';
 
+    // Specimen gate: roles that sign on trips (driver, loader_operator) must
+    // capture a signature specimen once before reaching their role home. This
+    // runs before the onboarding tutorial so the specimen is the very first
+    // post-login step. Other roles fall through unchanged.
+    const needsSpecimen =
+      role === 'driver' || role === 'loader_operator' ? !signatureSpecimenUrl : false;
+    if (needsSpecimen && segments[0] !== 'specimen-capture') {
+      router.replace('/specimen-capture' as Parameters<typeof router.replace>[0]);
+      return;
+    }
+
     if (inAuthGroup) {
       // FM-17: check onboarding once per login, before navigating to the role home.
       // We do this asynchronously and fall through to the role home on any error
@@ -433,7 +446,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (isGroupRoute && current !== targetSegment) {
       router.replace(destination as Parameters<typeof router.replace>[0]);
     }
-  }, [isAuthenticated, profileReady, role, segments, router]);
+  }, [isAuthenticated, profileReady, role, signatureSpecimenUrl, segments, router]);
 
   return (
     <>
@@ -524,6 +537,11 @@ export default function RootLayout() {
             {/* FM-17: onboarding shown once per role after first login */}
             <Stack.Screen
               name="onboarding"
+              options={{ presentation: 'card', animation: 'fade', gestureEnabled: false }}
+            />
+            {/* Signature specimen capture — forced gate for driver/loader_operator at first login */}
+            <Stack.Screen
+              name="specimen-capture"
               options={{ presentation: 'card', animation: 'fade', gestureEnabled: false }}
             />
             {/* FM-14: daily PDF report — accessible from ProfileScreen */}

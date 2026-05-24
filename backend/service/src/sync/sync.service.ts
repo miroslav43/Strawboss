@@ -1,7 +1,12 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import type { SyncMutation, SyncResult, SyncResponse } from '@strawboss/types';
+import type {
+  SyncMutation,
+  SyncResult,
+  SyncResponse,
+  SyncTombstone,
+} from '@strawboss/types';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -541,8 +546,15 @@ export class SyncService {
     tables: Record<string, number>,
     _callerId?: string,
     orgId: string | null = null,
+    supportsTombstones = false,
   ): Promise<SyncResponse> {
     const results: SyncResult[] = [];
+    const deletions: SyncTombstone[] = [];
+
+    // Feature-flag the tombstone branch so we can revert to today's legacy
+    // behaviour instantly without redeploy if anything misbehaves in prod.
+    const tombstonesEnabled =
+      supportsTombstones && process.env.STRAWBOSS_SYNC_TOMBSTONES_ENABLED !== 'false';
 
     const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
 
@@ -578,12 +590,19 @@ export class SyncService {
         ownerFilter = sql` AND operator_id = ${_callerId}::uuid`;
       }
 
-      const softDeleteFilter = TABLES_WITH_SOFT_DELETE.has(table)
-        ? sql` AND deleted_at IS NULL`
-        : sql``;
+      const isSoftDeleteTable = TABLES_WITH_SOFT_DELETE.has(table);
+      // Legacy clients keep getting the original filter (no deleted rows ever).
+      // New clients (capability header) see soft-deleted rows so we can emit
+      // them as tombstones below.
+      const softDeleteFilter =
+        isSoftDeleteTable && !tombstonesEnabled ? sql` AND deleted_at IS NULL` : sql``;
 
-      // pullColumns is a hard-coded constant — safe to interpolate via sql.raw.
-      const colsSql = sql.raw(pullColumns.map((c) => `"${c}"`).join(', '));
+      // Build the column projection. When emitting tombstones we additionally
+      // need `deleted_at` so we can partition live rows vs deletions.
+      const projectedColumns =
+        isSoftDeleteTable && tombstonesEnabled ? [...pullColumns, 'deleted_at'] : pullColumns;
+      // projectedColumns is built from hard-coded constants — safe to sql.raw.
+      const colsSql = sql.raw(projectedColumns.map((c) => `"${c}"`).join(', '));
       const result = await this.drizzleProvider.db.execute(
         sql`SELECT ${colsSql} FROM ${sql.raw(`"${table}"`)}
             WHERE sync_version > ${sinceVersion} ${ownerFilter}${softDeleteFilter}${orgFilter}
@@ -592,30 +611,59 @@ export class SyncService {
       );
       const rows = result as unknown as Record<string, unknown>[];
 
+      let liveCount = 0;
+      let tombstoneCount = 0;
+
       for (const row of rows) {
-        // `sync_version` is surfaced via `serverVersion`. It must NOT stay in
-        // `data`: the mobile SQLite schema stores it as `server_version`, and
-        // TripsRepo.upsert builds its INSERT column list from the data keys —
-        // an unknown `sync_version` column would crash every trips upsert.
+        const deletedAt = row.deleted_at;
+        const serverVersion = Number(row.sync_version ?? 0);
+
+        // Tombstone path: only for clients that advertised the capability AND
+        // tables that actually carry `deleted_at`. Older clients never reach
+        // this branch because soft-deleted rows are filtered out above.
+        if (isSoftDeleteTable && tombstonesEnabled && deletedAt != null) {
+          deletions.push({
+            table,
+            recordId: row.id as string,
+            serverVersion,
+            deletedAt:
+              deletedAt instanceof Date
+                ? deletedAt.toISOString()
+                : (deletedAt as string),
+          });
+          tombstoneCount++;
+          continue;
+        }
+
+        // Live row path (unchanged). `sync_version` is surfaced via
+        // `serverVersion` and `deleted_at` must NOT leak into `data` — the
+        // mobile SQLite schema is a subset and would crash the upsert.
         const data = { ...row };
         delete data.sync_version;
+        delete data.deleted_at;
         results.push({
           table,
           recordId: row.id as string,
           status: 'applied',
-          serverVersion: Number(row.sync_version ?? 0),
+          serverVersion,
           data,
         });
+        liveCount++;
       }
 
       if (rows.length > 0) {
-        this.logger.log(`sync pull: table=${table} since=${sinceVersion} returned=${rows.length}`);
+        this.logger.log(
+          `sync pull: table=${table} since=${sinceVersion} returned=${liveCount} tombstones=${tombstoneCount}`,
+        );
       }
     }
 
     return {
       results,
       serverTime: new Date().toISOString(),
+      // Omit `deletions` entirely for legacy clients so the wire shape stays
+      // byte-identical to today's response.
+      ...(tombstonesEnabled ? { deletions } : {}),
     };
   }
 

@@ -1,5 +1,5 @@
 import type { ApiClient } from '@strawboss/api';
-import type { SyncResult as SyncResultDto } from '@strawboss/types';
+import type { SyncResult as SyncResultDto, SyncTombstone } from '@strawboss/types';
 import { mobileLogger } from '../lib/logger';
 import { SyncQueueRepo } from '../db/sync-queue-repo';
 import { TripsRepo, type LocalTrip } from '../db/trips-repo';
@@ -9,6 +9,7 @@ import { ConsumableLogsRepo, type LocalConsumableLog } from '../db/consumable-lo
 import { BaleLoadsRepo, type LocalBaleLoad } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo, type LocalTaskAssignment } from '../db/task-assignments-repo';
 import { ParcelsRepo, type LocalParcel } from '../db/parcels-repo';
+import { SyncCursorsRepo } from '../db/sync-cursors-repo';
 import { pushMutations } from './push';
 import { pullUpdates } from './pull';
 import { mergeRecords } from './conflict';
@@ -46,6 +47,7 @@ export class SyncManager {
     private baleLoadsRepo?: BaleLoadsRepo,
     private taskAssignmentsRepo?: TaskAssignmentsRepo,
     private parcelsRepo?: ParcelsRepo,
+    private syncCursorsRepo?: SyncCursorsRepo,
   ) {}
 
   /**
@@ -178,18 +180,55 @@ export class SyncManager {
 
       const result = await pullUpdates(lastVersions, this.apiClient);
 
-      if (result.updates.length === 0) {
+      if (result.updates.length === 0 && result.deletions.length === 0) {
         return { count: 0, errors: result.errors };
       }
+
+      // Track the highest server_version we observed per table so we can
+      // advance the persisted cursor even when the only news for a table is
+      // a tombstone (which DELETEs the local row, dropping MAX(server_version)
+      // back below the tombstone's version).
+      const maxByTable: Record<string, number> = {};
+      const bumpMax = (table: string, version: number) => {
+        if (!Number.isFinite(version)) return;
+        const current = maxByTable[table];
+        if (current === undefined || version > current) maxByTable[table] = version;
+      };
 
       let applied = 0;
       for (const update of result.updates) {
         try {
           await this.applyUpdate(update);
+          bumpMax(update.table, update.serverVersion);
           applied++;
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Apply failed';
           result.errors.push(`Failed to apply ${update.table}/${update.recordId}: ${msg}`);
+        }
+      }
+
+      for (const tomb of result.deletions) {
+        try {
+          await this.applyTombstone(tomb);
+          bumpMax(tomb.table, tomb.serverVersion);
+          applied++;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Tombstone apply failed';
+          result.errors.push(`Failed to tombstone ${tomb.table}/${tomb.recordId}: ${msg}`);
+        }
+      }
+
+      if (this.syncCursorsRepo) {
+        for (const [table, version] of Object.entries(maxByTable)) {
+          try {
+            await this.syncCursorsRepo.upsert(table, version);
+          } catch (err) {
+            mobileLogger.warn('Sync cursor upsert failed (non-fatal)', {
+              table,
+              version,
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       }
 
@@ -202,6 +241,11 @@ export class SyncManager {
 
   /**
    * Get last known server version for each table.
+   *
+   * Prefers the persisted cursor (sync_cursors) when present, falling back
+   * to per-table `MAX(server_version)`. Bootstrapping path for existing
+   * installs: cursor is null on first run → MAX scan seeds the cursor on
+   * the next pull (see `pull()` above).
    */
   private async getLastVersions(): Promise<Record<string, number>> {
     const versions: Record<string, number> = {
@@ -217,53 +261,100 @@ export class SyncManager {
       parcels: 0,
     };
 
-    try {
-      versions['trips'] = await this.tripsRepo.getMaxServerVersion();
-    } catch {
-      // Table might be empty
-    }
+    const resolveVersion = async (
+      table: string,
+      fallback: () => Promise<number>,
+    ): Promise<number> => {
+      if (this.syncCursorsRepo) {
+        try {
+          const persisted = await this.syncCursorsRepo.get(table);
+          if (persisted !== null) return persisted;
+        } catch {
+          // Cursor table read failure is non-fatal — fall through to scan.
+        }
+      }
+      try {
+        return await fallback();
+      } catch {
+        return 0;
+      }
+    };
+
+    versions['trips'] = await resolveVersion('trips', () => this.tripsRepo.getMaxServerVersion());
 
     if (this.baleProductionsRepo) {
-      try {
-        versions['bale_productions'] = await this.baleProductionsRepo.getMaxServerVersion();
-      } catch {
-        // Table might be empty
-      }
+      versions['bale_productions'] = await resolveVersion('bale_productions', () =>
+        this.baleProductionsRepo!.getMaxServerVersion(),
+      );
     }
 
     if (this.fuelLogsRepo) {
-      try {
-        versions['fuel_logs'] = await this.fuelLogsRepo.getMaxServerVersion();
-      } catch {
-        // Table might be empty
-      }
+      versions['fuel_logs'] = await resolveVersion('fuel_logs', () =>
+        this.fuelLogsRepo!.getMaxServerVersion(),
+      );
     }
 
     if (this.consumableLogsRepo) {
-      try {
-        versions['consumable_logs'] = await this.consumableLogsRepo.getMaxServerVersion();
-      } catch {
-        // Table might be empty
-      }
+      versions['consumable_logs'] = await resolveVersion('consumable_logs', () =>
+        this.consumableLogsRepo!.getMaxServerVersion(),
+      );
     }
 
     if (this.baleLoadsRepo) {
-      try {
-        versions['bale_loads'] = await this.baleLoadsRepo.getMaxServerVersion();
-      } catch {
-        // Table might be empty
-      }
+      versions['bale_loads'] = await resolveVersion('bale_loads', () =>
+        this.baleLoadsRepo!.getMaxServerVersion(),
+      );
     }
 
     if (this.taskAssignmentsRepo) {
-      try {
-        versions['task_assignments'] = await this.taskAssignmentsRepo.getMaxServerVersion();
-      } catch {
-        // Table might be empty
-      }
+      versions['task_assignments'] = await resolveVersion('task_assignments', () =>
+        this.taskAssignmentsRepo!.getMaxServerVersion(),
+      );
     }
 
     return versions;
+  }
+
+  /**
+   * Apply a server-emitted tombstone by dropping the matching local row.
+   * Idempotent — deleting a missing row is a no-op. Unknown tables are
+   * logged and skipped so future server-side tombstones never crash sync.
+   */
+  private async applyTombstone(tomb: SyncTombstone): Promise<void> {
+    switch (tomb.table) {
+      case 'trips':
+        await this.tripsRepo.delete(tomb.recordId);
+        return;
+      case 'bale_loads':
+        if (this.baleLoadsRepo) await this.baleLoadsRepo.delete(tomb.recordId);
+        return;
+      case 'bale_productions':
+        // `deleteLocal` already implements `DELETE FROM bale_productions WHERE id = ?` (FM-4).
+        if (this.baleProductionsRepo) await this.baleProductionsRepo.deleteLocal(tomb.recordId);
+        return;
+      case 'fuel_logs':
+        if (this.fuelLogsRepo) await this.fuelLogsRepo.deleteLocal(tomb.recordId);
+        return;
+      case 'consumable_logs':
+        if (this.consumableLogsRepo) await this.consumableLogsRepo.deleteLocal(tomb.recordId);
+        return;
+      case 'task_assignments':
+        if (this.taskAssignmentsRepo) await this.taskAssignmentsRepo.delete(tomb.recordId);
+        return;
+      case 'parcels':
+        if (this.parcelsRepo) await this.parcelsRepo.delete(tomb.recordId);
+        return;
+      case 'machines':
+        // Mobile has no machines repo — server-side tombstones for machines
+        // are swallowed silently. They still advance the persisted cursor
+        // so the row is not redelivered.
+        return;
+      default:
+        mobileLogger.warn('Sync: ignoring tombstone for unknown table', {
+          table: tomb.table,
+          recordId: tomb.recordId,
+        });
+    }
   }
 
   /**

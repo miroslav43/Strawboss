@@ -40,8 +40,8 @@ export interface UpdateUserDto {
 /** Maps each operator role to its compatible machine type. */
 const ROLE_MACHINE_TYPE: Partial<Record<UserRole, MachineType>> = {
   loader_operator: MachineType.loader,
-  baler_operator:  MachineType.baler,
-  driver:          MachineType.truck,
+  baler_operator: MachineType.baler,
+  driver: MachineType.truck,
 };
 
 /**
@@ -63,6 +63,7 @@ const USER_SELECT_COLS = sql`
   id, email, username, pin, phone, full_name AS "fullName",
   role, is_active AS "isActive", locale,
   avatar_url AS "avatarUrl",
+  signature_specimen_url AS "signatureSpecimenUrl",
   last_login_at AS "lastLoginAt",
   assigned_machine_id AS "assignedMachineId",
   created_at AS "createdAt", updated_at AS "updatedAt",
@@ -184,7 +185,7 @@ export class AdminUsersService {
         if (rows[0].machine_type !== requiredType) {
           throw new BadRequestException(
             `Role "${effectiveRole}" requires a machine of type "${requiredType}", ` +
-            `but the selected machine is of type "${rows[0].machine_type}".`,
+              `but the selected machine is of type "${rows[0].machine_type}".`,
           );
         }
       }
@@ -282,10 +283,7 @@ export class AdminUsersService {
   }
 
   async deactivateUser(id: string, orgId: string | null): Promise<void> {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}::uuid`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`, sql`deleted_at IS NULL`];
     if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
@@ -303,10 +301,7 @@ export class AdminUsersService {
   }
 
   async getById(id: string, orgId: string | null): Promise<User> {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}::uuid`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`, sql`deleted_at IS NULL`];
     if (orgId !== null) {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
@@ -351,15 +346,15 @@ export class AdminUsersService {
       throw new BadRequestException('fullName must be exactly 2 words: Surname Firstname');
     }
     const [rawSurname, rawFirstname] = parts;
-    const surname   = this.slugify(rawSurname);
+    const surname = this.slugify(rawSurname);
     const firstname = this.slugify(rawFirstname);
 
-    const baseUsername = usernameOverride ?? (firstname[0] + surname);
-    const baseEmail    = `${firstname}.${surname}@nortiauno.ro`;
+    const baseUsername = usernameOverride ?? firstname[0] + surname;
+    const baseEmail = `${firstname}.${surname}@nortiauno.ro`;
 
     const username = await this.uniqueUsername(baseUsername);
-    const email    = await this.uniqueEmail(baseEmail);
-    const pin      = String(Math.floor(1000 + Math.random() * 9000));
+    const email = await this.uniqueEmail(baseEmail);
+    const pin = String(Math.floor(1000 + Math.random() * 9000));
 
     return { username, email, pin };
   }
@@ -385,10 +380,10 @@ export class AdminUsersService {
   }
 
   private async uniqueEmail(base: string): Promise<string> {
-    const atIdx    = base.lastIndexOf('@');
-    const local    = base.slice(0, atIdx);
-    const domain   = base.slice(atIdx + 1);
-    let candidate  = base;
+    const atIdx = base.lastIndexOf('@');
+    const local = base.slice(0, atIdx);
+    const domain = base.slice(atIdx + 1);
+    let candidate = base;
     let n = 2;
     for (;;) {
       const rows = await this.drizzleProvider.db.execute(sql`
