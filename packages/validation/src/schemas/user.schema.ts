@@ -15,6 +15,7 @@ const adminAssignableRoleSchema = z.enum([
   'driver',
   'baler_operator',
   'geofence_maker',
+  'depot_manager',
 ] as const);
 
 export const userSchema = z
@@ -31,6 +32,7 @@ export const userSchema = z
     avatarUrl: z.string().url().nullable(),
     signatureSpecimenUrl: z.string().nullable(),
     lastLoginAt: isoDateSchema.nullable(),
+    lastSeenAt: isoDateSchema.nullable().optional(),
     assignedMachineId: z.string().uuid().nullable(),
     organizationId: uuidSchema.nullable().optional(),
     organizationSlug: z.string().min(1).nullable().optional(),

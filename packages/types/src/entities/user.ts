@@ -8,6 +8,7 @@ export enum UserRole {
   loader_operator = 'loader_operator',
   driver = 'driver',
   geofence_maker = 'geofence_maker',
+  depot_manager = 'depot_manager',
 }
 
 export interface User extends Timestamps, SoftDelete {
@@ -23,6 +24,10 @@ export interface User extends Timestamps, SoftDelete {
   avatarUrl: string | null;
   signatureSpecimenUrl: string | null;
   lastLoginAt: string | null;
+  /** Plan C — heartbeat timestamp updated by POST /profile/heartbeat (mobile, 30s). */
+  lastSeenAt: string | null;
+  /** Derived in API layer (`isOnline = lastSeenAt within ONLINE_WINDOW_S`). Not stored. */
+  isOnline?: boolean;
   assignedMachineId: string | null;
   /** Present on profile API responses when joined from organizations. */
   organizationId?: string | null;

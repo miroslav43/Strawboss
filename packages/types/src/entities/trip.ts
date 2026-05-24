@@ -24,6 +24,10 @@ export interface Trip extends Timestamps, SoftDelete {
   loaderOperatorId: string | null;
   driverId: string;
   baleCount: number;
+  /** Plan C — NULL for the root iteration, non-null for iteration N>=2. */
+  parentTripId: string | null;
+  /** Plan C — 1-based position inside the course. Always 1 for legacy rows. */
+  iterationIndex: number;
   loadingStartedAt: string | null;
   loadingCompletedAt: string | null;
   departureOdometerKm: number | null;
