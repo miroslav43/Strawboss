@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Param,
-  Body,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { TripsService } from './trips.service';
 import { Roles } from '../auth/roles.guard';
@@ -26,6 +18,7 @@ import {
   disputeSchema,
   resolveDisputeSchema,
   registerLoadSchema,
+  nextIterationDtoSchema,
 } from '@strawboss/validation';
 import type {
   UserRole,
@@ -212,5 +205,21 @@ export class TripsController {
     @Body(new ZodValidationPipe(resolveDisputeSchema)) dto: ResolveDisputeDto,
   ) {
     return this.tripsService.resolveDispute(id, user.organizationId, dto);
+  }
+
+  /**
+   * Plan C — create the next iteration of a multi-trip course.
+   * Same parcel / truck / driver / loader; iteration_index auto-increments.
+   * `recall=true` pushes the new trip to the driver.
+   */
+  @Post(':id/next-iteration')
+  @Roles('admin' as UserRole, 'loader_operator' as UserRole)
+  nextIteration(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(nextIterationDtoSchema))
+    dto: { recall: boolean; truckId?: string },
+  ) {
+    return this.tripsService.createNextIteration(id, user.organizationId, dto.recall);
   }
 }

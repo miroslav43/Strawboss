@@ -3,10 +3,7 @@ import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import {
-  buildSimulatedPush,
-  type SimulatePushEvent,
-} from './simulate-push-templates';
+import { buildSimulatedPush, type SimulatePushEvent } from './simulate-push-templates';
 
 @Injectable()
 export class NotificationsService {
@@ -47,12 +44,12 @@ export class NotificationsService {
     vars: Record<string, string> = {},
   ): Promise<void> {
     if (orgId !== null) {
-      const checkRows = await this.drizzleProvider.db.execute(sql`
+      const checkRows = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM users
         WHERE id = ${userId}::uuid
           AND deleted_at IS NULL
           AND organization_id = ${orgId}::uuid
-      `) as unknown as { id: string }[];
+      `)) as unknown as { id: string }[];
       if (checkRows.length === 0) {
         throw new ForbiddenException('Target user not found in your organization');
       }
@@ -133,10 +130,7 @@ export class NotificationsService {
       this.winston.error('Expo push request error', {
         context: 'NotificationsService',
         userId,
-        err:
-          err instanceof Error
-            ? { message: err.message, stack: err.stack }
-            : err,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
     }
   }
@@ -155,12 +149,12 @@ export class NotificationsService {
 
     if (target.kind === 'user') {
       if (orgId !== null) {
-        const checkRows = await this.drizzleProvider.db.execute(sql`
+        const checkRows = (await this.drizzleProvider.db.execute(sql`
           SELECT id FROM users
           WHERE id = ${target.userId}::uuid
             AND deleted_at IS NULL
             AND organization_id = ${orgId}::uuid
-        `) as unknown as { id: string }[];
+        `)) as unknown as { id: string }[];
         if (checkRows.length === 0) {
           throw new ForbiddenException('Target user not found in your organization');
         }
@@ -173,33 +167,31 @@ export class NotificationsService {
       ];
       if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
       const where = sql.join(conditions, sql` AND `);
-      const rows = await this.drizzleProvider.db.execute(
+      const rows = (await this.drizzleProvider.db.execute(
         sql`SELECT id FROM users WHERE ${where}`,
-      ) as unknown as { id: string }[];
-      userIds = rows.map(r => r.id);
+      )) as unknown as { id: string }[];
+      userIds = rows.map((r) => r.id);
     } else {
       // kind: 'all' — scope to org's device tokens via user join
       if (orgId !== null) {
-        const rows = await this.drizzleProvider.db.execute(sql`
+        const rows = (await this.drizzleProvider.db.execute(sql`
           SELECT DISTINCT dpt.user_id::text AS id
           FROM device_push_tokens dpt
           JOIN users u ON u.id = dpt.user_id AND u.deleted_at IS NULL
           WHERE dpt.is_active = true
             AND u.organization_id = ${orgId}::uuid
-        `) as unknown as { id: string }[];
-        userIds = rows.map(r => r.id);
+        `)) as unknown as { id: string }[];
+        userIds = rows.map((r) => r.id);
       } else {
-        const rows = await this.drizzleProvider.db.execute(sql`
+        const rows = (await this.drizzleProvider.db.execute(sql`
           SELECT DISTINCT user_id::text AS id FROM device_push_tokens WHERE is_active = true
-        `) as unknown as { id: string }[];
-        userIds = rows.map(r => r.id);
+        `)) as unknown as { id: string }[];
+        userIds = rows.map((r) => r.id);
       }
     }
 
     await Promise.all(
-      userIds.map(uid =>
-        this.sendPush(uid, title, body, { type: 'broadcast' }).catch(() => {}),
-      ),
+      userIds.map((uid) => this.sendPush(uid, title, body, { type: 'broadcast' }).catch(() => {})),
     );
 
     this.winston.log('info', `Broadcast sent to ${userIds.length} user(s)`, {
@@ -217,16 +209,11 @@ export class NotificationsService {
     parcelName: string,
     userId: string,
   ): Promise<void> {
-    await this.sendPush(
-      userId,
-      'Confirmare recoltare',
-      `Este câmpul ${parcelName} gata?`,
-      {
-        type: 'geofence_exit_confirm',
-        assignmentId,
-        parcelName,
-      },
-    );
+    await this.sendPush(userId, 'Confirmare recoltare', `Este câmpul ${parcelName} gata?`, {
+      type: 'geofence_exit_confirm',
+      assignmentId,
+      parcelName,
+    });
   }
 
   /**
@@ -247,7 +234,10 @@ export class NotificationsService {
       WHERE id = ${assignmentId}::uuid AND deleted_at IS NULL
       LIMIT 1
     `);
-    const rows = ownerCheck as unknown as { assigned_user_id: string | null; organization_id: string | null }[];
+    const rows = ownerCheck as unknown as {
+      assigned_user_id: string | null;
+      organization_id: string | null;
+    }[];
     if (rows.length === 0) {
       throw new ForbiddenException('Assignment not found');
     }
@@ -306,4 +296,69 @@ export class NotificationsService {
       });
     }
   }
+
+  // region: plan-c ========================================================
+  // Plan C helpers — appended at end of class to avoid conflict with Plan B
+  // (which also adds helpers in its own region). Do not interleave.
+
+  /**
+   * After a truck completes its trip, prompt the loader operator to recall
+   * the truck for another iteration on the same parcel. The notification
+   * carries the (now-completed) tripId so the mobile client can call
+   * POST /notifications/loader-recall-response with the loader's answer.
+   */
+  async sendTruckUnloadedLoaderPrompt(
+    loaderId: string,
+    tripId: string,
+    truckCode: string,
+  ): Promise<void> {
+    await this.sendPush(
+      loaderId,
+      'Camion descărcat',
+      `Camionul ${truckCode} a descărcat. Îl chemi înapoi?`,
+      {
+        type: 'loader_recall_prompt',
+        tripId,
+        truckCode,
+        actions: ['recall_yes', 'recall_no'],
+      },
+    );
+  }
+
+  /**
+   * Fan out a truck-idle alert push to every admin/dispatcher in the org.
+   * Called by the BullMQ truck-idle-check processor.
+   */
+  async sendTruckIdleAdminAlert(
+    orgId: string | null,
+    truckId: string,
+    truckCode: string,
+    lastSeenAt: string,
+    idleMinutes: number,
+  ): Promise<void> {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`role IN ('admin'::user_role, 'dispatcher'::user_role)`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM users WHERE ${where}`,
+    )) as unknown as { id: string }[];
+
+    const title = 'Camion inactiv';
+    const body = `Camionul ${truckCode} stă neutilizat de ${idleMinutes} min.`;
+    await Promise.all(
+      rows.map((r) =>
+        this.sendPush(r.id, title, body, {
+          type: 'truck_idle',
+          truckId,
+          truckCode,
+          lastSeenAt,
+          idleMinutes,
+        }).catch(() => {}),
+      ),
+    );
+  }
+  // endregion: plan-c =====================================================
 }

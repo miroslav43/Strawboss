@@ -129,6 +129,40 @@ export class AlertsService {
     return created[0];
   }
 
+  /**
+   * Plan C — factory for `truck_idle` system alerts (one per truck per idle
+   * window). Caller (TruckIdleProcessor) already dedups by checking for an
+   * unacknowledged alert in the last 60 min; this method just inserts.
+   */
+  async createTruckIdleAlert(args: {
+    truckId: string;
+    truckCode: string;
+    idleMinutes: number;
+    completedAt: string;
+    orgId: string | null;
+  }) {
+    const result = await this.drizzleProvider.db.execute(
+      sql`INSERT INTO alerts (
+        category, severity, title, description,
+        machine_id, data, is_acknowledged, organization_id
+      ) VALUES (
+        'system'::alert_category, 'medium'::alert_severity,
+        'Camion inactiv',
+        'Camionul ' || ${args.truckCode} || ' stă inactiv de ' || ${args.idleMinutes}::text || ' min.',
+        ${args.truckId}::uuid,
+        jsonb_build_object(
+          'kind', 'truck_idle',
+          'idleMinutes', ${args.idleMinutes},
+          'completedAt', ${args.completedAt}
+        ),
+        false,
+        ${args.orgId ? sql`${args.orgId}::uuid` : sql`NULL`}
+      ) RETURNING ${ALERT_COLS}`,
+    );
+    const created = result as unknown as Record<string, unknown>[];
+    return created[0];
+  }
+
   async createFromDraft(draft: AlertDraft, orgId: string) {
     // Skip insert if an unacknowledged alert with the same (trip_id, category)
     // already exists — the evaluation job runs every 15 minutes and would

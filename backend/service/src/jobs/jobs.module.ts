@@ -9,6 +9,7 @@ import {
   QUEUE_CMR_GENERATION,
   QUEUE_SYNC_CLEANUP,
   QUEUE_GEOFENCE_CHECK,
+  QUEUE_TRUCK_IDLE_CHECK,
 } from './queues';
 
 @Module({
@@ -27,6 +28,7 @@ import {
       { name: QUEUE_CMR_GENERATION },
       { name: QUEUE_SYNC_CLEANUP },
       { name: QUEUE_GEOFENCE_CHECK },
+      { name: QUEUE_TRUCK_IDLE_CHECK },
     ),
   ],
   providers: [JobSchedulerService],

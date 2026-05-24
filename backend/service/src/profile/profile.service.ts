@@ -27,6 +27,7 @@ export class ProfileService {
         u.avatar_url AS "avatarUrl",
         u.signature_specimen_url AS "signatureSpecimenUrl",
         u.last_login_at AS "lastLoginAt",
+        u.last_seen_at AS "lastSeenAt",
         u.assigned_machine_id AS "assignedMachineId",
         u.notification_prefs AS "notificationPrefs",
         u.organization_id AS "organizationId",
@@ -44,6 +45,17 @@ export class ProfileService {
       throw new NotFoundException('User profile not found');
     }
     return rows[0];
+  }
+
+  /**
+   * Plan C — bump users.last_seen_at to NOW(). Called by POST /profile/heartbeat
+   * every ~30 s from the mobile app. Used to power the admin presence dot.
+   */
+  async touchLastSeen(userId: string): Promise<void> {
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE users SET last_seen_at = NOW()
+       WHERE id = ${userId}::uuid AND deleted_at IS NULL
+    `);
   }
 
   async updateProfile(

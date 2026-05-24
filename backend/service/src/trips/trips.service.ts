@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Inject,
   OnModuleInit,
+  forwardRef,
 } from '@nestjs/common';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
@@ -40,6 +41,7 @@ export class TripsService implements OnModuleInit {
     private readonly drizzleProvider: DrizzleProvider,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
     @InjectQueue(QUEUE_CMR_GENERATION) private readonly cmrQueue: Queue,
+    @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
     private readonly deliveryDestinationsService: DeliveryDestinationsService,
   ) {}
@@ -353,6 +355,11 @@ export class TripsService implements OnModuleInit {
       'Loaderul a început încărcarea camionului.',
       'assignment_created',
     );
+    // TODO(plan-c): integrate with Plan B once merged — temporarily no-op.
+    // When Plan B's parcelsService.advanceHarvestOnLoadEvent ships, call:
+    //   await this.parcelsService.advanceHarvestOnLoadEvent(
+    //     trip.source_parcel_id as string, 'loading_started', orgId,
+    //   );
     return result;
   }
 
@@ -713,6 +720,9 @@ export class TripsService implements OnModuleInit {
       'trip_loaded',
     );
 
+    // TODO(plan-c): integrate with Plan B once merged — temporarily no-op.
+    // After register-load, if remaining bales on the parcel reach 0 we should
+    // call parcelsService.advanceHarvestOnLoadEvent(parcelId, 'all_loaded', orgId).
     return result;
   }
 
@@ -866,7 +876,215 @@ export class TripsService implements OnModuleInit {
       tripId: id,
     });
 
+    // Plan C — multi-iteration hook.
+    // After a trip completes:
+    //  - If the parcel still has bales, prompt the loader to recall the truck.
+    //  - If the parcel is empty, signal parcel harvest completion via
+    //    Plan B's helper (currently stubbed — see TODO below).
+    try {
+      const sourceParcelId = trip.source_parcel_id as string | null;
+      const loaderOperatorId = trip.loader_operator_id as string | null;
+      const deliveryNotes = (trip.delivery_notes as string | null) ?? '';
+      if (sourceParcelId) {
+        const remaining = await this.computeRemainingBalesOnParcel(sourceParcelId, orgId);
+        if (remaining > 0 && loaderOperatorId) {
+          // Suppress repeated prompts if loader already answered for this trip.
+          const alreadyAnswered =
+            deliveryNotes.includes('[recall_no:') || deliveryNotes.includes('[recall_yes:');
+          if (!alreadyAnswered) {
+            const truckCode =
+              (trip.truck_code as string | null) ?? (trip.truck_plate as string | null) ?? '—';
+            void this.notificationsService.sendTruckUnloadedLoaderPrompt(
+              loaderOperatorId,
+              id,
+              truckCode,
+            );
+          }
+        } else if (remaining <= 0) {
+          // TODO(plan-c): integrate with Plan B once merged — temporarily no-op.
+          // When Plan B's parcelsService.advanceHarvestOnLoadEvent ships, call:
+          //   await this.parcelsService.advanceHarvestOnLoadEvent(
+          //     sourceParcelId, 'all_delivered', orgId,
+          //   );
+          this.winston.log(
+            'flow',
+            `Parcel ${sourceParcelId} fully delivered — would advance harvest (stub)`,
+            { context: 'TripsService', parcelId: sourceParcelId },
+          );
+        }
+      }
+    } catch (err) {
+      this.winston.warn('complete() multi-iteration hook failed', {
+        context: 'TripsService',
+        tripId: id,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
+
     return result;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Plan C — Multi-iteration trips (parent_trip_id + iteration_index)
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Compute remaining bales on a parcel = SUM(produced) - SUM(loaded).
+   * Used by both `createNextIteration` (block when 0) and `complete` hook
+   * (decide whether to prompt loader / advance parcel harvest).
+   */
+  private async computeRemainingBalesOnParcel(
+    parcelId: string,
+    orgId: string | null,
+    executor?: Pick<DrizzleProvider['db'], 'execute'>,
+  ): Promise<number> {
+    const db = executor ?? this.drizzleProvider.db;
+    const rows = (await db.execute(sql`
+      SELECT
+        COALESCE((SELECT SUM(bale_count) FROM bale_productions
+                  WHERE parcel_id = ${parcelId} AND deleted_at IS NULL
+                    ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS produced,
+        COALESCE((SELECT SUM(bale_count) FROM bale_loads
+                  WHERE parcel_id = ${parcelId} AND deleted_at IS NULL
+                    ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS loaded
+    `)) as unknown as { produced: number; loaded: number }[];
+    return Math.max(0, Number(rows[0]?.produced ?? 0) - Number(rows[0]?.loaded ?? 0));
+  }
+
+  /**
+   * Create the next iteration of a multi-trip course.
+   *
+   * - Same source_parcel_id, same truck/driver, same loader/loader_operator,
+   *   same destination (denormalized fields are copied).
+   * - parent_trip_id = root of the current course; iteration_index = next
+   *   available index for that root.
+   * - status = 'planned'.
+   *
+   * Idempotency: serializes per course with
+   * `pg_advisory_xact_lock(hashtext('iter:' || rootId))` so two parallel
+   * recalls don't both produce iteration N+1.
+   *
+   * If `recall = false`, the row is created but no push is sent — the
+   * iteration sits in `planned` until someone picks it up. (In practice
+   * recall=false is rarely used; the loader's "no" is handled via
+   * recordNoRecall and never creates a new iteration.)
+   */
+  async createNextIteration(
+    currentTripId: string,
+    orgId: string | null,
+    recall: boolean,
+  ): Promise<Record<string, unknown>> {
+    return this.drizzleProvider.db.transaction(async (tx) => {
+      // 1. Load current trip + lookup the course root.
+      const cur = (await tx.execute(sql`
+        SELECT id, parent_trip_id, source_parcel_id, truck_id, driver_id,
+               loader_id, loader_operator_id,
+               destination_name, destination_address,
+               ST_AsGeoJSON(destination_coords) AS destination_coords_geojson,
+               organization_id
+          FROM trips
+         WHERE id = ${currentTripId}::uuid AND deleted_at IS NULL
+         FOR UPDATE
+      `)) as unknown as Record<string, unknown>[];
+      if (!cur[0]) throw new NotFoundException('Trip not found');
+      const t = cur[0];
+      if (orgId !== null && t.organization_id !== orgId) {
+        throw new ForbiddenException('Trip not found in your organization');
+      }
+      const rootId = (t.parent_trip_id as string | null) ?? (t.id as string);
+
+      // 2. Per-course advisory lock to serialize iteration mint.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('iter:' || ${rootId}))`);
+
+      // 3. Compute next iteration_index.
+      const next = (await tx.execute(sql`
+        SELECT COALESCE(MAX(iteration_index), 0) + 1 AS n
+          FROM trips
+         WHERE (id = ${rootId}::uuid OR parent_trip_id = ${rootId}::uuid)
+           AND deleted_at IS NULL
+      `)) as unknown as { n: number }[];
+      const iterationIndex = Number(next[0]?.n ?? 2);
+
+      // 4. Block when parcel has no bales left.
+      const remaining = await this.computeRemainingBalesOnParcel(
+        t.source_parcel_id as string,
+        orgId,
+        tx,
+      );
+      if (remaining <= 0) {
+        throw new BadRequestException({
+          error: 'parcel_fully_loaded',
+          message: 'Pe parcelă nu mai sunt baloți pentru o cursă nouă.',
+        });
+      }
+
+      // 5. Insert new trip row — duplicates denormalized destination.
+      const tripNumber = await this.generateTripNumber(orgId, tx);
+      const inserted = (await tx.execute(sql`
+        INSERT INTO trips (
+          organization_id, trip_number, status,
+          source_parcel_id, source_parcel_auto,
+          truck_id, driver_id,
+          loader_id, loader_operator_id,
+          destination_name, destination_address,
+          destination_coords,
+          bale_count,
+          parent_trip_id, iteration_index
+        ) VALUES (
+          ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
+          ${tripNumber}, ${TripStatus.planned}::trip_status,
+          ${t.source_parcel_id}, true,
+          ${t.truck_id}, ${t.driver_id},
+          ${t.loader_id}, ${t.loader_operator_id},
+          ${t.destination_name}, ${t.destination_address},
+          ${
+            t.destination_coords_geojson
+              ? sql`ST_GeomFromGeoJSON(${t.destination_coords_geojson as string})`
+              : sql`NULL`
+          },
+          0,
+          ${rootId}::uuid, ${iterationIndex}
+        )
+        RETURNING *
+      `)) as unknown as Record<string, unknown>[];
+      const newTrip = inserted[0];
+
+      this.logTripFlow(newTrip.id as string, 'NEXT_ITERATION', 'new', TripStatus.planned);
+      this.winston.log('flow', `Course ${rootId}: new iteration ${iterationIndex}`, {
+        context: 'TripsService',
+        rootId,
+        iterationIndex,
+        recall,
+        parcelId: t.source_parcel_id,
+      });
+
+      if (recall) {
+        void this.pushToDriver(
+          newTrip.id as string,
+          'Cursă nouă',
+          `Loaderul te cheamă înapoi — cursa ${iterationIndex}.`,
+          'trip_next_iteration',
+        );
+      }
+      return newTrip;
+    });
+  }
+
+  /**
+   * Record a loader "no recall" decision on the trip. Appends a marker to
+   * `delivery_notes` so the truck-idle BullMQ processor can later decide
+   * whether to alert admins.
+   */
+  async recordNoRecall(tripId: string, orgId: string | null, loaderId: string): Promise<void> {
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE trips
+         SET delivery_notes = COALESCE(delivery_notes, '')
+                            || E'\n[recall_no:' || ${loaderId} || ':' || NOW()::text || ']',
+             updated_at = NOW()
+       WHERE id = ${tripId}::uuid
+         ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+    `);
+    this.logTripFlow(tripId, 'RECALL_NO', 'completed', 'completed');
   }
 
   async cancel(id: string, orgId: string | null, dto: CancelDto) {
