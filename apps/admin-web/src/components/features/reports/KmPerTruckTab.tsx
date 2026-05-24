@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
 import { queryKeys } from '@strawboss/api';
@@ -65,12 +65,11 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Default to first truck when data lands.
-  useMemo(() => {
+  useEffect(() => {
     if (trucks.length > 0 && selectedIds.length === 0) {
       setSelectedIds([trucks[0].id]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trucks]);
+  }, [trucks, selectedIds.length]);
 
   const cappedSelected = selectedIds.slice(0, MAX_SELECTED);
 
@@ -164,7 +163,7 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
           <p className="text-sm text-neutral-400">{t('reports.kmPerTruck.noMachines')}</p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {trucks.map((m, i) => {
+            {trucks.map((m) => {
               const active = selectedIds.includes(m.id);
               const idx = cappedSelected.indexOf(m.id);
               const swatch = idx >= 0 ? PALETTE[idx % PALETTE.length] : '#9ca3af';

@@ -308,9 +308,11 @@ export default function FarmsPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const farms = (Array.isArray(farmsRaw) ? farmsRaw : ((farmsRaw as any)?.data ?? [])) as Farm[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parcels = (
-    Array.isArray(parcelsRaw) ? parcelsRaw : ((parcelsRaw as any)?.data ?? [])
+    Array.isArray(parcelsRaw)
+      ? parcelsRaw
+      : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((parcelsRaw as any)?.data ?? [])
   ) as Parcel[];
 
   const createFarm = useCreateFarm(apiClient);

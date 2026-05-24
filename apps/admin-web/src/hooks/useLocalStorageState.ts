@@ -23,7 +23,6 @@ export function useLocalStorageState<T>(
     } catch {
       // Ignore malformed values — keep the fallback.
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   const update = useCallback(
