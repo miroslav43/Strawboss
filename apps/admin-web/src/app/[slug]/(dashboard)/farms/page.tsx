@@ -30,11 +30,6 @@ import {
 } from '@strawboss/api';
 import type { Farm, Parcel } from '@strawboss/types';
 import { FarmEntityType } from '@strawboss/types';
-
-const ENTITY_TYPE_LABELS: Record<FarmEntityType, string> = {
-  [FarmEntityType.persoana_juridica]: 'Persoană juridică',
-  [FarmEntityType.persoana_fizica]: 'Persoană fizică',
-};
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -48,6 +43,7 @@ interface AssignParcelModalProps {
 }
 
 function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelModalProps) {
+  const { t } = useI18n();
   const assignParcel = useAssignParcelToFarm(apiClient);
   const [search, setSearch] = useState('');
   const [municipalityFilter, setMunicipalityFilter] = useState<string>('');
@@ -126,7 +122,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
         <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-neutral-800">
-              Adaugă câmpuri la fermă
+              {t('farms.assignModalTitle')}
             </h2>
             <p className="truncate text-sm text-neutral-500">{farm.name}</p>
           </div>
@@ -144,7 +140,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
-              placeholder="Caută după cod, nume sau localitate…"
+              placeholder={t('farms.assignModalSearch')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoFocus
@@ -172,7 +168,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
                   : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
               }`}
             >
-              Toate
+              {t('farms.all')}
             </button>
             {municipalities.map((m) => (
               <button
@@ -202,7 +198,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
               ) : (
                 <Square className="h-4 w-4" />
               )}
-              Selectează toate ({filtered.length})
+              {t('farms.selectAll', { count: filtered.length })}
             </button>
           </div>
         )}
@@ -212,7 +208,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14 text-neutral-400">
               <Search className="mb-2 h-8 w-8 opacity-30" />
-              <p className="text-sm">Niciun câmp găsit</p>
+              <p className="text-sm">{t('farms.noneFound')}</p>
               {(search || municipalityFilter) && (
                 <button
                   onClick={() => {
@@ -221,7 +217,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
                   }}
                   className="mt-2 text-xs text-primary hover:underline"
                 >
-                  Șterge filtrele
+                  {t('farms.clearFilters')}
                 </button>
               )}
             </div>
@@ -270,15 +266,18 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
         <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50 px-4 py-3">
           <span className="text-sm text-neutral-500">
             {selected.size > 0
-              ? `${selected.size} câmp${selected.size === 1 ? '' : 'uri'} selectat${selected.size === 1 ? '' : 'e'}`
-              : 'Niciun câmp selectat'}
+              ? t(
+                  selected.size === 1 ? 'farms.selectedCount' : 'farms.selectedCountPlural',
+                  { count: selected.size },
+                )
+              : t('farms.noneSelected')}
           </span>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
               className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
             >
-              Anulează
+              {t('common.cancel')}
             </button>
             <button
               onClick={() => void handleConfirm()}
@@ -290,7 +289,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
               ) : (
                 <Check className="h-4 w-4" />
               )}
-              Adaugă
+              {t('farms.add')}
             </button>
           </div>
         </div>
@@ -478,15 +477,15 @@ export default function FarmsPage() {
       {/* Create form */}
       {showCreate && (
         <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm space-y-3">
-          <h3 className="text-sm font-semibold text-neutral-700">Fermă nouă</h3>
+          <h3 className="text-sm font-semibold text-neutral-700">{t('farms.newFarm')}</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-medium text-neutral-600 mb-1">
-                Nume fermă *
+                {t('farms.form.farmNameLabel')}
               </label>
               <input
                 type="text"
-                placeholder="Ex: Ferma Ionescu"
+                placeholder={t('farms.farmNamePlaceholder')}
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -494,10 +493,12 @@ export default function FarmsPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Telefon *</label>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">
+                {t('farms.form.phoneLabel')}
+              </label>
               <input
                 type="tel"
-                placeholder="Ex: 0722 123 456"
+                placeholder={t('farms.form.phonePlaceholder')}
                 value={createPhone}
                 onChange={(e) => setCreatePhone(e.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -505,43 +506,53 @@ export default function FarmsPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-neutral-600 mb-1">
-                Tip entitate
+                {t('farms.form.entityTypeLabel')}
               </label>
               <select
                 value={createEntityType}
                 onChange={(e) => setCreateEntityType(e.target.value as FarmEntityType | '')}
                 className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                <option value="">— Selectează —</option>
-                <option value={FarmEntityType.persoana_juridica}>Persoană juridică</option>
-                <option value={FarmEntityType.persoana_fizica}>Persoană fizică</option>
+                <option value="">{t('farms.entityType.select')}</option>
+                <option value={FarmEntityType.persoana_juridica}>
+                  {t('farms.entityType.persoana_juridica')}
+                </option>
+                <option value={FarmEntityType.persoana_fizica}>
+                  {t('farms.entityType.persoana_fizica')}
+                </option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">CUI</label>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">
+                {t('farms.form.cuiLabel')}
+              </label>
               <input
                 type="text"
-                placeholder="Ex: RO12345678"
+                placeholder={t('farms.form.cuiPlaceholder')}
                 value={createCui}
                 onChange={(e) => setCreateCui(e.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Cod RO APIA</label>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">
+                {t('farms.form.apiaCodeLabel')}
+              </label>
               <input
                 type="text"
-                placeholder="Cod APIA al fermei"
+                placeholder={t('farms.form.apiaCodePlaceholder')}
                 value={createApiaCode}
                 onChange={(e) => setCreateApiaCode(e.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Adresă</label>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">
+                {t('farms.form.addressLabel')}
+              </label>
               <input
                 type="text"
-                placeholder="Ex: Deta, Timiș"
+                placeholder={t('farms.addressPlaceholder')}
                 value={createAddress}
                 onChange={(e) => setCreateAddress(e.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -559,7 +570,7 @@ export default function FarmsPage() {
               ) : (
                 <Check className="h-4 w-4" />
               )}
-              Salvează
+              {t('farms.save')}
             </button>
             <button
               onClick={() => {
@@ -573,7 +584,7 @@ export default function FarmsPage() {
               }}
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50"
             >
-              Anulează
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -583,13 +594,13 @@ export default function FarmsPage() {
       {farmsLoading ? (
         <div className="flex items-center justify-center py-16 text-neutral-400">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          Se încarcă fermele…
+          {t('farms.loading')}
         </div>
       ) : farms.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
           <Tractor className="h-12 w-12 mb-3 opacity-20" />
-          <p className="text-sm">Nicio fermă creată încă.</p>
-          <p className="text-xs mt-1">Apasă „Fermă nouă" pentru a crea prima fermă.</p>
+          <p className="text-sm">{t('farms.empty')}</p>
+          <p className="text-xs mt-1">{t('farms.emptyHint')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -614,7 +625,7 @@ export default function FarmsPage() {
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                           <label className="block text-xs font-medium text-neutral-600 mb-1">
-                            Nume *
+                            {t('farms.form.nameLabel')}
                           </label>
                           <input
                             type="text"
@@ -626,7 +637,7 @@ export default function FarmsPage() {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-neutral-600 mb-1">
-                            Telefon *
+                            {t('farms.form.phoneLabel')}
                           </label>
                           <input
                             type="tel"
@@ -637,7 +648,7 @@ export default function FarmsPage() {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-neutral-600 mb-1">
-                            Tip entitate
+                            {t('farms.form.entityTypeLabel')}
                           </label>
                           <select
                             value={editEntityType}
@@ -646,16 +657,18 @@ export default function FarmsPage() {
                             }
                             className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                           >
-                            <option value="">— Selectează —</option>
+                            <option value="">{t('farms.entityType.select')}</option>
                             <option value={FarmEntityType.persoana_juridica}>
-                              Persoană juridică
+                              {t('farms.entityType.persoana_juridica')}
                             </option>
-                            <option value={FarmEntityType.persoana_fizica}>Persoană fizică</option>
+                            <option value={FarmEntityType.persoana_fizica}>
+                              {t('farms.entityType.persoana_fizica')}
+                            </option>
                           </select>
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-neutral-600 mb-1">
-                            CUI
+                            {t('farms.form.cuiLabel')}
                           </label>
                           <input
                             type="text"
@@ -666,7 +679,7 @@ export default function FarmsPage() {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-neutral-600 mb-1">
-                            Cod RO APIA
+                            {t('farms.form.apiaCodeLabel')}
                           </label>
                           <input
                             type="text"
@@ -677,7 +690,7 @@ export default function FarmsPage() {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-neutral-600 mb-1">
-                            Adresă
+                            {t('farms.form.addressLabel')}
                           </label>
                           <input
                             type="text"
@@ -698,13 +711,13 @@ export default function FarmsPage() {
                           ) : (
                             <Check className="h-4 w-4" />
                           )}
-                          Salvează
+                          {t('farms.save')}
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
                           className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
                         >
-                          Anulează
+                          {t('common.cancel')}
                         </button>
                       </div>
                     </div>
@@ -714,7 +727,7 @@ export default function FarmsPage() {
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-neutral-400">
                         {farm.entityType && (
                           <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-600">
-                            {ENTITY_TYPE_LABELS[farm.entityType]}
+                            {t(`farms.entityType.${farm.entityType}`)}
                           </span>
                         )}
                         {farm.phone && (
@@ -729,8 +742,10 @@ export default function FarmsPage() {
                             {farm.address}
                           </span>
                         )}
-                        {farm.cui && <span>CUI: {farm.cui}</span>}
-                        {farm.apiaCode && <span>APIA: {farm.apiaCode}</span>}
+                        {farm.cui && <span>{t('farms.cuiDisplay', { cui: farm.cui })}</span>}
+                        {farm.apiaCode && (
+                          <span>{t('farms.apiaDisplay', { apia: farm.apiaCode })}</span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -738,37 +753,37 @@ export default function FarmsPage() {
                   {!isEditing && (
                     <div className="flex items-center gap-1">
                       <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600">
-                        {farmParcels.length} câmpuri
+                        {t('farms.fieldsCount', { count: farmParcels.length })}
                       </span>
                       {/* Add fields button — opens search modal */}
                       {unassignedParcels.length > 0 && (
                         <button
                           onClick={() => setAssignModalFarmId(farm.id)}
                           className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs text-neutral-500 hover:border-primary hover:bg-primary/5 hover:text-primary"
-                          title="Adaugă câmpuri"
+                          title={t('farms.addFields')}
                         >
                           <Plus className="h-3.5 w-3.5" />
-                          Câmpuri
+                          {t('farms.fields')}
                         </button>
                       )}
                       <button
                         onClick={() => startEdit(farm)}
                         className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-                        title="Editează"
+                        title={t('farms.edit')}
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(farm)}
                         className="rounded-lg p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-500"
-                        title="Șterge"
+                        title={t('farms.delete')}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => toggleExpand(farm.id)}
                         className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100"
-                        title={isExpanded ? 'Ascunde câmpurile' : 'Arată câmpurile'}
+                        title={isExpanded ? t('farms.hideFields') : t('farms.showFields')}
                       >
                         {isExpanded ? (
                           <ChevronUp className="h-4 w-4" />
@@ -785,14 +800,14 @@ export default function FarmsPage() {
                   <div className="border-t border-neutral-100 bg-neutral-50">
                     {farmParcels.length === 0 ? (
                       <div className="flex flex-col items-center gap-2 py-6 text-neutral-400">
-                        <p className="text-sm">Niciun câmp asignat acestei ferme.</p>
+                        <p className="text-sm">{t('farms.noFieldsInFarm')}</p>
                         {unassignedParcels.length > 0 && (
                           <button
                             onClick={() => setAssignModalFarmId(farm.id)}
                             className="flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 hover:border-primary hover:text-primary"
                           >
                             <Plus className="h-3.5 w-3.5" />
-                            Adaugă câmpuri
+                            {t('farms.addFields')}
                           </button>
                         )}
                       </div>
@@ -816,9 +831,9 @@ export default function FarmsPage() {
                             <button
                               onClick={() => handleUnassign(p.id)}
                               className="flex-shrink-0 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs text-neutral-500 hover:border-red-300 hover:bg-red-50 hover:text-red-500 transition-colors"
-                              title="Elimină din fermă"
+                              title={t('farms.removeFromFarm')}
                             >
-                              Elimină
+                              {t('farms.remove')}
                             </button>
                           </li>
                         ))}
@@ -836,12 +851,14 @@ export default function FarmsPage() {
       {unassignedParcels.length > 0 && (
         <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-5 py-4">
           <p className="text-sm font-medium text-neutral-600">
-            {unassignedParcels.length} câmp{unassignedParcels.length === 1 ? '' : 'uri'} neasignat
-            {unassignedParcels.length === 1 ? '' : 'e'} niciunei ferme
+            {t(
+              unassignedParcels.length === 1
+                ? 'farms.unassignedSummary'
+                : 'farms.unassignedSummaryPlural',
+              { count: unassignedParcels.length },
+            )}
           </p>
-          <p className="text-xs text-neutral-400 mt-1">
-            Apasă „+ Câmpuri" pe orice fermă pentru a le asigna.
-          </p>
+          <p className="text-xs text-neutral-400 mt-1">{t('farms.unassignedHint')}</p>
         </div>
       )}
 

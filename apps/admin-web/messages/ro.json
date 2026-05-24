@@ -340,6 +340,26 @@
     "add": "Adaugă",
     "deleteConfirm": "Ștergi ferma „{{name}}”?",
     "deleteConfirmWithParcels": "Ștergi ferma „{{name}}”? Cele {{count}} câmpuri alocate vor rămâne, dar nu vor mai fi asociate acestei ferme.",
+    "removeFromFarm": "Elimină din fermă",
+    "entityType": {
+      "persoana_juridica": "Persoană juridică",
+      "persoana_fizica": "Persoană fizică",
+      "select": "— Selectează —"
+    },
+    "form": {
+      "farmNameLabel": "Nume fermă *",
+      "nameLabel": "Nume *",
+      "phoneLabel": "Telefon *",
+      "entityTypeLabel": "Tip entitate",
+      "cuiLabel": "CUI",
+      "apiaCodeLabel": "Cod RO APIA",
+      "addressLabel": "Adresă",
+      "phonePlaceholder": "Ex: 0722 123 456",
+      "cuiPlaceholder": "Ex: RO12345678",
+      "apiaCodePlaceholder": "Cod APIA al fermei"
+    },
+    "cuiDisplay": "CUI: {{cui}}",
+    "apiaDisplay": "APIA: {{apia}}",
     "kml": {
       "import": "Importă KML",
       "modal": {

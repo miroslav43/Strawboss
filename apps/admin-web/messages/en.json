@@ -340,6 +340,26 @@
     "add": "Add",
     "deleteConfirm": "Delete farm \"{{name}}\"?",
     "deleteConfirmWithParcels": "Delete farm \"{{name}}\"? The {{count}} assigned fields will remain but will no longer be linked to this farm.",
+    "removeFromFarm": "Remove from farm",
+    "entityType": {
+      "persoana_juridica": "Legal entity",
+      "persoana_fizica": "Individual",
+      "select": "— Select —"
+    },
+    "form": {
+      "farmNameLabel": "Farm name *",
+      "nameLabel": "Name *",
+      "phoneLabel": "Phone *",
+      "entityTypeLabel": "Entity type",
+      "cuiLabel": "CUI",
+      "apiaCodeLabel": "RO APIA code",
+      "addressLabel": "Address",
+      "phonePlaceholder": "e.g. 0722 123 456",
+      "cuiPlaceholder": "e.g. RO12345678",
+      "apiaCodePlaceholder": "Farm APIA code"
+    },
+    "cuiDisplay": "CUI: {{cui}}",
+    "apiaDisplay": "APIA: {{apia}}",
     "kml": {
       "import": "Import KML",
       "modal": {
