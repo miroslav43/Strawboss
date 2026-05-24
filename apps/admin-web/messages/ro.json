@@ -332,7 +332,21 @@
     "noneSelected": "Niciun câmp selectat",
     "add": "Adaugă",
     "deleteConfirm": "Ștergi ferma „{{name}}”?",
-    "deleteConfirmWithParcels": "Ștergi ferma „{{name}}”? Cele {{count}} câmpuri alocate vor rămâne, dar nu vor mai fi asociate acestei ferme."
+    "deleteConfirmWithParcels": "Ștergi ferma „{{name}}”? Cele {{count}} câmpuri alocate vor rămâne, dar nu vor mai fi asociate acestei ferme.",
+    "kml": {
+      "import": "Importă KML",
+      "modal": {
+        "title": "Importă câmpuri din KML",
+        "selectFile": "Alege un fișier .kml",
+        "selectFarm": "Asignează la fermă",
+        "selectFarmHint": "Sau lasă gol pentru import neasignat",
+        "preview": "{{n}} câmpuri detectate",
+        "confirm": "Importă {{n}}",
+        "importing": "Se importă {{done}}/{{total}}…",
+        "done": "Gata. {{ok}} importate, {{failed}} eșuate.",
+        "noPolygons": "Nu s-au găsit poligoane în acest KML."
+      }
+    }
   },
   "parcels": {
     "title": "Câmpuri",
