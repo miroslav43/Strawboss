@@ -460,20 +460,6 @@ export class SyncService {
         }
       }
     } else if (mutation.action === 'update') {
-      // Org guard: verify the record belongs to the caller's organization
-      if (orgId !== null) {
-        const guardResult = await this.drizzleProvider.db.execute(
-          sql`SELECT organization_id FROM ${sql.raw(`"${mutation.table}"`)}
-              WHERE id = ${mutation.recordId}::uuid LIMIT 1`,
-        );
-        const guardRows = guardResult as unknown as { organization_id: string }[];
-        if (!guardRows.length || guardRows[0].organization_id !== orgId) {
-          throw new BadRequestException(
-            `Record ${mutation.recordId} does not belong to caller's organization`,
-          );
-        }
-      }
-
       // sync_version is bumped by the set_sync_version() DB trigger.
       const setClauses: ReturnType<typeof sql>[] = [sql`updated_at = NOW()`];
       for (const [key, value] of Object.entries(mutation.data)) {
@@ -488,38 +474,38 @@ export class SyncService {
       }
 
       const setClause = sql.join(setClauses, sql`, `);
+      // Org filter is folded into WHERE so the check is atomic with the write
+      // (no TOCTOU window between guard SELECT and UPDATE).
+      const orgGuard = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
       const updateResult = await this.drizzleProvider.db.execute(
         sql`UPDATE ${sql.raw(`"${mutation.table}"`)}
             SET ${setClause}
-            WHERE id = ${mutation.recordId}
+            WHERE id = ${mutation.recordId}${orgGuard}
             RETURNING *`,
       );
       const rows = updateResult as unknown as Record<string, unknown>[];
+      if (rows.length === 0 && orgId !== null) {
+        throw new BadRequestException(
+          `Record ${mutation.recordId} does not belong to caller's organization`,
+        );
+      }
       resultData = rows[0] ?? null;
       serverVersion = Number(resultData?.sync_version ?? 0);
     } else if (mutation.action === 'delete') {
-      // Org guard: verify the record belongs to the caller's organization
-      if (orgId !== null) {
-        const guardResult = await this.drizzleProvider.db.execute(
-          sql`SELECT organization_id FROM ${sql.raw(`"${mutation.table}"`)}
-              WHERE id = ${mutation.recordId}::uuid LIMIT 1`,
-        );
-        const guardRows = guardResult as unknown as { organization_id: string }[];
-        if (!guardRows.length || guardRows[0].organization_id !== orgId) {
-          throw new BadRequestException(
-            `Record ${mutation.recordId} does not belong to caller's organization`,
-          );
-        }
-      }
-
       // sync_version is bumped by the set_sync_version() DB trigger.
+      const orgGuard = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
       const deleteResult = await this.drizzleProvider.db.execute(
         sql`UPDATE ${sql.raw(`"${mutation.table}"`)}
             SET deleted_at = NOW(), updated_at = NOW()
-            WHERE id = ${mutation.recordId}
+            WHERE id = ${mutation.recordId}${orgGuard}
             RETURNING sync_version`,
       );
       const deleteRows = deleteResult as unknown as Record<string, unknown>[];
+      if (deleteRows.length === 0 && orgId !== null) {
+        throw new BadRequestException(
+          `Record ${mutation.recordId} does not belong to caller's organization`,
+        );
+      }
       serverVersion = Number(deleteRows[0]?.sync_version ?? 0);
     }
 
