@@ -221,7 +221,14 @@
     "route1d": "1d",
     "route3d": "3d",
     "route7d": "7d",
-    "routeGpsTrack": "— GPS track"
+    "routeGpsTrack": "— GPS track",
+    "liveStatus": {
+      "live": "LIVE",
+      "reconnecting": "Reconnecting…",
+      "offline": "Offline",
+      "lastUpdateAgo": "Last update: {{ago}}",
+      "onlineCount": "{{n}} online · {{off}} offline"
+    }
   },
   "mapList": {
     "parcels": "Fields / parcels",
@@ -332,7 +339,41 @@
     "noneSelected": "None selected",
     "add": "Add",
     "deleteConfirm": "Delete farm \"{{name}}\"?",
-    "deleteConfirmWithParcels": "Delete farm \"{{name}}\"? The {{count}} assigned fields will remain but will no longer be linked to this farm."
+    "deleteConfirmWithParcels": "Delete farm \"{{name}}\"? The {{count}} assigned fields will remain but will no longer be linked to this farm.",
+    "removeFromFarm": "Remove from farm",
+    "entityType": {
+      "persoana_juridica": "Legal entity",
+      "persoana_fizica": "Individual",
+      "select": "— Select —"
+    },
+    "form": {
+      "farmNameLabel": "Farm name *",
+      "nameLabel": "Name *",
+      "phoneLabel": "Phone *",
+      "entityTypeLabel": "Entity type",
+      "cuiLabel": "CUI",
+      "apiaCodeLabel": "RO APIA code",
+      "addressLabel": "Address",
+      "phonePlaceholder": "e.g. 0722 123 456",
+      "cuiPlaceholder": "e.g. RO12345678",
+      "apiaCodePlaceholder": "Farm APIA code"
+    },
+    "cuiDisplay": "CUI: {{cui}}",
+    "apiaDisplay": "APIA: {{apia}}",
+    "kml": {
+      "import": "Import KML",
+      "modal": {
+        "title": "Import parcels from KML",
+        "selectFile": "Select a .kml file",
+        "selectFarm": "Assign to farm",
+        "selectFarmHint": "Or leave empty to import unassigned",
+        "preview": "{{n}} parcels detected",
+        "confirm": "Import {{n}}",
+        "importing": "Importing {{done}}/{{total}}…",
+        "done": "Done. {{ok}} imported, {{failed}} failed.",
+        "noPolygons": "No polygons found in this KML."
+      }
+    }
   },
   "parcels": {
     "title": "Parcels",
@@ -548,7 +589,17 @@
       "depots": "Depots",
       "rankings": "Rankings",
       "costs": "Costs",
-      "operators": "Operators"
+      "operators": "Operators",
+      "kmPerTruck": "Km per truck"
+    },
+    "kmPerTruck": {
+      "title": "Kilometres travelled per truck per day",
+      "selectMachines": "Select trucks",
+      "allTrucks": "All trucks",
+      "noMachines": "No trucks in this organization.",
+      "totalKm": "{{km}} km",
+      "export": "Export CSV",
+      "empty": "No GPS data in the selected range."
     },
     "kpi": {
       "produced": "Produced",

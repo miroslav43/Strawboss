@@ -36,7 +36,12 @@ export type MapCommand =
   | { type: 'SET_DESTINATIONS'; destinations: DestinationMapData[] }
   | { type: 'SET_MACHINES'; machines: MachineMarkerData[] }
   | { type: 'SET_USER_LOCATION'; lat: number; lon: number; accuracy?: number }
-  | { type: 'SET_ROUTE'; points: { lat: number; lon: number }[]; distanceKm?: number; durationMin?: number }
+  | {
+      type: 'SET_ROUTE';
+      points: { lat: number; lon: number }[];
+      distanceKm?: number;
+      durationMin?: number;
+    }
   | { type: 'CLEAR_ROUTE' }
   | { type: 'HIGHLIGHT_PARCEL'; parcelId: string }
   | { type: 'FIT_BOUNDS' }
@@ -77,11 +82,18 @@ export type GeofenceEditorCommand =
   | { type: 'ENABLE_DRAW' }
   | { type: 'DISABLE_DRAW' }
   | { type: 'HIGHLIGHT_PARCEL'; parcelId: string }
-  | { type: 'CENTER_ON'; lat: number; lon: number; zoom?: number };
+  | { type: 'CENTER_ON'; lat: number; lon: number; zoom?: number }
+  // T1 — center-pin point picker. ENABLE_POINT_DRAW shows a fixed round pin
+  // in the centre of the WebView; the user pans the map underneath it.
+  // GET_CENTER asks the WebView to emit POINT_DRAWN with the current centre.
+  | { type: 'ENABLE_POINT_DRAW' }
+  | { type: 'DISABLE_POINT_DRAW' }
+  | { type: 'GET_CENTER' };
 
 export type GeofenceEditorEvent =
   | { type: 'MAP_READY' }
-  | { type: 'POLYGON_DRAWN'; geojson: object };
+  | { type: 'POLYGON_DRAWN'; geojson: object }
+  | { type: 'POINT_DRAWN'; lat: number; lon: number };
 
 export function serializeEditorCommand(cmd: GeofenceEditorCommand): string {
   return `window.handleCommand(${JSON.stringify(cmd)});`;

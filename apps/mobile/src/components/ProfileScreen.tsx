@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import {
   View,
   Text,
@@ -34,6 +35,13 @@ import { AvatarPicker } from '@/components/shared/AvatarPicker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSync } from '@/hooks/useSync';
 import { useTapSequence } from '@/hooks/useTapSequence';
+import { PointPicker } from '@/components/shared/PointPicker';
+
+const HOME_LOCATION_KEY = 'home_location_v1';
+interface HomeCoord {
+  lat: number;
+  lon: number;
+}
 
 const ROLE_LABEL: Record<string, string> = {
   driver: 'Șofer',
@@ -58,7 +66,29 @@ export function ProfileScreen() {
   const { highContrast, toggleHighContrast } = useThemeStore();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const [homeCoord, setHomeCoord] = useState<HomeCoord | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { modalProps, showModal, hideModal } = useModal();
+
+  // T1 — load any persisted home location.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await SecureStore.getItemAsync(HOME_LOCATION_KEY);
+        if (!raw || cancelled) return;
+        const parsed = JSON.parse(raw) as HomeCoord;
+        if (typeof parsed?.lat === 'number' && typeof parsed?.lon === 'number') {
+          setHomeCoord(parsed);
+        }
+      } catch {
+        /* ignore malformed value */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const { isConnected } = useNetworkStatus();
   const {
     pendingCount: queueCount,
@@ -300,6 +330,39 @@ export function ProfileScreen() {
           </View>
         ) : null}
 
+        {/* T1 — Locație de bază */}
+        {profile ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Locație de bază</Text>
+            {homeCoord ? (
+              <View style={styles.homePreviewRow}>
+                <MaterialCommunityIcons name="map-marker-check" size={20} color={colors.primary} />
+                <Text style={styles.homeCoordText}>
+                  {homeCoord.lat.toFixed(5)}, {homeCoord.lon.toFixed(5)}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setPickerOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Modifică locația mea"
+                >
+                  <Text style={styles.homeEditLink}>Modifică</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.homeSetRow}
+                onPress={() => setPickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Setează locația mea"
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="map-marker-plus" size={20} color={colors.primary} />
+                <Text style={styles.homeSetText}>Setează locația mea</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : null}
+
         {showStats && profile ? (
           <View style={styles.statsSection}>
             <Text style={styles.sectionTitle}>Starea mea</Text>
@@ -389,6 +452,21 @@ export function ProfileScreen() {
         </TouchableOpacity>
       </ScrollView>
       <AppModal {...modalProps} />
+      <PointPicker
+        visible={pickerOpen}
+        initialCoord={homeCoord}
+        onCancel={() => setPickerOpen(false)}
+        onPick={async (coord) => {
+          try {
+            await SecureStore.setItemAsync(HOME_LOCATION_KEY, JSON.stringify(coord));
+            setHomeCoord(coord);
+          } catch {
+            /* SecureStore unavailable — coord still applied in-memory */
+            setHomeCoord(coord);
+          }
+          setPickerOpen(false);
+        }}
+      />
     </View>
   );
 }
@@ -510,6 +588,35 @@ const styles = StyleSheet.create({
   machineDetail: { fontSize: 13, color: colors.neutral },
   machinePlate: { fontSize: 12, color: '#9ca3af' },
   noMachine: { fontSize: 14, color: '#8D6E63', fontStyle: 'italic' },
+  // T1 — Locație de bază card
+  homePreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  homeCoordText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#5D4037',
+    fontVariant: ['tabular-nums'],
+  },
+  homeEditLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  homeSetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  homeSetText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
   preferenceRow: {
     flexDirection: 'row',
     alignItems: 'center',

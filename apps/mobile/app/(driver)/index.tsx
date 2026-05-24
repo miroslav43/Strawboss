@@ -19,6 +19,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useMyTasks } from '@/hooks/useMyTasks';
 import { useNearbyLoaders } from '@/hooks/useNearbyLoaders';
 import { useSync } from '@/hooks/useSync';
+import { OpenMapsToLoaderButton } from '@/components/features/driver/OpenMapsToLoaderButton';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { colors, radii } from '@strawboss/ui-tokens';
@@ -465,6 +466,15 @@ export default function DriverTripsScreen() {
                   {item.status === 'loaded' && (
                     <Text style={styles.loadedHint}>Apasă pentru plecare</Text>
                   )}
+                  {/* @plan-a:open-maps-button-slot */}
+                  <OpenMapsToLoaderButton
+                    tripId={item.id}
+                    loaderMachineId={
+                      (item as LocalTrip & { loader_machine_id?: string | null })
+                        .loader_machine_id ?? null
+                    }
+                  />
+                  {/* @plan-a:end */}
                 </View>
               </TouchableOpacity>
             );

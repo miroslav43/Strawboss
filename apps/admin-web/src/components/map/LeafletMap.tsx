@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Maximize2, Plus, Warehouse } from 'lucide-react';
-import type { Parcel, MachineLastLocation, RoutePoint, DeliveryDestination } from '@strawboss/types';
+import type {
+  Parcel,
+  MachineLastLocation,
+  RoutePoint,
+  DeliveryDestination,
+} from '@strawboss/types';
 import { HarvestStatus } from '@strawboss/types';
 import { useUpdateParcelBoundary } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
@@ -12,7 +17,11 @@ import type { IconVariant } from './machine-icons';
 import type { IconPrefs } from '@/hooks/useMachineIconPrefs';
 
 function esc(s: string | null | undefined): string {
-  return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return (s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // Default map center: Deta, Timiș
@@ -20,7 +29,6 @@ const DETA_CENTER: [number, number] = [45.3883, 21.2311];
 const DEFAULT_ZOOM = 13;
 
 const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
-
 
 function isOnline(recordedAt: string): boolean {
   return Date.now() - new Date(recordedAt).getTime() < ONLINE_THRESHOLD_MS;
@@ -84,10 +92,16 @@ function createMachineIcon(
   pickSelected = false,
   variant: IconVariant = 0,
 ) {
-  const cfg  = getMachineVisual(type, variant);
+  const cfg = getMachineVisual(type, variant);
   const ring = pickSelected ? '#dc2626' : online ? '#16a34a' : '#9ca3af';
   const html = `<div style="width:34px;height:34px;border-radius:8px;background:${cfg.color};border:3px solid ${ring};box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;overflow:visible;">${cfg.svg}</div>`;
-  return L.divIcon({ html, className: '', iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -20] });
+  return L.divIcon({
+    html,
+    className: '',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -20],
+  });
 }
 
 function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): string {
@@ -109,7 +123,7 @@ function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): stri
       <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${displayName}</div>
       <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${esc(p.code)}</div>
       ${p.areaHectares != null ? `<div style="font-size:12px;color:#6b7280;">${p.areaHectares} ha</div>` : ''}
-      ${p.municipality  ? `<div style="font-size:12px;color:#6b7280;">${esc(p.municipality)}</div>`  : ''}
+      ${p.municipality ? `<div style="font-size:12px;color:#6b7280;">${esc(p.municipality)}</div>` : ''}
       <div style="margin-top:4px;font-size:11px;color:#6b7280;">
         ${esc(s.harvestStatusLabel)}: ${esc(s.labelHarvestStatus(p.harvestStatus))}
       </div>
@@ -127,7 +141,7 @@ function machinePopupHtml(
   selectionOnly: boolean,
 ): string {
   const online = isOnline(m.recordedAt);
-  const ago    = s.formatAgo(m.recordedAt);
+  const ago = s.formatAgo(m.recordedAt);
   const btnBase = `
     cursor:pointer;border:1px solid #d1d5db;border-radius:6px;
     padding:4px 10px;font-size:11px;font-family:sans-serif;
@@ -286,13 +300,15 @@ export function LeafletMap({
     [t],
   );
 
-  const mapRef           = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapInstanceRef   = useRef<any>(null);
+  const mapInstanceRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parcelLayersRef  = useRef<Map<string, any>>(new Map());
+  const parcelLayersRef = useRef<Map<string, any>>(new Map());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const machineLayersRef = useRef<Map<string, any>>(new Map());
+  // T8 — previous recordedAt per machine to detect freshly-updated markers.
+  const prevRecordedAtRef = useRef<Map<string, string>>(new Map());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const depositLayersRef = useRef<Map<string, any>>(new Map());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -307,45 +323,65 @@ export function LeafletMap({
   }, [parcels]);
 
   // Stable callback refs — always up-to-date inside async/event handlers.
-  const onParcelSelectRef   = useRef(onParcelSelect);
-  const onParcelEditRef     = useRef(onParcelEdit);
-  const onParcelDeleteRef   = useRef(onParcelDelete);
-  const onNewParcelDrawnRef   = useRef(onNewParcelDrawn);
-  const onNewDepositDrawnRef  = useRef(onNewDepositDrawn);
-  const onDrawCancelRef       = useRef(onDrawCancel);
-  const drawModeRef           = useRef(drawMode);
-  useEffect(() => { onParcelSelectRef.current   = onParcelSelect;   }, [onParcelSelect]);
-  useEffect(() => { onParcelEditRef.current     = onParcelEdit;     }, [onParcelEdit]);
-  useEffect(() => { onParcelDeleteRef.current   = onParcelDelete;   }, [onParcelDelete]);
-  useEffect(() => { onNewParcelDrawnRef.current = onNewParcelDrawn; }, [onNewParcelDrawn]);
-  useEffect(() => { onNewDepositDrawnRef.current = onNewDepositDrawn; }, [onNewDepositDrawn]);
-  useEffect(() => { onDrawCancelRef.current     = onDrawCancel;     }, [onDrawCancel]);
-  useEffect(() => { drawModeRef.current         = drawMode;         }, [drawMode]);
+  const onParcelSelectRef = useRef(onParcelSelect);
+  const onParcelEditRef = useRef(onParcelEdit);
+  const onParcelDeleteRef = useRef(onParcelDelete);
+  const onNewParcelDrawnRef = useRef(onNewParcelDrawn);
+  const onNewDepositDrawnRef = useRef(onNewDepositDrawn);
+  const onDrawCancelRef = useRef(onDrawCancel);
+  const drawModeRef = useRef(drawMode);
+  useEffect(() => {
+    onParcelSelectRef.current = onParcelSelect;
+  }, [onParcelSelect]);
+  useEffect(() => {
+    onParcelEditRef.current = onParcelEdit;
+  }, [onParcelEdit]);
+  useEffect(() => {
+    onParcelDeleteRef.current = onParcelDelete;
+  }, [onParcelDelete]);
+  useEffect(() => {
+    onNewParcelDrawnRef.current = onNewParcelDrawn;
+  }, [onNewParcelDrawn]);
+  useEffect(() => {
+    onNewDepositDrawnRef.current = onNewDepositDrawn;
+  }, [onNewDepositDrawn]);
+  useEffect(() => {
+    onDrawCancelRef.current = onDrawCancel;
+  }, [onDrawCancel]);
+  useEffect(() => {
+    drawModeRef.current = drawMode;
+  }, [drawMode]);
 
   const onShowRouteRef = useRef(onShowRoute);
-  useEffect(() => { onShowRouteRef.current = onShowRoute; }, [onShowRoute]);
+  useEffect(() => {
+    onShowRouteRef.current = onShowRoute;
+  }, [onShowRoute]);
 
   const onDepositSelectRef = useRef(onDepositSelect);
   const onMachineMarkerSelectRef = useRef(onMachineMarkerSelect);
-  useEffect(() => { onDepositSelectRef.current = onDepositSelect; }, [onDepositSelect]);
+  useEffect(() => {
+    onDepositSelectRef.current = onDepositSelect;
+  }, [onDepositSelect]);
   useEffect(() => {
     onMachineMarkerSelectRef.current = onMachineMarkerSelect;
   }, [onMachineMarkerSelect]);
 
-  const [editingId,   setEditingId]   = useState<string | null>(null);
-  const [saveError,   setSaveError]   = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [showParcels, setShowParcels] = useState(true);
-  const [showTrucks,  setShowTrucks]  = useState(true);
-  const [showBalers,  setShowBalers]  = useState(true);
-  const [showLoaders,  setShowLoaders]  = useState(true);
+  const [showTrucks, setShowTrucks] = useState(true);
+  const [showBalers, setShowBalers] = useState(true);
+  const [showLoaders, setShowLoaders] = useState(true);
   const [showDeposits, setShowDeposits] = useState(true);
-  const [mapReady,     setMapReady]     = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   const drawToolsDisabled = !!editParcel || !!editingId;
 
   // Ref so the global pm:create handler (registered once in map init) can read current editingId.
   const editingIdRef = useRef(editingId);
-  useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
+  useEffect(() => {
+    editingIdRef.current = editingId;
+  }, [editingId]);
 
   const updateBoundary = useUpdateParcelBoundary(apiClient);
 
@@ -364,9 +400,9 @@ export function LeafletMap({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as any)._getIconUrl;
       L.Icon.Default.mergeOptions({
-        iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
         iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-        shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       });
 
       if (!isMounted || mapInstanceRef.current) return;
@@ -375,7 +411,10 @@ export function LeafletMap({
 
       // Force Leaflet to recalculate container dimensions after the dynamic import.
       // requestAnimationFrame ensures the browser has laid out the container before measuring.
-      requestAnimationFrame(() => { map.invalidateSize(); map.setView(DETA_CENTER, DEFAULT_ZOOM); });
+      requestAnimationFrame(() => {
+        map.invalidateSize();
+        map.setView(DETA_CENTER, DEFAULT_ZOOM);
+      });
 
       L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -388,17 +427,17 @@ export function LeafletMap({
       if (!selectionOnly) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (map as any).pm.addControls({
-          position:         'topleft',
-          drawMarker:       false,
-          drawCircle:       false,
+          position: 'topleft',
+          drawMarker: false,
+          drawCircle: false,
           drawCircleMarker: false,
-          drawPolyline:     false,
-          drawRectangle:    true,
-          drawPolygon:      true,
-          editMode:         true,
-          dragMode:         true,
-          cutPolygon:       false,
-          removalMode:      false,
+          drawPolyline: false,
+          drawRectangle: true,
+          drawPolygon: true,
+          editMode: true,
+          dragMode: true,
+          cutPolygon: false,
+          removalMode: false,
         });
 
         // Global pm:create handler — catches draws from the Geoman toolbar directly,
@@ -423,7 +462,7 @@ export function LeafletMap({
         const container = e.popup.getElement() as HTMLElement | null;
         if (!container) return;
 
-        const editBtn   = container.querySelector('[data-edit-parcel-id]') as HTMLElement | null;
+        const editBtn = container.querySelector('[data-edit-parcel-id]') as HTMLElement | null;
         const deleteBtn = container.querySelector('[data-delete-parcel-id]') as HTMLElement | null;
 
         if (editBtn) {
@@ -445,7 +484,9 @@ export function LeafletMap({
           };
         }
 
-        const routeBtn = container.querySelector('[data-show-route-machine-id]') as HTMLElement | null;
+        const routeBtn = container.querySelector(
+          '[data-show-route-machine-id]',
+        ) as HTMLElement | null;
         if (routeBtn) {
           const mid = routeBtn.getAttribute('data-show-route-machine-id');
           routeBtn.onclick = () => {
@@ -555,7 +596,15 @@ export function LeafletMap({
     };
 
     void render();
-  }, [parcels, selectedParcelId, showParcels, hiddenParcelIds, mapReady, mapStrings, selectionOnly]);
+  }, [
+    parcels,
+    selectedParcelId,
+    showParcels,
+    hiddenParcelIds,
+    mapReady,
+    mapStrings,
+    selectionOnly,
+  ]);
 
   // ── 3. Sync machine markers ──────────────────────────────────────────────
   useEffect(() => {
@@ -568,28 +617,40 @@ export function LeafletMap({
       machineLayersRef.current.forEach((marker) => map.removeLayer(marker));
       machineLayersRef.current.clear();
 
+      const now = Date.now();
       machines.forEach((m) => {
         const online = isOnline(m.recordedAt);
         const pickSelected = selectedMachineId != null && m.machineId === selectedMachineId;
         const variant = (iconPrefs[m.machineId] ?? 0) as IconVariant;
         const icon = createMachineIcon(L, m.machineType, online, pickSelected, variant);
-        const marker = L.marker([m.lat, m.lon], { icon })
-          .bindPopup(
-            machinePopupHtml(m, mapStrings, machineTypeLabel(m.machineType), selectionOnly),
-            { maxWidth: 260 },
-          );
+        const marker = L.marker([m.lat, m.lon], { icon }).bindPopup(
+          machinePopupHtml(m, mapStrings, machineTypeLabel(m.machineType), selectionOnly),
+          { maxWidth: 260 },
+        );
 
         marker.on('click', () => {
           onMachineMarkerSelectRef.current?.(m.machineId);
         });
 
         const typeVisible =
-          (m.machineType === 'truck'  && showTrucks)  ||
-          (m.machineType === 'baler'  && showBalers)  ||
+          (m.machineType === 'truck' && showTrucks) ||
+          (m.machineType === 'baler' && showBalers) ||
           (m.machineType === 'loader' && showLoaders) ||
           (!['truck', 'baler', 'loader'].includes(m.machineType ?? '') && showTrucks);
         if (typeVisible && !hiddenMachineIds?.has(m.machineId)) marker.addTo(map);
         machineLayersRef.current.set(m.machineId, marker);
+
+        // T8 — pulse if the recordedAt changed within the last minute.
+        const prev = prevRecordedAtRef.current.get(m.machineId);
+        const recordedAtMs = new Date(m.recordedAt).getTime();
+        if (prev && prev !== m.recordedAt && now - recordedAtMs < 60_000) {
+          const iconEl = (marker as unknown as { _icon?: HTMLElement | null })._icon;
+          if (iconEl) {
+            iconEl.classList.add('marker-just-updated');
+            window.setTimeout(() => iconEl.classList.remove('marker-just-updated'), 1300);
+          }
+        }
+        prevRecordedAtRef.current.set(m.machineId, m.recordedAt);
       });
     };
 
@@ -697,10 +758,7 @@ export function LeafletMap({
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (map as any).pm.enableDraw(
-      'Polygon',
-      drawMode === 'deposit' ? depositStyle : parcelStyle,
-    );
+    (map as any).pm.enableDraw('Polygon', drawMode === 'deposit' ? depositStyle : parcelStyle);
 
     return () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -733,11 +791,17 @@ export function LeafletMap({
       });
 
       const startMarker = L.circleMarker(latLngs[0], {
-        radius: 6, color: '#16a34a', fillColor: '#16a34a', fillOpacity: 1,
+        radius: 6,
+        color: '#16a34a',
+        fillColor: '#16a34a',
+        fillOpacity: 1,
       }).bindTooltip(mapStrings.routeStart, { permanent: false });
 
       const endMarker = L.circleMarker(latLngs[latLngs.length - 1], {
-        radius: 6, color: '#dc2626', fillColor: '#dc2626', fillOpacity: 1,
+        radius: 6,
+        color: '#dc2626',
+        fillColor: '#dc2626',
+        fillOpacity: 1,
       }).bindTooltip(mapStrings.routeEnd, { permanent: false });
 
       const group = L.layerGroup([polyline, startMarker, endMarker]).addTo(map);
@@ -781,7 +845,7 @@ export function LeafletMap({
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    const L       = (await import('leaflet')).default;
+    const L = (await import('leaflet')).default;
     const boundary = parcel.boundary as unknown as GeoJSON.Geometry | null;
 
     if (editableLayerRef.current) {
@@ -814,7 +878,7 @@ export function LeafletMap({
   const handleSave = () => {
     if (!editingId || !editableLayerRef.current) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const layer    = editableLayerRef.current as any;
+    const layer = editableLayerRef.current as any;
     const geoJSON: GeoJSON.Feature =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (layer as any).toGeoJSON?.() ?? (layer as any).getLayers?.()[0]?.toGeoJSON();
@@ -853,7 +917,7 @@ export function LeafletMap({
       const b = layer.getBounds?.();
       if (b?.isValid()) {
         bounds.push([b.getSouthWest().lat, b.getSouthWest().lng]);
-        bounds.push([b.getNorthEast().lat,  b.getNorthEast().lng]);
+        bounds.push([b.getNorthEast().lat, b.getNorthEast().lng]);
       }
     });
     if (bounds.length > 0) {
@@ -869,81 +933,100 @@ export function LeafletMap({
 
       {/* Layer toggles + draw tools + fit (hidden in selection-only modals) */}
       {!selectionOnly && (
-      <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
-        <div className="flex flex-col gap-1 rounded-xl bg-white/95 backdrop-blur-sm px-3 py-2 shadow-lg text-sm">
-          <label className="flex cursor-pointer items-center gap-2 select-none">
-            <input type="checkbox" checked={showParcels} onChange={(e) => setShowParcels(e.target.checked)} className="accent-green-600" />
-            <span className="text-neutral-700">{t('leaflet.parcels')}</span>
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 select-none">
-            <input type="checkbox" checked={showDeposits} onChange={(e) => setShowDeposits(e.target.checked)} className="accent-blue-600" />
-            <span className="text-neutral-700">{t('leaflet.deposits')}</span>
-          </label>
-          <div className="my-0.5 border-t border-neutral-200" />
-          <label className="flex cursor-pointer items-center gap-2 select-none">
-            <input type="checkbox" checked={showTrucks} onChange={(e) => setShowTrucks(e.target.checked)} className="accent-green-500" />
-            <span className="text-neutral-700">{t('leaflet.trucks')}</span>
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 select-none">
-            <input type="checkbox" checked={showBalers} onChange={(e) => setShowBalers(e.target.checked)} className="accent-amber-500" />
-            <span className="text-neutral-700">{t('leaflet.balers')}</span>
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 select-none">
-            <input type="checkbox" checked={showLoaders} onChange={(e) => setShowLoaders(e.target.checked)} className="accent-blue-500" />
-            <span className="text-neutral-700">{t('leaflet.loaders')}</span>
-          </label>
-          <div className="my-0.5 border-t border-neutral-200" />
+        <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
+          <div className="flex flex-col gap-1 rounded-xl bg-white/95 backdrop-blur-sm px-3 py-2 shadow-lg text-sm">
+            <label className="flex cursor-pointer items-center gap-2 select-none">
+              <input
+                type="checkbox"
+                checked={showParcels}
+                onChange={(e) => setShowParcels(e.target.checked)}
+                className="accent-green-600"
+              />
+              <span className="text-neutral-700">{t('leaflet.parcels')}</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 select-none">
+              <input
+                type="checkbox"
+                checked={showDeposits}
+                onChange={(e) => setShowDeposits(e.target.checked)}
+                className="accent-blue-600"
+              />
+              <span className="text-neutral-700">{t('leaflet.deposits')}</span>
+            </label>
+            <div className="my-0.5 border-t border-neutral-200" />
+            <label className="flex cursor-pointer items-center gap-2 select-none">
+              <input
+                type="checkbox"
+                checked={showTrucks}
+                onChange={(e) => setShowTrucks(e.target.checked)}
+                className="accent-green-500"
+              />
+              <span className="text-neutral-700">{t('leaflet.trucks')}</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 select-none">
+              <input
+                type="checkbox"
+                checked={showBalers}
+                onChange={(e) => setShowBalers(e.target.checked)}
+                className="accent-amber-500"
+              />
+              <span className="text-neutral-700">{t('leaflet.balers')}</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 select-none">
+              <input
+                type="checkbox"
+                checked={showLoaders}
+                onChange={(e) => setShowLoaders(e.target.checked)}
+                className="accent-blue-500"
+              />
+              <span className="text-neutral-700">{t('leaflet.loaders')}</span>
+            </label>
+            <div className="my-0.5 border-t border-neutral-200" />
+            <button
+              type="button"
+              disabled={drawToolsDisabled}
+              onClick={() => onDrawModeChange?.(drawMode === 'parcel' ? null : 'parcel')}
+              title={t('map.drawNewFieldTooltip')}
+              className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                drawMode === 'parcel'
+                  ? 'border-amber-400 bg-amber-100 text-amber-900'
+                  : 'border-neutral-200 bg-white text-neutral-700 hover:bg-amber-50'
+              }`}
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              {t('map.drawNewField')}
+            </button>
+            <button
+              type="button"
+              disabled={drawToolsDisabled}
+              onClick={() => onDrawModeChange?.(drawMode === 'deposit' ? null : 'deposit')}
+              title={t('map.drawDepositGeofenceTooltip')}
+              className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                drawMode === 'deposit'
+                  ? 'border-blue-500 bg-blue-100 text-blue-900'
+                  : 'border-neutral-200 bg-white text-neutral-700 hover:bg-blue-50'
+              }`}
+            >
+              <Warehouse className="h-3.5 w-3.5 shrink-0" />
+              {t('map.drawDepositGeofence')}
+            </button>
+          </div>
           <button
             type="button"
-            disabled={drawToolsDisabled}
-            onClick={() =>
-              onDrawModeChange?.(drawMode === 'parcel' ? null : 'parcel')
-            }
-            title={t('map.drawNewFieldTooltip')}
-            className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-              drawMode === 'parcel'
-                ? 'border-amber-400 bg-amber-100 text-amber-900'
-                : 'border-neutral-200 bg-white text-neutral-700 hover:bg-amber-50'
-            }`}
+            onClick={handleFitBounds}
+            title={t('leaflet.fitBounds')}
+            aria-label={t('leaflet.fitBounds')}
+            className="rounded-lg bg-white p-2 shadow-lg hover:bg-neutral-50 transition-colors"
           >
-            <Plus className="h-3.5 w-3.5 shrink-0" />
-            {t('map.drawNewField')}
-          </button>
-          <button
-            type="button"
-            disabled={drawToolsDisabled}
-            onClick={() =>
-              onDrawModeChange?.(drawMode === 'deposit' ? null : 'deposit')
-            }
-            title={t('map.drawDepositGeofenceTooltip')}
-            className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-              drawMode === 'deposit'
-                ? 'border-blue-500 bg-blue-100 text-blue-900'
-                : 'border-neutral-200 bg-white text-neutral-700 hover:bg-blue-50'
-            }`}
-          >
-            <Warehouse className="h-3.5 w-3.5 shrink-0" />
-            {t('map.drawDepositGeofence')}
+            <Maximize2 className="h-4 w-4 text-neutral-600" />
           </button>
         </div>
-        <button
-          type="button"
-          onClick={handleFitBounds}
-          title={t('leaflet.fitBounds')}
-          aria-label={t('leaflet.fitBounds')}
-          className="rounded-lg bg-white p-2 shadow-lg hover:bg-neutral-50 transition-colors"
-        >
-          <Maximize2 className="h-4 w-4 text-neutral-600" />
-        </button>
-      </div>
       )}
 
       {/* Draw-mode instruction banner */}
       {!selectionOnly && drawMode === 'parcel' && (
         <div className="absolute bottom-6 left-1/2 z-[1000] -translate-x-1/2 flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 px-5 py-3 shadow-xl">
-          <span className="text-sm font-medium text-amber-800">
-            {t('leaflet.drawHint')}
-          </span>
+          <span className="text-sm font-medium text-amber-800">{t('leaflet.drawHint')}</span>
           <button
             type="button"
             onClick={() => onDrawCancelRef.current?.()}
@@ -974,7 +1057,9 @@ export function LeafletMap({
           <span className="text-sm font-medium text-neutral-700">
             {t('leaflet.editingBoundary')}{' '}
             <span className="text-primary">
-              {parcels.find((p) => p.id === editingId)?.name ?? parcels.find((p) => p.id === editingId)?.code ?? editingId}
+              {parcels.find((p) => p.id === editingId)?.name ??
+                parcels.find((p) => p.id === editingId)?.code ??
+                editingId}
             </span>
           </span>
           {saveError && <span className="text-xs text-red-500">{saveError}</span>}
