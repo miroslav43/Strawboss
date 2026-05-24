@@ -519,6 +519,7 @@ export class TaskAssignmentsService {
           FROM trips
           WHERE (id = ${tripId}::uuid OR parent_trip_id = ${tripId}::uuid)
             AND deleted_at IS NULL
+            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
           ORDER BY iteration_index ASC
         `);
         (row as Record<string, unknown>).iterations = iter as unknown as Record<string, unknown>[];
