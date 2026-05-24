@@ -1094,14 +1094,23 @@ export class TripsService implements OnModuleInit {
    * whether to alert admins.
    */
   async recordNoRecall(tripId: string, orgId: string | null, loaderId: string): Promise<void> {
-    await this.drizzleProvider.db.execute(sql`
+    const result = (await this.drizzleProvider.db.execute(sql`
       UPDATE trips
          SET delivery_notes = COALESCE(delivery_notes, '')
                             || E'\n[recall_no:' || ${loaderId} || ':' || NOW()::text || ']',
              updated_at = NOW()
        WHERE id = ${tripId}::uuid
+         AND status = 'completed'::trip_status
+         AND deleted_at IS NULL
          ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
-    `);
+       RETURNING id
+    `)) as unknown as { id: string }[];
+    if (!result.length) {
+      throw new BadRequestException({
+        error: 'invalid_state',
+        message: 'Cursa nu este într-o stare în care recall-ul poate fi refuzat.',
+      });
+    }
     this.logTripFlow(tripId, 'RECALL_NO', 'completed', 'completed');
   }
 
