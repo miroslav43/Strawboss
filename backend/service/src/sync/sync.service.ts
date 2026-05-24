@@ -54,7 +54,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'loader_operator_id',
     'loading_started_at',
     'loading_completed_at',
-    'parent_trip_id',
     'iteration_index',
     'client_id',
     'sync_version',
