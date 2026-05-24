@@ -14,6 +14,9 @@ interface FilterableFarmListProps {
   hiddenParcelIds: Set<string>;
   onToggleFarm: (farmId: string) => void;
   onToggleParcel: (parcelId: string) => void;
+  /** Optional controlled-collapse state from the parent. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 // ── Compact assign-parcel popover ──────────────────────────────────────────
@@ -35,7 +38,9 @@ function AssignPopover({ farms, onAssign, onClose }: AssignPopoverProps) {
 
   // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
@@ -68,7 +73,10 @@ function AssignPopover({ farms, onAssign, onClose }: AssignPopoverProps) {
           filtered.map((f) => (
             <li key={f.id}>
               <button
-                onClick={() => { onAssign(f.id); onClose(); }}
+                onClick={() => {
+                  onAssign(f.id);
+                  onClose();
+                }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 hover:bg-primary/5 hover:text-primary"
               >
                 <Plus className="h-3 w-3 flex-shrink-0" />
@@ -91,9 +99,19 @@ export function FilterableFarmList({
   hiddenParcelIds,
   onToggleFarm,
   onToggleParcel,
+  open: openProp,
+  onOpenChange,
 }: FilterableFarmListProps) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(true);
+  const [openInternal, setOpenInternal] = useState(true);
+  const open = openProp ?? openInternal;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (onOpenChange) onOpenChange(next);
+      else setOpenInternal(next);
+    },
+    [onOpenChange],
+  );
   const [expandedFarmIds, setExpandedFarmIds] = useState<Set<string>>(new Set());
   const [expandedUnassigned, setExpandedUnassigned] = useState(false);
   // Parcel ID whose assign-popover is open
@@ -104,7 +122,8 @@ export function FilterableFarmList({
   const toggleFarmExpand = useCallback((farmId: string) => {
     setExpandedFarmIds((prev) => {
       const next = new Set(prev);
-      if (next.has(farmId)) next.delete(farmId); else next.add(farmId);
+      if (next.has(farmId)) next.delete(farmId);
+      else next.add(farmId);
       return next;
     });
   }, []);
@@ -116,22 +135,25 @@ export function FilterableFarmList({
     [assignParcel],
   );
 
-  const unassignedParcels = useMemo(
-    () => parcels.filter((p) => !p.farmId),
-    [parcels],
-  );
+  const unassignedParcels = useMemo(() => parcels.filter((p) => !p.farmId), [parcels]);
 
   return (
     <div className="border-t border-neutral-200">
       {/* Section header */}
-      <div className="flex items-center justify-between px-4 py-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-          {t('mapList.farms')}
-        </p>
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+            {t('mapList.farms')}
+          </p>
+          <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] tabular-nums text-neutral-500">
+            {farms.length}
+          </span>
+        </div>
         <button
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => setOpen(!open)}
           title={open ? t('mapList.hide') : t('mapList.show')}
           aria-label={open ? t('mapList.hide') : t('mapList.show')}
+          aria-expanded={open}
           className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
         >
           {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -168,7 +190,11 @@ export function FilterableFarmList({
                     title={isHidden ? t('mapList.showOnMap') : t('mapList.hideFromMap')}
                     aria-label={isHidden ? t('mapList.showOnMap') : t('mapList.hideFromMap')}
                   >
-                    {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {isHidden ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )}
                   </button>
 
                   {/* Farm name + address */}
@@ -191,7 +217,11 @@ export function FilterableFarmList({
                     onClick={() => toggleFarmExpand(farm.id)}
                     className="flex-shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-100"
                   >
-                    {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    {isExpanded ? (
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    )}
                   </button>
                 </div>
 
@@ -206,7 +236,10 @@ export function FilterableFarmList({
                       farmParcels.map((parcel) => {
                         const parcelHidden = hiddenParcelIds.has(parcel.id);
                         return (
-                          <div key={parcel.id} className="flex items-center gap-1 pl-8 pr-3 py-1 hover:bg-neutral-100">
+                          <div
+                            key={parcel.id}
+                            className="flex items-center gap-1 pl-8 pr-3 py-1 hover:bg-neutral-100"
+                          >
                             {/* Per-parcel eye toggle */}
                             <button
                               onClick={() => onToggleParcel(parcel.id)}
@@ -216,9 +249,15 @@ export function FilterableFarmList({
                                   : 'text-green-500 hover:text-green-600'
                               }`}
                               title={parcelHidden ? t('mapList.showField') : t('mapList.hideField')}
-                              aria-label={parcelHidden ? t('mapList.showField') : t('mapList.hideField')}
+                              aria-label={
+                                parcelHidden ? t('mapList.showField') : t('mapList.hideField')
+                              }
                             >
-                              {parcelHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                              {parcelHidden ? (
+                                <EyeOff className="h-3 w-3" />
+                              ) : (
+                                <Eye className="h-3 w-3" />
+                              )}
                             </button>
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-xs text-neutral-600">
@@ -272,7 +311,10 @@ export function FilterableFarmList({
                     const parcelHidden = hiddenParcelIds.has(parcel.id);
                     const popoverOpen = assignPopoverParcelId === parcel.id;
                     return (
-                      <div key={parcel.id} className="relative flex items-center gap-1 pl-6 pr-3 py-1 hover:bg-neutral-100">
+                      <div
+                        key={parcel.id}
+                        className="relative flex items-center gap-1 pl-6 pr-3 py-1 hover:bg-neutral-100"
+                      >
                         {/* Eye toggle */}
                         <button
                           onClick={() => onToggleParcel(parcel.id)}
@@ -282,9 +324,15 @@ export function FilterableFarmList({
                               : 'text-green-500 hover:text-green-600'
                           }`}
                           title={parcelHidden ? t('mapList.showField') : t('mapList.hideField')}
-                          aria-label={parcelHidden ? t('mapList.showField') : t('mapList.hideField')}
+                          aria-label={
+                            parcelHidden ? t('mapList.showField') : t('mapList.hideField')
+                          }
                         >
-                          {parcelHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                          {parcelHidden ? (
+                            <EyeOff className="h-3 w-3" />
+                          ) : (
+                            <Eye className="h-3 w-3" />
+                          )}
                         </button>
 
                         <div className="min-w-0 flex-1">

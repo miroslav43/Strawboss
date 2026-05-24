@@ -13,8 +13,6 @@ import {
   AlertTriangle,
   Wheat,
   Map,
-  FolderOpen,
-  CheckCircle2,
 } from 'lucide-react';
 import area from '@turf/area';
 import { polygon as turfPolygon, multiPolygon as turfMultiPolygon } from '@turf/helpers';
@@ -40,10 +38,10 @@ import { FilterableParcelList } from '@/components/map/FilterableParcelList';
 import { FilterableMachineList } from '@/components/map/FilterableMachineList';
 import { FilterableFarmList } from '@/components/map/FilterableFarmList';
 import { apiClient } from '@/lib/api';
-import { type KmlParsedParcel } from '@/lib/kml-parser';
 import { useI18n } from '@/lib/i18n';
 import { clientLogger } from '@/lib/client-logger';
 import { useMachineIconPrefs } from '@/hooks/useMachineIconPrefs';
+import { useLocalStorageState } from '@/hooks/useLocalStorageState';
 
 // Leaflet cannot run on the server — disable SSR for the map component.
 const LeafletMap = dynamicImport(
@@ -194,170 +192,6 @@ function NewParcelModal({ geometry, onClose }: NewParcelModalProps) {
               </>
             )}
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── KML import modal ──────────────────────────────────────────────────────
-
-interface KmlImportModalProps {
-  parcels: KmlParsedParcel[];
-  onClose: () => void;
-}
-
-function KmlImportModal({ parcels, onClose }: KmlImportModalProps) {
-  const { t } = useI18n();
-  const createParcel = useCreateParcel(apiClient);
-  const [progress, setProgress] = useState<{ done: number; failed: number } | null>(null);
-  const [done, setDone] = useState(false);
-
-  const handleImport = async () => {
-    let failed = 0;
-    setProgress({ done: 0, failed: 0 });
-
-    for (let i = 0; i < parcels.length; i++) {
-      const p = parcels[i];
-      try {
-        await createParcel.mutateAsync({
-          boundary: JSON.stringify(p.boundary),
-          name: p.name || undefined,
-          municipality: p.municipality || undefined,
-        });
-      } catch {
-        failed++;
-      }
-      setProgress({ done: i + 1, failed });
-    }
-
-    setDone(true);
-  };
-
-  const importing = progress !== null && !done;
-  const total = parcels.length;
-
-  return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
-        {/* Header */}
-        <div className="flex items-center justify-between bg-primary px-6 py-4">
-          <div className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5 text-white" />
-            <h2 className="text-base font-semibold text-white">
-              {total === 1
-                ? t('map.importKmlTitle', { count: total })
-                : t('map.importKmlTitlePlural', { count: total })}
-            </h2>
-          </div>
-          {!importing && (
-            <button
-              onClick={onClose}
-              className="rounded-full p-1 text-white/70 transition-colors hover:bg-white/20 hover:text-white"
-            >
-              <XCircle className="h-5 w-5" />
-            </button>
-          )}
-        </div>
-
-        {/* Parcel list */}
-        {!done && (
-          <ul className="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
-            {parcels.map((p, i) => (
-              <li key={i} className="flex items-center justify-between px-5 py-2 text-sm">
-                <span className="truncate text-neutral-700">
-                  {p.name || t('map.kmlParcelUnnamed', { n: i + 1 })}
-                </span>
-                <span className="ml-4 flex-shrink-0 text-xs text-neutral-400">
-                  {p.previewHa != null ? `${p.previewHa} ha` : ''}
-                  {p.municipality ? ` · ${p.municipality}` : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* Progress / result */}
-        {importing && progress && (
-          <div className="px-6 py-4 text-sm text-neutral-600">
-            {t('map.importing', { done: progress.done, total })}
-            <div className="mt-2 h-2 w-full rounded-full bg-neutral-100">
-              <div
-                className="h-2 rounded-full bg-primary transition-all"
-                style={{ width: `${(progress.done / total) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {done && progress && (
-          <div className="px-6 py-5 text-sm">
-            <p className="font-medium text-neutral-800">{t('map.importDone')}</p>
-            <p className="mt-1 text-neutral-500">
-              <CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-green-600" />
-              {t('map.importSuccess', { ok: progress.done - progress.failed })}
-              {progress.failed > 0 && (
-                <>
-                  , <AlertTriangle className="inline h-3 w-3 text-amber-500" />{' '}
-                  {t('map.importFailed', { n: progress.failed })}
-                </>
-              )}
-            </p>
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-4">
-          {done ? (
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary/90"
-            >
-              {t('map.close')}
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={importing}
-                className="rounded-lg border border-neutral-300 bg-white px-5 py-2 text-sm font-medium text-neutral-700 shadow-sm hover:bg-neutral-100 disabled:opacity-50"
-              >
-                {t('map.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={handleImport}
-                disabled={importing}
-                className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {importing ? (
-                  <>
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    {t('map.importingEllipsis')}
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4" />
-                    {total === 1
-                      ? t('map.importN', { count: total })
-                      : t('map.importNPlural', { count: total })}
-                  </>
-                )}
-              </button>
-            </>
-          )}
         </div>
       </div>
     </div>
@@ -524,13 +358,19 @@ export default function MapPage() {
   const [routePoints, setRoutePoints] = useState<RoutePoint[] | undefined>(undefined);
   const [navigateToParcelId, setNavigateToParcelId] = useState<string | null>(null);
   const [navigateToMachineId, setNavigateToMachineId] = useState<string | null>(null);
-  const [kmlParcels, setKmlParcels] = useState<KmlParsedParcel[] | null>(null);
 
   // Visibility toggles
   const [hiddenFarmIds, setHiddenFarmIds] = useState<Set<string>>(new Set());
   const [hiddenParcelIds, setHiddenParcelIds] = useState<Set<string>>(new Set());
   const [hiddenMachineIds, setHiddenMachineIds] = useState<Set<string>>(new Set());
   const [mapSidebarOpen, setMapSidebarOpen] = useState(true);
+
+  // T2: per-section collapse state, persisted across reloads.
+  const [sectionsOpen, setSectionsOpen] = useLocalStorageState<{
+    parcels: boolean;
+    machines: boolean;
+    farms: boolean;
+  }>('strawboss.map.sidebar.sections.v1', { parcels: true, machines: true, farms: true });
 
   const hiddenFarmIdsRef = useRef(hiddenFarmIds);
   useEffect(() => {
@@ -694,8 +534,9 @@ export default function MapPage() {
             onParcelEditBoundary={handleParcelEditBoundary}
             onParcelDelete={handleParcelDelete}
             onParcelNavigate={handleParcelNavigate}
-            onKmlParsed={setKmlParcels}
             deleteIsPending={deleteParcel.isPending}
+            open={sectionsOpen.parcels}
+            onOpenChange={(next) => setSectionsOpen((prev) => ({ ...prev, parcels: next }))}
           />
           <FilterableMachineList
             machines={machines}
@@ -703,6 +544,8 @@ export default function MapPage() {
             onToggleMachineVisibility={handleToggleMachineVisibility}
             onMachineNavigate={handleMachineNavigate}
             onMachineShowRoute={handleShowRoute}
+            open={sectionsOpen.machines}
+            onOpenChange={(next) => setSectionsOpen((prev) => ({ ...prev, machines: next }))}
           />
           <FilterableFarmList
             farms={farms}
@@ -711,6 +554,8 @@ export default function MapPage() {
             hiddenParcelIds={hiddenParcelIds}
             onToggleFarm={handleToggleFarm}
             onToggleParcel={handleToggleParcel}
+            open={sectionsOpen.farms}
+            onOpenChange={(next) => setSectionsOpen((prev) => ({ ...prev, farms: next }))}
           />
         </aside>
 
@@ -792,9 +637,6 @@ export default function MapPage() {
           onClose={() => setEditingParcelInfo(null)}
         />
       )}
-
-      {/* KML import modal */}
-      {kmlParcels && <KmlImportModal parcels={kmlParcels} onClose={() => setKmlParcels(null)} />}
     </div>
   );
 }
