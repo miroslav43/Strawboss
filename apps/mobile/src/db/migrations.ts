@@ -49,6 +49,10 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   // the driver does not have to re-enter if the app crashes mid-flow (FM-1).
   await addColumnIfMissing(db, 'trips', 'delivery_draft_json', 'TEXT');
 
+  // Plan B T9.1 — local parcel cache mirrors crop_type for offline map labels
+  // and the baler parcel detail screen.
+  await addColumnIfMissing(db, 'parcels', 'crop_type', 'TEXT');
+
   // Create indexes for common queries
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_operations_trip_id ON operations(trip_id)`);
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_operations_status ON operations(status)`);

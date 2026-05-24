@@ -503,6 +503,7 @@ export class SyncManager {
         area_hectares: typeof d['area_hectares'] === 'number' ? d['area_hectares'] : null,
         municipality: typeof d['municipality'] === 'string' ? d['municipality'] : null,
         harvest_status: typeof d['harvest_status'] === 'string' ? d['harvest_status'] : null,
+        crop_type: typeof d['crop_type'] === 'string' ? d['crop_type'] : null,
         centroid_json:
           centroid !== null && centroid !== undefined ? JSON.stringify(centroid) : null,
         geometry:

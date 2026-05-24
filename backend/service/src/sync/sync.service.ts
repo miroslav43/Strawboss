@@ -1,12 +1,7 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import type {
-  SyncMutation,
-  SyncResult,
-  SyncResponse,
-  SyncTombstone,
-} from '@strawboss/types';
+import type { SyncMutation, SyncResult, SyncResponse, SyncTombstone } from '@strawboss/types';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -184,6 +179,7 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'notes',
     'is_active',
     'harvest_status',
+    'crop_type',
     'farmtrack_geofence_id',
     'farm_id',
     'sync_version',
@@ -626,10 +622,7 @@ export class SyncService {
             table,
             recordId: row.id as string,
             serverVersion,
-            deletedAt:
-              deletedAt instanceof Date
-                ? deletedAt.toISOString()
-                : (deletedAt as string),
+            deletedAt: deletedAt instanceof Date ? deletedAt.toISOString() : (deletedAt as string),
           });
           tombstoneCount++;
           continue;

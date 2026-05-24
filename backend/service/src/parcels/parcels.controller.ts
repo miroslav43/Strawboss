@@ -32,10 +32,13 @@ export class ParcelsController {
     @CurrentUser() user: RequestUser,
     @Query('municipality') municipality?: string,
     @Query('isActive') isActive?: string,
+    @Query('cropType') cropType?: string,
   ) {
+    // T9.2 — `isActive` accepted for back-compat but ignored downstream.
     return this.parcelsService.list(user.organizationId, {
       municipality,
       isActive: isActive !== undefined ? isActive === 'true' : undefined,
+      cropType,
     });
   }
 
@@ -70,7 +73,11 @@ export class ParcelsController {
 
   @Delete(':id')
   @Roles('admin' as UserRole)
-  async softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser, @Req() req: { user?: { id: string; role: string } }) {
+  async softDelete(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Req() req: { user?: { id: string; role: string } },
+  ) {
     this.winston.info('DELETE parcel started', {
       context: 'ParcelsController',
       parcelId: id,
