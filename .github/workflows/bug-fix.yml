@@ -21,7 +21,7 @@ on:
       min_severity:
         description: 'Severitate minimă (critical / high / medium / low)'
         required: false
-        default: 'high'
+        default: 'medium'
 
 # Un singur job per PR — push-uri noi anulează run-ul în curs.
 concurrency:
@@ -127,7 +127,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           PR_NUMBER:    ${{ steps.detect.outputs.pr_number || inputs.pr_number || '3' }}
-          MIN_SEVERITY: ${{ inputs.min_severity || 'high' }}
+          MIN_SEVERITY: ${{ inputs.min_severity || 'medium' }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
