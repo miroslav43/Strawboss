@@ -1006,8 +1006,15 @@ export class TripsService implements OnModuleInit {
       const iterationIndex = Number(next[0]?.n ?? 2);
 
       // 4. Block when parcel has no bales left.
+      const sourceParcelId = t.source_parcel_id as string | null;
+      if (!sourceParcelId) {
+        throw new BadRequestException({
+          error: 'no_parcel',
+          message: 'Cursa nu are parcelă sursă.',
+        });
+      }
       const remaining = await this.computeRemainingBalesOnParcel(
-        t.source_parcel_id as string,
+        sourceParcelId,
         orgId,
         tx,
       );
@@ -1033,7 +1040,7 @@ export class TripsService implements OnModuleInit {
         ) VALUES (
           ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
           ${tripNumber}, ${TripStatus.planned}::trip_status,
-          ${t.source_parcel_id}, true,
+          ${sourceParcelId}, true,
           ${t.truck_id}, ${t.driver_id},
           ${t.loader_id}, ${t.loader_operator_id},
           ${t.destination_name}, ${t.destination_address},
@@ -1066,7 +1073,7 @@ export class TripsService implements OnModuleInit {
         rootId,
         iterationIndex,
         recall,
-        parcelId: t.source_parcel_id,
+        parcelId: sourceParcelId,
       });
 
       if (recall) {
