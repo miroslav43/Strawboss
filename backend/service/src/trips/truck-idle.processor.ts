@@ -9,7 +9,12 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AlertsService } from '../alerts/alerts.service';
 import { QUEUE_TRUCK_IDLE_CHECK } from '../jobs/queues';
 
-const IDLE_THRESHOLD_MIN = Number(process.env.STRAWBOSS_TRUCK_IDLE_THRESHOLD_MIN ?? '30');
+function readIdleThresholdMin(): number {
+  const raw = process.env.STRAWBOSS_TRUCK_IDLE_THRESHOLD_MIN;
+  const parsed = raw == null ? NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 30;
+}
+const IDLE_THRESHOLD_MIN = readIdleThresholdMin();
 
 /**
  * Plan C — periodic scan that detects trucks idle past the threshold and
