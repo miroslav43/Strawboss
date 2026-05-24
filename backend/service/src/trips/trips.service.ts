@@ -1049,6 +1049,17 @@ export class TripsService implements OnModuleInit {
       `)) as unknown as Record<string, unknown>[];
       const newTrip = inserted[0];
 
+      // Mark the source trip so complete()'s alreadyAnswered guard suppresses
+      // re-prompts (e.g. after a dispute resolution re-runs the hook).
+      await tx.execute(sql`
+        UPDATE trips
+           SET delivery_notes = COALESCE(delivery_notes, '')
+                              || E'\n[recall_yes:' || ${currentTripId} || ':' || NOW()::text || ']',
+               updated_at = NOW()
+         WHERE id = ${currentTripId}::uuid
+           ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+      `);
+
       this.logTripFlow(newTrip.id as string, 'NEXT_ITERATION', 'new', TripStatus.planned);
       this.winston.log('flow', `Course ${rootId}: new iteration ${iterationIndex}`, {
         context: 'TripsService',
