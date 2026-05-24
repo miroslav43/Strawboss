@@ -302,6 +302,22 @@ const PULL_COLUMNS: Record<string, string[]> = {
     'updated_at',
     'sync_version',
   ],
+  // `boundary` and `centroid` (PostGIS geometry) are intentionally excluded —
+  // raw projection would surface WKB hex that the mobile layer cannot parse.
+  // Geometry continues to be served through the REST parcels endpoint
+  // (useCachedParcels), which serialises via ST_AsGeoJSON.
+  parcels: [
+    'id',
+    'code',
+    'name',
+    'area_hectares',
+    'municipality',
+    'harvest_status',
+    'crop_type',
+    'created_at',
+    'updated_at',
+    'sync_version',
+  ],
 };
 
 function validateColumnName(table: string, column: string): void {
