@@ -50,7 +50,9 @@ export class TruckIdleProcessor extends WorkerHost {
     const rows = (await this.drizzleProvider.db.execute(sql`
       WITH last_completed AS (
         SELECT DISTINCT ON (truck_id)
-               truck_id, id AS trip_id, source_parcel_id, organization_id,
+               truck_id, id AS trip_id,
+               COALESCE(parent_trip_id, id) AS root_id,
+               source_parcel_id, organization_id,
                completed_at, delivery_notes
           FROM trips
          WHERE status = 'completed'::trip_status
@@ -65,7 +67,7 @@ export class TruckIdleProcessor extends WorkerHost {
         (
           SELECT COUNT(*)::int FROM trips t2
            WHERE t2.deleted_at IS NULL
-             AND (t2.parent_trip_id = lc.trip_id OR t2.id = lc.trip_id)
+             AND (t2.parent_trip_id = lc.root_id OR t2.id = lc.root_id)
              AND t2.status IN (
                'planned'::trip_status, 'loading'::trip_status,
                'loaded'::trip_status, 'in_transit'::trip_status,
