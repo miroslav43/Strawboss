@@ -375,12 +375,25 @@
       "planned": "Planificat",
       "to_harvest": "De recoltat",
       "harvesting": "În recoltă",
-      "harvested": "Recoltat"
+      "partial_harvested": "Recoltat parțial",
+      "harvested": "Recoltat",
+      "in_loading": "În încărcare",
+      "loaded": "Încărcat",
+      "completed": "Finalizat"
+    },
+    "crop": {
+      "label": "Cultură",
+      "placeholder": "Alege cultura…",
+      "grau": "Grâu",
+      "orz": "Orz",
+      "rapita": "Rapiță",
+      "plante_nutret": "Plante de nutreț"
     },
     "noName": "fără nume",
     "stats": {
       "total": "Total câmpuri",
       "active": "Câmpuri active",
+      "withCrop": "Cu cultură setată",
       "area": "Suprafață totală",
       "unassigned": "Neasignate"
     },
