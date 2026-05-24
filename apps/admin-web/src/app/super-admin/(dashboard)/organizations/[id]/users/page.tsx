@@ -39,6 +39,7 @@ const ALL_ROLES: UserRole[] = [
   UserRole.loader_operator,
   UserRole.driver,
   UserRole.geofence_maker,
+  UserRole.depot_manager,
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -49,6 +50,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.loader_operator]: 'Loader Operator',
   [UserRole.driver]: 'Driver',
   [UserRole.geofence_maker]: 'Geofence Maker',
+  [UserRole.depot_manager]: 'Depot Manager',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -59,6 +61,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.loader_operator]: 'bg-blue-100 text-blue-700',
   [UserRole.driver]: 'bg-green-100 text-green-700',
   [UserRole.geofence_maker]: 'bg-teal-100 text-teal-700',
+  [UserRole.depot_manager]: 'bg-orange-100 text-orange-700',
 };
 
 const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
@@ -69,6 +72,7 @@ const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
   [UserRole.loader_operator]: <span className="text-sm">#</span>,
   [UserRole.driver]: <span className="text-sm">&gt;</span>,
   [UserRole.geofence_maker]: <span className="text-sm">&#9676;</span>,
+  [UserRole.depot_manager]: <span className="text-sm">&#9636;</span>,
 };
 
 // ── Shared UI atoms ───────────────────────────────────────────────────────
@@ -125,9 +129,7 @@ function slugifyClient(s: string): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
-function deriveCredentials(
-  fullName: string,
-): { username: string; email: string } | null {
+function deriveCredentials(fullName: string): { username: string; email: string } | null {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length !== 2) return null;
   const [rawSurname, rawFirstname] = parts;
@@ -180,9 +182,7 @@ function PinCell({ pin }: { pin: string | null }) {
 
   return (
     <div className="flex items-center gap-1">
-      <span className="font-mono text-sm text-neutral-700">
-        {visible ? pin : '••••'}
-      </span>
+      <span className="font-mono text-sm text-neutral-700">{visible ? pin : '••••'}</span>
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
@@ -230,17 +230,13 @@ function DeactivateDialog({
             <div>
               <p className="font-semibold text-neutral-800">Deactivate this account?</p>
               <p className="text-sm text-neutral-500">
-                <span className="font-medium">{user.fullName}</span> will no longer be able to log in.
+                <span className="font-medium">{user.fullName}</span> will no longer be able to log
+                in.
               </p>
             </div>
           </div>
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onCancel}
-              className={cancelBtnCls}
-              disabled={isPending}
-            >
+            <button type="button" onClick={onCancel} className={cancelBtnCls} disabled={isPending}>
               Cancel
             </button>
             <button
@@ -344,9 +340,7 @@ function CreateAccountModal({
           <FormField label="Role" required>
             <select
               value={form.role}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, role: e.target.value as UserRole }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
               className={inputCls}
             >
               {ALL_ROLES.map((role) => (
@@ -379,9 +373,7 @@ function CreateAccountModal({
                   <input
                     type="text"
                     value={displayUsername}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, usernameOverride: e.target.value }))
-                    }
+                    onChange={(e) => setForm((f) => ({ ...f, usernameOverride: e.target.value }))}
                     className="flex-1 rounded border border-neutral-300 bg-white px-2 py-1 font-mono text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder={preview.username}
                     title="Override the auto-generated username before creating"
@@ -441,13 +433,7 @@ function CreateAccountModal({
 
 // ── Credentials reveal — shown right after creation ──────────────────────
 
-function CredentialsRevealDialog({
-  user,
-  onClose,
-}: {
-  user: User;
-  onClose: () => void;
-}) {
+function CredentialsRevealDialog({ user, onClose }: { user: User; onClose: () => void }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = async (label: string, value: string) => {
@@ -480,16 +466,14 @@ function CredentialsRevealDialog({
 
         <div className="space-y-3 p-6">
           <p className="text-xs text-neutral-500">
-            Copy the credentials now — the PIN is shown only here. You can also
-            view and change it later from the Edit dialog.
+            Copy the credentials now — the PIN is shown only here. You can also view and change it
+            later from the Edit dialog.
           </p>
 
           <div className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
             {rows.map((r) => (
               <div key={r.label} className="flex items-center gap-2">
-                <span className="w-40 shrink-0 text-xs text-neutral-500">
-                  {r.label}:
-                </span>
+                <span className="w-40 shrink-0 text-xs text-neutral-500">{r.label}:</span>
                 <span className="flex-1 truncate font-mono text-sm text-neutral-800">
                   {r.value || '—'}
                 </span>
@@ -503,9 +487,7 @@ function CredentialsRevealDialog({
                     <Copy className="h-3.5 w-3.5" />
                   </button>
                 )}
-                {copied === r.label && (
-                  <span className="text-xs text-green-600">Copied</span>
-                )}
+                {copied === r.label && <span className="text-xs text-green-600">Copied</span>}
               </div>
             ))}
           </div>
@@ -599,9 +581,7 @@ function EditUserModal({
           <FormField label="Role" required>
             <select
               value={form.role}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, role: e.target.value as UserRole }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
               className={inputCls}
             >
               {ALL_ROLES.map((role) => (
@@ -718,10 +698,7 @@ export default function SuperAdminOrgUsersPage() {
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
 
-  const { data: usersRaw, isLoading, isError, error } = useSuperAdminUsers(
-    apiClient,
-    orgId,
-  );
+  const { data: usersRaw, isLoading, isError, error } = useSuperAdminUsers(apiClient, orgId);
   const deactivate = useDeactivateSuperAdminUser(apiClient, orgId);
 
   const users: User[] = Array.isArray(usersRaw) ? (usersRaw as User[]) : [];
@@ -829,9 +806,7 @@ export default function SuperAdminOrgUsersPage() {
 
       {/* Loading / error */}
       {isLoading && (
-        <div className="py-12 text-center text-sm text-neutral-400">
-          Loading accounts…
-        </div>
+        <div className="py-12 text-center text-sm text-neutral-400">Loading accounts…</div>
       )}
       {isError && (
         <div className="py-12 text-center text-sm text-red-500">
@@ -858,10 +833,7 @@ export default function SuperAdminOrgUsersPage() {
             <tbody className="divide-y divide-neutral-100">
               {groups.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={8}
-                    className="px-4 py-12 text-center text-neutral-400"
-                  >
+                  <td colSpan={8} className="px-4 py-12 text-center text-neutral-400">
                     No accounts yet. Click &quot;New account&quot; to create the first one.
                   </td>
                 </tr>
@@ -959,17 +931,10 @@ export default function SuperAdminOrgUsersPage() {
         />
       )}
       {createdUser && (
-        <CredentialsRevealDialog
-          user={createdUser}
-          onClose={() => setCreatedUser(null)}
-        />
+        <CredentialsRevealDialog user={createdUser} onClose={() => setCreatedUser(null)} />
       )}
       {editTarget && (
-        <EditUserModal
-          orgId={orgId}
-          user={editTarget}
-          onClose={() => setEditTarget(null)}
-        />
+        <EditUserModal orgId={orgId} user={editTarget} onClose={() => setEditTarget(null)} />
       )}
       {deactivateTarget && (
         <DeactivateDialog

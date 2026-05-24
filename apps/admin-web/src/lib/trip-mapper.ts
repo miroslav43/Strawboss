@@ -23,6 +23,8 @@ export function toTripCamel(raw: unknown): Trip | null {
     loaderOperatorId: (r.loader_operator_id as string | null) ?? null,
     driverId: (r.driver_id as string) ?? '',
     baleCount: Number(r.bale_count ?? 0),
+    parentTripId: (r.parent_trip_id as string | null) ?? null,
+    iterationIndex: Number(r.iteration_index ?? 1),
     loadingStartedAt: (r.loading_started_at as string | null) ?? null,
     loadingCompletedAt: (r.loading_completed_at as string | null) ?? null,
     departureOdometerKm: num(r.departure_odometer_km),
