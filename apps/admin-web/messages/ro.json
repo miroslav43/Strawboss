@@ -501,18 +501,18 @@
     "online": {
       "online": "Conectat",
       "offline": "Deconectat",
-      "lastSeen": "Ultima activitate {when}",
+      "lastSeen": "Ultima activitate {{when}}",
       "neverSeen": "Niciodată conectat"
     },
     "truck": {
       "iterations": {
         "title": "Curse pe această parcelă",
-        "iterationN": "Cursa {n}",
+        "iterationN": "Cursa {{n}}",
         "bales": "baloți",
-        "remaining": "{n} baloți rămași",
+        "remaining": "{{n}} baloți rămași",
         "recallAwaiting": "Așteaptă confirmarea încărcătorului",
         "recallDeclined": "Încărcătorul nu a chemat înapoi",
-        "idleAlert": "Camion inactiv de {min} min"
+        "idleAlert": "Camion inactiv de {{min}} min"
       }
     }
   },
