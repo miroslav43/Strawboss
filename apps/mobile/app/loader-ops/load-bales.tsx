@@ -602,6 +602,8 @@ async function applyOptimistic(input: OptimisticInput): Promise<void> {
         has_pending_transition: 0,
         delivery_step_progress: null,
         delivery_draft_json: null,
+        parent_trip_id: null,
+        iteration_index: 1,
         created_at: now,
         updated_at: now,
         server_version: 0,

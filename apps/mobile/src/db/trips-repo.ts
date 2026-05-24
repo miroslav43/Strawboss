@@ -34,6 +34,10 @@ export interface LocalTrip {
   delivery_step_progress: number | null;
   /** FM-1: JSON blob with in-progress delivery data for crash recovery. */
   delivery_draft_json: string | null;
+  /** Plan C — root iteration when NULL, otherwise FK to the root trip in the course. */
+  parent_trip_id: string | null;
+  /** Plan C — 1-based iteration counter inside the course. Defaults to 1. */
+  iteration_index: number | null;
   created_at: string;
   updated_at: string;
   server_version: number;

@@ -30,6 +30,10 @@ export enum MobileNotificationType {
   trip_completed = 'trip_completed',
   trip_disputed = 'trip_disputed',
   broadcast = 'broadcast',
+  // Plan C — loader recall flow.
+  loader_recall_prompt = 'loader_recall_prompt',
+  trip_next_iteration = 'trip_next_iteration',
+  truck_idle = 'truck_idle',
 }
 
 export enum MobileNotificationSeverity {

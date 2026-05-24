@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth-store';
 export default function DriverFuelScreen() {
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
-  const [stepTitle, setStepTitle] = useState(FUEL_STEP_TITLES.receipt);
+  const [stepTitle, setStepTitle] = useState(FUEL_STEP_TITLES.liters);
 
   return (
     <View style={styles.outerContainer}>
@@ -24,7 +24,7 @@ export default function DriverFuelScreen() {
             onStepChange={setStepTitle}
             onComplete={() => {
               // Stay on tab — reset to first step title
-              setStepTitle(FUEL_STEP_TITLES.receipt);
+              setStepTitle(FUEL_STEP_TITLES.liters);
             }}
             onCancel={() => {
               // No-op on tab screen
