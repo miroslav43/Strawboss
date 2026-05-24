@@ -37,6 +37,13 @@
           "isAndroidForegroundServiceEnabled": true,
           "isIosBackgroundLocationEnabled": true
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0A5C36",
+          "sounds": ["./assets/sounds/baler-exit.wav"]
+        }
       ]
     ],
     "android": {

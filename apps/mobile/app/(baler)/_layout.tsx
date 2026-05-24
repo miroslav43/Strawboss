@@ -13,7 +13,8 @@ import {
 } from '@/constants/tabBarConfig';
 
 export default function BalerTabLayout() {
-  const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
+  const { activeAlert, dismissAlert, confirmParcelDone, confirmParcelEntry, cancelParcelEntry } =
+    useGeofenceNotifications();
   const insets = useSafeAreaInsets();
 
   return (
@@ -88,6 +89,8 @@ export default function BalerTabLayout() {
           alert={activeAlert}
           onDismiss={dismissAlert}
           onConfirmParcelDone={confirmParcelDone}
+          onConfirmParcelEntry={confirmParcelEntry}
+          onCancelParcelEntry={cancelParcelEntry}
         />
         <SyncQueueBannerHost />
       </View>
