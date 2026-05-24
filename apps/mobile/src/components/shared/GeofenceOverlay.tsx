@@ -4,23 +4,61 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { BigButton } from '@/components/ui/BigButton';
+import { BalerEntryCountdown } from '@/components/features/production/BalerEntryCountdown';
 import type { GeofenceAlert } from '@/hooks/useGeofenceNotifications';
 
 interface GeofenceOverlayProps {
   alert: GeofenceAlert | null;
   onDismiss: () => void;
   onConfirmParcelDone: (assignmentId: string, baleCount?: number) => Promise<void>;
+  /**
+   * T6 enter — fires the auto-confirm POST after the 10 s countdown finishes.
+   * Optional so existing loader/driver layouts that have not yet wired up the
+   * baler hook still type-check.
+   */
+  onConfirmParcelEntry?: (assignmentId: string) => Promise<void>;
+  /** T6 enter — operator tapped Anulează during the countdown. */
+  onCancelParcelEntry?: () => void;
 }
 
 /**
  * Overlay displayed on top of all screens when a geofence event occurs.
  *
  * - field_entry: green banner at top, auto-dismiss 5s
+ * - entry_confirm (T6 baler enter): 10 s countdown modal
  * - deposit_entry: bottom-sheet popup with an action to mark arrival
  * - exit_confirm: fullscreen modal with NumericPad for bale count entry
  */
-export function GeofenceOverlay({ alert, onDismiss, onConfirmParcelDone }: GeofenceOverlayProps) {
+export function GeofenceOverlay({
+  alert,
+  onDismiss,
+  onConfirmParcelDone,
+  onConfirmParcelEntry,
+  onCancelParcelEntry,
+}: GeofenceOverlayProps) {
   if (!alert) return null;
+
+  if (alert.type === 'entry_confirm') {
+    return (
+      <BalerEntryCountdown
+        parcelCode={alert.parcelCode ?? alert.parcelName}
+        cropType={alert.cropType ?? null}
+        onConfirm={() => {
+          // Defer to the optional handler when present; otherwise just dismiss
+          // so the user is not stuck on the overlay (defensive fallback).
+          if (onConfirmParcelEntry) {
+            void onConfirmParcelEntry(alert.assignmentId);
+          } else {
+            onDismiss();
+          }
+        }}
+        onCancel={() => {
+          if (onCancelParcelEntry) onCancelParcelEntry();
+          else onDismiss();
+        }}
+      />
+    );
+  }
 
   if (alert.type === 'exit_confirm') {
     return <ExitConfirmModal alert={alert} onDismiss={onDismiss} onConfirm={onConfirmParcelDone} />;

@@ -79,6 +79,8 @@ async function persistParcelsToCache(parcels: Parcel[]): Promise<void> {
         area_hectares: p.areaHectares ?? null,
         municipality: p.municipality ?? null,
         harvest_status: p.harvestStatus ?? null,
+        // T9.1 — crop_type is nullable on storage; pass through if present.
+        crop_type: p.cropType ?? null,
         centroid_json: p.centroid ? JSON.stringify(p.centroid) : null,
         geometry: p.boundary ? JSON.stringify(p.boundary) : null,
         cached_at: now,

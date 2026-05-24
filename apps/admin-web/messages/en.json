@@ -375,12 +375,25 @@
       "planned": "Planned",
       "to_harvest": "To harvest",
       "harvesting": "Harvesting",
-      "harvested": "Harvested"
+      "partial_harvested": "Partially harvested",
+      "harvested": "Harvested",
+      "in_loading": "Loading",
+      "loaded": "Loaded",
+      "completed": "Completed"
+    },
+    "crop": {
+      "label": "Crop",
+      "placeholder": "Select crop…",
+      "grau": "Wheat",
+      "orz": "Barley",
+      "rapita": "Rapeseed",
+      "plante_nutret": "Fodder crops"
     },
     "noName": "no name",
     "stats": {
       "total": "Total parcels",
       "active": "Active parcels",
+      "withCrop": "With crop set",
       "area": "Total area",
       "unassigned": "Unassigned"
     },

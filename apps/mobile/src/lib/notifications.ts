@@ -51,6 +51,23 @@ export async function registerForPushNotifications(): Promise<string | null> {
       sound: null,
       vibrationPattern: [0, 0],
     });
+    /**
+     * T6 — dedicated loud channel for baler geofence exit ("Ai ieșit din
+     * parcelă"). MAX importance + bypass DND so the operator hears the horn
+     * even when the phone is silenced. The custom `baler-exit.wav` sound is
+     * registered via the `expo-notifications` plugin config in app.json — the
+     * file name (without extension) is passed to `sound` below.
+     */
+    await Notifications.setNotificationChannelAsync('baler-exit', {
+      name: 'Alertă ieșire câmp',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'baler_exit',
+      vibrationPattern: [0, 400, 200, 400],
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      enableLights: true,
+      lightColor: '#C62828',
+    });
   }
 
   // Fetching the Expo push token requires Firebase (FCM) credentials on Android.
@@ -68,7 +85,9 @@ export async function registerForPushNotifications(): Promise<string | null> {
   // In Expo Go dev builds without an EAS projectId, getExpoPushTokenAsync throws
   // ("Default FirebaseApp is not initialized"). Local notifications still work fine.
   if (__DEV__ && !projectId) {
-    console.info('[StrawBoss] DEV: no EAS projectId — skipping push token (local notifications active)');
+    console.info(
+      '[StrawBoss] DEV: no EAS projectId — skipping push token (local notifications active)',
+    );
     return null;
   }
 
@@ -78,7 +97,11 @@ export async function registerForPushNotifications(): Promise<string | null> {
     );
     return tokenData.data;
   } catch (err) {
-    if (__DEV__) console.warn('[StrawBoss] DEV: getExpoPushTokenAsync failed:', err instanceof Error ? err.message : String(err));
+    if (__DEV__)
+      console.warn(
+        '[StrawBoss] DEV: getExpoPushTokenAsync failed:',
+        err instanceof Error ? err.message : String(err),
+      );
     return null;
   }
 }

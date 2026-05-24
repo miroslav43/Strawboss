@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { router } from 'expo-router';
 import { addNotificationResponseListener, addNotificationListener } from '@/lib/notifications';
 import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
@@ -8,12 +9,24 @@ interface NotificationData {
   type?: string;
   assignmentId?: string;
   parcelName?: string;
+  parcelCode?: string;
+  parcelId?: string;
+  cropType?: string | null;
   tripId?: string;
 }
 
 export interface GeofenceAlert {
-  type: 'field_entry' | 'exit_confirm' | 'deposit_entry';
+  /**
+   * T6 — `entry_confirm` is the baler 10-second auto-confirm overlay; the
+   * legacy `field_entry` banner stays for non-baler machines.
+   */
+  type: 'field_entry' | 'entry_confirm' | 'exit_confirm' | 'deposit_entry';
   parcelName: string;
+  /** T9.3 — preferred display identifier for balers. */
+  parcelCode?: string;
+  parcelId?: string;
+  /** T9.1 — surfaced on the entry overlay so the operator sees the crop. */
+  cropType?: string | null;
   assignmentId: string;
   /** Present for deposit_entry — lets the overlay open the arrival flow. */
   tripId?: string | null;
@@ -27,6 +40,12 @@ const GEOFENCE_ALERT_DEBOUNCE_MS = 60_000;
  * that the UI can display (banner for entry, modal for exit confirmation).
  * Duplicate alerts for the same event within 60 s are suppressed to handle
  * GPS oscillation near boundary edges.
+ *
+ * T6 additions:
+ *   - `field_entry_confirm` → 10 s countdown overlay; auto-POSTs
+ *     `/notifications/confirm-parcel-entry` on expiry.
+ *   - `field_exit_production` → routes the operator directly to
+ *     `/baler-ops/production-entry` (the loud-horn screen).
  */
 export function useGeofenceNotifications() {
   const [alertQueue, setAlertQueue] = useState<GeofenceAlert[]>([]);
@@ -61,6 +80,32 @@ export function useGeofenceNotifications() {
     setAlertQueue((q) => q.slice(1));
   }, []);
 
+  /**
+   * T6 enter — fired when the 10 s countdown finishes. Idempotent on the
+   * server side, so a duplicate call (e.g. user enters/exits boundary
+   * twice) is safe.
+   */
+  const confirmParcelEntry = useCallback(async (assignmentId: string) => {
+    mobileLogger.flow('Geofence: confirm parcel entry (10s auto)', { assignmentId });
+    try {
+      await mobileApiClient.post('/api/v1/notifications/confirm-parcel-entry', {
+        assignmentId,
+      });
+    } catch (err) {
+      mobileLogger.flow('Geofence: confirm-parcel-entry failed (will be re-tried via sync)', {
+        assignmentId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    setAlertQueue((q) => q.slice(1));
+  }, []);
+
+  /** T6 — operator tapped Anulează during the 10 s countdown. No API call. */
+  const cancelParcelEntry = useCallback(() => {
+    mobileLogger.flow('Geofence: baler entry cancelled by user', {});
+    setAlertQueue((q) => q.slice(1));
+  }, []);
+
   useEffect(() => {
     /**
      * Returns true and records the timestamp if the alert should be shown.
@@ -80,6 +125,26 @@ export function useGeofenceNotifications() {
       }
       lastAlertAt.current.set(key, now);
       return true;
+    };
+
+    /**
+     * Routes a `field_exit_production` push directly to the loud-horn screen.
+     * Used by both foreground and tap listeners.
+     */
+    const routeToProductionEntry = (data: NotificationData, assignmentId: string) => {
+      mobileLogger.flow('Geofence: exit production push → production-entry screen', {
+        assignmentId,
+        parcelCode: data.parcelCode,
+      });
+      router.push({
+        pathname: '/baler-ops/production-entry',
+        params: {
+          assignmentId,
+          parcelCode: data.parcelCode ?? '',
+          parcelId: data.parcelId ?? '',
+          parcelName: data.parcelName ?? '',
+        },
+      });
     };
 
     // Handle foreground notifications → show UI alert
@@ -104,6 +169,27 @@ export function useGeofenceNotifications() {
               assignmentId,
             },
           ]);
+          break;
+        case 'field_entry_confirm':
+          mobileLogger.flow('Geofence: entry_confirm (baler 10s)', {
+            assignmentId,
+            parcelCode: data.parcelCode,
+            cropType: data.cropType,
+          });
+          setAlertQueue((q) => [
+            ...q,
+            {
+              type: 'entry_confirm',
+              parcelName: data.parcelName ?? data.parcelCode ?? 'Câmp',
+              parcelCode: data.parcelCode,
+              parcelId: data.parcelId,
+              cropType: data.cropType ?? null,
+              assignmentId,
+            },
+          ]);
+          break;
+        case 'field_exit_production':
+          routeToProductionEntry(data, assignmentId);
           break;
         case 'deposit_entry':
           mobileLogger.flow('Geofence: entered deposit', {
@@ -168,6 +254,22 @@ export function useGeofenceNotifications() {
             tripId: data.tripId ?? null,
           },
         ]);
+      } else if (data.type === 'field_entry_confirm') {
+        // Tapping the baler entry push (e.g. from lockscreen) opens the
+        // countdown overlay even when the app was backgrounded.
+        setAlertQueue((q) => [
+          ...q,
+          {
+            type: 'entry_confirm',
+            parcelName: data.parcelName ?? data.parcelCode ?? 'Câmp',
+            parcelCode: data.parcelCode,
+            parcelId: data.parcelId,
+            cropType: data.cropType ?? null,
+            assignmentId,
+          },
+        ]);
+      } else if (data.type === 'field_exit_production') {
+        routeToProductionEntry(data, assignmentId);
       }
     });
 
@@ -177,5 +279,11 @@ export function useGeofenceNotifications() {
     };
   }, []);
 
-  return { activeAlert, dismissAlert, confirmParcelDone };
+  return {
+    activeAlert,
+    dismissAlert,
+    confirmParcelDone,
+    confirmParcelEntry,
+    cancelParcelEntry,
+  };
 }
