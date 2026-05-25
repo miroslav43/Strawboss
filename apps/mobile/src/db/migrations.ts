@@ -17,6 +17,8 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync(TABLES.notifications);
   // FM-13 — offline parcel geometry cache (idempotent via IF NOT EXISTS)
   await db.execAsync(TABLES.parcels);
+  // Offline depot cache + geofence-maker draft persistence.
+  await db.execAsync(TABLES.delivery_destinations);
   // Sync cursors per table — see schema.ts comment on tombstone retention.
   await db.execAsync(TABLES.sync_cursors);
   // Plan C — deposit dashboard write-through cache for offline cold boot.

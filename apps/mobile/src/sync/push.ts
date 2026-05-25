@@ -16,7 +16,16 @@ export interface PushResult {
 }
 
 /** Sync queue entityTypes that bypass /sync/push and target a dedicated endpoint. */
-const DIRECT_ENDPOINT_TYPES = new Set(['register_load', 'trip_transition']);
+const DIRECT_ENDPOINT_TYPES = new Set([
+  'register_load',
+  'trip_transition',
+  // Geofence-maker writes — the parcels & delivery_destinations REST endpoints
+  // do extra server-side work (org scoping, FarmTrack registration) that the
+  // generic /sync/push handler does not perform, so retries go directly to the
+  // REST endpoint with the original payload.
+  'parcel_create',
+  'delivery_destination_create',
+]);
 
 /**
  * Parent-first ordering for the /sync/push batch (M21).
@@ -106,6 +115,48 @@ export interface TripTransitionPayload {
 }
 
 /**
+ * Send a single direct-REST entry to its endpoint. Idempotency is delegated
+ * to the server (parcels uses `code` UNIQUE within org; delivery_destinations
+ * uses `code` UNIQUE within org as well — replays surface as 409 which we
+ * treat as success because the original POST already created the row).
+ */
+async function sendDirectRestCreate(
+  entry: SyncQueueEntry,
+  apiClient: ApiClient,
+  endpoint: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(entry.payload) as Record<string, unknown>;
+  } catch (err) {
+    return {
+      ok: false,
+      error: `${entry.entity_type}: payload not parsable (${
+        err instanceof Error ? err.message : String(err)
+      })`,
+    };
+  }
+  try {
+    await apiClient.post(endpoint, payload);
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // The unique constraint on (code, organization_id) means a successful
+    // earlier retry shows up as 409 / "already exists" / "duplicate key" on
+    // replay. Treat those as idempotent success so the queue drains.
+    if (
+      /already exists/i.test(message) ||
+      /duplicate key/i.test(message) ||
+      /conflict/i.test(message) ||
+      /\b409\b/.test(message)
+    ) {
+      return { ok: true };
+    }
+    return { ok: false, error: message };
+  }
+}
+
+/**
  * FM-1: Send a single trip_transition entry to its dedicated REST endpoint.
  * Uses the `postTolerant` approach: if the server says the trip is already
  * in the target state ("not allowed from status"), treat it as success.
@@ -180,22 +231,24 @@ export async function pushMutations(
   const tableEntries = entries.filter((e) => !DIRECT_ENDPOINT_TYPES.has(e.entity_type));
 
   for (const entry of directEntries) {
+    let res: { ok: true } | { ok: false; error: string };
     if (entry.entity_type === 'register_load') {
-      const res = await sendRegisterLoad(entry, apiClient);
-      if (res.ok) {
-        completedIds.push(entry.id);
-      } else {
-        errors.push(res.error);
-        failedEntries.push({ id: entry.id, error: res.error });
-      }
+      res = await sendRegisterLoad(entry, apiClient);
     } else if (entry.entity_type === 'trip_transition') {
-      const res = await sendTripTransition(entry, apiClient, tripsRepo);
-      if (res.ok) {
-        completedIds.push(entry.id);
-      } else {
-        errors.push(res.error);
-        failedEntries.push({ id: entry.id, error: res.error });
-      }
+      res = await sendTripTransition(entry, apiClient, tripsRepo);
+    } else if (entry.entity_type === 'parcel_create') {
+      res = await sendDirectRestCreate(entry, apiClient, '/api/v1/parcels');
+    } else if (entry.entity_type === 'delivery_destination_create') {
+      res = await sendDirectRestCreate(entry, apiClient, '/api/v1/delivery-destinations');
+    } else {
+      // Should not happen — DIRECT_ENDPOINT_TYPES is the authoritative list.
+      res = { ok: false, error: `Unknown direct endpoint type: ${entry.entity_type}` };
+    }
+    if (res.ok) {
+      completedIds.push(entry.id);
+    } else {
+      errors.push(res.error);
+      failedEntries.push({ id: entry.id, error: res.error });
     }
   }
 

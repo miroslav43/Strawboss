@@ -63,6 +63,8 @@ export async function clearLocalData(): Promise<void> {
     DELETE FROM task_assignments;
     DELETE FROM sync_queue;
     DELETE FROM notifications;
+    DELETE FROM parcels;
+    DELETE FROM delivery_destinations;
   `);
 
   // 2. Remove filesystem artefacts (all best-effort)

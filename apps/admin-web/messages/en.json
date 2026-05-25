@@ -500,7 +500,13 @@
     "sectionActiveTrips": "Active trips",
     "loadingTrips": "Loading trips…",
     "loadTripsError": "Failed to load trips. The backend may not be running.",
-    "noActiveTrips": "No active trips"
+    "noActiveTrips": "No active trips",
+    "statusGrid": {
+      "truck": "Truck",
+      "parcel": "Parcel",
+      "bales": "bales",
+      "destination": "TBD"
+    }
   },
   "trips_detail": {
     "signatures": "Signatures",
@@ -509,12 +515,17 @@
     "deposit": "Deposit",
     "documents": "Documents",
     "cmrTitle": "CMR — {{tripNumber}}",
-    "deleteTooltip": "Delete trip"
+    "deleteTooltip": "Delete trip",
+    "cmrDownload": "Download CMR",
+    "cmrGenerating": "CMR is generated automatically when the trip transitions to delivering."
   },
   "documents": {
-    "fileSize": "File size",
-    "receiptNoPhoto": "No receipt photo",
-    "receiptOpen": "Open receipt photo"
+    "title": "Documents",
+    "detailTitle": "Document detail",
+    "backToDocuments": "Back to documents",
+    "loadingDetail": "Loading document…",
+    "loadError": "Failed to load document. The backend may not be running.",
+    "notFound": "Document not found."
   },
   "settings_page": {
     "specimenSectionTitle": "Signature specimen"
@@ -629,14 +640,6 @@
       "disputed": "Disputed"
     }
   },
-  "documents": {
-    "title": "Documents",
-    "detailTitle": "Document detail",
-    "backToDocuments": "Back to documents",
-    "loadingDetail": "Loading document…",
-    "loadError": "Failed to load document. The backend may not be running.",
-    "notFound": "Document not found."
-  },
   "reports": {
     "title": "Reports",
     "tabs": {
@@ -655,7 +658,8 @@
       "noMachines": "No trucks in this organization.",
       "totalKm": "{{km}} km",
       "export": "Export CSV",
-      "empty": "No GPS data in the selected range."
+      "empty": "No GPS data in the selected range.",
+      "colMachine": "Machine"
     },
     "kpi": {
       "produced": "Produced",
@@ -826,7 +830,7 @@
     "colKmToday": "Today (km)",
     "colKmThisWeek": "This week (km)",
     "colFuel": "Fuel",
-    "colStatus": "Status",
+    "colStatus": "Online",
     "colActions": "Actions",
     "typeLabel": {
       "loader": "Loaders",
@@ -911,6 +915,8 @@
     "contactEmail": "Contact email",
     "hasBoundary": "Boundary",
     "status": "Status",
+    "lastActivity": "Last activity",
+    "lastActivityNone": "Never",
     "active": "Active",
     "inactive": "Inactive",
     "all": "All",
@@ -1004,7 +1010,10 @@
       "usernameRowLabel": "Username:",
       "emailRowLabel": "Email:",
       "pinRowLabel": "PIN:",
-      "pinServerGen": "server-generated (4 digits)"
+      "pinServerGen": "server-generated (4 digits)",
+      "accessSection": "Account access",
+      "isActiveLabel": "Account active",
+      "isActiveHint": "When disabled, the user cannot log in. The account stays in the list and can be reactivated."
     },
     "avatar": {
       "uploading": "Uploading...",
@@ -1013,10 +1022,10 @@
       "hint": "JPG, PNG or WebP. Max 3 MB."
     },
     "deactivate": {
-      "title": "Deactivate account?",
-      "descSuffix": " will no longer be able to access the app.",
-      "deactivating": "Deactivating…",
-      "deactivate": "Deactivate"
+      "title": "Delete this account?",
+      "descSuffix": " will be permanently deleted. This cannot be undone.",
+      "deactivating": "Deleting…",
+      "deactivate": "Delete account"
     },
     "assign": {
       "titlePrefix": "Assign machine — ",
@@ -1052,13 +1061,13 @@
       "colRole": "Role",
       "colMachine": "Assigned machine",
       "colPhone": "Phone",
-      "colStatus": "Status",
+      "colStatus": "Online",
       "colActions": "Actions"
     },
     "actions": {
       "assignTooltip": "Change assigned machine",
       "editTooltip": "Edit account",
-      "deactivateTooltip": "Deactivate account"
+      "deactivateTooltip": "Delete account"
     },
     "status": {
       "active": "Active",
@@ -1072,7 +1081,15 @@
       "emptyHint": "Click \"New Organization\" to create the first one.",
       "newButton": "New Organization",
       "createTitle": "Create Organization",
-      "urlPreview": "Dashboard URL preview"
+      "urlPreview": "Dashboard URL preview",
+      "title": "Organizations",
+      "subtitle": "Manage all tenant organizations on the platform.",
+      "loading": "Loading organizations…",
+      "colName": "Name",
+      "colSlug": "Slug",
+      "linkDashboard": "Dashboard",
+      "linkUsers": "Users",
+      "actionManageUsers": "Manage users"
     },
     "users": {
       "breadcrumb": {
@@ -1169,7 +1186,8 @@
         "copied": "Copied",
         "loginHint": "Login flow: username + PIN, or email + sb_PIN.",
         "done": "Done"
-      }
+      },
+      "orgLoadError": "Could not load organization details. Please try again."
     }
   },
   "dashboard": {

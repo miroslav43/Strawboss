@@ -82,7 +82,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
           onClick={handleLogout}
           className="rounded-md border border-neutral-600 px-3 py-1.5 text-sm text-neutral-300 transition-colors hover:border-neutral-400 hover:text-white"
         >
-          Log out
+          {t('topBar.signOut')}
         </button>
       </header>
       <main className="flex-1 overflow-y-auto p-6">{children}</main>

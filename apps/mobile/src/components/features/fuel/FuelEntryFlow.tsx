@@ -11,7 +11,7 @@ import { PhotoCapture } from '../../shared/PhotoCapture';
 import { getDatabase } from '@/lib/storage';
 import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
-import { uploadReceipt } from '@/lib/receiptUpload';
+import { mobileLogger } from '@/lib/logger';
 import { generateUuid } from '@/lib/uuid';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 import { useUndoableSave } from '@/hooks/useUndoableSave';
@@ -81,6 +81,13 @@ export function FuelEntryFlow({
   );
 
   const handleConfirm = useCallback(async () => {
+    const quantityLiters = parseFloat(liters);
+    if (!Number.isFinite(quantityLiters) || quantityLiters <= 0) {
+      // Should be unreachable via NumericPad input, but guards against a
+      // corrupted state on app resume and against NaN sneaking into SQLite.
+      mobileLogger.warn('FuelEntryFlow: invalid quantity', { liters });
+      return;
+    }
     setSaving(true);
     try {
       const db = await getDatabase();
@@ -89,17 +96,13 @@ export function FuelEntryFlow({
 
       const id = generateUuid();
       const now = new Date().toISOString();
-      const quantityLiters = parseFloat(liters);
 
-      let receiptPhotoUrl: string | null = null;
-      if (photoUri) {
-        try {
-          const result = await uploadReceipt(photoUri);
-          receiptPhotoUrl = result.url;
-        } catch {
-          receiptPhotoUrl = null;
-        }
-      }
+      // The receipt photo is uploaded LAZILY by SyncManager.uploadPendingReceipts
+      // before the row is pushed. Doing it synchronously here would silently
+      // drop the URL when the network is flaky (the catch used to swallow the
+      // error and let the row sync without a photo). Keeping `photoUri` lets
+      // the pre-push hook retry the upload at every sync cycle.
+      const receiptPhotoUrl: string | null = null;
 
       await fuelLogsRepo.create({
         id,

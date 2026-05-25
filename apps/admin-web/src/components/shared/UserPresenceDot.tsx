@@ -9,20 +9,37 @@ import { useI18n } from '@/lib/i18n';
 // few minutes, so the Machines / Available-truck lists use 15 min.
 const DEFAULT_ONLINE_WINDOW_MS = 90 * 1000;
 
-// Shared 30 s tick so we don't run one timer per dot.
+// Shared 30 s tick so we don't run one timer per dot. The interval is created
+// lazily the first time a subscriber mounts, and torn down when the last one
+// unmounts — this keeps hot-reload (Fast Refresh) from accumulating duplicate
+// timers in development.
 const subscribers = new Set<() => void>();
-if (typeof window !== 'undefined') {
-  setInterval(() => {
+let tickIntervalId: ReturnType<typeof setInterval> | null = null;
+
+function ensureTick() {
+  if (typeof window === 'undefined') return;
+  if (tickIntervalId !== null) return;
+  tickIntervalId = setInterval(() => {
     for (const sub of subscribers) sub();
   }, 30_000);
+}
+
+function maybeStopTick() {
+  if (subscribers.size > 0) return;
+  if (tickIntervalId !== null) {
+    clearInterval(tickIntervalId);
+    tickIntervalId = null;
+  }
 }
 
 function useTick() {
   const [, force] = useReducer((x: number) => x + 1, 0);
   useEffect(() => {
+    ensureTick();
     subscribers.add(force);
     return () => {
       subscribers.delete(force);
+      maybeStopTick();
     };
   }, []);
 }

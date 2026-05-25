@@ -14,9 +14,10 @@ import {
   useParcels,
   useMachines,
   useMachineLocations,
+  useAdminUsers,
   queryKeys,
 } from '@strawboss/api';
-import type { Parcel, Machine, MachineLastLocation } from '@strawboss/types';
+import type { Parcel, Machine, MachineLastLocation, User } from '@strawboss/types';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { AssignmentStatus } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
@@ -363,6 +364,7 @@ function SortableParcelRows({
 
 function AssignedMachineCard({
   machine,
+  operator,
   assignments,
   parcels,
   allAssignedParcelIds,
@@ -373,6 +375,7 @@ function AssignedMachineCard({
   color,
 }: {
   machine: { id: string; code: string; plate: string };
+  operator: { name: string; lastSeenAt: string | null } | null;
   assignments: Assignment[];
   parcels: Parcel[];
   allAssignedParcelIds: Set<string>;
@@ -414,10 +417,16 @@ function AssignedMachineCard({
           `bg-${color}-50`,
         )}
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <div className={cn('h-2.5 w-2.5 flex-shrink-0 rounded-full', `bg-${color}-500`)} />
           <span className="truncate font-medium text-neutral-800 text-sm">{machine.code}</span>
           <span className="flex-shrink-0 text-xs text-neutral-400">{machine.plate}</span>
+          {operator ? (
+            <span className="ml-1 flex items-center gap-1.5 text-xs text-neutral-600">
+              {operator.name}
+              <UserPresenceDot lastSeenAt={operator.lastSeenAt} variant="badge" />
+            </span>
+          ) : null}
         </div>
         <button
           type="button"
@@ -504,6 +513,7 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
   const { data: rawParcels } = useParcels(apiClient);
   const { data: rawMachines } = useMachines(apiClient);
   const { data: rawLocations } = useMachineLocations(apiClient);
+  const { data: rawUsers } = useAdminUsers(apiClient, { refetchInterval: 30_000 });
 
   const createAssignment = useCreateTaskAssignment(apiClient);
   const deleteAssignment = useDeleteTaskAssignment(apiClient);
@@ -520,6 +530,18 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
     }
     return map;
   }, [rawLocations]);
+
+  // Resolve the operator assigned to each machine via users.assigned_machine_id.
+  // Used to render the operator's name + presence dot on each AssignedMachineCard.
+  const operatorByMachineId = useMemo(() => {
+    const map = new Map<string, { name: string; lastSeenAt: string | null }>();
+    for (const u of normalize<User>(rawUsers)) {
+      if (u.assignedMachineId && u.isActive) {
+        map.set(u.assignedMachineId, { name: u.fullName, lastSeenAt: u.lastSeenAt });
+      }
+    }
+    return map;
+  }, [rawUsers]);
 
   // All machines of this type
   const typeMachines = useMemo(
@@ -644,9 +666,12 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
           operation: 'clearAssignments',
           err: e instanceof Error ? { message: e.message, stack: e.stack } : e,
         });
+        // Refetch so the UI reflects whatever rows were actually deleted before
+        // the loop aborted, instead of showing stale assignments.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
       }
     },
-    [assignmentsByMachine, date, machineType, deleteAssignment],
+    [assignmentsByMachine, date, machineType, deleteAssignment, queryClient],
   );
 
   const handleReorderParcels = useCallback(
@@ -784,6 +809,7 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
               <AssignedMachineCard
                 key={m.id}
                 machine={m}
+                operator={operatorByMachineId.get(m.id) ?? null}
                 assignments={assignmentsByMachine.get(m.id) ?? []}
                 parcels={parcels}
                 allAssignedParcelIds={allAssignedParcelIds}

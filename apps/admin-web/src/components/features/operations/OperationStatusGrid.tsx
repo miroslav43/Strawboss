@@ -43,19 +43,27 @@ export function OperationStatusGrid({ trips, className }: OperationStatusGridPro
           {/* Truck / Driver */}
           <div className="mb-3 flex items-center gap-2 text-xs text-neutral-600">
             <Truck className="h-3.5 w-3.5 text-neutral-400" />
-            <span>Truck: {trip.truckId.slice(0, 8)}</span>
+            <span>
+              {t('operations.statusGrid.truck')}: {trip.truckId.slice(0, 8)}
+            </span>
           </div>
 
           {/* Route */}
           <div className="flex items-center gap-2 text-xs text-neutral-600">
-            <span className="truncate">Parcel {trip.sourceParcelId.slice(0, 8)}</span>
+            <span className="truncate">
+              {t('operations.statusGrid.parcel')} {trip.sourceParcelId.slice(0, 8)}
+            </span>
             <ArrowRight className="h-3 w-3 flex-shrink-0 text-neutral-400" />
-            <span className="truncate">{trip.destinationName ?? 'TBD'}</span>
+            <span className="truncate">
+              {trip.destinationName ?? t('operations.statusGrid.destination')}
+            </span>
           </div>
 
           {/* Bales + Progress */}
           <div className="mt-3 flex items-center justify-between text-xs">
-            <span className="text-neutral-500">{trip.baleCount} bales</span>
+            <span className="text-neutral-500">
+              {trip.baleCount} {t('operations.statusGrid.bales')}
+            </span>
             {trip.netWeightKg != null && (
               <span className="text-neutral-500">{(trip.netWeightKg / 1000).toFixed(1)} t</span>
             )}

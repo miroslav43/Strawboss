@@ -16,6 +16,11 @@ import {
 import { CreateParcelModal } from '@/components/geofence-maker/CreateParcelModal';
 import { CreateDepositModal } from '@/components/geofence-maker/CreateDepositModal';
 import type { GeofenceEditorEvent, ParcelMapData, DestinationMapData } from '@/map/map-bridge';
+import { getDatabase } from '@/lib/storage';
+import { ParcelsRepo } from '@/db/parcels-repo';
+import { DeliveryDestinationsRepo } from '@/db/delivery-destinations-repo';
+import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { generateUuid } from '@/lib/uuid';
 
 type DrawMode = 'parcel' | 'deposit' | null;
 
@@ -194,10 +199,48 @@ export default function GeofenceMakerMapScreen() {
       if (!drawnGeojson) return;
       setIsSaving(true);
       try {
-        await mobileApiClient.post('/api/v1/parcels', {
-          ...data,
-          boundary: JSON.stringify(drawnGeojson),
+        // Offline-first: generate the UUID client-side, write a draft into the
+        // local SQLite cache so the map can render it immediately, then enqueue
+        // a `parcel_create` sync entry. The SyncManager retries the dedicated
+        // REST endpoint when connectivity returns; the unique (code, org)
+        // constraint server-side makes the replay idempotent.
+        const id = generateUuid();
+        const boundaryStr = JSON.stringify(drawnGeojson);
+        const code = `P-${id.slice(0, 8).toUpperCase()}`;
+        const payload = {
+          id,
+          name: data.name,
+          code,
+          municipality: data.municipality,
+          notes: data.notes,
+          farmId: data.farmId,
+          boundary: boundaryStr,
+        };
+
+        const db = await getDatabase();
+        const parcelsRepo = new ParcelsRepo(db);
+        const syncQueue = new SyncQueueRepo(db);
+
+        await parcelsRepo.upsert({
+          id,
+          name: data.name,
+          code,
+          area_hectares: null,
+          municipality: data.municipality || null,
+          harvest_status: null,
+          crop_type: null,
+          centroid_json: null,
+          geometry: boundaryStr,
+          cached_at: new Date().toISOString(),
         });
+        await syncQueue.enqueue({
+          entityType: 'parcel_create',
+          entityId: id,
+          action: 'insert',
+          payload,
+          idempotencyKey: `parcel_create_${id}`,
+        });
+
         await queryClient.invalidateQueries({ queryKey: ['geofence-editor-parcels'] });
         await queryClient.invalidateQueries({ queryKey: ['map-parcels'] });
         setDrawMode(null);
@@ -205,7 +248,7 @@ export default function GeofenceMakerMapScreen() {
         showModal({
           type: 'success',
           title: 'Succes',
-          message: 'Câmpul a fost creat cu geofence-ul desenat.',
+          message: 'Câmpul a fost salvat și se va sincroniza la reconectare.',
           onConfirm: hideModal,
           autoDismiss: true,
         });
@@ -235,10 +278,38 @@ export default function GeofenceMakerMapScreen() {
       if (!drawnGeojson) return;
       setIsSaving(true);
       try {
-        await mobileApiClient.post('/api/v1/delivery-destinations', {
+        // Offline-first: same pattern as handleSaveParcel — local SQLite write
+        // + sync queue entry routed through `delivery_destination_create`.
+        const id = generateUuid();
+        const boundaryStr = JSON.stringify(drawnGeojson);
+        const payload = {
+          id,
           ...data,
-          boundary: JSON.stringify(drawnGeojson),
+          boundary: boundaryStr,
+        };
+
+        const db = await getDatabase();
+        const depositsRepo = new DeliveryDestinationsRepo(db);
+        const syncQueue = new SyncQueueRepo(db);
+
+        await depositsRepo.upsert({
+          id,
+          code: data.code,
+          name: data.name,
+          address: data.address || null,
+          boundary: boundaryStr,
+          coords_json: null,
+          is_default: data.isDefault ? 1 : 0,
+          cached_at: new Date().toISOString(),
         });
+        await syncQueue.enqueue({
+          entityType: 'delivery_destination_create',
+          entityId: id,
+          action: 'insert',
+          payload,
+          idempotencyKey: `delivery_destination_create_${id}`,
+        });
+
         await queryClient.invalidateQueries({ queryKey: ['geofence-editor-deposits'] });
         await queryClient.invalidateQueries({ queryKey: ['map-destinations'] });
         setDrawMode(null);
@@ -246,7 +317,7 @@ export default function GeofenceMakerMapScreen() {
         showModal({
           type: 'success',
           title: 'Succes',
-          message: 'Depozitul a fost creat cu geofence-ul desenat.',
+          message: 'Depozitul a fost salvat și se va sincroniza la reconectare.',
           onConfirm: hideModal,
           autoDismiss: true,
         });

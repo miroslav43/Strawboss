@@ -3,8 +3,10 @@ import type { FastifyRequest } from 'fastify';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
 import type { User } from '@strawboss/types';
+import { updateProfileSchema, changePasswordSchema } from '@strawboss/validation';
 import { ProfileService } from './profile.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 
 @Controller('profile')
 export class ProfileController {
@@ -29,7 +31,7 @@ export class ProfileController {
   @Patch()
   async patchProfile(
     @CurrentUser() currentUser: RequestUser,
-    @Body()
+    @Body(new ZodValidationPipe(updateProfileSchema))
     dto: {
       fullName?: string;
       phone?: string | null;
@@ -59,7 +61,8 @@ export class ProfileController {
   @Post('change-password')
   async changePassword(
     @CurrentUser() currentUser: RequestUser,
-    @Body() dto: { currentPassword: string; newPassword: string },
+    @Body(new ZodValidationPipe(changePasswordSchema))
+    dto: { currentPassword: string; newPassword: string },
   ) {
     await this.profileService.changePassword(currentUser.id, dto.currentPassword, dto.newPassword);
     return { ok: true };

@@ -37,10 +37,8 @@ export default function OrganizationsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-neutral-800">Organizations</h1>
-          <p className="mt-0.5 text-sm text-neutral-500">
-            Manage all tenant organizations on the platform.
-          </p>
+          <h1 className="text-xl font-bold text-neutral-800">{t('superAdmin.orgs.title')}</h1>
+          <p className="mt-0.5 text-sm text-neutral-500">{t('superAdmin.orgs.subtitle')}</p>
         </div>
         <a
           href="/super-admin/organizations/new"
@@ -54,7 +52,7 @@ export default function OrganizationsPage() {
       {loading ? (
         <div className="flex items-center justify-center py-20 text-neutral-400">
           <Loader2 className="mr-2 h-6 w-6 animate-spin" />
-          Loading organizations…
+          {t('superAdmin.orgs.loading')}
         </div>
       ) : error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
@@ -71,10 +69,10 @@ export default function OrganizationsPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-neutral-100 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-500">
               <tr>
-                <th className="px-5 py-3 text-left">Name</th>
-                <th className="px-5 py-3 text-left">Slug</th>
-                <th className="px-5 py-3 text-left">Dashboard</th>
-                <th className="px-5 py-3 text-left">Users</th>
+                <th className="px-5 py-3 text-left">{t('superAdmin.orgs.colName')}</th>
+                <th className="px-5 py-3 text-left">{t('superAdmin.orgs.colSlug')}</th>
+                <th className="px-5 py-3 text-left">{t('superAdmin.orgs.linkDashboard')}</th>
+                <th className="px-5 py-3 text-left">{t('superAdmin.orgs.linkUsers')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
@@ -96,7 +94,7 @@ export default function OrganizationsPage() {
                       className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-400 hover:text-neutral-900"
                     >
                       <Users className="h-3.5 w-3.5" />
-                      Manage users
+                      {t('superAdmin.orgs.actionManageUsers')}
                     </a>
                   </td>
                 </tr>

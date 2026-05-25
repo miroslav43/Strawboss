@@ -287,11 +287,11 @@ export function TripDetail({ trip, className }: TripDetailProps) {
                     className="inline-flex items-center gap-1.5 rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    Descarcă CMR
+                    {t('trips_detail.cmrDownload')}
                   </a>
                 </div>
               ) : (
-                <p className="py-2 text-sm text-neutral-500">CMR-ul se generează automat...</p>
+                <p className="py-2 text-sm text-neutral-500">{t('trips_detail.cmrGenerating')}</p>
               )}
             </div>
           </Section>

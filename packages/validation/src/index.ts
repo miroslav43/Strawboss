@@ -149,5 +149,12 @@ export {
   reportTimelinePointSchema,
   reportQuerySchema,
   truckDistanceQuerySchema,
+  connectedHoursQuerySchema,
+  connectedHoursRowSchema,
+  connectedHoursReportSchema,
 } from './dtos/reports.schema.js';
-export type { ReportQuery, TruckDistanceQuery } from './dtos/reports.schema.js';
+export type {
+  ReportQuery,
+  TruckDistanceQuery,
+  ConnectedHoursQuery,
+} from './dtos/reports.schema.js';

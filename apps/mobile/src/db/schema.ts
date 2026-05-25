@@ -178,6 +178,21 @@ export const TABLES = {
     cached_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
 
+  // Local cache for delivery destinations (depots). Used by the geofence-maker
+  // map to render existing depots and by handleSaveDeposit to persist newly
+  // drawn depots before they sync to the server. `boundary` and `coords_json`
+  // are JSON-encoded GeoJSON strings; `cached_at` lets us expire stale rows.
+  delivery_destinations: `CREATE TABLE IF NOT EXISTS delivery_destinations (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    address TEXT,
+    boundary TEXT,
+    coords_json TEXT,
+    is_default INTEGER DEFAULT 0,
+    cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+
   // Persisted sync cursors per table. Needed because once the SyncManager
   // applies a tombstone it `DELETE`s the local row, so `MAX(server_version)`
   // on the table no longer reflects the highest version the client has seen.

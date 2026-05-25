@@ -500,7 +500,13 @@
     "sectionActiveTrips": "Curse active",
     "loadingTrips": "Se încarcă cursele…",
     "loadTripsError": "Nu s-au putut încărca cursele. Backend-ul poate fi oprit.",
-    "noActiveTrips": "Nicio cursă activă"
+    "noActiveTrips": "Nicio cursă activă",
+    "statusGrid": {
+      "truck": "Camion",
+      "parcel": "Parcelă",
+      "bales": "baloți",
+      "destination": "—"
+    }
   },
   "trips_detail": {
     "signatures": "Semnături",
@@ -509,12 +515,17 @@
     "deposit": "Depozit",
     "documents": "Documente",
     "cmrTitle": "CMR — {{tripNumber}}",
-    "deleteTooltip": "Șterge cursa"
+    "deleteTooltip": "Șterge cursa",
+    "cmrDownload": "Descarcă CMR",
+    "cmrGenerating": "CMR-ul se generează automat la trecerea cursei în starea de livrare."
   },
   "documents": {
-    "fileSize": "Mărime fișier",
-    "receiptNoPhoto": "Fără poză",
-    "receiptOpen": "Deschide poza"
+    "title": "Documente",
+    "detailTitle": "Detaliu document",
+    "backToDocuments": "Înapoi la documente",
+    "loadingDetail": "Se încarcă documentul…",
+    "loadError": "Nu s-a putut încărca documentul. Backend-ul poate fi oprit.",
+    "notFound": "Documentul nu a fost găsit."
   },
   "settings_page": {
     "specimenSectionTitle": "Specimen de semnătură"
@@ -629,14 +640,6 @@
       "disputed": "Contestată"
     }
   },
-  "documents": {
-    "title": "Documente",
-    "detailTitle": "Detaliu document",
-    "backToDocuments": "Înapoi la documente",
-    "loadingDetail": "Se încarcă documentul…",
-    "loadError": "Nu s-a putut încărca documentul. Backend-ul poate fi oprit.",
-    "notFound": "Documentul nu a fost găsit."
-  },
   "reports": {
     "title": "Rapoarte",
     "tabs": {
@@ -655,7 +658,8 @@
       "noMachines": "Nu există camioane în organizație.",
       "totalKm": "{{km}} km",
       "export": "Export CSV",
-      "empty": "Nu există date GPS în intervalul selectat."
+      "empty": "Nu există date GPS în intervalul selectat.",
+      "colMachine": "Mașină"
     },
     "kpi": {
       "produced": "Produs",
@@ -826,7 +830,7 @@
     "colKmToday": "Azi (km)",
     "colKmThisWeek": "Săptămâna asta (km)",
     "colFuel": "Combustibil",
-    "colStatus": "Stare",
+    "colStatus": "Online",
     "colActions": "Acțiuni",
     "typeLabel": {
       "loader": "Încărcătoare",
@@ -911,6 +915,8 @@
     "contactEmail": "Email contact",
     "hasBoundary": "Contur",
     "status": "Status",
+    "lastActivity": "Ultima activitate",
+    "lastActivityNone": "Niciodată",
     "active": "Activ",
     "inactive": "Inactiv",
     "all": "Toate",
@@ -1004,7 +1010,10 @@
       "usernameRowLabel": "Username:",
       "emailRowLabel": "Email:",
       "pinRowLabel": "PIN:",
-      "pinServerGen": "generat de server (4 cifre)"
+      "pinServerGen": "generat de server (4 cifre)",
+      "accessSection": "Acces cont",
+      "isActiveLabel": "Cont activ",
+      "isActiveHint": "Dacă e dezactivat, utilizatorul nu se mai poate loga. Contul rămâne în listă și se poate reactiva."
     },
     "avatar": {
       "uploading": "Se încarcă...",
@@ -1013,10 +1022,10 @@
       "hint": "JPG, PNG sau WebP. Max 3 MB."
     },
     "deactivate": {
-      "title": "Dezactivezi contul?",
-      "descSuffix": " nu va mai putea accesa aplicația.",
-      "deactivating": "Se dezactivează…",
-      "deactivate": "Dezactivează"
+      "title": "Ștergi acest cont?",
+      "descSuffix": " va fi șters definitiv. Nu se mai poate recupera.",
+      "deactivating": "Se șterge…",
+      "deactivate": "Șterge cont"
     },
     "assign": {
       "titlePrefix": "Asignează mașina — ",
@@ -1052,13 +1061,13 @@
       "colRole": "Rol",
       "colMachine": "Mașină asignată",
       "colPhone": "Telefon",
-      "colStatus": "Status",
+      "colStatus": "Online",
       "colActions": "Acțiuni"
     },
     "actions": {
       "assignTooltip": "Schimbă mașina asignată",
       "editTooltip": "Editează cont",
-      "deactivateTooltip": "Dezactivează cont"
+      "deactivateTooltip": "Șterge cont"
     },
     "status": {
       "active": "Activ",
@@ -1072,7 +1081,15 @@
       "emptyHint": "Apasă „Organizație nouă\" pentru a o crea pe prima.",
       "newButton": "Organizație nouă",
       "createTitle": "Creează organizație",
-      "urlPreview": "Previzualizare URL panou"
+      "urlPreview": "Previzualizare URL panou",
+      "title": "Organizații",
+      "subtitle": "Administrează toate organizațiile tenante de pe platformă.",
+      "loading": "Se încarcă organizațiile…",
+      "colName": "Nume",
+      "colSlug": "Slug",
+      "linkDashboard": "Tablou de bord",
+      "linkUsers": "Utilizatori",
+      "actionManageUsers": "Administrează utilizatori"
     },
     "users": {
       "breadcrumb": {
@@ -1169,7 +1186,8 @@
         "copied": "Copiat",
         "loginHint": "Flux autentificare: username + PIN, sau e-mail + sb_PIN.",
         "done": "Gata"
-      }
+      },
+      "orgLoadError": "Detaliile organizației nu au putut fi încărcate. Încercați din nou."
     }
   },
   "dashboard": {

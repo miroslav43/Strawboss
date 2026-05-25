@@ -48,13 +48,52 @@ export class ProfileService {
   }
 
   /**
-   * Plan C — bump users.last_seen_at to NOW(). Called by POST /profile/heartbeat
-   * every ~30 s from the mobile app. Used to power the admin presence dot.
+   * Plan C — bump `users.last_seen_at` to NOW() and roll the user's session
+   * history in `user_sessions`. Called by POST /profile/heartbeat (mobile, ~30 s).
+   *
+   * Session semantics (Plan A T4 — connected-hours report):
+   *   - gap to last `ended_at` ≤ 2 min → extend the current session (UPDATE).
+   *   - gap > 2 min                    → open a new session (INSERT).
+   *
+   * Restricted to mobile-app roles (operators + dispatcher). Admin/super_admin
+   * sessions from the browser are intentionally not tracked.
    */
   async touchLastSeen(userId: string): Promise<void> {
     await this.drizzleProvider.db.execute(sql`
-      UPDATE users SET last_seen_at = NOW()
-       WHERE id = ${userId}::uuid AND deleted_at IS NULL
+      WITH me AS (
+        SELECT id, organization_id, role
+          FROM users
+         WHERE id = ${userId}::uuid AND deleted_at IS NULL
+      ),
+      bump AS (
+        UPDATE users SET last_seen_at = NOW()
+         WHERE id = ${userId}::uuid AND deleted_at IS NULL
+        RETURNING 1
+      ),
+      latest AS (
+        SELECT id, ended_at
+          FROM user_sessions
+         WHERE user_id = ${userId}::uuid
+         ORDER BY started_at DESC
+         LIMIT 1
+      ),
+      extend AS (
+        UPDATE user_sessions us
+           SET ended_at = NOW()
+          FROM latest, me
+         WHERE us.id = latest.id
+           AND me.organization_id IS NOT NULL
+           AND me.role IN ('baler_operator', 'loader_operator', 'driver', 'geofence_maker', 'depot_manager')
+           AND NOW() - latest.ended_at <= INTERVAL '2 minutes'
+        RETURNING us.id
+      )
+      INSERT INTO user_sessions (user_id, organization_id, started_at, ended_at)
+      SELECT me.id, me.organization_id, NOW(), NOW()
+        FROM me
+       WHERE me.organization_id IS NOT NULL
+         AND me.role IN ('baler_operator', 'loader_operator', 'driver', 'geofence_maker', 'depot_manager')
+         AND NOT EXISTS (SELECT 1 FROM extend)
+      ON CONFLICT (user_id, started_at) DO NOTHING
     `);
   }
 

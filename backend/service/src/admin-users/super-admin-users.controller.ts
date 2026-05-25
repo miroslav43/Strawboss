@@ -13,6 +13,8 @@ import { AdminUsersService, CreateUserDto, UpdateUserDto } from './admin-users.s
 import { OrganizationsService } from '../organizations/organizations.service';
 import { Roles } from '../auth/roles.guard';
 import { UserRole } from '@strawboss/types';
+import { createUserSchema, updateUserSchema } from '@strawboss/validation';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 
 /**
  * Super-admin endpoints for managing users inside any organization.
@@ -42,7 +44,10 @@ export class SuperAdminUsersController {
 
   /** POST /api/v1/super-admin/organizations/:orgId/users */
   @Post()
-  async create(@Param('orgId') orgId: string, @Body() dto: CreateUserDto) {
+  async create(
+    @Param('orgId') orgId: string,
+    @Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserDto,
+  ) {
     await this.organizationsService.findById(orgId);
     return this.adminUsersService.createUser(orgId, dto);
   }
@@ -52,7 +57,7 @@ export class SuperAdminUsersController {
   async update(
     @Param('orgId') orgId: string,
     @Param('userId') userId: string,
-    @Body() dto: UpdateUserDto,
+    @Body(new ZodValidationPipe(updateUserSchema)) dto: UpdateUserDto,
   ) {
     await this.organizationsService.findById(orgId);
     return this.adminUsersService.updateUser(userId, orgId, dto);
@@ -61,10 +66,7 @@ export class SuperAdminUsersController {
   /** DELETE /api/v1/super-admin/organizations/:orgId/users/:userId */
   @Delete(':userId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deactivate(
-    @Param('orgId') orgId: string,
-    @Param('userId') userId: string,
-  ): Promise<void> {
+  async deactivate(@Param('orgId') orgId: string, @Param('userId') userId: string): Promise<void> {
     await this.organizationsService.findById(orgId);
     await this.adminUsersService.deactivateUser(userId, orgId);
   }
