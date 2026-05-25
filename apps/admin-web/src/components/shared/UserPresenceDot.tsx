@@ -29,18 +29,28 @@ export interface UserPresenceDotProps {
   /** ISO timestamp from users.last_seen_at — null = never connected. */
   lastSeenAt: string | null | undefined;
   className?: string;
+  /**
+   * `dot` (default) — tiny pulsing circle, info only on hover.
+   * `badge` — inline pill with colored dot + short label ("Online" / "5 min")
+   * so the presence state is legible without hovering. Use on dense screens
+   * (truck plan board) where users skim cards.
+   */
+  variant?: 'dot' | 'badge';
 }
 
 /**
- * Plan C — tiny green/grey dot showing whether a user is currently
- * connected (heartbeat within the last 90 s).
+ * Plan C — green/grey indicator showing whether a user is currently connected
+ * (heartbeat within the last 90 s). Tooltip carries the full "last seen" text;
+ * the `badge` variant also renders a short label inline.
  */
-export function UserPresenceDot({ lastSeenAt, className }: UserPresenceDotProps) {
+export function UserPresenceDot({ lastSeenAt, className, variant = 'dot' }: UserPresenceDotProps) {
   useTick();
   const { t, locale } = useI18n();
-  const isOnline = lastSeenAt
-    ? Date.now() - new Date(lastSeenAt).getTime() < ONLINE_WINDOW_MS
-    : false;
+
+  const lastSeenMs = lastSeenAt ? new Date(lastSeenAt).getTime() : null;
+  const ageMs = lastSeenMs != null ? Date.now() - lastSeenMs : null;
+  const isOnline = ageMs != null && ageMs < ONLINE_WINDOW_MS;
+
   const title = lastSeenAt
     ? isOnline
       ? t('tasks.online.online')
@@ -48,6 +58,42 @@ export function UserPresenceDot({ lastSeenAt, className }: UserPresenceDotProps)
           when: new Date(lastSeenAt).toLocaleString(locale === 'ro' ? 'ro-RO' : 'en-US'),
         })
     : t('tasks.online.neverSeen');
+
+  if (variant === 'badge') {
+    const shortLabel = (() => {
+      if (lastSeenAt == null || ageMs == null) return t('tasks.online.shortOffline');
+      if (isOnline) return t('tasks.online.shortOnline');
+      const minutes = Math.floor(ageMs / 60_000);
+      if (minutes < 60) return t('tasks.online.shortMinutesAgo', { n: minutes });
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return t('tasks.online.shortHoursAgo', { n: hours });
+      const days = Math.floor(hours / 24);
+      return t('tasks.online.shortDaysAgo', { n: days });
+    })();
+
+    return (
+      <span
+        title={title}
+        aria-label={isOnline ? 'online' : 'offline'}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1',
+          isOnline
+            ? 'bg-green-50 text-green-700 ring-green-200'
+            : 'bg-neutral-100 text-neutral-500 ring-neutral-200',
+          className,
+        )}
+      >
+        <span
+          className={cn(
+            'inline-block h-1.5 w-1.5 rounded-full',
+            isOnline ? 'bg-green-500 animate-pulse' : 'bg-neutral-400',
+          )}
+        />
+        {shortLabel}
+      </span>
+    );
+  }
+
   return (
     <span
       title={title}

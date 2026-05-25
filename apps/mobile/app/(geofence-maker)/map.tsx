@@ -51,6 +51,10 @@ export default function GeofenceMakerMapScreen() {
   const [drawMode, setDrawMode] = useState<DrawMode>(null);
   const [drawnGeojson, setDrawnGeojson] = useState<object | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  // T1 — number of vertices in the in-progress center-pin polygon. Driven
+  // by VERTEX_COUNT events from the WebView; controls when "Finalizează"
+  // becomes enabled (>=3).
+  const [vertexCount, setVertexCount] = useState(0);
   const { modalProps, showModal, hideModal } = useModal();
 
   const { data: parcels } = useQuery({
@@ -115,23 +119,44 @@ export default function GeofenceMakerMapScreen() {
 
   const handleMapEvent = useCallback((event: GeofenceEditorEvent) => {
     if (event.type === 'POLYGON_DRAWN') {
-      mapRef.current?.sendCommand({ type: 'DISABLE_DRAW' });
+      mapRef.current?.sendCommand({ type: 'DISABLE_POINT_DRAW' });
+      setVertexCount(0);
       setDrawnGeojson(event.geojson);
       // drawMode is still set — modals use it to know which form to show
+    } else if (event.type === 'VERTEX_COUNT') {
+      setVertexCount(event.count);
     }
   }, []);
 
   const startDraw = useCallback((mode: DrawMode) => {
     setDrawMode(mode);
     setDrawnGeojson(null);
-    mapRef.current?.sendCommand({ type: 'ENABLE_DRAW' });
+    setVertexCount(0);
+    // T1 — Google-Earth-style: center-pin + "Adaugă punct" instead of
+    // tap-each-vertex. The WebView shows a fixed pin at screen centre; the
+    // user pans the map under it and taps the side button per vertex.
+    mapRef.current?.sendCommand({ type: 'ENABLE_POINT_DRAW' });
   }, []);
 
   const cancelDraw = useCallback(() => {
-    mapRef.current?.sendCommand({ type: 'DISABLE_DRAW' });
+    mapRef.current?.sendCommand({ type: 'DISABLE_POINT_DRAW' });
     setDrawMode(null);
     setDrawnGeojson(null);
+    setVertexCount(0);
   }, []);
+
+  const addPoint = useCallback(() => {
+    mapRef.current?.sendCommand({ type: 'ADD_VERTEX_AT_CENTER' });
+  }, []);
+
+  const removeLastPoint = useCallback(() => {
+    mapRef.current?.sendCommand({ type: 'REMOVE_LAST_VERTEX' });
+  }, []);
+
+  const finishPolygon = useCallback(() => {
+    if (vertexCount < 3) return;
+    mapRef.current?.sendCommand({ type: 'FINISH_POLYGON' });
+  }, [vertexCount]);
 
   const handleLocate = useCallback(async () => {
     try {
@@ -249,12 +274,13 @@ export default function GeofenceMakerMapScreen() {
     setDrawnGeojson(null);
   }, []);
 
-  const bannerText =
-    drawMode === 'parcel'
-      ? 'Trasează conturul câmpului pe hartă'
-      : drawMode === 'deposit'
-        ? 'Trasează conturul depozitului pe hartă'
-        : 'Apasă un buton pentru a adăuga un câmp sau depozit';
+  const bannerText = drawMode
+    ? vertexCount === 0
+      ? 'Centrează pinul pe primul punct și apasă „Adaugă punct"'
+      : vertexCount < 3
+        ? `Punct ${vertexCount}/3 — continuă (minim 3 puncte)`
+        : `${vertexCount} puncte — apasă „Finalizează" sau adaugă mai multe`
+    : 'Apasă un buton pentru a adăuga un câmp sau depozit';
 
   const bannerColor = drawMode ? '#FEF9C3' : '#ECFDF5';
   const bannerBorder = drawMode ? '#FDE047' : '#A7F3D0';
@@ -321,9 +347,9 @@ export default function GeofenceMakerMapScreen() {
         </View>
       )}
 
-      {/* Locate FAB */}
+      {/* Locate FAB — bottom-right when idle, moves up when drawing to clear the action stack */}
       <TouchableOpacity
-        style={[styles.locateFab, { bottom: 16 + insets.bottom }]}
+        style={[styles.locateFab, { bottom: 16 + insets.bottom + (drawMode ? 200 : 0) }]}
         onPress={handleLocate}
         activeOpacity={0.85}
         accessibilityRole="button"
@@ -336,6 +362,50 @@ export default function GeofenceMakerMapScreen() {
           <MaterialCommunityIcons name="crosshairs-gps" size={24} color="#0A5C36" />
         )}
       </TouchableOpacity>
+
+      {/* T1 — Point-by-point polygon action stack, right side, only when drawing.
+         "Adaugă punct" (primary), "Pas înapoi" (when ≥1), "Finalizează" (when ≥3). */}
+      {drawMode ? (
+        <View style={[styles.pointActionStack, { bottom: 16 + insets.bottom }]}>
+          <TouchableOpacity
+            style={[styles.pointFab, styles.pointFabPrimary]}
+            onPress={addPoint}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Adaugă punct la centrul hărții"
+          >
+            <MaterialCommunityIcons name="plus" size={22} color="#fff" />
+            <Text style={styles.pointFabLabel}>Adaugă punct</Text>
+          </TouchableOpacity>
+
+          {vertexCount > 0 ? (
+            <TouchableOpacity
+              style={[styles.pointFab, styles.pointFabUndo]}
+              onPress={removeLastPoint}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Șterge ultimul punct"
+            >
+              <MaterialCommunityIcons name="undo" size={20} color="#713F12" />
+              <Text style={styles.pointFabUndoLabel}>Pas înapoi</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {vertexCount >= 3 ? (
+            <TouchableOpacity
+              style={[styles.pointFab, styles.pointFabFinish, isSaving && styles.fabDisabled]}
+              onPress={finishPolygon}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Finalizează poligonul"
+              disabled={isSaving}
+            >
+              <MaterialCommunityIcons name="check" size={22} color="#fff" />
+              <Text style={styles.pointFabLabel}>Finalizează</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Create parcel form */}
       <CreateParcelModal
@@ -432,4 +502,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E0E0E0',
   },
+  // T1 — point-by-point polygon action stack (right side, vertical).
+  pointActionStack: {
+    position: 'absolute',
+    right: 16,
+    gap: 10,
+    alignItems: 'flex-end',
+  },
+  pointFab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 26,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  pointFabPrimary: { backgroundColor: '#0A5C36' },
+  pointFabFinish: { backgroundColor: '#15803D' },
+  pointFabUndo: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE047',
+  },
+  pointFabLabel: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  pointFabUndoLabel: { fontSize: 13, fontWeight: '700', color: '#713F12' },
 });

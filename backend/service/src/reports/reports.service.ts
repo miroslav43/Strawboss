@@ -6,7 +6,13 @@ import type {
   FieldReport,
   DepotReport,
   ReportTimelinePoint,
+  TruckDistanceRow,
+  TruckDistanceSummary,
 } from '@strawboss/types';
+
+/** T18 — drop GPS legs that imply > 130 km/h (noise) or > 5 km in one segment. */
+const SPEED_CAP_MS = 36; // ≈ 130 km/h
+const SEGMENT_CAP_M = 5000; // 5 km
 
 interface ReportDateRange {
   dateFrom?: string;
@@ -57,10 +63,7 @@ export class ReportsService {
    * Production per farm, with a per-field (parcel) breakdown.
    * Parcels with no farm fall into a synthetic "Fără fermă" bucket.
    */
-  async getFarmReports(
-    orgId: string | null,
-    range?: ReportDateRange,
-  ): Promise<FarmReport[]> {
+  async getFarmReports(orgId: string | null, range?: ReportDateRange): Promise<FarmReport[]> {
     const prodFilter = this.productionDateFilter(range);
     const loadedFilter = this.timestampRangeFilter(range, sql`bl.loaded_at`);
     const deliveredFilter = this.timestampRangeFilter(
@@ -122,10 +125,7 @@ export class ReportsService {
         produced,
         loaded,
         delivered,
-        lossPercentage:
-          produced > 0
-            ? Math.max(0, ((produced - delivered) / produced) * 100)
-            : 0,
+        lossPercentage: produced > 0 ? Math.max(0, ((produced - delivered) / produced) * 100) : 0,
       };
 
       let farm = farmsMap.get(key);
@@ -154,10 +154,7 @@ export class ReportsService {
     for (const farm of farms) {
       farm.lossPercentage =
         farm.produced > 0
-          ? Math.max(
-              0,
-              ((farm.produced - farm.delivered) / farm.produced) * 100,
-            )
+          ? Math.max(0, ((farm.produced - farm.delivered) / farm.produced) * 100)
           : 0;
     }
 
@@ -176,10 +173,7 @@ export class ReportsService {
    * NOTE: trips have no FK to delivery_destinations — they store a free-text
    * `destination_name`. Stock is therefore matched by `trips.destination_name = d.name`.
    */
-  async getDepotReports(
-    orgId: string | null,
-    range?: ReportDateRange,
-  ): Promise<DepotReport[]> {
+  async getDepotReports(orgId: string | null, range?: ReportDateRange): Promise<DepotReport[]> {
     const tripOrg = this.orgFilter(orgId, sql`t.organization_id`);
     const depotOrg = this.orgFilter(orgId, sql`d.organization_id`);
     const receivedFilter = this.timestampRangeFilter(
@@ -249,29 +243,20 @@ export class ReportsService {
   ): Promise<ReportTimelinePoint[]> {
     const MAX_RANGE_DAYS = 366;
     if (range?.dateFrom && range?.dateTo) {
-      const spanDays =
-        (Date.parse(range.dateTo) - Date.parse(range.dateFrom)) / 86_400_000;
+      const spanDays = (Date.parse(range.dateTo) - Date.parse(range.dateFrom)) / 86_400_000;
       if (spanDays > MAX_RANGE_DAYS) {
-        throw new BadRequestException(
-          `Date range exceeds ${MAX_RANGE_DAYS} days`,
-        );
+        throw new BadRequestException(`Date range exceeds ${MAX_RANGE_DAYS} days`);
       }
     }
 
     // Upper bound: explicit dateTo, else the database's CURRENT_DATE — avoids
     // a UTC-vs-local off-by-one that drops the current day for users ahead of UTC.
-    const toExpr = range?.dateTo
-      ? sql`${range.dateTo}::date`
-      : sql`CURRENT_DATE`;
-    const fromExpr = range?.dateFrom
-      ? sql`${range.dateFrom}::date`
-      : sql`(${toExpr} - 29)`;
+    const toExpr = range?.dateTo ? sql`${range.dateTo}::date` : sql`CURRENT_DATE`;
+    const fromExpr = range?.dateFrom ? sql`${range.dateFrom}::date` : sql`(${toExpr} - 29)`;
 
     const bpOrg = this.orgFilter(orgId, sql`bp.organization_id`);
     const tripOrg = this.orgFilter(orgId, sql`t.organization_id`);
-    const farmFilter = farmId
-      ? sql` AND p.farm_id = ${farmId}::uuid`
-      : sql``;
+    const farmFilter = farmId ? sql` AND p.farm_id = ${farmId}::uuid` : sql``;
 
     const result = await this.drizzleProvider.db.execute(sql`
       WITH dates AS (
@@ -313,6 +298,167 @@ export class ReportsService {
       produced: Number(row.produced) || 0,
       loaded: Number(row.loaded) || 0,
       delivered: Number(row.delivered) || 0,
+    }));
+  }
+
+  /**
+   * T18 — bulk per-truck-per-day distance, derived from machine_location_events.
+   *
+   * Sums pairwise `ST_DistanceSphere` legs between consecutive GPS samples
+   * per (machine, UTC day). GPS noise is suppressed by dropping any leg that
+   * (a) covers > 5 km in a single segment, or (b) implies a speed > 130 km/h
+   * for the inter-sample dt. Scoped by `machines.organization_id` since
+   * `machine_location_events` has no org column. Range capped at 90 days.
+   */
+  async getTruckDistance(
+    orgId: string | null,
+    params: { from: string; to: string; machineId?: string },
+  ): Promise<TruckDistanceRow[]> {
+    const fromDate = new Date(params.from);
+    const toDate = new Date(params.to);
+    if (Number.isNaN(fromDate.getTime())) {
+      throw new BadRequestException('Invalid "from" parameter');
+    }
+    if (Number.isNaN(toDate.getTime())) {
+      throw new BadRequestException('Invalid "to" parameter');
+    }
+    if (fromDate > toDate) {
+      throw new BadRequestException('"from" must be ≤ "to"');
+    }
+    const diffDays = Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000);
+    if (diffDays > 90) {
+      throw new BadRequestException('Range cannot exceed 90 days');
+    }
+
+    const orgFilter = orgId !== null ? sql`AND m.organization_id = ${orgId}::uuid` : sql``;
+    const machineFilter = params.machineId ? sql`AND m.id = ${params.machineId}::uuid` : sql``;
+
+    const result = (await this.drizzleProvider.db.execute(sql`
+      WITH pts AS (
+        SELECT
+          mle.machine_id,
+          (mle.recorded_at AT TIME ZONE 'UTC')::date AS day,
+          mle.recorded_at,
+          ST_SetSRID(ST_MakePoint(mle.lon, mle.lat), 4326) AS geom
+        FROM machine_location_events mle
+        JOIN machines m ON m.id = mle.machine_id
+        WHERE m.deleted_at IS NULL
+          AND m.machine_type = 'truck'
+          ${orgFilter}
+          ${machineFilter}
+          AND mle.recorded_at >= ${params.from}::date
+          AND mle.recorded_at <  (${params.to}::date + INTERVAL '1 day')
+      ),
+      pairwise AS (
+        SELECT
+          machine_id, day,
+          ST_DistanceSphere(LAG(geom) OVER w, geom) AS leg_m,
+          EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)) AS dt_s
+        FROM pts
+        WINDOW w AS (PARTITION BY machine_id, day ORDER BY recorded_at)
+      ),
+      clean AS (
+        SELECT machine_id, day,
+          CASE
+            WHEN leg_m IS NULL OR dt_s IS NULL OR dt_s = 0 THEN 0
+            WHEN leg_m > ${SEGMENT_CAP_M} THEN 0
+            WHEN (leg_m / dt_s) > ${SPEED_CAP_MS} THEN 0
+            ELSE leg_m
+          END AS leg_m
+        FROM pairwise
+      )
+      SELECT
+        c.machine_id AS "machineId",
+        COALESCE(m.internal_code, m.registration_plate) AS "machineCode",
+        m.registration_plate AS "registrationPlate",
+        c.day::text AS "date",
+        ROUND((SUM(c.leg_m) / 1000.0)::numeric, 2)::float AS "distanceKm",
+        COUNT(*)::int AS "pointCount"
+      FROM clean c
+      JOIN machines m ON m.id = c.machine_id
+      GROUP BY c.machine_id, m.internal_code, m.registration_plate, c.day
+      ORDER BY c.day, "machineCode"
+    `)) as unknown as TruckDistanceRow[];
+
+    return result.map((r) => ({
+      machineId: r.machineId,
+      machineCode: r.machineCode ?? null,
+      registrationPlate: r.registrationPlate ?? null,
+      date: r.date,
+      distanceKm: Number(r.distanceKm) || 0,
+      pointCount: Number(r.pointCount) || 0,
+    }));
+  }
+
+  /**
+   * T18 — "today / this week" km summary per truck. One row per truck in the
+   * org with both totals (week starts Monday in UTC). Used by the Machines
+   * admin page for at-a-glance columns.
+   */
+  async getTruckDistanceSummary(orgId: string | null): Promise<TruckDistanceSummary[]> {
+    const orgFilter = orgId !== null ? sql`AND m.organization_id = ${orgId}::uuid` : sql``;
+
+    const result = (await this.drizzleProvider.db.execute(sql`
+      WITH bounds AS (
+        SELECT
+          date_trunc('week', CURRENT_DATE)::date AS week_start,
+          CURRENT_DATE AS today
+      ),
+      pts AS (
+        SELECT
+          mle.machine_id,
+          (mle.recorded_at AT TIME ZONE 'UTC')::date AS day,
+          mle.recorded_at,
+          ST_SetSRID(ST_MakePoint(mle.lon, mle.lat), 4326) AS geom
+        FROM machine_location_events mle
+        JOIN machines m ON m.id = mle.machine_id, bounds b
+        WHERE m.deleted_at IS NULL
+          AND m.machine_type = 'truck'
+          ${orgFilter}
+          AND mle.recorded_at >= b.week_start
+          AND mle.recorded_at <  (b.today + INTERVAL '1 day')
+      ),
+      pairwise AS (
+        SELECT
+          machine_id, day,
+          ST_DistanceSphere(LAG(geom) OVER w, geom) AS leg_m,
+          EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)) AS dt_s
+        FROM pts
+        WINDOW w AS (PARTITION BY machine_id, day ORDER BY recorded_at)
+      ),
+      clean AS (
+        SELECT machine_id, day,
+          CASE
+            WHEN leg_m IS NULL OR dt_s IS NULL OR dt_s = 0 THEN 0
+            WHEN leg_m > ${SEGMENT_CAP_M} THEN 0
+            WHEN (leg_m / dt_s) > ${SPEED_CAP_MS} THEN 0
+            ELSE leg_m
+          END AS leg_m
+        FROM pairwise
+      ),
+      per_truck AS (
+        SELECT
+          machine_id,
+          ROUND((SUM(CASE WHEN day = CURRENT_DATE THEN leg_m ELSE 0 END) / 1000.0)::numeric, 2)::float AS km_today,
+          ROUND((SUM(leg_m) / 1000.0)::numeric, 2)::float AS km_this_week
+        FROM clean
+        GROUP BY machine_id
+      )
+      SELECT
+        m.id AS "machineId",
+        COALESCE(p.km_today, 0)::float AS "kmToday",
+        COALESCE(p.km_this_week, 0)::float AS "kmThisWeek"
+      FROM machines m
+      LEFT JOIN per_truck p ON p.machine_id = m.id
+      WHERE m.deleted_at IS NULL
+        AND m.machine_type = 'truck'
+        ${orgFilter}
+    `)) as unknown as TruckDistanceSummary[];
+
+    return result.map((r) => ({
+      machineId: r.machineId,
+      kmToday: Number(r.kmToday) || 0,
+      kmThisWeek: Number(r.kmThisWeek) || 0,
     }));
   }
 }

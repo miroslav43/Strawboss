@@ -15,10 +15,16 @@ import {
   Truck,
   Wheat,
 } from 'lucide-react';
-import { useMachines, useCreateMachine, useUpdateMachine, queryKeys } from '@strawboss/api';
+import {
+  useMachines,
+  useCreateMachine,
+  useUpdateMachine,
+  useTruckDistanceSummary,
+  queryKeys,
+} from '@strawboss/api';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { MachineType, FuelType } from '@strawboss/types';
-import type { Machine } from '@strawboss/types';
+import type { Machine, TruckDistanceSummary } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
@@ -649,6 +655,16 @@ export default function MachinesPage() {
 
   const machines = toMachineList(machinesRaw);
 
+  // T18 — "today / this week" km summary per truck, used in two columns below.
+  const truckDistanceSummary = useTruckDistanceSummary(apiClient);
+  const distanceByMachine = useMemo(() => {
+    const map = new Map<string, TruckDistanceSummary>();
+    for (const row of truckDistanceSummary.data ?? []) {
+      map.set(row.machineId, row);
+    }
+    return map;
+  }, [truckDistanceSummary.data]);
+
   const { setVariant: setIconVariant, getVariant } = useMachineIconPrefs();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -802,6 +818,8 @@ export default function MachinesPage() {
                 <th className="px-4 py-3">{t('machines.colType')}</th>
                 <th className="px-4 py-3">{t('machines.colMakeModel')}</th>
                 <th className="px-4 py-3">{t('machines.colPlate')}</th>
+                <th className="px-4 py-3 text-right">{t('machines.colKmToday')}</th>
+                <th className="px-4 py-3 text-right">{t('machines.colKmThisWeek')}</th>
                 <th className="px-4 py-3">{t('machines.colFuel')}</th>
                 <th className="px-4 py-3">{t('machines.colStatus')}</th>
                 <th className="px-4 py-3 text-right">{t('machines.colActions')}</th>
@@ -810,7 +828,7 @@ export default function MachinesPage() {
             <tbody className="divide-y divide-neutral-100">
               {groups.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={9} className="px-4 py-12 text-center">
                     <Gauge className="mx-auto mb-2 h-8 w-8 text-neutral-300" />
                     <p className="text-sm text-neutral-400">
                       {search || statusFilter !== 'all' || fuelFilter !== 'all'
@@ -825,7 +843,7 @@ export default function MachinesPage() {
                 <Fragment key={group.type}>
                   {/* Group header */}
                   <tr className="border-y border-neutral-200 bg-neutral-50">
-                    <td colSpan={7} className="px-4 py-2">
+                    <td colSpan={9} className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <MachineTypeIcon type={group.type} className="h-4 w-4 text-neutral-500" />
                         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
@@ -878,6 +896,30 @@ export default function MachinesPage() {
                         <span className="ml-1 text-xs text-neutral-400">({m.year})</span>
                       </td>
                       <td className="px-4 py-3 text-neutral-500">{m.registrationPlate ?? '—'}</td>
+                      {(() => {
+                        // T18 — km columns only render for trucks; blank otherwise.
+                        if (m.machineType !== MachineType.truck) {
+                          return (
+                            <>
+                              <td className="px-4 py-3 text-right text-neutral-300">—</td>
+                              <td className="px-4 py-3 text-right text-neutral-300">—</td>
+                            </>
+                          );
+                        }
+                        const s = distanceByMachine.get(m.id);
+                        const today = s?.kmToday ?? 0;
+                        const week = s?.kmThisWeek ?? 0;
+                        return (
+                          <>
+                            <td className="px-4 py-3 text-right tabular-nums text-neutral-700">
+                              {today > 0 ? today.toFixed(1) : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-neutral-700">
+                              {week > 0 ? week.toFixed(1) : '—'}
+                            </td>
+                          </>
+                        );
+                      })()}
                       <td className="px-4 py-3 text-neutral-500">
                         {FUEL_LABELS[m.fuelType] ?? m.fuelType}
                       </td>

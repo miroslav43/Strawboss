@@ -38,3 +38,29 @@ export interface KmByDayResponse {
   to: string;
   days: KmByDayPoint[];
 }
+
+/**
+ * One (truck, day) row from the bulk per-truck distance report (T18).
+ * Returned by GET /api/v1/reports/truck-distance.
+ */
+export interface TruckDistanceRow {
+  machineId: string;
+  machineCode: string | null;
+  registrationPlate: string | null;
+  /** ISO date `YYYY-MM-DD` (UTC partition). */
+  date: string;
+  /** Kilometres travelled that day, rounded to two decimals. Noise-capped. */
+  distanceKm: number;
+  /** Number of GPS samples used. */
+  pointCount: number;
+}
+
+/**
+ * Per-truck "today / this week" summary, surfaced on the Machines admin page
+ * (T18). Returned by GET /api/v1/reports/truck-distance/summary.
+ */
+export interface TruckDistanceSummary {
+  machineId: string;
+  kmToday: number;
+  kmThisWeek: number;
+}

@@ -126,5 +126,11 @@ export {
   useAssignParcelToFarm,
 } from './use-farms.js';
 
-export { useFarmReports, useDepotReports, useReportTimeline } from './use-reports.js';
-export type { ReportQueryOptions } from './use-reports.js';
+export {
+  useFarmReports,
+  useDepotReports,
+  useReportTimeline,
+  useTruckDistanceReport,
+  useTruckDistanceSummary,
+} from './use-reports.js';
+export type { ReportQueryOptions, TruckDistanceFilters } from './use-reports.js';

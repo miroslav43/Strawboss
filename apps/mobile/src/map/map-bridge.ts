@@ -88,12 +88,22 @@ export type GeofenceEditorCommand =
   // GET_CENTER asks the WebView to emit POINT_DRAWN with the current centre.
   | { type: 'ENABLE_POINT_DRAW' }
   | { type: 'DISABLE_POINT_DRAW' }
-  | { type: 'GET_CENTER' };
+  | { type: 'GET_CENTER' }
+  // T1 — polygon-by-points: center the map on each desired vertex, tap
+  // ADD_VERTEX_AT_CENTER to push the centre into the in-progress polygon;
+  // REMOVE_LAST_VERTEX undoes; FINISH_POLYGON emits POLYGON_DRAWN with the
+  // closed ring. Use instead of `ENABLE_DRAW` for the Google-Earth-style flow.
+  | { type: 'ADD_VERTEX_AT_CENTER' }
+  | { type: 'REMOVE_LAST_VERTEX' }
+  | { type: 'FINISH_POLYGON' };
 
 export type GeofenceEditorEvent =
   | { type: 'MAP_READY' }
   | { type: 'POLYGON_DRAWN'; geojson: object }
-  | { type: 'POINT_DRAWN'; lat: number; lon: number };
+  | { type: 'POINT_DRAWN'; lat: number; lon: number }
+  // T1 — fired after ADD_VERTEX_AT_CENTER / REMOVE_LAST_VERTEX so RN can
+  // refresh the counter / "Finalizează" button enabled state.
+  | { type: 'VERTEX_COUNT'; count: number };
 
 export function serializeEditorCommand(cmd: GeofenceEditorCommand): string {
   return `window.handleCommand(${JSON.stringify(cmd)});`;

@@ -1,6 +1,11 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { UserRole } from '@strawboss/types';
-import { reportQuerySchema, type ReportQuery } from '@strawboss/validation';
+import {
+  reportQuerySchema,
+  type ReportQuery,
+  truckDistanceQuerySchema,
+  type TruckDistanceQuery,
+} from '@strawboss/validation';
 import { ReportsService } from './reports.service';
 import { Roles } from '../auth/roles.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -44,5 +49,23 @@ export class ReportsController {
       { dateFrom: query.dateFrom, dateTo: query.dateTo },
       query.farmId,
     );
+  }
+
+  /**
+   * T18 — bulk per-truck-per-day distance from the GPS trace.
+   * Query: `from`, `to` (inclusive ISO dates), optional `machineId`.
+   */
+  @Get('truck-distance')
+  getTruckDistance(
+    @CurrentUser() user: RequestUser,
+    @Query(new ZodValidationPipe(truckDistanceQuerySchema)) query: TruckDistanceQuery,
+  ) {
+    return this.reportsService.getTruckDistance(user.organizationId, query);
+  }
+
+  /** T18 — "today / this week" per-truck km summary for the Machines admin page. */
+  @Get('truck-distance/summary')
+  getTruckDistanceSummary(@CurrentUser() user: RequestUser) {
+    return this.reportsService.getTruckDistanceSummary(user.organizationId);
   }
 }

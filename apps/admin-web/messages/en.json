@@ -556,7 +556,12 @@
       "online": "Online",
       "offline": "Offline",
       "lastSeen": "Last activity {{when}}",
-      "neverSeen": "Never connected"
+      "neverSeen": "Never connected",
+      "shortOnline": "Online",
+      "shortOffline": "Offline",
+      "shortMinutesAgo": "{{n}}m",
+      "shortHoursAgo": "{{n}}h",
+      "shortDaysAgo": "{{n}}d"
     },
     "truck": {
       "iterations": {
@@ -769,6 +774,8 @@
     "colType": "Type",
     "colMakeModel": "Make / Model",
     "colPlate": "Registration no.",
+    "colKmToday": "Today (km)",
+    "colKmThisWeek": "This week (km)",
     "colFuel": "Fuel",
     "colStatus": "Status",
     "colActions": "Actions"

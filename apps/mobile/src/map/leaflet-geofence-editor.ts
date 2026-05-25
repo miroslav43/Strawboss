@@ -167,6 +167,95 @@ setTimeout(function() {
     sendEvent({ type: 'POLYGON_DRAWN', geojson: e.layer.toGeoJSON().geometry });
   });
 
+  // ── T1 — point-by-point polygon builder ─────────────────────────────
+  // The user pans the map; the centre-pin sits over the next vertex; tap
+  // ADD_VERTEX_AT_CENTER on RN to push the centre into pointVertices.
+  // Visual: numbered dots for each vertex + dashed polyline (or polygon
+  // fill when >=3) on previewLayer. FINISH_POLYGON closes the ring.
+  var previewLayer = L.layerGroup().addTo(map);
+  var pointVertices = [];
+
+  function redrawPreview() {
+    previewLayer.clearLayers();
+    if (pointVertices.length === 0) return;
+    pointVertices.forEach(function(v, i) {
+      var dot = L.circleMarker([v.lat, v.lon], {
+        radius: 6,
+        color: '#0A5C36',
+        weight: 2,
+        fillColor: '#10b981',
+        fillOpacity: 0.9
+      });
+      dot.bindTooltip(String(i + 1), {
+        permanent: true,
+        direction: 'top',
+        offset: [0, -6],
+        className: 'map-tooltip'
+      });
+      dot.addTo(previewLayer);
+    });
+    if (pointVertices.length >= 2) {
+      var coords = pointVertices.map(function(v) { return [v.lat, v.lon]; });
+      if (pointVertices.length >= 3) {
+        // Closed-ish preview: polygon fill so the user sees the shape.
+        L.polygon(coords, {
+          color: '#14b8a6',
+          weight: 2,
+          dashArray: '6, 4',
+          fillColor: '#14b8a6',
+          fillOpacity: 0.18
+        }).addTo(previewLayer);
+      } else {
+        L.polyline(coords, { color: '#14b8a6', weight: 3, dashArray: '6, 4' })
+          .addTo(previewLayer);
+      }
+    }
+  }
+
+  function startPointDraw() {
+    pointVertices = [];
+    previewLayer.clearLayers();
+    drawnItems.clearLayers();
+    var pinOn = document.getElementById('center-pin');
+    if (pinOn) pinOn.style.display = 'block';
+  }
+
+  function stopPointDraw() {
+    pointVertices = [];
+    previewLayer.clearLayers();
+    var pinOff = document.getElementById('center-pin');
+    if (pinOff) pinOff.style.display = 'none';
+  }
+
+  function addVertexAtCenter() {
+    var c = map.getCenter();
+    pointVertices.push({ lat: c.lat, lon: c.lng });
+    redrawPreview();
+    sendEvent({ type: 'VERTEX_COUNT', count: pointVertices.length });
+  }
+
+  function removeLastVertex() {
+    if (pointVertices.length === 0) return;
+    pointVertices.pop();
+    redrawPreview();
+    sendEvent({ type: 'VERTEX_COUNT', count: pointVertices.length });
+  }
+
+  function finishPolygon() {
+    if (pointVertices.length < 3) return;
+    // Close the ring (GeoJSON Polygon requires first == last).
+    var ring = pointVertices.map(function(v) { return [v.lon, v.lat]; });
+    ring.push([ring[0][0], ring[0][1]]);
+    var geojson = { type: 'Polygon', coordinates: [ring] };
+    // Materialise as a solid layer in drawnItems so it lines up with the
+    // L.Draw flow that the modals already expect.
+    drawnItems.clearLayers();
+    L.geoJSON(geojson, { style: function() { return polygonDrawOptions.shapeOptions; } })
+      .eachLayer(function(l) { drawnItems.addLayer(l); });
+    stopPointDraw();
+    sendEvent({ type: 'POLYGON_DRAWN', geojson: geojson });
+  }
+
   // ── Styles ───────────────────────────────────────────────────────────
   var parcelStyle  = { color: '#d97706', weight: 2, fillColor: '#f97316', fillOpacity: 0.25 };
   var parcelHighlightStyle = { color: '#dc2626', weight: 3, fillColor: '#ef4444', fillOpacity: 0.35 };
@@ -277,22 +366,17 @@ setTimeout(function() {
       case 'DISABLE_DRAW':      disableDraw(); break;
       case 'HIGHLIGHT_PARCEL':  highlightParcel(cmd.parcelId); break;
       case 'CENTER_ON':         centerOn(cmd.lat, cmd.lon, cmd.zoom); break;
-      // T1 — center-pin point picker
-      case 'ENABLE_POINT_DRAW': {
-        var pinOn = document.getElementById('center-pin');
-        if (pinOn) pinOn.style.display = 'block';
-        break;
-      }
-      case 'DISABLE_POINT_DRAW': {
-        var pinOff = document.getElementById('center-pin');
-        if (pinOff) pinOff.style.display = 'none';
-        break;
-      }
+      // T1 — center-pin point picker + polygon-by-points builder
+      case 'ENABLE_POINT_DRAW':    startPointDraw(); break;
+      case 'DISABLE_POINT_DRAW':   stopPointDraw(); break;
       case 'GET_CENTER': {
         var c = map.getCenter();
         sendEvent({ type: 'POINT_DRAWN', lat: c.lat, lon: c.lng });
         break;
       }
+      case 'ADD_VERTEX_AT_CENTER': addVertexAtCenter(); break;
+      case 'REMOVE_LAST_VERTEX':   removeLastVertex(); break;
+      case 'FINISH_POLYGON':       finishPolygon(); break;
     }
   };
 

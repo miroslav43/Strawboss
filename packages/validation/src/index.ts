@@ -148,5 +148,6 @@ export {
   depotReportSchema,
   reportTimelinePointSchema,
   reportQuerySchema,
+  truckDistanceQuerySchema,
 } from './dtos/reports.schema.js';
-export type { ReportQuery } from './dtos/reports.schema.js';
+export type { ReportQuery, TruckDistanceQuery } from './dtos/reports.schema.js';

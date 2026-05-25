@@ -1,6 +1,6 @@
-import { z } from "zod";
-import { uuidSchema } from "../helpers/uuid.js";
-import { isoDateSchema } from "../helpers/iso-date.js";
+import { z } from 'zod';
+import { uuidSchema } from '../helpers/uuid.js';
+import { isoDateSchema } from '../helpers/iso-date.js';
 
 export const fieldReportSchema = z.object({
   parcelId: uuidSchema,
@@ -40,9 +40,7 @@ export const reportTimelinePointSchema = z.object({
   delivered: z.number().int().nonnegative(),
 });
 
-const dateOnlySchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Must be a YYYY-MM-DD date");
+const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a YYYY-MM-DD date');
 
 export const reportQuerySchema = z.object({
   dateFrom: dateOnlySchema.optional(),
@@ -51,3 +49,17 @@ export const reportQuerySchema = z.object({
 });
 
 export type ReportQuery = z.infer<typeof reportQuerySchema>;
+
+/**
+ * T18 — bulk truck-distance report query.
+ *
+ * `from` and `to` are inclusive ISO dates. `machineId` narrows the report to
+ * a single truck (otherwise all trucks in the org are returned).
+ */
+export const truckDistanceQuerySchema = z.object({
+  from: dateOnlySchema,
+  to: dateOnlySchema,
+  machineId: uuidSchema.optional(),
+});
+
+export type TruckDistanceQuery = z.infer<typeof truckDistanceQuerySchema>;

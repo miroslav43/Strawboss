@@ -259,9 +259,12 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                     <span className="font-medium text-neutral-800 text-sm">{code}</span>
                     <span className="text-xs text-neutral-400">{plate}</span>
                     {assignment.assignedUserName ? (
-                      <span className="ml-2 flex items-center gap-1 text-xs text-neutral-500">
-                        <UserPresenceDot lastSeenAt={assignment.assignedUserLastSeenAt ?? null} />
+                      <span className="ml-2 flex items-center gap-1.5 text-xs text-neutral-600">
                         {assignment.assignedUserName}
+                        <UserPresenceDot
+                          lastSeenAt={assignment.assignedUserLastSeenAt ?? null}
+                          variant="badge"
+                        />
                       </span>
                     ) : null}
                   </div>

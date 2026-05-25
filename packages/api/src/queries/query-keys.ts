@@ -89,5 +89,8 @@ export const queryKeys = {
     farms: (filters?: Record<string, unknown>) => ['reports', 'farms', filters] as const,
     depots: (filters?: Record<string, unknown>) => ['reports', 'depots', filters] as const,
     timeline: (filters?: Record<string, unknown>) => ['reports', 'timeline', filters] as const,
+    truckDistance: (filters?: Record<string, unknown>) =>
+      ['reports', 'truckDistance', filters] as const,
+    truckDistanceSummary: () => ['reports', 'truckDistanceSummary'] as const,
   },
 } as const;

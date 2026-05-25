@@ -556,7 +556,12 @@
       "online": "Conectat",
       "offline": "Deconectat",
       "lastSeen": "Ultima activitate {{when}}",
-      "neverSeen": "Niciodată conectat"
+      "neverSeen": "Niciodată conectat",
+      "shortOnline": "Online",
+      "shortOffline": "Offline",
+      "shortMinutesAgo": "{{n}} min",
+      "shortHoursAgo": "{{n}} h",
+      "shortDaysAgo": "{{n}} z"
     },
     "truck": {
       "iterations": {
@@ -769,6 +774,8 @@
     "colType": "Tip",
     "colMakeModel": "Marcă / Model",
     "colPlate": "Nr. înmatriculare",
+    "colKmToday": "Azi (km)",
+    "colKmThisWeek": "Săptămâna asta (km)",
     "colFuel": "Combustibil",
     "colStatus": "Stare",
     "colActions": "Acțiuni"
