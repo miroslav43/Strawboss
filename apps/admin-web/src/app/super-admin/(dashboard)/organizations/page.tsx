@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { Loader2, Building2, Plus, ExternalLink, Users } from 'lucide-react';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface Organization {
   id: string;
@@ -13,6 +14,7 @@ interface Organization {
 }
 
 export default function OrganizationsPage() {
+  const { t } = useI18n();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export default function OrganizationsPage() {
           className="flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
         >
           <Plus className="h-4 w-4" />
-          New Organization
+          {t('superAdmin.orgs.newButton')}
         </a>
       </div>
 
@@ -61,8 +63,8 @@ export default function OrganizationsPage() {
       ) : orgs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
           <Building2 className="mb-3 h-12 w-12 opacity-20" />
-          <p className="text-sm">No organizations yet.</p>
-          <p className="mt-1 text-xs">Click &quot;New Organization&quot; to create the first one.</p>
+          <p className="text-sm">{t('superAdmin.orgs.empty')}</p>
+          <p className="mt-1 text-xs">{t('superAdmin.orgs.emptyHint')}</p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
@@ -85,8 +87,7 @@ export default function OrganizationsPage() {
                       href={`/${org.slug}/`}
                       className="inline-flex items-center gap-1 text-neutral-500 hover:text-neutral-800"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      /{org.slug}/
+                      <ExternalLink className="h-3.5 w-3.5" />/{org.slug}/
                     </a>
                   </td>
                   <td className="px-5 py-3">

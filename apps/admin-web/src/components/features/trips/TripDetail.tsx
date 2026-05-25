@@ -235,10 +235,12 @@ export function TripDetail({ trip, className }: TripDetailProps) {
 
         {/* Signatures */}
         {(trip.loaderSignatureUrl || trip.driverSignatureUrl || trip.receiverSignatureUrl) && (
-          <Section title="Semnături" icon={FileSignature}>
+          <Section title={t('trips_detail.signatures')} icon={FileSignature}>
             <div className="space-y-4">
               <div>
-                <p className="mb-1.5 text-xs font-medium text-neutral-500">Operator încărcător</p>
+                <p className="mb-1.5 text-xs font-medium text-neutral-500">
+                  {t('trips_detail.loaderOperator')}
+                </p>
                 <SignatureDisplay
                   signatureUrl={trip.loaderSignatureUrl}
                   signerName={trip.loaderOperatorName}
@@ -246,7 +248,9 @@ export function TripDetail({ trip, className }: TripDetailProps) {
                 />
               </div>
               <div>
-                <p className="mb-1.5 text-xs font-medium text-neutral-500">Șofer</p>
+                <p className="mb-1.5 text-xs font-medium text-neutral-500">
+                  {t('trips_detail.driver')}
+                </p>
                 <SignatureDisplay
                   signatureUrl={trip.driverSignatureUrl}
                   signerName={trip.driverName}
@@ -254,7 +258,9 @@ export function TripDetail({ trip, className }: TripDetailProps) {
                 />
               </div>
               <div>
-                <p className="mb-1.5 text-xs font-medium text-neutral-500">Primitor</p>
+                <p className="mb-1.5 text-xs font-medium text-neutral-500">
+                  {t('trips_detail.deposit')}
+                </p>
                 <SignatureDisplay
                   signatureUrl={trip.receiverSignatureUrl}
                   signerName={trip.receiverName}
@@ -267,11 +273,13 @@ export function TripDetail({ trip, className }: TripDetailProps) {
 
         {/* Documents / CMR */}
         {docsEnabled && (
-          <Section title="Documente" icon={Download}>
+          <Section title={t('trips_detail.documents')} icon={Download}>
             <div className="divide-y divide-neutral-100">
               {cmrDoc ? (
                 <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-neutral-700">CMR - {trip.tripNumber}</span>
+                  <span className="text-sm text-neutral-700">
+                    {t('trips_detail.cmrTitle', { tripNumber: trip.tripNumber })}
+                  </span>
                   <a
                     href={cmrDoc.fileUrl as string}
                     target="_blank"

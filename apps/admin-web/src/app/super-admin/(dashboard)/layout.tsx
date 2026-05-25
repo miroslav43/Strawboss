@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useI18n } from '@/lib/i18n';
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [ready, setReady] = useState(false);
@@ -70,9 +72,11 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-4 border-b border-neutral-200 bg-neutral-900 px-6 py-4 text-white">
-        <span className="text-lg font-bold">Super Admin</span>
+        <span className="text-lg font-bold">{t('superAdmin.brand')}</span>
         <nav className="flex flex-1 gap-4 text-sm">
-          <a href="/super-admin/organizations" className="hover:underline">Organizations</a>
+          <a href="/super-admin/organizations" className="hover:underline">
+            {t('superAdmin.users.breadcrumb.orgs')}
+          </a>
         </nav>
         <button
           onClick={handleLogout}

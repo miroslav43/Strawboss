@@ -12,7 +12,8 @@
     "none": "—",
     "active": "Activ",
     "inactive": "Inactiv",
-    "error": "Ceva nu a mers bine."
+    "error": "Ceva nu a mers bine.",
+    "back": "Înapoi"
   },
   "fuelLogs": {
     "dateFrom": "De la",
@@ -99,7 +100,21 @@
       "saveProfile": "Salvează profilul",
       "placeholderName": "Numele tău",
       "placeholderEmail": "email@exemplu.com",
-      "placeholderPhone": "+40 721 234 567"
+      "placeholderPhone": "+40 721 234 567",
+      "specimen": {
+        "imageAlt": "Specimen de semnătură",
+        "empty": "Nu ai încă un specimen.",
+        "description": "Specimenul tău de semnătură este reutilizat automat când șoferii și operatorii încărcă din contul tău pe mobile. Pe admin web este opțional — îl poți seta sau înlocui oricând.",
+        "replace": "Înlocuiește",
+        "create": "Creează specimen",
+        "clear": "Șterge",
+        "cancel": "Anulează",
+        "save": "Salvează specimen",
+        "errorNoStrokes": "Desenează semnătura înainte de a salva.",
+        "errorEncode": "Specimenul nu a putut fi codificat ca PNG.",
+        "successSaved": "Specimenul a fost salvat.",
+        "errorSave": "Salvarea specimenului a eșuat."
+      }
     },
     "notifications": {
       "title": "Notificări",
@@ -484,7 +499,25 @@
     "pendingAlerts": "Alerte în așteptare",
     "sectionActiveTrips": "Curse active",
     "loadingTrips": "Se încarcă cursele…",
-    "loadTripsError": "Nu s-au putut încărca cursele. Backend-ul poate fi oprit."
+    "loadTripsError": "Nu s-au putut încărca cursele. Backend-ul poate fi oprit.",
+    "noActiveTrips": "Nicio cursă activă"
+  },
+  "trips_detail": {
+    "signatures": "Semnături",
+    "loaderOperator": "Operator încărcător",
+    "driver": "Șofer",
+    "deposit": "Depozit",
+    "documents": "Documente",
+    "cmrTitle": "CMR — {{tripNumber}}",
+    "deleteTooltip": "Șterge cursa"
+  },
+  "documents": {
+    "fileSize": "Mărime fișier",
+    "receiptNoPhoto": "Fără poză",
+    "receiptOpen": "Deschide poza"
+  },
+  "settings_page": {
+    "specimenSectionTitle": "Specimen de semnătură"
   },
   "tasks": {
     "title": "Sarcini",
@@ -612,7 +645,8 @@
       "rankings": "Clasamente",
       "costs": "Costuri",
       "operators": "Operatori",
-      "kmPerTruck": "Km / camion"
+      "kmPerTruck": "Km / camion",
+      "connectedHours": "Ore conectat"
     },
     "kmPerTruck": {
       "title": "Kilometri parcurși per camion pe zi",
@@ -691,6 +725,21 @@
       "produced": "Produs",
       "loaded": "Încărcat",
       "delivered": "Livrat"
+    },
+    "connectedHours": {
+      "title": "Timp conectat la aplicație",
+      "groupBy": "Grupare",
+      "day": "Zi",
+      "week": "Săptămână",
+      "month": "Lună",
+      "user": "Utilizator",
+      "role": "Rol",
+      "period": "Perioadă",
+      "hours": "Ore",
+      "total": "Total",
+      "totalHours": "Total ore",
+      "activeUsers": "Utilizatori activi",
+      "avgHours": "Media per utilizator"
     }
   },
   "alerts": {
@@ -778,7 +827,74 @@
     "colKmThisWeek": "Săptămâna asta (km)",
     "colFuel": "Combustibil",
     "colStatus": "Stare",
-    "colActions": "Acțiuni"
+    "colActions": "Acțiuni",
+    "typeLabel": {
+      "loader": "Încărcătoare",
+      "baler": "Balotiere",
+      "truck": "Camioane"
+    },
+    "typeSingular": {
+      "loader": "Încărcător",
+      "baler": "Balotieră",
+      "truck": "Camion"
+    },
+    "fuel": {
+      "diesel": "Diesel",
+      "gasoline": "Benzină",
+      "electric": "Electric"
+    },
+    "form": {
+      "type": "Tip mașină",
+      "internalCode": "Cod intern",
+      "make": "Marcă",
+      "model": "Model",
+      "year": "An fabricație",
+      "plate": "Nr. înmatriculare",
+      "fuelType": "Combustibil",
+      "tankCapacity": "Capacitate rezervor (L)",
+      "maxBales": "Nr. max. baloți",
+      "ownerSection": "Firma proprietară",
+      "ownerName": "Denumire firmă",
+      "ownerCui": "CUI firmă",
+      "ownerAddress": "Adresă firmă",
+      "isActiveLabel": "Mașină activă",
+      "iconOnMap": "Iconiță pe hartă"
+    },
+    "modal": {
+      "createTitle": "Mașină nouă",
+      "editTitle": "Editează — {{code}}",
+      "submitCreate": "Adaugă mașina",
+      "submitEdit": "Salvează modificările",
+      "saving": "Se salvează…"
+    },
+    "delete": {
+      "title": "Ștergi mașina?",
+      "descSuffix": " va fi ștearsă definitiv.",
+      "saving": "Se șterge…"
+    },
+    "filter": {
+      "searchPlaceholder": "Caută după cod, marcă, model, nr. înmatriculare…",
+      "allStatuses": "Toate statusurile",
+      "anyFuel": "Orice combustibil",
+      "active": "Active",
+      "inactive": "Inactive",
+      "statusActive": "Activă",
+      "statusInactive": "Inactivă",
+      "countSingular": "{{count}} mașină",
+      "countPlural": "{{count}} mașini"
+    },
+    "state": {
+      "loading": "Se încarcă mașinile…",
+      "errorTitle": "Eroare la încărcarea mașinilor. Verifică că backend-ul rulează.",
+      "emptyFiltered": "Nicio mașină nu corespunde filtrelor selectate.",
+      "empty": "Nicio mașină înregistrată. Apasă „Mașină nouă\" pentru a adăuga prima."
+    },
+    "actions": {
+      "editTooltip": "Editează",
+      "deleteTooltip": "Șterge",
+      "changeIconTooltip": "Schimbă iconița (deschide editare)"
+    },
+    "errorFallback": "A apărut o eroare. Încearcă din nou."
   },
   "deposits": {
     "title": "Depozite",
@@ -853,6 +969,207 @@
       "loader": "Încărcător",
       "baler": "Balotieră",
       "truck": "Camion"
+    },
+    "pin": {
+      "hide": "Ascunde PIN",
+      "show": "Arată PIN",
+      "copy": "Copiază PIN",
+      "copied": "Copiat!"
+    },
+    "modal": {
+      "createTitle": "Cont nou",
+      "editTitle": "Editează",
+      "createSubmit": "Creează cont",
+      "creating": "Se creează…",
+      "editing": "Se salvează…",
+      "errorCreate": "Eroare la creare cont",
+      "errorEdit": "Eroare la salvare"
+    },
+    "form": {
+      "fullName": "Nume complet",
+      "fullNamePlaceholder": "Maletici Miroslav",
+      "fullNameHint": "Introduceți exact 2 cuvinte: Nume Prenume",
+      "role": "Rol",
+      "phone": "Telefon (opțional)",
+      "phonePlaceholder": "+40 7xx xxx xxx",
+      "username": "Username",
+      "usernamePlaceholder": "mmaletici",
+      "usernameOverrideTooltip": "Poți edita username-ul înainte de creare",
+      "reset": "Reset",
+      "pinLabel": "PIN (4 cifre)",
+      "pinPlaceholder": "4 cifre",
+      "pinHint": "Schimbarea PIN-ului actualizează și parola din Supabase Auth.",
+      "generatedSection": "Date generate automat",
+      "credentialsSection": "Credențiale acces",
+      "usernameRowLabel": "Username:",
+      "emailRowLabel": "Email:",
+      "pinRowLabel": "PIN:",
+      "pinServerGen": "generat de server (4 cifre)"
+    },
+    "avatar": {
+      "uploading": "Se încarcă...",
+      "change": "Schimbă poza",
+      "uploadFailed": "Upload eșuat",
+      "hint": "JPG, PNG sau WebP. Max 3 MB."
+    },
+    "deactivate": {
+      "title": "Dezactivezi contul?",
+      "descSuffix": " nu va mai putea accesa aplicația.",
+      "deactivating": "Se dezactivează…",
+      "deactivate": "Dezactivează"
+    },
+    "assign": {
+      "titlePrefix": "Asignează mașina — ",
+      "roleHint": "Rolul {{role}} poate fi legat doar de o mașină de tip {{type}}.",
+      "noCompatible": "Nicio mașină compatibilă activă.",
+      "noCompatibleHint": "Adaugă o mașină de tip „{{type}}\" în pagina Mașini.",
+      "noCompatibleHintGeneric": "Adaugă mașini în pagina Mașini.",
+      "noneAssigned": "Nicio mașină asignată",
+      "assignButton": "Asignează",
+      "saveButton": "Salvează asignarea",
+      "saving": "Se salvează…",
+      "errorSave": "Eroare la salvare"
+    },
+    "filter": {
+      "searchPlaceholder": "Caută după nume, username, email, telefon…",
+      "allStatuses": "Toate statusurile",
+      "active": "Active",
+      "inactive": "Inactive",
+      "countSingular": "{{count}} cont",
+      "countPlural": "{{count}} conturi"
+    },
+    "state": {
+      "loading": "Se încarcă conturile…",
+      "error": "Eroare la încărcarea conturilor. Verifică că backend-ul rulează.",
+      "emptyFiltered": "Niciun cont nu corespunde filtrelor selectate.",
+      "empty": "Niciun cont înregistrat. Apasă „Cont nou\" pentru a adăuga primul."
+    },
+    "table": {
+      "colName": "Nume",
+      "colUsername": "Username",
+      "colEmail": "Email",
+      "colPin": "PIN",
+      "colRole": "Rol",
+      "colMachine": "Mașină asignată",
+      "colPhone": "Telefon",
+      "colStatus": "Status",
+      "colActions": "Acțiuni"
+    },
+    "actions": {
+      "assignTooltip": "Schimbă mașina asignată",
+      "editTooltip": "Editează cont",
+      "deactivateTooltip": "Dezactivează cont"
+    },
+    "status": {
+      "active": "Activ",
+      "inactive": "Inactiv"
+    }
+  },
+  "superAdmin": {
+    "brand": "Super Admin",
+    "orgs": {
+      "empty": "Nu există organizații încă.",
+      "emptyHint": "Apasă „Organizație nouă\" pentru a o crea pe prima.",
+      "newButton": "Organizație nouă",
+      "createTitle": "Creează organizație",
+      "urlPreview": "Previzualizare URL panou"
+    },
+    "users": {
+      "breadcrumb": {
+        "orgs": "Organizații",
+        "users": "Utilizatori"
+      },
+      "headerTitle": "Utilizatori în {{org}}",
+      "headerOrgFallback": "organizație",
+      "headerSubtitlePrefix": "Creează și gestionează conturi care se pot autentifica în ",
+      "headerSubtitleGeneric": "această organizație",
+      "headerSubtitleSuffix": ".",
+      "newAccount": "Cont nou",
+      "statTotal": "Total conturi",
+      "statActive": "Active",
+      "statAdmins": "Administratori",
+      "statOperators": "Operatori",
+      "state": {
+        "loading": "Se încarcă conturile…",
+        "errorFallback": "Încărcarea conturilor a eșuat",
+        "empty": "Niciun cont încă. Apasă „Cont nou\" pentru a-l crea pe primul."
+      },
+      "table": {
+        "colName": "Nume",
+        "colUsername": "Username",
+        "colEmail": "E-mail",
+        "colPin": "PIN",
+        "colRole": "Rol",
+        "colPhone": "Telefon",
+        "colStatus": "Status",
+        "colActions": "Acțiuni"
+      },
+      "status": {
+        "active": "Activ",
+        "inactive": "Inactiv"
+      },
+      "actions": {
+        "edit": "Editează contul",
+        "deactivate": "Dezactivează contul"
+      },
+      "pin": {
+        "hide": "Ascunde PIN",
+        "show": "Arată PIN",
+        "copy": "Copiază PIN",
+        "copied": "Copiat"
+      },
+      "deactivate": {
+        "title": "Dezactivezi acest cont?",
+        "descSuffix": " nu se va mai putea autentifica.",
+        "deactivate": "Dezactivează",
+        "deactivating": "Se dezactivează…"
+      },
+      "create": {
+        "title": "Cont nou",
+        "submit": "Creează cont",
+        "creating": "Se creează…",
+        "errorFallback": "Crearea contului a eșuat"
+      },
+      "edit": {
+        "titlePrefix": "Editează — ",
+        "errorFallback": "Salvarea a eșuat",
+        "saving": "Se salvează…"
+      },
+      "form": {
+        "fullName": "Nume complet",
+        "fullNameHint": "Introdu exact 2 cuvinte: Nume Prenume",
+        "fullNamePlaceholder": "Nume Prenume",
+        "role": "Rol",
+        "phone": "Telefon (opțional)",
+        "phonePlaceholder": "+40 7xx xxx xxx",
+        "generatedSection": "Credențiale generate automat",
+        "credentialsSection": "Credențiale autentificare",
+        "usernameRowLabel": "Username:",
+        "emailRowLabel": "E-mail:",
+        "pinRowLabel": "PIN:",
+        "pinServerGen": "generat de server (4 cifre) — afișat după creare",
+        "username": "Username",
+        "usernamePlaceholder": "ex. mmaletici",
+        "usernameOverrideTooltip": "Modifică username-ul autogenerat înainte de creare",
+        "reset": "Reset",
+        "pinLabel": "PIN (4 cifre)",
+        "pinPlaceholder": "4 cifre",
+        "pinHint": "Schimbarea PIN-ului actualizează și parola Supabase Auth (folosită ca sb_PIN la autentificarea pe e-mail)."
+      },
+      "reveal": {
+        "titlePrefix": "Cont creat — ",
+        "warning": "Copiază credențialele acum — PIN-ul e afișat doar aici. Le poți vedea și schimba ulterior din dialogul Editează.",
+        "row": {
+          "username": "Username",
+          "email": "E-mail",
+          "pin": "PIN",
+          "password": "Parolă (autentificare pe e-mail)"
+        },
+        "copyTitle": "Copiază {{label}}",
+        "copied": "Copiat",
+        "loginHint": "Flux autentificare: username + PIN, sau e-mail + sb_PIN.",
+        "done": "Gata"
+      }
     }
   },
   "dashboard": {

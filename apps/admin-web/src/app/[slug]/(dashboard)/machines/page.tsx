@@ -41,16 +41,16 @@ import type { IconVariant } from '@/components/map/machine-icons';
 
 const TYPE_ORDER: MachineType[] = [MachineType.truck, MachineType.loader, MachineType.baler];
 
-const TYPE_LABELS: Record<MachineType, string> = {
-  [MachineType.loader]: 'Încărcătoare',
-  [MachineType.baler]: 'Balotiere',
-  [MachineType.truck]: 'Camioane',
+// i18n keys for machine type labels — values fetched via t() at render time.
+const TYPE_LABEL_KEY: Record<MachineType, string> = {
+  [MachineType.loader]: 'machines.typeLabel.loader',
+  [MachineType.baler]: 'machines.typeLabel.baler',
+  [MachineType.truck]: 'machines.typeLabel.truck',
 };
-
-const TYPE_LABEL_SINGULAR: Record<MachineType, string> = {
-  [MachineType.loader]: 'Încărcător',
-  [MachineType.baler]: 'Balotieră',
-  [MachineType.truck]: 'Camion',
+const TYPE_SINGULAR_KEY: Record<MachineType, string> = {
+  [MachineType.loader]: 'machines.typeSingular.loader',
+  [MachineType.baler]: 'machines.typeSingular.baler',
+  [MachineType.truck]: 'machines.typeSingular.truck',
 };
 
 function MachineTypeIcon({
@@ -83,10 +83,10 @@ const TYPE_PREFIX: Record<MachineType, string> = {
   [MachineType.truck]: 'T',
 };
 
-const FUEL_LABELS: Record<FuelType, string> = {
-  [FuelType.diesel]: 'Diesel',
-  [FuelType.gasoline]: 'Benzină',
-  [FuelType.electric]: 'Electric',
+const FUEL_LABEL_KEY: Record<FuelType, string> = {
+  [FuelType.diesel]: 'machines.fuel.diesel',
+  [FuelType.gasoline]: 'machines.fuel.gasoline',
+  [FuelType.electric]: 'machines.fuel.electric',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -212,9 +212,10 @@ function Field({
 }
 
 function ErrorBanner({ message }: { message?: string }) {
+  const { t } = useI18n();
   return (
     <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-      {message ?? 'A apărut o eroare. Încearcă din nou.'}
+      {message ?? t('machines.errorFallback')}
     </p>
   );
 }
@@ -228,6 +229,7 @@ function ModalFooter({
   submitLabel: string;
   disabled: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex justify-end gap-3 pt-2">
       <button
@@ -235,7 +237,7 @@ function ModalFooter({
         onClick={onCancel}
         className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
       >
-        Anulează
+        {t('common.cancel')}
       </button>
       <button
         type="submit"
@@ -291,6 +293,7 @@ function MachineForm({
   showIsActive?: boolean;
   allMachines?: Machine[];
 }) {
+  const { t } = useI18n();
   const handleTypeChange = (type: MachineType) => {
     const suggestedCode = allMachines ? nextCode(allMachines, type) : `${TYPE_PREFIX[type]}-01`;
     onChange({ machineType: type, internalCode: suggestedCode });
@@ -298,31 +301,31 @@ function MachineForm({
 
   return (
     <div className="grid grid-cols-2 gap-4">
-      <Field label="Tip mașină" required>
+      <Field label={t('machines.form.type')} required>
         <select
           value={form.machineType}
           onChange={(e) => handleTypeChange(e.target.value as MachineType)}
           className={inputCls}
         >
-          {Object.values(MachineType).map((t) => (
-            <option key={t} value={t}>
-              {TYPE_LABEL_SINGULAR[t]}
+          {Object.values(MachineType).map((tp) => (
+            <option key={tp} value={tp}>
+              {t(TYPE_SINGULAR_KEY[tp])}
             </option>
           ))}
         </select>
       </Field>
 
-      <Field label="Cod intern" required>
+      <Field label={t('machines.form.internalCode')} required>
         <input
           required
           value={form.internalCode}
           onChange={(e) => onChange({ internalCode: e.target.value })}
           className={inputCls}
-          placeholder="ex. L-01"
+          placeholder="L-01"
         />
       </Field>
 
-      <Field label="Marcă" required>
+      <Field label={t('machines.form.make')} required>
         <input
           required
           value={form.make}
@@ -332,7 +335,7 @@ function MachineForm({
         />
       </Field>
 
-      <Field label="Model" required>
+      <Field label={t('machines.form.model')} required>
         <input
           required
           value={form.model}
@@ -342,7 +345,7 @@ function MachineForm({
         />
       </Field>
 
-      <Field label="An fabricație" required>
+      <Field label={t('machines.form.year')} required>
         <input
           required
           type="number"
@@ -354,7 +357,7 @@ function MachineForm({
         />
       </Field>
 
-      <Field label="Nr. înmatriculare" required>
+      <Field label={t('machines.form.plate')} required>
         <input
           required
           value={form.registrationPlate}
@@ -364,7 +367,7 @@ function MachineForm({
         />
       </Field>
 
-      <Field label="Combustibil" required>
+      <Field label={t('machines.form.fuelType')} required>
         <select
           value={form.fuelType}
           onChange={(e) => onChange({ fuelType: e.target.value as FuelType })}
@@ -372,13 +375,13 @@ function MachineForm({
         >
           {Object.values(FuelType).map((f) => (
             <option key={f} value={f}>
-              {FUEL_LABELS[f]}
+              {t(FUEL_LABEL_KEY[f])}
             </option>
           ))}
         </select>
       </Field>
 
-      <Field label="Capacitate rezervor (L)" required>
+      <Field label={t('machines.form.tankCapacity')} required>
         <input
           required
           type="number"
@@ -390,7 +393,7 @@ function MachineForm({
         />
       </Field>
 
-      <Field label="Nr. max. baloți">
+      <Field label={t('machines.form.maxBales')}>
         <input
           type="number"
           min={0}
@@ -403,10 +406,10 @@ function MachineForm({
 
       <div className="col-span-2 border-t border-neutral-200 pt-2">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-          Firma proprietară
+          {t('machines.form.ownerSection')}
         </p>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Denumire firmă">
+          <Field label={t('machines.form.ownerName')}>
             <input
               value={form.ownerCompanyName}
               onChange={(e) => onChange({ ownerCompanyName: e.target.value })}
@@ -415,7 +418,7 @@ function MachineForm({
             />
           </Field>
 
-          <Field label="CUI firmă">
+          <Field label={t('machines.form.ownerCui')}>
             <input
               value={form.ownerCompanyCui}
               onChange={(e) => onChange({ ownerCompanyCui: e.target.value })}
@@ -425,7 +428,7 @@ function MachineForm({
           </Field>
 
           <div className="col-span-2">
-            <Field label="Adresă firmă">
+            <Field label={t('machines.form.ownerAddress')}>
               <input
                 value={form.ownerCompanyAddress}
                 onChange={(e) => onChange({ ownerCompanyAddress: e.target.value })}
@@ -447,7 +450,7 @@ function MachineForm({
             className="accent-primary"
           />
           <label htmlFor="isActive" className="text-sm text-neutral-700">
-            Mașină activă
+            {t('machines.form.isActiveLabel')}
           </label>
         </div>
       )}
@@ -464,6 +467,7 @@ function CreateMachineModal({
   onClose: () => void;
   allMachines: Machine[];
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<MachineFormState>(() =>
     blankForm(allMachines, MachineType.loader),
   );
@@ -476,13 +480,15 @@ function CreateMachineModal({
   };
 
   return (
-    <ModalShell title="Mașină nouă" onClose={onClose}>
+    <ModalShell title={t('machines.modal.createTitle')} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-5 p-6">
         <MachineForm form={form} onChange={patch} allMachines={allMachines} />
         {create.isError && <ErrorBanner message={(create.error as Error)?.message} />}
         <ModalFooter
           onCancel={onClose}
-          submitLabel={create.isPending ? 'Se salvează…' : 'Adaugă mașina'}
+          submitLabel={
+            create.isPending ? t('machines.modal.saving') : t('machines.modal.submitCreate')
+          }
           disabled={create.isPending}
         />
       </form>
@@ -503,6 +509,7 @@ function EditMachineModal({
   iconVariant: IconVariant;
   onSetIconVariant: (v: IconVariant) => void;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<MachineFormState>(() => machineToForm(machine));
   const update = useUpdateMachine(apiClient);
   const patch = (p: Partial<MachineFormState>) => setForm((f) => ({ ...f, ...p }));
@@ -516,7 +523,7 @@ function EditMachineModal({
   const mapType = machine.machineType as unknown as MapMachineType;
 
   return (
-    <ModalShell title={`Editează — ${code}`} onClose={onClose}>
+    <ModalShell title={t('machines.modal.editTitle', { code })} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-5 p-6">
         <MachineForm form={form} onChange={patch} showIsActive />
 
@@ -524,7 +531,7 @@ function EditMachineModal({
         {MACHINE_ICONS[mapType] && (
           <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-2">
             <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
-              Iconiță pe hartă
+              {t('machines.form.iconOnMap')}
             </p>
             <MachineIconPicker
               machineType={mapType}
@@ -537,7 +544,9 @@ function EditMachineModal({
         {update.isError && <ErrorBanner message={(update.error as Error)?.message} />}
         <ModalFooter
           onCancel={onClose}
-          submitLabel={update.isPending ? 'Se salvează…' : 'Salvează modificările'}
+          submitLabel={
+            update.isPending ? t('machines.modal.saving') : t('machines.modal.submitEdit')
+          }
           disabled={update.isPending}
         />
       </form>
@@ -558,6 +567,7 @@ function DeleteDialog({
   onCancel: () => void;
   isPending: boolean;
 }) {
+  const { t } = useI18n();
   const label = machine.internalCode || machine.id.slice(0, 8);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
@@ -568,9 +578,10 @@ function DeleteDialog({
               <AlertTriangle className="h-5 w-5 text-red-600" />
             </div>
             <div>
-              <p className="font-semibold text-neutral-800">Ștergi mașina?</p>
+              <p className="font-semibold text-neutral-800">{t('machines.delete.title')}</p>
               <p className="text-sm text-neutral-500">
-                <span className="font-mono font-medium">{label}</span> va fi ștearsă definitiv.
+                <span className="font-mono font-medium">{label}</span>
+                {t('machines.delete.descSuffix')}
               </p>
             </div>
           </div>
@@ -581,7 +592,7 @@ function DeleteDialog({
               disabled={isPending}
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
             >
-              Anulează
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -590,7 +601,7 @@ function DeleteDialog({
               className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
             >
               <Trash2 className="h-4 w-4" />
-              {isPending ? 'Se șterge…' : 'Șterge'}
+              {isPending ? t('machines.delete.saving') : t('common.delete')}
             </button>
           </div>
         </div>
@@ -602,12 +613,13 @@ function DeleteDialog({
 // ── Type badge ────────────────────────────────────────────────────────────
 
 function TypeBadge({ type }: { type: MachineType }) {
+  const { t } = useI18n();
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_COLORS[type]}`}
     >
       <MachineTypeIcon type={type} className="h-3 w-3" />
-      {TYPE_LABEL_SINGULAR[type]}
+      {t(TYPE_SINGULAR_KEY[type])}
     </span>
   );
 }
@@ -784,7 +796,7 @@ export default function MachinesPage() {
           <SearchInput
             value={search}
             onChange={setSearch}
-            placeholder="Caută după cod, marcă, model, nr. înmatriculare…"
+            placeholder={t('machines.filter.searchPlaceholder')}
           />
         </div>
         <select
@@ -792,34 +804,38 @@ export default function MachinesPage() {
           onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
           className={selectCls}
         >
-          <option value="all">Toate statusurile</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="all">{t('machines.filter.allStatuses')}</option>
+          <option value="active">{t('machines.filter.active')}</option>
+          <option value="inactive">{t('machines.filter.inactive')}</option>
         </select>
         <select
           value={fuelFilter}
           onChange={(e) => setFuelFilter(e.target.value as typeof fuelFilter)}
           className={selectCls}
         >
-          <option value="all">Orice combustibil</option>
+          <option value="all">{t('machines.filter.anyFuel')}</option>
           {Object.values(FuelType).map((f) => (
             <option key={f} value={f}>
-              {FUEL_LABELS[f]}
+              {t(FUEL_LABEL_KEY[f])}
             </option>
           ))}
         </select>
         <span className="ml-auto text-xs text-neutral-400">
-          {totalVisible} {totalVisible === 1 ? 'mașină' : 'mașini'}
+          {t(totalVisible === 1 ? 'machines.filter.countSingular' : 'machines.filter.countPlural', {
+            count: totalVisible,
+          })}
         </span>
       </div>
 
       {/* Loading / error */}
       {isLoading && (
-        <div className="py-12 text-center text-sm text-neutral-400">Se încarcă mașinile…</div>
+        <div className="py-12 text-center text-sm text-neutral-400">
+          {t('machines.state.loading')}
+        </div>
       )}
       {isError && (
         <div className="py-12 text-center text-sm text-red-500">
-          Eroare la încărcarea mașinilor. Verifică că backend-ul rulează.
+          {t('machines.state.errorTitle')}
         </div>
       )}
 
@@ -847,8 +863,8 @@ export default function MachinesPage() {
                     <Gauge className="mx-auto mb-2 h-8 w-8 text-neutral-300" />
                     <p className="text-sm text-neutral-400">
                       {search || statusFilter !== 'all' || fuelFilter !== 'all'
-                        ? 'Nicio mașină nu corespunde filtrelor selectate.'
-                        : 'Nicio mașină înregistrată. Apasă "Mașină nouă" pentru a adăuga prima.'}
+                        ? t('machines.state.emptyFiltered')
+                        : t('machines.state.empty')}
                     </p>
                   </td>
                 </tr>
@@ -862,7 +878,7 @@ export default function MachinesPage() {
                       <div className="flex items-center gap-2">
                         <MachineTypeIcon type={group.type} className="h-4 w-4 text-neutral-500" />
                         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                          {TYPE_LABELS[group.type]}
+                          {t(TYPE_LABEL_KEY[group.type])}
                         </span>
                         <span className="rounded-full bg-neutral-200 px-1.5 py-0.5 text-xs text-neutral-600">
                           {group.machines.length}
@@ -891,7 +907,7 @@ export default function MachinesPage() {
                               return (
                                 <button
                                   type="button"
-                                  title="Schimbă iconița (deschide editare)"
+                                  title={t('machines.actions.changeIconTooltip')}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setEditTarget(m);
@@ -936,17 +952,18 @@ export default function MachinesPage() {
                         );
                       })()}
                       <td className="px-4 py-3 text-neutral-500">
-                        {FUEL_LABELS[m.fuelType] ?? m.fuelType}
+                        {FUEL_LABEL_KEY[m.fuelType] ? t(FUEL_LABEL_KEY[m.fuelType]) : m.fuelType}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           {m.isActive ? (
                             <span className="flex items-center gap-1 text-green-600">
-                              <CheckCircle2 className="h-4 w-4" /> Activă
+                              <CheckCircle2 className="h-4 w-4" />{' '}
+                              {t('machines.filter.statusActive')}
                             </span>
                           ) : (
                             <span className="flex items-center gap-1 text-neutral-400">
-                              <XCircle className="h-4 w-4" /> Inactivă
+                              <XCircle className="h-4 w-4" /> {t('machines.filter.statusInactive')}
                             </span>
                           )}
                           {m.isActive ? (
@@ -966,7 +983,7 @@ export default function MachinesPage() {
                               setEditTarget(m);
                             }}
                             className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-primary"
-                            title="Editează"
+                            title={t('machines.actions.editTooltip')}
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -977,7 +994,7 @@ export default function MachinesPage() {
                             }}
                             disabled={deleteMachine.isPending}
                             className="rounded-md p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
-                            title="Șterge"
+                            title={t('machines.actions.deleteTooltip')}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

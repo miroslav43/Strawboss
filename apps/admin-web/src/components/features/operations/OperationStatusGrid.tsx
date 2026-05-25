@@ -3,6 +3,7 @@
 import { Truck, ArrowRight } from 'lucide-react';
 import type { Trip } from '@strawboss/types';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 interface OperationStatusGridProps {
@@ -11,11 +12,17 @@ interface OperationStatusGridProps {
 }
 
 export function OperationStatusGrid({ trips, className }: OperationStatusGridProps) {
+  const { t } = useI18n();
   if (trips.length === 0) {
     return (
-      <div className={cn('rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center', className)}>
+      <div
+        className={cn(
+          'rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center',
+          className,
+        )}
+      >
         <Truck className="mx-auto mb-2 h-8 w-8 text-neutral-300" />
-        <p className="text-sm text-neutral-500">No active trips</p>
+        <p className="text-sm text-neutral-500">{t('operations.noActiveTrips')}</p>
       </div>
     );
   }
@@ -29,9 +36,7 @@ export function OperationStatusGrid({ trips, className }: OperationStatusGridPro
         >
           {/* Header */}
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-sm font-semibold text-neutral-800">
-              {trip.tripNumber}
-            </span>
+            <span className="text-sm font-semibold text-neutral-800">{trip.tripNumber}</span>
             <StatusBadge status={trip.status} />
           </div>
 
@@ -43,24 +48,16 @@ export function OperationStatusGrid({ trips, className }: OperationStatusGridPro
 
           {/* Route */}
           <div className="flex items-center gap-2 text-xs text-neutral-600">
-            <span className="truncate">
-              Parcel {trip.sourceParcelId.slice(0, 8)}
-            </span>
+            <span className="truncate">Parcel {trip.sourceParcelId.slice(0, 8)}</span>
             <ArrowRight className="h-3 w-3 flex-shrink-0 text-neutral-400" />
-            <span className="truncate">
-              {trip.destinationName ?? 'TBD'}
-            </span>
+            <span className="truncate">{trip.destinationName ?? 'TBD'}</span>
           </div>
 
           {/* Bales + Progress */}
           <div className="mt-3 flex items-center justify-between text-xs">
-            <span className="text-neutral-500">
-              {trip.baleCount} bales
-            </span>
+            <span className="text-neutral-500">{trip.baleCount} bales</span>
             {trip.netWeightKg != null && (
-              <span className="text-neutral-500">
-                {(trip.netWeightKg / 1000).toFixed(1)} t
-              </span>
+              <span className="text-neutral-500">{(trip.netWeightKg / 1000).toFixed(1)} t</span>
             )}
           </div>
 

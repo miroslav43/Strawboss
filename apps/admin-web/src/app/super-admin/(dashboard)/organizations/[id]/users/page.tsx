@@ -30,6 +30,7 @@ import { UserRole } from '@strawboss/types';
 import type { User, Organization } from '@strawboss/types';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 // ── Role config (mirrors /[slug]/(dashboard)/accounts/page.tsx) ───────────
 
@@ -42,15 +43,16 @@ const ALL_ROLES: UserRole[] = [
   UserRole.depot_manager,
 ];
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  [UserRole.super_admin]: 'Super Admin',
-  [UserRole.admin]: 'Admin',
-  [UserRole.dispatcher]: 'Dispatcher',
-  [UserRole.baler_operator]: 'Baler Operator',
-  [UserRole.loader_operator]: 'Loader Operator',
-  [UserRole.driver]: 'Driver',
-  [UserRole.geofence_maker]: 'Geofence Maker',
-  [UserRole.depot_manager]: 'Depot Manager',
+/** i18n keys for each role — resolved via t() at render time. */
+const ROLE_LABEL_KEYS: Record<UserRole, string> = {
+  [UserRole.super_admin]: 'accounts.role.super_admin',
+  [UserRole.admin]: 'accounts.role.admin',
+  [UserRole.dispatcher]: 'accounts.role.dispatcher',
+  [UserRole.baler_operator]: 'accounts.role.baler_operator',
+  [UserRole.loader_operator]: 'accounts.role.loader_operator',
+  [UserRole.driver]: 'accounts.role.driver',
+  [UserRole.geofence_maker]: 'accounts.role.geofence_maker',
+  [UserRole.depot_manager]: 'accounts.role.depot_manager',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -109,12 +111,13 @@ function FormField({
 }
 
 function RoleBadge({ role }: { role: string }) {
+  const { t } = useI18n();
   const safeRole = (role in UserRole ? role : 'driver') as UserRole;
   return (
     <span
       className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS[safeRole]}`}
     >
-      {ROLE_LABELS[safeRole] ?? role}
+      {t(ROLE_LABEL_KEYS[safeRole]) ?? role}
     </span>
   );
 }
@@ -169,6 +172,7 @@ function StatCard({
 // ── PinCell — masked + toggle + copy ──────────────────────────────────────
 
 function PinCell({ pin }: { pin: string | null }) {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -187,7 +191,7 @@ function PinCell({ pin }: { pin: string | null }) {
         type="button"
         onClick={() => setVisible((v) => !v)}
         className="rounded p-0.5 text-neutral-400 hover:text-neutral-600"
-        title={visible ? 'Hide PIN' : 'Show PIN'}
+        title={visible ? t('superAdmin.users.pin.hide') : t('superAdmin.users.pin.show')}
       >
         {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
       </button>
@@ -197,11 +201,11 @@ function PinCell({ pin }: { pin: string | null }) {
           void handleCopy();
         }}
         className="rounded p-0.5 text-neutral-400 hover:text-neutral-600"
-        title="Copy PIN"
+        title={t('superAdmin.users.pin.copy')}
       >
         <Copy className="h-3.5 w-3.5" />
       </button>
-      {copied && <span className="text-xs text-green-600">Copied</span>}
+      {copied && <span className="text-xs text-green-600">{t('superAdmin.users.pin.copied')}</span>}
     </div>
   );
 }
@@ -219,6 +223,7 @@ function DeactivateDialog({
   onCancel: () => void;
   isPending: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl">
@@ -228,16 +233,18 @@ function DeactivateDialog({
               <AlertTriangle className="h-5 w-5 text-red-600" />
             </div>
             <div>
-              <p className="font-semibold text-neutral-800">Deactivate this account?</p>
+              <p className="font-semibold text-neutral-800">
+                {t('superAdmin.users.deactivate.title')}
+              </p>
               <p className="text-sm text-neutral-500">
-                <span className="font-medium">{user.fullName}</span> will no longer be able to log
-                in.
+                <span className="font-medium">{user.fullName}</span>
+                {t('superAdmin.users.deactivate.descSuffix')}
               </p>
             </div>
           </div>
           <div className="flex justify-end gap-3">
             <button type="button" onClick={onCancel} className={cancelBtnCls} disabled={isPending}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -246,7 +253,9 @@ function DeactivateDialog({
               className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
             >
               <Trash2 className="h-4 w-4" />
-              {isPending ? 'Deactivating…' : 'Deactivate'}
+              {isPending
+                ? t('superAdmin.users.deactivate.deactivating')
+                : t('superAdmin.users.deactivate.deactivate')}
             </button>
           </div>
         </div>
@@ -273,6 +282,7 @@ function CreateAccountModal({
   onClose: () => void;
   onCreated: (user: User) => void;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<CreateForm>({
     fullName: '',
     role: UserRole.admin, // super-admin's primary use case: create an org admin
@@ -305,7 +315,9 @@ function CreateAccountModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-neutral-800">New account</h2>
+          <h2 className="text-lg font-semibold text-neutral-800">
+            {t('superAdmin.users.create.title')}
+          </h2>
           <button
             onClick={onClose}
             className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100"
@@ -315,7 +327,7 @@ function CreateAccountModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
-          <FormField label="Full name" required>
+          <FormField label={t('superAdmin.users.form.fullName')} required>
             <input
               required
               type="text"
@@ -328,16 +340,16 @@ function CreateAccountModal({
                 }))
               }
               className={inputCls}
-              placeholder="Surname Firstname"
+              placeholder={t('superAdmin.users.form.fullNamePlaceholder')}
             />
             {form.fullName && !preview && (
               <p className="mt-1 text-xs text-amber-600">
-                Enter exactly 2 words: Surname Firstname
+                {t('superAdmin.users.form.fullNameHint')}
               </p>
             )}
           </FormField>
 
-          <FormField label="Role" required>
+          <FormField label={t('superAdmin.users.form.role')} required>
             <select
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
@@ -345,38 +357,40 @@ function CreateAccountModal({
             >
               {ALL_ROLES.map((role) => (
                 <option key={role} value={role}>
-                  {ROLE_LABELS[role]}
+                  {t(ROLE_LABEL_KEYS[role])}
                 </option>
               ))}
             </select>
           </FormField>
 
-          <FormField label="Phone (optional)">
+          <FormField label={t('superAdmin.users.form.phone')}>
             <input
               type="tel"
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               className={inputCls}
-              placeholder="+40 7xx xxx xxx"
+              placeholder={t('superAdmin.users.form.phonePlaceholder')}
             />
           </FormField>
 
           {preview && (
             <div className="space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                Auto-generated credentials
+                {t('superAdmin.users.form.generatedSection')}
               </p>
 
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-neutral-500">Username:</span>
+                  <span className="w-24 shrink-0 text-xs text-neutral-500">
+                    {t('superAdmin.users.form.usernameRowLabel')}
+                  </span>
                   <input
                     type="text"
                     value={displayUsername}
                     onChange={(e) => setForm((f) => ({ ...f, usernameOverride: e.target.value }))}
                     className="flex-1 rounded border border-neutral-300 bg-white px-2 py-1 font-mono text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder={preview.username}
-                    title="Override the auto-generated username before creating"
+                    title={t('superAdmin.users.form.usernameOverrideTooltip')}
                   />
                   {form.usernameOverride && (
                     <button
@@ -384,22 +398,26 @@ function CreateAccountModal({
                       onClick={() => setForm((f) => ({ ...f, usernameOverride: '' }))}
                       className="text-xs text-neutral-400 hover:text-neutral-600"
                     >
-                      Reset
+                      {t('superAdmin.users.form.reset')}
                     </button>
                   )}
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-neutral-500">Email:</span>
+                  <span className="w-24 shrink-0 text-xs text-neutral-500">
+                    {t('superAdmin.users.form.emailRowLabel')}
+                  </span>
                   <span className="truncate font-mono text-sm text-neutral-600">
                     {preview.email}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-neutral-500">PIN:</span>
+                  <span className="w-24 shrink-0 text-xs text-neutral-500">
+                    {t('superAdmin.users.form.pinRowLabel')}
+                  </span>
                   <span className="font-mono text-sm text-neutral-400">
-                    server-generated (4 digits) — shown after creation
+                    {t('superAdmin.users.form.pinServerGen')}
                   </span>
                 </div>
               </div>
@@ -408,13 +426,13 @@ function CreateAccountModal({
 
           {createUser.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {(createUser.error as Error)?.message ?? 'Failed to create account'}
+              {(createUser.error as Error)?.message ?? t('superAdmin.users.create.errorFallback')}
             </p>
           )}
 
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className={cancelBtnCls}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -422,7 +440,9 @@ function CreateAccountModal({
               className={submitBtnCls}
             >
               <UserPlus className="h-4 w-4" />
-              {createUser.isPending ? 'Creating…' : 'Create account'}
+              {createUser.isPending
+                ? t('superAdmin.users.create.creating')
+                : t('superAdmin.users.create.submit')}
             </button>
           </div>
         </form>
@@ -434,6 +454,7 @@ function CreateAccountModal({
 // ── Credentials reveal — shown right after creation ──────────────────────
 
 function CredentialsRevealDialog({ user, onClose }: { user: User; onClose: () => void }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = async (label: string, value: string) => {
@@ -443,10 +464,13 @@ function CredentialsRevealDialog({ user, onClose }: { user: User; onClose: () =>
   };
 
   const rows: { label: string; value: string }[] = [
-    { label: 'Username', value: user.username ?? '' },
-    { label: 'Email', value: user.email },
-    { label: 'PIN', value: user.pin ?? '' },
-    { label: 'Password (email login)', value: user.pin ? `sb_${user.pin}` : '' },
+    { label: t('superAdmin.users.reveal.row.username'), value: user.username ?? '' },
+    { label: t('superAdmin.users.reveal.row.email'), value: user.email },
+    { label: t('superAdmin.users.reveal.row.pin'), value: user.pin ?? '' },
+    {
+      label: t('superAdmin.users.reveal.row.password'),
+      value: user.pin ? `sb_${user.pin}` : '',
+    },
   ];
 
   return (
@@ -454,7 +478,8 @@ function CredentialsRevealDialog({ user, onClose }: { user: User; onClose: () =>
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
           <h2 className="text-base font-semibold text-neutral-800">
-            Account created — <span className="text-neutral-900">{user.fullName}</span>
+            {t('superAdmin.users.reveal.titlePrefix')}
+            <span className="text-neutral-900">{user.fullName}</span>
           </h2>
           <button
             onClick={onClose}
@@ -465,10 +490,7 @@ function CredentialsRevealDialog({ user, onClose }: { user: User; onClose: () =>
         </div>
 
         <div className="space-y-3 p-6">
-          <p className="text-xs text-neutral-500">
-            Copy the credentials now — the PIN is shown only here. You can also view and change it
-            later from the Edit dialog.
-          </p>
+          <p className="text-xs text-neutral-500">{t('superAdmin.users.reveal.warning')}</p>
 
           <div className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
             {rows.map((r) => (
@@ -482,23 +504,25 @@ function CredentialsRevealDialog({ user, onClose }: { user: User; onClose: () =>
                     type="button"
                     onClick={() => void copy(r.label, r.value)}
                     className="rounded p-1 text-neutral-400 hover:text-neutral-700"
-                    title={`Copy ${r.label}`}
+                    title={t('superAdmin.users.reveal.copyTitle', { label: r.label })}
                   >
                     <Copy className="h-3.5 w-3.5" />
                   </button>
                 )}
-                {copied === r.label && <span className="text-xs text-green-600">Copied</span>}
+                {copied === r.label && (
+                  <span className="text-xs text-green-600">
+                    {t('superAdmin.users.reveal.copied')}
+                  </span>
+                )}
               </div>
             ))}
           </div>
 
-          <p className="text-xs text-neutral-400">
-            Login flow: username + PIN, or email + <code className="font-mono">sb_PIN</code>.
-          </p>
+          <p className="text-xs text-neutral-400">{t('superAdmin.users.reveal.loginHint')}</p>
 
           <div className="flex justify-end pt-2">
             <button type="button" onClick={onClose} className={submitBtnCls}>
-              Done
+              {t('superAdmin.users.reveal.done')}
             </button>
           </div>
         </div>
@@ -526,6 +550,7 @@ function EditUserModal({
   user: User;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<EditForm>({
     username: user.username ?? '',
     pin: user.pin ?? '',
@@ -557,7 +582,8 @@ function EditUserModal({
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
           <h2 className="text-base font-semibold text-neutral-800">
-            Edit — <span className="text-neutral-900">{user.fullName}</span>
+            {t('superAdmin.users.edit.titlePrefix')}
+            <span className="text-neutral-900">{user.fullName}</span>
           </h2>
           <button
             onClick={onClose}
@@ -568,7 +594,7 @@ function EditUserModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
-          <FormField label="Full name" required>
+          <FormField label={t('superAdmin.users.form.fullName')} required>
             <input
               required
               type="text"
@@ -578,7 +604,7 @@ function EditUserModal({
             />
           </FormField>
 
-          <FormField label="Role" required>
+          <FormField label={t('superAdmin.users.form.role')} required>
             <select
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
@@ -586,46 +612,46 @@ function EditUserModal({
             >
               {ALL_ROLES.map((role) => (
                 <option key={role} value={role}>
-                  {ROLE_LABELS[role]}
+                  {t(ROLE_LABEL_KEYS[role])}
                 </option>
               ))}
             </select>
           </FormField>
 
-          <FormField label="Phone (optional)">
+          <FormField label={t('superAdmin.users.form.phone')}>
             <input
               type="tel"
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               className={inputCls}
-              placeholder="+40 7xx xxx xxx"
+              placeholder={t('superAdmin.users.form.phonePlaceholder')}
             />
           </FormField>
 
           <div className="space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-              Login credentials
+              {t('superAdmin.users.form.credentialsSection')}
             </p>
 
-            <FormField label="Username">
+            <FormField label={t('superAdmin.users.form.username')}>
               <input
                 type="text"
                 value={form.username}
                 onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
                 className={inputCls}
-                placeholder="e.g. mmaletici"
+                placeholder={t('superAdmin.users.form.usernamePlaceholder')}
                 minLength={3}
               />
             </FormField>
 
-            <FormField label="PIN (4 digits)">
+            <FormField label={t('superAdmin.users.form.pinLabel')}>
               <div className="relative">
                 <input
                   type={showPin ? 'text' : 'password'}
                   value={form.pin}
                   onChange={(e) => setForm((f) => ({ ...f, pin: e.target.value }))}
                   className={`${inputCls} pr-10`}
-                  placeholder="4 digits"
+                  placeholder={t('superAdmin.users.form.pinPlaceholder')}
                   pattern="[0-9]{4}"
                   maxLength={4}
                   inputMode="numeric"
@@ -638,25 +664,22 @@ function EditUserModal({
                   {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <p className="mt-1 text-xs text-neutral-400">
-                Changing the PIN also updates the Supabase Auth password (used as
-                <code className="ml-1 font-mono">sb_PIN</code> when logging in by email).
-              </p>
+              <p className="mt-1 text-xs text-neutral-400">{t('superAdmin.users.form.pinHint')}</p>
             </FormField>
           </div>
 
           {updateUser.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {(updateUser.error as Error)?.message ?? 'Failed to save'}
+              {(updateUser.error as Error)?.message ?? t('superAdmin.users.edit.errorFallback')}
             </p>
           )}
 
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className={cancelBtnCls}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button type="submit" disabled={updateUser.isPending} className={submitBtnCls}>
-              {updateUser.isPending ? 'Saving…' : 'Save'}
+              {updateUser.isPending ? t('superAdmin.users.edit.saving') : t('common.save')}
             </button>
           </div>
         </form>
@@ -668,6 +691,7 @@ function EditUserModal({
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function SuperAdminOrgUsersPage() {
+  const { t } = useI18n();
   const params = useParams<{ id: string }>();
   const orgId = params?.id ?? '';
 
@@ -735,28 +759,30 @@ export default function SuperAdminOrgUsersPage() {
           className="inline-flex items-center gap-1 hover:text-neutral-800"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Organizations
+          {t('superAdmin.users.breadcrumb.orgs')}
         </a>
         <span className="text-neutral-300">/</span>
         <span className="font-medium text-neutral-800">{org?.name ?? '…'}</span>
         <span className="text-neutral-300">/</span>
-        <span>Users</span>
+        <span>{t('superAdmin.users.breadcrumb.users')}</span>
       </div>
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-neutral-800">
-            Users in {org?.name ?? 'organization'}
+            {t('superAdmin.users.headerTitle', {
+              org: org?.name ?? t('superAdmin.users.headerOrgFallback'),
+            })}
           </h1>
           <p className="mt-0.5 text-sm text-neutral-500">
-            Create and manage accounts that can log into{' '}
+            {t('superAdmin.users.headerSubtitlePrefix')}
             {org ? (
               <code className="font-mono text-neutral-700">/{org.slug}/</code>
             ) : (
-              'this organization'
+              t('superAdmin.users.headerSubtitleGeneric')
             )}
-            .
+            {t('superAdmin.users.headerSubtitleSuffix')}
           </p>
         </div>
         <button
@@ -766,7 +792,7 @@ export default function SuperAdminOrgUsersPage() {
           className="flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
         >
           <UserPlus className="h-4 w-4" />
-          New account
+          {t('superAdmin.users.newAccount')}
         </button>
       </div>
 
@@ -781,36 +807,38 @@ export default function SuperAdminOrgUsersPage() {
         <StatCard
           icon={<Users className="h-4 w-4 text-neutral-600" />}
           value={totalUsers}
-          label="Total accounts"
+          label={t('superAdmin.users.statTotal')}
           color="bg-neutral-100"
         />
         <StatCard
           icon={<CheckCircle2 className="h-4 w-4 text-green-600" />}
           value={activeUsers}
-          label="Active"
+          label={t('superAdmin.users.statActive')}
           color="bg-green-50"
         />
         <StatCard
           icon={<Shield className="h-4 w-4 text-purple-600" />}
           value={adminCount}
-          label="Administrators"
+          label={t('superAdmin.users.statAdmins')}
           color="bg-purple-50"
         />
         <StatCard
           icon={<UserCheck className="h-4 w-4 text-blue-600" />}
           value={operatorCount}
-          label="Operators"
+          label={t('superAdmin.users.statOperators')}
           color="bg-blue-50"
         />
       </div>
 
       {/* Loading / error */}
       {isLoading && (
-        <div className="py-12 text-center text-sm text-neutral-400">Loading accounts…</div>
+        <div className="py-12 text-center text-sm text-neutral-400">
+          {t('superAdmin.users.state.loading')}
+        </div>
       )}
       {isError && (
         <div className="py-12 text-center text-sm text-red-500">
-          {(error as Error)?.message ?? 'Failed to load accounts'}
+          {(error as Error)?.message ?? t('superAdmin.users.state.errorFallback')}
         </div>
       )}
 
@@ -820,21 +848,21 @@ export default function SuperAdminOrgUsersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Username</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">PIN</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Phone</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3">{t('superAdmin.users.table.colName')}</th>
+                <th className="px-4 py-3">{t('superAdmin.users.table.colUsername')}</th>
+                <th className="px-4 py-3">{t('superAdmin.users.table.colEmail')}</th>
+                <th className="px-4 py-3">{t('superAdmin.users.table.colPin')}</th>
+                <th className="px-4 py-3">{t('superAdmin.users.table.colRole')}</th>
+                <th className="px-4 py-3">{t('superAdmin.users.table.colPhone')}</th>
+                <th className="px-4 py-3">{t('superAdmin.users.table.colStatus')}</th>
+                <th className="px-4 py-3 text-right">{t('superAdmin.users.table.colActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {groups.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-neutral-400">
-                    No accounts yet. Click &quot;New account&quot; to create the first one.
+                    {t('superAdmin.users.state.empty')}
                   </td>
                 </tr>
               )}
@@ -846,7 +874,7 @@ export default function SuperAdminOrgUsersPage() {
                       <div className="flex items-center gap-2">
                         {ROLE_GROUP_ICONS[group.role]}
                         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                          {ROLE_LABELS[group.role]}
+                          {t(ROLE_LABEL_KEYS[group.role])}
                         </span>
                         <span className="rounded-full bg-neutral-200 px-1.5 py-0.5 text-xs text-neutral-600">
                           {group.users.length}
@@ -885,11 +913,12 @@ export default function SuperAdminOrgUsersPage() {
                       <td className="px-4 py-3">
                         {user.isActive ? (
                           <span className="flex items-center gap-1 text-green-600">
-                            <CheckCircle2 className="h-4 w-4" /> Active
+                            <CheckCircle2 className="h-4 w-4" />{' '}
+                            {t('superAdmin.users.status.active')}
                           </span>
                         ) : (
                           <span className="flex items-center gap-1 text-neutral-400">
-                            <XCircle className="h-4 w-4" /> Inactive
+                            <XCircle className="h-4 w-4" /> {t('superAdmin.users.status.inactive')}
                           </span>
                         )}
                       </td>
@@ -898,7 +927,7 @@ export default function SuperAdminOrgUsersPage() {
                           <button
                             onClick={() => setEditTarget(user)}
                             className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                            title="Edit account"
+                            title={t('superAdmin.users.actions.edit')}
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -906,7 +935,7 @@ export default function SuperAdminOrgUsersPage() {
                             <button
                               onClick={() => setDeactivateTarget(user)}
                               className="rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-500"
-                              title="Deactivate account"
+                              title={t('superAdmin.users.actions.deactivate')}
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>

@@ -5,6 +5,7 @@ import { Loader2, Signature, Eraser, Check, AlertCircle } from 'lucide-react';
 import { useUploadSpecimen } from '@strawboss/api';
 import type { User } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -34,6 +35,7 @@ interface SpecimenSectionProps {
  * the canvas pointer-events setup below is ~60 lines and sufficient.
  */
 export function SpecimenSection({ profile }: SpecimenSectionProps) {
+  const { t } = useI18n();
   const uploadSpecimen = useUploadSpecimen(apiClient);
   const [isDrawing, setIsDrawing] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
@@ -118,7 +120,7 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     if (!hasStrokesRef.current) {
-      setFeedback({ type: 'error', message: 'Desenează semnătura înainte de a salva.' });
+      setFeedback({ type: 'error', message: t('settings.profile.specimen.errorNoStrokes') });
       return;
     }
 
@@ -126,7 +128,7 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
       canvas.toBlob((b) => resolve(b), 'image/png'),
     );
     if (!blob) {
-      setFeedback({ type: 'error', message: 'Specimenul nu a putut fi codificat ca PNG.' });
+      setFeedback({ type: 'error', message: t('settings.profile.specimen.errorEncode') });
       return;
     }
 
@@ -135,14 +137,14 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
 
     uploadSpecimen.mutate(form, {
       onSuccess: () => {
-        setFeedback({ type: 'success', message: 'Specimenul a fost salvat.' });
+        setFeedback({ type: 'success', message: t('settings.profile.specimen.successSaved') });
         setIsDrawing(false);
       },
       onError: () => {
-        setFeedback({ type: 'error', message: 'Salvarea specimenului a eșuat.' });
+        setFeedback({ type: 'error', message: t('settings.profile.specimen.errorSave') });
       },
     });
-  }, [uploadSpecimen]);
+  }, [uploadSpecimen, t]);
 
   return (
     <div>
@@ -152,18 +154,15 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={resolveUrl(profile.signatureSpecimenUrl)}
-              alt="Specimen de semnătură"
+              alt={t('settings.profile.specimen.imageAlt')}
               className="max-h-full max-w-full object-contain"
             />
           ) : (
-            <span className="text-xs text-neutral-400">Nu ai încă un specimen.</span>
+            <span className="text-xs text-neutral-400">{t('settings.profile.specimen.empty')}</span>
           )}
         </div>
         <div className="flex-1 text-sm text-neutral-600">
-          <p>
-            Specimenul tău de semnătură este reutilizat automat când șoferii și operatorii încărcă
-            din contul tău pe mobile. Pe admin web este opțional — îl poți seta sau înlocui oricând.
-          </p>
+          <p>{t('settings.profile.specimen.description')}</p>
         </div>
       </div>
 
@@ -178,7 +177,9 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
             )}
           >
             <Signature className="h-4 w-4" />
-            {profile.signatureSpecimenUrl ? 'Înlocuiește' : 'Creează specimen'}
+            {profile.signatureSpecimenUrl
+              ? t('settings.profile.specimen.replace')
+              : t('settings.profile.specimen.create')}
           </button>
         </div>
       ) : (
@@ -198,7 +199,7 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
               className="flex items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
             >
               <Eraser className="h-4 w-4" />
-              Șterge
+              {t('settings.profile.specimen.clear')}
             </button>
             <button
               type="button"
@@ -206,7 +207,7 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
               disabled={uploadSpecimen.isPending}
               className="rounded-md px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
             >
-              Anulează
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -222,7 +223,7 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
               ) : (
                 <Check className="h-4 w-4" />
               )}
-              Salvează specimen
+              {t('settings.profile.specimen.save')}
             </button>
           </div>
         </div>

@@ -12,7 +12,8 @@
     "none": "—",
     "active": "Active",
     "inactive": "Inactive",
-    "error": "Something went wrong."
+    "error": "Something went wrong.",
+    "back": "Back"
   },
   "fuelLogs": {
     "dateFrom": "From",
@@ -99,7 +100,21 @@
       "saveProfile": "Save profile",
       "placeholderName": "Your name",
       "placeholderEmail": "email@example.com",
-      "placeholderPhone": "+1 234 567 890"
+      "placeholderPhone": "+1 234 567 890",
+      "specimen": {
+        "imageAlt": "Signature specimen",
+        "empty": "You don't have a specimen yet.",
+        "description": "Your signature specimen is reused automatically when drivers and operators upload from your account on mobile. On admin web it's optional — you can set or replace it anytime.",
+        "replace": "Replace",
+        "create": "Create specimen",
+        "clear": "Clear",
+        "cancel": "Cancel",
+        "save": "Save specimen",
+        "errorNoStrokes": "Draw the signature before saving.",
+        "errorEncode": "Specimen could not be encoded as PNG.",
+        "successSaved": "Specimen was saved.",
+        "errorSave": "Saving the specimen failed."
+      }
     },
     "notifications": {
       "title": "Notifications",
@@ -484,7 +499,25 @@
     "pendingAlerts": "Pending alerts",
     "sectionActiveTrips": "Active trips",
     "loadingTrips": "Loading trips…",
-    "loadTripsError": "Failed to load trips. The backend may not be running."
+    "loadTripsError": "Failed to load trips. The backend may not be running.",
+    "noActiveTrips": "No active trips"
+  },
+  "trips_detail": {
+    "signatures": "Signatures",
+    "loaderOperator": "Loader operator",
+    "driver": "Driver",
+    "deposit": "Deposit",
+    "documents": "Documents",
+    "cmrTitle": "CMR — {{tripNumber}}",
+    "deleteTooltip": "Delete trip"
+  },
+  "documents": {
+    "fileSize": "File size",
+    "receiptNoPhoto": "No receipt photo",
+    "receiptOpen": "Open receipt photo"
+  },
+  "settings_page": {
+    "specimenSectionTitle": "Signature specimen"
   },
   "tasks": {
     "title": "Tasks",
@@ -612,7 +645,8 @@
       "rankings": "Rankings",
       "costs": "Costs",
       "operators": "Operators",
-      "kmPerTruck": "Km per truck"
+      "kmPerTruck": "Km per truck",
+      "connectedHours": "Connected hours"
     },
     "kmPerTruck": {
       "title": "Kilometres travelled per truck per day",
@@ -691,6 +725,21 @@
       "produced": "Produced",
       "loaded": "Loaded",
       "delivered": "Delivered"
+    },
+    "connectedHours": {
+      "title": "Time connected to the app",
+      "groupBy": "Group by",
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "user": "User",
+      "role": "Role",
+      "period": "Period",
+      "hours": "Hours",
+      "total": "Total",
+      "totalHours": "Total hours",
+      "activeUsers": "Active users",
+      "avgHours": "Average per user"
     }
   },
   "alerts": {
@@ -778,7 +827,74 @@
     "colKmThisWeek": "This week (km)",
     "colFuel": "Fuel",
     "colStatus": "Status",
-    "colActions": "Actions"
+    "colActions": "Actions",
+    "typeLabel": {
+      "loader": "Loaders",
+      "baler": "Balers",
+      "truck": "Trucks"
+    },
+    "typeSingular": {
+      "loader": "Loader",
+      "baler": "Baler",
+      "truck": "Truck"
+    },
+    "fuel": {
+      "diesel": "Diesel",
+      "gasoline": "Gasoline",
+      "electric": "Electric"
+    },
+    "form": {
+      "type": "Machine type",
+      "internalCode": "Internal code",
+      "make": "Make",
+      "model": "Model",
+      "year": "Year",
+      "plate": "Registration no.",
+      "fuelType": "Fuel",
+      "tankCapacity": "Tank capacity (L)",
+      "maxBales": "Max bale count",
+      "ownerSection": "Owner company",
+      "ownerName": "Company name",
+      "ownerCui": "Company tax ID",
+      "ownerAddress": "Company address",
+      "isActiveLabel": "Machine active",
+      "iconOnMap": "Map icon"
+    },
+    "modal": {
+      "createTitle": "New machine",
+      "editTitle": "Edit — {{code}}",
+      "submitCreate": "Add machine",
+      "submitEdit": "Save changes",
+      "saving": "Saving…"
+    },
+    "delete": {
+      "title": "Delete machine?",
+      "descSuffix": " will be permanently deleted.",
+      "saving": "Deleting…"
+    },
+    "filter": {
+      "searchPlaceholder": "Search by code, make, model, plate…",
+      "allStatuses": "All statuses",
+      "anyFuel": "Any fuel",
+      "active": "Active",
+      "inactive": "Inactive",
+      "statusActive": "Active",
+      "statusInactive": "Inactive",
+      "countSingular": "{{count}} machine",
+      "countPlural": "{{count}} machines"
+    },
+    "state": {
+      "loading": "Loading machines…",
+      "errorTitle": "Error loading machines. Check that the backend is running.",
+      "emptyFiltered": "No machines match the selected filters.",
+      "empty": "No machines registered. Click \"New machine\" to add the first one."
+    },
+    "actions": {
+      "editTooltip": "Edit",
+      "deleteTooltip": "Delete",
+      "changeIconTooltip": "Change icon (opens edit)"
+    },
+    "errorFallback": "An error occurred. Try again."
   },
   "deposits": {
     "title": "Deposits",
@@ -853,6 +969,207 @@
       "loader": "Loader",
       "baler": "Baler",
       "truck": "Truck"
+    },
+    "pin": {
+      "hide": "Hide PIN",
+      "show": "Show PIN",
+      "copy": "Copy PIN",
+      "copied": "Copied!"
+    },
+    "modal": {
+      "createTitle": "New account",
+      "editTitle": "Edit",
+      "createSubmit": "Create account",
+      "creating": "Creating…",
+      "editing": "Saving…",
+      "errorCreate": "Error creating account",
+      "errorEdit": "Error saving"
+    },
+    "form": {
+      "fullName": "Full name",
+      "fullNamePlaceholder": "John Smith",
+      "fullNameHint": "Enter exactly 2 words: First name + Last name",
+      "role": "Role",
+      "phone": "Phone (optional)",
+      "phonePlaceholder": "+40 7xx xxx xxx",
+      "username": "Username",
+      "usernamePlaceholder": "jsmith",
+      "usernameOverrideTooltip": "You can edit the username before creating",
+      "reset": "Reset",
+      "pinLabel": "PIN (4 digits)",
+      "pinPlaceholder": "4 digits",
+      "pinHint": "Changing the PIN also updates the Supabase Auth password.",
+      "generatedSection": "Auto-generated credentials",
+      "credentialsSection": "Access credentials",
+      "usernameRowLabel": "Username:",
+      "emailRowLabel": "Email:",
+      "pinRowLabel": "PIN:",
+      "pinServerGen": "server-generated (4 digits)"
+    },
+    "avatar": {
+      "uploading": "Uploading...",
+      "change": "Change photo",
+      "uploadFailed": "Upload failed",
+      "hint": "JPG, PNG or WebP. Max 3 MB."
+    },
+    "deactivate": {
+      "title": "Deactivate account?",
+      "descSuffix": " will no longer be able to access the app.",
+      "deactivating": "Deactivating…",
+      "deactivate": "Deactivate"
+    },
+    "assign": {
+      "titlePrefix": "Assign machine — ",
+      "roleHint": "Role {{role}} can only be linked to a {{type}} machine.",
+      "noCompatible": "No compatible active machine.",
+      "noCompatibleHint": "Add a \"{{type}}\" machine on the Machines page.",
+      "noCompatibleHintGeneric": "Add machines on the Machines page.",
+      "noneAssigned": "No machine assigned",
+      "assignButton": "Assign",
+      "saveButton": "Save assignment",
+      "saving": "Saving…",
+      "errorSave": "Error saving"
+    },
+    "filter": {
+      "searchPlaceholder": "Search by name, username, email, phone…",
+      "allStatuses": "All statuses",
+      "active": "Active",
+      "inactive": "Inactive",
+      "countSingular": "{{count}} account",
+      "countPlural": "{{count}} accounts"
+    },
+    "state": {
+      "loading": "Loading accounts…",
+      "error": "Error loading accounts. Check that the backend is running.",
+      "emptyFiltered": "No accounts match the selected filters.",
+      "empty": "No accounts registered. Click \"New account\" to add the first one."
+    },
+    "table": {
+      "colName": "Name",
+      "colUsername": "Username",
+      "colEmail": "Email",
+      "colPin": "PIN",
+      "colRole": "Role",
+      "colMachine": "Assigned machine",
+      "colPhone": "Phone",
+      "colStatus": "Status",
+      "colActions": "Actions"
+    },
+    "actions": {
+      "assignTooltip": "Change assigned machine",
+      "editTooltip": "Edit account",
+      "deactivateTooltip": "Deactivate account"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    }
+  },
+  "superAdmin": {
+    "brand": "Super Admin",
+    "orgs": {
+      "empty": "No organizations yet.",
+      "emptyHint": "Click \"New Organization\" to create the first one.",
+      "newButton": "New Organization",
+      "createTitle": "Create Organization",
+      "urlPreview": "Dashboard URL preview"
+    },
+    "users": {
+      "breadcrumb": {
+        "orgs": "Organizations",
+        "users": "Users"
+      },
+      "headerTitle": "Users in {{org}}",
+      "headerOrgFallback": "organization",
+      "headerSubtitlePrefix": "Create and manage accounts that can log into ",
+      "headerSubtitleGeneric": "this organization",
+      "headerSubtitleSuffix": ".",
+      "newAccount": "New account",
+      "statTotal": "Total accounts",
+      "statActive": "Active",
+      "statAdmins": "Administrators",
+      "statOperators": "Operators",
+      "state": {
+        "loading": "Loading accounts…",
+        "errorFallback": "Failed to load accounts",
+        "empty": "No accounts yet. Click \"New account\" to create the first one."
+      },
+      "table": {
+        "colName": "Name",
+        "colUsername": "Username",
+        "colEmail": "Email",
+        "colPin": "PIN",
+        "colRole": "Role",
+        "colPhone": "Phone",
+        "colStatus": "Status",
+        "colActions": "Actions"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "actions": {
+        "edit": "Edit account",
+        "deactivate": "Deactivate account"
+      },
+      "pin": {
+        "hide": "Hide PIN",
+        "show": "Show PIN",
+        "copy": "Copy PIN",
+        "copied": "Copied"
+      },
+      "deactivate": {
+        "title": "Deactivate this account?",
+        "descSuffix": " will no longer be able to log in.",
+        "deactivate": "Deactivate",
+        "deactivating": "Deactivating…"
+      },
+      "create": {
+        "title": "New account",
+        "submit": "Create account",
+        "creating": "Creating…",
+        "errorFallback": "Failed to create account"
+      },
+      "edit": {
+        "titlePrefix": "Edit — ",
+        "errorFallback": "Failed to save",
+        "saving": "Saving…"
+      },
+      "form": {
+        "fullName": "Full name",
+        "fullNameHint": "Enter exactly 2 words: Surname Firstname",
+        "fullNamePlaceholder": "Surname Firstname",
+        "role": "Role",
+        "phone": "Phone (optional)",
+        "phonePlaceholder": "+40 7xx xxx xxx",
+        "generatedSection": "Auto-generated credentials",
+        "credentialsSection": "Login credentials",
+        "usernameRowLabel": "Username:",
+        "emailRowLabel": "Email:",
+        "pinRowLabel": "PIN:",
+        "pinServerGen": "server-generated (4 digits) — shown after creation",
+        "username": "Username",
+        "usernamePlaceholder": "e.g. mmaletici",
+        "usernameOverrideTooltip": "Override the auto-generated username before creating",
+        "reset": "Reset",
+        "pinLabel": "PIN (4 digits)",
+        "pinPlaceholder": "4 digits",
+        "pinHint": "Changing the PIN also updates the Supabase Auth password (used as sb_PIN when logging in by email)."
+      },
+      "reveal": {
+        "titlePrefix": "Account created — ",
+        "warning": "Copy the credentials now — the PIN is shown only here. You can also view and change it later from the Edit dialog.",
+        "row": {
+          "username": "Username",
+          "email": "Email",
+          "pin": "PIN",
+          "password": "Password (email login)"
+        },
+        "copyTitle": "Copy {{label}}",
+        "copied": "Copied",
+        "loginHint": "Login flow: username + PIN, or email + sb_PIN.",
+        "done": "Done"
+      }
     }
   },
   "dashboard": {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
 
 interface SearchInputProps {
   value: string;
@@ -10,16 +11,15 @@ interface SearchInputProps {
   debounceMs?: number;
 }
 
-export function SearchInput({
-  value,
-  onChange,
-  placeholder = 'Caută…',
-  debounceMs = 250,
-}: SearchInputProps) {
+export function SearchInput({ value, onChange, placeholder, debounceMs = 250 }: SearchInputProps) {
+  const { t } = useI18n();
+  const resolvedPlaceholder = placeholder ?? t('common.search');
   const [local, setLocal] = useState(value);
 
   // Sync external value changes
-  useEffect(() => { setLocal(value); }, [value]);
+  useEffect(() => {
+    setLocal(value);
+  }, [value]);
 
   // Debounce local → parent
   useEffect(() => {
@@ -34,12 +34,15 @@ export function SearchInput({
         type="text"
         value={local}
         onChange={(e) => setLocal(e.target.value)}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         className="w-full rounded-lg border border-neutral-200 bg-neutral-50 py-1.5 pl-8 pr-7 text-xs text-neutral-700 placeholder:text-neutral-400 focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary"
       />
       {local && (
         <button
-          onClick={() => { setLocal(''); onChange(''); }}
+          onClick={() => {
+            setLocal('');
+            onChange('');
+          }}
           className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-neutral-400 hover:text-neutral-600"
         >
           <X className="h-3 w-3" />

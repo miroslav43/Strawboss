@@ -32,6 +32,7 @@ import type { User, Machine } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { UserAvatar } from '@/components/shared/UserAvatar';
+import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
@@ -206,6 +207,7 @@ function StatCard({
 // ── PinCell — masked + toggle + copy ──────────────────────────────────────
 
 function PinCell({ pin }: { pin: string | null }) {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -224,7 +226,7 @@ function PinCell({ pin }: { pin: string | null }) {
         type="button"
         onClick={() => setVisible((v) => !v)}
         className="rounded p-0.5 text-neutral-400 hover:text-neutral-600"
-        title={visible ? 'Ascunde PIN' : 'Arată PIN'}
+        title={visible ? t('accounts.pin.hide') : t('accounts.pin.show')}
       >
         {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
       </button>
@@ -234,11 +236,11 @@ function PinCell({ pin }: { pin: string | null }) {
           void handleCopy();
         }}
         className="rounded p-0.5 text-neutral-400 hover:text-neutral-600"
-        title="Copiază PIN"
+        title={t('accounts.pin.copy')}
       >
         <Copy className="h-3.5 w-3.5" />
       </button>
-      {copied && <span className="text-xs text-green-600">Copiat!</span>}
+      {copied && <span className="text-xs text-green-600">{t('accounts.pin.copied')}</span>}
     </div>
   );
 }
@@ -256,6 +258,7 @@ function DeactivateDialog({
   onCancel: () => void;
   isPending: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl">
@@ -265,16 +268,16 @@ function DeactivateDialog({
               <AlertTriangle className="h-5 w-5 text-red-600" />
             </div>
             <div>
-              <p className="font-semibold text-neutral-800">Dezactivezi contul?</p>
+              <p className="font-semibold text-neutral-800">{t('accounts.deactivate.title')}</p>
               <p className="text-sm text-neutral-500">
-                <span className="font-medium">{user.fullName}</span> nu va mai putea accesa
-                aplicatia.
+                <span className="font-medium">{user.fullName}</span>
+                {t('accounts.deactivate.descSuffix')}
               </p>
             </div>
           </div>
           <div className="flex justify-end gap-3">
             <button type="button" onClick={onCancel} className={cancelBtnCls} disabled={isPending}>
-              Anuleaza
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -283,7 +286,9 @@ function DeactivateDialog({
               className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
             >
               <Trash2 className="h-4 w-4" />
-              {isPending ? 'Se dezactiveaza...' : 'Dezactiveaza'}
+              {isPending
+                ? t('accounts.deactivate.deactivating')
+                : t('accounts.deactivate.deactivate')}
             </button>
           </div>
         </div>
@@ -330,7 +335,9 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-neutral-800">Cont nou</h2>
+          <h2 className="text-lg font-semibold text-neutral-800">
+            {t('accounts.modal.createTitle')}
+          </h2>
           <button
             onClick={onClose}
             className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100"
@@ -340,7 +347,7 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
-          <FormField label="Nume complet" required>
+          <FormField label={t('accounts.form.fullName')} required>
             <input
               required
               type="text"
@@ -349,16 +356,14 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
                 setForm((f) => ({ ...f, fullName: e.target.value, usernameOverride: '' }))
               }
               className={inputCls}
-              placeholder="Maletici Miroslav"
+              placeholder={t('accounts.form.fullNamePlaceholder')}
             />
             {form.fullName && !preview && (
-              <p className="mt-1 text-xs text-amber-600">
-                Introduceti exact 2 cuvinte: Nume Prenume
-              </p>
+              <p className="mt-1 text-xs text-amber-600">{t('accounts.form.fullNameHint')}</p>
             )}
           </FormField>
 
-          <FormField label="Rol" required>
+          <FormField label={t('accounts.form.role')} required>
             <select
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
@@ -372,13 +377,13 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
             </select>
           </FormField>
 
-          <FormField label="Telefon (optional)">
+          <FormField label={t('accounts.form.phone')}>
             <input
               type="tel"
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               className={inputCls}
-              placeholder="+40 7xx xxx xxx"
+              placeholder={t('accounts.form.phonePlaceholder')}
             />
           </FormField>
 
@@ -386,20 +391,22 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
           {preview && (
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                Date generate automat
+                {t('accounts.form.generatedSection')}
               </p>
 
               <div className="space-y-2">
                 {/* Username — editable override */}
                 <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-neutral-500">Username:</span>
+                  <span className="w-24 shrink-0 text-xs text-neutral-500">
+                    {t('accounts.form.usernameRowLabel')}
+                  </span>
                   <input
                     type="text"
                     value={displayUsername}
                     onChange={(e) => setForm((f) => ({ ...f, usernameOverride: e.target.value }))}
                     className="flex-1 rounded border border-neutral-300 bg-white px-2 py-1 font-mono text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder={preview.username}
-                    title="Poti edita username-ul inainte de creare"
+                    title={t('accounts.form.usernameOverrideTooltip')}
                   />
                   {form.usernameOverride && (
                     <button
@@ -407,14 +414,16 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
                       onClick={() => setForm((f) => ({ ...f, usernameOverride: '' }))}
                       className="text-xs text-neutral-400 hover:text-neutral-600"
                     >
-                      Reset
+                      {t('accounts.form.reset')}
                     </button>
                   )}
                 </div>
 
                 {/* Email — read-only */}
                 <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-neutral-500">Email:</span>
+                  <span className="w-24 shrink-0 text-xs text-neutral-500">
+                    {t('accounts.form.emailRowLabel')}
+                  </span>
                   <span className="font-mono text-sm text-neutral-600 truncate">
                     {preview.email}
                   </span>
@@ -422,9 +431,11 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
 
                 {/* PIN — shown as ???? since it is server-generated */}
                 <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-neutral-500">PIN:</span>
+                  <span className="w-24 shrink-0 text-xs text-neutral-500">
+                    {t('accounts.form.pinRowLabel')}
+                  </span>
                   <span className="font-mono text-sm text-neutral-400">
-                    generat de server (4 cifre)
+                    {t('accounts.form.pinServerGen')}
                   </span>
                 </div>
               </div>
@@ -433,13 +444,13 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
 
           {createUser.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {(createUser.error as Error)?.message ?? 'Eroare la creare cont'}
+              {(createUser.error as Error)?.message ?? t('accounts.modal.errorCreate')}
             </p>
           )}
 
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className={cancelBtnCls}>
-              Anuleaza
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -447,7 +458,9 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
               className={submitBtnCls}
             >
               <UserPlus className="h-4 w-4" />
-              {createUser.isPending ? 'Se creeaza...' : 'Creeaza cont'}
+              {createUser.isPending
+                ? t('accounts.modal.creating')
+                : t('accounts.modal.createSubmit')}
             </button>
           </div>
         </form>
@@ -537,7 +550,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
           <h2 className="text-base font-semibold text-neutral-800">
-            Editeaza — <span className="text-primary">{user.fullName}</span>
+            {t('accounts.modal.editTitle')} — <span className="text-primary">{user.fullName}</span>
           </h2>
           <button
             onClick={onClose}
@@ -559,19 +572,21 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
                   onChange={handleAvatarPick}
                   disabled={uploadAvatar.isPending}
                 />
-                {uploadAvatar.isPending ? 'Se incarca...' : 'Schimba poza'}
+                {uploadAvatar.isPending
+                  ? t('accounts.avatar.uploading')
+                  : t('accounts.avatar.change')}
               </label>
               {uploadAvatar.isError ? (
                 <p className="text-xs text-red-600">
-                  {(uploadAvatar.error as Error)?.message ?? 'Upload esuat'}
+                  {(uploadAvatar.error as Error)?.message ?? t('accounts.avatar.uploadFailed')}
                 </p>
               ) : (
-                <p className="text-xs text-neutral-400">JPG, PNG sau WebP. Max 3 MB.</p>
+                <p className="text-xs text-neutral-400">{t('accounts.avatar.hint')}</p>
               )}
             </div>
           </div>
 
-          <FormField label="Nume complet" required>
+          <FormField label={t('accounts.form.fullName')} required>
             <input
               required
               type="text"
@@ -581,7 +596,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
             />
           </FormField>
 
-          <FormField label="Rol" required>
+          <FormField label={t('accounts.form.role')} required>
             <select
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
@@ -595,40 +610,40 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
             </select>
           </FormField>
 
-          <FormField label="Telefon (optional)">
+          <FormField label={t('accounts.form.phone')}>
             <input
               type="tel"
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               className={inputCls}
-              placeholder="+40 7xx xxx xxx"
+              placeholder={t('accounts.form.phonePlaceholder')}
             />
           </FormField>
 
           <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-              Credentiale acces
+              {t('accounts.form.credentialsSection')}
             </p>
 
-            <FormField label="Username">
+            <FormField label={t('accounts.form.username')}>
               <input
                 type="text"
                 value={form.username}
                 onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
                 className={inputCls}
-                placeholder="mmaletici"
+                placeholder={t('accounts.form.usernamePlaceholder')}
                 minLength={3}
               />
             </FormField>
 
-            <FormField label="PIN (4 cifre)">
+            <FormField label={t('accounts.form.pinLabel')}>
               <div className="relative">
                 <input
                   type={showPin ? 'text' : 'password'}
                   value={form.pin}
                   onChange={(e) => setForm((f) => ({ ...f, pin: e.target.value }))}
                   className={`${inputCls} pr-10`}
-                  placeholder="4 cifre"
+                  placeholder={t('accounts.form.pinPlaceholder')}
                   pattern="[0-9]{4}"
                   maxLength={4}
                   inputMode="numeric"
@@ -641,24 +656,22 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
                   {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <p className="mt-1 text-xs text-neutral-400">
-                Schimbarea PIN-ului actualizeaza si parola din Supabase Auth.
-              </p>
+              <p className="mt-1 text-xs text-neutral-400">{t('accounts.form.pinHint')}</p>
             </FormField>
           </div>
 
           {updateUser.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {(updateUser.error as Error)?.message ?? 'Eroare la salvare'}
+              {(updateUser.error as Error)?.message ?? t('accounts.modal.errorEdit')}
             </p>
           )}
 
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className={cancelBtnCls}>
-              Anuleaza
+              {t('common.cancel')}
             </button>
             <button type="submit" disabled={updateUser.isPending} className={submitBtnCls}>
-              {updateUser.isPending ? 'Se salveaza...' : 'Salveaza'}
+              {updateUser.isPending ? t('accounts.modal.editing') : t('common.save')}
             </button>
           </div>
         </form>
@@ -697,7 +710,8 @@ function AssignMachineModal({ user, onClose }: { user: User; onClose: () => void
       <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
           <h2 className="text-base font-semibold text-neutral-800">
-            Asigneaza masina — <span className="text-primary">{user.fullName}</span>
+            {t('accounts.assign.titlePrefix')}
+            <span className="text-primary">{user.fullName}</span>
           </h2>
           <button
             onClick={onClose}
@@ -710,17 +724,21 @@ function AssignMachineModal({ user, onClose }: { user: User; onClose: () => void
         <div className="p-6">
           {requiredType && (
             <p className="mb-4 text-sm text-neutral-500">
-              Rolul <strong>{t(ROLE_LABEL_KEYS[user.role])}</strong> poate fi legat doar de o mașină
-              de tip <strong>{t(MACHINE_TYPE_LABEL_KEYS[requiredType])}</strong>.
+              {t('accounts.assign.roleHint', {
+                role: t(ROLE_LABEL_KEYS[user.role]),
+                type: t(MACHINE_TYPE_LABEL_KEYS[requiredType]),
+              })}
             </p>
           )}
 
           {compatible.length === 0 ? (
             <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              Nicio mașină compatibilă activă.{' '}
+              {t('accounts.assign.noCompatible')}{' '}
               {requiredType
-                ? `Adaugă o mașină de tip "${t(MACHINE_TYPE_LABEL_KEYS[requiredType])}" în pagina Mașini.`
-                : 'Adaugă mașini în pagina Mașini.'}
+                ? t('accounts.assign.noCompatibleHint', {
+                    type: t(MACHINE_TYPE_LABEL_KEYS[requiredType]),
+                  })
+                : t('accounts.assign.noCompatibleHintGeneric')}
             </p>
           ) : (
             <div className="space-y-2">
@@ -739,7 +757,9 @@ function AssignMachineModal({ user, onClose }: { user: User; onClose: () => void
                   onChange={() => setSelected(null)}
                   className="accent-primary"
                 />
-                <span className="text-sm text-neutral-500 italic">Nicio masina asignata</span>
+                <span className="text-sm text-neutral-500 italic">
+                  {t('accounts.assign.noneAssigned')}
+                </span>
               </label>
 
               {compatible.map((m) => (
@@ -773,14 +793,14 @@ function AssignMachineModal({ user, onClose }: { user: User; onClose: () => void
 
           {updateUser.isError && (
             <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {(updateUser.error as Error)?.message ?? 'Eroare la salvare'}
+              {(updateUser.error as Error)?.message ?? t('accounts.assign.errorSave')}
             </p>
           )}
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-4">
           <button type="button" onClick={onClose} className={cancelBtnCls}>
-            Anuleaza
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleSave}
@@ -788,7 +808,7 @@ function AssignMachineModal({ user, onClose }: { user: User; onClose: () => void
             className={submitBtnCls}
           >
             <Link2 className="h-4 w-4" />
-            {updateUser.isPending ? 'Se salveaza...' : 'Salveaza asignarea'}
+            {updateUser.isPending ? t('accounts.assign.saving') : t('accounts.assign.saveButton')}
           </button>
         </div>
       </div>
@@ -807,7 +827,11 @@ export default function AccountsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
-  const { data: usersRaw, isLoading, isError } = useAdminUsers(apiClient);
+  const {
+    data: usersRaw,
+    isLoading,
+    isError,
+  } = useAdminUsers(apiClient, { refetchInterval: 30_000 });
   const { data: machinesRaw } = useMachines(apiClient);
   const deactivate = useDeactivateUser(apiClient);
 
@@ -908,7 +932,7 @@ export default function AccountsPage() {
           <SearchInput
             value={search}
             onChange={setSearch}
-            placeholder="Cauta dupa nume, username, email, telefon..."
+            placeholder={t('accounts.filter.searchPlaceholder')}
           />
         </div>
         <select
@@ -916,23 +940,25 @@ export default function AccountsPage() {
           onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
           className={selectCls}
         >
-          <option value="all">Toate statusurile</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="all">{t('accounts.filter.allStatuses')}</option>
+          <option value="active">{t('accounts.filter.active')}</option>
+          <option value="inactive">{t('accounts.filter.inactive')}</option>
         </select>
         <span className="ml-auto text-xs text-neutral-400">
-          {totalVisible} {totalVisible === 1 ? 'cont' : 'conturi'}
+          {t(totalVisible === 1 ? 'accounts.filter.countSingular' : 'accounts.filter.countPlural', {
+            count: totalVisible,
+          })}
         </span>
       </div>
 
       {/* Loading / error */}
       {isLoading && (
-        <div className="py-12 text-center text-sm text-neutral-400">Se incarca conturile...</div>
+        <div className="py-12 text-center text-sm text-neutral-400">
+          {t('accounts.state.loading')}
+        </div>
       )}
       {isError && (
-        <div className="py-12 text-center text-sm text-red-500">
-          Eroare la incarcarea conturilor. Verifica ca backend-ul ruleaza.
-        </div>
+        <div className="py-12 text-center text-sm text-red-500">{t('accounts.state.error')}</div>
       )}
 
       {/* Table */}
@@ -941,15 +967,15 @@ export default function AccountsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">
-                <th className="px-4 py-3">Nume</th>
-                <th className="px-4 py-3">Username</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">PIN</th>
-                <th className="px-4 py-3">Rol</th>
-                <th className="px-4 py-3">Masina asignata</th>
-                <th className="px-4 py-3">Telefon</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actiuni</th>
+                <th className="px-4 py-3">{t('accounts.table.colName')}</th>
+                <th className="px-4 py-3">{t('accounts.table.colUsername')}</th>
+                <th className="px-4 py-3">{t('accounts.table.colEmail')}</th>
+                <th className="px-4 py-3">{t('accounts.table.colPin')}</th>
+                <th className="px-4 py-3">{t('accounts.table.colRole')}</th>
+                <th className="px-4 py-3">{t('accounts.table.colMachine')}</th>
+                <th className="px-4 py-3">{t('accounts.table.colPhone')}</th>
+                <th className="px-4 py-3">{t('accounts.table.colStatus')}</th>
+                <th className="px-4 py-3 text-right">{t('accounts.table.colActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
@@ -957,8 +983,8 @@ export default function AccountsPage() {
                 <tr>
                   <td colSpan={9} className="px-4 py-12 text-center text-neutral-400">
                     {search || statusFilter !== 'all'
-                      ? 'Niciun cont nu corespunde filtrelor selectate.'
-                      : 'Niciun cont inregistrat. Apasa "Cont nou" pentru a adauga primul.'}
+                      ? t('accounts.state.emptyFiltered')
+                      : t('accounts.state.empty')}
                   </td>
                 </tr>
               )}
@@ -998,7 +1024,13 @@ export default function AccountsPage() {
                       >
                         <td className="px-4 py-3 font-medium text-neutral-800">
                           <div className="flex items-center gap-2">
-                            <UserAvatar user={user} size="sm" />
+                            <div className="relative">
+                              <UserAvatar user={user} size="sm" />
+                              <UserPresenceDot
+                                lastSeenAt={user.lastSeenAt}
+                                className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5"
+                              />
+                            </div>
                             {user.role === UserRole.admin && (
                               <Shield className="h-3.5 w-3.5 text-purple-400" />
                             )}
@@ -1024,7 +1056,7 @@ export default function AccountsPage() {
                             <button
                               onClick={() => canAssign && setAssignTarget(user)}
                               className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
-                              title="Schimba masina asignata"
+                              title={t('accounts.actions.assignTooltip')}
                             >
                               <span className="font-mono">{assignedMachine.internalCode}</span>
                               <span className="text-neutral-400">
@@ -1040,7 +1072,7 @@ export default function AccountsPage() {
                               className="flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-400 hover:border-primary hover:text-primary transition-colors"
                             >
                               <Link2 className="h-3 w-3" />
-                              Asigneaza
+                              {t('accounts.assign.assignButton')}
                             </button>
                           ) : (
                             <span className="text-xs text-neutral-300">—</span>
@@ -1048,22 +1080,27 @@ export default function AccountsPage() {
                         </td>
                         <td className="px-4 py-3 text-neutral-500">{user.phone ?? '—'}</td>
                         <td className="px-4 py-3">
-                          {user.isActive ? (
-                            <span className="flex items-center gap-1 text-green-600">
-                              <CheckCircle2 className="h-4 w-4" /> Activ
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1 text-neutral-400">
-                              <XCircle className="h-4 w-4" /> Inactiv
-                            </span>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            {user.isActive ? (
+                              <span className="flex items-center gap-1 text-green-600">
+                                <CheckCircle2 className="h-4 w-4" /> {t('accounts.status.active')}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-neutral-400">
+                                <XCircle className="h-4 w-4" /> {t('accounts.status.inactive')}
+                              </span>
+                            )}
+                            {user.isActive && (
+                              <UserPresenceDot lastSeenAt={user.lastSeenAt} variant="badge" />
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => setEditTarget(user)}
                               className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                              title="Editeaza cont"
+                              title={t('accounts.actions.editTooltip')}
                             >
                               <Pencil className="h-4 w-4" />
                             </button>
@@ -1071,7 +1108,7 @@ export default function AccountsPage() {
                               <button
                                 onClick={() => setDeactivateTarget(user)}
                                 className="rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-500"
-                                title="Dezactiveaza cont"
+                                title={t('accounts.actions.deactivateTooltip')}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
