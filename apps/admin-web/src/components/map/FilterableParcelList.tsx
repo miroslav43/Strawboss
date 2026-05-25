@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef } from 'react';
-import { ChevronDown, ChevronUp, Crosshair, Pencil, MapPin, Trash2, Upload, X } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import { ChevronDown, ChevronUp, Crosshair, Pencil, MapPin, Trash2 } from 'lucide-react';
 import type { Parcel } from '@strawboss/types';
 import { SearchInput } from '@/components/shared/SearchInput';
-import { parseKml, type KmlParsedParcel } from '@/lib/kml-parser';
 import { useI18n } from '@/lib/i18n';
 
 interface FilterableParcelListProps {
@@ -16,8 +15,10 @@ interface FilterableParcelListProps {
   onParcelEditBoundary: (parcel: Parcel) => void;
   onParcelDelete: (id: string) => void;
   onParcelNavigate: (parcel: Parcel) => void;
-  onKmlParsed: (parcels: KmlParsedParcel[]) => void;
   deleteIsPending: boolean;
+  /** Optional controlled-collapse state from the parent. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function FilterableParcelList({
@@ -29,18 +30,28 @@ export function FilterableParcelList({
   onParcelEditBoundary,
   onParcelDelete,
   onParcelNavigate,
-  onKmlParsed,
   deleteIsPending,
+  open: openProp,
+  onOpenChange,
 }: FilterableParcelListProps) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(true);
+  const [openInternal, setOpenInternal] = useState(true);
+  const open = openProp ?? openInternal;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (onOpenChange) onOpenChange(next);
+      else setOpenInternal(next);
+    },
+    [onOpenChange],
+  );
   const [search, setSearch] = useState('');
   const [municipalityFilter, setMunicipalityFilter] = useState('');
-  const [kmlError, setKmlError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const municipalities = useMemo(
-    () => [...new Set(parcels.map((p) => p.municipality).filter((x): x is string => Boolean(x)))].sort(),
+    () =>
+      [
+        ...new Set(parcels.map((p) => p.municipality).filter((x): x is string => Boolean(x))),
+      ].sort(),
     [parcels],
   );
 
@@ -48,8 +59,9 @@ export function FilterableParcelList({
     return parcels.filter((p) => {
       if (search) {
         const q = search.toLowerCase();
-        const matches = [p.name, p.code, p.municipality]
-          .some((field) => field?.toLowerCase().includes(q));
+        const matches = [p.name, p.code, p.municipality].some((field) =>
+          field?.toLowerCase().includes(q),
+        );
         if (!matches) return false;
       }
       if (municipalityFilter && p.municipality !== municipalityFilter) return false;
@@ -61,71 +73,28 @@ export function FilterableParcelList({
 
   const hasFilters = search || municipalityFilter;
 
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!fileInputRef.current) return;
-      fileInputRef.current.value = '';
-      if (!file) return;
-
-      setKmlError(null);
-      try {
-        const text = await file.text();
-        const parsed = parseKml(text);
-        if (parsed.length === 0) {
-          setKmlError(t('mapList.kmlNoPolygons'));
-          return;
-        }
-        onKmlParsed(parsed);
-      } catch (err) {
-        setKmlError((err as Error)?.message ?? t('mapList.kmlReadError'));
-      }
-    },
-    [onKmlParsed, t],
-  );
-
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-          {t('mapList.parcels')}
-        </p>
-        <div className="flex items-center gap-1">
-          {/* Import KML button */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            title={t('mapList.importKmlTooltip')}
-            className="flex items-center gap-1 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
-          >
-            <Upload className="h-3 w-3" />
-            {t('mapList.importKml')}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".kml"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          {/* Collapse toggle */}
-          <button
-            onClick={() => setOpen((v) => !v)}
-            title={open ? t('mapList.hideList') : t('mapList.showList')}
-            aria-label={open ? t('mapList.hideList') : t('mapList.showList')}
-            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-          >
-            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
+      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+            {t('mapList.parcels')}
+          </p>
+          <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] tabular-nums text-neutral-500">
+            {parcels.length}
+          </span>
         </div>
+        <button
+          onClick={() => setOpen(!open)}
+          title={open ? t('mapList.hideList') : t('mapList.showList')}
+          aria-label={open ? t('mapList.hideList') : t('mapList.showList')}
+          aria-expanded={open}
+          className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+        >
+          {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
       </div>
-
-      {kmlError && (
-        <div className="mx-3 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
-          {kmlError}
-          <button onClick={() => setKmlError(null)} className="ml-2 text-red-400 hover:text-red-600"><X className="h-3 w-3 inline" /></button>
-        </div>
-      )}
 
       {open && (
         <>
@@ -143,20 +112,24 @@ export function FilterableParcelList({
             >
               <option value="">{t('mapList.allMunicipalities')}</option>
               {municipalities.map((m) => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m} value={m}>
+                  {m}
+                </option>
               ))}
             </select>
           </div>
 
           {isLoading && (
-            <div className="px-4 py-6 text-center text-sm text-neutral-400">{t('common.loading')}</div>
+            <div className="px-4 py-6 text-center text-sm text-neutral-400">
+              {t('common.loading')}
+            </div>
           )}
 
           <ul className="divide-y divide-neutral-100">
             {filtered.map((parcel) => (
               <li
                 key={parcel.id}
-                className={`cursor-pointer px-4 py-3 transition-colors hover:bg-neutral-50 ${
+                className={`cursor-pointer px-3 py-2 transition-colors hover:bg-neutral-50 ${
                   selectedParcelId === parcel.id ? 'border-l-2 border-primary bg-amber-50' : ''
                 }`}
                 onClick={() => onParcelSelect(parcel.id)}
@@ -169,7 +142,8 @@ export function FilterableParcelList({
                       )}
                     </p>
                     <p className="truncate text-xs text-neutral-500">
-                      {parcel.code}{parcel.municipality ? ` · ${parcel.municipality}` : ''}
+                      {parcel.code}
+                      {parcel.municipality ? ` · ${parcel.municipality}` : ''}
                     </p>
                     <p className="text-xs text-neutral-400">
                       {parcel.areaHectares != null ? `${parcel.areaHectares} ha` : '—'}
@@ -177,7 +151,10 @@ export function FilterableParcelList({
                   </div>
                   {/* Navigate to parcel */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); onParcelNavigate(parcel); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onParcelNavigate(parcel);
+                    }}
                     className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-blue-500"
                     title={t('mapList.showOnMap')}
                     aria-label={t('mapList.showOnMap')}
@@ -186,7 +163,10 @@ export function FilterableParcelList({
                   </button>
                   {/* Edit info */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); onParcelEdit(parcel); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onParcelEdit(parcel);
+                    }}
                     className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-primary"
                     title={t('mapList.editParcelInfo')}
                     aria-label={t('mapList.editParcelInfo')}
@@ -195,7 +175,10 @@ export function FilterableParcelList({
                   </button>
                   {/* Edit boundary */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); onParcelEditBoundary(parcel); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onParcelEditBoundary(parcel);
+                    }}
                     className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-blue-600"
                     title={t('mapList.editParcelBoundary')}
                     aria-label={t('mapList.editParcelBoundary')}
@@ -204,7 +187,10 @@ export function FilterableParcelList({
                   </button>
                   {/* Delete */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); onParcelDelete(parcel.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onParcelDelete(parcel.id);
+                    }}
                     disabled={deleteIsPending}
                     className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
                     title={t('mapList.deleteParcelField')}

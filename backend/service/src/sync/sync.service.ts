@@ -84,7 +84,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'start_time',
     'end_time',
     'farmtrack_session_id',
-    'deleted_at',
     'updated_at',
     'sync_version',
   ]),
@@ -119,7 +118,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'total_cost',
     'logged_at',
     'receipt_photo_url',
-    'deleted_at',
     'updated_at',
     'client_id',
     'sync_version',
@@ -140,7 +138,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'actual_start',
     'actual_end',
     'notes',
-    'deleted_at',
     'updated_at',
     'sync_version',
   ]),
@@ -180,6 +177,7 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'notes',
     'is_active',
     'harvest_status',
+    'crop_type',
     'farmtrack_geofence_id',
     'farm_id',
     'sync_version',
@@ -189,6 +187,56 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
 // NOTE: 'organization_id' is intentionally absent from ALLOWED_COLUMNS.
 // It is injected server-side after column validation to prevent mobile
 // clients from overriding or spoofing their organization scope.
+
+/**
+ * Foreign-key columns whose value must belong to the caller's organization.
+ * Enforced before INSERT so a mobile client cannot stitch references across
+ * tenants (e.g. a bale_load whose parcel_id lives in another org).
+ *
+ * Keys not listed here are treated as opaque (e.g. `client_id` is the local
+ * UUID identifier, not a database foreign key).
+ */
+const FK_ORG_CHECKS: Record<string, Record<string, string>> = {
+  trips: {
+    source_parcel_id: 'parcels',
+    truck_id: 'machines',
+    loader_id: 'machines',
+    driver_id: 'users',
+    loader_operator_id: 'users',
+  },
+  bale_loads: {
+    trip_id: 'trips',
+    parcel_id: 'parcels',
+    loader_id: 'machines',
+    operator_id: 'users',
+  },
+  bale_productions: {
+    parcel_id: 'parcels',
+    baler_id: 'machines',
+    operator_id: 'users',
+  },
+  fuel_logs: {
+    machine_id: 'machines',
+    operator_id: 'users',
+    parcel_id: 'parcels',
+  },
+  consumable_logs: {
+    machine_id: 'machines',
+    operator_id: 'users',
+    parcel_id: 'parcels',
+  },
+  task_assignments: {
+    machine_id: 'machines',
+    parcel_id: 'parcels',
+    assigned_user_id: 'users',
+    parent_assignment_id: 'task_assignments',
+    destination_id: 'delivery_destinations',
+  },
+  parcels: {
+    farm_id: 'farms',
+  },
+  machines: {},
+};
 
 /**
  * Explicit column projection for delta pull, per table.
@@ -307,6 +355,22 @@ const PULL_COLUMNS: Record<string, string[]> = {
     'updated_at',
     'sync_version',
   ],
+  // `boundary` and `centroid` (PostGIS geometry) are intentionally excluded —
+  // raw projection would surface WKB hex that the mobile layer cannot parse.
+  // Geometry continues to be served through the REST parcels endpoint
+  // (useCachedParcels), which serialises via ST_AsGeoJSON.
+  parcels: [
+    'id',
+    'code',
+    'name',
+    'area_hectares',
+    'municipality',
+    'harvest_status',
+    'crop_type',
+    'created_at',
+    'updated_at',
+    'sync_version',
+  ],
 };
 
 function validateColumnName(table: string, column: string): void {
@@ -321,6 +385,39 @@ export class SyncService {
   private readonly logger = new Logger(SyncService.name);
 
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
+
+  /**
+   * For every FK column declared in FK_ORG_CHECKS for `table` that is present
+   * in `data` with a non-null UUID value, verify the referenced row lives in
+   * the caller's organization. Throws BadRequestException on first mismatch.
+   */
+  private async validateForeignKeyOrgs(
+    table: string,
+    data: Record<string, unknown>,
+    orgId: string,
+  ): Promise<void> {
+    const fkMap = FK_ORG_CHECKS[table];
+    if (!fkMap) return;
+
+    for (const [column, referencedTable] of Object.entries(fkMap)) {
+      const value = data[column];
+      if (value === null || value === undefined) continue;
+      if (!isUuid(value)) continue;
+
+      const result = await this.drizzleProvider.db.execute(
+        sql`SELECT 1 FROM ${sql.raw(`"${referencedTable}"`)}
+            WHERE id = ${value}::uuid
+              AND organization_id = ${orgId}::uuid
+            LIMIT 1`,
+      );
+      const rows = result as unknown as unknown[];
+      if (rows.length === 0) {
+        throw new BadRequestException(
+          `Foreign key '${column}' references ${referencedTable}/${value} outside caller's organization`,
+        );
+      }
+    }
+  }
 
   /**
    * Process a batch of offline mutations with idempotency.
@@ -405,6 +502,13 @@ export class SyncService {
         validateColumnName(mutation.table, col);
       }
 
+      // Cross-org FK guard: every foreign-key value referenced by this row
+      // must point at a row in the same organization as the caller. Without
+      // this, a mobile client could create rows that stitch tenants together.
+      if (orgId !== null) {
+        await this.validateForeignKeyOrgs(mutation.table, insertData, orgId);
+      }
+
       // Inject organization_id server-side AFTER validation so mobile clients
       // cannot spoof it, and it never passes through the column allowlist check.
       if (orgId !== null && SYNCABLE_TABLES.has(mutation.table)) {
@@ -449,21 +553,10 @@ export class SyncService {
         }
       }
     } else if (mutation.action === 'update') {
-      // Org guard: verify the record belongs to the caller's organization
-      if (orgId !== null) {
-        const guardResult = await this.drizzleProvider.db.execute(
-          sql`SELECT organization_id FROM ${sql.raw(`"${mutation.table}"`)}
-              WHERE id = ${mutation.recordId}::uuid LIMIT 1`,
-        );
-        const guardRows = guardResult as unknown as { organization_id: string }[];
-        if (!guardRows.length || guardRows[0].organization_id !== orgId) {
-          throw new BadRequestException(
-            `Record ${mutation.recordId} does not belong to caller's organization`,
-          );
-        }
-      }
-
       // sync_version is bumped by the set_sync_version() DB trigger.
+      if (orgId !== null) {
+        await this.validateForeignKeyOrgs(mutation.table, mutation.data, orgId);
+      }
       const setClauses: ReturnType<typeof sql>[] = [sql`updated_at = NOW()`];
       for (const [key, value] of Object.entries(mutation.data)) {
         if (key !== 'id' && key !== 'sync_version' && key !== 'updated_at') {
@@ -477,38 +570,38 @@ export class SyncService {
       }
 
       const setClause = sql.join(setClauses, sql`, `);
+      // Org filter is folded into WHERE so the check is atomic with the write
+      // (no TOCTOU window between guard SELECT and UPDATE).
+      const orgGuard = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
       const updateResult = await this.drizzleProvider.db.execute(
         sql`UPDATE ${sql.raw(`"${mutation.table}"`)}
             SET ${setClause}
-            WHERE id = ${mutation.recordId}
+            WHERE id = ${mutation.recordId}${orgGuard}
             RETURNING *`,
       );
       const rows = updateResult as unknown as Record<string, unknown>[];
+      if (rows.length === 0 && orgId !== null) {
+        throw new BadRequestException(
+          `Record ${mutation.recordId} does not belong to caller's organization`,
+        );
+      }
       resultData = rows[0] ?? null;
       serverVersion = Number(resultData?.sync_version ?? 0);
     } else if (mutation.action === 'delete') {
-      // Org guard: verify the record belongs to the caller's organization
-      if (orgId !== null) {
-        const guardResult = await this.drizzleProvider.db.execute(
-          sql`SELECT organization_id FROM ${sql.raw(`"${mutation.table}"`)}
-              WHERE id = ${mutation.recordId}::uuid LIMIT 1`,
-        );
-        const guardRows = guardResult as unknown as { organization_id: string }[];
-        if (!guardRows.length || guardRows[0].organization_id !== orgId) {
-          throw new BadRequestException(
-            `Record ${mutation.recordId} does not belong to caller's organization`,
-          );
-        }
-      }
-
       // sync_version is bumped by the set_sync_version() DB trigger.
+      const orgGuard = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
       const deleteResult = await this.drizzleProvider.db.execute(
         sql`UPDATE ${sql.raw(`"${mutation.table}"`)}
             SET deleted_at = NOW(), updated_at = NOW()
-            WHERE id = ${mutation.recordId}
+            WHERE id = ${mutation.recordId}${orgGuard}
             RETURNING sync_version`,
       );
       const deleteRows = deleteResult as unknown as Record<string, unknown>[];
+      if (deleteRows.length === 0 && orgId !== null) {
+        throw new BadRequestException(
+          `Record ${mutation.recordId} does not belong to caller's organization`,
+        );
+      }
       serverVersion = Number(deleteRows[0]?.sync_version ?? 0);
     }
 

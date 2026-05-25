@@ -26,6 +26,7 @@ export {
 export {
   parcelSchema,
   harvestStatusSchema,
+  cropTypeSchema,
   createParcelSchema,
   updateParcelSchema,
 } from './schemas/parcel.schema.js';

@@ -54,6 +54,10 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await addColumnIfMissing(db, 'trips', 'parent_trip_id', 'TEXT');
   await addColumnIfMissing(db, 'trips', 'iteration_index', 'INTEGER DEFAULT 1');
 
+  // Plan B T9.1 — local parcel cache mirrors crop_type for offline map labels
+  // and the baler parcel detail screen.
+  await addColumnIfMissing(db, 'parcels', 'crop_type', 'TEXT');
+
   // Create indexes for common queries
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_operations_trip_id ON operations(trip_id)`);
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_operations_status ON operations(status)`);

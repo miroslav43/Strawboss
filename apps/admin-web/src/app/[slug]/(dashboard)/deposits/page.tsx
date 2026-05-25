@@ -3,9 +3,19 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useMemo, useCallback } from 'react';
 import {
-  Plus, Pencil, Trash2, X, Loader2, Check,
-  ChevronUp, ChevronDown, Search, XCircle,
-  CheckCircle2, Warehouse, MapPin,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Loader2,
+  Check,
+  ChevronUp,
+  ChevronDown,
+  Search,
+  XCircle,
+  CheckCircle2,
+  Warehouse,
+  MapPin,
 } from 'lucide-react';
 import {
   useDeliveryDestinations,
@@ -64,29 +74,51 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
     };
 
     if (isEdit && deposit) {
-      updateDeposit.mutate({ id: deposit.id, data: payload }, {
-        onSuccess: onClose,
-        onError: () => setError(t('deposits.form.updateError')),
-      });
+      updateDeposit.mutate(
+        { id: deposit.id, data: payload },
+        {
+          onSuccess: onClose,
+          onError: () => setError(t('deposits.form.updateError')),
+        },
+      );
     } else {
       createDeposit.mutate(payload as Parameters<typeof createDeposit.mutate>[0], {
         onSuccess: onClose,
         onError: () => setError(t('deposits.form.createError')),
       });
     }
-  }, [code, name, address, contactName, contactPhone, contactEmail, isActive, isDefault, isEdit, deposit, createDeposit, updateDeposit, onClose, t]);
+  }, [
+    code,
+    name,
+    address,
+    contactName,
+    contactPhone,
+    contactEmail,
+    isActive,
+    isDefault,
+    isEdit,
+    deposit,
+    createDeposit,
+    updateDeposit,
+    onClose,
+    t,
+  ]);
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
-        style={{ maxHeight: 'min(90vh, 700px)' }}>
-
+      <div
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+        style={{ maxHeight: 'min(90vh, 700px)' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
           <h2 className="text-base font-semibold text-neutral-800">
             {isEdit ? t('deposits.form.editTitle') : t('deposits.form.createTitle')}
           </h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -189,7 +221,9 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
                 onClick={() => setIsActive((v) => !v)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isActive ? 'bg-primary' : 'bg-neutral-300'}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-6' : 'translate-x-1'}`} />
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-6' : 'translate-x-1'}`}
+                />
               </button>
             </div>
           )}
@@ -204,7 +238,9 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
               onClick={() => setIsDefault((v) => !v)}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${isDefault ? 'bg-primary' : 'bg-neutral-300'}`}
             >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isDefault ? 'translate-x-6' : 'translate-x-1'}`} />
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isDefault ? 'translate-x-6' : 'translate-x-1'}`}
+              />
             </button>
           </div>
 
@@ -230,7 +266,11 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
             disabled={isPending}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
           >
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
             {isEdit ? t('deposits.save') : t('deposits.create')}
           </button>
         </div>
@@ -260,9 +300,7 @@ function DeleteDialog({ deposit, onClose }: DeleteDialogProps) {
         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-red-100">
           <Trash2 className="h-6 w-6 text-red-500" />
         </div>
-        <h2 className="text-base font-semibold text-neutral-800">
-          {t('deposits.delete')}
-        </h2>
+        <h2 className="text-base font-semibold text-neutral-800">{t('deposits.delete')}</h2>
         <p className="mt-1 text-sm text-neutral-500">
           {t('deposits.deleteConfirm', { name: deposit.name })}
         </p>
@@ -278,10 +316,38 @@ function DeleteDialog({ deposit, onClose }: DeleteDialogProps) {
             disabled={deleteDeposit.isPending}
             className="flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
           >
-            {deleteDeposit.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {deleteDeposit.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
             {t('deposits.delete')}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── StatCard (mirrors parcels/page.tsx for visual parity — T3) ─────────────
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  accent?: string;
+}
+function StatCard({ icon, label, value, accent = 'text-primary' }: StatCardProps) {
+  return (
+    <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white px-5 py-4 shadow-sm">
+      <div
+        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 ${accent}`}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-2xl font-bold leading-none text-neutral-900">{value}</p>
+        <p className="mt-0.5 text-xs text-neutral-500">{label}</p>
       </div>
     </div>
   );
@@ -343,9 +409,7 @@ export default function DepositsPage() {
 
   const handleSort = useCallback((key: DepositSortKey) => {
     setTableSort((s) =>
-      s.key === key
-        ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
-        : { key, dir: 'asc' },
+      s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
     );
   }, []);
 
@@ -353,7 +417,11 @@ export default function DepositsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = deposits.filter((d) => {
-      if (q && ![d.name, d.code, d.address, d.contactName].some((v) => v?.toLowerCase().includes(q))) return false;
+      if (
+        q &&
+        ![d.name, d.code, d.address, d.contactName].some((v) => v?.toLowerCase().includes(q))
+      )
+        return false;
       if (statusFilter === 'active' && !d.isActive) return false;
       if (statusFilter === 'inactive' && d.isActive) return false;
       return true;
@@ -377,18 +445,20 @@ export default function DepositsPage() {
   }, [deposits, search, statusFilter, tableSort]);
 
   // Stats
-  const stats = useMemo(() => ({
-    total: deposits.length,
-    active: deposits.filter((d) => d.isActive).length,
-    withBoundary: deposits.filter((d) => d.boundary).length,
-  }), [deposits]);
+  const stats = useMemo(
+    () => ({
+      total: deposits.length,
+      active: deposits.filter((d) => d.isActive).length,
+      withBoundary: deposits.filter((d) => d.boundary).length,
+    }),
+    [deposits],
+  );
 
   const thClass =
     'cursor-pointer select-none px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-700 whitespace-nowrap';
 
   return (
     <div className="flex flex-col gap-6 p-6">
-
       {/* Header */}
       <PageHeader
         title={t('deposits.title')}
@@ -405,33 +475,24 @@ export default function DepositsPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white px-5 py-4 shadow-sm">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-primary">
-            <Warehouse className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-2xl font-bold text-neutral-900 leading-none">{stats.total}</p>
-            <p className="mt-0.5 text-xs text-neutral-500">{t('deposits.title')}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white px-5 py-4 shadow-sm">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-green-600">
-            <CheckCircle2 className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-2xl font-bold text-neutral-900 leading-none">{stats.active}</p>
-            <p className="mt-0.5 text-xs text-neutral-500">{t('deposits.active')}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white px-5 py-4 shadow-sm">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-blue-600">
-            <MapPin className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-2xl font-bold text-neutral-900 leading-none">{stats.withBoundary}</p>
-            <p className="mt-0.5 text-xs text-neutral-500">{t('deposits.hasBoundary')}</p>
-          </div>
-        </div>
+        <StatCard
+          icon={<Warehouse className="h-5 w-5" />}
+          label={t('deposits.title')}
+          value={stats.total}
+          accent="text-primary"
+        />
+        <StatCard
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          label={t('deposits.active')}
+          value={stats.active}
+          accent="text-green-600"
+        />
+        <StatCard
+          icon={<MapPin className="h-5 w-5" />}
+          label={t('deposits.hasBoundary')}
+          value={stats.withBoundary}
+          accent="text-blue-600"
+        />
       </div>
 
       {/* Toolbar */}
@@ -456,7 +517,10 @@ export default function DepositsPage() {
 
         {(search || statusFilter) && (
           <button
-            onClick={() => { setSearch(''); setStatusFilter(''); }}
+            onClick={() => {
+              setSearch('');
+              setStatusFilter('');
+            }}
             className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs text-neutral-500 hover:bg-neutral-50"
           >
             <X className="h-3 w-3" />
@@ -479,23 +543,26 @@ export default function DepositsPage() {
         <div className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white py-20 text-neutral-400">
           <Search className="h-10 w-10 mb-3 opacity-20" />
           <p className="text-sm font-medium">
-            {(search || statusFilter) ? t('deposits.emptyFiltered') : t('deposits.empty')}
+            {search || statusFilter ? t('deposits.emptyFiltered') : t('deposits.empty')}
           </p>
-          {(search || statusFilter) ? (
+          {search || statusFilter ? (
             <button
-              onClick={() => { setSearch(''); setStatusFilter(''); }}
+              onClick={() => {
+                setSearch('');
+                setStatusFilter('');
+              }}
               className="mt-2 text-xs text-primary hover:underline"
             >
               {t('deposits.all')}
             </button>
           ) : (
             <div>
-              <p className="text-xs mt-1">{t('deposits.emptyHint')}</p>
+              <p className="mt-1 text-xs">{t('deposits.emptyHint')}</p>
               <button
                 onClick={() => setShowCreate(true)}
-                className="mt-3 flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs hover:border-primary hover:text-primary mx-auto"
+                className="mx-auto mt-3 flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-4 w-4" />
                 {t('deposits.newDeposit')}
               </button>
             </div>
@@ -506,25 +573,27 @@ export default function DepositsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-neutral-200 bg-neutral-50">
               <tr>
-                {([
+                {[
                   { key: 'code' as const, label: t('deposits.code') },
                   { key: 'name' as const, label: t('deposits.name') },
                   { key: 'address' as const, label: t('deposits.address') },
                   { key: 'contactName' as const, label: t('deposits.contactName') },
                   { key: 'isActive' as const, label: t('deposits.status') },
-                ]).map(({ key, label }) => (
-                  <th
-                    key={key}
-                    className={thClass}
-                    onClick={() => handleSort(key)}
-                  >
+                ].map(({ key, label }) => (
+                  <th key={key} className={thClass} onClick={() => handleSort(key)}>
                     <div className="flex items-center">
                       {label}
-                      <ThSortIndicator columnKey={key} sortKey={tableSort.key} sortDir={tableSort.dir} />
+                      <ThSortIndicator
+                        columnKey={key}
+                        sortKey={tableSort.key}
+                        sortDir={tableSort.dir}
+                      />
                     </div>
                   </th>
                 ))}
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-500">{t('deposits.hasBoundary')}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                  {t('deposits.hasBoundary')}
+                </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -622,9 +691,7 @@ export default function DepositsPage() {
       )}
 
       {/* Modals */}
-      {showCreate && (
-        <DepositFormModal onClose={() => setShowCreate(false)} />
-      )}
+      {showCreate && <DepositFormModal onClose={() => setShowCreate(false)} />}
       {editDeposit && (
         <DepositFormModal deposit={editDeposit} onClose={() => setEditDeposit(null)} />
       )}

@@ -88,6 +88,7 @@ export {
 
 export { useMachineLocations } from './use-machine-locations.js';
 export { useRouteHistory } from './use-route-history.js';
+export { useLocationKmByDay } from './use-location-km-by-day.js';
 export {
   useProfile,
   useUpdateProfileLocale,

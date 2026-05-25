@@ -19,6 +19,16 @@ const registerTokenSchema = z.object({
   machineId: z.string().uuid().optional(),
 });
 
+const confirmParcelDoneSchema = z.object({
+  assignmentId: z.string().uuid(),
+  baleCount: z.number().int().min(0).max(9999).optional(),
+  finishState: z.enum(['partial', 'total']).optional(),
+});
+
+const confirmParcelEntrySchema = z.object({
+  assignmentId: z.string().uuid(),
+});
+
 @Controller('notifications')
 export class NotificationsController {
   constructor(
@@ -80,18 +90,38 @@ export class NotificationsController {
   @Roles('admin' as UserRole, 'baler_operator' as UserRole)
   async confirmParcelDone(
     @CurrentUser() user: RequestUser,
-    @Body() body: { assignmentId: string; baleCount?: number },
+    @Body(new ZodValidationPipe(confirmParcelDoneSchema))
+    body: {
+      assignmentId: string;
+      baleCount?: number;
+      finishState?: 'partial' | 'total';
+    },
   ) {
-    if (!body.assignmentId) {
-      throw new BadRequestException('assignmentId is required');
-    }
-    if (body.baleCount != null && (body.baleCount < 0 || body.baleCount > 9999)) {
-      throw new BadRequestException('baleCount must be between 0 and 9999');
-    }
-
+    // T6/T9.10: legacy clients (no finishState) default to 'total' for
+    // backward compatibility.
     await this.notificationsService.confirmParcelDone(
       body.assignmentId,
       body.baleCount,
+      body.finishState ?? 'total',
+      user.id,
+      user.organizationId,
+    );
+    return { ok: true };
+  }
+
+  /**
+   * T6 enter — 10 s auto-confirm POST from mobile baler app after the
+   * entry-confirm overlay times out. Idempotent.
+   */
+  @Post('confirm-parcel-entry')
+  @Roles('admin' as UserRole, 'baler_operator' as UserRole)
+  async confirmParcelEntry(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(confirmParcelEntrySchema))
+    body: { assignmentId: string },
+  ) {
+    await this.notificationsService.confirmParcelEntry(
+      body.assignmentId,
       user.id,
       user.organizationId,
     );

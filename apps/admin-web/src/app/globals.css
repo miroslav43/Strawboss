@@ -32,3 +32,17 @@
 .parcel-label::before {
   display: none;
 }
+
+/* T8 — Pulse ring on machine markers whose recordedAt updated within 60 s. */
+@keyframes pulseRing {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgba(34, 197, 94, 0);
+  }
+}
+.marker-just-updated {
+  animation: pulseRing 1.2s ease-out;
+  border-radius: 50%;
+}

@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
 import type {
+  KmByDayResponse,
   LocationReportDto,
   MachineLastLocation,
   RouteHistoryResponse,
@@ -464,6 +465,114 @@ export class LocationService {
       to,
       totalPoints: points.length,
       points,
+    };
+  }
+
+  /**
+   * Return per-day kilometre totals for one machine in the date range
+   * [from, to] inclusive. Each day's km comes from summing pairwise
+   * `ST_DistanceSphere` legs between consecutive GPS samples in that UTC
+   * day. Days with no data return `km=0, pointCount=0` (zero-fill via
+   * `generate_series`) so charts stay contiguous.
+   *
+   * Validation:
+   *  - `from`, `to` must be ISO dates and `from <= to`.
+   *  - Range is capped at 90 days to avoid abuse.
+   *
+   * Scoping: machine must belong to the caller's organization.
+   */
+  async getKmByDay(
+    machineId: string,
+    from: string,
+    to: string,
+    orgId: string | null,
+  ): Promise<KmByDayResponse> {
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (Number.isNaN(fromDate.getTime())) {
+      throw new BadRequestException('Invalid "from" parameter');
+    }
+    if (Number.isNaN(toDate.getTime())) {
+      throw new BadRequestException('Invalid "to" parameter');
+    }
+    if (fromDate > toDate) {
+      throw new BadRequestException('"from" must be ≤ "to"');
+    }
+    const diffDays = Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000);
+    if (diffDays > 90) {
+      throw new BadRequestException('Range cannot exceed 90 days');
+    }
+
+    // Machine in-org check (mirrors getRouteHistory).
+    const machineCheck: ReturnType<typeof sql>[] = [
+      sql`id = ${machineId}::uuid`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) machineCheck.push(sql`organization_id = ${orgId}::uuid`);
+    const machineWhere = sql.join(machineCheck, sql` AND `);
+
+    const machineResult = (await this.drizzleProvider.db.execute(sql`
+      SELECT COALESCE(internal_code, registration_plate) AS "machineCode",
+             machine_type AS "machineType"
+      FROM machines
+      WHERE ${machineWhere}
+      LIMIT 1
+    `)) as unknown as Array<{
+      machineCode: string | null;
+      machineType: string | null;
+    }>;
+    const machine = machineResult[0] ?? null;
+    if (!machine) {
+      throw new BadRequestException('Machine not found');
+    }
+
+    const result = (await this.drizzleProvider.db.execute(sql`
+      WITH pts AS (
+        SELECT
+          (recorded_at AT TIME ZONE 'UTC')::date AS day,
+          recorded_at,
+          ST_SetSRID(ST_MakePoint(lon, lat), 4326) AS geom
+        FROM machine_location_events
+        WHERE machine_id = ${machineId}::uuid
+          AND recorded_at >= ${from}::date
+          AND recorded_at <  (${to}::date + INTERVAL '1 day')
+      ),
+      pairwise AS (
+        SELECT
+          day,
+          ST_DistanceSphere(
+            LAG(geom) OVER (PARTITION BY day ORDER BY recorded_at),
+            geom
+          ) AS leg_m
+        FROM pts
+      ),
+      per_day AS (
+        SELECT
+          day,
+          COALESCE(SUM(leg_m), 0) / 1000.0 AS km,
+          COUNT(*)                          AS point_count
+        FROM pairwise
+        GROUP BY day
+      ),
+      all_days AS (
+        SELECT generate_series(${from}::date, ${to}::date, INTERVAL '1 day')::date AS day
+      )
+      SELECT
+        a.day::text                                  AS date,
+        ROUND(COALESCE(p.km, 0)::numeric, 2)::float  AS km,
+        COALESCE(p.point_count, 0)::int              AS "pointCount"
+      FROM all_days a
+      LEFT JOIN per_day p USING (day)
+      ORDER BY a.day
+    `)) as unknown as Array<{ date: string; km: number; pointCount: number }>;
+
+    return {
+      machineId,
+      machineCode: machine.machineCode,
+      machineType: machine.machineType,
+      from,
+      to,
+      days: result,
     };
   }
 }

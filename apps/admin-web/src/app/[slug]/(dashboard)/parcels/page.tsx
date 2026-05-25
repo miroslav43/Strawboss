@@ -3,9 +3,20 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useMemo, useCallback } from 'react';
 import {
-  Plus, Pencil, Trash2, X, Loader2, Check,
-  MapPin, Wheat, ChevronUp, ChevronDown, Tractor,
-  CheckCircle2, XCircle, Layers, Search,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Loader2,
+  Check,
+  MapPin,
+  Wheat,
+  ChevronUp,
+  ChevronDown,
+  Tractor,
+  XCircle,
+  Layers,
+  Search,
 } from 'lucide-react';
 import {
   useParcels,
@@ -15,7 +26,8 @@ import {
   useFarms,
 } from '@strawboss/api';
 import type { Parcel, Farm } from '@strawboss/types';
-import { HarvestStatus } from '@strawboss/types';
+import { HarvestStatus, CropType } from '@strawboss/types';
+import { HarvestStatusBadge } from '@/components/shared/StatusBadge';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
@@ -41,7 +53,18 @@ const HARVEST_STATUS_OPTIONS = [
   HarvestStatus.planned,
   HarvestStatus.to_harvest,
   HarvestStatus.harvesting,
+  HarvestStatus.partial_harvested,
   HarvestStatus.harvested,
+  HarvestStatus.in_loading,
+  HarvestStatus.loaded,
+  HarvestStatus.completed,
+] as const;
+
+const CROP_TYPE_OPTIONS = [
+  CropType.grau,
+  CropType.orz,
+  CropType.rapita,
+  CropType.plante_nutret,
 ] as const;
 
 // ─── StatCard ────────────────────────────────────────────────────────────────
@@ -56,7 +79,9 @@ interface StatCardProps {
 function StatCard({ icon, label, value, sub, accent = 'text-primary' }: StatCardProps) {
   return (
     <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white px-5 py-4 shadow-sm">
-      <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 ${accent}`}>
+      <div
+        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 ${accent}`}
+      >
         {icon}
       </div>
       <div className="min-w-0">
@@ -80,7 +105,8 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
   const { t } = useI18n();
   const isEdit = !!parcel;
 
-  const [name, setName] = useState(parcel?.name ?? '');
+  // T9.3 — `name` is no longer surfaced; we keep the field undefined in the
+  // payload so the server preserves whatever's there (or leaves it empty).
   const [areaHectares, setAreaHectares] = useState(
     parcel?.areaHectares != null ? String(parcel.areaHectares) : '',
   );
@@ -88,10 +114,11 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
   const [municipality, setMunicipality] = useState(parcel?.municipality ?? '');
   const [address, setAddress] = useState(parcel?.address ?? '');
   const [notes, setNotes] = useState(parcel?.notes ?? '');
-  const [isActive, setIsActive] = useState(parcel?.isActive ?? true);
   const [harvestStatus, setHarvestStatus] = useState<HarvestStatus>(
     parcel?.harvestStatus ?? HarvestStatus.planned,
   );
+  // T9.1 — crop type dropdown (nullable on storage).
+  const [cropType, setCropType] = useState<CropType | ''>(parcel?.cropType ?? '');
   const [error, setError] = useState('');
 
   const createParcel = useCreateParcel(apiClient);
@@ -99,72 +126,77 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
   const isPending = createParcel.isPending || updateParcel.isPending;
 
   const handleSubmit = useCallback(async () => {
-    if (!name.trim()) {
-      setError(t('parcels.form.nameRequired'));
-      return;
-    }
     setError('');
 
     const payload = {
-      name: name.trim(),
+      // T9.3 — `name` deliberately omitted; server keeps existing value on edit
+      // and accepts empty string on create.
+      name: undefined,
       areaHectares: areaHectares ? parseFloat(areaHectares) : undefined,
       farmId: farmId || null,
       municipality: municipality.trim() || undefined,
       address: address.trim() || undefined,
       notes: notes.trim() || undefined,
       harvestStatus,
-      ...(isEdit ? { isActive } : {}),
+      cropType: cropType || null,
+      // T9.2 — `isActive` is no longer surfaced in the UI; server keeps it true.
     };
 
     if (isEdit && parcel) {
-      updateParcel.mutate({ id: parcel.id, data: payload }, {
-        onSuccess: onClose,
-        onError: () => setError(t('parcels.form.updateError')),
-      });
+      updateParcel.mutate(
+        { id: parcel.id, data: payload },
+        {
+          onSuccess: onClose,
+          onError: () => setError(t('parcels.form.updateError')),
+        },
+      );
     } else {
       createParcel.mutate(payload, {
         onSuccess: onClose,
         onError: () => setError(t('parcels.form.createError')),
       });
     }
-  }, [name, areaHectares, farmId, municipality, address, notes, isActive, harvestStatus, isEdit, parcel, createParcel, updateParcel, onClose, t]);
+  }, [
+    areaHectares,
+    farmId,
+    municipality,
+    address,
+    notes,
+    harvestStatus,
+    cropType,
+    isEdit,
+    parcel,
+    createParcel,
+    updateParcel,
+    onClose,
+    t,
+  ]);
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
-        style={{ maxHeight: 'min(90vh, 700px)' }}>
-
+      <div
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+        style={{ maxHeight: 'min(90vh, 700px)' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-neutral-800">
               {isEdit ? t('parcels.form.editTitle') : t('parcels.form.createTitle')}
             </h2>
-            {isEdit && (
-              <p className="text-xs text-neutral-400 mt-0.5 font-mono">{parcel?.code}</p>
-            )}
+            {isEdit && <p className="text-xs text-neutral-400 mt-0.5 font-mono">{parcel?.code}</p>}
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          {/* Name */}
-          <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">
-              {t('parcels.form.name')} <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('parcels.form.placeholders.name')}
-              autoFocus
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </div>
+          {/* T9.3 — name input intentionally omitted; parcels are identified by code. */}
 
           {/* Area + Farm */}
           <div className="grid grid-cols-2 gap-3">
@@ -193,7 +225,9 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
               >
                 <option value="">{t('parcels.form.noFarm')}</option>
                 {farms.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -241,37 +275,44 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
             />
           </div>
 
-          {/* Harvest status */}
-          <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">
-              {t('parcels.form.harvestStatus')}
-            </label>
-            <select
-              value={harvestStatus}
-              onChange={(e) => setHarvestStatus(e.target.value as HarvestStatus)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {HARVEST_STATUS_OPTIONS.map((v) => (
-                <option key={v} value={v}>{t(`parcels.harvest.${v}`)}</option>
-              ))}
-            </select>
+          {/* Harvest status + Crop type */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">
+                {t('parcels.form.harvestStatus')}
+              </label>
+              <select
+                value={harvestStatus}
+                onChange={(e) => setHarvestStatus(e.target.value as HarvestStatus)}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {HARVEST_STATUS_OPTIONS.map((v) => (
+                  <option key={v} value={v}>
+                    {t(`parcels.harvest.${v}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">
+                {t('parcels.crop.label')}
+              </label>
+              <select
+                value={cropType}
+                onChange={(e) => setCropType((e.target.value || '') as CropType | '')}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">{t('parcels.crop.placeholder')}</option>
+                {CROP_TYPE_OPTIONS.map((v) => (
+                  <option key={v} value={v}>
+                    {t(`parcels.crop.${v}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* Active toggle (edit only) */}
-          {isEdit && (
-            <div className="flex items-center justify-between rounded-lg border border-neutral-200 px-4 py-3">
-              <span className="text-sm font-medium text-neutral-700">
-                {t('parcels.form.activeField')}
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsActive((v) => !v)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isActive ? 'bg-primary' : 'bg-neutral-300'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </div>
-          )}
+          {/* T9.2 — is_active toggle removed from UI; server keeps the column. */}
 
           {/* Error */}
           {error && (
@@ -295,7 +336,11 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
             disabled={isPending}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
           >
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
             {isEdit ? t('parcels.form.save') : t('parcels.form.create')}
           </button>
         </div>
@@ -346,7 +391,11 @@ function DeleteDialog({ parcel, onClose }: DeleteDialogProps) {
             disabled={deleteParcel.isPending}
             className="flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
           >
-            {deleteParcel.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {deleteParcel.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
             {t('parcels.deleteDialog.delete')}
           </button>
         </div>
@@ -361,12 +410,11 @@ type SortDir = 'asc' | 'desc';
 
 type ParcelSortKey =
   | 'code'
-  | 'name'
   | 'farmId'
   | 'municipality'
   | 'areaHectares'
   | 'harvestStatus'
-  | 'isActive';
+  | 'cropType';
 
 /** Două săgeți: direcția activă e evidențiată; coloana sortată folosește culoarea primary. */
 function ThSortIndicator({
@@ -403,12 +451,12 @@ export default function ParcelsPage() {
   const { data: rawFarms } = useFarms(apiClient);
 
   const parcels = useMemo(() => normalize<Parcel>(rawParcels), [rawParcels]);
-  const farms   = useMemo(() => normalize<Farm>(rawFarms), [rawFarms]);
+  const farms = useMemo(() => normalize<Farm>(rawFarms), [rawFarms]);
   const farmMap = useMemo(() => new Map(farms.map((f) => [f.id, f.name])), [farms]);
 
   // Filters
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'inactive'>('');
+  // T9.2 — active/inactive filter removed from UI.
   const [harvestFilter, setHarvestFilter] = useState<'' | HarvestStatus>('');
   const [municipalityFilter, setMunicipalityFilter] = useState('');
   const [farmFilter, setFarmFilter] = useState(''); // '' = all, '__none__' = unassigned, else farmId
@@ -426,9 +474,7 @@ export default function ParcelsPage() {
 
   const handleSort = useCallback((key: ParcelSortKey) => {
     setTableSort((s) =>
-      s.key === key
-        ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
-        : { key, dir: 'asc' },
+      s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
     );
   }, []);
 
@@ -442,10 +488,10 @@ export default function ParcelsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = parcels.filter((p) => {
-      if (q && ![p.name, p.code, p.municipality].some((v) => v?.toLowerCase().includes(q))) return false;
-      if (statusFilter === 'active' && !p.isActive) return false;
-      if (statusFilter === 'inactive' && p.isActive) return false;
-      if (harvestFilter && (p.harvestStatus ?? HarvestStatus.planned) !== harvestFilter) return false;
+      // T9.3 — search now matches `code` and location only (name deprecated).
+      if (q && ![p.code, p.municipality].some((v) => v?.toLowerCase().includes(q))) return false;
+      if (harvestFilter && (p.harvestStatus ?? HarvestStatus.planned) !== harvestFilter)
+        return false;
       if (municipalityFilter && p.municipality !== municipalityFilter) return false;
       if (farmFilter === '__none__' && p.farmId) return false;
       if (farmFilter && farmFilter !== '__none__' && p.farmId !== farmFilter) return false;
@@ -461,13 +507,13 @@ export default function ParcelsPage() {
         const na = parseHa(a.areaHectares) ?? 0;
         const nb = parseHa(b.areaHectares) ?? 0;
         cmp = na < nb ? -1 : na > nb ? 1 : 0;
-      } else if (sortKey === 'isActive') {
-        const na = a.isActive ? 1 : 0;
-        const nb = b.isActive ? 1 : 0;
-        cmp = na - nb;
       } else if (sortKey === 'harvestStatus') {
         const sa = String(a.harvestStatus ?? HarvestStatus.planned);
         const sb = String(b.harvestStatus ?? HarvestStatus.planned);
+        cmp = sa.localeCompare(sb, 'ro', { sensitivity: 'base' });
+      } else if (sortKey === 'cropType') {
+        const sa = String(a.cropType ?? '');
+        const sb = String(b.cropType ?? '');
         cmp = sa.localeCompare(sb, 'ro', { sensitivity: 'base' });
       } else if (sortKey === 'farmId') {
         const sa = a.farmId ? (farmMap.get(a.farmId) ?? '') : '';
@@ -485,22 +531,24 @@ export default function ParcelsPage() {
     });
 
     return list;
-  }, [parcels, search, statusFilter, harvestFilter, municipalityFilter, farmFilter, tableSort, farmMap]);
+  }, [parcels, search, harvestFilter, municipalityFilter, farmFilter, tableSort, farmMap]);
 
-  // Stats
-  const stats = useMemo(() => ({
-    total: parcels.length,
-    active: parcels.filter((p) => p.isActive).length,
-    totalHa: parcels.reduce((s, p) => s + (parseHa(p.areaHectares) ?? 0), 0),
-    unassigned: parcels.filter((p) => !p.farmId).length,
-  }), [parcels]);
+  // Stats (T9.2 — active counter dropped; with-crop counter added)
+  const stats = useMemo(
+    () => ({
+      total: parcels.length,
+      withCrop: parcels.filter((p) => p.cropType != null).length,
+      totalHa: parcels.reduce((s, p) => s + (parseHa(p.areaHectares) ?? 0), 0),
+      unassigned: parcels.filter((p) => !p.farmId).length,
+    }),
+    [parcels],
+  );
 
   const thClass =
     'cursor-pointer select-none px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-700 whitespace-nowrap';
 
   return (
     <div className="flex flex-col gap-6 p-6">
-
       {/* Header */}
       <PageHeader
         title={t('parcels.title')}
@@ -524,9 +572,9 @@ export default function ParcelsPage() {
           accent="text-primary"
         />
         <StatCard
-          icon={<CheckCircle2 className="h-5 w-5" />}
-          label={t('parcels.stats.active')}
-          value={stats.active}
+          icon={<Wheat className="h-5 w-5" />}
+          label={t('parcels.stats.withCrop')}
+          value={stats.withCrop}
           accent="text-green-600"
         />
         <StatCard
@@ -539,9 +587,7 @@ export default function ParcelsPage() {
           icon={<Tractor className="h-5 w-5" />}
           label={t('parcels.stats.unassigned')}
           value={stats.unassigned}
-          sub={
-            stats.unassigned > 0 ? t('parcels.unassignedSub') : t('parcels.unassignedSubAll')
-          }
+          sub={stats.unassigned > 0 ? t('parcels.unassignedSub') : t('parcels.unassignedSubAll')}
           accent="text-neutral-400"
         />
       </div>
@@ -556,15 +602,7 @@ export default function ParcelsPage() {
           />
         </div>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as '' | 'active' | 'inactive')}
-          className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-        >
-          <option value="">{t('parcels.filterAllStatuses')}</option>
-          <option value="active">{t('parcels.filterActive')}</option>
-          <option value="inactive">{t('parcels.filterInactive')}</option>
-        </select>
+        {/* T9.2 — active/inactive filter removed. */}
 
         <select
           value={harvestFilter}
@@ -573,7 +611,9 @@ export default function ParcelsPage() {
         >
           <option value="">{t('parcels.filterAllHarvest')}</option>
           {HARVEST_STATUS_OPTIONS.map((v) => (
-            <option key={v} value={v}>{t(`parcels.harvest.${v}`)}</option>
+            <option key={v} value={v}>
+              {t(`parcels.harvest.${v}`)}
+            </option>
           ))}
         </select>
 
@@ -584,7 +624,9 @@ export default function ParcelsPage() {
         >
           <option value="">{t('parcels.filterAllMunicipalities')}</option>
           {municipalities.map((m) => (
-            <option key={m} value={m}>{m}</option>
+            <option key={m} value={m}>
+              {m}
+            </option>
           ))}
         </select>
 
@@ -596,13 +638,20 @@ export default function ParcelsPage() {
           <option value="">{t('parcels.filterAllFarms')}</option>
           <option value="__none__">{t('parcels.filterUnassigned')}</option>
           {farms.map((f) => (
-            <option key={f.id} value={f.id}>{f.name}</option>
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
           ))}
         </select>
 
-        {(search || statusFilter || harvestFilter || municipalityFilter || farmFilter) && (
+        {(search || harvestFilter || municipalityFilter || farmFilter) && (
           <button
-            onClick={() => { setSearch(''); setStatusFilter(''); setHarvestFilter(''); setMunicipalityFilter(''); setFarmFilter(''); }}
+            onClick={() => {
+              setSearch('');
+              setHarvestFilter('');
+              setMunicipalityFilter('');
+              setFarmFilter('');
+            }}
             className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs text-neutral-500 hover:bg-neutral-50"
           >
             <X className="h-3 w-3" />
@@ -627,9 +676,14 @@ export default function ParcelsPage() {
         <div className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white py-20 text-neutral-400">
           <Search className="h-10 w-10 mb-3 opacity-20" />
           <p className="text-sm font-medium">{t('parcels.empty')}</p>
-          {(search || statusFilter || harvestFilter || municipalityFilter || farmFilter) ? (
+          {search || harvestFilter || municipalityFilter || farmFilter ? (
             <button
-              onClick={() => { setSearch(''); setStatusFilter(''); setHarvestFilter(''); setMunicipalityFilter(''); setFarmFilter(''); }}
+              onClick={() => {
+                setSearch('');
+                setHarvestFilter('');
+                setMunicipalityFilter('');
+                setFarmFilter('');
+              }}
               className="mt-2 text-xs text-primary hover:underline"
             >
               {t('parcels.clearFilters')}
@@ -649,15 +703,14 @@ export default function ParcelsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-neutral-200 bg-neutral-50">
               <tr>
-                {([
+                {[
                   { key: 'code' as const, label: t('parcels.colCode') },
-                  { key: 'name' as const, label: t('parcels.colName') },
                   { key: 'farmId' as const, label: t('parcels.colFarm') },
                   { key: 'municipality' as const, label: t('parcels.colMunicipality') },
                   { key: 'areaHectares' as const, label: t('parcels.colArea') },
+                  { key: 'cropType' as const, label: t('parcels.crop.label') },
                   { key: 'harvestStatus' as const, label: t('parcels.colHarvestStatus') },
-                  { key: 'isActive' as const, label: t('parcels.colStatus') },
-                ]).map(({ key, label }) => (
+                ].map(({ key, label }) => (
                   <th
                     key={key}
                     className={thClass}
@@ -682,20 +735,11 @@ export default function ParcelsPage() {
                 const farmName = p.farmId ? (farmMap.get(p.farmId) ?? null) : null;
                 return (
                   <tr key={p.id} className="hover:bg-neutral-50/60 transition-colors">
-                    {/* Cod */}
-                    <td className="px-4 py-3">
+                    {/* Cod — T9.3 primary identifier */}
+                    <td className="px-4 py-3 max-w-[220px]">
                       <span className="font-mono text-xs bg-neutral-100 px-2 py-0.5 rounded font-medium text-neutral-700">
                         {p.code}
                       </span>
-                    </td>
-
-                    {/* Nume */}
-                    <td className="px-4 py-3 max-w-[180px]">
-                      <p className="truncate font-medium text-neutral-800">
-                        {p.name || (
-                          <span className="italic text-neutral-400">{t('parcels.noName')}</span>
-                        )}
-                      </p>
                       {p.notes && (
                         <p className="truncate text-xs text-neutral-400 mt-0.5">{p.notes}</p>
                       )}
@@ -730,26 +774,20 @@ export default function ParcelsPage() {
                       {fmtHa(p.areaHectares)}
                     </td>
 
-                    {/* Recoltă / harvest */}
+                    {/* Cultură */}
                     <td className="px-4 py-3">
-                      <span className="text-xs font-medium text-neutral-700">
-                        {t(`parcels.harvest.${p.harvestStatus ?? HarvestStatus.planned}`)}
-                      </span>
-                    </td>
-
-                    {/* Stare */}
-                    <td className="px-4 py-3">
-                      {p.isActive ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                          {t('common.active')}
+                      {p.cropType ? (
+                        <span className="text-xs font-medium text-neutral-700">
+                          {t(`parcels.crop.${p.cropType}`)}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">
-                          <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" />
-                          {t('common.inactive')}
-                        </span>
+                        <span className="text-xs text-neutral-300">—</span>
                       )}
+                    </td>
+
+                    {/* Recoltă / harvest */}
+                    <td className="px-4 py-3">
+                      <HarvestStatusBadge status={p.harvestStatus ?? HarvestStatus.planned} />
                     </td>
 
                     {/* Actions */}
@@ -782,15 +820,11 @@ export default function ParcelsPage() {
       )}
 
       {/* Modals */}
-      {showCreate && (
-        <ParcelFormModal farms={farms} onClose={() => setShowCreate(false)} />
-      )}
+      {showCreate && <ParcelFormModal farms={farms} onClose={() => setShowCreate(false)} />}
       {editParcel && (
         <ParcelFormModal parcel={editParcel} farms={farms} onClose={() => setEditParcel(null)} />
       )}
-      {deleteParcel && (
-        <DeleteDialog parcel={deleteParcel} onClose={() => setDeleteParcel(null)} />
-      )}
+      {deleteParcel && <DeleteDialog parcel={deleteParcel} onClose={() => setDeleteParcel(null)} />}
     </div>
   );
 }

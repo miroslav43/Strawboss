@@ -172,6 +172,7 @@ export const TABLES = {
     area_hectares REAL,
     municipality TEXT,
     harvest_status TEXT,
+    crop_type TEXT,
     centroid_json TEXT,
     geometry TEXT,
     cached_at TEXT NOT NULL DEFAULT (datetime('now'))

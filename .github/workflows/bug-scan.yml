@@ -62,6 +62,7 @@ jobs:
 
             Nu modifica cod. Doar analizează și raportează.
           claude_args: |
+            --model claude-opus-4-7
             --allowedTools Read,Grep,Glob,Bash,Write,Task
             --max-turns 50
 

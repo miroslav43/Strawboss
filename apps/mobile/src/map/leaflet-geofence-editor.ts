@@ -45,10 +45,34 @@ export const LEAFLET_GEOFENCE_EDITOR_HTML = String.raw`<!DOCTYPE html>
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     color: #333;
   }
+  /* T1 — fixed centre pin, drawn on top of the WebView (NOT a Leaflet
+     layer) so it stays pinned to the screen centre while the map pans. */
+  .center-pin {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 22px; height: 22px;
+    margin: -11px 0 0 -11px;
+    border-radius: 50%;
+    background: #DC2626;
+    border: 3px solid #ffffff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+    pointer-events: none;
+    z-index: 9000;
+  }
+  .center-pin::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    margin: -3px 0 0 -3px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.35);
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="center-pin" class="center-pin" style="display:none"></div>
 <div id="offline-msg">
   <div class="icon">&#x1F4F6;</div>
   <div class="title">Harta necesit&#259; internet</div>
@@ -253,6 +277,22 @@ setTimeout(function() {
       case 'DISABLE_DRAW':      disableDraw(); break;
       case 'HIGHLIGHT_PARCEL':  highlightParcel(cmd.parcelId); break;
       case 'CENTER_ON':         centerOn(cmd.lat, cmd.lon, cmd.zoom); break;
+      // T1 — center-pin point picker
+      case 'ENABLE_POINT_DRAW': {
+        var pinOn = document.getElementById('center-pin');
+        if (pinOn) pinOn.style.display = 'block';
+        break;
+      }
+      case 'DISABLE_POINT_DRAW': {
+        var pinOff = document.getElementById('center-pin');
+        if (pinOff) pinOff.style.display = 'none';
+        break;
+      }
+      case 'GET_CENTER': {
+        var c = map.getCenter();
+        sendEvent({ type: 'POINT_DRAWN', lat: c.lat, lon: c.lng });
+        break;
+      }
     }
   };
 

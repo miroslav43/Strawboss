@@ -1,12 +1,32 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import type { Logger as WinstonLogger } from 'winston';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { HarvestStatus } from '@strawboss/types';
+
+/**
+ * Events that drive a parcel forward on the harvest ladder once trip /
+ * loading lifecycle moves on. Triggered by Plan C from trips / bale-loads.
+ */
+export type HarvestLoadEvent =
+  | 'loading_started' // first bale_load row inserted for this parcel today
+  | 'all_loaded' // produced - loaded === 0 for this parcel
+  | 'all_delivered'; // all trips carrying this parcel reached `completed`
+
+const PG_CHECK_VIOLATION = '23514';
 
 @Injectable()
 export class ParcelsService {
-  constructor(private readonly drizzleProvider: DrizzleProvider) {}
+  constructor(
+    private readonly drizzleProvider: DrizzleProvider,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: WinstonLogger,
+  ) {}
 
-  async list(orgId: string | null, filters?: { municipality?: string; isActive?: boolean }) {
+  async list(
+    orgId: string | null,
+    filters?: { municipality?: string; isActive?: boolean; cropType?: string },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
     if (orgId !== null) {
@@ -15,8 +35,10 @@ export class ParcelsService {
     if (filters?.municipality) {
       conditions.push(sql`municipality = ${filters.municipality}`);
     }
-    if (filters?.isActive !== undefined) {
-      conditions.push(sql`is_active = ${filters.isActive}`);
+    // T9.2 — isActive filter accepted for backward-compat but ignored: all
+    // non-soft-deleted parcels are now considered active.
+    if (filters?.cropType) {
+      conditions.push(sql`crop_type = ${filters.cropType}::crop_type`);
     }
 
     const where = sql.join(conditions, sql` AND `);
@@ -33,12 +55,13 @@ export class ParcelsService {
         notes,
         is_active           AS "isActive",
         harvest_status      AS "harvestStatus",
+        crop_type           AS "cropType",
         created_at          AS "createdAt",
         updated_at          AS "updatedAt",
         deleted_at          AS "deletedAt"
       FROM parcels
       WHERE ${where}
-      ORDER BY name ASC NULLS LAST
+      ORDER BY code ASC NULLS LAST
     `);
     return result;
   }
@@ -59,10 +82,7 @@ export class ParcelsService {
   }
 
   async findById(id: string, orgId: string | null) {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}::uuid`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`, sql`deleted_at IS NULL`];
     if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(sql`
@@ -78,6 +98,7 @@ export class ParcelsService {
         notes,
         is_active           AS "isActive",
         harvest_status      AS "harvestStatus",
+        crop_type           AS "cropType",
         created_at          AS "createdAt",
         updated_at          AS "updatedAt",
         deleted_at          AS "deletedAt"
@@ -96,10 +117,7 @@ export class ParcelsService {
    * Resolve the municipality name via Nominatim reverse geocoding.
    * Returns null if the lookup fails or times out.
    */
-  private async reverseLookupMunicipality(
-    lat: number,
-    lon: number,
-  ): Promise<string | null> {
+  private async reverseLookupMunicipality(lat: number, lon: number): Promise<string | null> {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`;
       const res = await fetch(url, {
@@ -189,15 +207,16 @@ export class ParcelsService {
     // Prefer explicitly provided centroid, fall back to computed one.
     const centroidInput = dto.centroid ?? (centroidGeoJson ? JSON.parse(centroidGeoJson) : null);
 
-    const harvestStatus =
-      (dto.harvestStatus as string | undefined) ?? 'planned';
+    const harvestStatus = (dto.harvestStatus as string | undefined) ?? 'planned';
+
+    const cropType = (dto.cropType as string | null | undefined) ?? null;
 
     const result = await this.drizzleProvider.db.execute(sql`
       INSERT INTO parcels (
         organization_id,
         code, name, area_hectares,
         boundary, centroid, address, municipality,
-        farmtrack_geofence_id, farm_id, notes, is_active, harvest_status
+        farmtrack_geofence_id, farm_id, notes, is_active, harvest_status, crop_type
       ) VALUES (
         ${orgId}::uuid,
         ${code},
@@ -211,7 +230,8 @@ export class ParcelsService {
         ${(dto.farmId as string) ?? null},
         ${(dto.notes as string) ?? null},
         true,
-        ${harvestStatus}::harvest_status
+        ${harvestStatus}::harvest_status,
+        ${cropType === null ? sql`NULL` : sql`${cropType}::crop_type`}
       )
       RETURNING
         id, code, name,
@@ -223,6 +243,7 @@ export class ParcelsService {
         farm_id AS "farmId",
         notes, is_active AS "isActive",
         harvest_status AS "harvestStatus",
+        crop_type AS "cropType",
         created_at AS "createdAt", updated_at AS "updatedAt", deleted_at AS "deletedAt"
     `);
     return result;
@@ -232,6 +253,7 @@ export class ParcelsService {
     await this.findById(id, orgId);
 
     const setClauses: ReturnType<typeof sql>[] = [];
+    // T9.2 — `isActive` intentionally NOT in fieldMap. Silently ignored.
     const fieldMap: Record<string, string> = {
       code: 'code',
       name: 'name',
@@ -243,7 +265,6 @@ export class ParcelsService {
       farmtrackGeofenceId: 'farmtrack_geofence_id',
       farmId: 'farm_id',
       notes: 'notes',
-      isActive: 'is_active',
     };
 
     for (const [key, column] of Object.entries(fieldMap)) {
@@ -251,10 +272,8 @@ export class ParcelsService {
         // GeoJSON geometry fields must be stored via ST_GeomFromGeoJSON.
         if ((key === 'boundary' || key === 'centroid') && dto[key]) {
           const geoJsonStr =
-            typeof dto[key] === 'string' ? dto[key] as string : JSON.stringify(dto[key]);
-          setClauses.push(
-            sql`${sql.raw(column)} = ST_GeomFromGeoJSON(${geoJsonStr})`,
-          );
+            typeof dto[key] === 'string' ? (dto[key] as string) : JSON.stringify(dto[key]);
+          setClauses.push(sql`${sql.raw(column)} = ST_GeomFromGeoJSON(${geoJsonStr})`);
         } else {
           const value = dto[key];
           setClauses.push(sql`${sql.raw(column)} = ${value as string | number | boolean | null}`);
@@ -263,8 +282,13 @@ export class ParcelsService {
     }
 
     if ('harvestStatus' in dto && dto.harvestStatus != null) {
+      setClauses.push(sql`harvest_status = ${dto.harvestStatus as string}::harvest_status`);
+    }
+
+    if ('cropType' in dto) {
+      const v = dto.cropType;
       setClauses.push(
-        sql`harvest_status = ${dto.harvestStatus as string}::harvest_status`,
+        v == null ? sql`crop_type = NULL` : sql`crop_type = ${v as string}::crop_type`,
       );
     }
 
@@ -282,29 +306,148 @@ export class ParcelsService {
     if (orgId !== null) updateConditions.push(sql`organization_id = ${orgId}::uuid`);
     const updateWhere = sql.join(updateConditions, sql` AND `);
 
-    await this.drizzleProvider.db.execute(
-      sql`UPDATE parcels SET ${setClause} WHERE ${updateWhere}`,
-    );
+    try {
+      await this.drizzleProvider.db.execute(
+        sql`UPDATE parcels SET ${setClause} WHERE ${updateWhere}`,
+      );
+    } catch (err) {
+      // T7 — DB trigger raises check_violation on harvest_status downgrade.
+      // Surface as 409 with a localized message instead of leaking the raw SQL.
+      const pgCode = (err as { code?: string } | undefined)?.code;
+      if (pgCode === PG_CHECK_VIOLATION) {
+        this.winston.warn('Parcel harvest_status downgrade refused', {
+          context: 'ParcelsService',
+          parcelId: id,
+          dto,
+        });
+        throw new ConflictException(
+          'Statusul recoltei nu poate fi retrogradat. Utilizați bypass-ul admin doar pentru corecții de date.',
+        );
+      }
+      throw err;
+    }
     return this.findById(id, orgId);
   }
 
   /**
    * When daily planning marks a parcel done / not done, mirror that into
    * parcels.harvest_status: done → harvested; not done → to_harvest.
+   *
+   * Wrapped in try/catch on check_violation (23514) so a stale daily-plan
+   * toggle on an already-loaded parcel does not crash the request — it just
+   * warns and proceeds. T7.
    */
   async applyHarvestStatusFromDailyPlan(parcelId: string, isDone: boolean, orgId: string | null) {
     const status = isDone ? 'harvested' : 'to_harvest';
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${parcelId}`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${parcelId}`, sql`deleted_at IS NULL`];
     if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
     const where = sql.join(conditions, sql` AND `);
-    await this.drizzleProvider.db.execute(sql`
-      UPDATE parcels
-      SET harvest_status = ${status}::harvest_status, updated_at = NOW()
-      WHERE ${where}
-    `);
+    try {
+      await this.drizzleProvider.db.execute(sql`
+        UPDATE parcels
+        SET harvest_status = ${status}::harvest_status, updated_at = NOW()
+        WHERE ${where}
+      `);
+    } catch (err) {
+      const pgCode = (err as { code?: string } | undefined)?.code;
+      if (pgCode === PG_CHECK_VIOLATION) {
+        this.winston.warn(
+          'applyHarvestStatusFromDailyPlan blocked by downgrade trigger — ignoring',
+          { context: 'ParcelsService', parcelId, isDone, targetStatus: status },
+        );
+        return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Advance a parcel's harvest_status based on a trip-lifecycle event from
+   * Plan C. Idempotent: silently no-ops if the target rank is <= current
+   * rank (downgrade-prevented at DB level too).
+   *
+   * State map:
+   *   loading_started : harvested | partial_harvested -> in_loading
+   *   all_loaded      : in_loading                   -> loaded
+   *   all_delivered   : loaded                       -> completed
+   *
+   * Returns { updated, fromStatus, toStatus } so callers can decide whether
+   * to notify.
+   */
+  async advanceHarvestOnLoadEvent(
+    parcelId: string,
+    event: HarvestLoadEvent,
+    orgId: string | null,
+  ): Promise<{
+    updated: boolean;
+    fromStatus: HarvestStatus;
+    toStatus: HarvestStatus;
+  }> {
+    const targetMap: Record<HarvestLoadEvent, HarvestStatus> = {
+      loading_started: HarvestStatus.in_loading,
+      all_loaded: HarvestStatus.loaded,
+      all_delivered: HarvestStatus.completed,
+    };
+    const target = targetMap[event];
+
+    const current = await this.findById(parcelId, orgId);
+    const from = current.harvestStatus as HarvestStatus;
+
+    // Use the DB rank function so client + server agree on ordering.
+    const rankResult = (await this.drizzleProvider.db.execute(sql`
+      SELECT
+        harvest_status_rank(${from}::harvest_status)   AS "fromRank",
+        harvest_status_rank(${target}::harvest_status) AS "toRank"
+    `)) as unknown as Array<{ fromRank: number; toRank: number }>;
+    const { fromRank, toRank } = rankResult[0];
+    if (toRank <= fromRank) {
+      this.winston.info('advanceHarvestOnLoadEvent: no-op (rank not increased)', {
+        context: 'ParcelsService',
+        parcelId,
+        event,
+        fromStatus: from,
+        toStatus: target,
+      });
+      return { updated: false, fromStatus: from, toStatus: from };
+    }
+
+    const conds: ReturnType<typeof sql>[] = [sql`id = ${parcelId}::uuid`, sql`deleted_at IS NULL`];
+    if (orgId !== null) conds.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conds, sql` AND `);
+
+    try {
+      await this.drizzleProvider.db.execute(sql`
+        UPDATE parcels
+        SET harvest_status = ${target}::harvest_status, updated_at = NOW()
+        WHERE ${where}
+      `);
+    } catch (err) {
+      const pgCode = (err as { code?: string } | undefined)?.code;
+      if (pgCode === PG_CHECK_VIOLATION) {
+        // Defensive: rank check above already ruled this out, but if the
+        // DB races (concurrent update) just log and report no change.
+        this.winston.warn('advanceHarvestOnLoadEvent: downgrade trigger fired despite rank guard', {
+          context: 'ParcelsService',
+          parcelId,
+          event,
+          fromStatus: from,
+          target,
+        });
+        return { updated: false, fromStatus: from, toStatus: from };
+      }
+      throw err;
+    }
+
+    this.winston.info('parcels.harvest.advance', {
+      context: 'ParcelsService',
+      kind: 'flow',
+      parcelId,
+      event,
+      fromStatus: from,
+      toStatus: target,
+    });
+
+    return { updated: true, fromStatus: from, toStatus: target };
   }
 
   async softDelete(id: string, orgId: string | null) {
