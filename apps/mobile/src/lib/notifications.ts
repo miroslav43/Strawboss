@@ -54,9 +54,11 @@ export async function registerForPushNotifications(): Promise<string | null> {
     /**
      * T6 — dedicated loud channel for baler geofence exit ("Ai ieșit din
      * parcelă"). MAX importance + bypass DND so the operator hears the horn
-     * even when the phone is silenced. The custom `baler-exit.wav` sound is
-     * registered via the `expo-notifications` plugin config in app.json — the
-     * file name (without extension) is passed to `sound` below.
+     * even when the phone is silenced. The custom sound resource
+     * `baler_exit` is not yet committed (see
+     * `assets/sounds/README-baler-exit.md`); until it lands the channel
+     * falls back to the device default notification tone. Vibration +
+     * bypass-DND still fire.
      */
     await Notifications.setNotificationChannelAsync('baler-exit', {
       name: 'Alertă ieșire câmp',
