@@ -1,5 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,10 +21,7 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 import { useTrucksAtLoader } from '@/hooks/useTrucksAtLoader';
-import { useMyTasks, type MyTask } from '@/hooks/useMyTasks';
 import { useLoaderRecallPrompt } from '@/hooks/useLoaderRecallPrompt';
-import { mobileApiClient } from '@/lib/api-client';
-import { mobileLogger } from '@/lib/logger';
 import { colors, radii } from '@strawboss/ui-tokens';
 import type { TruckAtLoader } from '@strawboss/api';
 import { useTheme } from '@/lib/theme';
@@ -42,28 +38,15 @@ export default function LoaderHomeScreen() {
   const { colors: themeColors } = useTheme();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const parcel = useCurrentLoaderParcel();
-  const { tasks } = useMyTasks();
   const trucks = useTrucksAtLoader({ pollMs: 10_000 });
-  const queryClient = useQueryClient();
   const [scannerOpen, setScannerOpen] = useState(false);
   const [problemOpen, setProblemOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
-  const { modalProps, showModal, hideModal } = useModal();
+  const { modalProps } = useModal();
 
-  // Other tasks available for parcel switch — all today's tasks except the currently active parcel.
+  // Plan C — loader recall prompt card (T13/T14).
   const recall = useLoaderRecallPrompt();
-
-  const otherTasks = useMemo(() => {
-    const activeParcelId = parcel.status === 'resolved' ? parcel.parcelId : null;
-    return tasks.filter(
-      (t) =>
-        (t.status === 'available' || t.status === 'in_progress') &&
-        !!t.parcelId &&
-        t.parcelId !== activeParcelId,
-    );
-  }, [tasks, parcel.status, parcel.parcelId]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -92,112 +75,6 @@ export default function LoaderHomeScreen() {
     },
     [goToLoad],
   );
-
-  // Core API call — idempotent for already-in_progress tasks.
-  const doStartTask = useCallback(
-    async (task: MyTask) => {
-      setStartingTaskId(task.id);
-      try {
-        await mobileApiClient.post(`/api/v1/task-assignments/${task.id}/start`, {});
-        // Force immediate refetch so the banner flips to 'resolved' without waiting
-        // for the 30s polling cycle. parcel.refresh() resets GPS on top of that.
-        await queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-        parcel.refresh();
-      } catch (err) {
-        mobileLogger.error('Failed to start/confirm task', {
-          taskId: task.id,
-          err: err instanceof Error ? err.message : String(err),
-        });
-        showModal({
-          type: 'error',
-          title: 'Eroare',
-          message: 'Nu s-a putut porni sarcina. Încearcă din nou.',
-          onConfirm: hideModal,
-        });
-      } finally {
-        setStartingTaskId(null);
-      }
-    },
-    [parcel, queryClient, showModal, hideModal],
-  );
-
-  // Used by needs_start banner: confirm before starting a new task.
-  const handleStartTask = useCallback(
-    (task: MyTask) => {
-      showModal({
-        type: 'confirm',
-        title: 'Confirmare teren',
-        message: `Pornești lucrul pe "${task.parcelName ?? 'Parcelă'}"?\n\nAsigurați-vă că sunteți pe terenul corect.`,
-        confirmText: 'Da, pornește',
-        onConfirm: () => {
-          void doStartTask(task);
-          hideModal();
-        },
-        onCancel: hideModal,
-      });
-    },
-    [doStartTask, showModal, hideModal],
-  );
-
-  // Used by multiple_active banner: GPS failed to disambiguate — operator picks manually.
-  const handlePickActiveTask = useCallback(
-    (task: MyTask) => {
-      showModal({
-        type: 'confirm',
-        title: 'Confirmă terenul activ',
-        message: `Lucrezi acum pe "${task.parcelName ?? 'Parcelă'}"?`,
-        confirmText: 'Da, acesta e terenul meu',
-        cancelText: 'Nu',
-        onConfirm: () => {
-          void doStartTask(task);
-          hideModal();
-        },
-        onCancel: hideModal,
-      });
-    },
-    [doStartTask, showModal, hideModal],
-  );
-
-  // Used by resolved banner "Schimbă terenul" link.
-  const handleChangeParcel = useCallback(() => {
-    if (otherTasks.length === 0) return;
-
-    const pickTask = (task: MyTask) => {
-      showModal({
-        type: 'confirm',
-        title: 'Confirmare schimbare teren',
-        message: `Treci pe "${task.parcelName ?? 'Parcelă'}"?\n\nTerenul curent va rămâne activ în sistem.`,
-        confirmText: 'Da, schimbă',
-        onConfirm: () => {
-          void doStartTask(task);
-          hideModal();
-        },
-        onCancel: hideModal,
-      });
-    };
-
-    if (otherTasks.length === 1) {
-      pickTask(otherTasks[0]);
-      return;
-    }
-
-    // Multiple choices: show confirm for the first candidate, listing all options in the message.
-    const taskList = otherTasks
-      .slice(0, 3)
-      .map((t) => `• ${t.parcelName ?? 'Parcelă'}`)
-      .join('\n');
-    showModal({
-      type: 'confirm',
-      title: 'Schimbă terenul',
-      message: `Teren curent: ${parcel.parcelName ?? 'necunoscut'}\n\nAlege terenul pe care mergi:\n${taskList}`,
-      confirmText: otherTasks[0].parcelName ?? 'Parcelă',
-      onConfirm: () => {
-        pickTask(otherTasks[0]);
-        hideModal();
-      },
-      onCancel: hideModal,
-    });
-  }, [otherTasks, parcel.parcelName, doStartTask, showModal, hideModal]);
 
   return (
     <View style={styles.outer}>
@@ -251,14 +128,7 @@ export default function LoaderHomeScreen() {
           </View>
         ) : null}
 
-        <ParcelBanner
-          parcel={parcel}
-          otherTasks={otherTasks}
-          startingTaskId={startingTaskId}
-          onStartTask={handleStartTask}
-          onPickActiveTask={handlePickActiveTask}
-          onChangeParcel={handleChangeParcel}
-        />
+        <ParcelBanner parcel={parcel} />
 
         <View style={styles.trucksHeader}>
           <Text style={styles.sectionTitle}>Camioane la loader</Text>
@@ -348,21 +218,13 @@ export default function LoaderHomeScreen() {
 
 // ─── ParcelBanner ────────────────────────────────────────────────────────────
 
-function ParcelBanner({
-  parcel,
-  otherTasks,
-  startingTaskId,
-  onStartTask,
-  onPickActiveTask,
-  onChangeParcel,
-}: {
-  parcel: ReturnType<typeof useCurrentLoaderParcel>;
-  otherTasks: MyTask[];
-  startingTaskId: string | null;
-  onStartTask: (task: MyTask) => void;
-  onPickActiveTask: (task: MyTask) => void;
-  onChangeParcel: () => void;
-}) {
+/**
+ * Loader's current-parcel banner. GPS-only resolution — the operator can
+ * never pick a parcel manually. When GPS doesn't put them inside any
+ * assigned parcel, the banner explains where to go and offers a refresh
+ * button; no tap-to-start list is shown.
+ */
+function ParcelBanner({ parcel }: { parcel: ReturnType<typeof useCurrentLoaderParcel> }) {
   if (parcel.status === 'loading') {
     return (
       <View style={styles.parcelBanner}>
@@ -382,94 +244,57 @@ function ParcelBanner({
         <Text style={styles.parcelHint}>
           {parcel.source === 'gps' ? 'Detectat automat după poziție' : 'Sarcină în lucru'}
         </Text>
-        {otherTasks.length > 0 && (
-          <TouchableOpacity style={styles.changeParcelBtn} onPress={onChangeParcel}>
-            <MaterialCommunityIcons name="swap-horizontal" size={14} color={colors.primary} />
-            <Text style={styles.changeParcelText}>Schimbă terenul</Text>
-          </TouchableOpacity>
-        )}
       </View>
     );
   }
 
-  if (parcel.status === 'multiple_active') {
-    return (
-      <View style={styles.parcelBannerPrompt}>
-        <View style={styles.parcelHeader}>
-          <MaterialCommunityIcons name="map-marker-question" size={20} color="#B7791F" />
-          <Text style={[styles.parcelLabel, { color: '#B7791F' }]}>Multiple terenuri active</Text>
-        </View>
-        <Text style={styles.parcelHint}>
-          GPS nu a putut determina terenul curent. Alege pe care lucrezi acum:
-        </Text>
-        {parcel.candidates.map((task) => {
-          const isStarting = startingTaskId === task.id;
-          return (
-            <TouchableOpacity
-              key={task.id}
-              style={[styles.candidateBtn, isStarting && styles.candidateBtnActive]}
-              onPress={() => !startingTaskId && onPickActiveTask(task)}
-              disabled={!!startingTaskId}
-            >
-              <Text style={[styles.candidateText, isStarting && styles.candidateTextActive]}>
-                {task.parcelName ?? 'Parcelă'}
-              </Text>
-              {isStarting ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <MaterialCommunityIcons
-                  name="check-circle-outline"
-                  size={20}
-                  color={colors.primary}
-                />
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  }
+  // multiple_active / needs_start / unavailable — all force GPS-only resolution.
+  // Candidate parcels are shown only as read-only context ("you have these
+  // parcels"), never as tappable list. Operator must physically reach a parcel
+  // and press "Reîncearcă GPS" to re-resolve.
+  const isError = parcel.status === 'multiple_active' || parcel.status === 'needs_start';
+  const headerColor = isError ? '#B7791F' : '#991B1B';
+  const iconName: keyof typeof MaterialCommunityIcons.glyphMap =
+    parcel.status === 'multiple_active'
+      ? 'map-marker-question'
+      : parcel.status === 'needs_start'
+        ? 'map-marker-alert'
+        : 'map-marker-off';
+  const headerLabel =
+    parcel.status === 'multiple_active'
+      ? 'GPS — nu te detectez pe teren'
+      : parcel.status === 'needs_start'
+        ? 'GPS — nu te detectez pe teren'
+        : 'Niciun teren asignat';
+  const helpText =
+    parcel.status === 'unavailable'
+      ? 'Cere dispecerului să te asigneze pe o parcelă astăzi.'
+      : 'Mergi pe parcela pe care lucrezi și apasă „Reîncearcă GPS". Terenul se detectează automat după locație — nu se poate alege manual.';
 
-  if (parcel.status === 'needs_start') {
-    return (
-      <View style={styles.parcelBannerPrompt}>
-        <View style={styles.parcelHeader}>
-          <MaterialCommunityIcons name="play-circle-outline" size={20} color="#B7791F" />
-          <Text style={[styles.parcelLabel, { color: '#B7791F' }]}>Începe lucrul</Text>
-        </View>
-        <Text style={styles.parcelHint}>Alege parcela pe care lucrezi astăzi:</Text>
-        {parcel.candidates.map((task) => {
-          const isStarting = startingTaskId === task.id;
-          return (
-            <TouchableOpacity
-              key={task.id}
-              style={[styles.candidateBtn, isStarting && styles.candidateBtnActive]}
-              onPress={() => !startingTaskId && onStartTask(task)}
-              disabled={!!startingTaskId}
-            >
-              <Text style={[styles.candidateText, isStarting && styles.candidateTextActive]}>
-                {task.parcelName ?? 'Parcelă'}
-              </Text>
-              {isStarting ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <MaterialCommunityIcons name="arrow-right" size={20} color={colors.primary} />
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  }
-
-  // 'unavailable' — no candidates
   return (
-    <View style={styles.parcelBanner}>
+    <View style={isError ? styles.parcelBannerPrompt : styles.parcelBanner}>
       <View style={styles.parcelHeader}>
-        <MaterialCommunityIcons name="map-marker-off" size={20} color="#991B1B" />
-        <Text style={[styles.parcelLabel, { color: '#991B1B' }]}>Niciun teren asignat</Text>
+        <MaterialCommunityIcons name={iconName} size={20} color={headerColor} />
+        <Text style={[styles.parcelLabel, { color: headerColor }]}>{headerLabel}</Text>
       </View>
-      <Text style={styles.parcelHint}>Cere dispecerului să te asigneze pe o parcelă astăzi.</Text>
+      <Text style={styles.parcelHint}>{helpText}</Text>
+      {isError && parcel.candidates.length > 0 ? (
+        <View style={styles.parcelCandidatesInfo}>
+          <Text style={styles.parcelCandidatesTitle}>Terenurile tale asignate:</Text>
+          {parcel.candidates.map((task) => (
+            <View key={task.id} style={styles.parcelCandidateRow}>
+              <MaterialCommunityIcons name="circle-small" size={18} color={colors.tertiary} />
+              <Text style={styles.parcelCandidateText}>{task.parcelName ?? 'Parcelă'}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {isError ? (
+        <TouchableOpacity style={styles.refreshGpsBtn} onPress={parcel.refresh}>
+          <MaterialCommunityIcons name="crosshairs-gps" size={16} color="#fff" />
+          <Text style={styles.refreshGpsText}>Reîncearcă GPS</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -557,27 +382,32 @@ const styles = StyleSheet.create({
   },
   parcelName: { fontSize: 20, fontWeight: '700', color: '#0A5C36', marginTop: 2 },
   parcelHint: { fontSize: 13, color: colors.textSecondary },
-  changeParcelBtn: {
+  parcelCandidatesInfo: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#FCE7B5',
+  },
+  parcelCandidatesTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#713F12',
+    marginBottom: 2,
+  },
+  parcelCandidateRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  parcelCandidateText: { fontSize: 13, color: '#92400E' },
+  refreshGpsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
-    alignSelf: 'flex-start',
-  },
-  changeParcelText: { fontSize: 13, color: colors.primary, fontWeight: '600' },
-  candidateBtn: {
-    backgroundColor: '#FFF',
-    borderRadius: radii.md,
-    paddingVertical: 12,
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 10,
     paddingHorizontal: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
+    borderRadius: radii.md,
+    backgroundColor: '#0A5C36',
   },
-  candidateText: { fontSize: 16, fontWeight: '600', color: '#0A5C36' },
-  candidateBtnActive: { backgroundColor: '#E8F5EE', opacity: 0.85 },
-  candidateTextActive: { color: colors.primary },
+  refreshGpsText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   trucksHeader: {
     flexDirection: 'row',

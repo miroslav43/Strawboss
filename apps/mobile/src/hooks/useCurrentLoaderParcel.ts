@@ -35,13 +35,24 @@ const GPS_MAX_RETRIES = 1;
 /**
  * Resolve the loader's current parcel ("teren activ").
  *
+ * Strict GPS-only when the loader has 2+ parcels assigned today: the operator
+ * is never asked to pick manually. The only auto-resolve without GPS is the
+ * trivial case of a single parcel assigned for the whole day.
+ *
  * Resolution order:
- *  1. Exactly one in_progress task today for the loader's machine → use it.
+ *  1. Loader has exactly **one** task assigned today (any status) →
+ *     resolve to that parcel without consulting GPS (single-parcel shortcut).
  *  2. GPS inside a parcel boundary:
- *     - 2+ in_progress: restrict GPS check to those parcel IDs to pick between them.
+ *     - 2+ in_progress: restrict GPS check to those parcel IDs.
  *     - 0 in_progress: check all assigned task parcels.
- *  3. 2+ in_progress but GPS failed → `multiple_active` (surface them for manual pick).
- *  4. 0 in_progress → `needs_start` with available task candidates, or `unavailable`.
+ *     - 1 in_progress + other availables: same GPS check across all (we no
+ *       longer trust the in_progress flag alone when the loader has multiple
+ *       parcels to choose from).
+ *  3. 2+ in_progress but GPS could not pick one → `multiple_active`
+ *     (banner shows a "Reîncearcă GPS" button — no manual list).
+ *  4. 0 in_progress → `needs_start` with the assigned-but-not-yet-started
+ *     tasks as informational context, or `unavailable` when nothing's
+ *     assigned. The screen still forbids manual selection.
  *
  * GPS is attempted with a 15s timeout and one automatic retry before giving up.
  */
@@ -129,10 +140,16 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     (t) => assignedMachineId != null && t.machineId === assignedMachineId,
   );
   const inProgress = myMachineTasks.filter((t) => t.status === 'in_progress' && !!t.parcelId);
+  // Distinct parcel ids across all today's tasks (any status) — used to
+  // detect the "single parcel assigned" shortcut.
+  const distinctTaskParcelIds = new Set(
+    myMachineTasks.map((t) => t.parcelId).filter(Boolean) as string[],
+  );
 
-  // Tier 1: exactly one in_progress task → resolved without GPS.
-  if (inProgress.length === 1) {
-    const t = inProgress[0];
+  // Tier 1: exactly one parcel assigned for the whole day → resolve without
+  // GPS. The trivial case where there's nothing to pick between.
+  if (distinctTaskParcelIds.size === 1) {
+    const t = myMachineTasks.find((mt) => !!mt.parcelId)!;
     return {
       status: 'resolved',
       parcelId: t.parcelId,
@@ -179,14 +196,16 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     };
   }
 
-  // Tier 4: no in_progress → offer available tasks or declare unavailable.
-  const available = myMachineTasks.filter((t) => t.status === 'available' && !!t.parcelId);
+  // Tier 4: GPS didn't match any assigned parcel. Surface ALL tasks (any
+  // status) as informational candidates so the operator knows where to walk;
+  // the screen renders them read-only with a "Reîncearcă GPS" button.
+  const assignedAny = myMachineTasks.filter((t) => !!t.parcelId);
   return {
-    status: available.length ? 'needs_start' : 'unavailable',
+    status: assignedAny.length ? 'needs_start' : 'unavailable',
     parcelId: null,
     parcelName: null,
     source: null,
-    candidates: available,
+    candidates: assignedAny,
     refresh,
   };
 }
