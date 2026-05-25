@@ -1,0 +1,9 @@
+{
+  "file-explorer": true,
+  "global-search": true,
+  "backlinks": true,
+  "outgoing-link": true,
+  "graph": true,
+  "tag-pane": true,
+  "properties": true
+}

@@ -1,3 +1,17 @@
+---
+type: doc
+title: "Database Schema"
+created: 2026-04-16
+updated: 2026-05-25
+tags: [doc, database, schema, postgres, postgis, rls]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[backend]]"
+  - "[[sync-protocol]]"
+  - "[[packages-types]]"
+---
+
 # Database Schema
 
 PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00043).

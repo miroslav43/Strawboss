@@ -1,0 +1,23 @@
+# DragonScale legacy-pages manifest
+# rollout: 2026-05-25
+#
+# All docs pre-date the rollout date 2026-05-25. Listing them as legacy
+# so the lint does not require addresses for these existing docs.
+# New docs created after 2026-05-25 should have c-NNNNNN addresses.
+#
+_index.md
+hot.md
+log.md
+architecture.md
+backend.md
+admin-web.md
+database.md
+infrastructure.md
+mobile.md
+packages-api.md
+packages-domain.md
+packages-types.md
+packages-ui-tokens.md
+packages-validation.md
+scripts.md
+sync-protocol.md

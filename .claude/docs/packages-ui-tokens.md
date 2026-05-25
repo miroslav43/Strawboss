@@ -1,3 +1,16 @@
+---
+type: doc
+title: "@strawboss/ui-tokens"
+created: 2026-04-16
+updated: 2026-04-16
+tags: [doc, package, design, tokens, tailwind]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[admin-web]]"
+  - "[[mobile]]"
+---
+
 # @strawboss/ui-tokens
 
 Design tokens for the Strawboss visual identity. Exports raw values, a Tailwind CSS preset for `admin-web`, and React Native helpers for `mobile`.

@@ -60,7 +60,19 @@ Dacă un commit message conține `fix(security)`, sau referințe la `H-NN` / `M-
 - Marchează issue-ul corespunzător cu `✅ FIXED` + hash-ul de commit.
 - Actualizează tabelul de summary și secțiunea „Already Fixed".
 
-### 5. Raportează
+### 5. Actualizează metadatele Obsidian vault
+
+`.claude/docs/` este un vault Obsidian. Pentru fiecare doc modificat la pașii 3–4:
+
+- Bump câmpul `updated:` din frontmatter la data de azi (`YYYY-MM-DD`).
+- Adaugă o linie în `.claude/docs/log.md`:
+  ```
+  [YYYY-MM-DD] save | <filename>.md — <descriere scurtă a ce s-a schimbat>
+  ```
+- Dacă e un doc nou: adaugă și o linie în `.claude/docs/_index.md` sub secțiunea corespunzătoare și bump `updated:` în `_index.md`.
+- Actualizează `hot.md` (`updated:` + secțiunea "What's Changing Now") dacă schimbările sunt load-bearing pentru sesiunile viitoare.
+
+### 6. Raportează
 
 Afișează un tabel: fișier `.claude/` → ce s-a modificat. Listează explicit fișierele
 verificate care NU au necesitat modificări.
@@ -71,3 +83,4 @@ verificate care NU au necesitat modificări.
 - Nu inventa valori — dacă nu găsești ceva în cod, nu îl scrie în docs.
 - Pentru PR-uri mari (5+ docs afectate), dispecerizează agentul `docs-updater` în paralel.
 - Migrațiile cu număr duplicat sunt un bug — raportează-le, nu le ascunde.
+- Folosește `[[wikilinks]]` (nu `[text](file.md)`) pentru referințe între docs în body text.

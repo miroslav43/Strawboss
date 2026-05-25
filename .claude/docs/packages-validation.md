@@ -1,3 +1,17 @@
+---
+type: doc
+title: "@strawboss/validation"
+created: 2026-04-16
+updated: 2026-05-25
+tags: [doc, package, validation, zod]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[packages-types]]"
+  - "[[backend]]"
+  - "[[admin-web]]"
+---
+
 # @strawboss/validation
 
 Zod schemas mirroring every type from [@strawboss/types](packages-types.md). Provides `create*Schema` / `update*Schema` variants for backend request validation and frontend form validation.

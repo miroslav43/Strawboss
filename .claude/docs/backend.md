@@ -1,3 +1,20 @@
+---
+type: doc
+title: "Backend Service (backend/service)"
+created: 2026-04-16
+updated: 2026-05-25
+tags: [doc, backend, layer, nestjs, drizzle, bullmq]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[database]]"
+  - "[[sync-protocol]]"
+  - "[[packages-domain]]"
+  - "[[packages-types]]"
+  - "[[packages-validation]]"
+  - "[[packages-api]]"
+---
+
 # Backend Service (`backend/service`)
 
 NestJS 11 + Fastify 5 REST API. All routes under `/api/v1/`. Database access via Drizzle ORM + postgres.js. Background jobs via BullMQ + Redis.

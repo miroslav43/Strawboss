@@ -1,3 +1,15 @@
+---
+type: doc
+title: "Scripts (strawboss.sh)"
+created: 2026-04-16
+updated: 2026-04-17
+tags: [doc, scripts, tooling, bash]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[infrastructure]]"
+---
+
 # Scripts
 
 `strawboss.sh` is the monorepo orchestrator. It sources `scripts/_lib.sh` and all `scripts/*.sh` files, then dispatches commands to matching `cmd_*()` functions.

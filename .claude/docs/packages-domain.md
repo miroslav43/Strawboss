@@ -1,3 +1,17 @@
+---
+type: doc
+title: "@strawboss/domain"
+created: 2026-04-16
+updated: 2026-04-16
+tags: [doc, package, domain, xstate, business-logic]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[backend]]"
+  - "[[packages-types]]"
+  - "[[packages-validation]]"
+---
+
 # @strawboss/domain
 
 Pure business logic with no I/O. Contains the XState v5 trip state machine, fraud detection algorithms, bale/fuel reconciliation, alert evaluation, task assignment rules, CMR completeness checks, and geo utilities.

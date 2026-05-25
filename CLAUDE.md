@@ -140,4 +140,6 @@ A weekly routine runs `/strawboss-sync-docs` automatically to catch any document
 
 ### Keeping docs fresh
 
-The `.claude/docs/` files (architecture, backend, database, mobile, etc.) document the codebase. After non-trivial code changes, run `/strawboss-sync-docs` so future sessions read accurate context. MCP plugins available: `context7` (live library docs), `playwright` (browser), `supabase` (after one-time auth).
+The `.claude/docs/` directory is an Obsidian-compatible knowledge vault for this project. **Start every session by reading `.claude/docs/hot.md`** — it contains the five invariants, what's changing now, and quick-reference pointers. For deeper context, follow the `[[wikilinks]]` to layer-specific docs.
+
+After non-trivial code changes, run `/strawboss-sync-docs` so future sessions read accurate context. That skill also bumps `updated:` frontmatter and appends to `.claude/docs/log.md`. MCP plugins available: `context7` (live library docs), `playwright` (browser), `supabase` (after one-time auth).

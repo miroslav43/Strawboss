@@ -1,3 +1,17 @@
+---
+type: doc
+title: "Admin Web (apps/admin-web)"
+created: 2026-04-16
+updated: 2026-05-25
+tags: [doc, frontend, layer, nextjs]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[packages-api]]"
+  - "[[packages-ui-tokens]]"
+  - "[[backend]]"
+---
+
 # Admin Web (`apps/admin-web`)
 
 Next.js 15 App Router + Tailwind CSS v4. Consumes backend API via `@strawboss/api` React Query hooks. Real-time updates via Supabase Realtime channels.

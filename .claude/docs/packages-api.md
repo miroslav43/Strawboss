@@ -1,3 +1,19 @@
+---
+type: doc
+title: "@strawboss/api"
+created: 2026-04-16
+updated: 2026-05-25
+tags: [doc, package, api, tanstack-query, supabase]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[backend]]"
+  - "[[admin-web]]"
+  - "[[mobile]]"
+  - "[[packages-types]]"
+  - "[[packages-validation]]"
+---
+
 # @strawboss/api
 
 Shared data layer consumed by both `admin-web` and `mobile`. Provides the `ApiClient` class, Supabase client factory, TanStack Query key factory, and 24 React Query hook files (index counts as one file; includes `useLocationKmByDay` added in Plan C).

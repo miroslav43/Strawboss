@@ -1,3 +1,17 @@
+---
+type: doc
+title: "Offline Sync Protocol"
+created: 2026-04-16
+updated: 2026-04-16
+tags: [doc, sync, protocol, offline-first, idempotency]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[mobile]]"
+  - "[[backend]]"
+  - "[[database]]"
+---
+
 # Offline Sync Protocol
 
 The mobile app (`apps/mobile`) is offline-first: all writes go to local SQLite, then sync to the server when online. The backend (`backend/service/src/sync/`) processes mutations with idempotency guarantees.

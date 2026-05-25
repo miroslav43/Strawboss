@@ -1,3 +1,18 @@
+---
+type: doc
+title: "@strawboss/types"
+created: 2026-04-16
+updated: 2026-05-25
+tags: [doc, package, types, typescript]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[database]]"
+  - "[[packages-validation]]"
+  - "[[packages-domain]]"
+  - "[[backend]]"
+---
+
 # @strawboss/types
 
 Zero-dependency TypeScript interfaces and enums. Every entity's canonical shape lives here.

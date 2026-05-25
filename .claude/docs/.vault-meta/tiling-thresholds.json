@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "model": "nomic-embed-text",
+  "bands": {
+    "error": 0.9,
+    "review": 0.8
+  },
+  "calibrated": false,
+  "calibration_pairs_labeled": 0,
+  "notes": "Conservative seed thresholds, NOT calibrated against this vault. See wiki-lint SKILL.md Semantic Tiling section for the calibration procedure."
+}

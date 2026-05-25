@@ -1,3 +1,18 @@
+---
+type: doc
+title: "Mobile App (apps/mobile)"
+created: 2026-04-16
+updated: 2026-05-25
+tags: [doc, mobile, layer, expo, react-native, offline-first]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[sync-protocol]]"
+  - "[[packages-api]]"
+  - "[[packages-ui-tokens]]"
+  - "[[backend]]"
+---
+
 # Mobile App (`apps/mobile`)
 
 Expo SDK 54 + Expo Router. Offline-first: all writes go to local SQLite + sync queue, synced to server when online.

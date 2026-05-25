@@ -1,3 +1,16 @@
+---
+type: doc
+title: "Infrastructure"
+created: 2026-04-16
+updated: 2026-05-17
+tags: [doc, devops, infra, docker, nginx, redis]
+status: mature
+related:
+  - "[[architecture]]"
+  - "[[scripts]]"
+  - "[[backend]]"
+---
+
 # Infrastructure
 
 Production deployment uses Docker Compose with nginx reverse proxy, Let's Encrypt SSL, and Redis for BullMQ. Logs are written via Winston (backend/admin) and NDJSON (mobile uploads).

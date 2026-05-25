@@ -1,3 +1,21 @@
+---
+type: doc
+title: "StrawBoss — System Architecture"
+created: 2026-04-16
+updated: 2026-05-17
+tags: [doc, architecture, overview, top-level]
+status: mature
+related:
+  - "[[backend]]"
+  - "[[admin-web]]"
+  - "[[mobile]]"
+  - "[[database]]"
+  - "[[sync-protocol]]"
+  - "[[infrastructure]]"
+  - "[[packages-types]]"
+  - "[[packages-domain]]"
+---
+
 # StrawBoss — System Architecture
 
 ## Overview
@@ -78,7 +96,7 @@ Mobile SQLite                                    PostgreSQL
          (delta by sync_version)                      │
 ```
 
-See [Sync Protocol](sync-protocol.md) for full details.
+See [[sync-protocol]] for full details.
 
 ## Trip Lifecycle
 
@@ -99,7 +117,7 @@ Each transition has a dedicated REST endpoint with:
 
 **CMR auto-generation** (two stages via BullMQ): stage 1 at `depart` → partial PDF (status `partial`); stage 2 at `complete` → final PDF (status `generated`).
 
-See [Backend](backend.md) for endpoint details, [Domain](packages-domain.md) for state machine.
+See [[backend]] for endpoint details, [[packages-domain]] for state machine.
 
 ## Authentication & Authorization
 
@@ -152,7 +170,7 @@ GeofenceService.checkMachinePositions()
                    → Server: mark assignment done + create bale_production
 ```
 
-See [Backend](backend.md) for geofence service, [Mobile](mobile.md) for GeofenceOverlay.
+See [[backend]] for geofence service, [[mobile]] for GeofenceOverlay.
 
 ## Background Jobs (BullMQ)
 
@@ -193,7 +211,7 @@ Reconnects with exponential backoff (max 10 retries, 1s → 30s). On reconnect: 
 
 **Key patterns**: Soft deletes (deleted_at), sync_version for delta sync, generated columns (net_weight_kg, odometer_distance_km), PostGIS boundaries (Polygon) and points.
 
-See [Database](database.md) for full schema.
+See [[database]] for full schema.
 
 ## Infrastructure
 
@@ -212,7 +230,7 @@ Docker Compose:
   └── certbot    (certbot:latest, ACME challenge)
 ```
 
-See [Infrastructure](infrastructure.md) for Docker and nginx details.
+See [[infrastructure]] for Docker and nginx details.
 
 ## Mobile Offline-First
 
@@ -225,7 +243,7 @@ The mobile app is designed to work without internet:
 - **GPS tracking** continues foreground, reports to server when online
 - **Map** shows offline message when Leaflet CDN unreachable (graceful degradation)
 
-See [Mobile](mobile.md) and [Sync Protocol](sync-protocol.md).
+See [[mobile]] and [[sync-protocol]].
 
 ## CLI Tooling
 
@@ -241,22 +259,22 @@ See [Mobile](mobile.md) and [Sync Protocol](sync-protocol.md).
 
 Commands auto-discovered from `scripts/*.sh` via `@cmd` annotations.
 
-See [Scripts](scripts.md) for full command reference.
+See [[scripts]] for full command reference.
 
 ## Component Documentation Index
 
 | Component | Doc | Key Tech |
 |-----------|-----|----------|
-| Overall Architecture | [architecture.md](architecture.md) | — |
-| NestJS Backend | [backend.md](backend.md) | NestJS 11, Fastify, Drizzle ORM |
-| Admin Dashboard | [admin-web.md](admin-web.md) | Next.js 15, TanStack Query, Leaflet |
-| Mobile App | [mobile.md](mobile.md) | Expo SDK 54, SQLite, WebView |
-| TypeScript Types | [packages-types.md](packages-types.md) | Zero-dep interfaces |
-| Validation | [packages-validation.md](packages-validation.md) | Zod schemas |
-| Business Logic | [packages-domain.md](packages-domain.md) | XState v5, fraud detection |
-| API Hooks | [packages-api.md](packages-api.md) | TanStack Query, ApiClient |
-| Design Tokens | [packages-ui-tokens.md](packages-ui-tokens.md) | Tailwind preset, RN helpers |
-| Database | [database.md](database.md) | PostgreSQL, PostGIS, RLS |
-| Infrastructure | [infrastructure.md](infrastructure.md) | Docker, nginx, Redis |
-| Sync Protocol | [sync-protocol.md](sync-protocol.md) | Outbox, delta sync |
-| CLI Scripts | [scripts.md](scripts.md) | Bash, cross-platform |
+| Overall Architecture | [[architecture]] | — |
+| NestJS Backend | [[backend]] | NestJS 11, Fastify, Drizzle ORM |
+| Admin Dashboard | [[admin-web]] | Next.js 15, TanStack Query, Leaflet |
+| Mobile App | [[mobile]] | Expo SDK 54, SQLite, WebView |
+| TypeScript Types | [[packages-types]] | Zero-dep interfaces |
+| Validation | [[packages-validation]] | Zod schemas |
+| Business Logic | [[packages-domain]] | XState v5, fraud detection |
+| API Hooks | [[packages-api]] | TanStack Query, ApiClient |
+| Design Tokens | [[packages-ui-tokens]] | Tailwind preset, RN helpers |
+| Database | [[database]] | PostgreSQL, PostGIS, RLS |
+| Infrastructure | [[infrastructure]] | Docker, nginx, Redis |
+| Sync Protocol | [[sync-protocol]] | Outbox, delta sync |
+| CLI Scripts | [[scripts]] | Bash, cross-platform |
