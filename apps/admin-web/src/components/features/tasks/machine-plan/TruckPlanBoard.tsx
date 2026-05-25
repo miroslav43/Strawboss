@@ -9,8 +9,9 @@ import {
   useUpdateTaskAssignment,
   useDeliveryDestinations,
   useMachines,
+  useMachineLocations,
 } from '@strawboss/api';
-import type { Machine, DeliveryDestination } from '@strawboss/types';
+import type { Machine, DeliveryDestination, MachineLastLocation } from '@strawboss/types';
 import { AssignmentStatus } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -83,6 +84,7 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
   const { data: rawLoaderAssignments } = useTasksByMachineType(apiClient, date, 'loader');
   const { data: rawMachines } = useMachines(apiClient);
   const { data: rawDeposits } = useDeliveryDestinations(apiClient);
+  const { data: rawLocations } = useMachineLocations(apiClient);
 
   const createAssignment = useCreateTaskAssignment(apiClient);
   const deleteAssignment = useDeleteTaskAssignment(apiClient);
@@ -95,6 +97,15 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
   );
   const machines = useMemo(() => normalize<Machine>(rawMachines), [rawMachines]);
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
+  // 15 min GPS threshold for machines (vs 90 s heartbeat for users).
+  const MACHINE_ONLINE_MS = 15 * 60 * 1000;
+  const lastSeenByMachine = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of normalize<MachineLastLocation>(rawLocations)) {
+      map.set(row.machineId, row.recordedAt);
+    }
+    return map;
+  }, [rawLocations]);
 
   const trucks = useMemo(
     () => machines.filter((m) => m.machineType === 'truck' && m.isActive),
@@ -221,20 +232,29 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
               {t('tasks.allAssigned')}
             </p>
           ) : (
-            availableTrucks.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => handleAssignTruck(m.id)}
-                className="flex w-full items-center gap-3 rounded-lg border border-green-200 px-4 py-3 text-left transition-colors hover:bg-green-50 hover:shadow-sm"
-              >
-                <div className="h-2.5 w-2.5 rounded-full bg-green-400" />
-                <div>
-                  <p className="text-sm font-medium text-neutral-800">{m.internalCode}</p>
-                  <p className="text-xs text-neutral-400">{m.registrationPlate}</p>
-                </div>
-                <Plus className="ml-auto h-4 w-4 text-green-400" />
-              </button>
-            ))
+            availableTrucks.map((m) => {
+              const recordedAt = lastSeenByMachine.get(m.id) ?? null;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => handleAssignTruck(m.id)}
+                  className="flex w-full items-center gap-3 rounded-lg border border-green-200 px-4 py-3 text-left transition-colors hover:bg-green-50 hover:shadow-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-neutral-800">
+                      {m.internalCode}
+                    </p>
+                    <p className="truncate text-xs text-neutral-400">{m.registrationPlate}</p>
+                  </div>
+                  <UserPresenceDot
+                    lastSeenAt={recordedAt}
+                    variant="badge"
+                    thresholdMs={MACHINE_ONLINE_MS}
+                  />
+                  <Plus className="h-4 w-4 text-green-400" />
+                </button>
+              );
+            })
           )}
         </div>
       </div>

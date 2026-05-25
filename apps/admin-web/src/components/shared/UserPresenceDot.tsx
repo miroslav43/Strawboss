@@ -4,8 +4,10 @@ import { useEffect, useReducer } from 'react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 
-// 30 s mobile heartbeat + 60 s grace → 90 s window.
-const ONLINE_WINDOW_MS = 90 * 1000;
+// Default window: 30 s mobile heartbeat + 60 s grace → 90 s. Caller can pass
+// `thresholdMs` to widen the window — e.g. machine GPS recordings come every
+// few minutes, so the Machines / Available-truck lists use 15 min.
+const DEFAULT_ONLINE_WINDOW_MS = 90 * 1000;
 
 // Shared 30 s tick so we don't run one timer per dot.
 const subscribers = new Set<() => void>();
@@ -26,7 +28,10 @@ function useTick() {
 }
 
 export interface UserPresenceDotProps {
-  /** ISO timestamp from users.last_seen_at — null = never connected. */
+  /**
+   * ISO timestamp — for users this is `users.last_seen_at`, for machines
+   * it's `machine_location_events.recorded_at`. `null` means never seen.
+   */
   lastSeenAt: string | null | undefined;
   className?: string;
   /**
@@ -36,6 +41,11 @@ export interface UserPresenceDotProps {
    * (truck plan board) where users skim cards.
    */
   variant?: 'dot' | 'badge';
+  /**
+   * Override the "online" window. Default 90 s (covers a 30 s heartbeat with
+   * 60 s grace). For GPS-based machine presence pass 15 min.
+   */
+  thresholdMs?: number;
 }
 
 /**
@@ -43,13 +53,18 @@ export interface UserPresenceDotProps {
  * (heartbeat within the last 90 s). Tooltip carries the full "last seen" text;
  * the `badge` variant also renders a short label inline.
  */
-export function UserPresenceDot({ lastSeenAt, className, variant = 'dot' }: UserPresenceDotProps) {
+export function UserPresenceDot({
+  lastSeenAt,
+  className,
+  variant = 'dot',
+  thresholdMs = DEFAULT_ONLINE_WINDOW_MS,
+}: UserPresenceDotProps) {
   useTick();
   const { t, locale } = useI18n();
 
   const lastSeenMs = lastSeenAt ? new Date(lastSeenAt).getTime() : null;
   const ageMs = lastSeenMs != null ? Date.now() - lastSeenMs : null;
-  const isOnline = ageMs != null && ageMs < ONLINE_WINDOW_MS;
+  const isOnline = ageMs != null && ageMs < thresholdMs;
 
   const title = lastSeenAt
     ? isOnline

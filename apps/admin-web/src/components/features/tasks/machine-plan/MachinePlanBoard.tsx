@@ -13,9 +13,11 @@ import {
   useDeleteTaskAssignment,
   useParcels,
   useMachines,
+  useMachineLocations,
   queryKeys,
 } from '@strawboss/api';
-import type { Parcel, Machine } from '@strawboss/types';
+import type { Parcel, Machine, MachineLastLocation } from '@strawboss/types';
+import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { AssignmentStatus } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { clientLogger } from '@/lib/client-logger';
@@ -63,7 +65,8 @@ function ParcelPicker({
     return parcels.filter((p) => {
       if (!p.isActive) return false;
       if (assignedParcelIds.has(p.id)) return false;
-      if (q && ![p.name, p.code, p.municipality].some((v) => v?.toLowerCase().includes(q))) return false;
+      if (q && ![p.name, p.code, p.municipality].some((v) => v?.toLowerCase().includes(q)))
+        return false;
       return true;
     });
   }, [parcels, assignedParcelIds, search]);
@@ -91,7 +94,10 @@ function ParcelPicker({
           filtered.map((p) => (
             <li key={p.id}>
               <button
-                onClick={() => { onSelect(p.id); onClose(); }}
+                onClick={() => {
+                  onSelect(p.id);
+                  onClose();
+                }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-50"
               >
                 <span className="font-mono text-xs text-neutral-500">{p.code}</span>
@@ -117,15 +123,8 @@ type ParcelInsertHint = {
   insertBefore: boolean;
 };
 
-function pointerClientY(
-  native: Event | undefined,
-  fallbackY: number | undefined,
-): number | null {
-  if (
-    native &&
-    'clientY' in native &&
-    typeof (native as PointerEvent).clientY === 'number'
-  ) {
+function pointerClientY(native: Event | undefined, fallbackY: number | undefined): number | null {
+  if (native && 'clientY' in native && typeof (native as PointerEvent).clientY === 'number') {
     return (native as PointerEvent).clientY;
   }
   const te = native as TouchEvent | undefined;
@@ -163,10 +162,8 @@ function SortableParcelRow({
     transition: PARCEL_SORT_TRANSITION,
   });
 
-  const showInsertBefore =
-    insertHint?.targetId === assignment.id && insertHint.insertBefore;
-  const showInsertAfter =
-    insertHint?.targetId === assignment.id && !insertHint.insertBefore;
+  const showInsertBefore = insertHint?.targetId === assignment.id && insertHint.insertBefore;
+  const showInsertAfter = insertHint?.targetId === assignment.id && !insertHint.insertBefore;
   const isLast = index === parcelCount - 1;
 
   return (
@@ -176,8 +173,7 @@ function SortableParcelRow({
         'relative m-0 flex list-none items-center gap-2 px-3 py-2.5 text-sm',
         // Avoid CSS transitions while dragging — they fight @dnd-kit DOM moves and feel like flicker.
         !isDragging && 'transition-[box-shadow,opacity] duration-200 ease-out',
-        isDragging &&
-          'z-30 scale-[1.02] rounded-md bg-white shadow-xl ring-2 ring-primary/25',
+        isDragging && 'z-30 scale-[1.02] rounded-md bg-white shadow-xl ring-2 ring-primary/25',
         isDropTarget && !isDragSource && !isDragging && 'bg-primary/[0.06]',
       )}
     >
@@ -320,11 +316,7 @@ function SortableParcelRows({
       const insertBefore = y < rect.top + rect.height / 2;
       const next: ParcelInsertHint = { targetId: String(target.id), insertBefore };
       setInsertHint((prev) => {
-        if (
-          prev &&
-          prev.targetId === next.targetId &&
-          prev.insertBefore === next.insertBefore
-        ) {
+        if (prev && prev.targetId === next.targetId && prev.insertBefore === next.insertBefore) {
           return prev;
         }
         return next;
@@ -396,9 +388,7 @@ function AssignedMachineCard({
 
   const parcelRows = useMemo(
     () =>
-      [...assignments]
-        .filter((a) => a.parcelId)
-        .sort((a, b) => a.sequenceOrder - b.sequenceOrder),
+      [...assignments].filter((a) => a.parcelId).sort((a, b) => a.sequenceOrder - b.sequenceOrder),
     [assignments],
   );
 
@@ -513,16 +503,23 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
   const { data: rawAssignments, isLoading } = useTasksByMachineType(apiClient, date, machineType);
   const { data: rawParcels } = useParcels(apiClient);
   const { data: rawMachines } = useMachines(apiClient);
+  const { data: rawLocations } = useMachineLocations(apiClient);
 
   const createAssignment = useCreateTaskAssignment(apiClient);
   const deleteAssignment = useDeleteTaskAssignment(apiClient);
 
-  const assignments = useMemo(
-    () => normalize<Assignment>(rawAssignments),
-    [rawAssignments],
-  );
+  const assignments = useMemo(() => normalize<Assignment>(rawAssignments), [rawAssignments]);
   const parcels = useMemo(() => normalize<Parcel>(rawParcels), [rawParcels]);
   const machines = useMemo(() => normalize<Machine>(rawMachines), [rawMachines]);
+  // 15 min GPS threshold (the machine's last reported position).
+  const MACHINE_ONLINE_MS = 15 * 60 * 1000;
+  const lastSeenByMachine = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of normalize<MachineLastLocation>(rawLocations)) {
+      map.set(row.machineId, row.recordedAt);
+    }
+    return map;
+  }, [rawLocations]);
 
   // All machines of this type
   const typeMachines = useMemo(
@@ -693,9 +690,7 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
           });
         }
         // Phase C: shell rows (no parcel) → k .. (keeps UNIQUE with parcel orders).
-        const shells = all
-          .filter((a) => !a.parcelId)
-          .sort((a, b) => a.id.localeCompare(b.id));
+        const shells = all.filter((a) => !a.parcelId).sort((a, b) => a.id.localeCompare(b.id));
         let seq = reordered.length;
         for (const s of shells) {
           await apiClient.patch(`/api/v1/task-assignments/${s.id}`, {
@@ -743,23 +738,32 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
               {t('tasks.allAssigned')}
             </p>
           ) : (
-            availableMachines.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => handleAssignMachine(m.id)}
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:shadow-sm',
-                  `border-${color}-200 hover:bg-${color}-50`,
-                )}
-              >
-                <div className={cn('h-2.5 w-2.5 rounded-full', `bg-${color}-400`)} />
-                <div>
-                  <p className="text-sm font-medium text-neutral-800">{m.internalCode}</p>
-                  <p className="text-xs text-neutral-400">{m.registrationPlate}</p>
-                </div>
-                <Plus className={cn('ml-auto h-4 w-4', `text-${color}-400`)} />
-              </button>
-            ))
+            availableMachines.map((m) => {
+              const recordedAt = lastSeenByMachine.get(m.id) ?? null;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => handleAssignMachine(m.id)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:shadow-sm',
+                    `border-${color}-200 hover:bg-${color}-50`,
+                  )}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-neutral-800">
+                      {m.internalCode}
+                    </p>
+                    <p className="truncate text-xs text-neutral-400">{m.registrationPlate}</p>
+                  </div>
+                  <UserPresenceDot
+                    lastSeenAt={recordedAt}
+                    variant="badge"
+                    thresholdMs={MACHINE_ONLINE_MS}
+                  />
+                  <Plus className={cn('h-4 w-4', `text-${color}-400`)} />
+                </button>
+              );
+            })
           )}
         </div>
       </div>

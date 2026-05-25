@@ -20,11 +20,13 @@ import {
   useCreateMachine,
   useUpdateMachine,
   useTruckDistanceSummary,
+  useMachineLocations,
   queryKeys,
 } from '@strawboss/api';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { MachineType, FuelType } from '@strawboss/types';
-import type { Machine, TruckDistanceSummary } from '@strawboss/types';
+import type { Machine, TruckDistanceSummary, MachineLastLocation } from '@strawboss/types';
+import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
@@ -665,6 +667,19 @@ export default function MachinesPage() {
     return map;
   }, [truckDistanceSummary.data]);
 
+  // Last GPS recording per machine — drives the presence badge in the Status
+  // column. 15 min threshold since machines emit a position only every few min.
+  const MACHINE_ONLINE_MS = 15 * 60 * 1000;
+  const machineLocations = useMachineLocations(apiClient);
+  const lastSeenByMachine = useMemo(() => {
+    const map = new Map<string, string>();
+    const rows = (machineLocations.data ?? []) as MachineLastLocation[];
+    for (const row of rows) {
+      map.set(row.machineId, row.recordedAt);
+    }
+    return map;
+  }, [machineLocations.data]);
+
   const { setVariant: setIconVariant, getVariant } = useMachineIconPrefs();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -924,15 +939,24 @@ export default function MachinesPage() {
                         {FUEL_LABELS[m.fuelType] ?? m.fuelType}
                       </td>
                       <td className="px-4 py-3">
-                        {m.isActive ? (
-                          <span className="flex items-center gap-1 text-green-600">
-                            <CheckCircle2 className="h-4 w-4" /> Activă
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-neutral-400">
-                            <XCircle className="h-4 w-4" /> Inactivă
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {m.isActive ? (
+                            <span className="flex items-center gap-1 text-green-600">
+                              <CheckCircle2 className="h-4 w-4" /> Activă
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-neutral-400">
+                              <XCircle className="h-4 w-4" /> Inactivă
+                            </span>
+                          )}
+                          {m.isActive ? (
+                            <UserPresenceDot
+                              lastSeenAt={lastSeenByMachine.get(m.id) ?? null}
+                              variant="badge"
+                              thresholdMs={MACHINE_ONLINE_MS}
+                            />
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
