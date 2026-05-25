@@ -7,6 +7,7 @@ import { QUEUE_CMR_GENERATION, QUEUE_TRUCK_IDLE_CHECK } from '../jobs/queues';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DeliveryDestinationsModule } from '../delivery-destinations/delivery-destinations.module';
 import { AlertsModule } from '../alerts/alerts.module';
+import { ParcelsModule } from '../parcels/parcels.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AlertsModule } from '../alerts/alerts.module';
     forwardRef(() => NotificationsModule),
     DeliveryDestinationsModule,
     AlertsModule,
+    ParcelsModule,
   ],
   controllers: [TripsController],
   providers: [TripsService, TruckIdleProcessor],

@@ -16,6 +16,7 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DeliveryDestinationsService } from '../delivery-destinations/delivery-destinations.service';
+import { ParcelsService } from '../parcels/parcels.service';
 import { TripStatus, type UserRole } from '@strawboss/types';
 import { QUEUE_CMR_GENERATION } from '../jobs/queues';
 import type {
@@ -44,6 +45,7 @@ export class TripsService implements OnModuleInit {
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
     private readonly deliveryDestinationsService: DeliveryDestinationsService,
+    private readonly parcelsService: ParcelsService,
   ) {}
 
   /**
@@ -355,11 +357,19 @@ export class TripsService implements OnModuleInit {
       'Loaderul a început încărcarea camionului.',
       'assignment_created',
     );
-    // TODO(plan-c): integrate with Plan B once merged — temporarily no-op.
-    // When Plan B's parcelsService.advanceHarvestOnLoadEvent ships, call:
-    //   await this.parcelsService.advanceHarvestOnLoadEvent(
-    //     trip.source_parcel_id as string, 'loading_started', orgId,
-    //   );
+    const parcelId = trip.source_parcel_id as string | null;
+    if (parcelId) {
+      try {
+        await this.parcelsService.advanceHarvestOnLoadEvent(parcelId, 'loading_started', orgId);
+      } catch (err) {
+        this.winston.warn('startLoading: advanceHarvestOnLoadEvent failed', {
+          context: 'TripsService',
+          tripId: id,
+          parcelId,
+          err: err instanceof Error ? { message: err.message } : err,
+        });
+      }
+    }
     return result;
   }
 
@@ -720,9 +730,19 @@ export class TripsService implements OnModuleInit {
       'trip_loaded',
     );
 
-    // TODO(plan-c): integrate with Plan B once merged — temporarily no-op.
-    // After register-load, if remaining bales on the parcel reach 0 we should
-    // call parcelsService.advanceHarvestOnLoadEvent(parcelId, 'all_loaded', orgId).
+    try {
+      const remaining = await this.computeRemainingBalesOnParcel(dto.parcelId, orgId);
+      if (remaining <= 0) {
+        await this.parcelsService.advanceHarvestOnLoadEvent(dto.parcelId, 'all_loaded', orgId);
+      }
+    } catch (err) {
+      this.winston.warn('registerLoad: advanceHarvestOnLoadEvent failed', {
+        context: 'TripsService',
+        tripId: result.trip.id as string,
+        parcelId: dto.parcelId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
     return result;
   }
 
@@ -879,8 +899,8 @@ export class TripsService implements OnModuleInit {
     // Plan C — multi-iteration hook.
     // After a trip completes:
     //  - If the parcel still has bales, prompt the loader to recall the truck.
-    //  - If the parcel is empty, signal parcel harvest completion via
-    //    Plan B's helper (currently stubbed — see TODO below).
+    //  - If the parcel is empty, advance the parcel harvest status via Plan B's
+    //    parcelsService.advanceHarvestOnLoadEvent helper.
     try {
       const sourceParcelId = trip.source_parcel_id as string | null;
       const loaderOperatorId = trip.loader_operator_id as string | null;
@@ -901,16 +921,20 @@ export class TripsService implements OnModuleInit {
             );
           }
         } else if (remaining <= 0) {
-          // TODO(plan-c): integrate with Plan B once merged — temporarily no-op.
-          // When Plan B's parcelsService.advanceHarvestOnLoadEvent ships, call:
-          //   await this.parcelsService.advanceHarvestOnLoadEvent(
-          //     sourceParcelId, 'all_delivered', orgId,
-          //   );
-          this.winston.log(
-            'flow',
-            `Parcel ${sourceParcelId} fully delivered — would advance harvest (stub)`,
-            { context: 'TripsService', parcelId: sourceParcelId },
-          );
+          try {
+            await this.parcelsService.advanceHarvestOnLoadEvent(
+              sourceParcelId,
+              'all_delivered',
+              orgId,
+            );
+          } catch (err) {
+            this.winston.warn('complete: advanceHarvestOnLoadEvent failed', {
+              context: 'TripsService',
+              tripId: id,
+              parcelId: sourceParcelId,
+              err: err instanceof Error ? { message: err.message } : err,
+            });
+          }
         }
       }
     } catch (err) {
@@ -1013,11 +1037,7 @@ export class TripsService implements OnModuleInit {
           message: 'Cursa nu are parcelă sursă.',
         });
       }
-      const remaining = await this.computeRemainingBalesOnParcel(
-        sourceParcelId,
-        orgId,
-        tx,
-      );
+      const remaining = await this.computeRemainingBalesOnParcel(sourceParcelId, orgId, tx);
       if (remaining <= 0) {
         throw new BadRequestException({
           error: 'parcel_fully_loaded',
