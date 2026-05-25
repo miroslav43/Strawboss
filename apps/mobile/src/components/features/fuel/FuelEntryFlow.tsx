@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
 import { StepIndicator } from '../../ui/StepIndicator';
-import { OcrPhotoCapture } from '../../shared/OcrPhotoCapture';
+import { PhotoCapture } from '../../shared/PhotoCapture';
 import { getDatabase } from '@/lib/storage';
 import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
@@ -19,25 +19,25 @@ import { colors } from '@strawboss/ui-tokens';
 
 /**
  * Plan C (T17) — fuel flow simplified to two real entries + confirm:
- *   1. liters       — operator types how many liters they pumped.
- *   2. meter-photo  — operator photographs the pump meter (audit only,
- *                     NO OCR pre-fill, NO odometer step).
- *   3. confirm      — summary + Save.
+ *   1. liters         — operator types how many liters they pumped.
+ *   2. station-photo  — operator photographs the fuel station (audit only,
+ *                       NO OCR, NO receipt/bon fiscal, NO odometer).
+ *   3. confirm        — summary + Save.
  *
  * The previous 5-step flow (receipt OCR, liters, odometer-photo, odometer,
  * confirm) was unreliable on phones and tedious for drivers. Existing fuel
  * log entries on the server still render correctly; only NEW entries follow
  * the simplified flow. The server accepts `odometerKm: null`.
  */
-type FuelStep = 'liters' | 'meter-photo' | 'confirm';
+type FuelStep = 'liters' | 'station-photo' | 'confirm';
 
 export const FUEL_STEP_TITLES: Record<FuelStep, string> = {
   liters: 'Litri alimentați',
-  'meter-photo': 'Foto pompă',
+  'station-photo': 'Foto stație combustibil',
   confirm: 'Confirmare alimentare',
 };
 
-const FUEL_STEP_ORDER: FuelStep[] = ['liters', 'meter-photo', 'confirm'];
+const FUEL_STEP_ORDER: FuelStep[] = ['liters', 'station-photo', 'confirm'];
 
 interface FuelEntryFlowProps {
   machineId: string | null;
@@ -192,7 +192,7 @@ export function FuelEntryFlow({
             <View style={styles.actions}>
               <BigButton
                 title="Continuă"
-                onPress={() => goToStep('meter-photo')}
+                onPress={() => goToStep('station-photo')}
                 disabled={!liters || liters === '0'}
               />
               <BigButton title="Anulează" variant="outline" onPress={onCancel} />
@@ -200,18 +200,13 @@ export function FuelEntryFlow({
           </View>
         );
 
-      case 'meter-photo':
+      case 'station-photo':
         return (
           <View style={styles.container}>
-            <Text style={styles.subtitle}>Fotografiază pompa la final (litri afișați).</Text>
-            <OcrPhotoCapture
-              mode="fuel"
-              label="Fotografie pompă"
-              onResult={(uri) => {
-                // No OCR pre-fill — the photo is purely an audit record.
-                setPhotoUri(uri);
-              }}
-            />
+            <Text style={styles.subtitle}>
+              Fotografiază stația de combustibil. NU este nevoie de bon fiscal.
+            </Text>
+            <PhotoCapture label="Fotografie stație" onCapture={(uri) => setPhotoUri(uri)} />
             <View style={styles.actions}>
               <BigButton
                 title="Continuă"
@@ -247,7 +242,7 @@ export function FuelEntryFlow({
 
             <View style={styles.actions}>
               <BigButton title="Salvează" onPress={handleConfirm} loading={saving} />
-              <TouchableOpacity onPress={() => goToStep('meter-photo')} style={styles.backButton}>
+              <TouchableOpacity onPress={() => goToStep('station-photo')} style={styles.backButton}>
                 <Text style={styles.backText}>Înapoi</Text>
               </TouchableOpacity>
             </View>
