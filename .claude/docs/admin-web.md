@@ -30,6 +30,8 @@ All routes live under `src/app/`. Two route groups: `(auth)` for login, `(dashbo
 | `/documents/[documentId]` | `(dashboard)/documents/[documentId]/page.tsx` | 100% | DocumentViewer for PDF/image preview |
 | `/accounts` | `(dashboard)/accounts/page.tsx` | 100% | Admin user management (list, create, edit, deactivate) |
 | `/settings` | `(dashboard)/settings/page.tsx` | 100% | Profile editing, password change, locale toggle, notification prefs |
+| `/deposits` | `(dashboard)/deposits/page.tsx` | 100% | Delivery destination management (Plan C — previously under `/delivery-destinations`) |
+| `/command-center` | `(dashboard)/command-center/page.tsx` | 100% | Multi-trip board with `UserPresenceDot` for live operator presence (Plan C) |
 
 ---
 
@@ -82,10 +84,12 @@ Dynamically imports Leaflet + `@geoman-io/leaflet-geoman-free` (no SSR). Satelli
 
 ### Supporting map components
 - `FilterableFarmList` (`src/components/map/FilterableFarmList.tsx`) -- farm sidebar list with toggle
-- `FilterableParcelList` (`src/components/map/FilterableParcelList.tsx`) -- parcel sidebar list
-- `FilterableMachineList` (`src/components/map/FilterableMachineList.tsx`) -- machine sidebar list
+- `FilterableParcelList` (`src/components/map/FilterableParcelList.tsx`) -- parcel sidebar list with harvest status color coding
+- `FilterableMachineList` (`src/components/map/FilterableMachineList.tsx`) -- machine sidebar list with `LiveStatusPill`
 - `RouteHistoryPanel` (`src/components/map/RouteHistoryPanel.tsx`) -- date range picker for route history queries
 - `DepositGeofenceModal` (`src/components/map/DepositGeofenceModal.tsx`) -- create deposit from drawn polygon
+- `KmlImportToFarmModal` (`src/components/map/KmlImportToFarmModal.tsx`) -- batch-import parcels from a KML file into a farm
+- `LiveStatusPill` -- live machine status indicator (online/offline + current trip status)
 
 ### KML Import (`src/lib/kml-parser.ts`)
 Parses KML files to extract polygon boundaries for batch parcel import.
@@ -101,9 +105,10 @@ Three kanban columns: `AvailableColumn`, `InProgressColumn`, `DoneColumn`. Uses 
 Machine-centric view: lists machines of a given type with their daily assignments. Used on `/tasks/balers` and `/tasks/loaders`.
 
 ### TruckPlanBoard (`src/components/features/tasks/machine-plan/TruckPlanBoard.tsx`)
-Truck-specific planner with:
+Truck-specific planner with multi-trip course support (Plan C):
 - `DepositMapModal` -- map-based deposit geofence selector
 - `LoaderPickMapModal` -- map-based loader machine selector for assigning pickup coordinates
+- Shows all iterations of a trip course, not just the first trip
 
 ### Shared context: `tasks-date-context.tsx`
 `TasksDateContext` provides a shared date state across the tasks sub-routes (balers, loaders, trucks).
@@ -112,11 +117,12 @@ Truck-specific planner with:
 
 ## Reports (`src/app/(dashboard)/reports/page.tsx`)
 
-Three tabs:
+Four tabs:
 
 1. **Production**: `BaleCountChart` -- custom CSS bar chart showing bale counts by operator/parcel/date using `useBaleProductionStats()` with `ReportFilters` for date range + groupBy
 2. **Costs**: `CostBreakdownChart` -- fuel + consumable cost bar chart from `useDashboardCosts()`
 3. **Operators**: `OperatorProductionChart` -- per-operator production bars
+4. **Km/Truck** (Plan C): `KmPerTruckTab` -- daily km driven per truck chart using `useLocationKmByDay()`
 
 All charts use pure CSS bar rendering (no external chart library).
 
@@ -147,7 +153,7 @@ Custom lightweight i18n (not next-intl despite CLAUDE.md mention):
 - `LocaleProvider` wraps the app. Reads from `localStorage('strawboss-locale')`, defaults to 'en'
 - Catalogs: `messages/en.json` and `messages/ro.json` imported directly
 - `useI18n()` hook returns `{ locale, setLocale, hydrateFromProfile, t }`
-- `t(key, params?)` resolves dot-path keys with `{{param}}` interpolation. Falls back to English if Romanian key missing
+- `t(key, params?)` resolves dot-path keys with `{{param}}` interpolation (regex: `/\{\{(\w+)\}\}/g`). Falls back to English if Romanian key missing. Placeholder format is `{{...}}` — do NOT use `{...}` (H-9 fix, commit `de58e10`)
 - `normalizeUiLocale(raw)` maps DB locale strings to 'en' or 'ro'
 - `ProfileLocaleHydration` component (`src/components/layout/ProfileLocaleHydration.tsx`) calls `hydrateFromProfile()` once after profile fetch (only if no localStorage override)
 
@@ -190,6 +196,7 @@ Subscribes a per-component channel to a specific table and invalidates the given
 - `LoggingErrorBoundary` (`src/components/shared/LoggingErrorBoundary.tsx`) -- React error boundary that logs to `clientLogger`
 - `SearchInput` (`src/components/shared/SearchInput.tsx`) -- debounced search field
 - `SignatureDisplay` (`src/components/shared/SignatureDisplay.tsx`) -- renders base64 signature images
+- `UserPresenceDot` (`src/components/shared/UserPresenceDot.tsx`) -- green/grey dot indicator based on `user.lastSeenAt` within `ONLINE_WINDOW_S`. Tooltip localized via `useI18n()` (Plan C, H-8 fix)
 - `TripTimeline` (`src/components/shared/TripTimeline.tsx`) -- visual timeline of trip state transitions
 - `MachineCard` / `ParcelCard` -- compact card views for machines and parcels
 

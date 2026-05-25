@@ -23,6 +23,7 @@ Expo SDK 54 + Expo Router. Offline-first: all writes go to local SQLite + sync q
 | `loader_operator` | `/(loader)` | `app/(loader)/_layout.tsx` |
 | `driver` | `/(driver)` | `app/(driver)/_layout.tsx` |
 | `geofence_maker` | `/(geofence-maker)` | `app/(geofence-maker)/_layout.tsx` |
+| `depot_manager` | `/(deposit)` | `app/(deposit)/_layout.tsx` (Plan C) |
 | Other/admin | `/(tabs)` | `app/(tabs)/_layout.tsx` |
 
 If `segments[0]` does not match the target segment for the user's role, the auth gate redirects.
@@ -33,6 +34,7 @@ If `segments[0]` does not match the target segment for the user's role, the auth
 **Driver** (`app/(driver)/_layout.tsx`): Cursele Mele (trips), Livrare, Harta, Combustibil, Profil
 **Loader** (`app/(loader)/_layout.tsx`): Scaneaza (scan), Incarcari (bales), Harta, Consumabile, Profil
 **Geofence Maker** (`app/(geofence-maker)/_layout.tsx`): index, farms, map, Profil
+**Deposit Manager** (`app/(deposit)/_layout.tsx`): index (inventory), trips, Profil (Plan C)
 **Admin/fallback** (`app/(tabs)/_layout.tsx`): Home, Scan, Trips, Sync, Profil
 
 All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top of all screens via `useGeofenceNotifications()`.
@@ -49,6 +51,14 @@ All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top o
 | Map | `map.tsx` | `MapScreen` -- parcels, machine locations, OSRM routing |
 | Stats | `stats.tsx` | `OperatorStats` -- personal production charts |
 | Profile | `profile.tsx` | `ProfileScreen` -- view/edit profile, logout |
+| Parcel detail | `(baler)/parcel/[parcelId].tsx` | Baler workflow for a specific parcel -- `BalerEntryCountdown`, `HarvestFinishPicker` (Plan B) |
+
+### Deposit Manager (`app/(deposit)/`)
+| Screen | File | Purpose |
+|---|---|---|
+| Index | `index.tsx` | Depot inventory overview (incoming trips, bale counts) |
+| Trips | `trips.tsx` | Trips arriving at this depot |
+| Profile | `profile.tsx` | `ProfileScreen` |
 
 ### Driver (`app/(driver)/`)
 | Screen | File | Purpose |
@@ -177,6 +187,14 @@ Mounted in every role-specific tab layout (baler, driver, loader) as an absolute
 - `MapScreen` (`src/components/map/MapScreen.tsx`): screen-level component that fetches parcel/machine data and sends commands to MapView
 - `ParcelInfoSheet` (`src/components/map/ParcelInfoSheet.tsx`): bottom sheet shown on parcel tap
 
+### PointPicker (`src/components/map/PointPicker.tsx`) (Plan A)
+
+2D satellite tile map with a centered pin mechanism (like Google Earth point placement, not a 3D globe). A round pin is fixed at the viewport center; the user pans the map under it. An "Add point" button commits the center coordinate as a new geofence vertex. Used by `geofence-maker` role to build parcel boundaries interactively.
+
+### Heartbeat (`src/lib/heartbeat.ts`) (Plan C)
+
+Sends `POST /api/v1/profile/heartbeat` every 30 seconds while the app is in the foreground. Updates `users.last_seen_at` on the server. Used by `UserPresenceDot` in admin-web to show online status.
+
 ### Map bridge protocol (`src/map/map-bridge.ts`)
 
 **Commands (RN -> WebView):**
@@ -253,7 +271,7 @@ Extended delivery flow with additional steps: `DeterioratedBalesInput` (count da
 - **Save**: creates local operation, updates trip to `loaded`, enqueues sync
 
 ### FuelEntryFlow (`src/components/features/fuel/FuelEntryFlow.tsx`)
-**Steps**: liters -> odometer -> photo -> confirm
+**Steps**: liters -> odometer -> photo -> confirm (simplified in Plan C — odometer step is now optional for baler operators)
 - **liters**: `NumericPad` (6 digits, decimal support)
 - **odometer**: `NumericPad` for km reading (7 digits)
 - **photo**: `PhotoCapture` for receipt (optional, can skip)
@@ -281,12 +299,14 @@ Writes NDJSON to `DocumentDirectory/strawboss-logs/{category}/{YYYY-MM-DD}.log`.
 **7-day cleanup**: `cleanupOldMobileLogFiles()` lists files in each category dir, deletes `.log` files with dates older than 7 days. Runs on app mount and every `AppState` resume.
 
 ### Idempotency keys
-Each sync queue entry carries a unique `idempotency_key`:
+Each sync queue entry carries a unique `idempotency_key`. Keys MUST be stable across retries — computed once from the entity UUID and stored (never regenerated from `Date.now()` or `Math.random()`):
 - `bale_production_{uuid}` -- baler production records
 - `fuel_log_{id}` -- fuel entries
 - `consumable_log_{id}` -- consumable entries
 - `deliver_{tripId}` -- delivery completion
 - `load_{tripId}` -- loading completion
+
+`load-bales.tsx` stabilizes the key by generating it at screen mount and holding it in a `useRef` (H-7 fix, commit `e03b4e4`).
 
 ### In-flight reset (`SyncQueueRepo.resetInFlight()`)
 On sync start, all entries stuck as `in_flight` (from a crashed previous sync) are reset to `pending`. This prevents data loss on interrupted syncs.
@@ -346,6 +366,10 @@ Cloud builds via Expo Application Services. Profile configured in `eas.json`.
 - `useLocationTracking` -- see Location Tracking section
 - `useMyTasks` -- see Task List section
 - `useCurrentLoaderParcel` -- GPS-based active parcel detection for loader operators. GPS timeout 15s (retry 1x after 5s). Returns status: `locating` | `found` | `not_found` | `multiple_active` | `error`. `multiple_active` means >1 parcels match the GPS position.
+- `useDepotInventory` -- fetches depot inventory via `GET /deposit-inventory/:depotId` for the deposit manager role.
+- `useLoaderRecallPrompt` -- listens for `loader_recall_prompt` push notifications; surfaces a recall card on the loader home screen.
+- `useCachedParcels` -- returns parcels from local SQLite cache (for offline parcel picker in baler workflow).
+- `useGeofenceNotifications` -- extended in Plan A to handle new notification types from the geofence-editor workflow.
 
 ---
 

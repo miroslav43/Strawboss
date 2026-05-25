@@ -8,7 +8,7 @@ Entry point: `backend/service/src/main.ts` -- boots a `NestFastifyApplication`, 
 
 ## Module Structure
 
-The `AppModule` (`src/app.module.ts`) imports 28 feature modules:
+The `AppModule` (`src/app.module.ts`) imports 30 feature modules:
 
 | Module | Path | Purpose |
 |---|---|---|
@@ -42,6 +42,8 @@ The `AppModule` (`src/app.module.ts`) imports 28 feature modules:
 | `NotificationsModule` | `src/notifications/` | Expo push token registration + send + geofence confirm |
 | `GeofenceModule` | `src/geofence/` | ST_Contains polling + enter/exit detection |
 | `MobileLogsModule` | `src/mobile-logs/` | Ingest batched NDJSON log entries from mobile devices |
+| `DepositInventoryModule` | `src/deposit-inventory/` | Depot list and inventory for `depot_manager` role (Plan C) |
+| `ReportsModule` | `src/reports/` | Extended report queries (KmPerTruck, etc.) |
 
 Global providers (registered in `AppModule.providers`):
 
@@ -94,6 +96,8 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 - `POST /trips/:id/cancel` -- @Roles(admin) -- any pre-completed -> cancelled
 - `POST /trips/:id/dispute` -- @Roles(admin) -- delivered -> disputed
 - `POST /trips/:id/resolve-dispute` -- @Roles(admin) -- disputed -> completed or delivered
+- `POST /trips/:id/next-iteration` -- @Roles(admin, loader_operator) -- create next iteration trip for same course (Plan C multi-iteration)
+- `POST /trips/:id/recall-loader` -- @Roles(admin, dispatcher) -- send loader-recall push when truck is idle (Plan C)
 
 ### CMR (`src/documents/cmr/cmr.controller.ts`)
 - `POST /trips/:tripId/generate-cmr` -- @Roles(admin, dispatcher) -- on-demand CMR PDF generation
@@ -108,6 +112,7 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 - `GET /location/machines` -- @Roles(admin) -- last known position of all machines (JOIN with users)
 - `GET /location/related-machines` -- any authenticated -- positions of machines sharing today's assignments (siblings via parent_assignment_id)
 - `GET /location/machines/:machineId/route?from=...&to=...` -- @Roles(admin) -- GPS route history (up to 50,000 points)
+- `GET /location/machines/:machineId/km-by-day?from=...&to=...` -- @Roles(admin) -- km driven per day (returns `KmByDayResponse`)
 
 ### Profile (`src/profile/profile.controller.ts`)
 - `GET /profile` -- any authenticated -- current user's profile
@@ -117,6 +122,7 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 ### Notifications (`src/notifications/notifications.controller.ts`)
 - `POST /notifications/register-token` -- any authenticated -- register/update Expo push token
 - `POST /notifications/confirm-parcel-done` -- @Roles(admin, baler_operator) -- mark assignment done + record bale production
+- `POST /notifications/loader-recall-response` -- @Roles(loader_operator) -- loader's yes/no answer to a truck-idle recall prompt (Plan C)
 
 ### Bale Productions (`src/bale-productions/bale-productions.controller.ts`)
 - `GET /bale-productions` -- any authenticated -- list with filters (operatorId, parcelId, dateFrom, dateTo)
@@ -210,6 +216,13 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 ### Mobile Logs (`src/mobile-logs/mobile-logs.controller.ts`)
 - `POST /logs/mobile` -- any authenticated -- ingest NDJSON log entries (validated via `mobileLogIngestSchema`)
 
+### Deposit Inventory (`src/deposit-inventory/deposit-inventory.controller.ts`)
+- `GET /deposit-inventory/depots` -- any authenticated -- list depots for the caller's org (Plan C)
+- `GET /deposit-inventory/:depotId` -- any authenticated -- inventory + incoming trips for a depot (org-scoped)
+
+### Profile Heartbeat
+- `POST /profile/heartbeat` -- any authenticated -- updates `users.last_seen_at` to now (mobile calls every 30s, Plan C)
+
 ---
 
 ## Sync Service (`src/sync/sync.service.ts`)
@@ -269,6 +282,7 @@ Two-stage generation via BullMQ:
 | `alert-evaluation` | every 15 min | `AlertsProcessor` -- checks odometer/GPS discrepancy + timing anomalies |
 | `reconciliation` | every 60 min | `ReconciliationProcessor` -- bale count + fuel reconciliation |
 | `sync-cleanup` | daily 02:00 (cron) | `SyncCleanupProcessor` -- purges idempotency records > 30 days |
+| `truck-idle-check` | on-demand (queued after `start-loading`) | `TruckIdleProcessor` -- checks if truck has been idle > `STRAWBOSS_TRUCK_IDLE_THRESHOLD_MIN` (default 30 min); sends loader-recall push if so (Plan C) |
 
 The `cmr-generation` queue is on-demand only (triggered by trip completion or manual endpoint).
 
@@ -309,6 +323,7 @@ Additional from `.env.example`:
 | `NEXT_PUBLIC_API_URL` | Public API URL for admin-web production build |
 | `CORS_EXTRA_ORIGINS` | Comma-separated extra CORS origins |
 | `LOG_ROOT` | Custom log directory (Docker: `/app/logs`) |
+| `STRAWBOSS_TRUCK_IDLE_THRESHOLD_MIN` | Minutes before truck-idle BullMQ job fires a loader-recall push (default: 30, coerced int > 0) |
 | `REDIS_PASSWORD` | Redis password for Docker Compose |
 | `CERTBOT_EMAIL` | Let's Encrypt cert email |
 

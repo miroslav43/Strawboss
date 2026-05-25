@@ -38,9 +38,10 @@ Defined in `packages/validation/src/helpers/`:
 
 ### Parcel (`schemas/parcel.schema.ts`)
 
-- `harvestStatusSchema`: `z.enum(["planned", "to_harvest", "harvesting", "harvested"])`.
+- `harvestStatusSchema`: `z.nativeEnum(HarvestStatus)` — all 8 values (`planned` … `completed`).
+- `cropTypeSchema`: `z.nativeEnum(CropType)` — `grau`, `orz`, `rapita`, `plante_nutret`.
 - `parcelSchema`: Full entity. `areaHectares` must be positive. `centroid` validated as geoPoint.
-- `createParcelSchema`: All fields optional (code and name auto-generated). `areaHectares` positive.
+- `createParcelSchema`: All fields optional (code and name auto-generated). `areaHectares` positive. Optional `cropType`.
 - `updateParcelSchema`: All fields partial.
 
 ### Machine (`schemas/machine.schema.ts`)
@@ -115,6 +116,11 @@ Defined in `packages/validation/src/helpers/`:
 ### Trip Create (`dtos/trip-create.schema.ts`)
 
 `tripCreateDtoSchema`: `sourceParcelId`, `truckId`, `driverId` (UUIDs required). Optional `loaderId`, `loaderOperatorId`, `destinationName`, `destinationAddress`, `destinationCoords` (geoPoint).
+
+### Multi-Iteration Trip DTOs
+
+- `nextIterationDtoSchema`: DTO for creating the next trip iteration on the same course (Plan C). Contains reference to parent trip and loader recall answer.
+- `loaderRecallResponseSchema`: `{ tripId: UUID, recallAnswer: 'yes' | 'no' }` — mobile loader's response to a truck-idle recall prompt sent via push notification.
 
 ### Trip Transitions (`dtos/trip-transition.schema.ts`)
 

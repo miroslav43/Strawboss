@@ -1,6 +1,6 @@
 # @strawboss/api
 
-Shared data layer consumed by both `admin-web` and `mobile`. Provides the `ApiClient` class, Supabase client factory, TanStack Query key factory, and 60+ React Query hooks.
+Shared data layer consumed by both `admin-web` and `mobile`. Provides the `ApiClient` class, Supabase client factory, TanStack Query key factory, and 24 React Query hook files (index counts as one file; includes `useLocationKmByDay` added in Plan C).
 
 **Source:** `packages/api/src/`
 
@@ -58,7 +58,7 @@ Centralized TanStack Query key definitions. Every hook references these for cach
 | `documents` | `.all`, `.byTrip(tripId)`, `.detail(id)` |
 | `alerts` | `.all`, `.list(filters?)`, `.unacknowledged()` |
 | `dashboard` | `.overview()`, `.production(filters?)`, `.costs(filters?)`, `.antiFraud()`, `.trending()` |
-| `location` | `.machines()`, `.route(machineId, from, to)`, `.related()` |
+| `location` | `.machines()`, `.route(machineId, from, to)`, `.related()`, `.kmByDay(machineId, from, to)` |
 | `auth` | `.session()` |
 | `sync` | `.status()` |
 | `baleProductions` | `.all`, `.list(filters?)`, `.byOperator(operatorId)`, `.stats(filters?)` |
@@ -170,6 +170,7 @@ Mutations auto-invalidate related query keys on success.
 | `useDeactivateUser(client)` | `DELETE /api/v1/admin/users/:id` | Soft-delete |
 | `useMachineLocations(client)` | `GET /api/v1/location/machines` | Polls every 30s |
 | `useRouteHistory(client, machineId, from, to)` | `GET /api/v1/location/machines/:id/route` | |
+| `useLocationKmByDay(client, machineId, from, to)` | `GET /api/v1/location/machines/:id/km-by-day` | Returns `KmByDayResponse` |
 | `useSyncStatus(client)` | `GET /api/v1/sync/status` | |
 | `useSyncPush(client)` | `POST /api/v1/sync/push` | |
 | `useSyncPull(client)` | `POST /api/v1/sync/pull` | |

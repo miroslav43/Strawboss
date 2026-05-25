@@ -22,20 +22,27 @@ Defined in `packages/types/src/common.ts`:
 
 Extends `Timestamps`, `SoftDelete`.
 
-**Enum `UserRole`:** `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`
+**Enum `UserRole`:** `super_admin`, `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`, `depot_manager`
 
 | Field | Type |
 |---|---|
 | `id` | `string` (UUID) |
 | `email` | `string` |
+| `username` | `string \| null` |
+| `pin` | `string \| null` |
 | `phone` | `string \| null` |
 | `fullName` | `string` |
 | `role` | `UserRole` |
 | `isActive` | `boolean` |
 | `locale` | `string` |
 | `avatarUrl` | `string \| null` |
+| `signatureSpecimenUrl` | `string \| null` |
 | `lastLoginAt` | `string \| null` |
+| `lastSeenAt` | `string \| null` (Plan C heartbeat, updated by `POST /profile/heartbeat`) |
+| `isOnline` | `boolean \| undefined` (derived, not stored) |
 | `assignedMachineId` | `string \| null` |
+| `organizationId` | `string \| null \| undefined` (present on profile responses) |
+| `organizationSlug` | `string \| null \| undefined` |
 
 ### Farm (`entities/farm.ts`)
 
@@ -47,10 +54,12 @@ Fields: `id`, `name`, `address`, `phone`, `fiscalCode`, `registrationNumber`, `b
 
 Extends `Timestamps`, `SoftDelete`.
 
-**Enum `ParcelStatus`:** `active`, `inactive`
-**Enum `HarvestStatus`:** `planned`, `to_harvest`, `harvesting`, `harvested`
+**Enum `ParcelStatus`:** `active`, `inactive` (@deprecated T9.2)
+**Enum `CropType`:** `grau`, `orz`, `rapita`, `plante_nutret` (T9.1, nullable on storage)
+**Enum `HarvestStatus`:** `planned`, `to_harvest`, `harvesting`, `partial_harvested`, `harvested`, `in_loading`, `loaded`, `completed` (T9.10 extended ladder)
+**Const `HARVEST_STATUS_RANK`:** `Record<HarvestStatus, number>` — mirrors `harvest_status_rank()` SQL function (0–7).
 
-Fields: `id`, `code`, `name`, `areaHectares`, `boundary` (GeoJSON string), `centroid` (GeoPoint), `address`, `municipality`, `farmtrackGeofenceId`, `farmId`, `notes`, `isActive`, `harvestStatus`.
+Fields: `id`, `code`, `name` (@deprecated T9.3), `areaHectares`, `boundary` (GeoJSON string), `centroid` (GeoPoint), `address`, `municipality`, `farmtrackGeofenceId`, `farmId`, `notes`, `isActive` (@deprecated T9.2), `harvestStatus`, `cropType: CropType | null`.
 
 ### Machine (`entities/machine.ts`)
 
@@ -67,7 +76,7 @@ Extends `Timestamps`, `SoftDelete`. The core domain entity.
 
 **Enum `TripStatus`:** `planned`, `loading`, `loaded`, `in_transit`, `arrived`, `delivering`, `delivered`, `completed`, `cancelled`, `disputed`
 
-Key fields: `tripNumber`, `status`, `sourceParcelId`, `sourceParcelAuto`, `loaderId`, `truckId`, `loaderOperatorId`, `driverId`, `baleCount`, timestamps for each phase (`loadingStartedAt` through `completedAt`), odometer readings (`departureOdometerKm`, `arrivalOdometerKm`), destination info, weight data (`grossWeightKg`, `tareWeightKg`, `netWeightKg`), receiver info (`receiverName`, `receiverSignatureUrl`), `loaderSignatureUrl` (set at complete-loading), `driverSignatureUrl` (set at depart), `deterioratedBalesCount` (set at confirm-delivery), `fraudFlags`, `clientId`, `syncVersion`.
+Key fields: `tripNumber`, `status`, `sourceParcelId`, `sourceParcelAuto`, `loaderId`, `truckId`, `loaderOperatorId`, `driverId`, `baleCount`, timestamps for each phase (`loadingStartedAt` through `completedAt`), odometer readings (`departureOdometerKm`, `arrivalOdometerKm`), destination info, weight data (`grossWeightKg`, `tareWeightKg`, `netWeightKg`), receiver info (`receiverName`, `receiverSignatureUrl`), `loaderSignatureUrl` (set at complete-loading), `driverSignatureUrl` (set at depart), `deterioratedBalesCount` (set at confirm-delivery), `fraudFlags`, `clientId`, `syncVersion`, `parentTripId: string | null` (Plan C multi-iteration), `iterationIndex: number` (1-based, default 1).
 
 ### TaskAssignment (`entities/task-assignment.ts`)
 
@@ -152,3 +161,4 @@ Fields: `id`, `tableName`, `recordId`, `operation`, `oldValues`, `newValues`, `c
 - **Dashboard DTOs** (`dtos/dashboard.dto.ts`): `DashboardOverview`, `ProductionReport`, `CostReport`, `AntiFraudReport`.
 - **LocationReportDto** (`dtos/location-report.dto.ts`): `machineId`, `lat`, `lon`, optional `accuracyM`, `headingDeg`, `speedMs`, `recordedAt`.
 - **RouteHistoryResponse** (`dtos/route-history.dto.ts`): `machineId`, `machineCode`, `machineType`, `from`, `to`, `totalPoints`, `points: RoutePoint[]`.
+- **KmByDayResponse** (`dtos/route-history.dto.ts`): `machineId`, `from`, `to`, `days: { date: string; km: number }[]`.

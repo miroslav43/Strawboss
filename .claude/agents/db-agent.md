@@ -46,12 +46,16 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 00022_missing_rls_policies.sql      -- Fill in missing policies
 00023_check_constraints_and_audit.sql -- CHECK constraints, audit improvements
 00024_partial_indexes.sql           -- Partial indexes with WHERE deleted_at IS NULL
-... (migrations 00025–00037 added in subsequent feature branches)
+... (migrations 00025–00041 added in subsequent feature branches)
+00042_parcel_crop_and_harvest_extended.sql  -- crop_type enum, harvest_status ladder extension (8 values), harvest_status_rank(), trg_prevent_harvest_status_downgrade
+00043_trip_multi_iteration_and_presence.sql -- parent_trip_id/iteration_index on trips, users.last_seen_at, trip_courses view, depot_manager role, truck-idle indexes
 ```
 
 ### Key enums (current values)
 
-- `user_role`: `admin`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`
+- `user_role`: `admin`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`, `depot_manager` (added 00043)
+- `harvest_status`: `planned`, `to_harvest`, `harvesting`, `partial_harvested`, `harvested`, `in_loading`, `loaded`, `completed` (extended 00042; monotonic ladder enforced by `trg_prevent_harvest_status_downgrade`)
+- `crop_type`: `grau`, `orz`, `rapita`, `plante_nutret` (added 00042)
 - `document_status`: `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
 
 ### Key design patterns
@@ -135,7 +139,7 @@ The backend checks this table before processing each sync mutation. If the key e
 
 ### Writing new migrations
 
-The next migration should be `supabase/migrations/00038_<descriptive_name>.sql` (current last: 00037).
+The next migration should be `supabase/migrations/00044_<descriptive_name>.sql` (current last: 00043).
 
 Rules:
 1. **Idempotent**: Safe to run multiple times.

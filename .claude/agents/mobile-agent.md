@@ -27,6 +27,7 @@ apps/mobile/app/
   (loader)/             -- Loader operator screens
   (driver)/             -- Driver screens
   (geofence-maker)/     -- Geofence maker screens (index, farms, map, profile, _layout)
+  (deposit)/            -- Depot manager screens (index, trips, profile, _layout) — Plan C
   (tabs)/               -- Admin/dispatcher tab layout (fallback)
   baler-ops/            -- Baler operation flows
   driver-ops/           -- Driver operation flows
@@ -43,6 +44,7 @@ apps/mobile/app/
 - `loader_operator` -> `/(loader)`
 - `driver` -> `/(driver)`
 - `geofence_maker` -> `/(geofence-maker)`
+- `depot_manager` -> `/(deposit)` (Plan C)
 - admin/dispatcher (default) -> `/(tabs)`
 
 The `AuthGate` component fetches the user profile via `mobileApiClient.get<User>('/api/v1/profile')` after authentication, stores the role in `useAuthStore`, and redirects to the correct layout group.

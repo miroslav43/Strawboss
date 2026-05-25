@@ -23,7 +23,7 @@ Every feature is a NestJS module in its own directory under `backend/service/src
 - `<feature>.controller.ts` -- HTTP endpoints under `/api/v1/<feature>`
 - `<feature>.service.ts` -- business logic and database queries
 
-Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bale-productions`, `fuel-logs`, `alerts`, `reconciliation`, `parcels`, `machines`, `documents`, `jobs`, `notifications`, `mobile-logs`, `health`, `farms`, `delivery-destinations`, `parcel-daily-status`, `admin-users`, `dashboard`, `profile`, `location`, `audit`, `consumable-logs`.
+Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bale-productions`, `fuel-logs`, `alerts`, `reconciliation`, `parcels`, `machines`, `documents`, `jobs`, `notifications`, `mobile-logs`, `health`, `farms`, `delivery-destinations`, `parcel-daily-status`, `admin-users`, `dashboard`, `profile`, `location`, `audit`, `consumable-logs`, `deposit-inventory` (Plan C), `reports`.
 
 ### Database access
 - Uses Drizzle ORM with `DrizzleProvider` injected into services.
@@ -62,7 +62,7 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - Pull returns deltas based on `sync_version`.
 
 ### BullMQ jobs
-- Queue constants in `jobs/queues.ts`: `alert-evaluation`, `reconciliation`, `cmr-generation`, `sync-cleanup`, `geofence-check`.
+- Queue constants in `jobs/queues.ts`: `alert-evaluation`, `reconciliation`, `cmr-generation`, `sync-cleanup`, `geofence-check`, `truck-idle-check` (Plan C, `QUEUE_TRUCK_IDLE_CHECK`).
 - `JobSchedulerService` (`jobs/job-scheduler.service.ts`): Seeds repeating jobs on startup via `upsertJobScheduler`.
 - Processors are `@Processor(QUEUE_NAME)` classes in their respective module directories.
 - **CMR generation** is two-stage: job payload includes `{ tripId, stage: 1 | 2 }`. Stage 1 is queued at `depart` (partial PDF), stage 2 at `complete` (final PDF). `CmrProcessor` reads `job.data.stage` to select the rendering path.
