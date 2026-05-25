@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, Plus, Warehouse } from 'lucide-react';
+import { Maximize2, Plus } from 'lucide-react';
 import type {
   Parcel,
   MachineLastLocation,
@@ -1007,7 +1007,7 @@ export function LeafletMap({
                   : 'border-neutral-200 bg-white text-neutral-700 hover:bg-blue-50'
               }`}
             >
-              <Warehouse className="h-3.5 w-3.5 shrink-0" />
+              <Plus className="h-3.5 w-3.5 shrink-0" />
               {t('map.drawDepositGeofence')}
             </button>
           </div>

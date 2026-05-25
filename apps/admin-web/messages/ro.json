@@ -181,8 +181,8 @@
     "showPanel": "Arată panoul",
     "drawNewField": "Câmp nou",
     "drawNewFieldTooltip": "Desenează limita unui câmp nou",
-    "drawDepositGeofence": "Geofence depozit",
-    "drawDepositGeofenceTooltip": "Desenează limita depozitului (albastru pe hartă)",
+    "drawDepositGeofence": "Depozit nou",
+    "drawDepositGeofenceTooltip": "Adaugă un depozit nou (desenează limita pe hartă)",
     "depositGeofence": {
       "drawHint": "Desenează poligonul depozitului pe hartă",
       "title": "Geofence depozit",

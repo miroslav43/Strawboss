@@ -181,8 +181,8 @@
     "showPanel": "Show panel",
     "drawNewField": "New field",
     "drawNewFieldTooltip": "Draw a new parcel boundary",
-    "drawDepositGeofence": "Deposit geofence",
-    "drawDepositGeofenceTooltip": "Draw a warehouse boundary (blue on map)",
+    "drawDepositGeofence": "New deposit",
+    "drawDepositGeofenceTooltip": "Add a new deposit (draw the boundary on map)",
     "depositGeofence": {
       "drawHint": "Draw the deposit polygon on the map",
       "title": "Deposit geofence",
