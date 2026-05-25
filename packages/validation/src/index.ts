@@ -39,7 +39,12 @@ export {
   updateMachineSchema,
 } from './schemas/machine.schema.js';
 
-export { tripStatusSchema, tripSchema } from './schemas/trip.schema.js';
+export {
+  tripStatusSchema,
+  tripSchema,
+  nextIterationDtoSchema,
+  loaderRecallResponseSchema,
+} from './schemas/trip.schema.js';
 
 export { baleLoadSchema, createBaleLoadSchema } from './schemas/bale-load.schema.js';
 

@@ -43,6 +43,7 @@ const ALL_ROLES: UserRole[] = [
   UserRole.loader_operator,
   UserRole.driver,
   UserRole.geofence_maker,
+  UserRole.depot_manager,
 ];
 
 const GROUP_ORDER: UserRole[] = [
@@ -62,6 +63,7 @@ const ROLE_LABEL_KEYS: Record<UserRole, string> = {
   [UserRole.loader_operator]: 'accounts.role.loader_operator',
   [UserRole.driver]: 'accounts.role.driver',
   [UserRole.geofence_maker]: 'accounts.role.geofence_maker',
+  [UserRole.depot_manager]: 'accounts.role.depot_manager',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -72,6 +74,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.loader_operator]: 'bg-blue-100 text-blue-700',
   [UserRole.driver]: 'bg-green-100 text-green-700',
   [UserRole.geofence_maker]: 'bg-teal-100 text-teal-700',
+  [UserRole.depot_manager]: 'bg-orange-100 text-orange-700',
 };
 
 const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
@@ -82,6 +85,7 @@ const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
   [UserRole.loader_operator]: <span className="text-sm">#</span>,
   [UserRole.driver]: <span className="text-sm">&gt;</span>,
   [UserRole.geofence_maker]: <span className="text-sm">&#9676;</span>,
+  [UserRole.depot_manager]: <span className="text-sm">&#9636;</span>,
 };
 
 /** Machine type required for each operator role. */

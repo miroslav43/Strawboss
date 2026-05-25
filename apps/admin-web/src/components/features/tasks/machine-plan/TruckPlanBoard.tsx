@@ -18,6 +18,21 @@ import { clientLogger } from '@/lib/client-logger';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { DepositMapModal } from './DepositMapModal';
 import { LoaderPickMapModal } from './LoaderPickMapModal';
+import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
+import { cn } from '@/lib/utils';
+
+// Plan C — assignment shape now includes the optional presence + iterations
+// fields (server is allowed to omit them on machine types that don't have
+// them, e.g. balers).
+interface TripIteration {
+  id: string;
+  tripNumber: string;
+  status: string;
+  iterationIndex: number;
+  baleCount: number;
+  loadingCompletedAt: string | null;
+  completedAt: string | null;
+}
 
 interface Assignment {
   id: string;
@@ -30,7 +45,25 @@ interface Assignment {
   destinationName: string | null;
   destinationCode: string | null;
   status: string;
+  assignedUserName?: string | null;
+  assignedUserLastSeenAt?: string | null;
+  tripId?: string | null;
+  iterations?: TripIteration[];
 }
+
+// Compact badge colors per trip status, used by the iteration list.
+const ITERATION_STATUS_CLASS: Record<string, string> = {
+  planned: 'bg-neutral-100 text-neutral-600',
+  loading: 'bg-blue-100 text-blue-700',
+  loaded: 'bg-indigo-100 text-indigo-700',
+  in_transit: 'bg-violet-100 text-violet-700',
+  arrived: 'bg-fuchsia-100 text-fuchsia-700',
+  delivering: 'bg-orange-100 text-orange-700',
+  delivered: 'bg-emerald-100 text-emerald-700',
+  completed: 'bg-green-100 text-green-700',
+  cancelled: 'bg-neutral-100 text-neutral-500 line-through',
+  disputed: 'bg-red-100 text-red-700',
+};
 
 // ─── TruckPlanBoard ──────────────────────────────────────────────────────────
 
@@ -43,9 +76,9 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
   const [loaderMapForTruckAssignmentId, setLoaderMapForTruckAssignmentId] = useState<string | null>(
     null,
   );
-  const [depositMapForTruckAssignmentId, setDepositMapForTruckAssignmentId] = useState<string | null>(
-    null,
-  );
+  const [depositMapForTruckAssignmentId, setDepositMapForTruckAssignmentId] = useState<
+    string | null
+  >(null);
   const { data: rawAssignments, isLoading } = useTasksByMachineType(apiClient, date, 'truck');
   const { data: rawLoaderAssignments } = useTasksByMachineType(apiClient, date, 'loader');
   const { data: rawMachines } = useMachines(apiClient);
@@ -56,7 +89,10 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
   const updateAssignment = useUpdateTaskAssignment(apiClient);
 
   const assignments = useMemo(() => normalize<Assignment>(rawAssignments), [rawAssignments]);
-  const loaderAssignments = useMemo(() => normalize<Assignment>(rawLoaderAssignments), [rawLoaderAssignments]);
+  const loaderAssignments = useMemo(
+    () => normalize<Assignment>(rawLoaderAssignments),
+    [rawLoaderAssignments],
+  );
   const machines = useMemo(() => normalize<Machine>(rawMachines), [rawMachines]);
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
 
@@ -85,35 +121,22 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
     });
   }, [loaderAssignments]);
 
-  const activeDeposits = useMemo(
-    () => deposits.filter((d) => d.isActive),
-    [deposits],
-  );
+  const activeDeposits = useMemo(() => deposits.filter((d) => d.isActive), [deposits]);
 
-  // Map assignment by machineId (trucks have one assignment each)
-  const truckAssignmentMap = useMemo(() => {
-    const map = new Map<string, Assignment>();
-    for (const a of assignments) {
-      if (!map.has(a.machineId)) map.set(a.machineId, a);
-    }
-    return map;
-  }, [assignments]);
-
-  const assignedTrucks = useMemo(() => {
-    const seen = new Set<string>();
-    return assignments
-      .filter((a) => {
-        if (seen.has(a.machineId)) return false;
-        seen.add(a.machineId);
-        return true;
-      })
-      .map((a) => ({
+  // Plan C — one card per truck *assignment* (T15: multiple trips per day on
+  // the same truck). Previous dedup by machineId hid additional assignments;
+  // now we keep them all and let the board render a separate card per row.
+  const assignedTrucks = useMemo(
+    () =>
+      assignments.map((a) => ({
+        rowKey: a.id,
         machineId: a.machineId,
         code: a.machineCode,
         plate: a.registrationPlate,
-        assignment: truckAssignmentMap.get(a.machineId)!,
-      }));
-  }, [assignments, truckAssignmentMap]);
+        assignment: a,
+      })),
+    [assignments],
+  );
 
   const handleAssignTruck = useCallback(
     (machineId: string) => {
@@ -227,14 +250,20 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {assignedTrucks.map(({ machineId, code, plate, assignment }) => (
-              <div key={machineId} className="rounded-lg border border-green-200 bg-white shadow-sm">
+            {assignedTrucks.map(({ rowKey, code, plate, assignment }) => (
+              <div key={rowKey} className="rounded-lg border border-green-200 bg-white shadow-sm">
                 {/* Truck header */}
                 <div className="flex items-center justify-between rounded-t-lg bg-green-50 px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
                     <span className="font-medium text-neutral-800 text-sm">{code}</span>
                     <span className="text-xs text-neutral-400">{plate}</span>
+                    {assignment.assignedUserName ? (
+                      <span className="ml-2 flex items-center gap-1 text-xs text-neutral-500">
+                        <UserPresenceDot lastSeenAt={assignment.assignedUserLastSeenAt ?? null} />
+                        {assignment.assignedUserName}
+                      </span>
+                    ) : null}
                   </div>
                   <button
                     onClick={() => handleRemoveTruck(assignment.id)}
@@ -303,6 +332,35 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                     </button>
                   </div>
                 </div>
+
+                {/* Plan C — multi-iteration list (T13/T15) */}
+                {(assignment.iterations ?? []).length > 0 ? (
+                  <div className="space-y-1.5 border-t border-neutral-100 px-4 py-3">
+                    <p className="text-xs font-medium text-neutral-500">
+                      {t('tasks.truck.iterations.title')}
+                    </p>
+                    {(assignment.iterations ?? []).map((it) => (
+                      <div key={it.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="font-mono text-neutral-700">
+                          #{it.iterationIndex} · {it.tripNumber}
+                        </span>
+                        <span className="text-neutral-500">
+                          {it.baleCount > 0
+                            ? `${it.baleCount} ${t('tasks.truck.iterations.bales')}`
+                            : '—'}
+                        </span>
+                        <span
+                          className={cn(
+                            'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                            ITERATION_STATUS_CLASS[it.status] ?? 'bg-neutral-100 text-neutral-600',
+                          )}
+                        >
+                          {it.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

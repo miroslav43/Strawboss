@@ -1,10 +1,10 @@
-import { z } from "zod";
-import { TripStatus } from "@strawboss/types";
-import { uuidSchema } from "../helpers/uuid.js";
-import { isoDateSchema } from "../helpers/iso-date.js";
-import { geoPointSchema } from "../helpers/geo.js";
-import { timestampsSchema } from "../helpers/common.js";
-import { softDeleteSchema } from "../helpers/common.js";
+import { z } from 'zod';
+import { TripStatus } from '@strawboss/types';
+import { uuidSchema } from '../helpers/uuid.js';
+import { isoDateSchema } from '../helpers/iso-date.js';
+import { geoPointSchema } from '../helpers/geo.js';
+import { timestampsSchema } from '../helpers/common.js';
+import { softDeleteSchema } from '../helpers/common.js';
 
 export const tripStatusSchema = z.nativeEnum(TripStatus);
 
@@ -20,6 +20,8 @@ export const tripSchema = z
     loaderOperatorId: uuidSchema.nullable(),
     driverId: uuidSchema,
     baleCount: z.number().int().nonnegative(),
+    parentTripId: uuidSchema.nullable(),
+    iterationIndex: z.number().int().min(1),
     loadingStartedAt: isoDateSchema.nullable(),
     loadingCompletedAt: isoDateSchema.nullable(),
     departureOdometerKm: z.number().nonnegative().nullable(),
@@ -51,3 +53,16 @@ export const tripSchema = z
   })
   .merge(timestampsSchema)
   .merge(softDeleteSchema);
+
+// Plan C — multi-iteration DTOs.
+
+export const nextIterationDtoSchema = z.object({
+  recall: z.boolean(),
+  // Optional explicit override — defaults to the current truck.
+  truckId: uuidSchema.optional(),
+});
+
+export const loaderRecallResponseSchema = z.object({
+  tripId: uuidSchema,
+  recall: z.boolean(),
+});

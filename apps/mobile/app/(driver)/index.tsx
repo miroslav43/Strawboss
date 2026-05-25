@@ -453,6 +453,8 @@ export default function DriverTripsScreen() {
                   <View style={styles.inlineRow}>
                     <MaterialCommunityIcons name="map-marker" size={14} color="#5D4037" />
                     <Text style={styles.destination}>{item.destination_name}</Text>
+                    {/* @plan-a:open-maps-button-slot */}
+                    {/* @plan-a:end */}
                   </View>
                 ) : null}
                 <View style={styles.meta}>
@@ -460,6 +462,13 @@ export default function DriverTripsScreen() {
                     <MaterialCommunityIcons name="grain" size={13} color="#8D6E63" />
                     <Text style={styles.metaText}>{item.bale_count} baloți</Text>
                   </View>
+                  {/* @plan-c:iteration-counter @start */}
+                  {item.iteration_index && item.iteration_index > 1 ? (
+                    <View style={styles.planCIterationBadge}>
+                      <Text style={styles.planCIterationText}>Cursa {item.iteration_index}</Text>
+                    </View>
+                  ) : null}
+                  {/* @plan-c:iteration-counter @end */}
                   {item.status === 'arrived' && (
                     <Text style={styles.deliveryHint}>Apasă pentru livrare</Text>
                   )}
@@ -547,6 +556,15 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 13, color: colors.textSecondary },
   deliveryHint: { fontSize: 12, color: '#0A5C36', fontWeight: '600' },
   loadedHint: { fontSize: 12, color: '#0A5C36', fontWeight: '600' },
+  // Plan C — iteration counter badge. Prefixed with plan-letter to avoid
+  // collisions with Plan A styles added inside the marker region.
+  planCIterationBadge: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  planCIterationText: { fontSize: 11, color: '#92400E', fontWeight: '700' },
   emptyText: { fontSize: 15, color: '#374151', fontWeight: '500' },
   emptySubtext: { fontSize: 13, color: colors.textSecondary },
   headerCards: { gap: 12, marginBottom: 4 },

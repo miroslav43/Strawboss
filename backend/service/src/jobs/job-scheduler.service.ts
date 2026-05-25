@@ -8,6 +8,7 @@ import {
   QUEUE_ALERT_EVALUATION,
   QUEUE_RECONCILIATION,
   QUEUE_SYNC_CLEANUP,
+  QUEUE_TRUCK_IDLE_CHECK,
 } from './queues';
 
 /**
@@ -21,6 +22,7 @@ export class JobSchedulerService implements OnModuleInit {
     @InjectQueue(QUEUE_ALERT_EVALUATION) private readonly alertQueue: Queue,
     @InjectQueue(QUEUE_RECONCILIATION) private readonly reconciliationQueue: Queue,
     @InjectQueue(QUEUE_SYNC_CLEANUP) private readonly syncCleanupQueue: Queue,
+    @InjectQueue(QUEUE_TRUCK_IDLE_CHECK) private readonly truckIdleQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -53,8 +55,20 @@ export class JobSchedulerService implements OnModuleInit {
       { name: 'cleanup', data: {} },
     );
 
-    this.winston.info('Repeating jobs seeded: geofence (5m), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00)', {
-      context: 'JobSchedulerService',
-    });
+    // Plan C — truck-idle detection. 5 min cadence; the processor itself
+    // dedups against unacknowledged alerts in the last 60 min so the cadence
+    // is safe.
+    await this.truckIdleQueue.upsertJobScheduler(
+      'truck-idle-repeat',
+      { every: 5 * 60_000 },
+      { name: 'check', data: {} },
+    );
+
+    this.winston.info(
+      'Repeating jobs seeded: geofence (5m), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m)',
+      {
+        context: 'JobSchedulerService',
+      },
+    );
   }
 }

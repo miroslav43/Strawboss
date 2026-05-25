@@ -17,3 +17,6 @@ export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8),
 });
+
+/** Plan C — heartbeat request takes no body. */
+export const heartbeatRequestSchema = z.object({}).strict();

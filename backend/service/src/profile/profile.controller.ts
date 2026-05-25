@@ -42,6 +42,17 @@ export class ProfileController {
   }
 
   /**
+   * POST /api/v1/profile/heartbeat
+   * Plan C — bumps users.last_seen_at. Mobile pings this every ~30 s.
+   * Body is empty; auth is enforced by the global guard.
+   */
+  @Post('heartbeat')
+  async heartbeat(@CurrentUser() currentUser: RequestUser) {
+    await this.profileService.touchLastSeen(currentUser.id);
+    return { ok: true };
+  }
+
+  /**
    * POST /api/v1/profile/change-password
    * Change the current user's password.
    */

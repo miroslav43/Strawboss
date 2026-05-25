@@ -551,7 +551,24 @@
     "summaryTrucks": "Trucks",
     "activeCount": "{{count}} active",
     "overviewEmpty": "No tasks planned for this day.",
-    "overviewHint": "Go to the Balers, Loaders, or Trucks tab to create assignments."
+    "overviewHint": "Go to the Balers, Loaders, or Trucks tab to create assignments.",
+    "online": {
+      "online": "Online",
+      "offline": "Offline",
+      "lastSeen": "Last activity {{when}}",
+      "neverSeen": "Never connected"
+    },
+    "truck": {
+      "iterations": {
+        "title": "Trips on this parcel",
+        "iterationN": "Trip {{n}}",
+        "bales": "bales",
+        "remaining": "{{n}} bales remaining",
+        "recallAwaiting": "Awaiting loader confirmation",
+        "recallDeclined": "Loader did not recall",
+        "idleAlert": "Truck idle for {{min}} min"
+      }
+    }
   },
   "trips": {
     "title": "Trips",
@@ -822,7 +839,8 @@
       "baler_operator": "Baler Operator",
       "loader_operator": "Loader Operator",
       "driver": "Driver",
-      "geofence_maker": "Geofence Maker"
+      "geofence_maker": "Geofence Maker",
+      "depot_manager": "Depot Manager"
     },
     "machineType": {
       "loader": "Loader",

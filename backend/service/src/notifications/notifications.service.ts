@@ -448,4 +448,69 @@ export class NotificationsService {
       },
     );
   }
+
+  // region: plan-c ========================================================
+  // Plan C helpers — appended at end of class to avoid conflict with Plan B
+  // (which also adds helpers in its own region). Do not interleave.
+
+  /**
+   * After a truck completes its trip, prompt the loader operator to recall
+   * the truck for another iteration on the same parcel. The notification
+   * carries the (now-completed) tripId so the mobile client can call
+   * POST /notifications/loader-recall-response with the loader's answer.
+   */
+  async sendTruckUnloadedLoaderPrompt(
+    loaderId: string,
+    tripId: string,
+    truckCode: string,
+  ): Promise<void> {
+    await this.sendPush(
+      loaderId,
+      'Camion descărcat',
+      `Camionul ${truckCode} a descărcat. Îl chemi înapoi?`,
+      {
+        type: 'loader_recall_prompt',
+        tripId,
+        truckCode,
+        actions: ['recall_yes', 'recall_no'],
+      },
+    );
+  }
+
+  /**
+   * Fan out a truck-idle alert push to every admin/dispatcher in the org.
+   * Called by the BullMQ truck-idle-check processor.
+   */
+  async sendTruckIdleAdminAlert(
+    orgId: string | null,
+    truckId: string,
+    truckCode: string,
+    lastSeenAt: string,
+    idleMinutes: number,
+  ): Promise<void> {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`role IN ('admin'::user_role, 'dispatcher'::user_role)`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM users WHERE ${where}`,
+    )) as unknown as { id: string }[];
+
+    const title = 'Camion inactiv';
+    const body = `Camionul ${truckCode} stă neutilizat de ${idleMinutes} min.`;
+    await Promise.all(
+      rows.map((r) =>
+        this.sendPush(r.id, title, body, {
+          type: 'truck_idle',
+          truckId,
+          truckCode,
+          lastSeenAt,
+          idleMinutes,
+        }).catch(() => {}),
+      ),
+    );
+  }
+  // endregion: plan-c =====================================================
 }

@@ -43,6 +43,9 @@ export const TABLES = {
     has_pending_transition INTEGER DEFAULT 0,
     delivery_step_progress INTEGER,
     delivery_draft_json TEXT,
+    -- Plan C — multi-iteration columns. NULL parent_trip_id = root iteration.
+    parent_trip_id TEXT,
+    iteration_index INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     server_version INTEGER DEFAULT 0
@@ -184,5 +187,13 @@ export const TABLES = {
     table_name TEXT PRIMARY KEY,
     server_version INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+
+  // Plan C — write-through cache for the depot dashboard, so the deposit
+  // role still shows yesterday's snapshot on a cold boot offline.
+  deposit_inventory_cache: `CREATE TABLE IF NOT EXISTS deposit_inventory_cache (
+    depot_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
   )`,
 } as const;

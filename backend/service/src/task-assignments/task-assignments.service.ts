@@ -239,6 +239,7 @@ export class TaskAssignmentsService {
         p.name as "parcelName",
         p.code as "parcelCode",
         u.full_name as "assignedUserName",
+        u.last_seen_at as "assignedUserLastSeenAt",
         dd.name as "destinationName",
         dd.code as "destinationCode"
       FROM task_assignments ta
@@ -482,8 +483,10 @@ export class TaskAssignmentsService {
         p.name as "parcelName",
         p.code as "parcelCode",
         u.full_name as "assignedUserName",
+        u.last_seen_at as "assignedUserLastSeenAt",
         dd.name as "destinationName",
-        dd.code as "destinationCode"
+        dd.code as "destinationCode",
+        ta.trip_id as "tripId"
       FROM task_assignments ta
       JOIN machines m ON ta.machine_id = m.id
       LEFT JOIN parcels p ON ta.parcel_id = p.id
@@ -492,6 +495,36 @@ export class TaskAssignmentsService {
       WHERE ${where}
       ORDER BY ta.machine_id, ta.sequence_order ASC`,
     );
+
+    // Plan C — for trucks, enrich each assignment with its trip iterations
+    // (root + descendants by parent_trip_id). The admin TruckPlanBoard renders
+    // these as a vertical stack under each truck card.
+    if (machineType === 'truck') {
+      const rows = result as unknown as Record<string, unknown>[];
+      for (const row of rows) {
+        const tripId = row.tripId as string | null;
+        if (!tripId) {
+          (row as Record<string, unknown>).iterations = [];
+          continue;
+        }
+        const iter = await this.drizzleProvider.db.execute(sql`
+          SELECT
+            id,
+            trip_number AS "tripNumber",
+            status,
+            iteration_index AS "iterationIndex",
+            bale_count AS "baleCount",
+            loading_completed_at AS "loadingCompletedAt",
+            completed_at AS "completedAt"
+          FROM trips
+          WHERE (id = ${tripId}::uuid OR parent_trip_id = ${tripId}::uuid)
+            AND deleted_at IS NULL
+            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+          ORDER BY iteration_index ASC
+        `);
+        (row as Record<string, unknown>).iterations = iter as unknown as Record<string, unknown>[];
+      }
+    }
     return result;
   }
 

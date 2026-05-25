@@ -38,6 +38,7 @@ import {
 } from '@/lib/location';
 import { checkMachineInactivity } from '@/lib/inactivity-alarm';
 import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/background-sync';
+import { startHeartbeat, stopHeartbeat } from '@/lib/heartbeat';
 import { hasSeenOnboarding } from './onboarding';
 import type { User } from '@strawboss/types';
 
@@ -59,6 +60,7 @@ const ROLE_ROUTES: Record<string, string> = {
   loader_operator: '/(loader)',
   driver: '/(driver)',
   geofence_maker: '/(geofence-maker)',
+  depot_manager: '/(deposit)',
 };
 
 function LoadingSplash() {
@@ -360,6 +362,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, profileReady, role]);
 
+  // Plan C — presence heartbeat (T4). Pings /profile/heartbeat every 30 s so
+  // the admin board can render a green dot next to active operators.
+  // Paused when the app is backgrounded by the AppState listener below.
+  useEffect(() => {
+    if (!isAuthenticated || !profileReady || !role) return;
+    startHeartbeat();
+    return () => {
+      stopHeartbeat();
+    };
+  }, [isAuthenticated, profileReady, role]);
+
   // Android only: GPS foreground service for users with an assigned machine.
   useEffect(() => {
     if (!isAuthenticated || !profileReady || !role) return;
@@ -504,9 +517,16 @@ export default function RootLayout() {
   useEffect(() => {
     void cleanupOldMobileLogFiles();
     const sub = AppState.addEventListener('change', (state) => {
+      // Plan C — pause heartbeat in background, resume on foreground.
+      if (state === 'background') {
+        stopHeartbeat();
+      }
       if (state === 'active') {
         void cleanupOldMobileLogFiles();
-        const { userId, assignedMachineId } = useAuthStore.getState();
+        const { userId, assignedMachineId, role: currentRole } = useAuthStore.getState();
+        if (currentRole && userId) {
+          startHeartbeat();
+        }
         if (userId && assignedMachineId) {
           void (async () => {
             await flushPendingLocationReports();

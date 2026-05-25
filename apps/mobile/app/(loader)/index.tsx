@@ -23,6 +23,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 import { useTrucksAtLoader } from '@/hooks/useTrucksAtLoader';
 import { useMyTasks, type MyTask } from '@/hooks/useMyTasks';
+import { useLoaderRecallPrompt } from '@/hooks/useLoaderRecallPrompt';
 import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
 import { colors, radii } from '@strawboss/ui-tokens';
@@ -52,6 +53,8 @@ export default function LoaderHomeScreen() {
   const { modalProps, showModal, hideModal } = useModal();
 
   // Other tasks available for parcel switch — all today's tasks except the currently active parcel.
+  const recall = useLoaderRecallPrompt();
+
   const otherTasks = useMemo(() => {
     const activeParcelId = parcel.status === 'resolved' ? parcel.parcelId : null;
     return tasks.filter(
@@ -219,6 +222,35 @@ export default function LoaderHomeScreen() {
           />
         }
       >
+        {/* Plan C — loader recall prompt card (T13/T14). Shown when an
+            unread loader_recall_prompt push exists. */}
+        {recall.prompt ? (
+          <View style={recallStyles.card}>
+            <Text style={recallStyles.title}>Camion descărcat</Text>
+            <Text style={recallStyles.body}>
+              Camionul {recall.prompt.truckCode} a descărcat cursa. Îl chemi înapoi?
+            </Text>
+            <View style={recallStyles.actions}>
+              <TouchableOpacity
+                style={[recallStyles.btn, recallStyles.btnPrimary]}
+                onPress={() => void recall.respond(true)}
+                disabled={recall.pending}
+              >
+                <Text style={recallStyles.btnPrimaryText}>
+                  {recall.pending ? '...' : 'Cheamă înapoi'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[recallStyles.btn, recallStyles.btnSecondary]}
+                onPress={() => void recall.respond(false)}
+                disabled={recall.pending}
+              >
+                <Text style={recallStyles.btnSecondaryText}>Nu chema</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
         <ParcelBanner
           parcel={parcel}
           otherTasks={otherTasks}
@@ -620,4 +652,30 @@ const styles = StyleSheet.create({
   modalScanner: { flex: 1 },
   errorBox: { backgroundColor: '#FEE2E2', padding: 12 },
   errorText: { color: '#991B1B', fontSize: 13, textAlign: 'center' },
+});
+
+// Plan C — loader recall prompt card styles.
+const recallStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    padding: 14,
+    gap: 10,
+    marginBottom: 12,
+  },
+  title: { fontSize: 16, fontWeight: '700', color: '#92400E' },
+  body: { fontSize: 14, color: '#5B3A0B', lineHeight: 20 },
+  actions: { flexDirection: 'row', gap: 8 },
+  btn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: radii.sm,
+    alignItems: 'center',
+  },
+  btnPrimary: { backgroundColor: '#0A5C36' },
+  btnPrimaryText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  btnSecondary: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB' },
+  btnSecondaryText: { color: '#374151', fontWeight: '600', fontSize: 14 },
 });

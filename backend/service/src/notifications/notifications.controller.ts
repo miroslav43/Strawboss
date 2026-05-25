@@ -1,12 +1,17 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
 import { NotificationsService } from './notifications.service';
+import { TripsService } from '../trips/trips.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { RequestUser } from '../auth/auth.guard';
 import type { UserRole } from '@strawboss/types';
-import { adminSimulatePushSchema, broadcastNotificationSchema } from '@strawboss/validation';
+import {
+  adminSimulatePushSchema,
+  broadcastNotificationSchema,
+  loaderRecallResponseSchema,
+} from '@strawboss/validation';
 
 const registerTokenSchema = z.object({
   token: z.string().min(1),
@@ -26,7 +31,10 @@ const confirmParcelEntrySchema = z.object({
 
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly tripsService: TripsService,
+  ) {}
 
   @Post('register-token')
   async registerToken(
@@ -117,6 +125,27 @@ export class NotificationsController {
       user.id,
       user.organizationId,
     );
+    return { ok: true };
+  }
+
+  /**
+   * Plan C — loader's answer to the "Camion descărcat" prompt.
+   * - recall=true  → create the next iteration trip (push to driver).
+   * - recall=false → record a [recall_no] marker on the trip notes so the
+   *                  truck-idle BullMQ processor can alert admins.
+   */
+  @Post('loader-recall-response')
+  @Roles('admin' as UserRole, 'loader_operator' as UserRole)
+  async loaderRecallResponse(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(loaderRecallResponseSchema))
+    body: { tripId: string; recall: boolean },
+  ) {
+    if (body.recall) {
+      await this.tripsService.createNextIteration(body.tripId, user.organizationId, true);
+    } else {
+      await this.tripsService.recordNoRecall(body.tripId, user.organizationId, user.id);
+    }
     return { ok: true };
   }
 }
