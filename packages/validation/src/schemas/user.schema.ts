@@ -34,7 +34,7 @@ export const userSchema = z
     lastLoginAt: isoDateSchema.nullable(),
     lastSeenAt: isoDateSchema.nullable().optional(),
     assignedMachineId: z.string().uuid().nullable(),
-    assignedDeliveryDestinationId: z.string().uuid().nullable(),
+    assignedDeliveryDestinationId: z.string().uuid().nullable().optional(),
     organizationId: uuidSchema.nullable().optional(),
     organizationSlug: z.string().min(1).nullable().optional(),
   })
