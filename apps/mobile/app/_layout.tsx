@@ -527,6 +527,9 @@ export default function RootLayout() {
         const { userId, assignedMachineId, role: currentRole } = useAuthStore.getState();
         if (currentRole && userId) {
           startHeartbeat();
+          // Pick up admin-side changes (role, depot assignment, signature url)
+          // that may have happened while the app was backgrounded.
+          void queryClient.invalidateQueries({ queryKey: ['profile'] });
         }
         if (userId && assignedMachineId) {
           void (async () => {
