@@ -675,9 +675,11 @@ export class SyncService {
       let ownerFilter = sql``;
       if (_callerId && table === 'trips') {
         if (callerRole === 'depot_manager') {
+          const userOrgFilter =
+            orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
           ownerFilter = sql` AND destination_id = (
             SELECT assigned_delivery_destination_id FROM users
-            WHERE id = ${_callerId}::uuid AND deleted_at IS NULL
+            WHERE id = ${_callerId}::uuid AND deleted_at IS NULL${userOrgFilter}
           )`;
         } else {
           ownerFilter = sql` AND (driver_id = ${_callerId}::uuid OR loader_operator_id = ${_callerId}::uuid)`;
