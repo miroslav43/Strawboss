@@ -2,6 +2,8 @@ import { Controller, Get, Param } from '@nestjs/common';
 import { DepositInventoryService } from './deposit-inventory.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
+import { Roles } from '../auth/roles.guard';
+import { UserRole } from '@strawboss/types';
 
 @Controller('deposit-inventory')
 export class DepositInventoryController {
@@ -12,6 +14,12 @@ export class DepositInventoryController {
    * uses this to pick the depot when the user manages more than one.
    */
   @Get('depots')
+  @Roles(
+    UserRole.admin,
+    UserRole.dispatcher,
+    UserRole.depot_manager,
+    UserRole.driver,
+  )
   listDepots(@CurrentUser() user: RequestUser) {
     return this.depositInventoryService.listDepotsForOrg(
       user.organizationId,
@@ -24,6 +32,12 @@ export class DepositInventoryController {
    * Plan C — inventory + incoming trips for one depot.
    */
   @Get(':depotId')
+  @Roles(
+    UserRole.admin,
+    UserRole.dispatcher,
+    UserRole.depot_manager,
+    UserRole.driver,
+  )
   async getInventory(@Param('depotId') depotId: string, @CurrentUser() user: RequestUser) {
     await this.depositInventoryService.ensureUserCanAccessDepot(
       user.id,
