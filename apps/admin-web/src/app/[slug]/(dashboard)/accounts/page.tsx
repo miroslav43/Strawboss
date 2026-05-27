@@ -867,12 +867,13 @@ function AssignDepotModal({ user, onClose }: { user: User; onClose: () => void }
 
   const active = allDepots.filter((d) => d.isActive);
 
-  const [selected, setSelected] = useState<string | null>(
-    user.assignedDeliveryDestinationId ?? null,
-  );
+  const currentAssignment = user.assignedDeliveryDestinationId ?? null;
+  const [selected, setSelected] = useState<string | null>(currentAssignment);
   const updateUser = useUpdateUser(apiClient);
+  const isDirty = selected !== currentAssignment;
 
   const handleSave = () => {
+    if (!isDirty) return;
     updateUser.mutate(
       { id: user.id, data: { assignedDeliveryDestinationId: selected } },
       { onSuccess: () => onClose() },
@@ -966,7 +967,7 @@ function AssignDepotModal({ user, onClose }: { user: User; onClose: () => void }
           </button>
           <button
             onClick={handleSave}
-            disabled={updateUser.isPending || active.length === 0}
+            disabled={updateUser.isPending || active.length === 0 || !isDirty}
             className={submitBtnCls}
           >
             <Link2 className="h-4 w-4" />
