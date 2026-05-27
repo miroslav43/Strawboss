@@ -357,6 +357,11 @@ export function LeafletMap({
     onShowRouteRef.current = onShowRoute;
   }, [onShowRoute]);
 
+  const onNavigationCompleteRef = useRef(onNavigationComplete);
+  useEffect(() => {
+    onNavigationCompleteRef.current = onNavigationComplete;
+  }, [onNavigationComplete]);
+
   const onDepositSelectRef = useRef(onDepositSelect);
   const onMachineMarkerSelectRef = useRef(onMachineMarkerSelect);
   useEffect(() => {
@@ -825,7 +830,7 @@ export function LeafletMap({
         layer.openPopup();
       }
     }
-    onNavigationComplete?.();
+    onNavigationCompleteRef.current?.();
   }, [navigateToParcelId, mapReady]);
 
   // ── 8. Navigate to machine ─────────────────────────────────────────────
@@ -837,7 +842,7 @@ export function LeafletMap({
       mapInstanceRef.current.setView(marker.getLatLng(), 16, { animate: true });
       marker.openPopup();
     }
-    onNavigationComplete?.();
+    onNavigationCompleteRef.current?.();
   }, [navigateToMachineId, mapReady]);
 
   // ── Edit-boundary handlers ───────────────────────────────────────────────

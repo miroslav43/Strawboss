@@ -8,6 +8,9 @@ import type {
   ReportTimelinePoint,
   TruckDistanceRow,
   TruckDistanceSummary,
+  ConnectedHoursGroupBy,
+  ConnectedHoursReport,
+  ConnectedHoursRow,
 } from '@strawboss/types';
 
 /** T18 — drop GPS legs that imply > 130 km/h (noise) or > 5 km in one segment. */
@@ -21,6 +24,17 @@ interface ReportDateRange {
 
 /** Synthetic farm name for parcels not assigned to any farm. */
 const FARMLESS_NAME = 'Fără fermă';
+
+/**
+ * Coerce a DB value to a finite number; null/undefined/NaN/Infinity all → 0.
+ * Replaces the older `Number(x) || 0` pattern which masked legitimate `0`
+ * values and silently absorbed NaN coming from unexpected DB types.
+ */
+function numberOrZero(v: unknown): number {
+  if (v === null || v === undefined) return 0;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 @Injectable()
 export class ReportsService {
@@ -114,9 +128,9 @@ export class ReportsService {
     for (const row of rows) {
       const farmId = (row.farm_id as string | null) ?? null;
       const key = farmId ?? '__farmless__';
-      const produced = Number(row.produced) || 0;
-      const loaded = Number(row.loaded) || 0;
-      const delivered = Number(row.delivered) || 0;
+      const produced = numberOrZero(row.produced);
+      const loaded = numberOrZero(row.loaded);
+      const delivered = numberOrZero(row.delivered);
 
       const field: FieldReport = {
         parcelId: row.parcel_id as string,
@@ -225,10 +239,10 @@ export class ReportsService {
       depotId: row.depot_id as string,
       depotName: row.depot_name as string,
       depotCode: (row.depot_code as string) ?? '',
-      totalStock: Number(row.total_stock) || 0,
-      receivedInPeriod: Number(row.received_in_period) || 0,
-      arrivingNow: Number(row.arriving_now) || 0,
-      deliveryCount: Number(row.delivery_count) || 0,
+      totalStock: numberOrZero(row.total_stock),
+      receivedInPeriod: numberOrZero(row.received_in_period),
+      arrivingNow: numberOrZero(row.arriving_now),
+      deliveryCount: numberOrZero(row.delivery_count),
     }));
   }
 
@@ -244,6 +258,9 @@ export class ReportsService {
     const MAX_RANGE_DAYS = 366;
     if (range?.dateFrom && range?.dateTo) {
       const spanDays = (Date.parse(range.dateTo) - Date.parse(range.dateFrom)) / 86_400_000;
+      if (spanDays < 0) {
+        throw new BadRequestException('"dateFrom" must be ≤ "dateTo"');
+      }
       if (spanDays > MAX_RANGE_DAYS) {
         throw new BadRequestException(`Date range exceeds ${MAX_RANGE_DAYS} days`);
       }
@@ -295,9 +312,9 @@ export class ReportsService {
     const rows = result as unknown as Record<string, unknown>[];
     return rows.map((row) => ({
       date: row.date as string,
-      produced: Number(row.produced) || 0,
-      loaded: Number(row.loaded) || 0,
-      delivered: Number(row.delivered) || 0,
+      produced: numberOrZero(row.produced),
+      loaded: numberOrZero(row.loaded),
+      delivered: numberOrZero(row.delivered),
     }));
   }
 
@@ -385,8 +402,8 @@ export class ReportsService {
       machineCode: r.machineCode ?? null,
       registrationPlate: r.registrationPlate ?? null,
       date: r.date,
-      distanceKm: Number(r.distanceKm) || 0,
-      pointCount: Number(r.pointCount) || 0,
+      distanceKm: numberOrZero(r.distanceKm),
+      pointCount: numberOrZero(r.pointCount),
     }));
   }
 
@@ -457,8 +474,117 @@ export class ReportsService {
 
     return result.map((r) => ({
       machineId: r.machineId,
-      kmToday: Number(r.kmToday) || 0,
-      kmThisWeek: Number(r.kmThisWeek) || 0,
+      kmToday: numberOrZero(r.kmToday),
+      kmThisWeek: numberOrZero(r.kmThisWeek),
     }));
+  }
+
+  /**
+   * Plan A T4 — total connected hours per user per period.
+   *
+   * Splits each `user_sessions` row across the buckets it overlaps using
+   * `GREATEST(started_at, period_start)` / `LEAST(ended_at, period_end)`, so a
+   * session crossing midnight contributes the correct amount to each day.
+   *
+   * `groupBy` is one of 'day' | 'week' | 'month' (validated at the controller).
+   * Range is capped at 366 days to keep the periods CTE bounded.
+   */
+  async getConnectedHours(
+    orgId: string | null,
+    params: { from: string; to: string; groupBy: ConnectedHoursGroupBy },
+  ): Promise<ConnectedHoursReport> {
+    const fromDate = new Date(params.from);
+    const toDate = new Date(params.to);
+    if (Number.isNaN(fromDate.getTime())) {
+      throw new BadRequestException('Invalid "from" parameter');
+    }
+    if (Number.isNaN(toDate.getTime())) {
+      throw new BadRequestException('Invalid "to" parameter');
+    }
+    if (fromDate > toDate) {
+      throw new BadRequestException('"from" must be ≤ "to"');
+    }
+    const diffDays = Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000);
+    if (diffDays > 366) {
+      throw new BadRequestException('Range cannot exceed 366 days');
+    }
+
+    const orgFilter = orgId !== null ? sql`AND s.organization_id = ${orgId}::uuid` : sql``;
+
+    // Hard-coded SQL fragments per groupBy value (defense-in-depth: removes
+    // any interpolation of user-controlled strings into date_trunc / interval
+    // expressions, even though Zod already restricts to 'day'|'week'|'month').
+    // Trunc at UTC makes the period boundaries DST-independent so a week
+    // crossing a DST switch is always exactly 168 hours.
+    const truncUnit = (
+      {
+        day: sql`'day'`,
+        week: sql`'week'`,
+        month: sql`'month'`,
+      } as const
+    )[params.groupBy];
+    const intervalExpr = (
+      {
+        day: sql`INTERVAL '1 day'`,
+        week: sql`INTERVAL '1 week'`,
+        month: sql`INTERVAL '1 month'`,
+      } as const
+    )[params.groupBy];
+    const periodFormat = (
+      {
+        day: sql`to_char(period_start AT TIME ZONE 'UTC', 'YYYY-MM-DD')`,
+        week: sql`to_char(period_start AT TIME ZONE 'UTC', 'IYYY-"W"IW')`,
+        month: sql`to_char(period_start AT TIME ZONE 'UTC', 'YYYY-MM')`,
+      } as const
+    )[params.groupBy];
+
+    const result = (await this.drizzleProvider.db.execute(sql`
+      WITH periods AS (
+        SELECT period_start,
+               (period_start + ${intervalExpr}) AS period_end
+          FROM generate_series(
+                 date_trunc(${truncUnit}, ${params.from}::date::timestamptz, 'UTC'),
+                 date_trunc(${truncUnit}, ${params.to}::date::timestamptz, 'UTC'),
+                 ${intervalExpr}
+               ) AS period_start
+      ),
+      session_overlaps AS (
+        SELECT s.user_id,
+               p.period_start,
+               GREATEST(s.started_at, p.period_start) AS lo,
+               LEAST(s.ended_at, p.period_end)        AS hi
+          FROM user_sessions s
+          JOIN periods p
+            ON s.started_at < p.period_end
+           AND s.ended_at   > p.period_start
+         WHERE 1=1 ${orgFilter}
+      )
+      SELECT
+        u.id                              AS "userId",
+        u.full_name                       AS "userName",
+        u.role::text                      AS "role",
+        ${periodFormat}                   AS "period",
+        to_char(o.period_start AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "periodStart",
+        ROUND((SUM(EXTRACT(EPOCH FROM (o.hi - o.lo))) / 3600.0)::numeric, 2)::float AS "hours"
+      FROM session_overlaps o
+      JOIN users u ON u.id = o.user_id AND u.deleted_at IS NULL
+      GROUP BY u.id, u.full_name, u.role, o.period_start
+      HAVING SUM(EXTRACT(EPOCH FROM (o.hi - o.lo))) > 0
+      ORDER BY u.full_name, o.period_start
+    `)) as unknown as ConnectedHoursRow[];
+
+    return {
+      groupBy: params.groupBy,
+      from: params.from,
+      to: params.to,
+      rows: result.map((r) => ({
+        userId: r.userId,
+        userName: r.userName,
+        role: r.role,
+        period: r.period,
+        periodStart: r.periodStart,
+        hours: numberOrZero(r.hours),
+      })),
+    };
   }
 }

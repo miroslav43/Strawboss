@@ -65,6 +65,7 @@ const USER_SELECT_COLS = sql`
   avatar_url AS "avatarUrl",
   signature_specimen_url AS "signatureSpecimenUrl",
   last_login_at AS "lastLoginAt",
+  last_seen_at AS "lastSeenAt",
   assigned_machine_id AS "assignedMachineId",
   created_at AS "createdAt", updated_at AS "updatedAt",
   deleted_at AS "deletedAt"
@@ -325,7 +326,9 @@ export class AdminUsersService {
     const normalized = login.trim();
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT email FROM users
-      WHERE lower(btrim(username)) = lower(${normalized}) AND deleted_at IS NULL
+      WHERE lower(btrim(username)) = lower(${normalized})
+        AND deleted_at IS NULL
+        AND is_active = true
       LIMIT 1
     `);
     const rows = result as unknown as { email: string }[];

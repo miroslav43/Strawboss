@@ -18,6 +18,7 @@ import { FarmReportTab } from '@/components/features/reports/FarmReportTab';
 import { DepotReportTab } from '@/components/features/reports/DepotReportTab';
 import { RankingsTab } from '@/components/features/reports/RankingsTab';
 import { KmPerTruckTab } from '@/components/features/reports/KmPerTruckTab';
+import { ConnectedHoursTab } from '@/components/features/reports/ConnectedHoursTab';
 import { CostBreakdownChart } from '@/components/features/reports/CostBreakdownChart';
 import { OperatorProductionChart } from '@/components/features/reports/OperatorProductionChart';
 import type { OperatorProductionRow } from '@/components/features/reports/OperatorProductionChart';
@@ -27,7 +28,14 @@ import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 
-type Tab = 'farms' | 'depots' | 'rankings' | 'costs' | 'operators' | 'kmPerTruck';
+type Tab =
+  | 'farms'
+  | 'depots'
+  | 'rankings'
+  | 'costs'
+  | 'operators'
+  | 'kmPerTruck'
+  | 'connectedHours';
 
 const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'farms', labelKey: 'reports.tabs.farms' },
@@ -36,6 +44,7 @@ const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'costs', labelKey: 'reports.tabs.costs' },
   { id: 'operators', labelKey: 'reports.tabs.operators' },
   { id: 'kmPerTruck', labelKey: 'reports.tabs.kmPerTruck' },
+  { id: 'connectedHours', labelKey: 'reports.tabs.connectedHours' },
 ];
 
 interface CostRow extends Record<string, unknown> {
@@ -78,10 +87,14 @@ function ExportCsvButton({
 }
 
 export default function ReportsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const numberLocale = locale === 'ro' ? 'ro-RO' : 'en-US';
   const [tab, setTab] = useState<Tab>('farms');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [connectedHoursGroupBy, setConnectedHoursGroupBy] = useState<'day' | 'week' | 'month'>(
+    'day',
+  );
 
   const filters: Record<string, string> = {};
   if (dateFrom) filters.dateFrom = dateFrom;
@@ -163,20 +176,22 @@ export default function ReportsPage() {
       key: 'fuelCost',
       header: t('reports.costs.fuelCost'),
       sortable: true,
-      render: (row) => `$${row.fuelCost.toLocaleString()}`,
+      render: (row) => row.fuelCost.toLocaleString(numberLocale),
     },
     {
       key: 'consumableCost',
       header: t('reports.costs.consumableCost'),
       sortable: true,
-      render: (row) => `$${row.consumableCost.toLocaleString()}`,
+      render: (row) => row.consumableCost.toLocaleString(numberLocale),
     },
     {
       key: 'totalCost',
       header: t('reports.costs.total'),
       sortable: true,
       render: (row) => (
-        <span className="font-semibold text-neutral-800">${row.totalCost.toLocaleString()}</span>
+        <span className="font-semibold text-neutral-800">
+          {row.totalCost.toLocaleString(numberLocale)}
+        </span>
       ),
     },
   ];
@@ -478,6 +493,15 @@ export default function ReportsPage() {
         )}
 
         {tab === 'kmPerTruck' && <KmPerTruckTab dateFrom={dateFrom} dateTo={dateTo} />}
+
+        {tab === 'connectedHours' && (
+          <ConnectedHoursTab
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            groupBy={connectedHoursGroupBy}
+            onChangeGroupBy={setConnectedHoursGroupBy}
+          />
+        )}
 
         {tab === 'operators' && (
           <div className="space-y-6">

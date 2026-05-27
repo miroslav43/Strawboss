@@ -30,6 +30,7 @@ import { UserRole } from '@strawboss/types';
 import type { User, Organization } from '@strawboss/types';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { apiClient } from '@/lib/api';
+import { clientLogger } from '@/lib/client-logger';
 import { useI18n } from '@/lib/i18n';
 
 // ── Role config (mirrors /[slug]/(dashboard)/accounts/page.tsx) ───────────
@@ -708,14 +709,18 @@ export default function SuperAdminOrgUsersPage() {
         if (!cancelled) setOrg(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
-          setOrgError(err instanceof Error ? err.message : 'Failed to load organization');
-        }
+        if (cancelled) return;
+        // Show a generic localized message in the UI; keep the raw server
+        // message in the client log for diagnostics so we don't leak internal
+        // server details (paths, stack traces) into the rendered banner.
+        const raw = err instanceof Error ? err.message : String(err);
+        clientLogger.error('orgError raw', { area: 'super-admin-users', orgId, raw });
+        setOrgError(t('superAdmin.users.orgLoadError'));
       });
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [orgId, t]);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createdUser, setCreatedUser] = useState<User | null>(null);

@@ -53,6 +53,7 @@ const GROUP_ORDER: UserRole[] = [
   UserRole.loader_operator,
   UserRole.driver,
   UserRole.geofence_maker,
+  UserRole.depot_manager,
 ];
 
 /** i18n key suffixes for each role — resolved via t('accounts.role.<key>') */
@@ -477,6 +478,7 @@ interface EditForm {
   fullName: string;
   role: UserRole;
   phone: string;
+  isActive: boolean;
 }
 
 function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
@@ -487,6 +489,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     fullName: user.fullName,
     role: user.role,
     phone: user.phone ?? '',
+    isActive: user.isActive,
   });
   const [showPin, setShowPin] = useState(false);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
@@ -505,6 +508,9 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     }
     if (form.pin && form.pin !== user.pin) {
       data.pin = form.pin;
+    }
+    if (form.isActive !== user.isActive) {
+      data.isActive = form.isActive;
     }
     updateUser.mutate({ id: user.id, data }, { onSuccess: () => onClose() });
   };
@@ -619,6 +625,35 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
               placeholder={t('accounts.form.phonePlaceholder')}
             />
           </FormField>
+
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+              {t('accounts.form.accessSection')}
+            </p>
+            <label className="flex cursor-pointer items-start gap-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.isActive}
+                onClick={() => setForm((f) => ({ ...f, isActive: !f.isActive }))}
+                className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                  form.isActive ? 'bg-primary' : 'bg-neutral-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    form.isActive ? 'translate-x-4' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-neutral-700">
+                  {t('accounts.form.isActiveLabel')}
+                </p>
+                <p className="mt-0.5 text-xs text-neutral-500">{t('accounts.form.isActiveHint')}</p>
+              </div>
+            </label>
+          </div>
 
           <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
@@ -1080,20 +1115,11 @@ export default function AccountsPage() {
                         </td>
                         <td className="px-4 py-3 text-neutral-500">{user.phone ?? '—'}</td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1">
-                            {user.isActive ? (
-                              <span className="flex items-center gap-1 text-green-600">
-                                <CheckCircle2 className="h-4 w-4" /> {t('accounts.status.active')}
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-neutral-400">
-                                <XCircle className="h-4 w-4" /> {t('accounts.status.inactive')}
-                              </span>
-                            )}
-                            {user.isActive && (
-                              <UserPresenceDot lastSeenAt={user.lastSeenAt} variant="badge" />
-                            )}
-                          </div>
+                          {user.isActive ? (
+                            <UserPresenceDot lastSeenAt={user.lastSeenAt} variant="badge" />
+                          ) : (
+                            <span className="text-xs text-neutral-300">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">

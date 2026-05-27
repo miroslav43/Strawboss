@@ -233,7 +233,7 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
               <thead className="border-b border-neutral-200 bg-neutral-50">
                 <tr>
                   <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                    {t('reports.kmPerTruck.selectMachines')}
+                    {t('reports.kmPerTruck.colMachine')}
                   </th>
                   {chartRows.map((r) => (
                     <th
@@ -244,7 +244,7 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
                     </th>
                   ))}
                   <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                    Total
+                    {t('reports.connectedHours.total')}
                   </th>
                 </tr>
               </thead>

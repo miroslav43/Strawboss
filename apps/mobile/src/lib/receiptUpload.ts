@@ -69,13 +69,13 @@ export async function uploadReceipt(
   } as any);
 
   try {
-    const response = await mobileApiClient.upload<UploadResponse>(
-      '/api/v1/uploads/receipt',
-      form,
-    );
+    const response = await mobileApiClient.upload<UploadResponse>('/api/v1/uploads/receipt', form);
     mobileLogger.flow('Receipt uploaded', {
       kind,
-      url: response.url,
+      // Log the opaque server-side key, not the URL — the URL may contain a
+      // signed-token query string whose presence in NDJSON logs would persist
+      // a usable credential on disk and inside the uploaded log payload.
+      key: response.key,
       sizeBytes: response.sizeBytes,
     });
     return response;

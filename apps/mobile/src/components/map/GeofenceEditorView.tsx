@@ -59,7 +59,7 @@ export const GeofenceEditorView = forwardRef<GeofenceEditorViewHandle, GeofenceE
           source={{ html: LEAFLET_GEOFENCE_EDITOR_HTML, baseUrl: 'https://localhost/' }}
           style={styles.webview}
           javaScriptEnabled
-          originWhitelist={['*']}
+          originWhitelist={['https://*', 'about:*']}
           onMessage={handleMessage}
           scrollEnabled={false}
           bounces={false}
