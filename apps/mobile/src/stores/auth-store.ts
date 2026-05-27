@@ -90,6 +90,22 @@ export const useAuthStore = create<AuthStore>()(
         signatureSpecimenUrl: state.signatureSpecimenUrl,
       }),
       version: 3,
+      // Preserve sessions across the v2→v3 bump that introduced
+      // assignedDeliveryDestinationId — without this, zustand's default
+      // behaviour is to drop the entire persisted state, logging users out.
+      migrate: (persisted, version) => {
+        const prev = (persisted ?? {}) as Partial<PersistedAuthState>;
+        if (version < 3) {
+          return {
+            userId: prev.userId ?? null,
+            role: prev.role ?? null,
+            assignedMachineId: prev.assignedMachineId ?? null,
+            assignedDeliveryDestinationId: null,
+            signatureSpecimenUrl: prev.signatureSpecimenUrl ?? null,
+          };
+        }
+        return prev as PersistedAuthState;
+      },
     },
   ),
 );
