@@ -255,6 +255,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           role: profile.role,
           userId: profile.id,
           assignedMachineId: profile.assignedMachineId ?? null,
+          assignedDeliveryDestinationId: profile.assignedDeliveryDestinationId ?? null,
           signatureSpecimenUrl: profile.signatureSpecimenUrl ?? null,
         });
         if (__DEV__) console.info('[StrawBoss] Profile fetch ok', { ms: Date.now() - t0 });
