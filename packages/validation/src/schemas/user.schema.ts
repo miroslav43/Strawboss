@@ -34,6 +34,7 @@ export const userSchema = z
     lastLoginAt: isoDateSchema.nullable(),
     lastSeenAt: isoDateSchema.nullable().optional(),
     assignedMachineId: z.string().uuid().nullable(),
+    assignedDeliveryDestinationId: z.string().uuid().nullable(),
     organizationId: uuidSchema.nullable().optional(),
     organizationSlug: z.string().min(1).nullable().optional(),
   })
@@ -66,5 +67,6 @@ export const updateUserSchema = z
     /** Admin can change the 4-digit PIN (also updates Supabase Auth password). */
     pin: z.string().regex(/^\d{4}$/, 'PIN must be 4 digits'),
     assignedMachineId: z.string().uuid().nullable(),
+    assignedDeliveryDestinationId: z.string().uuid().nullable(),
   })
   .partial();
