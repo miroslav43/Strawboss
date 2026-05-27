@@ -1042,7 +1042,7 @@
     "depot": {
       "title": "Asignează depozit",
       "assignAction": "Asignează depozit",
-      "roleHint": "{role} are nevoie de un depozit asignat pentru a opera pe mobile.",
+      "roleHint": "{{role}} are nevoie de un depozit asignat pentru a opera pe mobile.",
       "noneAssigned": "Fără depozit asignat",
       "noCompatible": "Nu există depozite active. Creează unul în pagina Depozite."
     },
