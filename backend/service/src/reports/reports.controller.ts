@@ -5,6 +5,8 @@ import {
   type ReportQuery,
   truckDistanceQuerySchema,
   type TruckDistanceQuery,
+  connectedHoursQuerySchema,
+  type ConnectedHoursQuery,
 } from '@strawboss/validation';
 import { ReportsService } from './reports.service';
 import { Roles } from '../auth/roles.guard';
@@ -67,5 +69,18 @@ export class ReportsController {
   @Get('truck-distance/summary')
   getTruckDistanceSummary(@CurrentUser() user: RequestUser) {
     return this.reportsService.getTruckDistanceSummary(user.organizationId);
+  }
+
+  /** Plan A T4 — connected-hours report aggregated from user_sessions. */
+  @Get('connected-hours')
+  getConnectedHours(
+    @CurrentUser() user: RequestUser,
+    @Query(new ZodValidationPipe(connectedHoursQuerySchema)) query: ConnectedHoursQuery,
+  ) {
+    return this.reportsService.getConnectedHours(user.organizationId, {
+      from: query.from,
+      to: query.to,
+      groupBy: query.groupBy,
+    });
   }
 }

@@ -26,10 +26,11 @@ export interface UpdateUserPayload {
 }
 
 /** List all operator accounts (admin only). */
-export function useAdminUsers(client: ApiClient) {
+export function useAdminUsers(client: ApiClient, options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: ADMIN_USERS_KEY,
     queryFn: () => client.get<User[]>('/api/v1/admin/users'),
+    refetchInterval: options?.refetchInterval,
   });
 }
 

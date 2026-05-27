@@ -1039,6 +1039,13 @@
       "saving": "Se salvează…",
       "errorSave": "Eroare la salvare"
     },
+    "depot": {
+      "title": "Asignează depozit",
+      "assignAction": "Asignează depozit",
+      "roleHint": "{role} are nevoie de un depozit asignat pentru a opera pe mobile.",
+      "noneAssigned": "Fără depozit asignat",
+      "noCompatible": "Nu există depozite active. Creează unul în pagina Depozite."
+    },
     "filter": {
       "searchPlaceholder": "Caută după nume, username, email, telefon…",
       "allStatuses": "Toate statusurile",
