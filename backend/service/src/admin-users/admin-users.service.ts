@@ -221,6 +221,13 @@ export class AdminUsersService {
       }
     }
 
+    // Invariant: only depot_manager may have a depot assignment. When the role
+    // transitions away from depot_manager, force the depot column to null so
+    // the row never lands in an inconsistent state.
+    if (dto.role !== undefined && dto.role !== 'depot_manager') {
+      dto.assignedDeliveryDestinationId = null;
+    }
+
     // Check username uniqueness before update.
     if (dto.username !== undefined) {
       const usernameCheck = await this.drizzleProvider.db.execute(sql`
