@@ -32,6 +32,7 @@ export function useProfile() {
     profile: query.data ?? null,
     role: query.data?.role ?? null,
     assignedMachineId: query.data?.assignedMachineId ?? null,
+    assignedDeliveryDestinationId: query.data?.assignedDeliveryDestinationId ?? null,
     isLoading: query.isLoading,
     error: query.error,
   };
