@@ -13,7 +13,11 @@ export class DepositInventoryController {
    */
   @Get('depots')
   listDepots(@CurrentUser() user: RequestUser) {
-    return this.depositInventoryService.listDepotsForOrg(user.organizationId);
+    return this.depositInventoryService.listDepotsForOrg(
+      user.organizationId,
+      user.id,
+      user.role,
+    );
   }
 
   /**
@@ -25,6 +29,7 @@ export class DepositInventoryController {
       user.id,
       depotId,
       user.organizationId,
+      user.role,
     );
     return this.depositInventoryService.getInventory(depotId, user.organizationId);
   }

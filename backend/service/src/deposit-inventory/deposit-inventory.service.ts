@@ -13,9 +13,15 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class DepositInventoryService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async listDepotsForOrg(orgId: string | null) {
+  async listDepotsForOrg(orgId: string | null, userId?: string, userRole?: string) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
     if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    if (userRole === 'depot_manager' && userId) {
+      conditions.push(sql`id = (
+        SELECT assigned_delivery_destination_id FROM users
+        WHERE id = ${userId}::uuid AND deleted_at IS NULL
+      )`);
+    }
     const where = sql.join(conditions, sql` AND `);
     const rows = await this.drizzleProvider.db.execute(sql`
       SELECT id, code, name, address,
@@ -108,10 +114,23 @@ export class DepositInventoryService {
     userId: string,
     depotId: string,
     orgId: string | null,
+    userRole?: string,
   ): Promise<void> {
-    // v1: any authenticated user inside the org may read.
-    // depot ownership (delivery_destinations.manager_user_id) is reserved
-    // for a future migration.
+    if (userRole === 'depot_manager') {
+      // depot_manager may only access their assigned depot.
+      const rows = (await this.drizzleProvider.db.execute(sql`
+        SELECT u.assigned_delivery_destination_id
+          FROM users u
+         WHERE u.id = ${userId}::uuid AND u.deleted_at IS NULL
+         LIMIT 1
+      `)) as unknown as { assigned_delivery_destination_id: string | null }[];
+      const assignedId = rows[0]?.assigned_delivery_destination_id ?? null;
+      if (assignedId !== depotId) {
+        throw new ForbiddenException('You can only access your assigned depot');
+      }
+      return;
+    }
+    // Other roles: any authenticated user inside the org may read.
     const depotConditions: ReturnType<typeof sql>[] = [
       sql`id = ${depotId}::uuid`,
       sql`deleted_at IS NULL`,
@@ -124,6 +143,5 @@ export class DepositInventoryService {
     if (!rows.length) {
       throw new ForbiddenException('Depot not found in your organization');
     }
-    void userId;
   }
 }

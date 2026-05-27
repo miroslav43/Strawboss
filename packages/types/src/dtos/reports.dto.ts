@@ -46,3 +46,24 @@ export interface ReportTimelinePoint {
   loaded: number;
   delivered: number;
 }
+
+/** Granularity for connected-hours aggregation. */
+export type ConnectedHoursGroupBy = 'day' | 'week' | 'month';
+
+/** A single row returned by the connected-hours report query. */
+export interface ConnectedHoursRow {
+  userId: string;
+  userName: string;
+  role: string;
+  period: string;
+  periodStart: string;
+  hours: number;
+}
+
+/** Full connected-hours report envelope. */
+export interface ConnectedHoursReport {
+  groupBy: ConnectedHoursGroupBy;
+  from: string;
+  to: string;
+  rows: ConnectedHoursRow[];
+}

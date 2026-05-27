@@ -31,6 +31,8 @@ export interface UpdateUserDto {
   isActive?: boolean;
   /** UUID of the machine to assign, or null to unassign. */
   assignedMachineId?: string | null;
+  /** UUID of the delivery_destination depot to assign, or null to unassign. Only valid for depot_manager role. */
+  assignedDeliveryDestinationId?: string | null;
   /** Admin can change the username (must be unique). */
   username?: string;
   /** Admin can change the 4-digit PIN (also updates Supabase Auth password). */
@@ -67,6 +69,7 @@ const USER_SELECT_COLS = sql`
   last_login_at AS "lastLoginAt",
   last_seen_at AS "lastSeenAt",
   assigned_machine_id AS "assignedMachineId",
+  assigned_delivery_destination_id AS "assignedDeliveryDestinationId",
   created_at AS "createdAt", updated_at AS "updatedAt",
   deleted_at AS "deletedAt"
 `;
@@ -156,6 +159,7 @@ export class AdminUsersService {
       dto.phone !== undefined ||
       dto.isActive !== undefined ||
       dto.assignedMachineId !== undefined ||
+      dto.assignedDeliveryDestinationId !== undefined ||
       dto.username !== undefined ||
       dto.pin !== undefined;
 
@@ -189,6 +193,31 @@ export class AdminUsersService {
               `but the selected machine is of type "${rows[0].machine_type}".`,
           );
         }
+      }
+    }
+
+    // Validate depot assignment: only depot_manager role may be assigned a depot.
+    if (dto.assignedDeliveryDestinationId) {
+      const effectiveRole: UserRole = dto.role ?? existing.role;
+      if (effectiveRole !== 'depot_manager') {
+        throw new BadRequestException(
+          `Only depot_manager users may be assigned a delivery destination, ` +
+            `but the effective role is "${effectiveRole}".`,
+        );
+      }
+      const depotConditions: ReturnType<typeof sql>[] = [
+        sql`id = ${dto.assignedDeliveryDestinationId}::uuid`,
+        sql`deleted_at IS NULL`,
+      ];
+      if (orgId !== null) depotConditions.push(sql`organization_id = ${orgId}::uuid`);
+      const depotWhere = sql.join(depotConditions, sql` AND `);
+      const depotRows = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM delivery_destinations WHERE ${depotWhere} LIMIT 1
+      `);
+      if (!(depotRows as unknown as { id: string }[]).length) {
+        throw new NotFoundException(
+          `Delivery destination ${dto.assignedDeliveryDestinationId} not found`,
+        );
       }
     }
 
@@ -248,6 +277,11 @@ export class AdminUsersService {
                                 WHEN ${dto.assignedMachineId !== undefined}
                                 THEN ${dto.assignedMachineId ?? null}::uuid
                                 ELSE assigned_machine_id
+                              END,
+        assigned_delivery_destination_id = CASE
+                                WHEN ${dto.assignedDeliveryDestinationId !== undefined}
+                                THEN ${dto.assignedDeliveryDestinationId ?? null}::uuid
+                                ELSE assigned_delivery_destination_id
                               END,
         username            = COALESCE(${dto.username ?? null}, username),
         pin                 = CASE WHEN ${dto.pin !== undefined} THEN ${dto.pin ?? null} ELSE pin END,

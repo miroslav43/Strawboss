@@ -638,6 +638,7 @@ export class SyncService {
     _callerId?: string,
     orgId: string | null = null,
     supportsTombstones = false,
+    callerRole?: string,
   ): Promise<SyncResponse> {
     const results: SyncResult[] = [];
     const deletions: SyncTombstone[] = [];
@@ -673,7 +674,14 @@ export class SyncService {
       // Add user-scoped WHERE clause for tables with ownership
       let ownerFilter = sql``;
       if (_callerId && table === 'trips') {
-        ownerFilter = sql` AND (driver_id = ${_callerId}::uuid OR loader_operator_id = ${_callerId}::uuid)`;
+        if (callerRole === 'depot_manager') {
+          ownerFilter = sql` AND destination_id = (
+            SELECT assigned_delivery_destination_id FROM users
+            WHERE id = ${_callerId}::uuid AND deleted_at IS NULL
+          )`;
+        } else {
+          ownerFilter = sql` AND (driver_id = ${_callerId}::uuid OR loader_operator_id = ${_callerId}::uuid)`;
+        }
       } else if (
         _callerId &&
         (table === 'bale_productions' || table === 'fuel_logs' || table === 'consumable_logs')
