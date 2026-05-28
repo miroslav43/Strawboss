@@ -51,6 +51,7 @@ export class SyncController {
       user.id,
       user.organizationId,
       callerSupportsTombstones(caps),
+      user.role,
     );
   }
 

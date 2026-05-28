@@ -18,6 +18,7 @@ export interface UpdateUserPayload {
   phone?: string | null;
   isActive?: boolean;
   assignedMachineId?: string | null;
+  assignedDeliveryDestinationId?: string | null;
   /** Admin can edit the username (must be unique). */
   username?: string;
   /** Admin can edit the 4-digit PIN (also updates Supabase Auth password). */
@@ -25,10 +26,11 @@ export interface UpdateUserPayload {
 }
 
 /** List all operator accounts (admin only). */
-export function useAdminUsers(client: ApiClient) {
+export function useAdminUsers(client: ApiClient, options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: ADMIN_USERS_KEY,
     queryFn: () => client.get<User[]>('/api/v1/admin/users'),
+    refetchInterval: options?.refetchInterval,
   });
 }
 

@@ -5,6 +5,8 @@ import type {
   ReportTimelinePoint,
   TruckDistanceRow,
   TruckDistanceSummary,
+  ConnectedHoursReport,
+  ConnectedHoursGroupBy,
 } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
@@ -89,5 +91,27 @@ export function useTruckDistanceSummary(client: ApiClient, options?: ReportQuery
     queryKey: queryKeys.reports.truckDistanceSummary(),
     queryFn: () => client.get<TruckDistanceSummary[]>('/api/v1/reports/truck-distance/summary'),
     enabled: options?.enabled,
+  });
+}
+
+export interface ConnectedHoursFilters extends Record<string, unknown> {
+  from: string;
+  to: string;
+  groupBy: ConnectedHoursGroupBy;
+}
+
+/** Plan A T4 — connected-hours report aggregated from user_sessions. */
+export function useUserConnectedHoursReport(
+  client: ApiClient,
+  filters: ConnectedHoursFilters,
+  options?: ReportQueryOptions,
+) {
+  return useQuery({
+    queryKey: queryKeys.reports.connectedHours(filters),
+    queryFn: () =>
+      client.get<ConnectedHoursReport>(
+        `/api/v1/reports/connected-hours${toQueryString(filters)}`,
+      ),
+    enabled: (options?.enabled ?? true) && !!filters.from && !!filters.to,
   });
 }

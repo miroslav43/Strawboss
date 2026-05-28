@@ -132,5 +132,7 @@ export {
   useReportTimeline,
   useTruckDistanceReport,
   useTruckDistanceSummary,
+  useUserConnectedHoursReport,
 } from './use-reports.js';
+export type { ConnectedHoursFilters } from './use-reports.js';
 export type { ReportQueryOptions, TruckDistanceFilters } from './use-reports.js';

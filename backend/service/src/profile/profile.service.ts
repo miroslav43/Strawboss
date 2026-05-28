@@ -29,6 +29,7 @@ export class ProfileService {
         u.last_login_at AS "lastLoginAt",
         u.last_seen_at AS "lastSeenAt",
         u.assigned_machine_id AS "assignedMachineId",
+        u.assigned_delivery_destination_id AS "assignedDeliveryDestinationId",
         u.notification_prefs AS "notificationPrefs",
         u.organization_id AS "organizationId",
         o.slug AS "organizationSlug",

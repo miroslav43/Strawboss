@@ -1039,6 +1039,13 @@
       "saving": "Saving…",
       "errorSave": "Error saving"
     },
+    "depot": {
+      "title": "Assign depot",
+      "assignAction": "Assign depot",
+      "roleHint": "{{role}} needs an assigned depot to operate on mobile.",
+      "noneAssigned": "No depot assigned",
+      "noCompatible": "No active depots. Create one in the Depots page."
+    },
     "filter": {
       "searchPlaceholder": "Search by name, username, email, phone…",
       "allStatuses": "All statuses",

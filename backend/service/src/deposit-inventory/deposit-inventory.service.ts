@@ -13,9 +13,21 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 export class DepositInventoryService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async listDepotsForOrg(orgId: string | null) {
+  async listDepotsForOrg(orgId: string | null, userId?: string, userRole?: string) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
     if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    if (userRole === 'depot_manager' && userId) {
+      const subConditions: ReturnType<typeof sql>[] = [
+        sql`id = ${userId}::uuid`,
+        sql`deleted_at IS NULL`,
+      ];
+      if (orgId !== null) subConditions.push(sql`organization_id = ${orgId}::uuid`);
+      const subWhere = sql.join(subConditions, sql` AND `);
+      conditions.push(sql`id = (
+        SELECT assigned_delivery_destination_id FROM users
+        WHERE ${subWhere}
+      )`);
+    }
     const where = sql.join(conditions, sql` AND `);
     const rows = await this.drizzleProvider.db.execute(sql`
       SELECT id, code, name, address,
@@ -108,10 +120,29 @@ export class DepositInventoryService {
     userId: string,
     depotId: string,
     orgId: string | null,
+    userRole?: string,
   ): Promise<void> {
-    // v1: any authenticated user inside the org may read.
-    // depot ownership (delivery_destinations.manager_user_id) is reserved
-    // for a future migration.
+    if (userRole === 'depot_manager') {
+      // depot_manager may only access their assigned depot.
+      const userConditions: ReturnType<typeof sql>[] = [
+        sql`u.id = ${userId}::uuid`,
+        sql`u.deleted_at IS NULL`,
+      ];
+      if (orgId !== null) userConditions.push(sql`u.organization_id = ${orgId}::uuid`);
+      const userWhere = sql.join(userConditions, sql` AND `);
+      const rows = (await this.drizzleProvider.db.execute(sql`
+        SELECT u.assigned_delivery_destination_id
+          FROM users u
+         WHERE ${userWhere}
+         LIMIT 1
+      `)) as unknown as { assigned_delivery_destination_id: string | null }[];
+      const assignedId = rows[0]?.assigned_delivery_destination_id ?? null;
+      if (assignedId !== depotId) {
+        throw new ForbiddenException('You can only access your assigned depot');
+      }
+      return;
+    }
+    // Other roles: any authenticated user inside the org may read.
     const depotConditions: ReturnType<typeof sql>[] = [
       sql`id = ${depotId}::uuid`,
       sql`deleted_at IS NULL`,
@@ -124,6 +155,5 @@ export class DepositInventoryService {
     if (!rows.length) {
       throw new ForbiddenException('Depot not found in your organization');
     }
-    void userId;
   }
 }

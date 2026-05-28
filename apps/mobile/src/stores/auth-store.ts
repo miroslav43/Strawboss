@@ -6,6 +6,7 @@ interface AuthProfile {
   role: string;
   userId: string;
   assignedMachineId: string | null;
+  assignedDeliveryDestinationId: string | null;
   signatureSpecimenUrl: string | null;
 }
 
@@ -13,6 +14,7 @@ interface AuthStore {
   role: string | null;
   userId: string | null;
   assignedMachineId: string | null;
+  assignedDeliveryDestinationId: string | null;
   signatureSpecimenUrl: string | null;
   setProfile: (profile: AuthProfile) => void;
   setSignatureSpecimenUrl: (url: string | null) => void;
@@ -42,6 +44,7 @@ interface PersistedAuthState {
   userId: string | null;
   role: string | null;
   assignedMachineId: string | null;
+  assignedDeliveryDestinationId: string | null;
   signatureSpecimenUrl: string | null;
 }
 
@@ -51,12 +54,14 @@ export const useAuthStore = create<AuthStore>()(
       role: null,
       userId: null,
       assignedMachineId: null,
+      assignedDeliveryDestinationId: null,
       signatureSpecimenUrl: null,
       setProfile: (profile) =>
         set({
           role: profile.role,
           userId: profile.userId,
           assignedMachineId: profile.assignedMachineId,
+          assignedDeliveryDestinationId: profile.assignedDeliveryDestinationId,
           signatureSpecimenUrl: profile.signatureSpecimenUrl,
         }),
       setSignatureSpecimenUrl: (url) => set({ signatureSpecimenUrl: url }),
@@ -65,6 +70,7 @@ export const useAuthStore = create<AuthStore>()(
           role: null,
           userId: null,
           assignedMachineId: null,
+          assignedDeliveryDestinationId: null,
           signatureSpecimenUrl: null,
         });
         // Also wipe the persisted storage entry so the next cold boot does
@@ -80,9 +86,26 @@ export const useAuthStore = create<AuthStore>()(
         userId: state.userId,
         role: state.role,
         assignedMachineId: state.assignedMachineId,
+        assignedDeliveryDestinationId: state.assignedDeliveryDestinationId,
         signatureSpecimenUrl: state.signatureSpecimenUrl,
       }),
-      version: 2,
+      version: 3,
+      // Preserve sessions across the v2→v3 bump that introduced
+      // assignedDeliveryDestinationId — without this, zustand's default
+      // behaviour is to drop the entire persisted state, logging users out.
+      migrate: (persisted, version) => {
+        const prev = (persisted ?? {}) as Partial<PersistedAuthState>;
+        if (version < 3) {
+          return {
+            userId: prev.userId ?? null,
+            role: prev.role ?? null,
+            assignedMachineId: prev.assignedMachineId ?? null,
+            assignedDeliveryDestinationId: null,
+            signatureSpecimenUrl: prev.signatureSpecimenUrl ?? null,
+          };
+        }
+        return prev as PersistedAuthState;
+      },
     },
   ),
 );

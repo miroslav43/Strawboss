@@ -29,6 +29,7 @@ export interface User extends Timestamps, SoftDelete {
   /** Derived in API layer (`isOnline = lastSeenAt within ONLINE_WINDOW_S`). Not stored. */
   isOnline?: boolean;
   assignedMachineId: string | null;
+  assignedDeliveryDestinationId: string | null;
   /** Present on profile API responses when joined from organizations. */
   organizationId?: string | null;
   organizationSlug?: string | null;
