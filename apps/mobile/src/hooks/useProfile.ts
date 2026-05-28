@@ -22,6 +22,7 @@ export function useProfile() {
         role: query.data.role,
         userId: query.data.id,
         assignedMachineId: query.data.assignedMachineId ?? null,
+        assignedDeliveryDestinationId: query.data.assignedDeliveryDestinationId ?? null,
         signatureSpecimenUrl: query.data.signatureSpecimenUrl ?? null,
       });
     }
@@ -31,6 +32,7 @@ export function useProfile() {
     profile: query.data ?? null,
     role: query.data?.role ?? null,
     assignedMachineId: query.data?.assignedMachineId ?? null,
+    assignedDeliveryDestinationId: query.data?.assignedDeliveryDestinationId ?? null,
     isLoading: query.isLoading,
     error: query.error,
   };

@@ -18,6 +18,7 @@ export interface UpdateUserPayload {
   phone?: string | null;
   isActive?: boolean;
   assignedMachineId?: string | null;
+  assignedDeliveryDestinationId?: string | null;
   /** Admin can edit the username (must be unique). */
   username?: string;
   /** Admin can edit the 4-digit PIN (also updates Supabase Auth password). */

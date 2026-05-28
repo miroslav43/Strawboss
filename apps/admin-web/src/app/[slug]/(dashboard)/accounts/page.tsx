@@ -24,11 +24,12 @@ import {
   useUpdateUser,
   useUploadUserAvatar,
   useMachines,
+  useDeliveryDestinations,
   type CreateUserPayload,
   type UpdateUserPayload,
 } from '@strawboss/api';
 import { UserRole, MachineType } from '@strawboss/types';
-import type { User, Machine } from '@strawboss/types';
+import type { User, Machine, DeliveryDestination } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { UserAvatar } from '@/components/shared/UserAvatar';
@@ -96,6 +97,9 @@ const ROLE_TO_MACHINE_TYPE: Partial<Record<UserRole, MachineType>> = {
   [UserRole.baler_operator]: MachineType.baler,
   [UserRole.driver]: MachineType.truck,
 };
+
+/** Roles that require an assigned depot. */
+const ROLE_REQUIRES_DEPOT: UserRole[] = [UserRole.depot_manager];
 
 /** i18n key for each machine type — resolved via t('accounts.machineType.<key>') */
 const MACHINE_TYPE_LABEL_KEYS: Record<MachineType, string> = {
@@ -851,6 +855,130 @@ function AssignMachineModal({ user, onClose }: { user: User; onClose: () => void
   );
 }
 
+// ── Assign depot modal ────────────────────────────────────────────────────
+
+function AssignDepotModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const { t } = useI18n();
+  const { data: depotsRaw } = useDeliveryDestinations(apiClient);
+
+  const allDepots: DeliveryDestination[] = Array.isArray(depotsRaw)
+    ? (depotsRaw as DeliveryDestination[])
+    : ((depotsRaw as unknown as { data?: DeliveryDestination[] })?.data ?? []);
+
+  const active = allDepots.filter((d) => d.isActive);
+
+  const currentAssignment = user.assignedDeliveryDestinationId ?? null;
+  const [selected, setSelected] = useState<string | null>(currentAssignment);
+  const updateUser = useUpdateUser(apiClient);
+  const isDirty = selected !== currentAssignment;
+
+  const handleSave = () => {
+    if (!isDirty) return;
+    updateUser.mutate(
+      { id: user.id, data: { assignedDeliveryDestinationId: selected } },
+      { onSuccess: () => onClose() },
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
+          <h2 className="text-base font-semibold text-neutral-800">
+            {t('accounts.depot.title')}
+            {' — '}
+            <span className="text-primary">{user.fullName}</span>
+          </h2>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100"
+          >
+            <XCircle className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-6">
+          <p className="mb-4 text-sm text-neutral-500">
+            {t('accounts.depot.roleHint', { role: t(ROLE_LABEL_KEYS[user.role]) })}
+          </p>
+
+          {active.length === 0 ? (
+            <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {t('accounts.depot.noCompatible')}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <label
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                  selected === null
+                    ? 'border-primary bg-primary/5'
+                    : 'border-neutral-200 hover:bg-neutral-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="depot"
+                  value=""
+                  checked={selected === null}
+                  onChange={() => setSelected(null)}
+                  className="accent-primary"
+                />
+                <span className="text-sm text-neutral-500 italic">
+                  {t('accounts.depot.noneAssigned')}
+                </span>
+              </label>
+
+              {active.map((d) => (
+                <label
+                  key={d.id}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                    selected === d.id
+                      ? 'border-primary bg-primary/5'
+                      : 'border-neutral-200 hover:bg-neutral-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="depot"
+                    value={d.id}
+                    checked={selected === d.id}
+                    onChange={() => setSelected(d.id)}
+                    className="accent-primary"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-neutral-800">{d.name}</p>
+                    <p className="text-xs text-neutral-400">{d.code}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {updateUser.isError && (
+            <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+              {(updateUser.error as Error)?.message ?? t('accounts.assign.errorSave')}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-4">
+          <button type="button" onClick={onClose} className={cancelBtnCls}>
+            {t('common.cancel')}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={updateUser.isPending || active.length === 0 || !isDirty}
+            className={submitBtnCls}
+          >
+            <Link2 className="h-4 w-4" />
+            {updateUser.isPending ? t('accounts.assign.saving') : t('accounts.depot.assignAction')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function AccountsPage() {
@@ -858,6 +986,7 @@ export default function AccountsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [assignTarget, setAssignTarget] = useState<User | null>(null);
+  const [assignDepotTarget, setAssignDepotTarget] = useState<User | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -868,6 +997,7 @@ export default function AccountsPage() {
     isError,
   } = useAdminUsers(apiClient, { refetchInterval: 30_000 });
   const { data: machinesRaw } = useMachines(apiClient);
+  const { data: depotsRaw } = useDeliveryDestinations(apiClient);
   const deactivate = useDeactivateUser(apiClient);
 
   const users: User[] = Array.isArray(usersRaw)
@@ -878,7 +1008,12 @@ export default function AccountsPage() {
     ? (machinesRaw as Machine[])
     : ((machinesRaw as { data?: Machine[] })?.data ?? []);
 
+  const allDepots: DeliveryDestination[] = Array.isArray(depotsRaw)
+    ? (depotsRaw as DeliveryDestination[])
+    : ((depotsRaw as unknown as { data?: DeliveryDestination[] })?.data ?? []);
+
   const machineMap = new Map(allMachines.map((m) => [m.id, m]));
+  const depotMap = new Map(allDepots.map((d) => [d.id, d]));
 
   // ── Stats (unfiltered) ───────────────────────────────────────────────
   const totalUsers = users.length;
@@ -1046,11 +1181,18 @@ export default function AccountsPage() {
                     const assignedMachine = user.assignedMachineId
                       ? machineMap.get(user.assignedMachineId)
                       : null;
+                    const assignedDepot =
+                      user.assignedDeliveryDestinationId
+                        ? depotMap.get(user.assignedDeliveryDestinationId)
+                        : null;
                     const canAssign =
                       user.role !== UserRole.admin &&
                       user.role !== UserRole.dispatcher &&
                       user.role !== UserRole.geofence_maker &&
+                      user.role !== UserRole.depot_manager &&
                       user.isActive;
+                    const canAssignDepot =
+                      ROLE_REQUIRES_DEPOT.includes(user.role) && user.isActive;
 
                     return (
                       <tr
@@ -1087,7 +1229,27 @@ export default function AccountsPage() {
                           <RoleBadge role={user.role} />
                         </td>
                         <td className="px-4 py-3">
-                          {assignedMachine ? (
+                          {canAssignDepot ? (
+                            assignedDepot ? (
+                              <button
+                                onClick={() => setAssignDepotTarget(user)}
+                                className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50 transition-colors"
+                                title={t('accounts.depot.assignAction')}
+                              >
+                                <span className="font-mono">{assignedDepot.code}</span>
+                                <span className="text-neutral-400">{assignedDepot.name}</span>
+                                <Link2 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setAssignDepotTarget(user)}
+                                className="flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-400 hover:border-orange-400 hover:text-orange-500 transition-colors"
+                              >
+                                <Link2 className="h-3 w-3" />
+                                {t('accounts.depot.noneAssigned')}
+                              </button>
+                            )
+                          ) : assignedMachine ? (
                             <button
                               onClick={() => canAssign && setAssignTarget(user)}
                               className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
@@ -1156,6 +1318,12 @@ export default function AccountsPage() {
       {editTarget && <EditUserModal user={editTarget} onClose={() => setEditTarget(null)} />}
       {assignTarget && (
         <AssignMachineModal user={assignTarget} onClose={() => setAssignTarget(null)} />
+      )}
+      {assignDepotTarget && (
+        <AssignDepotModal
+          user={assignDepotTarget}
+          onClose={() => setAssignDepotTarget(null)}
+        />
       )}
       {deactivateTarget && (
         <DeactivateDialog

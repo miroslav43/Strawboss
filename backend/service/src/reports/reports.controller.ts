@@ -71,9 +71,10 @@ export class ReportsController {
     return this.reportsService.getTruckDistanceSummary(user.organizationId);
   }
 
-  /** Plan A T4 — connected hours per user per day/week/month, for the admin report. */
+  /** Plan A T4 — connected-hours report aggregated from user_sessions. */
   @Get('user-connected-hours')
-  getUserConnectedHours(
+  @Get('connected-hours')
+  getConnectedHours(
     @CurrentUser() user: RequestUser,
     @Query(new ZodValidationPipe(connectedHoursQuerySchema)) query: ConnectedHoursQuery,
   ) {

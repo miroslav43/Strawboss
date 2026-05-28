@@ -5,8 +5,8 @@ import type {
   ReportTimelinePoint,
   TruckDistanceRow,
   TruckDistanceSummary,
-  ConnectedHoursGroupBy,
   ConnectedHoursReport,
+  ConnectedHoursGroupBy,
 } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
@@ -100,20 +100,17 @@ export interface ConnectedHoursFilters extends Record<string, unknown> {
   groupBy: ConnectedHoursGroupBy;
 }
 
-/**
- * Plan A T4 — connected hours per user per day/week/month.
- * Surfaces in the admin Reports page as the "Connected hours" tab.
- */
+/** Plan A T4 — connected-hours report aggregated from user_sessions. */
 export function useUserConnectedHoursReport(
   client: ApiClient,
   filters: ConnectedHoursFilters,
   options?: ReportQueryOptions,
 ) {
   return useQuery({
-    queryKey: queryKeys.reports.userConnectedHours(filters),
+    queryKey: queryKeys.reports.connectedHours(filters),
     queryFn: () =>
       client.get<ConnectedHoursReport>(
-        `/api/v1/reports/user-connected-hours${toQueryString(filters)}`,
+        `/api/v1/reports/connected-hours${toQueryString(filters)}`,
       ),
     enabled: (options?.enabled ?? true) && !!filters.from && !!filters.to,
   });

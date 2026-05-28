@@ -63,7 +63,7 @@ export interface ConnectedHoursRow {
   hours: number;
 }
 
-/** Response payload for GET /api/v1/reports/user-connected-hours. */
+/** Response payload for the connected-hours report endpoint. */
 export interface ConnectedHoursReport {
   groupBy: ConnectedHoursGroupBy;
   from: string;
