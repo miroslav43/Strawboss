@@ -92,5 +92,7 @@ export const queryKeys = {
     truckDistance: (filters?: Record<string, unknown>) =>
       ['reports', 'truckDistance', filters] as const,
     truckDistanceSummary: () => ['reports', 'truckDistanceSummary'] as const,
+    userConnectedHours: (filters?: Record<string, unknown>) =>
+      ['reports', 'userConnectedHours', filters] as const,
   },
 } as const;

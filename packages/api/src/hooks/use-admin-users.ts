@@ -24,11 +24,17 @@ export interface UpdateUserPayload {
   pin?: string;
 }
 
+export interface UseAdminUsersOptions {
+  /** Re-fetch interval in ms. Pages that display the presence dot pass 30_000. */
+  refetchInterval?: number;
+}
+
 /** List all operator accounts (admin only). */
-export function useAdminUsers(client: ApiClient) {
+export function useAdminUsers(client: ApiClient, options?: UseAdminUsersOptions) {
   return useQuery({
     queryKey: ADMIN_USERS_KEY,
     queryFn: () => client.get<User[]>('/api/v1/admin/users'),
+    refetchInterval: options?.refetchInterval,
   });
 }
 
@@ -36,8 +42,7 @@ export function useAdminUsers(client: ApiClient) {
 export function useCreateUser(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: CreateUserPayload) =>
-      client.post<User>('/api/v1/admin/users', payload),
+    mutationFn: (payload: CreateUserPayload) => client.post<User>('/api/v1/admin/users', payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ADMIN_USERS_KEY });
     },

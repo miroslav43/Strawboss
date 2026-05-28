@@ -18,8 +18,8 @@ export interface RequestUser {
   id: string;
   email: string;
   role: string;
-  organizationId: string | null;    // null for super_admin users
-  organizationSlug: string | null;  // null for super_admin users
+  organizationId: string | null; // null for super_admin users
+  organizationSlug: string | null; // null for super_admin users
 }
 
 @Injectable()
@@ -33,30 +33,48 @@ export class AuthGuard implements CanActivate {
     private readonly drizzleProvider: DrizzleProvider,
   ) {}
 
-  /** When the Supabase JWT hook omits org claims, load them from public.users (same source as the hook). */
-  private async hydrateOrganizationFromJwt(
+  /**
+   * Load the user row and (when applicable) the org metadata in a single
+   * round-trip. Used both to hydrate org claims missing from the JWT and to
+   * enforce the `is_active = true` check on every protected request.
+   *
+   * Returns `null` when the user has been soft-deleted (deleted_at IS NOT NULL)
+   * or does not exist.
+   */
+  private async loadUserContext(
     userId: string,
     role: string,
-  ): Promise<{ organizationId: string; organizationSlug: string } | null> {
-    if (!userId || role === 'super_admin') {
-      return null;
-    }
+  ): Promise<{
+    isActive: boolean;
+    organizationId: string | null;
+    organizationSlug: string | null;
+  } | null> {
+    if (!userId) return null;
+
     const result = await this.drizzleProvider.db.execute(sql`
-      SELECT u.organization_id AS "organizationId", o.slug AS "organizationSlug"
+      SELECT
+        u.is_active AS "isActive",
+        u.organization_id AS "organizationId",
+        o.slug AS "organizationSlug"
       FROM users u
       LEFT JOIN organizations o ON o.id = u.organization_id AND o.deleted_at IS NULL
       WHERE u.id = ${userId}::uuid AND u.deleted_at IS NULL
       LIMIT 1
     `);
     const rows = result as unknown as {
+      isActive: boolean;
       organizationId: string | null;
       organizationSlug: string | null;
     }[];
     const row = rows[0];
-    if (!row?.organizationId || !row.organizationSlug) {
-      return null;
+    if (!row) return null;
+
+    // super_admin lives outside any org — drop the org fields to mirror the
+    // previous behaviour.
+    if (role === 'super_admin') {
+      return { isActive: row.isActive, organizationId: null, organizationSlug: null };
     }
-    return { organizationId: row.organizationId, organizationSlug: row.organizationSlug };
+    return row;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -113,22 +131,23 @@ export class AuthGuard implements CanActivate {
         (payload.role as string | undefined) ??
         '';
 
-      let organizationId =
-        (appMeta?.organization_id as string | undefined) ?? null;
-      let organizationSlug =
-        (appMeta?.organization_slug as string | undefined) ?? null;
+      let organizationId = (appMeta?.organization_id as string | undefined) ?? null;
+      let organizationSlug = (appMeta?.organization_slug as string | undefined) ?? null;
 
       const sub = (payload.sub as string) ?? '';
-      if (
-        role !== 'super_admin' &&
-        sub &&
-        (!organizationId || !organizationSlug)
-      ) {
-        const hydrated = await this.hydrateOrganizationFromJwt(sub, role);
-        if (hydrated) {
-          organizationId ??= hydrated.organizationId;
-          organizationSlug ??= hydrated.organizationSlug;
+
+      // Block inactive / soft-deleted users from any protected endpoint.
+      // super_admin accounts are exempt to prevent self-lockout.
+      if (role !== 'super_admin' && sub) {
+        const ctx = await this.loadUserContext(sub, role);
+        if (!ctx) {
+          throw new UnauthorizedException('Cont inexistent sau șters');
         }
+        if (!ctx.isActive) {
+          throw new UnauthorizedException('Cont inactiv');
+        }
+        organizationId ??= ctx.organizationId;
+        organizationSlug ??= ctx.organizationSlug;
       }
 
       request.user = {
@@ -140,7 +159,10 @@ export class AuthGuard implements CanActivate {
       } satisfies RequestUser;
 
       return true;
-    } catch {
+    } catch (err) {
+      // Surface our own auth-rejection reasons untouched so clients can
+      // distinguish "inactive" from "bad token".
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

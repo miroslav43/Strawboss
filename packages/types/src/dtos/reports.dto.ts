@@ -46,3 +46,27 @@ export interface ReportTimelinePoint {
   loaded: number;
   delivered: number;
 }
+
+/** Grouping bucket for the connected-hours admin report. */
+export type ConnectedHoursGroupBy = 'day' | 'week' | 'month';
+
+/** One row in the connected-hours report — per user × period. */
+export interface ConnectedHoursRow {
+  userId: string;
+  userName: string;
+  role: string;
+  /** Identifier for the bucket: `YYYY-MM-DD`, `YYYY-WW` (ISO week), or `YYYY-MM`. */
+  period: string;
+  /** Start of the bucket as an ISO timestamp; useful for client-side sorting/grouping. */
+  periodStart: string;
+  /** Total connected hours within the bucket, rounded to two decimals. */
+  hours: number;
+}
+
+/** Response payload for GET /api/v1/reports/user-connected-hours. */
+export interface ConnectedHoursReport {
+  groupBy: ConnectedHoursGroupBy;
+  from: string;
+  to: string;
+  rows: ConnectedHoursRow[];
+}
