@@ -335,9 +335,23 @@ Each repo has `getMaxServerVersion()`: `SELECT MAX(server_version) FROM {table}`
 
 ### App config (`app.json`)
 - Package: `com.strawboss.mobile`
-- Plugins: expo-router, expo-camera, expo-image-picker, expo-sqlite, expo-location
-- Android permissions: `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`
+- Plugins: expo-router, expo-camera, expo-image-picker, expo-sqlite, expo-location, expo-notifications
+  - `expo-notifications` config: `color: "#0A5C36"` — **no custom sounds declared** (see note below)
+- Android permissions: `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `POST_NOTIFICATIONS`, `WAKE_LOCK`, `CAMERA`, `RECORD_AUDIO`
 - iOS: location usage descriptions for when-in-use, always, and both
+
+### Android notification channels (`src/lib/notifications.ts`)
+
+Registered in `registerForPushNotifications()` via `setNotificationChannelAsync`:
+
+| Channel ID | Name | Importance | Notes |
+|---|---|---|---|
+| `default` | Default | MAX | Standard app notifications |
+| `geofence` | Geofence | HIGH | Parcel entry/exit events |
+| `location` | Locație GPS | LOW | Foreground-service GPS indicator; no sound, minimal vibration |
+| `baler-exit` | Alertă ieșire câmp | MAX | Baler field-exit alert; bypass DND, vibration `[0, 400, 200, 400]`, red light; `sound: 'baler_exit'` falls back to device default until the WAV asset lands |
+
+**Baler-exit sound status:** `assets/sounds/baler_exit.wav` is **not yet committed**. The `sounds` array was removed from the `expo-notifications` plugin entry in `app.json` because (a) the file was missing and (b) Android resource filenames must be lowercase a-z/digits/underscore — the original `baler-exit.wav` name fails `expo prebuild`. When the WAV is sourced, add `"sounds": ["./assets/sounds/baler_exit.wav"]` back to `app.json` and rebuild. See `apps/mobile/assets/sounds/README-baler-exit.md` for drop-in instructions.
 
 ### EAS Build
 Cloud builds via Expo Application Services. Profile configured in `eas.json`.
