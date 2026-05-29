@@ -72,15 +72,12 @@ export class ReportsController {
   }
 
   /** Plan A T4 — connected-hours report aggregated from user_sessions. */
+  @Get('user-connected-hours')
   @Get('connected-hours')
   getConnectedHours(
     @CurrentUser() user: RequestUser,
     @Query(new ZodValidationPipe(connectedHoursQuerySchema)) query: ConnectedHoursQuery,
   ) {
-    return this.reportsService.getConnectedHours(user.organizationId, {
-      from: query.from,
-      to: query.to,
-      groupBy: query.groupBy,
-    });
+    return this.reportsService.getConnectedHours(user.organizationId, query);
   }
 }

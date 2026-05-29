@@ -21,27 +21,46 @@ export class DeliveryDestinationsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
   async list(orgId: string | null, filters?: { isActive?: boolean }) {
-    const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
+    const conditions: ReturnType<typeof sql>[] = [sql`d.deleted_at IS NULL`];
 
     if (orgId !== null) {
-      conditions.push(sql`organization_id = ${orgId}::uuid`);
+      conditions.push(sql`d.organization_id = ${orgId}::uuid`);
     }
     if (filters?.isActive !== undefined) {
-      conditions.push(sql`is_active = ${filters.isActive}`);
+      conditions.push(sql`d.is_active = ${filters.isActive}`);
     }
 
     const where = sql.join(conditions, sql` AND `);
-    const result = await this.drizzleProvider.db.execute(
-      sql`SELECT ${DEST_COLS} FROM delivery_destinations WHERE ${where} ORDER BY name ASC`,
-    );
+    // List projection: same columns as DEST_COLS plus a correlated subquery
+    // that surfaces the most recent activity (task_assignments referencing the
+    // destination). Used by the admin UI to show "ultima activitate".
+    const result = await this.drizzleProvider.db.execute(sql`
+      SELECT
+        d.id, d.code, d.name, d.address,
+        ST_AsGeoJSON(d.coords)::json AS coords,
+        d.contact_name    AS "contactName",
+        d.contact_phone   AS "contactPhone",
+        d.contact_email   AS "contactEmail",
+        ST_AsGeoJSON(d.boundary)::json AS boundary,
+        d.is_active       AS "isActive",
+        d.is_default      AS "isDefault",
+        d.created_at      AS "createdAt",
+        d.updated_at      AS "updatedAt",
+        d.deleted_at      AS "deletedAt",
+        (
+          SELECT MAX(ta.updated_at)
+          FROM task_assignments ta
+          WHERE ta.destination_id = d.id AND ta.deleted_at IS NULL
+        ) AS "lastActivityAt"
+      FROM delivery_destinations d
+      WHERE ${where}
+      ORDER BY d.name ASC
+    `);
     return result;
   }
 
   async findById(id: string, orgId: string | null) {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}::uuid`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`, sql`deleted_at IS NULL`];
     if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
@@ -133,9 +152,7 @@ export class DeliveryDestinationsService {
 
       for (const [key, column] of Object.entries(plainFields)) {
         if (key in dto) {
-          setClauses.push(
-            sql`${sql.raw(column)} = ${dto[key] as string | boolean | null}`,
-          );
+          setClauses.push(sql`${sql.raw(column)} = ${dto[key] as string | boolean | null}`);
         }
       }
 
@@ -143,12 +160,8 @@ export class DeliveryDestinationsService {
         if (key in dto) {
           if (dto[key]) {
             const geoJsonStr =
-              typeof dto[key] === 'string'
-                ? (dto[key] as string)
-                : JSON.stringify(dto[key]);
-            setClauses.push(
-              sql`${sql.raw(key)} = ST_GeomFromGeoJSON(${geoJsonStr})`,
-            );
+              typeof dto[key] === 'string' ? (dto[key] as string) : JSON.stringify(dto[key]);
+            setClauses.push(sql`${sql.raw(key)} = ST_GeomFromGeoJSON(${geoJsonStr})`);
           } else {
             setClauses.push(sql`${sql.raw(key)} = NULL`);
           }
