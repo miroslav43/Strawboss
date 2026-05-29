@@ -472,6 +472,7 @@
       "notes": "Note",
       "activeField": "Câmp activ",
       "harvestStatus": "Stadiu recoltă",
+      "harvestNoDowngrade": "Nu poți coborî stadiul recoltei; opțiunile anterioare sunt dezactivate.",
       "cancel": "Anulează",
       "save": "Salvează",
       "create": "Creează",

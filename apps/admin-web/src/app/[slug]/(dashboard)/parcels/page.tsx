@@ -26,7 +26,7 @@ import {
   useFarms,
 } from '@strawboss/api';
 import type { Parcel, Farm } from '@strawboss/types';
-import { HarvestStatus, CropType } from '@strawboss/types';
+import { HarvestStatus, CropType, HARVEST_STATUS_RANK } from '@strawboss/types';
 import { HarvestStatusBadge } from '@/components/shared/StatusBadge';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
@@ -120,6 +120,12 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
   // T9.1 — crop type dropdown (nullable on storage).
   const [cropType, setCropType] = useState<CropType | ''>(parcel?.cropType ?? '');
   const [error, setError] = useState('');
+
+  // Harvest status is monotonic — the DB trigger trg_prevent_harvest_status_downgrade
+  // refuses any move backward on the ladder. Mirror that in the UI: when editing,
+  // disable every option below the parcel's current stage so a downgrade can't even
+  // be attempted. On create the floor is 0 (planned) → all options available.
+  const statusFloorRank = parcel ? HARVEST_STATUS_RANK[parcel.harvestStatus] : 0;
 
   const createParcel = useCreateParcel(apiClient);
   const updateParcel = useUpdateParcel(apiClient);
@@ -287,11 +293,16 @@ function ParcelFormModal({ parcel, farms, onClose }: ParcelFormModalProps) {
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {HARVEST_STATUS_OPTIONS.map((v) => (
-                  <option key={v} value={v}>
+                  <option key={v} value={v} disabled={HARVEST_STATUS_RANK[v] < statusFloorRank}>
                     {t(`parcels.harvest.${v}`)}
                   </option>
                 ))}
               </select>
+              {isEdit && statusFloorRank > 0 && (
+                <p className="mt-1 text-xs text-neutral-400">
+                  {t('parcels.form.harvestNoDowngrade')}
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-neutral-600 mb-1">

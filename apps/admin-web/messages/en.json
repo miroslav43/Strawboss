@@ -472,6 +472,7 @@
       "notes": "Notes",
       "activeField": "Active field",
       "harvestStatus": "Harvest status",
+      "harvestNoDowngrade": "You can't move the harvest stage backward; earlier options are disabled.",
       "cancel": "Cancel",
       "save": "Save",
       "create": "Create",
