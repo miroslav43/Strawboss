@@ -104,6 +104,26 @@ function resolveTypeAndCategory(pushType: string): {
         category: MobileNotificationCategory.admin,
         severity: MobileNotificationSeverity.info,
       };
+    // Plan C (#14) — loader recall flow. Previously unhandled, so these pushes
+    // were dropped before reaching SQLite and the loader could never answer.
+    case 'loader_recall_prompt':
+      return {
+        type: MobileNotificationType.loader_recall_prompt,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.warning,
+      };
+    case 'trip_next_iteration':
+      return {
+        type: MobileNotificationType.trip_next_iteration,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.info,
+      };
+    case 'truck_idle':
+      return {
+        type: MobileNotificationType.truck_idle,
+        category: MobileNotificationCategory.system,
+        severity: MobileNotificationSeverity.warning,
+      };
     default:
       return null;
   }

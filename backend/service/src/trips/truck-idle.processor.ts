@@ -58,7 +58,7 @@ export class TruckIdleProcessor extends WorkerHost {
                truck_id, id AS trip_id,
                COALESCE(parent_trip_id, id) AS root_id,
                source_parcel_id, organization_id,
-               completed_at, delivery_notes
+               completed_at
           FROM trips
          WHERE status = 'completed'::trip_status
            AND deleted_at IS NULL
@@ -94,8 +94,7 @@ export class TruckIdleProcessor extends WorkerHost {
            WHERE ta.machine_id = lc.truck_id
              AND ta.deleted_at IS NULL
              AND ta.status = 'in_progress'::task_assignment_status
-        ) AS active_tasks,
-        lc.delivery_notes
+        ) AS active_tasks
       FROM last_completed lc
       JOIN machines m ON m.id = lc.truck_id AND m.deleted_at IS NULL
       WHERE lc.completed_at < NOW() - (${IDLE_THRESHOLD_MIN} || ' minutes')::interval
@@ -109,7 +108,6 @@ export class TruckIdleProcessor extends WorkerHost {
       open_iterations: number;
       remaining_bales: number;
       active_tasks: number;
-      delivery_notes: string | null;
     }[];
 
     let createdCount = 0;

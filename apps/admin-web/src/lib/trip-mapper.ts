@@ -25,6 +25,8 @@ export function toTripCamel(raw: unknown): Trip | null {
     baleCount: Number(r.bale_count ?? 0),
     parentTripId: (r.parent_trip_id as string | null) ?? null,
     iterationIndex: Number(r.iteration_index ?? 1),
+    recallDecision: (r.recall_decision as Trip['recallDecision']) ?? null,
+    recallDecidedAt: (r.recall_decided_at as string | null) ?? null,
     loadingStartedAt: (r.loading_started_at as string | null) ?? null,
     loadingCompletedAt: (r.loading_completed_at as string | null) ?? null,
     departureOdometerKm: num(r.departure_odometer_km),

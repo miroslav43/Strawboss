@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   OnModuleInit,
@@ -17,6 +18,7 @@ import { todayInRomania } from '../common/date';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DeliveryDestinationsService } from '../delivery-destinations/delivery-destinations.service';
 import { ParcelsService } from '../parcels/parcels.service';
+import { AlertsService } from '../alerts/alerts.service';
 import { TripStatus, type UserRole } from '@strawboss/types';
 import { QUEUE_CMR_GENERATION } from '../jobs/queues';
 import type {
@@ -36,6 +38,20 @@ import type {
 } from '@strawboss/types';
 import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss/domain';
 
+/** Row shape used by recordNoRecall + alertAdminTruckReleased (P1b). */
+interface TruckReleaseRow {
+  id: string;
+  status: string;
+  recall_decision: string | null;
+  recall_decided_at: string | null;
+  truck_id: string | null;
+  source_parcel_id: string | null;
+  completed_at: string | null;
+  root_id: string;
+  organization_id: string | null;
+  truck_code: string | null;
+}
+
 @Injectable()
 export class TripsService implements OnModuleInit {
   constructor(
@@ -46,6 +62,7 @@ export class TripsService implements OnModuleInit {
     private readonly notificationsService: NotificationsService,
     private readonly deliveryDestinationsService: DeliveryDestinationsService,
     private readonly parcelsService: ParcelsService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   /**
@@ -904,13 +921,14 @@ export class TripsService implements OnModuleInit {
     try {
       const sourceParcelId = trip.source_parcel_id as string | null;
       const loaderOperatorId = trip.loader_operator_id as string | null;
-      const deliveryNotes = (trip.delivery_notes as string | null) ?? '';
+      // Structured idempotency guard: a non-null recall_decided_at means the
+      // loader already answered for this trip (replaces fragile delivery_notes
+      // marker parsing — see migration 00048).
+      const alreadyAnswered = trip.recall_decided_at != null;
       if (sourceParcelId) {
         const remaining = await this.computeRemainingBalesOnParcel(sourceParcelId, orgId);
         if (remaining > 0 && loaderOperatorId) {
-          // Suppress repeated prompts if loader already answered for this trip.
-          const alreadyAnswered =
-            deliveryNotes.includes('[recall_no:') || deliveryNotes.includes('[recall_yes:');
+          // Suppress repeated prompts if the loader already answered for this trip.
           if (!alreadyAnswered) {
             const truckCode =
               (trip.truck_code as string | null) ?? (trip.truck_plate as string | null) ?? '—';
@@ -997,6 +1015,7 @@ export class TripsService implements OnModuleInit {
     currentTripId: string,
     orgId: string | null,
     recall: boolean,
+    opts?: { idempotent?: boolean },
   ): Promise<Record<string, unknown>> {
     return this.drizzleProvider.db.transaction(async (tx) => {
       // 1. Load current trip + lookup the course root.
@@ -1005,6 +1024,7 @@ export class TripsService implements OnModuleInit {
                loader_id, loader_operator_id,
                destination_name, destination_address,
                ST_AsGeoJSON(destination_coords) AS destination_coords_geojson,
+               recall_decided_at,
                organization_id
           FROM trips
          WHERE id = ${currentTripId}::uuid AND deleted_at IS NULL
@@ -1014,6 +1034,19 @@ export class TripsService implements OnModuleInit {
       const t = cur[0];
       if (orgId !== null && t.organization_id !== orgId) {
         throw new ForbiddenException('Trip not found in your organization');
+      }
+      // Idempotency (loader path only): a loader recall response mints at most
+      // one iteration per trip. If the loader already answered (recalled or
+      // declined), reject a duplicate recall=true instead of minting a second
+      // iteration (double-tap / network retry / two devices). The FOR UPDATE
+      // above holds the row lock so this check is race-free.
+      // Admin manual POST /trips/:id/next-iteration passes idempotent=false and
+      // may always force another iteration (override of a loader decline).
+      if (opts?.idempotent && t.recall_decided_at != null) {
+        throw new ConflictException({
+          error: 'recall_already_decided',
+          message: 'Răspunsul de rechemare a fost deja înregistrat pentru această cursă.',
+        });
       }
       const rootId = (t.parent_trip_id as string | null) ?? (t.id as string);
 
@@ -1076,12 +1109,13 @@ export class TripsService implements OnModuleInit {
       `)) as unknown as Record<string, unknown>[];
       const newTrip = inserted[0];
 
-      // Mark the source trip so complete()'s alreadyAnswered guard suppresses
-      // re-prompts (e.g. after a dispute resolution re-runs the hook).
+      // Record the structured recall decision on the source trip so complete()'s
+      // guard suppresses re-prompts and a duplicate response is rejected
+      // (migration 00048). Replaces the old delivery_notes [recall_yes] marker.
       await tx.execute(sql`
         UPDATE trips
-           SET delivery_notes = COALESCE(delivery_notes, '')
-                              || E'\n[recall_yes:' || ${currentTripId} || ':' || NOW()::text || ']',
+           SET recall_decision = 'recalled',
+               recall_decided_at = NOW(),
                updated_at = NOW()
          WHERE id = ${currentTripId}::uuid
            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
@@ -1109,29 +1143,145 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
-   * Record a loader "no recall" decision on the trip. Appends a marker to
-   * `delivery_notes` so the truck-idle BullMQ processor can later decide
-   * whether to alert admins.
+   * Record a loader "no recall" decision on the trip (structured + idempotent).
+   * Sets recall_decision='declined' (migration 00048; replaces the old
+   * delivery_notes [recall_no] marker) and, when the truck is genuinely idle,
+   * alerts admins immediately via {@link alertAdminTruckReleased} — no need to
+   * wait for the periodic truck-idle scan. A second decline is a no-op; a
+   * decline after a recall is rejected.
    */
   async recordNoRecall(tripId: string, orgId: string | null, loaderId: string): Promise<void> {
-    const result = (await this.drizzleProvider.db.execute(sql`
-      UPDATE trips
-         SET delivery_notes = COALESCE(delivery_notes, '')
-                            || E'\n[recall_no:' || ${loaderId} || ':' || NOW()::text || ']',
-             updated_at = NOW()
-       WHERE id = ${tripId}::uuid
-         AND status = 'completed'::trip_status
-         AND deleted_at IS NULL
-         ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
-       RETURNING id
-    `)) as unknown as { id: string }[];
-    if (!result.length) {
-      throw new BadRequestException({
-        error: 'invalid_state',
-        message: 'Cursa nu este într-o stare în care recall-ul poate fi refuzat.',
+    const decided = await this.drizzleProvider.db.transaction(async (tx) => {
+      const rows = (await tx.execute(sql`
+        SELECT t.id, t.status, t.recall_decision, t.recall_decided_at,
+               t.truck_id, t.source_parcel_id, t.completed_at,
+               COALESCE(t.parent_trip_id, t.id) AS root_id,
+               t.organization_id,
+               m.internal_code AS truck_code
+          FROM trips t
+          LEFT JOIN machines m ON m.id = t.truck_id
+         WHERE t.id = ${tripId}::uuid
+           AND t.deleted_at IS NULL
+           ${orgId !== null ? sql`AND t.organization_id = ${orgId}::uuid` : sql``}
+         FOR UPDATE OF t
+      `)) as unknown as TruckReleaseRow[];
+      const row = rows[0];
+      if (!row) {
+        throw new NotFoundException('Trip not found');
+      }
+      if (row.status !== TripStatus.completed) {
+        throw new BadRequestException({
+          error: 'invalid_state',
+          message: 'Cursa nu este într-o stare în care recall-ul poate fi refuzat.',
+        });
+      }
+      // Idempotency: at most one recall decision per trip. The FOR UPDATE lock
+      // above makes this race-free against a concurrent recall=true.
+      if (row.recall_decided_at != null) {
+        if (row.recall_decision === 'declined') {
+          return { row, alreadyDeclined: true };
+        }
+        throw new ConflictException({
+          error: 'recall_already_decided',
+          message: 'Răspunsul de rechemare a fost deja înregistrat pentru această cursă.',
+        });
+      }
+      await tx.execute(sql`
+        UPDATE trips
+           SET recall_decision = 'declined',
+               recall_decided_at = NOW(),
+               updated_at = NOW()
+         WHERE id = ${tripId}::uuid
+           ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+      `);
+      return { row, alreadyDeclined: false };
+    });
+
+    this.logTripFlow(tripId, 'RECALL_NO', 'completed', 'completed');
+    this.winston.log('flow', `Loader ${loaderId} declined recall for trip ${tripId}`, {
+      context: 'TripsService',
+      tripId,
+      loaderId,
+    });
+
+    if (!decided.alreadyDeclined) {
+      await this.alertAdminTruckReleased(decided.row);
+    }
+  }
+
+  /**
+   * Plan C (P1b) — when a loader explicitly declines recall, alert admins
+   * immediately if the truck is genuinely idle (parcel still has bales AND no
+   * open iteration on the course). Respects the same 60-min dedup the periodic
+   * truck-idle scan uses, so the immediate and periodic paths never
+   * double-alert.
+   */
+  private async alertAdminTruckReleased(row: TruckReleaseRow): Promise<void> {
+    try {
+      const truckId = row.truck_id;
+      const parcelId = row.source_parcel_id;
+      const orgId = row.organization_id;
+      // Skip cleanly when org is unknown: a null org would fan the push out to
+      // every org's admins (sendTruckIdleAdminAlert), and alerts.organization_id
+      // is NOT NULL so the insert would fail anyway.
+      if (!truckId || !parcelId || orgId === null) return;
+
+      const remaining = await this.computeRemainingBalesOnParcel(parcelId, orgId);
+      if (remaining <= 0) return; // nothing left to haul — truck is done, not idle-with-work
+
+      const open = (await this.drizzleProvider.db.execute(sql`
+        SELECT COUNT(*)::int AS n FROM trips
+         WHERE deleted_at IS NULL
+           AND organization_id = ${orgId}::uuid
+           AND (id = ${row.root_id}::uuid OR parent_trip_id = ${row.root_id}::uuid)
+           AND status IN (
+             'planned'::trip_status, 'loading'::trip_status, 'loaded'::trip_status,
+             'in_transit'::trip_status, 'arrived'::trip_status, 'delivering'::trip_status
+           )
+      `)) as unknown as { n: number }[];
+      if (Number(open[0]?.n ?? 0) > 0) return;
+
+      // Dedup with the periodic truck-idle scan (truck-idle.processor.ts).
+      const existing = (await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM alerts
+         WHERE machine_id = ${truckId}::uuid
+           AND organization_id = ${orgId}::uuid
+           AND category = 'system'::alert_category
+           AND is_acknowledged = false
+           AND created_at > NOW() - INTERVAL '60 minutes'
+           AND data->>'kind' = 'truck_idle'
+         LIMIT 1
+      `)) as unknown as { id: string }[];
+      if (existing[0]) return;
+
+      const truckCode = row.truck_code ?? '—';
+      const completedAt = row.completed_at ?? '';
+      await this.alertsService.createTruckIdleAlert({
+        truckId,
+        truckCode,
+        idleMinutes: 0,
+        completedAt,
+        orgId,
+        reason: 'loader_declined',
+      });
+      await this.notificationsService.sendTruckIdleAdminAlert(
+        orgId,
+        truckId,
+        truckCode,
+        completedAt,
+        0,
+        'loader_declined',
+      );
+      this.winston.log('flow', `Truck ${truckCode} released by loader — admin alerted`, {
+        context: 'TripsService',
+        truckId,
+      });
+    } catch (err) {
+      this.winston.warn('alertAdminTruckReleased failed', {
+        context: 'TripsService',
+        err: err instanceof Error ? { message: err.message } : err,
       });
     }
-    this.logTripFlow(tripId, 'RECALL_NO', 'completed', 'completed');
   }
 
   async cancel(id: string, orgId: string | null, dto: CancelDto) {
