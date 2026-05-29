@@ -57,10 +57,26 @@ export const createParcelSchema = z.object({
 export const importParcelSchema = z.object({
   code: z.string().min(1).max(128),
   name: z.string().min(1).max(256).optional(),
-  // Stringified GeoJSON Polygon/MultiPolygon. Required — a parcel without a
-  // boundary is meaningless to import. Capped well above any real polygon to
-  // bound per-row PostGIS work and keep logs/error strings sane.
-  boundary: z.string().min(1).max(500_000),
+  // Stringified GeoJSON Polygon. Required — a parcel without a boundary is
+  // meaningless to import. Capped well above any real polygon to bound per-row
+  // PostGIS work and keep logs/error strings sane. Refined to reject anything
+  // that is not a `Polygon` so we surface a clear error before PostGIS
+  // (the `parcels.boundary` column is `GEOMETRY(Polygon, 4326)`).
+  boundary: z
+    .string()
+    .min(1)
+    .max(500_000)
+    .refine(
+      (s) => {
+        try {
+          const g = JSON.parse(s) as { type?: unknown };
+          return g != null && typeof g === 'object' && g.type === 'Polygon';
+        } catch {
+          return false;
+        }
+      },
+      { message: 'boundary must be a GeoJSON Polygon string' },
+    ),
   areaHectares: z.number().positive().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
