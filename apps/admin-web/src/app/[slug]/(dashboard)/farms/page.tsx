@@ -266,10 +266,9 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
         <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50 px-4 py-3">
           <span className="text-sm text-neutral-500">
             {selected.size > 0
-              ? t(
-                  selected.size === 1 ? 'farms.selectedCount' : 'farms.selectedCountPlural',
-                  { count: selected.size },
-                )
+              ? t(selected.size === 1 ? 'farms.selectedCount' : 'farms.selectedCountPlural', {
+                  count: selected.size,
+                })
               : t('farms.noneSelected')}
           </span>
           <div className="flex items-center gap-2">
@@ -343,8 +342,12 @@ export default function FarmsPage() {
   // Which farm has the assign modal open
   const [assignModalFarmId, setAssignModalFarmId] = useState<string | null>(null);
 
-  // T11 — KML import modal
-  const [kmlOpen, setKmlOpen] = useState(false);
+  // T11 — KML import modal. A single state ensures the global modal and the
+  // per-row modal cannot mount simultaneously (rapid double-clicks would
+  // otherwise spawn two `useImportParcels` mutations against the same data).
+  const [kmlTarget, setKmlTarget] = useState<{ farmId: string | null; locked: boolean } | null>(
+    null,
+  );
 
   const handleCreate = useCallback(() => {
     if (!createName.trim() || !createPhone.trim()) return;
@@ -456,7 +459,7 @@ export default function FarmsPage() {
         <PageHeader title={t('farms.title')} />
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setKmlOpen(true)}
+            onClick={() => setKmlTarget({ farmId: null, locked: false })}
             className="flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
           >
             <Upload className="h-4 w-4" />
@@ -472,7 +475,14 @@ export default function FarmsPage() {
         </div>
       </div>
 
-      {kmlOpen && <KmlImportToFarmModal farms={farms} onClose={() => setKmlOpen(false)} />}
+      {kmlTarget && (
+        <KmlImportToFarmModal
+          farms={farms}
+          defaultFarmId={kmlTarget.farmId}
+          lockFarm={kmlTarget.locked}
+          onClose={() => setKmlTarget(null)}
+        />
+      )}
 
       {/* Create form */}
       {showCreate && (
@@ -766,6 +776,13 @@ export default function FarmsPage() {
                           {t('farms.fields')}
                         </button>
                       )}
+                      <button
+                        onClick={() => setKmlTarget({ farmId: farm.id, locked: true })}
+                        className="rounded-lg p-1.5 text-neutral-400 hover:bg-primary/5 hover:text-primary"
+                        title={t('farms.kml.import')}
+                      >
+                        <Upload className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={() => startEdit(farm)}
                         className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"

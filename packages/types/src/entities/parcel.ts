@@ -43,6 +43,38 @@ export const HARVEST_STATUS_RANK: Record<HarvestStatus, number> = {
   [HarvestStatus.completed]: 7,
 };
 
+/**
+ * One parcel inside a bulk KML import request. `code` is the stable identifier
+ * (e.g. the APIA block-parcel name from the KML) used for upsert-by-conflict.
+ * `boundary` is a stringified GeoJSON Polygon/MultiPolygon.
+ */
+export interface ParcelImportInput {
+  code: string;
+  name?: string;
+  boundary: string;
+  /** Declared area (hectares). When omitted the server computes it from boundary. */
+  areaHectares?: number;
+  notes?: string | null;
+}
+
+/** Payload for `POST /api/v1/parcels/import`. */
+export interface ParcelImportRequest {
+  /** Farm every imported parcel is assigned to. Null/omitted ⇒ unassigned. */
+  farmId?: string | null;
+  parcels: ParcelImportInput[];
+}
+
+/** Result summary returned by the bulk KML import endpoint. */
+export interface ParcelImportResult {
+  total: number;
+  created: number;
+  updated: number;
+  /** Conflicting rows that were soft-deleted and therefore left untouched. */
+  skipped: number;
+  failed: number;
+  errors: { code: string; message: string }[];
+}
+
 export interface Parcel extends Timestamps, SoftDelete {
   id: string;
   code: string;

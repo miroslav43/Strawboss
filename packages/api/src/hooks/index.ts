@@ -23,6 +23,7 @@ export {
   useCreateParcel,
   useUpdateParcel,
   useUpdateParcelBoundary,
+  useImportParcels,
   useDeleteParcel,
 } from './use-parcels.js';
 
@@ -134,5 +135,8 @@ export {
   useTruckDistanceSummary,
   useUserConnectedHoursReport,
 } from './use-reports.js';
-export type { ConnectedHoursFilters } from './use-reports.js';
-export type { ReportQueryOptions, TruckDistanceFilters } from './use-reports.js';
+export type {
+  ReportQueryOptions,
+  TruckDistanceFilters,
+  ConnectedHoursFilters,
+} from './use-reports.js';

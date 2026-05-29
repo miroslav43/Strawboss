@@ -955,25 +955,15 @@ export default function MachinesPage() {
                         {FUEL_LABEL_KEY[m.fuelType] ? t(FUEL_LABEL_KEY[m.fuelType]) : m.fuelType}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {m.isActive ? (
-                            <span className="flex items-center gap-1 text-green-600">
-                              <CheckCircle2 className="h-4 w-4" />{' '}
-                              {t('machines.filter.statusActive')}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1 text-neutral-400">
-                              <XCircle className="h-4 w-4" /> {t('machines.filter.statusInactive')}
-                            </span>
-                          )}
-                          {m.isActive ? (
-                            <UserPresenceDot
-                              lastSeenAt={lastSeenByMachine.get(m.id) ?? null}
-                              variant="badge"
-                              thresholdMs={MACHINE_ONLINE_MS}
-                            />
-                          ) : null}
-                        </div>
+                        {m.isActive ? (
+                          <UserPresenceDot
+                            lastSeenAt={lastSeenByMachine.get(m.id) ?? null}
+                            variant="badge"
+                            thresholdMs={MACHINE_ONLINE_MS}
+                          />
+                        ) : (
+                          <span className="text-xs text-neutral-300">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">

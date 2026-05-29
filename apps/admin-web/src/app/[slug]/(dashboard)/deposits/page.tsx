@@ -30,6 +30,33 @@ import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 
+// ─── DepositLastActivity ─────────────────────────────────────────────────────
+// Renders the most recent activity at a deposit as a relative timestamp.
+// Reuses the shared `tasks.online.short*` i18n strings used by UserPresenceDot
+// so the wording stays consistent across the app.
+function DepositLastActivity({ at }: { at: string | null }) {
+  const { t, locale } = useI18n();
+  if (!at) {
+    return <span className="text-xs text-neutral-300">{t('deposits.lastActivityNone')}</span>;
+  }
+  const ageMs = Date.now() - new Date(at).getTime();
+  const label = (() => {
+    const minutes = Math.floor(ageMs / 60_000);
+    if (minutes < 1) return t('tasks.online.shortOnline');
+    if (minutes < 60) return t('tasks.online.shortMinutesAgo', { n: minutes });
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return t('tasks.online.shortHoursAgo', { n: hours });
+    const days = Math.floor(hours / 24);
+    return t('tasks.online.shortDaysAgo', { n: days });
+  })();
+  const title = new Date(at).toLocaleString(locale === 'ro' ? 'ro-RO' : 'en-US');
+  return (
+    <span title={title} className="text-xs text-neutral-600">
+      {label}
+    </span>
+  );
+}
+
 // ─── DepositFormModal ────────────────────────────────────────────────────────
 
 interface DepositFormModalProps {
@@ -356,7 +383,7 @@ function StatCard({ icon, label, value, accent = 'text-primary' }: StatCardProps
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 
 type SortDir = 'asc' | 'desc';
-type DepositSortKey = 'code' | 'name' | 'address' | 'contactName' | 'isActive';
+type DepositSortKey = 'code' | 'name' | 'address' | 'contactName' | 'lastActivityAt';
 
 function ThSortIndicator({
   columnKey,
@@ -431,8 +458,11 @@ export default function DepositsPage() {
 
     list = [...list].sort((a, b) => {
       let cmp = 0;
-      if (sortKey === 'isActive') {
-        cmp = (a.isActive ? 1 : 0) - (b.isActive ? 1 : 0);
+      if (sortKey === 'lastActivityAt') {
+        // Most recent activity first under 'desc'; nulls always sort last.
+        const ta = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : -Infinity;
+        const tb = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : -Infinity;
+        cmp = ta - tb;
       } else {
         const sa = (a[sortKey] ?? '') as string;
         const sb = (b[sortKey] ?? '') as string;
@@ -578,7 +608,7 @@ export default function DepositsPage() {
                   { key: 'name' as const, label: t('deposits.name') },
                   { key: 'address' as const, label: t('deposits.address') },
                   { key: 'contactName' as const, label: t('deposits.contactName') },
-                  { key: 'isActive' as const, label: t('deposits.status') },
+                  { key: 'lastActivityAt' as const, label: t('deposits.lastActivity') },
                 ].map(({ key, label }) => (
                   <th key={key} className={thClass} onClick={() => handleSort(key)}>
                     <div className="flex items-center">
@@ -638,19 +668,9 @@ export default function DepositsPage() {
                     )}
                   </td>
 
-                  {/* Status */}
+                  {/* Last activity */}
                   <td className="px-4 py-3">
-                    {d.isActive ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                        {t('common.active')}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">
-                        <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" />
-                        {t('common.inactive')}
-                      </span>
-                    )}
+                    <DepositLastActivity at={d.lastActivityAt ?? null} />
                   </td>
 
                   {/* Has Boundary */}

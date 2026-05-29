@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FolderOpen, Plus, Upload, XCircle } from 'lucide-react';
-import type { Farm } from '@strawboss/types';
-import { useCreateParcel } from '@strawboss/api';
+import type { Farm, ParcelImportRequest, ParcelImportResult } from '@strawboss/types';
+import { useImportParcels } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { parseKml, type KmlParsedParcel } from '@/lib/kml-parser';
 import { useI18n } from '@/lib/i18n';
@@ -13,44 +13,67 @@ interface KmlImportToFarmModalProps {
   farms: Farm[];
   /** Pre-selected farm id, e.g. when the user opened the modal from a farm row. */
   defaultFarmId?: string | null;
+  /** When true (with a defaultFarmId), the farm is fixed and the selector is hidden. */
+  lockFarm?: boolean;
   onClose: () => void;
+}
+
+/** Crop + campaign year as a single notes line, e.g. "PORUMB · 2025". */
+function composeNotes(p: KmlParsedParcel): string | null {
+  return [p.cropRaw, p.year].filter(Boolean).join(' · ') || null;
 }
 
 /**
  * Two-step modal:
  *   1. Pick a `.kml` file and (optionally) a destination Farm.
- *   2. Confirm — loop `useCreateParcel.mutateAsync` for every parsed polygon
- *      with `{ boundary, name, municipality, farmId }`.
+ *   2. Confirm — one `useImportParcels` call upserts every parsed parcel
+ *      (insert or update by code) and returns a created/updated/failed summary.
  */
 export function KmlImportToFarmModal({
   farms,
   defaultFarmId = null,
+  lockFarm = false,
   onClose,
 }: KmlImportToFarmModalProps) {
   const { t } = useI18n();
-  const createParcel = useCreateParcel(apiClient);
+  const importParcels = useImportParcels(apiClient);
 
   const [parsed, setParsed] = useState<KmlParsedParcel[] | null>(null);
   const [selectedFarmId, setSelectedFarmId] = useState<string>(defaultFarmId ?? '');
   const [parseError, setParseError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ done: number; failed: number } | null>(null);
-  const [finished, setFinished] = useState(false);
+  const [result, setResult] = useState<ParcelImportResult | null>(null);
 
   const total = parsed?.length ?? 0;
-  const importing = progress !== null && !finished;
+  const importing = importParcels.isPending;
+  const finished = result !== null;
+
+  const lockedFarm = useMemo(
+    () =>
+      lockFarm && selectedFarmId ? (farms.find((f) => f.id === selectedFarmId) ?? null) : null,
+    [lockFarm, selectedFarmId, farms],
+  );
 
   const handleFile = useCallback(
     async (file: File) => {
       setParseError(null);
+      // DOMParser.parseFromString is synchronous — a multi-megabyte KML
+      // freezes the main thread. Reject anything past this threshold up front
+      // so the user gets a clear message instead of "Page Unresponsive".
+      const MAX_FILE_BYTES = 20 * 1024 * 1024;
+      if (file.size > MAX_FILE_BYTES) {
+        setParseError(t('farms.kml.modal.fileTooLarge'));
+        setParsed(null);
+        return;
+      }
       try {
         const text = await file.text();
-        const result = parseKml(text);
-        if (result.length === 0) {
-          setParseError(t('farms.kml.modal.noPolygons'));
+        const parcels = parseKml(text);
+        if (parcels.length === 0) {
+          setParseError(t('farms.kml.modal.noParcels'));
           setParsed([]);
           return;
         }
-        setParsed(result);
+        setParsed(parcels);
       } catch (err) {
         setParseError((err as Error)?.message ?? t('mapList.kmlReadError'));
         setParsed(null);
@@ -61,31 +84,40 @@ export function KmlImportToFarmModal({
 
   const handleImport = useCallback(async () => {
     if (!parsed || parsed.length === 0) return;
-    let failed = 0;
-    setProgress({ done: 0, failed: 0 });
     clientLogger.info('KML import requested', {
       feature: 'farms.kml-import',
       count: parsed.length,
       farmId: selectedFarmId || null,
     });
-    for (let i = 0; i < parsed.length; i++) {
-      const p = parsed[i];
-      try {
-        await createParcel.mutateAsync({
-          boundary: JSON.stringify(p.boundary),
-          name: p.name || undefined,
-          municipality: p.municipality || undefined,
-          // Only attach farmId when one is selected — keeps the "unassigned"
-          // import path working from this entry point too.
-          ...(selectedFarmId ? { farmId: selectedFarmId } : {}),
-        });
-      } catch {
-        failed++;
-      }
-      setProgress({ done: i + 1, failed });
+
+    const payload: ParcelImportRequest = {
+      farmId: selectedFarmId || null,
+      parcels: parsed.map((p, i) => ({
+        code: p.code ?? `KML-${i + 1}`,
+        name: p.name || undefined,
+        boundary: JSON.stringify(p.boundary),
+        ...(p.declaredHa != null ? { areaHectares: p.declaredHa } : {}),
+        notes: composeNotes(p),
+      })),
+    };
+
+    try {
+      setResult(await importParcels.mutateAsync(payload));
+    } catch (err) {
+      clientLogger.error('KML import failed', {
+        feature: 'farms.kml-import',
+        message: (err as Error)?.message,
+      });
+      setResult({
+        total: parsed.length,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        failed: parsed.length,
+        errors: [],
+      });
     }
-    setFinished(true);
-  }, [parsed, selectedFarmId, createParcel]);
+  }, [parsed, selectedFarmId, importParcels]);
 
   const farmOptions = useMemo(() => {
     return [...farms].sort((a, b) => a.name.localeCompare(b.name, 'ro'));
@@ -145,27 +177,33 @@ export function KmlImportToFarmModal({
           {/* Step 2 — farm selector + preview */}
           {parsed && parsed.length > 0 && !finished && (
             <>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-neutral-600">
-                  {t('farms.kml.modal.selectFarm')}
-                </label>
-                <select
-                  value={selectedFarmId}
-                  onChange={(e) => setSelectedFarmId(e.target.value)}
-                  disabled={importing}
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  <option value="">— {t('farms.kml.modal.selectFarmHint')} —</option>
-                  {farmOptions.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-neutral-400">
-                  {t('farms.kml.modal.selectFarmHint')}
-                </p>
-              </div>
+              {lockedFarm ? (
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+                  {t('farms.kml.modal.lockedFarm', { name: lockedFarm.name })}
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-600">
+                    {t('farms.kml.modal.selectFarm')}
+                  </label>
+                  <select
+                    value={selectedFarmId}
+                    onChange={(e) => setSelectedFarmId(e.target.value)}
+                    disabled={importing}
+                    className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">— {t('farms.kml.modal.selectFarmHint')} —</option>
+                    {farmOptions.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    {t('farms.kml.modal.selectFarmHint')}
+                  </p>
+                </div>
+              )}
 
               <div className="rounded-lg border border-neutral-200">
                 <div className="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-medium text-neutral-500">
@@ -179,7 +217,7 @@ export function KmlImportToFarmModal({
                       </span>
                       <span className="ml-4 flex-shrink-0 text-xs text-neutral-400">
                         {p.previewHa != null ? `${p.previewHa} ha` : ''}
-                        {p.municipality ? ` · ${p.municipality}` : ''}
+                        {p.cropRaw ? ` · ${p.cropRaw}` : ''}
                       </span>
                     </li>
                   ))}
@@ -187,14 +225,11 @@ export function KmlImportToFarmModal({
               </div>
 
               {/* Progress */}
-              {importing && progress && (
+              {importing && (
                 <div className="text-sm text-neutral-600">
-                  {t('farms.kml.modal.importing', { done: progress.done, total })}
-                  <div className="mt-2 h-2 w-full rounded-full bg-neutral-100">
-                    <div
-                      className="h-2 rounded-full bg-primary transition-all"
-                      style={{ width: `${(progress.done / total) * 100}%` }}
-                    />
+                  {t('farms.kml.modal.importingNow')}
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+                    <div className="h-2 w-1/2 animate-pulse rounded-full bg-primary" />
                   </div>
                 </div>
               )}
@@ -202,16 +237,29 @@ export function KmlImportToFarmModal({
           )}
 
           {/* Finished */}
-          {finished && progress && (
+          {finished && result && (
             <div className="text-sm">
               <p className="font-medium text-neutral-800">{t('map.importDone')}</p>
               <p className="mt-1 text-neutral-500">
                 <CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-green-600" />
-                {t('farms.kml.modal.done', {
-                  ok: progress.done - progress.failed,
-                  failed: progress.failed,
+                {t('farms.kml.modal.result', {
+                  created: result.created,
+                  updated: result.updated,
+                  failed: result.failed,
                 })}
               </p>
+              {result.skipped > 0 && (
+                <p className="mt-1 text-xs text-amber-600">
+                  {t('farms.kml.modal.skippedNote', { skipped: result.skipped })}
+                </p>
+              )}
+              {result.failed > 0 && result.errors.length > 0 && (
+                <p className="mt-1 text-xs text-red-600">
+                  {t('farms.kml.modal.failedCodes', {
+                    codes: result.errors.map((e) => e.code).join(', '),
+                  })}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -243,9 +291,7 @@ export function KmlImportToFarmModal({
                 className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Plus className="h-4 w-4" />
-                {parsed && parsed.length > 0
-                  ? t('farms.kml.modal.confirm', { n: parsed.length })
-                  : t('farms.kml.modal.confirm', { n: 0 })}
+                {t('farms.kml.modal.confirm', { n: parsed?.length ?? 0 })}
               </button>
             </>
           )}
