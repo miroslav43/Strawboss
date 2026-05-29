@@ -388,6 +388,7 @@
         "done": "Done. {{ok}} imported, {{failed}} failed.",
         "noPolygons": "No polygons found in this KML.",
         "noParcels": "No parcels found in this KML.",
+        "fileTooLarge": "This KML file is too large (over 20 MB). Please split it into smaller files.",
         "lockedFarm": "Importing into {{name}}",
         "importingNow": "Importing parcels…",
         "result": "{{created}} added · {{updated}} updated · {{failed}} failed",

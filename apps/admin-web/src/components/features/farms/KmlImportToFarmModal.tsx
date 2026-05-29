@@ -56,6 +56,15 @@ export function KmlImportToFarmModal({
   const handleFile = useCallback(
     async (file: File) => {
       setParseError(null);
+      // DOMParser.parseFromString is synchronous — a multi-megabyte KML
+      // freezes the main thread. Reject anything past this threshold up front
+      // so the user gets a clear message instead of "Page Unresponsive".
+      const MAX_FILE_BYTES = 20 * 1024 * 1024;
+      if (file.size > MAX_FILE_BYTES) {
+        setParseError(t('farms.kml.modal.fileTooLarge'));
+        setParsed(null);
+        return;
+      }
       try {
         const text = await file.text();
         const parcels = parseKml(text);

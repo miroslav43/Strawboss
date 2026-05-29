@@ -388,6 +388,7 @@
         "done": "Gata. {{ok}} importate, {{failed}} eșuate.",
         "noPolygons": "Nu s-au găsit poligoane în acest KML.",
         "noParcels": "Nu s-au găsit parcele în acest KML.",
+        "fileTooLarge": "Fișierul KML este prea mare (peste 20 MB). Împarte-l în fișiere mai mici.",
         "lockedFarm": "Se importă în {{name}}",
         "importingNow": "Se importă parcelele…",
         "result": "{{created}} adăugate · {{updated}} actualizate · {{failed}} eșuate",
