@@ -16,7 +16,7 @@ import { ParcelsService } from './parcels.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { createParcelSchema, updateParcelSchema } from '@strawboss/validation';
+import { createParcelSchema, updateParcelSchema, importParcelsSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
 
@@ -59,6 +59,16 @@ export class ParcelsController {
     @Body(new ZodValidationPipe(createParcelSchema)) dto: Record<string, unknown>,
   ) {
     return this.parcelsService.create(user.organizationId, dto);
+  }
+
+  @Post('import')
+  @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
+  import(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(importParcelsSchema))
+    dto: { farmId?: string | null; parcels: Array<Record<string, unknown>> },
+  ) {
+    return this.parcelsService.importMany(user.organizationId, dto);
   }
 
   @Patch(':id')

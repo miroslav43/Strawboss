@@ -29,6 +29,8 @@ export {
   cropTypeSchema,
   createParcelSchema,
   updateParcelSchema,
+  importParcelSchema,
+  importParcelsSchema,
 } from './schemas/parcel.schema.js';
 
 export {

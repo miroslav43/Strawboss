@@ -23,6 +23,7 @@ export {
   useCreateParcel,
   useUpdateParcel,
   useUpdateParcelBoundary,
+  useImportParcels,
   useDeleteParcel,
 } from './use-parcels.js';
 

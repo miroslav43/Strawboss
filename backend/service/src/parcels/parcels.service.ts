@@ -1,9 +1,16 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { Logger as WinstonLogger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { HarvestStatus } from '@strawboss/types';
+import type { ParcelImportResult } from '@strawboss/types';
 
 /**
  * Events that drive a parcel forward on the harvest ladder once trip /
@@ -15,6 +22,23 @@ export type HarvestLoadEvent =
   | 'all_delivered'; // all trips carrying this parcel reached `completed`
 
 const PG_CHECK_VIOLATION = '23514';
+const PG_UNIQUE_VIOLATION = '23505';
+const PG_INVALID_GEOMETRY = '22023';
+
+/**
+ * Translate a Postgres / PostGIS error into a short, client-safe message for
+ * the per-row `errors[]` array returned by bulk KML import. The full original
+ * error is still logged via Winston — we just never echo Postgres internals
+ * (constraint names, column names, PostGIS prefixes) back over HTTP.
+ */
+function sanitizeImportError(err: unknown): string {
+  const code = (err as { code?: string } | undefined)?.code;
+  if (code === PG_UNIQUE_VIOLATION) return 'A parcel with this code already exists';
+  if (code === PG_INVALID_GEOMETRY) return 'Invalid boundary geometry';
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/ST_|GeoJSON|geometry/i.test(raw)) return 'Invalid boundary geometry';
+  return 'Import failed for this row';
+}
 
 @Injectable()
 export class ParcelsService {
@@ -163,45 +187,21 @@ export class ParcelsService {
     }
 
     // ── Compute area and centroid from boundary (PostGIS) ────────────────
-    let areaHectares = (dto.areaHectares as number | undefined) ?? null;
+    const { areaHectares, centroidGeoJson } = await this.computeGeo(
+      dto.boundary,
+      (dto.areaHectares as number | undefined) ?? null,
+    );
+
+    // ── Reverse geocode municipality from centroid (single-create only) ──
     let municipality = (dto.municipality as string | undefined) ?? null;
-    let centroidGeoJson: string | null = null;
-
-    if (dto.boundary) {
-      const boundaryStr =
-        typeof dto.boundary === 'string' ? dto.boundary : JSON.stringify(dto.boundary);
-
-      const geoCalcRow = await this.drizzleProvider.db.execute(sql`
-        SELECT
-          ROUND(
-            (ST_Area(ST_Transform(ST_GeomFromGeoJSON(${boundaryStr}), 32634)) / 10000.0)::numeric,
-            2
-          ) AS area_ha,
-          ST_AsGeoJSON(ST_Centroid(ST_GeomFromGeoJSON(${boundaryStr}))) AS centroid_geojson
-      `);
-
-      const calcResult = (
-        geoCalcRow as unknown as Array<{ area_ha: string; centroid_geojson: string }>
-      )[0];
-
-      if (areaHectares === null && calcResult?.area_ha) {
-        areaHectares = parseFloat(calcResult.area_ha);
-      }
-
-      if (calcResult?.centroid_geojson) {
-        centroidGeoJson = calcResult.centroid_geojson;
-      }
-
-      // ── Reverse geocode municipality from centroid ──────────────────
-      if (municipality === null && centroidGeoJson) {
-        const centroid = JSON.parse(centroidGeoJson) as {
-          type: string;
-          coordinates: [number, number];
-        };
-        // GeoJSON coordinates are [lon, lat]
-        const [lon, lat] = centroid.coordinates;
-        municipality = await this.reverseLookupMunicipality(lat, lon);
-      }
+    if (municipality === null && centroidGeoJson) {
+      const centroid = JSON.parse(centroidGeoJson) as {
+        type: string;
+        coordinates: [number, number];
+      };
+      // GeoJSON coordinates are [lon, lat]
+      const [lon, lat] = centroid.coordinates;
+      municipality = await this.reverseLookupMunicipality(lat, lon);
     }
 
     // Prefer explicitly provided centroid, fall back to computed one.
@@ -247,6 +247,194 @@ export class ParcelsService {
         created_at AS "createdAt", updated_at AS "updatedAt", deleted_at AS "deletedAt"
     `);
     return result;
+  }
+
+  /**
+   * Compute parcel area (hectares) and centroid (GeoJSON) from a boundary.
+   * Declared area wins when supplied; otherwise the geometric area (UTM 34N)
+   * is used. Does NOT reverse-geocode — callers decide whether to (single
+   * create does; bulk import skips it to avoid hammering Nominatim).
+   */
+  private async computeGeo(
+    boundary: unknown,
+    declaredHa: number | null,
+  ): Promise<{ areaHectares: number | null; centroidGeoJson: string | null }> {
+    let areaHectares = declaredHa;
+    let centroidGeoJson: string | null = null;
+
+    if (boundary) {
+      const boundaryStr = typeof boundary === 'string' ? boundary : JSON.stringify(boundary);
+
+      const geoCalcRow = await this.drizzleProvider.db.execute(sql`
+        SELECT
+          ROUND(
+            (ST_Area(ST_Transform(ST_GeomFromGeoJSON(${boundaryStr}), 32634)) / 10000.0)::numeric,
+            2
+          ) AS area_ha,
+          ST_AsGeoJSON(ST_Centroid(ST_GeomFromGeoJSON(${boundaryStr}))) AS centroid_geojson
+      `);
+
+      const calcResult = (
+        geoCalcRow as unknown as Array<{ area_ha: string; centroid_geojson: string }>
+      )[0];
+
+      if (areaHectares === null && calcResult?.area_ha) {
+        areaHectares = parseFloat(calcResult.area_ha);
+      }
+      if (calcResult?.centroid_geojson) {
+        centroidGeoJson = calcResult.centroid_geojson;
+      }
+    }
+
+    return { areaHectares, centroidGeoJson };
+  }
+
+  /**
+   * Bulk-import parsed KML parcels. Upserts on `(code, organization_id)` so
+   * re-importing the same file updates geometry/area/notes/farm rather than
+   * creating duplicates. Admin-set `crop_type` and workflow `harvest_status`
+   * are preserved on update; admin-edited `notes` are never destroyed (only
+   * filled/refreshed when the KML carries a value). A conflicting row that is
+   * soft-deleted is left untouched and counted as `skipped` — resurrection
+   * stays an explicit admin action, not a side effect of import. Each row is
+   * independent: one bad geometry is reported as a failure without aborting
+   * the rest.
+   */
+  async importMany(
+    orgId: string | null,
+    dto: { farmId?: string | null; parcels: Array<Record<string, unknown>> },
+  ): Promise<ParcelImportResult> {
+    // super_admin (orgId === null) has no tenant to scope rows to; the
+    // organization_id column is NOT NULL, so every row would fail. Reject up
+    // front with a clear error instead of returning all-failed.
+    if (orgId === null) {
+      throw new BadRequestException(
+        'A super_admin must act within an organization to import parcels.',
+      );
+    }
+
+    const farmId = (dto.farmId as string | null | undefined) ?? null;
+    const parcels = Array.isArray(dto.parcels) ? dto.parcels : [];
+
+    // Ensure the target farm belongs to the caller's organization — never let a
+    // request link parcels to another tenant's farm (the FK only checks existence).
+    if (farmId !== null) {
+      const farmRow = await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM farms
+        WHERE id = ${farmId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL
+        LIMIT 1
+      `);
+      if ((farmRow as unknown as unknown[]).length === 0) {
+        throw new NotFoundException(`Farm ${farmId} not found`);
+      }
+    }
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+    const errors: { code: string; message: string }[] = [];
+
+    const toGeoJsonFragment = (val: unknown) =>
+      val
+        ? sql`ST_GeomFromGeoJSON(${typeof val === 'string' ? val : JSON.stringify(val)})`
+        : sql`NULL`;
+
+    for (const p of parcels) {
+      const code = (p.code as string | undefined) ?? '';
+      const notes = (p.notes as string | null | undefined) ?? null;
+      try {
+        // Look up the current state of this code within the org. This drives an
+        // explicit insert/update/skip decision — clearer and more robust than
+        // inferring it from xmax on an ON CONFLICT RETURNING. Imports are a
+        // low-frequency admin action, so the extra SELECT is negligible.
+        const existingRows = await this.drizzleProvider.db.execute(sql`
+          SELECT deleted_at FROM parcels
+          WHERE code = ${code} AND organization_id = ${orgId}::uuid
+          LIMIT 1
+        `);
+        const existing = (existingRows as unknown as Array<{ deleted_at: string | null }>)[0];
+
+        // A soft-deleted parcel is left untouched: resurrection stays an
+        // explicit admin action, not a side effect of re-import.
+        if (existing && existing.deleted_at !== null) {
+          skipped += 1;
+          continue;
+        }
+
+        const { areaHectares, centroidGeoJson } = await this.computeGeo(
+          p.boundary,
+          (p.areaHectares as number | undefined) ?? null,
+        );
+        const centroidInput = centroidGeoJson ? JSON.parse(centroidGeoJson) : null;
+
+        if (existing) {
+          // Live row → update geometry/area/farm; never destroy admin-edited
+          // notes (COALESCE), preserve the existing farm assignment when the
+          // request omits farmId (COALESCE), and leave crop_type /
+          // harvest_status untouched. RETURNING id lets us only count rows we
+          // actually touched — if a concurrent soft-delete slips in between
+          // the SELECT above and this UPDATE, the row is gone and we skip.
+          const updatedRows = await this.drizzleProvider.db.execute(sql`
+            UPDATE parcels SET
+              boundary      = ${toGeoJsonFragment(p.boundary)},
+              centroid      = ${toGeoJsonFragment(centroidInput)},
+              area_hectares = ${areaHectares},
+              notes         = COALESCE(${notes}, notes),
+              farm_id       = COALESCE(${farmId}, farm_id),
+              updated_at    = now()
+            WHERE code = ${code} AND organization_id = ${orgId}::uuid AND deleted_at IS NULL
+            RETURNING id
+          `);
+          if ((updatedRows as unknown as unknown[]).length > 0) {
+            updated += 1;
+          } else {
+            skipped += 1;
+          }
+        } else {
+          await this.drizzleProvider.db.execute(sql`
+            INSERT INTO parcels (
+              organization_id, code, name, area_hectares,
+              boundary, centroid, notes, farm_id, is_active, harvest_status
+            ) VALUES (
+              ${orgId}::uuid,
+              ${code},
+              ${(p.name as string | undefined) ?? code},
+              ${areaHectares},
+              ${toGeoJsonFragment(p.boundary)},
+              ${toGeoJsonFragment(centroidInput)},
+              ${notes},
+              ${farmId},
+              true,
+              'planned'::harvest_status
+            )
+          `);
+          created += 1;
+        }
+      } catch (err) {
+        failed += 1;
+        const rawMessage = err instanceof Error ? err.message : String(err);
+        errors.push({ code: code || '(unnamed)', message: sanitizeImportError(err) });
+        this.winston.warn('KML parcel import row failed', {
+          context: 'ParcelsService',
+          code,
+          message: rawMessage,
+        });
+      }
+    }
+
+    this.winston.info('KML parcel import finished', {
+      context: 'ParcelsService',
+      orgId,
+      farmId,
+      total: parcels.length,
+      created,
+      updated,
+      skipped,
+      failed,
+    });
+
+    return { total: parcels.length, created, updated, skipped, failed, errors };
   }
 
   async update(id: string, orgId: string | null, dto: Record<string, unknown>) {
