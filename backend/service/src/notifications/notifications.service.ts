@@ -487,6 +487,7 @@ export class NotificationsService {
     truckCode: string,
     lastSeenAt: string,
     idleMinutes: number,
+    reason: 'idle_timeout' | 'loader_declined' = 'idle_timeout',
   ): Promise<void> {
     const conditions: ReturnType<typeof sql>[] = [
       sql`role IN ('admin'::user_role, 'dispatcher'::user_role)`,
@@ -498,8 +499,11 @@ export class NotificationsService {
       sql`SELECT id FROM users WHERE ${where}`,
     )) as unknown as { id: string }[];
 
-    const title = 'Camion inactiv';
-    const body = `Camionul ${truckCode} stă neutilizat de ${idleMinutes} min.`;
+    const title = reason === 'loader_declined' ? 'Camion eliberat' : 'Camion inactiv';
+    const body =
+      reason === 'loader_declined'
+        ? `Loaderul a refuzat rechemarea — camionul ${truckCode} e liber.`
+        : `Camionul ${truckCode} stă neutilizat de ${idleMinutes} min.`;
     await Promise.all(
       rows.map((r) =>
         this.sendPush(r.id, title, body, {
@@ -508,6 +512,7 @@ export class NotificationsService {
           truckCode,
           lastSeenAt,
           idleMinutes,
+          reason,
         }).catch(() => {}),
       ),
     );

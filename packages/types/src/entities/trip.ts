@@ -28,6 +28,14 @@ export interface Trip extends Timestamps, SoftDelete {
   parentTripId: string | null;
   /** Plan C — 1-based position inside the course. Always 1 for legacy rows. */
   iterationIndex: number;
+  /**
+   * Plan C — loader's answer to the recall prompt: null = not yet answered,
+   * 'recalled' = truck called back (next iteration minted), 'declined' = truck
+   * released (admin alerted). Server-managed; replaces delivery_notes markers.
+   */
+  recallDecision: 'recalled' | 'declined' | null;
+  /** Plan C — when the recall decision was recorded; idempotency guard. */
+  recallDecidedAt: string | null;
   loadingStartedAt: string | null;
   loadingCompletedAt: string | null;
   departureOdometerKm: number | null;

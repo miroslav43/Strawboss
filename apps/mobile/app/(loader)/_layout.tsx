@@ -3,6 +3,8 @@ import { View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
 import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
+import { useLoaderRecallPrompt } from '@/hooks/useLoaderRecallPrompt';
+import { LoaderRecallOverlay } from '@/components/features/loader/LoaderRecallOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
 import { SyncQueueBannerHost } from '@/components/shared/SyncQueueBannerHost';
 import {
@@ -14,6 +16,11 @@ import {
 
 export default function LoaderTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
+  const {
+    prompt: recallPrompt,
+    respond: respondRecall,
+    pending: recallPending,
+  } = useLoaderRecallPrompt();
   const insets = useSafeAreaInsets();
 
   return (
@@ -88,6 +95,11 @@ export default function LoaderTabLayout() {
           alert={activeAlert}
           onDismiss={dismissAlert}
           onConfirmParcelDone={confirmParcelDone}
+        />
+        <LoaderRecallOverlay
+          prompt={recallPrompt}
+          pending={recallPending}
+          onRespond={respondRecall}
         />
         <SyncQueueBannerHost />
       </View>

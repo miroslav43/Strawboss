@@ -1,4 +1,4 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import { NotificationsService } from './notifications.service';
 import { TripsService } from '../trips/trips.service';
@@ -141,8 +141,18 @@ export class NotificationsController {
     @Body(new ZodValidationPipe(loaderRecallResponseSchema))
     body: { tripId: string; recall: boolean },
   ) {
+    // P2 — a loader_operator may only answer for the trip they are assigned to.
+    // Admins / super_admins may answer on anyone's behalf.
+    if (user.role !== 'admin' && user.role !== 'super_admin') {
+      const trip = await this.tripsService.findById(body.tripId, user.organizationId);
+      if (trip.loader_operator_id !== user.id) {
+        throw new ForbiddenException('Nu ești loaderul atribuit acestei curse.');
+      }
+    }
     if (body.recall) {
-      await this.tripsService.createNextIteration(body.tripId, user.organizationId, true);
+      await this.tripsService.createNextIteration(body.tripId, user.organizationId, true, {
+        idempotent: true,
+      });
     } else {
       await this.tripsService.recordNoRecall(body.tripId, user.organizationId, user.id);
     }

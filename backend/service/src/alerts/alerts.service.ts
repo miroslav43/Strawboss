@@ -140,18 +140,27 @@ export class AlertsService {
     idleMinutes: number;
     completedAt: string;
     orgId: string | null;
+    /** 'idle_timeout' = periodic scan; 'loader_declined' = loader released it. */
+    reason?: 'idle_timeout' | 'loader_declined';
   }) {
+    const reason = args.reason ?? 'idle_timeout';
+    const title = reason === 'loader_declined' ? 'Camion eliberat' : 'Camion inactiv';
+    const description =
+      reason === 'loader_declined'
+        ? `Loaderul a refuzat rechemarea — camionul ${args.truckCode} e liber.`
+        : `Camionul ${args.truckCode} stă inactiv de ${args.idleMinutes} min.`;
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO alerts (
         category, severity, title, description,
         machine_id, data, is_acknowledged, organization_id
       ) VALUES (
         'system'::alert_category, 'medium'::alert_severity,
-        'Camion inactiv',
-        'Camionul ' || ${args.truckCode} || ' stă inactiv de ' || ${args.idleMinutes}::text || ' min.',
+        ${title},
+        ${description},
         ${args.truckId}::uuid,
         jsonb_build_object(
           'kind', 'truck_idle',
+          'reason', ${reason}::text,
           'idleMinutes', ${args.idleMinutes},
           'completedAt', ${args.completedAt}
         ),
