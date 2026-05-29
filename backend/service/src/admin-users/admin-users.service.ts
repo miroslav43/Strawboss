@@ -256,7 +256,7 @@ export class AdminUsersService {
     }
 
     // Update Supabase Auth role if changed.
-    if (dto.role) {
+    if (dto.role !== undefined) {
       const { error: roleError } = await this.supabaseAdmin.auth.admin.updateUserById(id, {
         app_metadata: { role: dto.role },
       });
@@ -292,7 +292,7 @@ export class AdminUsersService {
     await this.drizzleProvider.db.execute(sql`
       UPDATE users SET
         full_name           = COALESCE(${dto.fullName ?? null}, full_name),
-        role                = COALESCE(${dto.role ? sql`${dto.role}::user_role` : null}, role),
+        role                = COALESCE(${dto.role !== undefined ? sql`${dto.role}::user_role` : null}, role),
         phone               = CASE WHEN ${dto.phone !== undefined} THEN ${dto.phone ?? null} ELSE phone END,
         is_active           = COALESCE(${dto.isActive ?? null}, is_active),
         assigned_machine_id = CASE
