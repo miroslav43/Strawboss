@@ -355,8 +355,10 @@ export class ParcelsService {
           // Live row → update geometry/area/farm; never destroy admin-edited
           // notes (COALESCE), preserve the existing farm assignment when the
           // request omits farmId (COALESCE), and leave crop_type /
-          // harvest_status untouched.
-          await this.drizzleProvider.db.execute(sql`
+          // harvest_status untouched. RETURNING id lets us only count rows we
+          // actually touched — if a concurrent soft-delete slips in between
+          // the SELECT above and this UPDATE, the row is gone and we skip.
+          const updatedRows = await this.drizzleProvider.db.execute(sql`
             UPDATE parcels SET
               boundary      = ${toGeoJsonFragment(p.boundary)},
               centroid      = ${toGeoJsonFragment(centroidInput)},
@@ -365,8 +367,13 @@ export class ParcelsService {
               farm_id       = COALESCE(${farmId}, farm_id),
               updated_at    = now()
             WHERE code = ${code} AND organization_id = ${orgId}::uuid AND deleted_at IS NULL
+            RETURNING id
           `);
-          updated += 1;
+          if ((updatedRows as unknown as unknown[]).length > 0) {
+            updated += 1;
+          } else {
+            skipped += 1;
+          }
         } else {
           await this.drizzleProvider.db.execute(sql`
             INSERT INTO parcels (
