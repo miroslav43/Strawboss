@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Parcel, PaginatedResponse } from '@strawboss/types';
+import type {
+  Parcel,
+  PaginatedResponse,
+  ParcelImportRequest,
+  ParcelImportResult,
+} from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
@@ -39,6 +44,23 @@ export function useUpdateParcel(client: ApiClient) {
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.detail(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.all });
+    },
+  });
+}
+
+/**
+ * Bulk-import parcels from a parsed KML file. Upserts by `(code, organization_id)`
+ * server-side, so re-importing the same file updates rather than duplicates.
+ * Invalidates both the parcels and farms caches (farm field counts change).
+ */
+export function useImportParcels(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ParcelImportRequest) =>
+      client.post<ParcelImportResult>('/api/v1/parcels/import', data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.farms.all });
     },
   });
 }

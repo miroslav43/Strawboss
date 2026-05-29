@@ -53,6 +53,24 @@ export const createParcelSchema = z.object({
   farmId: z.string().uuid().nullable().optional(),
 });
 
+/** One parcel in a bulk KML import. `code` is required (upsert key). */
+export const importParcelSchema = z.object({
+  code: z.string().min(1).max(128),
+  name: z.string().min(1).max(256).optional(),
+  // Stringified GeoJSON Polygon/MultiPolygon. Required — a parcel without a
+  // boundary is meaningless to import. Capped well above any real polygon to
+  // bound per-row PostGIS work and keep logs/error strings sane.
+  boundary: z.string().min(1).max(500_000),
+  areaHectares: z.number().positive().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/** Body for `POST /api/v1/parcels/import`. */
+export const importParcelsSchema = z.object({
+  farmId: z.string().uuid().nullable().optional(),
+  parcels: z.array(importParcelSchema).min(1).max(500),
+});
+
 export const updateParcelSchema = z
   .object({
     code: z.string().min(1),

@@ -266,10 +266,9 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
         <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50 px-4 py-3">
           <span className="text-sm text-neutral-500">
             {selected.size > 0
-              ? t(
-                  selected.size === 1 ? 'farms.selectedCount' : 'farms.selectedCountPlural',
-                  { count: selected.size },
-                )
+              ? t(selected.size === 1 ? 'farms.selectedCount' : 'farms.selectedCountPlural', {
+                  count: selected.size,
+                })
               : t('farms.noneSelected')}
           </span>
           <div className="flex items-center gap-2">
@@ -345,6 +344,8 @@ export default function FarmsPage() {
 
   // T11 — KML import modal
   const [kmlOpen, setKmlOpen] = useState(false);
+  // Per-farm KML import: the farm whose row "Import KML" button was clicked.
+  const [kmlFarmId, setKmlFarmId] = useState<string | null>(null);
 
   const handleCreate = useCallback(() => {
     if (!createName.trim() || !createPhone.trim()) return;
@@ -473,6 +474,15 @@ export default function FarmsPage() {
       </div>
 
       {kmlOpen && <KmlImportToFarmModal farms={farms} onClose={() => setKmlOpen(false)} />}
+
+      {kmlFarmId && (
+        <KmlImportToFarmModal
+          farms={farms}
+          defaultFarmId={kmlFarmId}
+          lockFarm
+          onClose={() => setKmlFarmId(null)}
+        />
+      )}
 
       {/* Create form */}
       {showCreate && (
@@ -766,6 +776,13 @@ export default function FarmsPage() {
                           {t('farms.fields')}
                         </button>
                       )}
+                      <button
+                        onClick={() => setKmlFarmId(farm.id)}
+                        className="rounded-lg p-1.5 text-neutral-400 hover:bg-primary/5 hover:text-primary"
+                        title={t('farms.kml.import')}
+                      >
+                        <Upload className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={() => startEdit(farm)}
                         className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
