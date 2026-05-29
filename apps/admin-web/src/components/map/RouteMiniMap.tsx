@@ -31,6 +31,13 @@ export function RouteMiniMap({ points, className }: RouteMiniMapProps) {
   const routeLayerRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
 
+  // Hold the current `t` in a ref so locale changes don't re-run the draw
+  // effect (which would flash the polyline and aggravate the cancel race).
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  });
+
   // ── 1. Initialise map (client-only dynamic import) ──────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
@@ -132,14 +139,14 @@ export function RouteMiniMap({ points, className }: RouteMiniMapProps) {
         color: '#16a34a',
         fillColor: '#16a34a',
         fillOpacity: 1,
-      }).bindTooltip(t('leaflet.routeStart'), { permanent: false });
+      }).bindTooltip(tRef.current('leaflet.routeStart'), { permanent: false });
 
       const endMarker = L.circleMarker(latLngs[latLngs.length - 1], {
         radius: 6,
         color: '#dc2626',
         fillColor: '#dc2626',
         fillOpacity: 1,
-      }).bindTooltip(t('leaflet.routeEnd'), { permanent: false });
+      }).bindTooltip(tRef.current('leaflet.routeEnd'), { permanent: false });
 
       const group = L.layerGroup([polyline, startMarker, endMarker]).addTo(liveMap);
       routeLayerRef.current = group;
@@ -151,7 +158,7 @@ export function RouteMiniMap({ points, className }: RouteMiniMapProps) {
     return () => {
       cancelled = true;
     };
-  }, [points, mapReady, t]);
+  }, [points, mapReady]);
 
   return <div ref={mapRef} className={className ?? 'h-full w-full'} />;
 }
