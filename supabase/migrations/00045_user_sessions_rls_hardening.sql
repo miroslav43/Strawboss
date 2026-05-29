@@ -47,14 +47,19 @@ CREATE POLICY own_sessions_read ON user_sessions
     )
   );
 
--- Admin/dispatcher: strictly org-scoped reads.
+-- Admin: strictly org-scoped reads.
+-- NOTE: 'dispatcher' was removed from user_role in migration 00009 (renamed to
+-- 'driver'). Referencing it here makes the whole migration abort with
+-- "invalid input value for enum user_role: dispatcher", which is why the
+-- UNIQUE(user_id, started_at) constraint above never landed in production and
+-- POST /profile/heartbeat 500'd on every ping. Use 'admin' only.
 CREATE POLICY admin_org_sessions_read ON user_sessions
   FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM users u
        WHERE u.id = public.user_id()
-         AND u.role IN ('admin', 'dispatcher')
+         AND u.role = 'admin'
          AND u.organization_id = user_sessions.organization_id
     )
   );
