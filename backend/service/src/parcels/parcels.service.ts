@@ -353,14 +353,16 @@ export class ParcelsService {
 
         if (existing) {
           // Live row → update geometry/area/farm; never destroy admin-edited
-          // notes (COALESCE), and leave crop_type / harvest_status untouched.
+          // notes (COALESCE), preserve the existing farm assignment when the
+          // request omits farmId (COALESCE), and leave crop_type /
+          // harvest_status untouched.
           await this.drizzleProvider.db.execute(sql`
             UPDATE parcels SET
               boundary      = ${toGeoJsonFragment(p.boundary)},
               centroid      = ${toGeoJsonFragment(centroidInput)},
               area_hectares = ${areaHectares},
               notes         = COALESCE(${notes}, notes),
-              farm_id       = ${farmId},
+              farm_id       = COALESCE(${farmId}, farm_id),
               updated_at    = now()
             WHERE code = ${code} AND organization_id = ${orgId}::uuid AND deleted_at IS NULL
           `);
