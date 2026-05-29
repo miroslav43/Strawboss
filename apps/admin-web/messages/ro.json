@@ -659,7 +659,14 @@
       "totalKm": "{{km}} km",
       "export": "Export CSV",
       "empty": "Nu există date GPS în intervalul selectat.",
-      "colMachine": "Mașină"
+      "colMachine": "Mașină",
+      "routeTitle": "Arată traseul zilei",
+      "routeClose": "Închide traseul",
+      "routeLoading": "Se încarcă traseul…",
+      "routeError": "Eroare la încărcarea traseului.",
+      "routeEmpty": "Niciun punct GPS pentru această zi.",
+      "routeSinglePoint": "Un singur punct GPS — nu există traseu de afișat.",
+      "routePoints": "{{n}} puncte GPS"
     },
     "kpi": {
       "produced": "Produs",

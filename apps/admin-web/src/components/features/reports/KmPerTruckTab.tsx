@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Download } from 'lucide-react';
-import { useMachines, useTruckDistanceReport } from '@strawboss/api';
+import { Download, MapPin, X } from 'lucide-react';
+import { useMachines, useTruckDistanceReport, useRouteHistory } from '@strawboss/api';
 import type { Machine, MachineType, PaginatedResponse, TruckDistanceRow } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { exportCsv } from '@/lib/csv';
+import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { KmPerTruckChart, type KmChartRow } from './KmPerTruckChart';
+import { RouteMiniMap } from '@/components/map/RouteMiniMap';
 
 interface KmPerTruckTabProps {
   dateFrom: string;
@@ -98,6 +100,21 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
 
   const orderedMachineIds = cappedSelected.filter((id) => byMachine.has(id));
 
+  // Inline route panel: which (truck, day) cell is open.
+  const [selected, setSelected] = useState<{
+    machineId: string;
+    machineCode: string;
+    date: string;
+    km: number;
+  } | null>(null);
+
+  // The /route endpoint takes a timestamp window; bucket the selected UTC day.
+  const routeFrom = selected ? `${selected.date}T00:00:00.000Z` : '';
+  const routeTo = selected ? `${selected.date}T23:59:59.999Z` : '';
+  const routeQuery = useRouteHistory(apiClient, selected?.machineId ?? null, routeFrom, routeTo);
+  const routePoints = routeQuery.data?.points ?? [];
+  const routeTotalPoints = routeQuery.data?.totalPoints ?? 0;
+
   // Build chart rows: { date, [machineCode]: km, ... }
   const chartRows: KmChartRow[] = useMemo(() => {
     if (filteredRows.length === 0) return [];
@@ -110,6 +127,19 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
     }
     return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredRows]);
+
+  // Close the panel if its truck left the filtered set or its day fell
+  // outside the report range.
+  useEffect(() => {
+    if (!selected) return;
+    if (!byMachine.has(selected.machineId)) {
+      setSelected(null);
+      return;
+    }
+    if (!chartRows.some((r) => r.date === selected.date)) {
+      setSelected(null);
+    }
+  }, [selected, byMachine, chartRows]);
 
   const machinesForChart = useMemo(
     () =>
@@ -253,22 +283,57 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
                   const rows = byMachine.get(machineId) ?? [];
                   const firstRow = rows[0];
                   const code = firstRow?.machineCode ?? machineId.slice(0, 6);
-                  // Build a date→km map for fast lookup across the chart's
-                  // ordered date columns (handles missing days as 0).
+                  // Build date→km and date→pointCount maps for fast lookup
+                  // across the chart's ordered date columns (missing days = 0).
                   const kmByDate = new Map<string, number>();
-                  for (const r of rows) kmByDate.set(r.date, r.distanceKm);
+                  const pointByDate = new Map<string, number>();
+                  for (const r of rows) {
+                    kmByDate.set(r.date, r.distanceKm);
+                    pointByDate.set(r.date, r.pointCount);
+                  }
                   const totalKm = rows.reduce((s, r) => s + r.distanceKm, 0);
                   return (
                     <tr key={machineId} className="hover:bg-neutral-50/60">
                       <td className="px-4 py-2 font-medium text-neutral-800">{code}</td>
-                      {chartRows.map((cr) => (
-                        <td
-                          key={cr.date}
-                          className="px-3 py-2 text-right text-sm tabular-nums text-neutral-700"
-                        >
-                          {(kmByDate.get(cr.date) ?? 0).toFixed(2)}
-                        </td>
-                      ))}
+                      {chartRows.map((cr) => {
+                        const km = kmByDate.get(cr.date) ?? 0;
+                        const pc = pointByDate.get(cr.date) ?? 0;
+                        const isActive =
+                          selected?.machineId === machineId && selected?.date === cr.date;
+                        if (pc > 0) {
+                          return (
+                            <td key={cr.date} className="px-3 py-2 text-right text-sm tabular-nums">
+                              <button
+                                type="button"
+                                title={t('reports.kmPerTruck.routeTitle')}
+                                onClick={() =>
+                                  setSelected((prev) =>
+                                    prev && prev.machineId === machineId && prev.date === cr.date
+                                      ? null
+                                      : { machineId, machineCode: code, date: cr.date, km },
+                                  )
+                                }
+                                className={cn(
+                                  'rounded px-1.5 py-0.5 transition-colors hover:bg-blue-50 hover:text-blue-700',
+                                  isActive
+                                    ? 'bg-blue-100 font-semibold text-blue-700'
+                                    : 'text-neutral-700',
+                                )}
+                              >
+                                {km.toFixed(2)}
+                              </button>
+                            </td>
+                          );
+                        }
+                        return (
+                          <td
+                            key={cr.date}
+                            className="px-3 py-2 text-right text-sm tabular-nums text-neutral-400"
+                          >
+                            {km.toFixed(2)}
+                          </td>
+                        );
+                      })}
                       <td className="px-4 py-2 text-right font-semibold tabular-nums text-neutral-800">
                         {t('reports.kmPerTruck.totalKm', { km: totalKm.toFixed(2) })}
                       </td>
@@ -278,6 +343,47 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
               </tbody>
             </table>
           </div>
+
+          {selected && (
+            <div className="rounded-xl border border-neutral-200 bg-white">
+              <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="h-4 w-4 text-blue-500" />
+                  <span className="font-semibold text-neutral-800">{selected.machineCode}</span>
+                  <span className="text-neutral-400">·</span>
+                  <span className="text-neutral-600">{selected.date}</span>
+                  <span className="text-neutral-400">·</span>
+                  <span className="font-medium text-neutral-700">
+                    {t('reports.kmPerTruck.totalKm', { km: selected.km.toFixed(2) })}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  aria-label={t('reports.kmPerTruck.routeClose')}
+                  className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="px-4 py-2 text-xs text-neutral-500">
+                {routeQuery.isLoading
+                  ? t('reports.kmPerTruck.routeLoading')
+                  : routeQuery.isError
+                    ? t('reports.kmPerTruck.routeError')
+                    : routeTotalPoints === 0
+                      ? t('reports.kmPerTruck.routeEmpty')
+                      : routeTotalPoints === 1
+                        ? t('reports.kmPerTruck.routeSinglePoint')
+                        : t('reports.kmPerTruck.routePoints', { n: routeTotalPoints })}
+              </div>
+              {!routeQuery.isLoading && !routeQuery.isError && routePoints.length >= 2 && (
+                <div className="h-96 w-full overflow-hidden rounded-b-xl">
+                  <RouteMiniMap points={routePoints} className="h-full w-full" />
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
