@@ -71,9 +71,14 @@ export class ReportsController {
     return this.reportsService.getTruckDistanceSummary(user.organizationId);
   }
 
-  /** Plan A T4 — connected-hours report aggregated from user_sessions. */
-  @Get('user-connected-hours')
-  @Get('connected-hours')
+  /**
+   * Plan A T4 — connected-hours report aggregated from user_sessions.
+   * Both paths are registered via a single decorator: stacking two `@Get()`
+   * decorators does NOT register both routes — NestJS's RequestMapping calls
+   * `Reflect.defineMetadata(PATH_METADATA, …)`, so the topmost decorator
+   * overwrites the lower one (which previously 404'd `connected-hours`).
+   */
+  @Get(['connected-hours', 'user-connected-hours'])
   getConnectedHours(
     @CurrentUser() user: RequestUser,
     @Query(new ZodValidationPipe(connectedHoursQuerySchema)) query: ConnectedHoursQuery,
