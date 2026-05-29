@@ -22,6 +22,23 @@ export type HarvestLoadEvent =
   | 'all_delivered'; // all trips carrying this parcel reached `completed`
 
 const PG_CHECK_VIOLATION = '23514';
+const PG_UNIQUE_VIOLATION = '23505';
+const PG_INVALID_GEOMETRY = '22023';
+
+/**
+ * Translate a Postgres / PostGIS error into a short, client-safe message for
+ * the per-row `errors[]` array returned by bulk KML import. The full original
+ * error is still logged via Winston — we just never echo Postgres internals
+ * (constraint names, column names, PostGIS prefixes) back over HTTP.
+ */
+function sanitizeImportError(err: unknown): string {
+  const code = (err as { code?: string } | undefined)?.code;
+  if (code === PG_UNIQUE_VIOLATION) return 'A parcel with this code already exists';
+  if (code === PG_INVALID_GEOMETRY) return 'Invalid boundary geometry';
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/ST_|GeoJSON|geometry/i.test(raw)) return 'Invalid boundary geometry';
+  return 'Import failed for this row';
+}
 
 @Injectable()
 export class ParcelsService {
@@ -396,12 +413,12 @@ export class ParcelsService {
         }
       } catch (err) {
         failed += 1;
-        const message = err instanceof Error ? err.message : String(err);
-        errors.push({ code: code || '(unnamed)', message });
+        const rawMessage = err instanceof Error ? err.message : String(err);
+        errors.push({ code: code || '(unnamed)', message: sanitizeImportError(err) });
         this.winston.warn('KML parcel import row failed', {
           context: 'ParcelsService',
           code,
-          message,
+          message: rawMessage,
         });
       }
     }
