@@ -89,8 +89,8 @@ acceptable for v1; the km number remains authoritative.
 ## Edge cases
 
 - Cell with `km == 0` / `pointCount == 0` → not clickable (nothing to show).
-- `totalPoints === 1` → no polyline possible; show the single marker + a
-  "single point" notice (`reports.kmPerTruck.routeSinglePoint`).
+- `totalPoints === 1` → no polyline possible; show the `routeSinglePoint`
+  notice only, no map (`RouteMiniMap` needs ≥ 2 points to draw).
 - De-selecting the truck whose route is open → close the panel.
 - Print: the whole screen tab is already wrapped in `print:hidden`; the map is
   not part of the print layout (acceptable for v1).
