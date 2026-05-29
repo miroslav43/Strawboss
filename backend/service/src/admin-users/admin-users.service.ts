@@ -171,6 +171,14 @@ export class AdminUsersService {
     // Validate machine assignment compatibility.
     if (dto.assignedMachineId) {
       const effectiveRole: UserRole = dto.role ?? existing.role;
+      // depot_manager users never operate a machine; reject up front so the
+      // mutual exclusivity with assignedDeliveryDestinationId always holds,
+      // even on a direct API call that bypasses the admin-web UI gating.
+      if (effectiveRole === 'depot_manager') {
+        throw new BadRequestException(
+          'depot_manager users cannot be assigned a machine; assign a depot instead.',
+        );
+      }
       const requiredType = ROLE_MACHINE_TYPE[effectiveRole];
 
       if (requiredType) {
@@ -221,11 +229,17 @@ export class AdminUsersService {
       }
     }
 
-    // Invariant: only depot_manager may have a depot assignment. When the role
-    // transitions away from depot_manager, force the depot column to null so
-    // the row never lands in an inconsistent state.
-    if (dto.role !== undefined && dto.role !== 'depot_manager') {
-      dto.assignedDeliveryDestinationId = null;
+    // Invariant: depot assignment and machine assignment are mutually exclusive
+    // and role-bound. On any role transition, force the column that no longer
+    // applies to null so the row never lands in an inconsistent state — e.g. a
+    // former loader_operator must not keep a stale machine after becoming a
+    // depot_manager, and vice-versa.
+    if (dto.role !== undefined) {
+      if (dto.role === 'depot_manager') {
+        dto.assignedMachineId = null;
+      } else {
+        dto.assignedDeliveryDestinationId = null;
+      }
     }
 
     // Check username uniqueness before update.
