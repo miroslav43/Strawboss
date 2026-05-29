@@ -108,13 +108,6 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
     km: number;
   } | null>(null);
 
-  // Close the panel if its truck is no longer in the filtered set.
-  useEffect(() => {
-    if (selected && !byMachine.has(selected.machineId)) {
-      setSelected(null);
-    }
-  }, [selected, byMachine]);
-
   // The /route endpoint takes a timestamp window; bucket the selected UTC day.
   const routeFrom = selected ? `${selected.date}T00:00:00.000Z` : '';
   const routeTo = selected ? `${selected.date}T23:59:59.999Z` : '';
@@ -134,6 +127,19 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
     }
     return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredRows]);
+
+  // Close the panel if its truck left the filtered set or its day fell
+  // outside the report range.
+  useEffect(() => {
+    if (!selected) return;
+    if (!byMachine.has(selected.machineId)) {
+      setSelected(null);
+      return;
+    }
+    if (!chartRows.some((r) => r.date === selected.date)) {
+      setSelected(null);
+    }
+  }, [selected, byMachine, chartRows]);
 
   const machinesForChart = useMemo(
     () =>
