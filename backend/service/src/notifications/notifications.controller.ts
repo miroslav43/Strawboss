@@ -131,8 +131,8 @@ export class NotificationsController {
   /**
    * Plan C — loader's answer to the "Camion descărcat" prompt.
    * - recall=true  → create the next iteration trip (push to driver).
-   * - recall=false → record a [recall_no] marker on the trip notes so the
-   *                  truck-idle BullMQ processor can alert admins.
+   * - recall=false → record a structured 'declined' decision (migration 00048)
+   *                  and immediately alert admins if the truck is now idle.
    */
   @Post('loader-recall-response')
   @Roles('admin' as UserRole, 'loader_operator' as UserRole)
