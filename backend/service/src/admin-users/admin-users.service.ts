@@ -165,83 +165,146 @@ export class AdminUsersService {
 
     if (!hasChanges) return this.getById(id, orgId);
 
-    // Verify the target user belongs to the caller's org before any mutations
-    const existing = await this.getById(id, orgId);
+    // Serialize concurrent PATCHes on the same user. Two interleaved requests
+    // (e.g. one setting role=depot_manager, another role=driver) used to read
+    // the same `existing` snapshot and decide cleanup independently, leaving
+    // the row in a mixed state. Lock the target row up-front and run all
+    // validation + the UPDATE inside one transaction. Supabase Auth updates
+    // happen AFTER commit — Auth has no rollback, so we cannot serialize it
+    // with the DB, only minimize the divergence window.
+    await this.drizzleProvider.db.transaction(async (tx) => {
+      // Lock the target user row; also enforces org ownership.
+      const lockConditions: ReturnType<typeof sql>[] = [
+        sql`id = ${id}::uuid`,
+        sql`deleted_at IS NULL`,
+      ];
+      if (orgId !== null) {
+        lockConditions.push(sql`organization_id = ${orgId}::uuid`);
+      }
+      const lockWhere = sql.join(lockConditions, sql` AND `);
+      const lockResult = await tx.execute(sql`
+        SELECT ${USER_SELECT_COLS}
+        FROM users WHERE ${lockWhere}
+        FOR UPDATE
+      `);
+      const existingRows = lockResult as unknown as User[];
+      if (!existingRows.length) throw new NotFoundException(`User ${id} not found`);
+      const existing = existingRows[0];
 
-    // Validate machine assignment compatibility.
-    if (dto.assignedMachineId) {
-      const effectiveRole: UserRole = dto.role ?? existing.role;
-      const requiredType = ROLE_MACHINE_TYPE[effectiveRole];
+      // Validate machine assignment compatibility.
+      if (dto.assignedMachineId) {
+        const effectiveRole: UserRole = dto.role ?? existing.role;
+        // depot_manager users never operate a machine; reject up front so the
+        // mutual exclusivity with assignedDeliveryDestinationId always holds,
+        // even on a direct API call that bypasses the admin-web UI gating.
+        if (effectiveRole === 'depot_manager') {
+          throw new BadRequestException(
+            'depot_manager users cannot be assigned a machine; assign a depot instead.',
+          );
+        }
+        const requiredType = ROLE_MACHINE_TYPE[effectiveRole];
 
-      if (requiredType) {
-        const machineConditions: ReturnType<typeof sql>[] = [
-          sql`id = ${dto.assignedMachineId!}::uuid`,
+        if (requiredType) {
+          const machineConditions: ReturnType<typeof sql>[] = [
+            sql`id = ${dto.assignedMachineId!}::uuid`,
+            sql`deleted_at IS NULL`,
+          ];
+          if (orgId !== null) machineConditions.push(sql`organization_id = ${orgId}::uuid`);
+          const machineWhere = sql.join(machineConditions, sql` AND `);
+          const machineRows = await tx.execute(sql`
+            SELECT machine_type FROM machines WHERE ${machineWhere} LIMIT 1
+          `);
+          const rows = machineRows as unknown as { machine_type: string }[];
+          if (!rows.length) {
+            throw new NotFoundException(`Machine ${dto.assignedMachineId} not found`);
+          }
+          if (rows[0].machine_type !== requiredType) {
+            throw new BadRequestException(
+              `Role "${effectiveRole}" requires a machine of type "${requiredType}", ` +
+                `but the selected machine is of type "${rows[0].machine_type}".`,
+            );
+          }
+        }
+      }
+
+      // Validate depot assignment: only depot_manager role may be assigned a depot.
+      if (dto.assignedDeliveryDestinationId) {
+        const effectiveRole: UserRole = dto.role ?? existing.role;
+        if (effectiveRole !== 'depot_manager') {
+          throw new BadRequestException(
+            `Only depot_manager users may be assigned a delivery destination, ` +
+              `but the effective role is "${effectiveRole}".`,
+          );
+        }
+        const depotConditions: ReturnType<typeof sql>[] = [
+          sql`id = ${dto.assignedDeliveryDestinationId}::uuid`,
           sql`deleted_at IS NULL`,
         ];
-        if (orgId !== null) machineConditions.push(sql`organization_id = ${orgId}::uuid`);
-        const machineWhere = sql.join(machineConditions, sql` AND `);
-        const machineRows = await this.drizzleProvider.db.execute(sql`
-          SELECT machine_type FROM machines WHERE ${machineWhere} LIMIT 1
+        if (orgId !== null) depotConditions.push(sql`organization_id = ${orgId}::uuid`);
+        const depotWhere = sql.join(depotConditions, sql` AND `);
+        const depotRows = await tx.execute(sql`
+          SELECT id FROM delivery_destinations WHERE ${depotWhere} LIMIT 1
         `);
-        const rows = machineRows as unknown as { machine_type: string }[];
-        if (!rows.length) {
-          throw new NotFoundException(`Machine ${dto.assignedMachineId} not found`);
-        }
-        if (rows[0].machine_type !== requiredType) {
-          throw new BadRequestException(
-            `Role "${effectiveRole}" requires a machine of type "${requiredType}", ` +
-              `but the selected machine is of type "${rows[0].machine_type}".`,
+        if (!(depotRows as unknown as { id: string }[]).length) {
+          throw new NotFoundException(
+            `Delivery destination ${dto.assignedDeliveryDestinationId} not found`,
           );
         }
       }
-    }
 
-    // Validate depot assignment: only depot_manager role may be assigned a depot.
-    if (dto.assignedDeliveryDestinationId) {
-      const effectiveRole: UserRole = dto.role ?? existing.role;
-      if (effectiveRole !== 'depot_manager') {
-        throw new BadRequestException(
-          `Only depot_manager users may be assigned a delivery destination, ` +
-            `but the effective role is "${effectiveRole}".`,
-        );
+      // Invariant: depot assignment and machine assignment are mutually exclusive
+      // and role-bound. On any role transition, force the column that no longer
+      // applies to null so the row never lands in an inconsistent state — e.g. a
+      // former loader_operator must not keep a stale machine after becoming a
+      // depot_manager, and vice-versa.
+      if (dto.role !== undefined) {
+        if (dto.role === 'depot_manager') {
+          dto.assignedMachineId = null;
+        } else {
+          dto.assignedDeliveryDestinationId = null;
+          dto.assignedMachineId = null;
+        }
       }
-      const depotConditions: ReturnType<typeof sql>[] = [
-        sql`id = ${dto.assignedDeliveryDestinationId}::uuid`,
-        sql`deleted_at IS NULL`,
-      ];
-      if (orgId !== null) depotConditions.push(sql`organization_id = ${orgId}::uuid`);
-      const depotWhere = sql.join(depotConditions, sql` AND `);
-      const depotRows = await this.drizzleProvider.db.execute(sql`
-        SELECT id FROM delivery_destinations WHERE ${depotWhere} LIMIT 1
+
+      // Check username uniqueness before update.
+      if (dto.username !== undefined) {
+        const usernameCheck = await tx.execute(sql`
+          SELECT id FROM users
+          WHERE username = ${dto.username} AND id != ${id}::uuid
+          LIMIT 1
+        `);
+        if ((usernameCheck as unknown as { id: string }[]).length) {
+          throw new ConflictException('Username already taken');
+        }
+      }
+
+      await tx.execute(sql`
+        UPDATE users SET
+          full_name           = COALESCE(${dto.fullName ?? null}, full_name),
+          role                = COALESCE(${dto.role !== undefined ? sql`${dto.role}::user_role` : null}, role),
+          phone               = CASE WHEN ${dto.phone !== undefined} THEN ${dto.phone ?? null} ELSE phone END,
+          is_active           = COALESCE(${dto.isActive ?? null}, is_active),
+          assigned_machine_id = CASE
+                                  WHEN ${dto.assignedMachineId !== undefined}
+                                  THEN ${dto.assignedMachineId ?? null}::uuid
+                                  ELSE assigned_machine_id
+                                END,
+          assigned_delivery_destination_id = CASE
+                                  WHEN ${dto.assignedDeliveryDestinationId !== undefined}
+                                  THEN ${dto.assignedDeliveryDestinationId ?? null}::uuid
+                                  ELSE assigned_delivery_destination_id
+                                END,
+          username            = COALESCE(${dto.username ?? null}, username),
+          pin                 = CASE WHEN ${dto.pin !== undefined} THEN ${dto.pin ?? null} ELSE pin END,
+          updated_at          = now()
+        WHERE ${lockWhere}
       `);
-      if (!(depotRows as unknown as { id: string }[]).length) {
-        throw new NotFoundException(
-          `Delivery destination ${dto.assignedDeliveryDestinationId} not found`,
-        );
-      }
-    }
+    });
 
-    // Invariant: only depot_manager may have a depot assignment. When the role
-    // transitions away from depot_manager, force the depot column to null so
-    // the row never lands in an inconsistent state.
-    if (dto.role !== undefined && dto.role !== 'depot_manager') {
-      dto.assignedDeliveryDestinationId = null;
-    }
-
-    // Check username uniqueness before update.
-    if (dto.username !== undefined) {
-      const usernameCheck = await this.drizzleProvider.db.execute(sql`
-        SELECT id FROM users
-        WHERE username = ${dto.username} AND id != ${id}::uuid
-        LIMIT 1
-      `);
-      if ((usernameCheck as unknown as { id: string }[]).length) {
-        throw new ConflictException('Username already taken');
-      }
-    }
-
-    // Update Supabase Auth role if changed.
-    if (dto.role) {
+    // Update Supabase Auth role if changed. AFTER the DB commit — Auth has no
+    // rollback, so failures here leave Postgres ahead of Auth (vs. the reverse,
+    // which is harder to detect). Surfaces as a 500 to the caller.
+    if (dto.role !== undefined) {
       const { error: roleError } = await this.supabaseAdmin.auth.admin.updateUserById(id, {
         app_metadata: { role: dto.role },
       });
@@ -264,37 +327,6 @@ export class AdminUsersService {
         );
       }
     }
-
-    const updateConditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}::uuid`,
-      sql`deleted_at IS NULL`,
-    ];
-    if (orgId !== null) {
-      updateConditions.push(sql`organization_id = ${orgId}::uuid`);
-    }
-    const updateWhere = sql.join(updateConditions, sql` AND `);
-
-    await this.drizzleProvider.db.execute(sql`
-      UPDATE users SET
-        full_name           = COALESCE(${dto.fullName ?? null}, full_name),
-        role                = COALESCE(${dto.role ? sql`${dto.role}::user_role` : null}, role),
-        phone               = CASE WHEN ${dto.phone !== undefined} THEN ${dto.phone ?? null} ELSE phone END,
-        is_active           = COALESCE(${dto.isActive ?? null}, is_active),
-        assigned_machine_id = CASE
-                                WHEN ${dto.assignedMachineId !== undefined}
-                                THEN ${dto.assignedMachineId ?? null}::uuid
-                                ELSE assigned_machine_id
-                              END,
-        assigned_delivery_destination_id = CASE
-                                WHEN ${dto.assignedDeliveryDestinationId !== undefined}
-                                THEN ${dto.assignedDeliveryDestinationId ?? null}::uuid
-                                ELSE assigned_delivery_destination_id
-                              END,
-        username            = COALESCE(${dto.username ?? null}, username),
-        pin                 = CASE WHEN ${dto.pin !== undefined} THEN ${dto.pin ?? null} ELSE pin END,
-        updated_at          = now()
-      WHERE ${updateWhere}
-    `);
 
     return this.getById(id, orgId);
   }
