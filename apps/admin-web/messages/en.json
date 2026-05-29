@@ -659,7 +659,14 @@
       "totalKm": "{{km}} km",
       "export": "Export CSV",
       "empty": "No GPS data in the selected range.",
-      "colMachine": "Machine"
+      "colMachine": "Machine",
+      "routeTitle": "Show the day's route",
+      "routeClose": "Close route",
+      "routeLoading": "Loading route…",
+      "routeError": "Failed to load route.",
+      "routeEmpty": "No GPS points for this day.",
+      "routeSinglePoint": "Only one GPS point — no route to draw.",
+      "routePoints": "{{n}} GPS points"
     },
     "kpi": {
       "produced": "Produced",
