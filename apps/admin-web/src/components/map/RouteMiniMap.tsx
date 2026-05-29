@@ -58,6 +58,10 @@ export function RouteMiniMap({ points, className }: RouteMiniMapProps) {
         },
       ).addTo(map);
 
+      if (!isMounted) {
+        map.remove();
+        return;
+      }
       mapInstanceRef.current = map;
       setMapReady(true);
     };
