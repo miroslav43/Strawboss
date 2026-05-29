@@ -239,6 +239,7 @@ export class AdminUsersService {
         dto.assignedMachineId = null;
       } else {
         dto.assignedDeliveryDestinationId = null;
+        dto.assignedMachineId = null;
       }
     }
 
