@@ -107,8 +107,13 @@ export function RouteMiniMap({ points, className }: RouteMiniMapProps) {
 
     if (!points || points.length < 2) return;
 
+    let cancelled = false;
     const render = async () => {
       const L = (await import('leaflet')).default;
+      if (cancelled) return;
+      const liveMap = mapInstanceRef.current;
+      if (!liveMap) return;
+
       const latLngs = points.map((p) => [p.lat, p.lon] as [number, number]);
 
       const polyline = L.polyline(latLngs, {
@@ -132,12 +137,16 @@ export function RouteMiniMap({ points, className }: RouteMiniMapProps) {
         fillOpacity: 1,
       }).bindTooltip(t('leaflet.routeEnd'), { permanent: false });
 
-      const group = L.layerGroup([polyline, startMarker, endMarker]).addTo(map);
+      const group = L.layerGroup([polyline, startMarker, endMarker]).addTo(liveMap);
       routeLayerRef.current = group;
-      map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+      liveMap.fitBounds(polyline.getBounds(), { padding: [40, 40] });
     };
 
     void render();
+
+    return () => {
+      cancelled = true;
+    };
   }, [points, mapReady, t]);
 
   return <div ref={mapRef} className={className ?? 'h-full w-full'} />;
