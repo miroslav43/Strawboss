@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Vibration,
   Image,
+  Platform,
 } from 'react-native';
 import { resolveApiUrl } from '@/lib/api-client';
 import { useModal } from '@/hooks/useModal';
@@ -202,7 +203,9 @@ export function ProfileScreen() {
                 fullName={profile.fullName}
                 onUploaded={handleAvatarUploaded}
               />
-              <Text style={styles.fullName}>{profile.fullName}</Text>
+              <Text style={styles.fullName} numberOfLines={2}>
+                {profile.fullName}
+              </Text>
               <Text style={styles.email}>{profile.email}</Text>
               <Pressable
                 onPress={onRoleBadgeTap}
@@ -299,13 +302,17 @@ export function ProfileScreen() {
                   size={28}
                   color={colors.primary}
                 />
-                <View>
-                  <Text style={styles.machineCode}>{machine.internalCode}</Text>
-                  <Text style={styles.machineDetail}>
+                <View style={styles.machineInfo}>
+                  <Text style={styles.machineCode} numberOfLines={1} ellipsizeMode="tail">
+                    {machine.internalCode}
+                  </Text>
+                  <Text style={styles.machineDetail} numberOfLines={1} ellipsizeMode="tail">
                     {machine.make} {machine.model}
                   </Text>
                   {machine.registrationPlate ? (
-                    <Text style={styles.machinePlate}>{machine.registrationPlate}</Text>
+                    <Text style={styles.machinePlate} numberOfLines={1} ellipsizeMode="tail">
+                      {machine.registrationPlate}
+                    </Text>
                   ) : null}
                 </View>
               </View>
@@ -366,6 +373,21 @@ export function ProfileScreen() {
           >
             <MaterialCommunityIcons name="file-pdf-box" size={22} color={colors.primary} />
             <Text style={styles.actionRowText}>Raport zilnic PDF</Text>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.neutral} />
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Always-on tracking setup — re-openable per device (Android machine users) */}
+        {Platform.OS === 'android' && assignedMachineId ? (
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => router.push('/tracking-setup')}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Configurare urmărire permanentă"
+          >
+            <MaterialCommunityIcons name="map-marker-check" size={22} color={colors.primary} />
+            <Text style={styles.actionRowText}>Configurare urmărire</Text>
             <MaterialCommunityIcons name="chevron-right" size={20} color={colors.neutral} />
           </TouchableOpacity>
         ) : null}
@@ -489,6 +511,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
+    width: '100%',
   },
   syncButtonText: { color: colors.white, fontSize: 15, fontWeight: '700' },
   retryButton: {
@@ -499,6 +522,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#E65100',
+    width: '100%',
   },
   retryButtonText: { color: '#E65100', fontSize: 15, fontWeight: '700' },
   clearQueueButton: {
@@ -520,7 +544,8 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginTop: 4,
   },
-  machineRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  machineRow: { flexDirection: 'row', alignItems: 'center', gap: 12, width: '100%' },
+  machineInfo: { flex: 1, flexShrink: 1 },
   machineCode: { fontSize: fontScale(16), fontWeight: '700', color: colors.primary },
   machineDetail: { fontSize: 13, color: colors.neutral },
   machinePlate: { fontSize: 12, color: '#9ca3af' },
@@ -586,7 +611,7 @@ const styles = StyleSheet.create({
   specimenRow: { width: '100%' },
   specimenImage: {
     width: '100%',
-    height: 100,
+    height: scale(100),
     backgroundColor: '#F9F5F2',
     borderRadius: 8,
   },

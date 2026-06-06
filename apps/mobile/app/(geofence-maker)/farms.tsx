@@ -217,17 +217,33 @@ export default function FarmsScreen() {
                     <MaterialCommunityIcons name="home-group" size={22} color={colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.farmName}>{farm.name}</Text>
+                    <Text style={styles.farmName} numberOfLines={1}>
+                      {farm.name}
+                    </Text>
                     {farm.entityType ? (
                       <View style={styles.entityChip}>
                         <Text style={styles.entityChipText}>{ENTITY_LABELS[farm.entityType]}</Text>
                       </View>
                     ) : null}
-                    {farm.phone ? <Text style={styles.farmAddr}>📞 {farm.phone}</Text> : null}
-                    {farm.address ? <Text style={styles.farmAddr}>{farm.address}</Text> : null}
-                    {farm.cui ? <Text style={styles.farmAddr}>CUI: {farm.cui}</Text> : null}
+                    {farm.phone ? (
+                      <Text style={styles.farmAddr} numberOfLines={1}>
+                        📞 {farm.phone}
+                      </Text>
+                    ) : null}
+                    {farm.address ? (
+                      <Text style={styles.farmAddr} numberOfLines={1}>
+                        {farm.address}
+                      </Text>
+                    ) : null}
+                    {farm.cui ? (
+                      <Text style={styles.farmAddr} numberOfLines={1}>
+                        CUI: {farm.cui}
+                      </Text>
+                    ) : null}
                     {farm.apiaCode ? (
-                      <Text style={styles.farmAddr}>APIA: {farm.apiaCode}</Text>
+                      <Text style={styles.farmAddr} numberOfLines={1}>
+                        APIA: {farm.apiaCode}
+                      </Text>
                     ) : null}
                     <Text style={styles.farmMeta}>{farmParcels.length} câmpuri</Text>
                   </View>

@@ -430,7 +430,9 @@ export default function GeofenceMakerMapScreen() {
           size={16}
           color={bannerTextColor}
         />
-        <Text style={[styles.bannerText, { color: bannerTextColor }]}>{bannerText}</Text>
+        <Text style={[styles.bannerText, { color: bannerTextColor }]} numberOfLines={2}>
+          {bannerText}
+        </Text>
         {drawMode ? (
           <TouchableOpacity onPress={cancelDraw} style={styles.cancelDrawBtn}>
             <Text style={styles.cancelDrawText}>Anulează</Text>

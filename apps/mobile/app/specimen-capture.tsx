@@ -9,6 +9,7 @@ import { BigButton } from '@/components/ui/BigButton';
 import { uploadSpecimen } from '@/lib/signatureUpload';
 import { useAuthStore } from '@/stores/auth-store';
 import { mobileLogger } from '@/lib/logger';
+import { fontScale } from '@/utils/responsive';
 import { colors } from '@strawboss/ui-tokens';
 
 /**
@@ -116,6 +117,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
   },
-  title: { fontSize: 17, fontWeight: '700', color: '#0A5C36', marginBottom: 4 },
-  hint: { fontSize: 13, color: '#5D4037', lineHeight: 18 },
+  title: { fontSize: fontScale(17), fontWeight: '700', color: '#0A5C36', marginBottom: 4 },
+  hint: { fontSize: fontScale(13), color: '#5D4037', lineHeight: fontScale(18) },
 });

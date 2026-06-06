@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { View, Text, Pressable, Modal, StyleSheet, Animated } from 'react-native';
+import { View, Text, Pressable, Modal, StyleSheet, Animated, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { scale, fontScale } from '@/utils/responsive';
 import { radii } from '@strawboss/ui-tokens';
@@ -105,8 +105,17 @@ export function AppModal({
                 accessibilityLabel={title}
               />
             </View>
-            <Text style={styles.title}>{title}</Text>
-            <Text style={styles.message}>{message}</Text>
+            <Text style={styles.title} numberOfLines={2}>
+              {title}
+            </Text>
+            <ScrollView
+              style={styles.messageScroll}
+              contentContainerStyle={styles.messageScrollContent}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <Text style={styles.message}>{message}</Text>
+            </ScrollView>
             <View style={styles.buttons}>
               {showCancel && (
                 <Pressable
@@ -178,12 +187,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: scale(6),
   },
+  messageScroll: {
+    alignSelf: 'stretch',
+    maxHeight: scale(220),
+    marginBottom: scale(20),
+  },
+  messageScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
   message: {
     fontSize: fontScale(14),
     color: '#555',
     textAlign: 'center',
     lineHeight: fontScale(20),
-    marginBottom: scale(20),
   },
   buttons: {
     flexDirection: 'row',

@@ -357,7 +357,9 @@ export default function DriverTripsScreen() {
                       <Text style={styles.loaderCode}>
                         {loader.internalCode ?? loader.registrationPlate ?? '—'}
                       </Text>
-                      <Text style={styles.loaderOperator}>{loader.operatorName ?? '—'}</Text>
+                      <Text style={styles.loaderOperator} numberOfLines={1}>
+                        {loader.operatorName ?? '—'}
+                      </Text>
                       <Text style={styles.loaderTime}>{Math.round(loader.distanceM)} m</Text>
                     </View>
                   ))
@@ -452,7 +454,9 @@ export default function DriverTripsScreen() {
                 {item.destination_name ? (
                   <View style={styles.inlineRow}>
                     <MaterialCommunityIcons name="map-marker" size={14} color="#5D4037" />
-                    <Text style={styles.destination}>{item.destination_name}</Text>
+                    <Text style={styles.destination} numberOfLines={1}>
+                      {item.destination_name}
+                    </Text>
                     {/* @plan-a:open-maps-button-slot */}
                     {/* @plan-a:end */}
                   </View>
@@ -550,7 +554,7 @@ const styles = StyleSheet.create({
   tripNumber: { fontSize: 16, fontWeight: '600', color: '#000' },
   badge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   badgeText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
-  destination: { fontSize: 14, color: '#5D4037' },
+  destination: { fontSize: 14, color: '#5D4037', flex: 1 },
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   metaText: { fontSize: 13, color: colors.textSecondary },

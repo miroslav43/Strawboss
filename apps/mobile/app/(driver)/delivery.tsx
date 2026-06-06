@@ -7,6 +7,7 @@ import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
+import { fontScale } from '@/utils/responsive';
 
 export default function DriverDeliveryScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -20,9 +21,7 @@ export default function DriverDeliveryScreen() {
       const all = await repo.listActive();
       // Find the trip that is in arrived/delivering state for this driver
       const delivery = all.find(
-        (t) =>
-          t.driver_id === userId &&
-          (t.status === 'arrived' || t.status === 'delivering'),
+        (t) => t.driver_id === userId && (t.status === 'arrived' || t.status === 'delivering'),
       );
       setActiveTrip(delivery ?? null);
     } finally {
@@ -52,20 +51,22 @@ export default function DriverDeliveryScreen() {
                 {activeTrip.destination_name ? (
                   <View style={styles.inlineRow}>
                     <MaterialCommunityIcons name="map-marker" size={16} color="#5D4037" />
-                    <Text style={styles.destination}>{activeTrip.destination_name}</Text>
+                    <Text style={styles.destination} numberOfLines={1}>
+                      {activeTrip.destination_name}
+                    </Text>
                   </View>
                 ) : null}
                 <View style={styles.inlineRow}>
                   <MaterialCommunityIcons name="grain" size={16} color="#8D6E63" />
-                  <Text style={styles.baleCount}>{activeTrip.bale_count} baloți</Text>
+                  <Text style={styles.baleCount} numberOfLines={1}>
+                    {activeTrip.bale_count} baloți
+                  </Text>
                 </View>
               </View>
 
               <BigButton
                 title="Începe procesul de livrare"
-                onPress={() =>
-                  router.push(`/driver-ops/delivery-flow?tripId=${activeTrip.id}`)
-                }
+                onPress={() => router.push(`/driver-ops/delivery-flow?tripId=${activeTrip.id}`)}
               />
             </>
           ) : (
@@ -92,7 +93,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
   },
   centered: { justifyContent: 'center', alignItems: 'center' },
-  content: { padding: 16, gap: 16 },
+  content: { padding: 16, gap: 16, flexGrow: 1 },
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   card: {
     backgroundColor: '#FFFFFF',
@@ -105,10 +106,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  cardTitle: { fontSize: 13, color: '#5D4037', fontWeight: '500' },
-  tripNumber: { fontSize: 20, fontWeight: '700', color: '#000' },
-  destination: { fontSize: 14, color: '#5D4037' },
-  baleCount: { fontSize: 14, color: '#8D6E63' },
+  cardTitle: { fontSize: fontScale(13), color: '#5D4037', fontWeight: '500' },
+  tripNumber: { fontSize: fontScale(20), fontWeight: '700', color: '#000' },
+  destination: { fontSize: fontScale(14), color: '#5D4037', flexShrink: 1 },
+  baleCount: { fontSize: fontScale(14), color: '#8D6E63', flexShrink: 1 },
   empty: {
     flex: 1,
     alignItems: 'center',
@@ -116,6 +117,6 @@ const styles = StyleSheet.create({
     paddingTop: 48,
     paddingHorizontal: 24,
   },
-  emptyText: { fontSize: 15, color: '#374151', fontWeight: '500', textAlign: 'center' },
-  emptySubtext: { fontSize: 13, color: '#8D6E63', textAlign: 'center' },
+  emptyText: { fontSize: fontScale(15), color: '#374151', fontWeight: '500', textAlign: 'center' },
+  emptySubtext: { fontSize: fontScale(13), color: '#8D6E63', textAlign: 'center' },
 });

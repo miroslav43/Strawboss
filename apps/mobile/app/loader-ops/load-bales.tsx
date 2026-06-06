@@ -502,7 +502,7 @@ export default function LoadBalesScreen() {
           />
           <View style={{ flex: 1 }}>
             <Text style={styles.parcelLabel}>Teren</Text>
-            <Text style={styles.parcelName}>
+            <Text style={styles.parcelName} numberOfLines={1} ellipsizeMode="tail">
               {snapshotParcelName
                 ? snapshotParcelName
                 : parcel.status === 'loading'
@@ -520,7 +520,9 @@ export default function LoadBalesScreen() {
           onPress={() => setBaleCountStr(String(fullTruckCount))}
         >
           <MaterialCommunityIcons name="truck-fast" size={20} color={colors.primary} />
-          <Text style={styles.fullTruckText}>Camion plin ({fullTruckCount} baloți)</Text>
+          <Text style={styles.fullTruckText} numberOfLines={1} ellipsizeMode="tail">
+            Camion plin ({fullTruckCount} baloți)
+          </Text>
         </TouchableOpacity>
 
         <NumericPad value={baleCountStr} onChange={setBaleCountStr} decimal={false} />
@@ -664,7 +666,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary,
   },
-  fullTruckText: { fontSize: 15, fontWeight: '700', color: colors.primary },
+  fullTruckText: { fontSize: 15, fontWeight: '700', color: colors.primary, flexShrink: 1 },
   successText: { fontSize: 22, fontWeight: '700', color: '#0A5C36' },
   successSubtext: { fontSize: 14, color: '#5D4037', textAlign: 'center', paddingHorizontal: 24 },
   sigHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, paddingBottom: 4 },

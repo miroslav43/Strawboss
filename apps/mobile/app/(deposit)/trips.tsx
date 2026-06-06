@@ -80,7 +80,7 @@ export default function DepositTripsScreen() {
             renderItem={({ item }) => (
               <View style={styles.tripCard}>
                 <View style={styles.tripHeader}>
-                  <Text style={styles.tripNumber}>
+                  <Text style={styles.tripNumber} numberOfLines={1}>
                     {item.tripNumber}
                     {item.iterationIndex && item.iterationIndex > 1
                       ? ` · cursa ${item.iterationIndex}`
@@ -101,11 +101,15 @@ export default function DepositTripsScreen() {
                 </View>
                 <View style={styles.tripRow}>
                   <MaterialCommunityIcons name="truck" size={16} color={themeColors.primary} />
-                  <Text style={styles.tripText}>{item.truckCode ?? item.truckPlate ?? '—'}</Text>
+                  <Text style={styles.tripText} numberOfLines={1}>
+                    {item.truckCode ?? item.truckPlate ?? '—'}
+                  </Text>
                 </View>
                 <View style={styles.tripRow}>
                   <MaterialCommunityIcons name="account" size={16} color={themeColors.primary} />
-                  <Text style={styles.tripText}>{item.driverName ?? '—'}</Text>
+                  <Text style={styles.tripText} numberOfLines={1}>
+                    {item.driverName ?? '—'}
+                  </Text>
                 </View>
                 <View style={styles.tripRow}>
                   <MaterialCommunityIcons name="grain" size={16} color={themeColors.primary} />
@@ -137,11 +141,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  tripNumber: { fontSize: 15, fontWeight: '600', color: '#374151' },
-  statusBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  tripNumber: { flex: 1, fontSize: 15, fontWeight: '600', color: '#374151' },
+  statusBadge: { flexShrink: 0, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   statusText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
   tripRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tripText: { fontSize: 13, color: '#5D4037' },
+  tripText: { flex: 1, fontSize: 13, color: '#5D4037' },
   empty: { alignItems: 'center', padding: 40, gap: 8 },
   emptyTitle: { fontSize: 15, fontWeight: '600', color: '#374151' },
   emptySubtitle: {

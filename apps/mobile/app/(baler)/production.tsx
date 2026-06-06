@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
 import { ProductionNumpad } from '@/components/features/production/ProductionNumpad';
 import { FieldActiveNumpad } from '@/components/features/production/FieldActiveNumpad';
@@ -21,6 +22,7 @@ export default function BalerProductionScreen() {
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const { fieldActive, enableFieldActive, disableFieldActive } = useFieldActiveStore();
+  const insets = useSafeAreaInsets();
 
   // Keep screen awake while fieldActive is true.
   useEffect(() => {
@@ -39,7 +41,7 @@ export default function BalerProductionScreen() {
   if (fieldActive) {
     return (
       <View style={styles.fieldActiveContainer}>
-        <View style={styles.fieldActiveHeader}>
+        <View style={[styles.fieldActiveHeader, { paddingTop: insets.top + 12 }]}>
           <View style={styles.fieldActiveBadge}>
             <MaterialCommunityIcons name="weather-sunny" size={16} color={colors.warning} />
             <Text style={styles.fieldActiveBadgeText}>Câmp activ</Text>
@@ -139,7 +141,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 52,
     paddingBottom: 12,
   },
   fieldActiveBadge: {

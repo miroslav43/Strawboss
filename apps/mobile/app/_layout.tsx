@@ -37,9 +37,11 @@ import {
   stopBackgroundLocationTracking,
 } from '@/lib/location';
 import { checkMachineInactivity } from '@/lib/inactivity-alarm';
+import { ensureTrackingArmed } from '@/lib/tracking-watchdog';
 import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/background-sync';
 import { startHeartbeat, stopHeartbeat } from '@/lib/heartbeat';
 import { hasSeenOnboarding } from './onboarding';
+import { hasSeenTrackingSetup } from './tracking-setup';
 import type { User } from '@strawboss/types';
 
 const queryClient = new QueryClient({
@@ -152,6 +154,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // FM-17: tracks whether the onboarding check has been performed for the
   // current session so we fire it at most once per login.
   const onboardingCheckedRef = useRef(false);
+  // Always-on tracking setup: shown once per login for Android machine users.
+  const trackingSetupCheckedRef = useRef(false);
   const { modalProps, showModal, hideModal } = useModal();
 
   // Subscribe to hydration completion once (runs at most once per mount).
@@ -198,6 +202,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         useAuthStore.getState().clear();
         activeUserIdRef.current = null;
         onboardingCheckedRef.current = false;
+        trackingSetupCheckedRef.current = false;
         setProfileReady(false);
         setIsAuthenticated(false);
         return;
@@ -398,6 +403,30 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, profileReady, role, assignedMachineId]);
 
+  // Always-on tracking setup walkthrough: once per login, for Android users with
+  // an assigned machine, after they have landed on their role home. Deep-links to
+  // background-location / battery / OEM-autostart screens that can't be granted
+  // programmatically. Pushed (not replaced) so its "finish" returns to the home.
+  useEffect(() => {
+    if (!isAuthenticated || !profileReady || !role) return;
+    if (Platform.OS !== 'android' || !assignedMachineId) return;
+    if (trackingSetupCheckedRef.current) return;
+    const cur = segments[0] ?? '';
+    const settledOnHome = cur.startsWith('(') && cur.endsWith(')') && cur !== '(auth)';
+    if (!settledOnHome) return; // wait until past the login → role-home redirect
+    trackingSetupCheckedRef.current = true;
+    void (async () => {
+      try {
+        const seen = await hasSeenTrackingSetup();
+        if (!seen) {
+          router.push('/tracking-setup' as Parameters<typeof router.push>[0]);
+        }
+      } catch {
+        // Non-fatal: a SecureStore failure must never block usage.
+      }
+    })();
+  }, [isAuthenticated, profileReady, role, assignedMachineId, segments, router]);
+
   useEffect(() => {
     if (isAuthenticated === null) return; // Session check still pending
 
@@ -533,6 +562,9 @@ export default function RootLayout() {
         }
         if (userId && assignedMachineId) {
           void (async () => {
+            // Foreground recovery: re-arm tracking first (a backgrounded
+            // WorkManager worker may have been refused the location FGS start).
+            await ensureTrackingArmed();
             await flushPendingLocationReports();
             await postCurrentLocationNow(assignedMachineId);
             // FM-16: check inactivity after the location flush so the
@@ -571,6 +603,11 @@ export default function RootLayout() {
             {/* FM-14: daily PDF report — accessible from ProfileScreen */}
             <Stack.Screen
               name="daily-report"
+              options={{ presentation: 'card', animation: 'slide_from_right' }}
+            />
+            {/* Always-on tracking setup — shown once per login for Android machine users */}
+            <Stack.Screen
+              name="tracking-setup"
               options={{ presentation: 'card', animation: 'slide_from_right' }}
             />
           </Stack>

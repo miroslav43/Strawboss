@@ -241,11 +241,7 @@ export default function OnboardingScreen() {
       </View>
 
       {/* Slide content */}
-      <ScrollView
-        contentContainerStyle={styles.slideContainer}
-        scrollEnabled={false}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView contentContainerStyle={styles.slideContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.iconWrap}>
           <MaterialCommunityIcons
             name={slide.icon as MCIconName}
@@ -312,8 +308,12 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   skipBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   skipText: {
     fontSize: 14,
@@ -321,12 +321,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   slideContainer: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
     paddingVertical: 24,
-    minHeight: Dimensions.get('window').height * 0.55,
   },
   iconWrap: {
     width: 160,

@@ -12,6 +12,7 @@ import {
   type LayoutChangeEvent,
   type PanResponderGestureState,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { openExternalNavigation } from '@/lib/routing';
@@ -72,6 +73,7 @@ export function ParcelInfoSheet({
   isLoadingRoute,
 }: ParcelInfoSheetProps) {
   const hasCoords = parcel.centroidLat != null && parcel.centroidLon != null;
+  const insets = useSafeAreaInsets();
 
   // The sheet's full content height, measured once via onLayout. Until measured
   // we keep translateY at 0 so the sheet is fully visible.
@@ -225,7 +227,7 @@ export function ParcelInfoSheet({
       {!isPeek ? <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} /> : null}
 
       <Animated.View
-        style={[styles.sheet, { transform: [{ translateY }] }]}
+        style={[styles.sheet, { paddingBottom: 32 + insets.bottom, transform: [{ translateY }] }]}
         onLayout={onSheetLayout}
       >
         {/* Drag handle: larger hit area + PanResponder for tap/drag. */}
@@ -233,13 +235,21 @@ export function ParcelInfoSheet({
           <View style={styles.handle} />
         </View>
 
-        <Text style={styles.name}>{parcel.name || parcel.code}</Text>
-        {parcel.name && parcel.code ? <Text style={styles.code}>{parcel.code}</Text> : null}
+        <Text style={styles.name} numberOfLines={2}>
+          {parcel.name || parcel.code}
+        </Text>
+        {parcel.name && parcel.code ? (
+          <Text style={styles.code} numberOfLines={1}>
+            {parcel.code}
+          </Text>
+        ) : null}
 
         {routeSummary != null ? (
           <View style={styles.routeSummaryBox}>
             <Text style={styles.routeSummaryLabel}>Traseu pe hartă</Text>
-            <Text style={styles.routeSummaryValue}>{routeSummary}</Text>
+            <Text style={styles.routeSummaryValue} numberOfLines={1}>
+              {routeSummary}
+            </Text>
           </View>
         ) : null}
 
@@ -295,7 +305,9 @@ export function ParcelInfoSheet({
               {parcel.municipality && (
                 <View style={styles.infoPill}>
                   <Text style={styles.infoLabel}>Localitate</Text>
-                  <Text style={styles.infoValue}>{parcel.municipality}</Text>
+                  <Text style={styles.infoValue} numberOfLines={1}>
+                    {parcel.municipality}
+                  </Text>
                 </View>
               )}
             </View>

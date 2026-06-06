@@ -1,11 +1,5 @@
 import { useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Animated,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import type { TripLoadedAlert } from '@/hooks/useTripLoadedAlert';
@@ -84,7 +78,9 @@ export function TripLoadedOverlay({ alert, onDismiss }: Props) {
         {alert.destinationName ? (
           <View style={styles.infoRow}>
             <MaterialCommunityIcons name="map-marker" size={18} color="#0A5C36" />
-            <Text style={[styles.infoText, styles.destText]}>{alert.destinationName}</Text>
+            <Text style={[styles.infoText, styles.destText]} numberOfLines={1}>
+              {alert.destinationName}
+            </Text>
           </View>
         ) : (
           <View style={styles.infoRow}>
@@ -112,11 +108,7 @@ export function TripLoadedOverlay({ alert, onDismiss }: Props) {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={onDismiss}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.secondaryBtn} onPress={onDismiss} activeOpacity={0.8}>
             <Text style={styles.secondaryBtnText}>Mai târziu</Text>
           </TouchableOpacity>
         </View>

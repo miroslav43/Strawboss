@@ -75,23 +75,16 @@ export default function SyncScreen() {
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.card}>
           <View style={styles.statusRow}>
             <Text style={styles.label}>Rețea:</Text>
             <View style={styles.statusIndicator}>
               <View
-                style={[
-                  styles.dot,
-                  { backgroundColor: isConnected ? '#2E7D32' : '#C62828' },
-                ]}
+                style={[styles.dot, { backgroundColor: isConnected ? '#2E7D32' : '#C62828' }]}
               />
-              <Text style={styles.value}>
-                {isConnected ? 'Online' : 'Offline'}
-              </Text>
+              <Text style={styles.value}>{isConnected ? 'Online' : 'Offline'}</Text>
             </View>
           </View>
 
@@ -104,17 +97,14 @@ export default function SyncScreen() {
 
           <View style={styles.statusRow}>
             <Text style={styles.label}>Ultima sincronizare:</Text>
-            <Text style={styles.value}>
+            <Text style={styles.value} numberOfLines={1}>
               {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : 'Niciodată'}
             </Text>
           </View>
         </View>
 
         <TouchableOpacity
-          style={[
-            styles.syncButton,
-            (!isConnected || syncing) && styles.syncButtonDisabled,
-          ]}
+          style={[styles.syncButton, (!isConnected || syncing) && styles.syncButtonDisabled]}
           onPress={handleSync}
           disabled={!isConnected || syncing}
         >
@@ -131,7 +121,7 @@ export default function SyncScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Erori recente</Text>
             {errors.map((error, i) => (
-              <Text key={i} style={styles.errorText}>
+              <Text key={i} style={styles.errorText} numberOfLines={2}>
                 {error}
               </Text>
             ))}
@@ -140,9 +130,7 @@ export default function SyncScreen() {
 
         {failedEntries.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              Intrări eșuate ({failedEntries.length})
-            </Text>
+            <Text style={styles.cardTitle}>Intrări eșuate ({failedEntries.length})</Text>
             {failedEntries.map((entry) => (
               <View key={entry.id} style={styles.failedEntry}>
                 <View style={styles.failedEntryInfo}>
@@ -152,14 +140,9 @@ export default function SyncScreen() {
                   <Text style={styles.failedEntryError} numberOfLines={2}>
                     {entry.last_error ?? 'Eroare necunoscută'}
                   </Text>
-                  <Text style={styles.failedEntryMeta}>
-                    Reîncercări: {entry.retry_count}
-                  </Text>
+                  <Text style={styles.failedEntryMeta}>Reîncercări: {entry.retry_count}</Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.retryButton}
-                  onPress={() => handleRetry(entry.id)}
-                >
+                <TouchableOpacity style={styles.retryButton} onPress={() => handleRetry(entry.id)}>
                   <Text style={styles.retryButtonText}>Reîncearcă</Text>
                 </TouchableOpacity>
               </View>
@@ -203,7 +186,7 @@ const styles = StyleSheet.create({
   statusIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   label: { fontSize: 14, color: '#5D4037' },
-  value: { fontSize: 14, fontWeight: '600', color: '#000' },
+  value: { fontSize: 14, fontWeight: '600', color: '#000', flexShrink: 1, textAlign: 'right' },
   valuePending: { color: '#B7791F' },
   syncButton: {
     backgroundColor: '#0A5C36',

@@ -3,6 +3,7 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BigButton } from '../ui/BigButton';
+import { scale } from '@/utils/responsive';
 import { colors } from '@strawboss/ui-tokens';
 
 interface PhotoCaptureProps {
@@ -31,7 +32,13 @@ export function PhotoCapture({ onCapture, label }: PhotoCaptureProps) {
       {photoUri ? (
         <View style={styles.previewContainer}>
           <Image source={{ uri: photoUri }} style={styles.preview} />
-          <BigButton title="Refă fotografia" variant="outline" onPress={() => { void takePhoto(); }} />
+          <BigButton
+            title="Refă fotografia"
+            variant="outline"
+            onPress={() => {
+              void takePhoto();
+            }}
+          />
         </View>
       ) : (
         <View style={styles.captureContainer}>
@@ -44,7 +51,12 @@ export function PhotoCapture({ onCapture, label }: PhotoCaptureProps) {
             />
             <Text style={styles.placeholderText}>Nicio fotografie realizată</Text>
           </View>
-          <BigButton title="Fotografiază" onPress={() => { void takePhoto(); }} />
+          <BigButton
+            title="Fotografiază"
+            onPress={() => {
+              void takePhoto();
+            }}
+          />
         </View>
       )}
     </View>
@@ -64,7 +76,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   placeholder: {
-    height: 200,
+    height: Math.min(scale(200), 240),
     backgroundColor: colors.surface,
     borderRadius: 12,
     justifyContent: 'center',
@@ -82,7 +94,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   preview: {
-    height: 250,
+    height: Math.min(scale(250), 300),
     borderRadius: 12,
     backgroundColor: colors.surface,
   },

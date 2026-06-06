@@ -38,9 +38,7 @@ function toMyLoad(row: Record<string, unknown>): MyLoad | null {
   if (!id) return null;
   const rawCount = row.bale_count ?? row.baleCount ?? 0;
   const loadedAt =
-    (row.loaded_at as string | undefined) ??
-    (row.loadedAt as string | undefined) ??
-    null;
+    (row.loaded_at as string | undefined) ?? (row.loadedAt as string | undefined) ?? null;
   if (!loadedAt) return null;
   return {
     id,
@@ -57,17 +55,17 @@ function startOfTodayIso(): string {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  planned:    'Planificat',
-  loading:    'Se încarcă',
-  loaded:     'Încărcat',
+  planned: 'Planificat',
+  loading: 'Se încarcă',
+  loaded: 'Încărcat',
   in_transit: 'În drum',
-  completed:  'Finalizat',
+  completed: 'Finalizat',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  planned:    '#1565C0',
-  loading:    '#B7791F',
-  loaded:     '#2E7D32',
+  planned: '#1565C0',
+  loading: '#B7791F',
+  loaded: '#2E7D32',
 };
 
 function TripCard({ trip }: { trip: TripToLoad }) {
@@ -91,7 +89,9 @@ function TripCard({ trip }: { trip: TripToLoad }) {
       <View style={styles.tripCardHeader}>
         <View style={styles.tripTitleRow}>
           <MaterialCommunityIcons name="truck" size={20} color={colors.primary} />
-          <Text style={styles.tripPlate}>{label}</Text>
+          <Text style={styles.tripPlate} numberOfLines={1}>
+            {label}
+          </Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
           <Text style={styles.statusBadgeText}>{statusLabel}</Text>
@@ -101,13 +101,17 @@ function TripCard({ trip }: { trip: TripToLoad }) {
       {parcelLabel ? (
         <View style={styles.tripDetailRow}>
           <MaterialCommunityIcons name="map-marker" size={13} color={colors.neutral400} />
-          <Text style={styles.tripDetail}>{parcelLabel}</Text>
+          <Text style={styles.tripDetail} numberOfLines={1}>
+            {parcelLabel}
+          </Text>
         </View>
       ) : null}
 
       <View style={styles.tripDetailRow}>
         <MaterialCommunityIcons name="grain" size={13} color={colors.neutral400} />
-        <Text style={styles.tripDetail}>{trip.baleCount} baloți încărcați</Text>
+        <Text style={styles.tripDetail} numberOfLines={1}>
+          {trip.baleCount} baloți încărcați
+        </Text>
       </View>
 
       <View style={styles.tripCta}>
@@ -135,20 +139,15 @@ export default function LoaderBalesScreen() {
       const since = startOfTodayIso();
       // Start with anything the server already knows about for today.
       const serverRaw = await mobileApiClient
-        .get<Record<string, unknown>[]>(
-          `/api/v1/bale-loads?operatorId=${userId}&dateFrom=${encodeURIComponent(since)}`,
-        )
+        .get<
+          Record<string, unknown>[]
+        >(`/api/v1/bale-loads?operatorId=${userId}&dateFrom=${encodeURIComponent(since)}`)
         .catch(() => []);
-      const serverLoads = (serverRaw ?? [])
-        .map(toMyLoad)
-        .filter((r): r is MyLoad => r !== null);
+      const serverLoads = (serverRaw ?? []).map(toMyLoad).filter((r): r is MyLoad => r !== null);
 
       // Then overlay local rows so the user sees pending (pre-sync) loads too.
       const db = await getDatabase();
-      const localRows = await new BaleLoadsRepo(db).listByOperatorSince(
-        userId!,
-        since,
-      );
+      const localRows = await new BaleLoadsRepo(db).listByOperatorSince(userId!, since);
       const localLoads = localRows
         .map((r) => toMyLoad(r as unknown as Record<string, unknown>))
         .filter((r): r is MyLoad => r !== null);
@@ -158,9 +157,7 @@ export default function LoaderBalesScreen() {
       for (const l of localLoads) byId.set(l.id, l);
       for (const l of serverLoads) byId.set(l.id, l);
 
-      return [...byId.values()].sort((a, b) =>
-        b.loadedAt.localeCompare(a.loadedAt),
-      );
+      return [...byId.values()].sort((a, b) => b.loadedAt.localeCompare(a.loadedAt));
     },
   });
 
@@ -241,7 +238,11 @@ export default function LoaderBalesScreen() {
                   })}
                 </Text>
               </View>
-              {load.notes ? <Text style={styles.notes}>{load.notes}</Text> : null}
+              {load.notes ? (
+                <Text style={styles.notes} numberOfLines={3}>
+                  {load.notes}
+                </Text>
+              ) : null}
             </View>
           ))
         )}
@@ -295,7 +296,7 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   statusBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
   tripDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  tripDetail: { fontSize: 13, color: '#5D4037' },
+  tripDetail: { fontSize: 13, color: '#5D4037', flexShrink: 1 },
   tripCta: { marginTop: 4 },
   tripCtaText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },

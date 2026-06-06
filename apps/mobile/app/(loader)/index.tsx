@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { router } from 'expo-router';
@@ -37,6 +38,7 @@ import { useTheme } from '@/lib/theme';
 export default function LoaderHomeScreen() {
   const { colors: themeColors } = useTheme();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  const insets = useSafeAreaInsets();
   const parcel = useCurrentLoaderParcel();
   const trucks = useTrucksAtLoader({ pollMs: 10_000 });
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -189,7 +191,7 @@ export default function LoaderHomeScreen() {
         onRequestClose={() => setScannerOpen(false)}
       >
         <View style={styles.modalRoot}>
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { paddingTop: Math.max(48, insets.top) }]}>
             <Text style={styles.modalTitle}>Scanează camion</Text>
             <TouchableOpacity onPress={() => setScannerOpen(false)}>
               <MaterialCommunityIcons name="close" size={28} color="#FFF" />
@@ -240,7 +242,9 @@ function ParcelBanner({ parcel }: { parcel: ReturnType<typeof useCurrentLoaderPa
           <MaterialCommunityIcons name="map-marker-radius" size={20} color={colors.primary} />
           <Text style={styles.parcelLabel}>Teren activ</Text>
         </View>
-        <Text style={styles.parcelName}>{parcel.parcelName}</Text>
+        <Text style={styles.parcelName} numberOfLines={1} ellipsizeMode="tail">
+          {parcel.parcelName}
+        </Text>
         <Text style={styles.parcelHint}>
           {parcel.source === 'gps' ? 'Detectat automat după poziție' : 'Sarcină în lucru'}
         </Text>
@@ -284,7 +288,9 @@ function ParcelBanner({ parcel }: { parcel: ReturnType<typeof useCurrentLoaderPa
           {parcel.candidates.map((task) => (
             <View key={task.id} style={styles.parcelCandidateRow}>
               <MaterialCommunityIcons name="circle-small" size={18} color={colors.tertiary} />
-              <Text style={styles.parcelCandidateText}>{task.parcelName ?? 'Parcelă'}</Text>
+              <Text style={styles.parcelCandidateText} numberOfLines={1} ellipsizeMode="tail">
+                {task.parcelName ?? 'Parcelă'}
+              </Text>
             </View>
           ))}
         </View>
@@ -311,8 +317,14 @@ function TruckCard({ truck, onPress }: { truck: TruckAtLoader; onPress: () => vo
           <MaterialCommunityIcons name="truck" size={28} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.truckPlate}>{label}</Text>
-          {truck.driverName ? <Text style={styles.truckMeta}>{truck.driverName}</Text> : null}
+          <Text style={styles.truckPlate} numberOfLines={1} ellipsizeMode="tail">
+            {label}
+          </Text>
+          {truck.driverName ? (
+            <Text style={styles.truckMeta} numberOfLines={1} ellipsizeMode="tail">
+              {truck.driverName}
+            </Text>
+          ) : null}
           <Text style={styles.truckDistance}>la {distance}</Text>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={28} color={colors.tertiary} />
@@ -395,14 +407,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   parcelCandidateRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  parcelCandidateText: { fontSize: 13, color: '#92400E' },
+  parcelCandidateText: { flexShrink: 1, fontSize: 13, color: '#92400E' },
   refreshGpsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     marginTop: 10,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: radii.md,
     backgroundColor: '#0A5C36',
@@ -500,7 +512,7 @@ const recallStyles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 8 },
   btn: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: radii.sm,
     alignItems: 'center',
   },

@@ -11,6 +11,7 @@ import {
   FlatList,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDeliveryDestinations } from '@strawboss/api';
 import { getDatabase } from '@/lib/storage';
@@ -35,6 +36,7 @@ import type { TripTransitionPayload } from '@/sync/push';
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { triggerSync } = useSync();
   const { tasks } = useMyTasks();
   const { data: relatedMachines } = useRelatedMachines();
@@ -338,7 +340,7 @@ export default function TripDetailScreen() {
         onRequestClose={() => setPickerOpen(false)}
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)} />
-        <View style={styles.modalSheet}>
+        <View style={[styles.modalSheet, { paddingBottom: Math.max(24, insets.bottom) }]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Alege depozit</Text>
             <Pressable onPress={() => setPickerOpen(false)} hitSlop={12}>
@@ -368,9 +370,11 @@ export default function TripDetailScreen() {
                 >
                   <MaterialCommunityIcons name="warehouse" size={20} color={colors.primary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.modalRowTitle}>{item.name}</Text>
+                    <Text style={styles.modalRowTitle} numberOfLines={1}>
+                      {item.name}
+                    </Text>
                     {(item as { address?: string | null }).address ? (
-                      <Text style={styles.modalRowSub}>
+                      <Text style={styles.modalRowSub} numberOfLines={1}>
                         {(item as { address?: string | null }).address}
                       </Text>
                     ) : null}
@@ -394,7 +398,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
       <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
+      <Text style={styles.value} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }

@@ -70,7 +70,10 @@ export function HarvestFinishPicker({ value, onChange }: HarvestFinishPickerProp
               size={28}
               color={selected ? '#FFFFFF' : opt.color}
             />
-            <Text style={[styles.label, { color: selected ? '#FFFFFF' : opt.color }]}>
+            <Text
+              numberOfLines={1}
+              style={[styles.label, { color: selected ? '#FFFFFF' : opt.color }]}
+            >
               {opt.label}
             </Text>
           </Pressable>
@@ -90,5 +93,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 18,
   },
-  label: { fontSize: 17, fontWeight: '700' },
+  label: { flex: 1, flexShrink: 1, fontSize: 17, fontWeight: '700' },
 });

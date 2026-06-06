@@ -43,11 +43,12 @@
         {
           "color": "#0A5C36"
         }
-      ]
+      ],
+      "./plugins/withAlwaysOnTracking"
     ],
     "android": {
       "package": "com.strawboss.mobile",
-      "versionCode": 2,
+      "versionCode": 3,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -61,6 +62,8 @@
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
         "android.permission.CAMERA"
       ],
       "blockedPermissions": [

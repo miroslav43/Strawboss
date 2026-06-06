@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { NumericPad } from '@/components/ui/NumericPad';
@@ -75,6 +76,7 @@ export function GeofenceOverlay({
 
 function EntryBanner({ alert, onDismiss }: { alert: GeofenceAlert; onDismiss: () => void }) {
   const slideAnim = useRef(new Animated.Value(-100)).current;
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     // Slide in
@@ -101,12 +103,18 @@ function EntryBanner({ alert, onDismiss }: { alert: GeofenceAlert; onDismiss: ()
     <Animated.View
       style={[
         styles.bannerContainer,
-        { backgroundColor: '#2E7D32', transform: [{ translateY: slideAnim }] },
+        {
+          paddingTop: insets.top + 12,
+          backgroundColor: '#2E7D32',
+          transform: [{ translateY: slideAnim }],
+        },
       ]}
     >
       <Pressable style={styles.bannerContent} onPress={onDismiss}>
         <MaterialCommunityIcons name="grain" size={28} color="#FFF" />
-        <Text style={styles.bannerText}>Ai început câmpul {alert.parcelName}</Text>
+        <Text style={styles.bannerText} numberOfLines={2}>
+          Ai început câmpul {alert.parcelName}
+        </Text>
       </Pressable>
     </Animated.View>
   );
@@ -121,6 +129,7 @@ function DepositArrivalModal({
   alert: GeofenceAlert;
   onDismiss: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const handleArrive = () => {
     onDismiss();
     if (alert.tripId) {
@@ -133,7 +142,7 @@ function DepositArrivalModal({
 
   return (
     <View style={styles.modalBackdrop}>
-      <View style={styles.modalContent}>
+      <View style={[styles.modalContent, { paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.modalHandle} />
 
         <MaterialCommunityIcons name="warehouse" size={48} color="#1565C0" />
@@ -162,6 +171,7 @@ function ExitConfirmModal({
 }) {
   const [baleCount, setBaleCount] = useState('');
   const [saving, setSaving] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const handleConfirm = async () => {
     setSaving(true);
@@ -178,18 +188,26 @@ function ExitConfirmModal({
 
   return (
     <View style={styles.modalBackdrop}>
-      <View style={styles.modalContent}>
-        <View style={styles.modalHandle} />
+      <View style={[styles.modalContent, { paddingBottom: insets.bottom + 24 }]}>
+        <ScrollView
+          style={styles.modalScroll}
+          contentContainerStyle={styles.modalScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          <View style={styles.modalHandle} />
 
-        <MaterialCommunityIcons name="grain" size={48} color="#0A5C36" />
-        <Text style={styles.modalTitle}>
-          Ai terminat câmpul{'\n'}
-          <Text style={styles.modalParcelName}>{alert.parcelName}</Text>?
-        </Text>
+          <MaterialCommunityIcons name="grain" size={48} color="#0A5C36" />
+          <Text style={styles.modalTitle}>
+            Ai terminat câmpul{'\n'}
+            <Text style={styles.modalParcelName}>{alert.parcelName}</Text>?
+          </Text>
 
-        <Text style={styles.modalSubtitle}>Câți baloți ai produs pe acest câmp?</Text>
+          <Text style={styles.modalSubtitle}>Câți baloți ai produs pe acest câmp?</Text>
 
-        <NumericPad value={baleCount} onChange={setBaleCount} maxLength={4} />
+          <NumericPad value={baleCount} onChange={setBaleCount} maxLength={4} />
+        </ScrollView>
 
         <View style={styles.modalActions}>
           <BigButton title="Confirmă" onPress={handleConfirm} loading={saving} />
@@ -213,7 +231,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 9999,
-    paddingTop: 50, // safe area
     paddingBottom: 16,
     paddingHorizontal: 20,
     shadowColor: '#000',
@@ -250,6 +267,14 @@ const styles = StyleSheet.create({
     gap: 16,
     alignItems: 'center',
     maxHeight: '90%',
+  },
+  modalScroll: {
+    alignSelf: 'stretch',
+    flexShrink: 1,
+  },
+  modalScrollContent: {
+    alignItems: 'center',
+    gap: 16,
   },
   modalHandle: {
     width: 40,

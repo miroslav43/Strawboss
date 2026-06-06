@@ -9,11 +9,11 @@ import * as Location from 'expo-location';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { colors } from '@strawboss/ui-tokens';
-import { ParcelSelector } from '@/components/shared/ParcelSelector';
 import { getDatabase } from '@/lib/storage';
 import { BaleProductionsRepo } from '@/db/bale-productions-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { mobileLogger } from '@/lib/logger';
+import { fontScale } from '@/utils/responsive';
 import { generateUuid } from '@/lib/uuid';
 import { todayInRomania } from '@/lib/date';
 import { useMyTasks } from '@/hooks/useMyTasks';
@@ -32,7 +32,7 @@ interface ProductionNumpadProps {
 
 type PadKey = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' | 'clear' | 'backspace';
 
-type ParcelSource = 'gps' | 'task' | 'manual' | null;
+type ParcelSource = 'gps' | 'task' | null;
 type GpsStatus = 'idle' | 'loading' | 'denied' | 'unavailable' | 'ok';
 
 const PAD_ROWS: PadKey[][] = [
@@ -59,8 +59,6 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
   const [parcelName, setParcelName] = useState<string | null>(null);
   const [parcelCode, setParcelCode] = useState<string | null>(null);
   const [parcelSource, setParcelSource] = useState<ParcelSource>(null);
-  const [manualOverride, setManualOverride] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
   const [lastLonLat, setLastLonLat] = useState<{ lon: number; lat: number } | null>(null);
@@ -132,7 +130,6 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
   );
 
   useEffect(() => {
-    if (manualOverride) return;
     if (!activeParcels || activeParcels.length === 0) return;
 
     if (gpsHit) {
@@ -160,7 +157,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       setParcelCode(null);
       setParcelSource(null);
     }
-  }, [manualOverride, activeParcels, taskOnlyParcel, gpsHit, gpsStatus]);
+  }, [activeParcels, taskOnlyParcel, gpsHit, gpsStatus]);
 
   // FM-4: undo hook — deletes the bale_productions row + sync queue entry
   const { showUndo, toastState } = useUndoableSave({
@@ -174,9 +171,6 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
   });
 
   const subtitle = useMemo(() => {
-    if (manualOverride) {
-      return 'Selectat manual';
-    }
     if (parcelSource === 'gps') {
       const acc =
         lastAccuracyM != null && lastAccuracyM > 0 ? ` (~±${Math.round(lastAccuracyM)} m)` : '';
@@ -189,40 +183,24 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       return 'Se detectează locația…';
     }
     if (gpsStatus === 'denied') {
-      return 'GPS refuzat — alege manual sau acordă permisiunea';
+      return 'GPS refuzat — acordă permisiunea de locație';
     }
     if (gpsStatus === 'unavailable') {
-      return 'GPS indisponibil — alege manual';
-    }
-    if (
-      gpsStatus === 'ok' &&
-      lastLonLat &&
-      activeParcels &&
-      activeParcels.length > 0 &&
-      !gpsHit &&
-      !manualOverride
-    ) {
-      return 'Alege manual din listă';
+      return 'GPS indisponibil — încearcă din nou pe teren';
     }
     if (gpsStatus === 'ok' && lastLonLat) {
-      return 'În afara parcelelor delimitate — alege manual';
+      return 'În afara terenurilor delimitate — apropie-te de teren';
     }
-    return 'Alege terenul';
-  }, [manualOverride, parcelSource, gpsStatus, lastLonLat, lastAccuracyM, activeParcels, gpsHit]);
+    return 'Se detectează terenul din GPS…';
+  }, [parcelSource, gpsStatus, lastLonLat, lastAccuracyM]);
 
   const bannerMainTitle = useMemo(() => {
     if (parcelName) return parcelName;
-    if (
-      !manualOverride &&
-      gpsStatus === 'ok' &&
-      activeParcels &&
-      activeParcels.length > 0 &&
-      !gpsHit
-    ) {
+    if (gpsStatus === 'ok' && activeParcels && activeParcels.length > 0 && !gpsHit) {
       return 'Nu ești pe niciun teren delimitat';
     }
     return '—';
-  }, [parcelName, manualOverride, gpsStatus, activeParcels, gpsHit]);
+  }, [parcelName, gpsStatus, activeParcels, gpsHit]);
 
   const handlePress = useCallback((key: PadKey) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -369,19 +347,6 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
     await doSave();
   }, [canSave, parcelId, showModal, hideModal, doSave]);
 
-  const onManualPick = useCallback(
-    (id: string, name: string) => {
-      setManualOverride(true);
-      setParcelId(id);
-      setParcelName(name);
-      const meta = activeParcels?.find((p) => p.id === id);
-      setParcelCode(meta?.code ?? null);
-      setParcelSource('manual');
-      setPickerOpen(false);
-    },
-    [activeParcels],
-  );
-
   return (
     <View style={styles.container}>
       <View style={styles.parcelSection}>
@@ -415,51 +380,8 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
             <Text style={styles.bannerSubtitle} numberOfLines={2}>
               {subtitle}
             </Text>
-
-            {manualOverride ? (
-              <TouchableOpacity
-                style={styles.linkButtonInline}
-                onPress={() => setManualOverride(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.linkButtonSecondaryText}>Folosește din nou GPS</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
         )}
-
-        <TouchableOpacity
-          style={styles.manualDropdownRow}
-          onPress={() => setPickerOpen(true)}
-          activeOpacity={0.7}
-          disabled={parcelsLoading && (activeParcels === undefined || activeParcels.length === 0)}
-        >
-          {parcelsLoading && (activeParcels === undefined || activeParcels.length === 0) ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <>
-              <Text
-                style={[styles.manualDropdownText, !parcelId && styles.manualDropdownPlaceholder]}
-                numberOfLines={1}
-              >
-                {parcelName ?? 'Alege teren din listă…'}
-              </Text>
-              <Text style={styles.manualDropdownChevron}>{'›'}</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        <ParcelSelector
-          showTrigger={false}
-          modalOpen={pickerOpen}
-          onModalOpenChange={setPickerOpen}
-          onSelect={onManualPick}
-          selectedId={parcelId}
-          selectedName={parcelName}
-          parcels={activeParcels}
-          isLoading={parcelsLoading}
-          isError={parcelsError}
-        />
       </View>
 
       <View style={styles.display}>
@@ -512,7 +434,9 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
         disabled={!canSave}
         activeOpacity={0.85}
       >
-        <Text style={styles.saveButtonText}>{saving ? 'Se salvează…' : 'SALVEAZĂ PRODUCȚIE'}</Text>
+        <Text style={styles.saveButtonText} numberOfLines={1}>
+          {saving ? 'Se salvează…' : 'SALVEAZĂ PRODUCȚIE'}
+        </Text>
       </TouchableOpacity>
       <AppModal {...modalProps} />
     </View>
@@ -580,42 +504,6 @@ const styles = StyleSheet.create({
     color: colors.neutral,
     lineHeight: 14,
   },
-  linkButtonInline: {
-    alignSelf: 'flex-start',
-    paddingVertical: 2,
-  },
-  linkButtonSecondaryText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.primary,
-    textDecorationLine: 'underline',
-  },
-  manualDropdownRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.neutral100,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 44,
-  },
-  manualDropdownText: {
-    flex: 1,
-    fontSize: 15,
-    color: colors.black,
-    fontWeight: '500',
-  },
-  manualDropdownPlaceholder: {
-    color: colors.neutral400,
-    fontWeight: '400',
-  },
-  manualDropdownChevron: {
-    fontSize: 20,
-    color: colors.neutral400,
-    fontWeight: '600',
-  },
   bannerLoading: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -639,7 +527,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   displayNumber: {
-    fontSize: 76,
+    fontSize: fontScale(76),
     fontWeight: '800',
     color: colors.primary,
     lineHeight: 82,
@@ -680,7 +568,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   keyText: {
-    fontSize: 36,
+    fontSize: fontScale(36),
     fontWeight: '700',
     color: colors.black,
   },
@@ -707,7 +595,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     color: colors.white,
-    fontSize: 18,
+    fontSize: fontScale(18),
     fontWeight: '800',
     letterSpacing: 0.8,
   },

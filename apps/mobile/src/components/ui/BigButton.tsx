@@ -56,13 +56,17 @@ export function BigButton({
       {loading ? (
         <ActivityIndicator color={textColor} size="small" />
       ) : (
-        <Text style={[styles.text, { color: textColor }]}>{title}</Text>
+        <Text style={[styles.text, { color: textColor }]} numberOfLines={1}>
+          {title}
+        </Text>
       )}
     </TouchableOpacity>
   );
 }
 
-const BUTTON_HEIGHT = Math.max(56, scale(60));
+// Floor at 56 for an accessible touch target; cap at 72 so the button isn't
+// oversized on tablets / large-font devices.
+const BUTTON_HEIGHT = Math.min(72, Math.max(56, scale(60)));
 
 const styles = StyleSheet.create({
   container: {

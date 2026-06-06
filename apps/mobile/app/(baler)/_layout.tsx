@@ -84,6 +84,10 @@ export default function BalerTabLayout() {
               ),
             }}
           />
+          {/* Parcel detail is a deep-linked route (opened from the task list), not a
+              tab. Without href:null Expo Router auto-adds a phantom icon-less
+              "parcel" tab to the right of Profile. */}
+          <Tabs.Screen name="parcel/[parcelId]" options={{ href: null }} />
         </Tabs>
         <GeofenceOverlay
           alert={activeAlert}

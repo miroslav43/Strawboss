@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { colors } from '@strawboss/ui-tokens';
 import type { MyTask } from '@/hooks/useMyTasks';
 import { useTheme } from '@/lib/theme';
+import { scale } from '@/utils/responsive';
 
 const STATUS_COLORS: Record<string, string> = {
   available: '#1565C0',
@@ -211,6 +212,6 @@ const styles = StyleSheet.create({
   taskName: { fontSize: 15, fontWeight: '500', color: colors.black, flex: 1 },
   badge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8 },
   badgeText: { color: colors.white, fontSize: 11, fontWeight: '600' },
-  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 30 },
+  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: scale(30) },
   subtitle: { fontSize: 13, color: colors.textSecondary },
 });

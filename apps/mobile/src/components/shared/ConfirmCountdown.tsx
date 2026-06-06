@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { fontScale } from '@/utils/responsive';
 import { colors } from '@strawboss/ui-tokens';
 
 interface ConfirmCountdownProps {
@@ -206,10 +207,10 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   countdownDigit: {
-    fontSize: 72,
+    fontSize: fontScale(72),
     fontWeight: '900',
     color: colors.primary,
-    lineHeight: 80,
+    lineHeight: fontScale(80),
     marginBottom: 8,
   },
   cancelButton: {

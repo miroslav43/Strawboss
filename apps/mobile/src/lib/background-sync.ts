@@ -4,17 +4,22 @@
  * Task must be defined at module load so headless JS startup can resolve it.
  */
 import * as TaskManager from 'expo-task-manager';
-import {
-  registerTaskAsync,
-  unregisterTaskAsync,
-  BackgroundTaskResult,
-} from 'expo-background-task';
+import { registerTaskAsync, unregisterTaskAsync, BackgroundTaskResult } from 'expo-background-task';
 import { runBackgroundSyncCycle } from '../sync/run-background-sync';
+import { ensureTrackingArmed } from './tracking-watchdog';
 import { mobileLogger } from './logger';
 
 export const STRAWBOSS_BACKGROUND_SYNC_TASK = 'strawboss-background-sync';
 
 TaskManager.defineTask(STRAWBOSS_BACKGROUND_SYNC_TASK, async () => {
+  // WorkManager reschedules this task across reboots automatically, so it also
+  // serves as the reboot/kill watchdog: re-arm location tracking if it should be
+  // running but isn't. Isolated so a watchdog failure never fails the sync.
+  try {
+    await ensureTrackingArmed();
+  } catch {
+    /* best-effort */
+  }
   try {
     await runBackgroundSyncCycle();
     return BackgroundTaskResult.Success;

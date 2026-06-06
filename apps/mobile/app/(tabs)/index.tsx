@@ -20,14 +20,14 @@ import { mobileApiClient } from '@/lib/api-client';
 type MachineIconName = 'wrench' | 'grain' | 'truck' | 'map-marker';
 const MACHINE_MDI: Record<string, MachineIconName> = {
   loader: 'wrench',
-  baler:  'grain',
-  truck:  'truck',
+  baler: 'grain',
+  truck: 'truck',
 };
 
 const MACHINE_TYPE_LABEL: Record<string, string> = {
   loader: 'Încărcător',
-  baler:  'Balotieră',
-  truck:  'Camion',
+  baler: 'Balotieră',
+  truck: 'Camion',
 };
 
 export default function HomeScreen() {
@@ -35,7 +35,11 @@ export default function HomeScreen() {
   const { pendingCount, lastSyncAt, triggerSync, syncing } = useSync();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: profile, isLoading: profileLoading, refetch: refetchProfile } = useQuery({
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    refetch: refetchProfile,
+  } = useQuery({
     queryKey: ['profile'],
     queryFn: () => mobileApiClient.get<User>('/api/v1/profile'),
   });
@@ -47,8 +51,12 @@ export default function HomeScreen() {
     enabled: !!assignedMachineId,
   });
 
-  const { isTracking, error: trackingError, lastReportedAt, refresh: refreshTracking } =
-    useLocationTracking();
+  const {
+    isTracking,
+    error: trackingError,
+    lastReportedAt,
+    refresh: refreshTracking,
+  } = useLocationTracking();
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -70,23 +78,16 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* Connection status */}
         <View style={styles.statusCard}>
           <Text style={styles.cardTitle}>Conexiune</Text>
           <View style={styles.statusRow}>
             <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: isConnected ? '#2E7D32' : '#C62828' },
-              ]}
+              style={[styles.statusDot, { backgroundColor: isConnected ? '#2E7D32' : '#C62828' }]}
             />
-            <Text style={styles.statusText}>
-              {isConnected ? 'Online' : 'Offline'}
-            </Text>
+            <Text style={styles.statusText}>{isConnected ? 'Online' : 'Offline'}</Text>
           </View>
         </View>
 
@@ -113,14 +114,18 @@ export default function HomeScreen() {
                   color="#0A5C36"
                 />
                 <View style={styles.machineInfo}>
-                  <Text style={styles.machineCode}>{machine.internalCode}</Text>
-                  <Text style={styles.machineDetail}>
+                  <Text style={styles.machineCode} numberOfLines={1} ellipsizeMode="tail">
+                    {machine.internalCode}
+                  </Text>
+                  <Text style={styles.machineDetail} numberOfLines={1} ellipsizeMode="tail">
                     {MACHINE_TYPE_LABEL[machine.machineType] ?? machine.machineType}
                     {' · '}
                     {machine.make} {machine.model}
                   </Text>
                   {machine.registrationPlate ? (
-                    <Text style={styles.machinePlate}>{machine.registrationPlate}</Text>
+                    <Text style={styles.machinePlate} numberOfLines={1} ellipsizeMode="tail">
+                      {machine.registrationPlate}
+                    </Text>
                   ) : null}
                 </View>
               </View>
@@ -138,7 +143,7 @@ export default function HomeScreen() {
                       { backgroundColor: isTracking ? '#16a34a' : '#9ca3af' },
                     ]}
                   />
-                  <Text style={styles.trackingStatusText}>
+                  <Text style={styles.trackingStatusText} numberOfLines={2} ellipsizeMode="tail">
                     {Platform.OS === 'android'
                       ? isTracking
                         ? 'GPS activ (inclusiv în fundal)'
@@ -152,28 +157,36 @@ export default function HomeScreen() {
 
               {(isTracking || lastReportedAt) && (
                 <View style={styles.trackingBadge}>
-                  {isTracking ? <View style={styles.pulseDot} /> : <View style={styles.trackingDotMuted} />}
-                  <View>
+                  {isTracking ? (
+                    <View style={styles.pulseDot} />
+                  ) : (
+                    <View style={styles.trackingDotMuted} />
+                  )}
+                  <View style={styles.trackingBadgeContent}>
                     <View style={styles.inlineRow}>
                       <MaterialCommunityIcons
                         name={MACHINE_MDI[machine.machineType] ?? 'map-marker'}
                         size={13}
                         color="#15803d"
                       />
-                      <Text style={styles.trackingBadgeText}>{machine.internalCode}</Text>
+                      <Text style={styles.trackingBadgeText} numberOfLines={1} ellipsizeMode="tail">
+                        {machine.internalCode}
+                      </Text>
                     </View>
                     {lastReportedAt ? (
-                      <Text style={styles.lastReportedText}>Ultimul ping: {lastReportedAt}</Text>
+                      <Text style={styles.lastReportedText} numberOfLines={1} ellipsizeMode="tail">
+                        Ultimul ping: {lastReportedAt}
+                      </Text>
                     ) : (
-                      <Text style={styles.lastReportedText}>Așteptând primul ping…</Text>
+                      <Text style={styles.lastReportedText} numberOfLines={1} ellipsizeMode="tail">
+                        Așteptând primul ping…
+                      </Text>
                     )}
                   </View>
                 </View>
               )}
 
-              {trackingError ? (
-                <Text style={styles.errorText}>{trackingError}</Text>
-              ) : null}
+              {trackingError ? <Text style={styles.errorText}>{trackingError}</Text> : null}
             </>
           ) : (
             <Text style={styles.errorText}>Nu s-a putut încărca mașina asignată.</Text>
@@ -189,13 +202,11 @@ export default function HomeScreen() {
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.label}>Ultima sincronizare:</Text>
-            <Text style={styles.value}>
+            <Text style={styles.value} numberOfLines={1} ellipsizeMode="tail">
               {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : 'Niciodată'}
             </Text>
           </View>
-          {syncing && (
-            <Text style={styles.syncingText}>Se sincronizează...</Text>
-          )}
+          {syncing && <Text style={styles.syncingText}>Se sincronizează...</Text>}
         </View>
       </ScrollView>
     </View>
@@ -238,9 +249,14 @@ const styles = StyleSheet.create({
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   statusText: { fontSize: 14, color: '#000' },
 
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
   label: { fontSize: 14, color: '#5D4037' },
-  value: { fontSize: 14, fontWeight: '600', color: '#000' },
+  value: { fontSize: 14, fontWeight: '600', color: '#000', flexShrink: 1, textAlign: 'right' },
   syncingText: { fontSize: 14, color: '#0A5C36', fontStyle: 'italic' },
 
   noMachineBox: { alignItems: 'center', paddingVertical: 16, gap: 6 },
@@ -293,7 +309,8 @@ const styles = StyleSheet.create({
     borderColor: '#BBF7D0',
   },
   pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16a34a' },
-  trackingBadgeText: { fontSize: 13, color: '#15803d', fontWeight: '500' },
+  trackingBadgeContent: { flexShrink: 1 },
+  trackingBadgeText: { fontSize: 13, color: '#15803d', fontWeight: '500', flexShrink: 1 },
   lastReportedText: { fontSize: 11, color: '#6b7280', marginTop: 2 },
 
   errorText: { fontSize: 13, color: '#C62828', fontStyle: 'italic' },

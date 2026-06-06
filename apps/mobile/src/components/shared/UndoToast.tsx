@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Text, TouchableOpacity, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 import type { UndoToastState } from '@/hooks/useUndoableSave';
@@ -23,6 +24,7 @@ interface UndoToastProps {
 export function UndoToast({ state, bottomOffset = 96 }: UndoToastProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const prevVisible = useRef(false);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (state.visible && !prevVisible.current) {
@@ -46,7 +48,9 @@ export function UndoToast({ state, bottomOffset = 96 }: UndoToastProps) {
   if (!state.visible) return null;
 
   return (
-    <Animated.View style={[styles.container, { bottom: bottomOffset, opacity: fadeAnim }]}>
+    <Animated.View
+      style={[styles.container, { bottom: bottomOffset + insets.bottom, opacity: fadeAnim }]}
+    >
       <View style={styles.content}>
         <MaterialCommunityIcons name="check-circle" size={18} color={colors.white} />
         <Text style={styles.label} numberOfLines={1}>

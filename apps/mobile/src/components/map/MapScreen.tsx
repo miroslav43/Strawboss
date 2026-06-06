@@ -422,14 +422,14 @@ export function MapScreen({ focusId }: MapScreenProps) {
       <MapView ref={mapRef} onEvent={handleMapEvent} onReady={handleMapReady} />
       {/* FM-13: Offline cache banner — visible when parcels come from SQLite */}
       {parcelsFromCache && (
-        <View style={styles.offlineBanner} pointerEvents="none">
+        <View style={[styles.offlineBanner, { top: 12 + insets.top }]} pointerEvents="none">
           <MaterialCommunityIcons name="database-off-outline" size={14} color="#5D4037" />
           <Text style={styles.offlineBannerText}>Parcele din cache local (offline)</Text>
         </View>
       )}
       {showOverlayControls && (
         <TouchableOpacity
-          style={styles.resetFab}
+          style={[styles.resetFab, { top: 12 + insets.top }]}
           onPress={handleReset}
           accessibilityRole="button"
           accessibilityLabel="Resetează harta"
@@ -449,7 +449,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
       )}
 
       <TouchableOpacity
-        style={[styles.locateFab, { bottom: 16 + insets.bottom, right: 16 }]}
+        style={[styles.locateFab, { bottom: 16 + insets.bottom, right: 16 + insets.right }]}
         onPress={() => void fetchAndCenterUser({ alertOnFailure: true, showProgress: true })}
         activeOpacity={0.85}
         accessibilityRole="button"

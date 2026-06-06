@@ -25,7 +25,11 @@ export function SignatureCapture({ onSave, label }: SignatureCaptureProps) {
 
   return (
     <View style={styles.container}>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {label && (
+        <Text style={styles.label} numberOfLines={1} ellipsizeMode="tail">
+          {label}
+        </Text>
+      )}
       <View style={styles.canvasContainer}>
         <SignatureScreen
           ref={ref}

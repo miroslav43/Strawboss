@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { ConsumableFlow } from '@/components/features/consumables/ConsumableFlow';
+import { FuelEntryFlow } from '@/components/features/fuel/FuelEntryFlow';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
 
@@ -18,12 +18,14 @@ export default function LoaderConsumablesScreen() {
             <ActivityIndicator color="#0A5C36" />
           </View>
         ) : (
-          <ConsumableFlow
+          <FuelEntryFlow
             machineId={assignedMachineId}
             operatorId={userId}
-            lockType="diesel"
             onComplete={() => {
               // Stay on tab
+            }}
+            onCancel={() => {
+              // Tab screen — nothing to cancel back to; reset handled internally.
             }}
           />
         )}

@@ -96,12 +96,16 @@ export default function TripsScreen() {
                 </View>
               </View>
               {item.destination_name ? (
-                <Text style={styles.destination}>{item.destination_name}</Text>
+                <Text style={styles.destination} numberOfLines={1}>
+                  {item.destination_name}
+                </Text>
               ) : null}
               <View style={styles.tripMeta}>
-                <Text style={styles.metaText}>Baloți: {item.bale_count ?? 0}</Text>
+                <Text style={[styles.metaText, styles.metaTextShrink]} numberOfLines={1}>
+                  Baloți: {item.bale_count ?? 0}
+                </Text>
                 {item.departure_at ? (
-                  <Text style={styles.metaText}>
+                  <Text style={[styles.metaText, styles.metaTextShrink]} numberOfLines={1}>
                     Plecat: {new Date(item.departure_at).toLocaleString('ro-RO')}
                   </Text>
                 ) : null}
@@ -155,8 +159,9 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   statusText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
   destination: { fontSize: 14, color: '#5D4037' },
-  tripMeta: { flexDirection: 'row', justifyContent: 'space-between' },
+  tripMeta: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   metaText: { fontSize: 12, color: '#8D6E63' },
+  metaTextShrink: { flexShrink: 1 },
   emptyText: { fontSize: 15, color: '#374151', fontWeight: '500' },
   emptySubtext: { fontSize: 13, color: '#8D6E63' },
 });

@@ -73,16 +73,20 @@ function EntryCard({ entry, onRetry, retrying }: EntryCardProps) {
     <View style={styles.entryCard}>
       <View style={styles.entryHeader}>
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        <Text style={styles.entryTitle}>
+        <Text style={styles.entryTitle} numberOfLines={1}>
           {entityLabel(entry.entity_type)} — {actionLabel(entry.action)}
         </Text>
         <Text style={styles.statusLabel}>{statusLabel}</Text>
       </View>
 
       <View style={styles.entryMeta}>
-        <Text style={styles.metaText}>{formatDate(entry.created_at)}</Text>
+        <Text style={styles.metaText} numberOfLines={1}>
+          {formatDate(entry.created_at)}
+        </Text>
         {entry.retry_count > 0 && (
-          <Text style={styles.metaText}>Reîncercări: {entry.retry_count}</Text>
+          <Text style={styles.metaText} numberOfLines={1}>
+            Reîncercări: {entry.retry_count}
+          </Text>
         )}
       </View>
 
@@ -211,7 +215,7 @@ export default function SyncDetailsScreen() {
 
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Ultima sincronizare:</Text>
-            <Text style={styles.summaryValue}>
+            <Text style={[styles.summaryValue, styles.summaryValueShrink]} numberOfLines={1}>
               {lastSyncAt ? formatDate(lastSyncAt) : 'Niciodată'}
             </Text>
           </View>
@@ -328,6 +332,7 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   summaryLabel: { fontSize: 14, color: colors.neutral },
   summaryValue: { fontSize: 14, fontWeight: '600', color: colors.black },
+  summaryValueShrink: { flexShrink: 1, textAlign: 'right' },
   valuePending: { color: colors.warning },
   valueFailed: { color: colors.danger },
   actionsRow: { flexDirection: 'row', gap: 10 },

@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BigButton } from '@/components/ui/BigButton';
 import type { LoaderRecallPromptState } from '@/hooks/useLoaderRecallPrompt';
@@ -22,11 +23,13 @@ interface LoaderRecallOverlayProps {
  * `GeofenceOverlay`. Mirrors the bottom-sheet modal pattern of GeofenceOverlay.
  */
 export function LoaderRecallOverlay({ prompt, pending, onRespond }: LoaderRecallOverlayProps) {
+  const insets = useSafeAreaInsets();
+
   if (!prompt) return null;
 
   return (
     <View style={styles.modalBackdrop}>
-      <View style={styles.modalContent}>
+      <View style={[styles.modalContent, { paddingBottom: 40 + insets.bottom }]}>
         <View style={styles.modalHandle} />
 
         <MaterialCommunityIcons name="truck-check" size={48} color="#0A5C36" />

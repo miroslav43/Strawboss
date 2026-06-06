@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@strawboss/ui-tokens';
-import { scale, fontScale } from '@/utils/responsive';
+import { scale, fontScale, SCREEN_WIDTH } from '@/utils/responsive';
 
 interface NumericPadProps {
   value: string;
@@ -39,7 +39,9 @@ export function NumericPad({ value, onChange, maxLength = 6, decimal = false }: 
   return (
     <View style={styles.container}>
       <View style={styles.display}>
-        <Text style={styles.displayText}>{value || '0'}</Text>
+        <Text style={styles.displayText} numberOfLines={1} adjustsFontSizeToFit>
+          {value || '0'}
+        </Text>
       </View>
       <View style={styles.pad}>
         {rows.map((row, rowIndex) => (
@@ -76,7 +78,11 @@ export function NumericPad({ value, onChange, maxLength = 6, decimal = false }: 
   );
 }
 
-const KEY_SIZE = Math.max(64, scale(72));
+// Width-aware key size: keep the design size on normal phones, but always
+// guarantee 3 keys + gaps + parent padding fit on narrow screens, and cap the
+// size so keys aren't oversized on tablets. (~72px non-key horizontal budget:
+// up to 24px parent padding each side + two 12px row gaps.)
+const KEY_SIZE = Math.min(Math.max(64, scale(72)), Math.floor((SCREEN_WIDTH - 72) / 3), 96);
 const KEY_RADIUS = scale(14);
 
 const styles = StyleSheet.create({

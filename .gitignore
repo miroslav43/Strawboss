@@ -1,4 +1,8 @@
 node_modules
+# Temporary backup of a root-owned, partially-purged node_modules left during an
+# install repair (2026-06-06). Safe to `sudo rm -rf` — kept only because it holds
+# root-owned files that the dev user cannot delete.
+.node_modules.broken.repair/
 dist
 .turbo
 .next

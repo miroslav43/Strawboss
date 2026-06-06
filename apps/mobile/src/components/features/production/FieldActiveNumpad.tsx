@@ -7,7 +7,9 @@ import { useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@strawboss/ui-tokens';
+import { fontScale } from '@/utils/responsive';
 import { getDatabase } from '@/lib/storage';
 import { BaleProductionsRepo } from '@/db/bale-productions-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
@@ -53,6 +55,7 @@ const GPS_REFRESH_MS = 45_000;
  */
 export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProps) {
   const { tasks } = useMyTasks();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
   const parcelQuery = useActiveParcels();
@@ -332,7 +335,9 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
 
       {/* Toast */}
       {toastMessage !== null && (
-        <Animated.View style={[styles.toast, { opacity: toastOpacity }]}>
+        <Animated.View
+          style={[styles.toast, { opacity: toastOpacity, bottom: insets.bottom + 96 }]}
+        >
           <MaterialCommunityIcons name="check-circle" size={18} color={colors.white} />
           <Text style={styles.toastText}>{toastMessage}</Text>
         </Animated.View>
@@ -411,10 +416,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   displayNumber: {
-    fontSize: 92,
+    fontSize: fontScale(92),
     fontWeight: '800',
     color: colors.primary,
-    lineHeight: 100,
+    lineHeight: fontScale(100),
     letterSpacing: -1,
   },
   displayLabel: {

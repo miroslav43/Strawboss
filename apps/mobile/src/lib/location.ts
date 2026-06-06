@@ -11,6 +11,7 @@ import { ApiClient } from '@strawboss/api';
 import type { LocationReportDto } from '@strawboss/types';
 import { getAuthToken } from './auth';
 import { mobileLogger } from './logger';
+import { runBackgroundSyncCycle } from '../sync/run-background-sync';
 
 export type { LocationSubscription } from 'expo-location';
 
@@ -122,6 +123,15 @@ async function readMachineIdFromDisk(): Promise<string | null> {
   }
 }
 
+/**
+ * Public accessor for the persisted machine id. Used by the boot re-arm headless
+ * task and the tracking watchdog to decide whether background tracking *should*
+ * be running (the id is written when tracking starts, cleared on logout/stop).
+ */
+export async function getPersistedMachineId(): Promise<string | null> {
+  return readMachineIdFromDisk();
+}
+
 async function writeMachineIdToDisk(machineId: string): Promise<void> {
   await FileSystem.writeAsStringAsync(MACHINE_ID_FILE, machineId);
 }
@@ -230,6 +240,36 @@ function coordsToReport(machineId: string, loc: Location.LocationObject): Locati
   };
 }
 
+// ---------------------------------------------------------------------------
+// Continuous background sync (piggybacked on the location foreground service)
+// ---------------------------------------------------------------------------
+// The location foreground service wakes JS every ~10–30 s (adaptive). We reuse
+// that wake-up to run a full push/pull sync so structured data (trips, fuel,
+// bales, notifications) flows in near-real-time with the screen off, instead of
+// waiting for the OS-floored 15 min `expo-background-task`. Guarded so a slow or
+// failing sync can never overlap itself nor delay/break location posting.
+let syncInFlight = false;
+let lastSyncAtMs = 0;
+/** Minimum spacing between piggybacked syncs, to bound backend load per device. */
+const PIGGYBACK_SYNC_MIN_INTERVAL_MS = 20_000;
+
+async function maybePiggybackSync(): Promise<void> {
+  const now = Date.now();
+  if (syncInFlight) return; // re-entrancy guard — a previous cycle is still running
+  if (now - lastSyncAtMs < PIGGYBACK_SYNC_MIN_INTERVAL_MS) return; // debounce
+  syncInFlight = true;
+  lastSyncAtMs = now;
+  try {
+    await runBackgroundSyncCycle();
+  } catch (err) {
+    mobileLogger.warn('Piggyback sync failed (isolated)', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    syncInFlight = false;
+  }
+}
+
 TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
   const { data, error } = taskBody;
   if (error) {
@@ -287,6 +327,11 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
       await appendPendingReport(report);
     }
   }
+
+  // Continuous background sync: fire-and-forget (never awaited) so a sync error
+  // or slow network can never delay/break location posting. Debounced + guarded
+  // inside maybePiggybackSync.
+  void maybePiggybackSync();
 
   // FM-15: after processing the batch, check whether the speed profile has
   // changed enough to warrant restarting with different intervals. We only

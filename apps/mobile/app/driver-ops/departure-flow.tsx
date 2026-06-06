@@ -23,6 +23,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { resolveApiUrl } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
+import { scale } from '@/utils/responsive';
 
 type Step = 'odometer' | 'signature';
 
@@ -141,7 +142,7 @@ export default function DepartureFlowScreen() {
         >
           <View style={styles.infoRow}>
             <MaterialCommunityIcons name="counter" size={18} color={colors.primary} />
-            <Text style={styles.infoText}>
+            <Text style={styles.infoText} numberOfLines={1}>
               Km plecare: <Text style={styles.infoValue}>{odometerStr}</Text>
             </Text>
           </View>
@@ -284,7 +285,7 @@ const styles = StyleSheet.create({
   },
   specimenImage: {
     width: '100%',
-    height: 140,
+    height: scale(140),
     backgroundColor: '#F9F5F2',
     borderRadius: 8,
   },

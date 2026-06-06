@@ -14,6 +14,7 @@ import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge
 import { NotificationBell } from '@/components/shared/NotificationBell';
 import { useDepotInventory, useDepotList } from '@/hooks/useDepotInventory';
 import { useTheme } from '@/lib/theme';
+import { fontScale } from '@/utils/responsive';
 import { colors, radii } from '@strawboss/ui-tokens';
 
 /**
@@ -104,7 +105,9 @@ export default function DepositInventoryScreen() {
         ) : (
           <>
             <View style={styles.card}>
-              <Text style={styles.cardLabel}>{payload.depot.name}</Text>
+              <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">
+                {payload.depot.name}
+              </Text>
               <Text style={styles.cardCode}>{payload.depot.code}</Text>
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
@@ -120,7 +123,9 @@ export default function DepositInventoryScreen() {
                 </View>
               </View>
               {lastUpdate ? (
-                <Text style={styles.lastUpdate}>Ultima livrare: {lastUpdate}</Text>
+                <Text style={styles.lastUpdate} numberOfLines={1} ellipsizeMode="tail">
+                  Ultima livrare: {lastUpdate}
+                </Text>
               ) : null}
             </View>
 
@@ -139,7 +144,7 @@ export default function DepositInventoryScreen() {
                           ? ` · cursa ${trip.iterationIndex}`
                           : ''}
                       </Text>
-                      <Text style={styles.tripSub}>
+                      <Text style={styles.tripSub} numberOfLines={1} ellipsizeMode="tail">
                         {trip.truckCode ?? trip.truckPlate ?? '—'} · {trip.driverName ?? '—'} ·{' '}
                         {trip.baleCount} baloți
                       </Text>
@@ -191,11 +196,11 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
   },
-  cardLabel: { fontSize: 18, fontWeight: '700', color: '#0A5C36' },
+  cardLabel: { fontSize: fontScale(18), fontWeight: '700', color: '#0A5C36' },
   cardCode: { fontSize: 13, color: colors.textSecondary },
   statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
   stat: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 32, fontWeight: '700', color: '#0A5C36' },
+  statValue: { fontSize: fontScale(32), fontWeight: '700', color: '#0A5C36' },
   statLabel: { fontSize: 13, color: colors.textSecondary },
   statDivider: { width: 1, height: 36, backgroundColor: '#E5E7EB' },
   lastUpdate: {

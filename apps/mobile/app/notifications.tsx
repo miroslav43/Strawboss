@@ -126,7 +126,9 @@ function NotificationItem({ item, onPress, onLongPress }: NotificationItemProps)
           <Text style={[styles.itemTitle, item.isRead && styles.itemTitleRead]} numberOfLines={1}>
             {item.title}
           </Text>
-          <Text style={styles.itemTime}>{formatTime(item.createdAt)}</Text>
+          <Text style={styles.itemTime} numberOfLines={1}>
+            {formatTime(item.createdAt)}
+          </Text>
         </View>
         <Text style={styles.itemBody} numberOfLines={2}>
           {item.body}

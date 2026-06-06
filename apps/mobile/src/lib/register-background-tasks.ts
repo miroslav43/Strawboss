@@ -4,3 +4,4 @@
  */
 import './location';
 import './background-sync';
+import './boot-rearm';
