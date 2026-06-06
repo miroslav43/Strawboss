@@ -164,8 +164,12 @@ export class GeofenceService {
             pos.lon,
           );
 
-          // Update assignment status to in_progress
-          if (assignment.status === 'available') {
+          // Update assignment status to in_progress.
+          // Baler is excluded (Plan B T6): its assignment flips to in_progress
+          // only when the operator confirms the 10 s entry overlay
+          // (POST /notifications/confirm-parcel-entry), so a drive-through that
+          // the operator cancels does not silently start the harvest task.
+          if (assignment.status === 'available' && assignment.machineType !== 'baler') {
             await this.drizzleProvider.db.execute(sql`
             UPDATE task_assignments
             SET status = 'in_progress'::task_assignment_status,
@@ -375,6 +379,62 @@ export class GeofenceService {
         err: err instanceof Error ? { message: err.message } : err,
       });
     }
+  }
+
+  /**
+   * Run a geofence check immediately (instead of waiting for the 5-minute job)
+   * and return a small diagnostic summary. Backs the admin trigger endpoint so
+   * the full GPS → geofence → push chain can be tested on demand. The summary
+   * surfaces the two silent-skip conditions: no active assignments today, or no
+   * machine with a GPS fix in the last 10 minutes.
+   */
+  async runManualCheck(): Promise<{
+    assignmentsToday: number;
+    machinesWithRecentGps: number;
+    eventsGenerated: number;
+  }> {
+    const today = todayInRomania();
+
+    const assignmentsRes = (await this.drizzleProvider.db.execute(sql`
+      SELECT count(*)::int AS n
+      FROM task_assignments
+      WHERE assignment_date = ${today}
+        AND deleted_at IS NULL
+        AND status IN ('available', 'in_progress')
+    `)) as unknown as { n: number }[];
+
+    const gpsRes = (await this.drizzleProvider.db.execute(sql`
+      SELECT count(DISTINCT mle.machine_id)::int AS n
+      FROM machine_location_events mle
+      JOIN task_assignments ta ON ta.machine_id = mle.machine_id
+      WHERE ta.assignment_date = ${today}
+        AND ta.deleted_at IS NULL
+        AND ta.status IN ('available', 'in_progress')
+        AND mle.recorded_at >= NOW() - INTERVAL '10 minutes'
+    `)) as unknown as { n: number }[];
+
+    const beforeRes = (await this.drizzleProvider.db.execute(sql`
+      SELECT count(*)::int AS n FROM geofence_events
+    `)) as unknown as { n: number }[];
+
+    await this.checkMachinePositions();
+
+    const afterRes = (await this.drizzleProvider.db.execute(sql`
+      SELECT count(*)::int AS n FROM geofence_events
+    `)) as unknown as { n: number }[];
+
+    const summary = {
+      assignmentsToday: assignmentsRes[0]?.n ?? 0,
+      machinesWithRecentGps: gpsRes[0]?.n ?? 0,
+      eventsGenerated: (afterRes[0]?.n ?? 0) - (beforeRes[0]?.n ?? 0),
+    };
+
+    this.winston.log('flow', 'Manual geofence check triggered', {
+      context: 'GeofenceService',
+      ...summary,
+    });
+
+    return summary;
   }
 
   private async recordEvent(

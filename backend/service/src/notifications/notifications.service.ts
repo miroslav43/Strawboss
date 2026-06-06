@@ -109,12 +109,19 @@ export class NotificationsService {
       return;
     }
 
+    // Android routes a backgrounded/killed notification to a channel by the
+    // message's top-level `channelId`. Callers that need a specific channel
+    // (e.g. the baler-exit loud horn) pass it as `data._channelId`; promote it
+    // here so the OS uses that channel even when the app isn't foregrounded.
+    const channelId = typeof data?._channelId === 'string' ? data._channelId : undefined;
+
     const messages = tokens.map((t) => ({
       to: t.token,
       title,
       body,
       data: data ?? {},
       sound: 'default' as const,
+      ...(channelId ? { channelId } : {}),
     }));
 
     try {
