@@ -1,7 +1,19 @@
 'use client';
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Eye, EyeOff, Plus, X, Search } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  Plus,
+  X,
+  Search,
+  Crosshair,
+  Pencil,
+  MapPin,
+  Trash2,
+} from 'lucide-react';
 import type { Farm, Parcel } from '@strawboss/types';
 import { useAssignParcelToFarm } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
@@ -14,6 +26,16 @@ interface FilterableFarmListProps {
   hiddenParcelIds: Set<string>;
   onToggleFarm: (farmId: string) => void;
   onToggleParcel: (parcelId: string) => void;
+  /**
+   * Parcel management actions — merged in from the former standalone parcel
+   * list so all parcel management lives grouped under its farm.
+   */
+  selectedParcelId?: string | null;
+  onParcelNavigate: (parcel: Parcel) => void;
+  onParcelEdit: (parcel: Parcel) => void;
+  onParcelEditBoundary: (parcel: Parcel) => void;
+  onParcelDelete: (id: string) => void;
+  deleteIsPending?: boolean;
   /** Optional controlled-collapse state from the parent. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -90,6 +112,69 @@ function AssignPopover({ farms, onAssign, onClose }: AssignPopoverProps) {
   );
 }
 
+// ── Parcel management buttons (navigate / edit info / edit boundary / delete) ──
+
+interface ParcelActionsProps {
+  parcel: Parcel;
+  onNavigate: (parcel: Parcel) => void;
+  onEdit: (parcel: Parcel) => void;
+  onEditBoundary: (parcel: Parcel) => void;
+  onDelete: (id: string) => void;
+  deleteIsPending?: boolean;
+}
+
+function ParcelActions({
+  parcel,
+  onNavigate,
+  onEdit,
+  onEditBoundary,
+  onDelete,
+  deleteIsPending,
+}: ParcelActionsProps) {
+  const { t } = useI18n();
+  return (
+    <>
+      {/* Navigate to parcel */}
+      <button
+        onClick={() => onNavigate(parcel)}
+        className="flex-shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-blue-500"
+        title={t('mapList.showOnMap')}
+        aria-label={t('mapList.showOnMap')}
+      >
+        <Crosshair className="h-3 w-3" />
+      </button>
+      {/* Edit info */}
+      <button
+        onClick={() => onEdit(parcel)}
+        className="flex-shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-primary"
+        title={t('mapList.editParcelInfo')}
+        aria-label={t('mapList.editParcelInfo')}
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+      {/* Edit boundary */}
+      <button
+        onClick={() => onEditBoundary(parcel)}
+        className="flex-shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-blue-600"
+        title={t('mapList.editParcelBoundary')}
+        aria-label={t('mapList.editParcelBoundary')}
+      >
+        <MapPin className="h-3 w-3" />
+      </button>
+      {/* Delete */}
+      <button
+        onClick={() => onDelete(parcel.id)}
+        disabled={deleteIsPending}
+        className="flex-shrink-0 rounded p-0.5 text-neutral-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+        title={t('mapList.deleteParcelField')}
+        aria-label={t('mapList.deleteParcelField')}
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function FilterableFarmList({
@@ -99,6 +184,12 @@ export function FilterableFarmList({
   hiddenParcelIds,
   onToggleFarm,
   onToggleParcel,
+  selectedParcelId,
+  onParcelNavigate,
+  onParcelEdit,
+  onParcelEditBoundary,
+  onParcelDelete,
+  deleteIsPending,
   open: openProp,
   onOpenChange,
 }: FilterableFarmListProps) {
@@ -238,7 +329,9 @@ export function FilterableFarmList({
                         return (
                           <div
                             key={parcel.id}
-                            className="flex items-center gap-1 pl-8 pr-3 py-1 hover:bg-neutral-100"
+                            className={`flex items-center gap-0.5 pl-8 pr-2 py-1 hover:bg-neutral-100 ${
+                              selectedParcelId === parcel.id ? 'bg-amber-50' : ''
+                            }`}
                           >
                             {/* Per-parcel eye toggle */}
                             <button
@@ -269,6 +362,15 @@ export function FilterableFarmList({
                                 </p>
                               )}
                             </div>
+                            {/* Parcel management actions */}
+                            <ParcelActions
+                              parcel={parcel}
+                              onNavigate={onParcelNavigate}
+                              onEdit={onParcelEdit}
+                              onEditBoundary={onParcelEditBoundary}
+                              onDelete={onParcelDelete}
+                              deleteIsPending={deleteIsPending}
+                            />
                             {/* Unassign parcel */}
                             <button
                               onClick={() => handleAssignParcel(parcel.id, null)}
@@ -313,7 +415,9 @@ export function FilterableFarmList({
                     return (
                       <div
                         key={parcel.id}
-                        className="relative flex items-center gap-1 pl-6 pr-3 py-1 hover:bg-neutral-100"
+                        className={`relative flex items-center gap-0.5 pl-6 pr-2 py-1 hover:bg-neutral-100 ${
+                          selectedParcelId === parcel.id ? 'bg-amber-50' : ''
+                        }`}
                       >
                         {/* Eye toggle */}
                         <button
@@ -340,6 +444,16 @@ export function FilterableFarmList({
                             {parcel.name ?? parcel.code}
                           </p>
                         </div>
+
+                        {/* Parcel management actions */}
+                        <ParcelActions
+                          parcel={parcel}
+                          onNavigate={onParcelNavigate}
+                          onEdit={onParcelEdit}
+                          onEditBoundary={onParcelEditBoundary}
+                          onDelete={onParcelDelete}
+                          deleteIsPending={deleteIsPending}
+                        />
 
                         {/* Assign to farm — compact popover button */}
                         {farms.length > 0 && (

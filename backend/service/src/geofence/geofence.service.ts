@@ -181,8 +181,16 @@ export class GeofenceService {
             );
           }
 
-          // Notify user when entering an assigned parcel
-          if (geofenceType === 'parcel' && assignment.assignedUserId) {
+          // Notify the FIELD operator (baler/loader) when entering an assigned
+          // parcel. Trucks also carry a source parcel on their task, but the
+          // `field_entry` push drives the field-operator overlay — a truck
+          // driver should NOT receive it. Trucks entering a parcel are handled
+          // separately by notifyLoadersAtParcel below.
+          if (
+            geofenceType === 'parcel' &&
+            assignment.assignedUserId &&
+            (assignment.machineType === 'baler' || assignment.machineType === 'loader')
+          ) {
             await this.notificationsService.sendPush(
               assignment.assignedUserId,
               'Ai intrat pe câmp',
@@ -292,6 +300,7 @@ export class GeofenceService {
         WHERE ta.parcel_id = ${parcelId}::uuid
           AND ta.assignment_date = ${today}
           AND ta.deleted_at IS NULL
+          AND ta.status IN ('available', 'in_progress')
           AND m.machine_type IN ('loader', 'baler')
           AND ta.assigned_user_id IS NOT NULL
       `)) as unknown as { userId: string; assignmentId: string; truckPlate: string | null }[];

@@ -34,7 +34,6 @@ import type {
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RouteHistoryPanel } from '@/components/map/RouteHistoryPanel';
 import { DepositGeofenceModal } from '@/components/map/DepositGeofenceModal';
-import { FilterableParcelList } from '@/components/map/FilterableParcelList';
 import { FilterableMachineList } from '@/components/map/FilterableMachineList';
 import { FilterableFarmList } from '@/components/map/FilterableFarmList';
 import { apiClient } from '@/lib/api';
@@ -341,7 +340,7 @@ function ModalCancelBtn({ onClick }: { onClick: () => void }) {
 
 export default function MapPage() {
   const { t } = useI18n();
-  const { data: parcelsRaw, isLoading: parcelsLoading } = useParcels(apiClient);
+  const { data: parcelsRaw } = useParcels(apiClient);
   const { data: machines = [] } = useMachineLocations(apiClient);
   const { data: farmsRaw = [] } = useFarms(apiClient);
   const { data: depositsRaw = [] } = useDeliveryDestinations(apiClient);
@@ -375,10 +374,9 @@ export default function MapPage() {
 
   // T2: per-section collapse state, persisted across reloads.
   const [sectionsOpen, setSectionsOpen] = useLocalStorageState<{
-    parcels: boolean;
     machines: boolean;
     farms: boolean;
-  }>('strawboss.map.sidebar.sections.v1', { parcels: true, machines: true, farms: true });
+  }>('strawboss.map.sidebar.sections.v1', { machines: true, farms: true });
 
   const hiddenFarmIdsRef = useRef(hiddenFarmIds);
   useEffect(() => {
@@ -533,19 +531,6 @@ export default function MapPage() {
               : 'pointer-events-none w-0 min-w-0 overflow-hidden border-0'
           }`}
         >
-          <FilterableParcelList
-            parcels={parcels}
-            isLoading={parcelsLoading}
-            selectedParcelId={selectedParcelId}
-            onParcelSelect={handleParcelSelect}
-            onParcelEdit={handleParcelEdit}
-            onParcelEditBoundary={handleParcelEditBoundary}
-            onParcelDelete={handleParcelDelete}
-            onParcelNavigate={handleParcelNavigate}
-            deleteIsPending={deleteParcel.isPending}
-            open={sectionsOpen.parcels}
-            onOpenChange={(next) => setSectionsOpen((prev) => ({ ...prev, parcels: next }))}
-          />
           <FilterableMachineList
             machines={machines}
             hiddenMachineIds={hiddenMachineIds}
@@ -562,6 +547,12 @@ export default function MapPage() {
             hiddenParcelIds={hiddenParcelIds}
             onToggleFarm={handleToggleFarm}
             onToggleParcel={handleToggleParcel}
+            selectedParcelId={selectedParcelId}
+            onParcelNavigate={handleParcelNavigate}
+            onParcelEdit={handleParcelEdit}
+            onParcelEditBoundary={handleParcelEditBoundary}
+            onParcelDelete={handleParcelDelete}
+            deleteIsPending={deleteParcel.isPending}
             open={sectionsOpen.farms}
             onOpenChange={(next) => setSectionsOpen((prev) => ({ ...prev, farms: next }))}
           />

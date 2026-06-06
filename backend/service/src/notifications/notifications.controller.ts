@@ -19,6 +19,10 @@ const registerTokenSchema = z.object({
   machineId: z.string().uuid().optional(),
 });
 
+const unregisterTokenSchema = z.object({
+  token: z.string().min(1),
+});
+
 const confirmParcelDoneSchema = z.object({
   assignmentId: z.string().uuid(),
   baleCount: z.number().int().min(0).max(9999).optional(),
@@ -48,6 +52,22 @@ export class NotificationsController {
       body.token,
       body.platform,
     );
+    return { ok: true };
+  }
+
+  /**
+   * Deactivate this device's push token for the current user on logout, so the
+   * next operator who logs in on the same phone does not keep receiving the
+   * previous user's notifications. Best-effort — must be called BEFORE the
+   * mobile client signs out, while the JWT is still valid.
+   */
+  @Post('unregister-token')
+  async unregisterToken(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(unregisterTokenSchema))
+    body: { token: string },
+  ) {
+    await this.notificationsService.unregisterToken(user.id, body.token);
     return { ok: true };
   }
 

@@ -1,0 +1,12 @@
+1. mach adaugare camp cu campuri de pe admin, sa aiba si recolta in geofence manager 
+2. remove email for account and change with email 
+3. Sa poti sa ai grafice pe cat a produs un om, si cat a produs o masina 
+4. Stergere fields complet din map, si de la farms acolo la campuri sa adaugi buton ul cu tinta care te duce la terentul respectiv 
+5. Nu merge cu ecranul stins 
+6. De pe Taskuri la masini sa ma duca pe harta la loader 
+7. Cine cantareste la sofer? si sa verifice daca la dep e cineva assigned sau online
+8. bug pe notificari 
+9. Cati baloti ai facut pe task
+10. Cand faci un teren  sa fie intuitiv, 
+
+da i commit direct pe main 

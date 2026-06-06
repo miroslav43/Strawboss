@@ -1372,10 +1372,14 @@ export class TripsService implements OnModuleInit {
       return;
     }
 
-    // Resolve driver: user whose assigned_machine_id == truck.
+    // Resolve driver: user whose assigned_machine_id == truck. Filter by role
+    // so a non-driver who happens to be linked to the truck (e.g. an admin)
+    // is never picked as the trip's driver — otherwise every driver push
+    // (start-loading, depart, arrive, complete) would go to the wrong person.
     const driverRows = (await this.drizzleProvider.db.execute(
       sql`SELECT id FROM users
           WHERE assigned_machine_id = ${task.machine_id}
+            AND role = 'driver'::user_role
             AND deleted_at IS NULL
           ORDER BY created_at ASC
           LIMIT 1`,
@@ -1412,9 +1416,13 @@ export class TripsService implements OnModuleInit {
     // fall back to whoever is permanently linked to the loader machine.
     let loaderOperatorId: string | null = parent.assigned_user_id;
     if (!loaderOperatorId && loaderMachineId) {
+      // Filter by role so the recall prompt only targets an actual loader
+      // operator (who can also answer it — the response endpoint is gated to
+      // loader_operator/admin). Better to leave it null than prompt a driver.
       const opRows = (await this.drizzleProvider.db.execute(
         sql`SELECT id FROM users
             WHERE assigned_machine_id = ${loaderMachineId}
+              AND role = 'loader_operator'::user_role
               AND deleted_at IS NULL
             ORDER BY created_at ASC
             LIMIT 1`,

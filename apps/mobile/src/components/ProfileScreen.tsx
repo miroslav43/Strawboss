@@ -24,6 +24,7 @@ import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { mobileApiClient } from '@/lib/api-client';
 import { getSupabaseClient } from '@/lib/auth';
+import { registerForPushNotifications } from '@/lib/notifications';
 import { clearLocalData } from '@/lib/storage';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDevModeStore } from '@/stores/dev-mode-store';
@@ -85,6 +86,19 @@ export function ProfileScreen() {
 
   const handleLogout = async () => {
     const supabase = getSupabaseClient();
+    // Deactivate THIS device's push token for the current user BEFORE signing
+    // out (while the JWT is still valid), so the next operator who logs in on
+    // this phone does not keep receiving the previous user's notifications.
+    // Best-effort: if offline, the server also deactivates stale tokens on the
+    // next user's login (see NotificationsService.registerToken).
+    try {
+      const token = await registerForPushNotifications();
+      if (token) {
+        await mobileApiClient.post('/api/v1/notifications/unregister-token', { token });
+      }
+    } catch {
+      // Non-critical — covered by server-side cross-user cleanup on next login.
+    }
     await supabase.auth.signOut();
     await clearLocalData();
     queryClient.clear();

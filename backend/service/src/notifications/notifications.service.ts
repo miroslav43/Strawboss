@@ -14,6 +14,14 @@ export class NotificationsService {
 
   /**
    * Register or update a push token for a user/machine pair.
+   *
+   * A physical device's Expo push token is shared across logins — when a new
+   * operator signs in on a phone that a previous user was logged into, Expo
+   * returns the SAME token. Without cleanup, the old user's
+   * `(user_id, token)` row stays `is_active = true` and every push aimed at
+   * the previous user keeps landing on this device (e.g. a loader's prompt
+   * reaching the truck driver now holding the phone). So before claiming the
+   * token for `userId`, deactivate it for every OTHER user.
    */
   async registerToken(
     userId: string,
@@ -21,6 +29,13 @@ export class NotificationsService {
     token: string,
     platform: string,
   ): Promise<void> {
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE device_push_tokens
+      SET is_active = false, updated_at = now()
+      WHERE token = ${token}
+        AND user_id <> ${userId}::uuid
+        AND is_active = true
+    `);
     await this.drizzleProvider.db.execute(sql`
       INSERT INTO device_push_tokens (user_id, machine_id, token, platform)
       VALUES (${userId}::uuid, ${machineId}::uuid, ${token}, ${platform})
@@ -30,6 +45,20 @@ export class NotificationsService {
         platform   = EXCLUDED.platform,
         is_active  = true,
         updated_at = now()
+    `);
+  }
+
+  /**
+   * Deactivate a single device token for the calling user (logout). Best-effort
+   * from the mobile client; the cross-user cleanup in {@link registerToken}
+   * is the real safety net for shared devices.
+   */
+  async unregisterToken(userId: string, token: string): Promise<void> {
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE device_push_tokens
+      SET is_active = false, updated_at = now()
+      WHERE user_id = ${userId}::uuid
+        AND token = ${token}
     `);
   }
 

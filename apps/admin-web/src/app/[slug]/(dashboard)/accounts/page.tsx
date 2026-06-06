@@ -424,16 +424,6 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
 
-                {/* Email — read-only */}
-                <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-xs text-neutral-500">
-                    {t('accounts.form.emailRowLabel')}
-                  </span>
-                  <span className="font-mono text-sm text-neutral-600 truncate">
-                    {preview.email}
-                  </span>
-                </div>
-
                 {/* PIN — shown as ???? since it is server-generated */}
                 <div className="flex items-center gap-2">
                   <span className="w-24 shrink-0 text-xs text-neutral-500">
@@ -1139,7 +1129,6 @@ export default function AccountsPage() {
               <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">
                 <th className="px-4 py-3">{t('accounts.table.colName')}</th>
                 <th className="px-4 py-3">{t('accounts.table.colUsername')}</th>
-                <th className="px-4 py-3">{t('accounts.table.colEmail')}</th>
                 <th className="px-4 py-3">{t('accounts.table.colPin')}</th>
                 <th className="px-4 py-3">{t('accounts.table.colRole')}</th>
                 <th className="px-4 py-3">{t('accounts.table.colMachine')}</th>
@@ -1151,7 +1140,7 @@ export default function AccountsPage() {
             <tbody className="divide-y divide-neutral-100">
               {groups.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-neutral-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-neutral-400">
                     {search || statusFilter !== 'all'
                       ? t('accounts.state.emptyFiltered')
                       : t('accounts.state.empty')}
@@ -1163,7 +1152,7 @@ export default function AccountsPage() {
                 <Fragment key={group.role}>
                   {/* Group header */}
                   <tr className="border-y border-neutral-200 bg-neutral-50">
-                    <td colSpan={9} className="px-4 py-2">
+                    <td colSpan={8} className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         {ROLE_GROUP_ICONS[group.role]}
                         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
@@ -1181,18 +1170,16 @@ export default function AccountsPage() {
                     const assignedMachine = user.assignedMachineId
                       ? machineMap.get(user.assignedMachineId)
                       : null;
-                    const assignedDepot =
-                      user.assignedDeliveryDestinationId
-                        ? depotMap.get(user.assignedDeliveryDestinationId)
-                        : null;
+                    const assignedDepot = user.assignedDeliveryDestinationId
+                      ? depotMap.get(user.assignedDeliveryDestinationId)
+                      : null;
                     const canAssign =
                       user.role !== UserRole.admin &&
                       user.role !== UserRole.dispatcher &&
                       user.role !== UserRole.geofence_maker &&
                       user.role !== UserRole.depot_manager &&
                       user.isActive;
-                    const canAssignDepot =
-                      ROLE_REQUIRES_DEPOT.includes(user.role) && user.isActive;
+                    const canAssignDepot = ROLE_REQUIRES_DEPOT.includes(user.role) && user.isActive;
 
                     return (
                       <tr
@@ -1221,7 +1208,6 @@ export default function AccountsPage() {
                             )}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-neutral-500 text-xs">{user.email}</td>
                         <td className="px-4 py-3">
                           <PinCell pin={user.pin} />
                         </td>
@@ -1320,10 +1306,7 @@ export default function AccountsPage() {
         <AssignMachineModal user={assignTarget} onClose={() => setAssignTarget(null)} />
       )}
       {assignDepotTarget && (
-        <AssignDepotModal
-          user={assignDepotTarget}
-          onClose={() => setAssignDepotTarget(null)}
-        />
+        <AssignDepotModal user={assignDepotTarget} onClose={() => setAssignDepotTarget(null)} />
       )}
       {deactivateTarget && (
         <DeactivateDialog
