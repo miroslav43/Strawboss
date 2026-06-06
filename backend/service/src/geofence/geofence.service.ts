@@ -14,6 +14,8 @@ interface ActiveAssignment {
   destinationId: string | null;
   assignedUserId: string | null;
   parcelName: string | null;
+  parcelCode: string | null;
+  cropType: string | null;
   status: string;
   tripId: string | null;
   organizationId: string | null;
@@ -63,6 +65,8 @@ export class GeofenceService {
         ta.destination_id AS "destinationId",
         ta.assigned_user_id AS "assignedUserId",
         p.name           AS "parcelName",
+        p.code           AS "parcelCode",
+        p.crop_type      AS "cropType",
         ta.status,
         ta.trip_id       AS "tripId",
         ta.organization_id AS "organizationId"
@@ -183,26 +187,37 @@ export class GeofenceService {
             );
           }
 
-          // Notify the FIELD operator (baler/loader) when entering an assigned
-          // parcel. Trucks also carry a source parcel on their task, but the
-          // `field_entry` push drives the field-operator overlay — a truck
-          // driver should NOT receive it. Trucks entering a parcel are handled
-          // separately by notifyLoadersAtParcel below.
-          if (
-            geofenceType === 'parcel' &&
-            assignment.assignedUserId &&
-            (assignment.machineType === 'baler' || assignment.machineType === 'loader')
-          ) {
-            await this.notificationsService.sendPush(
-              assignment.assignedUserId,
-              'Ai intrat pe câmp',
-              `Ai ajuns la ${assignment.parcelName ?? 'câmpul asignat'}.`,
-              {
-                type: 'field_entry',
-                assignmentId: assignment.assignmentId,
-                parcelName: assignment.parcelName,
-              },
-            );
+          // Notify the FIELD operator when entering an assigned parcel. Trucks
+          // also carry a source parcel on their task, but these pushes drive
+          // the field-operator overlay — a truck driver must NOT receive them.
+          // Trucks entering a parcel are handled separately by
+          // notifyLoadersAtParcel below.
+          if (geofenceType === 'parcel' && assignment.assignedUserId && assignment.parcelId) {
+            if (assignment.machineType === 'baler') {
+              // T6 enter — rich 10 s auto-confirm overlay with crop context.
+              await this.notificationsService.sendBalerFieldEntryConfirm(
+                assignment.assignedUserId,
+                assignment.assignmentId,
+                {
+                  id: assignment.parcelId,
+                  code: assignment.parcelCode ?? assignment.parcelName ?? '—',
+                  name: assignment.parcelName,
+                  cropType: assignment.cropType,
+                },
+              );
+            } else if (assignment.machineType === 'loader') {
+              // Loader keeps the simple arrival banner.
+              await this.notificationsService.sendPush(
+                assignment.assignedUserId,
+                'Ai intrat pe câmp',
+                `Ai ajuns la ${assignment.parcelName ?? 'câmpul asignat'}.`,
+                {
+                  type: 'field_entry',
+                  assignmentId: assignment.assignmentId,
+                  parcelName: assignment.parcelName,
+                },
+              );
+            }
           }
 
           // When a truck enters a parcel, also notify any loader/baler operator
@@ -261,16 +276,24 @@ export class GeofenceService {
             },
           );
 
-          // If baler exits a parcel, send push notification to confirm
+          // T6 exit — when a baler leaves a parcel, send the loud-horn
+          // production push that routes the operator straight to the
+          // bale-count entry screen (which marks the parcel done + records
+          // production via /notifications/confirm-parcel-done).
           if (
             geofenceType === 'parcel' &&
             assignment.machineType === 'baler' &&
-            assignment.assignedUserId
+            assignment.assignedUserId &&
+            assignment.parcelId
           ) {
-            await this.notificationsService.sendGeofenceExitNotification(
-              assignment.assignmentId,
-              assignment.parcelName ?? 'Unknown',
+            await this.notificationsService.sendBalerFieldExitProduction(
               assignment.assignedUserId,
+              assignment.assignmentId,
+              {
+                id: assignment.parcelId,
+                code: assignment.parcelCode ?? assignment.parcelName ?? '—',
+                name: assignment.parcelName,
+              },
             );
           }
         }
