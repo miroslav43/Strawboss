@@ -36,6 +36,12 @@ export const LEAFLET_GEOFENCE_EDITOR_HTML = String.raw`<!DOCTYPE html>
     border-radius: 50%;
     box-shadow: 0 0 8px rgba(37,99,235,0.6);
   }
+  .user-accuracy {
+    stroke: #2563eb;
+    stroke-opacity: 0.4;
+    fill: #2563eb;
+    fill-opacity: 0.12;
+  }
   .map-tooltip {
     background: #fff;
     border-radius: 8px;
@@ -265,6 +271,9 @@ setTimeout(function() {
   var allBounds = [];
   var parcelLayersById = {};
   var highlightedId = null;
+  // Once we have centred on the user's location, that view wins over the
+  // fit-to-all-parcels pass (which may arrive later, when parcels load).
+  var userCenterApplied = false;
 
   function setParcels(parcels) {
     parcelsLayer.clearLayers();
@@ -305,16 +314,29 @@ setTimeout(function() {
   }
 
   function fitBounds() {
+    // The user explicitly opens this map to draw where they are — once we've
+    // centred on their location, don't yank the view back to the parcels.
+    if (userCenterApplied) return;
     if (allBounds.length === 0) return;
     var combined = allBounds[0];
     for (var i = 1; i < allBounds.length; i++) { combined = combined.extend(allBounds[i]); }
     map.fitBounds(combined, { padding: [30, 30] });
   }
 
-  function setUserLocation(lat, lon) {
+  function setUserLocation(lat, lon, accuracy) {
     userMarkerLayer.clearLayers();
+    if (accuracy && accuracy > 0) {
+      L.circle([lat, lon], { radius: accuracy, className: 'user-accuracy', interactive: false })
+        .addTo(userMarkerLayer);
+    }
     var icon = L.divIcon({ className: 'user-marker', iconSize: [16, 16], iconAnchor: [8, 8] });
     L.marker([lat, lon], { icon: icon, interactive: false }).addTo(userMarkerLayer);
+    // First fix: open the map on the user (zoom 16). Later fixes only refresh
+    // the dot — they don't re-centre, so panning isn't fought.
+    if (!userCenterApplied) {
+      centerOn(lat, lon, 16);
+      userCenterApplied = true;
+    }
   }
 
   function highlightParcel(parcelId) {
@@ -361,9 +383,10 @@ setTimeout(function() {
       case 'SET_PARCELS':       setParcels(cmd.parcels); break;
       case 'SET_DESTINATIONS':  setDestinations(cmd.destinations); break;
       case 'FIT_BOUNDS':        fitBounds(); break;
-      case 'SET_USER_LOCATION': setUserLocation(cmd.lat, cmd.lon); break;
+      case 'SET_USER_LOCATION': setUserLocation(cmd.lat, cmd.lon, cmd.accuracy); break;
       case 'ENABLE_DRAW':       enableDraw(); break;
       case 'DISABLE_DRAW':      disableDraw(); break;
+      case 'CLEAR_DRAWN':       drawnItems.clearLayers(); previewLayer.clearLayers(); break;
       case 'HIGHLIGHT_PARCEL':  highlightParcel(cmd.parcelId); break;
       case 'CENTER_ON':         centerOn(cmd.lat, cmd.lon, cmd.zoom); break;
       // T1 — center-pin point picker + polygon-by-points builder

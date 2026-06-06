@@ -15,7 +15,7 @@ export const harvestStatusSchema = z.enum([
   'completed',
 ]);
 
-export const cropTypeSchema = z.enum(['grau', 'orz', 'rapita', 'plante_nutret']);
+export const cropTypeSchema = z.enum(['grau', 'orz', 'rapita', 'plante_nutret', 'altele']);
 
 export const parcelSchema = z
   .object({

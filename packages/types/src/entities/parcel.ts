@@ -12,6 +12,7 @@ export enum CropType {
   orz = 'orz',
   rapita = 'rapita',
   plante_nutret = 'plante_nutret',
+  altele = 'altele',
 }
 
 /**

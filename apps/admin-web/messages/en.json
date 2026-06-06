@@ -447,7 +447,8 @@
       "grau": "Wheat",
       "orz": "Barley",
       "rapita": "Rapeseed",
-      "plante_nutret": "Fodder crops"
+      "plante_nutret": "Fodder crops",
+      "altele": "Other"
     },
     "noName": "no name",
     "stats": {

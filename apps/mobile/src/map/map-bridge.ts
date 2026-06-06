@@ -78,9 +78,13 @@ export type GeofenceEditorCommand =
   | { type: 'SET_PARCELS'; parcels: ParcelMapData[] }
   | { type: 'SET_DESTINATIONS'; destinations: DestinationMapData[] }
   | { type: 'FIT_BOUNDS' }
-  | { type: 'SET_USER_LOCATION'; lat: number; lon: number }
+  | { type: 'SET_USER_LOCATION'; lat: number; lon: number; accuracy?: number }
   | { type: 'ENABLE_DRAW' }
   | { type: 'DISABLE_DRAW' }
+  // CLEAR_DRAWN wipes the in-progress polygon (drawnItems + preview) from the
+  // map without persisting it — used when the create modal is cancelled so the
+  // geofence only survives an explicit Save.
+  | { type: 'CLEAR_DRAWN' }
   | { type: 'HIGHLIGHT_PARCEL'; parcelId: string }
   | { type: 'CENTER_ON'; lat: number; lon: number; zoom?: number }
   // T1 — center-pin point picker. ENABLE_POINT_DRAW shows a fixed round pin

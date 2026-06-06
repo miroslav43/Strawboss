@@ -65,6 +65,7 @@ const CROP_TYPE_OPTIONS = [
   CropType.orz,
   CropType.rapita,
   CropType.plante_nutret,
+  CropType.altele,
 ] as const;
 
 // ─── StatCard ────────────────────────────────────────────────────────────────

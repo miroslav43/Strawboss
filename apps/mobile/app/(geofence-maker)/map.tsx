@@ -7,7 +7,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import type { Parcel } from '@strawboss/types';
+import type { Parcel, CropType } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
 import {
   GeofenceEditorView,
@@ -120,6 +120,40 @@ export default function GeofenceMakerMapScreen() {
     return () => clearTimeout(t);
   }, [mapReady, focusParcelId, parcels, router]);
 
+  // Open the map on the user's location with a live blue dot. The WebView
+  // auto-centres on the first fix (zoom 16) and skips fit-to-parcels after
+  // that; the 15s refresh keeps the dot current without re-centring.
+  useEffect(() => {
+    if (!mapReady) return;
+    let cancelled = false;
+
+    async function pushLocation() {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        if (cancelled) return;
+        const acc = loc.coords.accuracy;
+        const accuracyM = acc != null && Number.isFinite(acc) && acc > 0 ? acc : undefined;
+        mapRef.current?.sendCommand({
+          type: 'SET_USER_LOCATION',
+          lat: loc.coords.latitude,
+          lon: loc.coords.longitude,
+          ...(accuracyM != null ? { accuracy: accuracyM } : {}),
+        });
+      } catch {
+        // Silently ignore — the locate button is the manual fallback.
+      }
+    }
+
+    void pushLocation();
+    const interval = setInterval(pushLocation, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [mapReady]);
+
   const handleMapReady = useCallback(() => setMapReady(true), []);
 
   const handleMapEvent = useCallback((event: GeofenceEditorEvent) => {
@@ -145,6 +179,7 @@ export default function GeofenceMakerMapScreen() {
 
   const cancelDraw = useCallback(() => {
     mapRef.current?.sendCommand({ type: 'DISABLE_POINT_DRAW' });
+    mapRef.current?.sendCommand({ type: 'CLEAR_DRAWN' });
     setDrawMode(null);
     setDrawnGeojson(null);
     setVertexCount(0);
@@ -177,10 +212,20 @@ export default function GeofenceMakerMapScreen() {
       }
       setLocating(true);
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const acc = loc.coords.accuracy;
+      const accuracyM = acc != null && Number.isFinite(acc) && acc > 0 ? acc : undefined;
       mapRef.current?.sendCommand({
         type: 'SET_USER_LOCATION',
         lat: loc.coords.latitude,
         lon: loc.coords.longitude,
+        ...(accuracyM != null ? { accuracy: accuracyM } : {}),
+      });
+      // The button must visibly recentre — SET_USER_LOCATION only draws the dot.
+      mapRef.current?.sendCommand({
+        type: 'CENTER_ON',
+        lat: loc.coords.latitude,
+        lon: loc.coords.longitude,
+        zoom: 16,
       });
     } catch {
       showModal({
@@ -195,7 +240,13 @@ export default function GeofenceMakerMapScreen() {
   }, [showModal, hideModal]);
 
   const handleSaveParcel = useCallback(
-    async (data: { name: string; farmId: string | null; municipality: string; notes: string }) => {
+    async (data: {
+      name: string;
+      farmId: string | null;
+      municipality: string;
+      notes: string;
+      cropType: CropType | null;
+    }) => {
       if (!drawnGeojson) return;
       setIsSaving(true);
       try {
@@ -214,6 +265,7 @@ export default function GeofenceMakerMapScreen() {
           municipality: data.municipality,
           notes: data.notes,
           farmId: data.farmId,
+          cropType: data.cropType,
           boundary: boundaryStr,
         };
 
@@ -228,7 +280,7 @@ export default function GeofenceMakerMapScreen() {
           area_hectares: null,
           municipality: data.municipality || null,
           harvest_status: null,
-          crop_type: null,
+          crop_type: data.cropType,
           centroid_json: null,
           geometry: boundaryStr,
           cached_at: new Date().toISOString(),
@@ -243,6 +295,8 @@ export default function GeofenceMakerMapScreen() {
 
         await queryClient.invalidateQueries({ queryKey: ['geofence-editor-parcels'] });
         await queryClient.invalidateQueries({ queryKey: ['map-parcels'] });
+        // Drop the temp draw layer so it doesn't sit on top of the refetched parcel.
+        mapRef.current?.sendCommand({ type: 'CLEAR_DRAWN' });
         setDrawMode(null);
         setDrawnGeojson(null);
         showModal({
@@ -312,6 +366,8 @@ export default function GeofenceMakerMapScreen() {
 
         await queryClient.invalidateQueries({ queryKey: ['geofence-editor-deposits'] });
         await queryClient.invalidateQueries({ queryKey: ['map-destinations'] });
+        // Drop the temp draw layer so it doesn't sit on top of the refetched deposit.
+        mapRef.current?.sendCommand({ type: 'CLEAR_DRAWN' });
         setDrawMode(null);
         setDrawnGeojson(null);
         showModal({
@@ -336,11 +392,14 @@ export default function GeofenceMakerMapScreen() {
   );
 
   const handleCloseParcelModal = useCallback(() => {
+    // Discard the drawn polygon — a geofence must only survive an explicit Save.
+    mapRef.current?.sendCommand({ type: 'CLEAR_DRAWN' });
     setDrawMode(null);
     setDrawnGeojson(null);
   }, []);
 
   const handleCloseDepositModal = useCallback(() => {
+    mapRef.current?.sendCommand({ type: 'CLEAR_DRAWN' });
     setDrawMode(null);
     setDrawnGeojson(null);
   }, []);

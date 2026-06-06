@@ -421,12 +421,26 @@ export function LeafletMap({
         map.setView(DETA_CENTER, DEFAULT_ZOOM);
       });
 
+      // Satellite base + reference overlay — locality / admin labels and
+      // boundaries drawn on top of the imagery, matching the mobile map
+      // (apps/mobile/src/map/leaflet-map-content.ts). The reference pane sits
+      // above polygons but below markers, and ignores pointer events so
+      // parcels stay clickable.
+      const placeLabelsPane = map.createPane('placeLabels');
+      placeLabelsPane.style.zIndex = '550';
+      placeLabelsPane.style.pointerEvents = 'none';
+
       L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         {
           maxZoom: 19,
           attribution: 'Tiles &copy; Esri &mdash; Source: Esri, USGS, AEX, GeoEye, Getmapping, IGN',
         },
+      ).addTo(map);
+
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        { pane: 'placeLabels', maxZoom: 19 },
       ).addTo(map);
 
       if (!selectionOnly) {

@@ -57,12 +57,23 @@ export function RouteMiniMap({ points, className }: RouteMiniMapProps) {
         map.setView(DETA_CENTER, DEFAULT_ZOOM);
       });
 
+      // Satellite base + locality / admin labels overlay, matching the mobile
+      // map and the main dashboard map.
+      const placeLabelsPane = map.createPane('placeLabels');
+      placeLabelsPane.style.zIndex = '550';
+      placeLabelsPane.style.pointerEvents = 'none';
+
       L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         {
           maxZoom: 19,
           attribution: 'Tiles &copy; Esri &mdash; Source: Esri, USGS, AEX, GeoEye, Getmapping, IGN',
         },
+      ).addTo(map);
+
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        { pane: 'placeLabels', maxZoom: 19 },
       ).addTo(map);
 
       if (!isMounted) {
