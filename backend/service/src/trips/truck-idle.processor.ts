@@ -124,6 +124,7 @@ export class TruckIdleProcessor extends WorkerHost {
       const existing = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM alerts
          WHERE machine_id = ${r.truck_id}::uuid
+           AND organization_id IS NOT DISTINCT FROM ${r.organization_id}::uuid
            AND category = 'system'::alert_category
            AND is_acknowledged = false
            AND created_at > NOW() - INTERVAL '60 minutes'

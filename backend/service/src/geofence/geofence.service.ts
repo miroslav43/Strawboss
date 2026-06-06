@@ -16,6 +16,7 @@ interface ActiveAssignment {
   parcelName: string | null;
   status: string;
   tripId: string | null;
+  organizationId: string | null;
 }
 
 interface MachinePosition {
@@ -63,7 +64,8 @@ export class GeofenceService {
         ta.assigned_user_id AS "assignedUserId",
         p.name           AS "parcelName",
         ta.status,
-        ta.trip_id       AS "tripId"
+        ta.trip_id       AS "tripId",
+        ta.organization_id AS "organizationId"
       FROM task_assignments ta
       JOIN machines m ON m.id = ta.machine_id
       LEFT JOIN parcels p ON p.id = ta.parcel_id
@@ -217,6 +219,7 @@ export class GeofenceService {
               assignment.parcelName,
               assignment.assignmentId,
               today,
+              assignment.organizationId,
             );
           }
 
@@ -286,10 +289,13 @@ export class GeofenceService {
     parcelName: string | null,
     truckAssignmentId: string,
     today: string,
+    orgId: string | null,
   ): Promise<void> {
     try {
       // Pull every loader/baler assignment for this parcel today plus the
-      // truck plate so the push body has something useful to read.
+      // truck plate so the push body has something useful to read. Scoped to
+      // the truck's organization (defensive — a parcel already belongs to one
+      // org, but this keeps the fan-out org-bounded by construction).
       const loaderRows = (await this.drizzleProvider.db.execute(sql`
         SELECT
           ta.assigned_user_id AS "userId",
@@ -303,6 +309,7 @@ export class GeofenceService {
           AND ta.status IN ('available', 'in_progress')
           AND m.machine_type IN ('loader', 'baler')
           AND ta.assigned_user_id IS NOT NULL
+          AND ta.organization_id IS NOT DISTINCT FROM ${orgId}::uuid
       `)) as unknown as { userId: string; assignmentId: string; truckPlate: string | null }[];
 
       if (loaderRows.length === 0) return;
