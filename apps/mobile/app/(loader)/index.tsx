@@ -263,14 +263,29 @@ function ParcelBanner({
         </View>
         <View style={styles.parcelNameRow}>
           <Text style={[styles.parcelName, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
-            {parcel.parcelName}
+            {parcel.parcelName ?? parcel.parcelCode ?? 'Teren asignat'}
           </Text>
           <MaterialCommunityIcons name="chevron-right" size={24} color={colors.tertiary} />
         </View>
-        <Text style={styles.parcelHint}>
-          {parcel.source === 'gps' ? 'Detectat automat după poziție' : 'Sarcină în lucru'} · apasă
-          pentru detalii
-        </Text>
+        {parcel.presence === 'inside' ? (
+          <View style={[styles.presencePill, styles.presenceInside]}>
+            <MaterialCommunityIcons name="check-circle" size={16} color="#0A5C36" />
+            <Text style={styles.presenceInsideText}>Ești pe teren</Text>
+          </View>
+        ) : parcel.presence === 'outside' ? (
+          <View style={[styles.presencePill, styles.presenceOutside]}>
+            <MaterialCommunityIcons name="navigation-variant" size={16} color="#B7791F" />
+            <Text style={styles.presenceOutsideText}>
+              Mergi la teren{parcel.distanceM != null ? ` · ~${parcel.distanceM} m` : ''}
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.presencePill, styles.presenceUnknown]}>
+            <MaterialCommunityIcons name="crosshairs-gps" size={16} color={colors.tertiary} />
+            <Text style={styles.presenceUnknownText}>Verific poziția…</Text>
+          </View>
+        )}
+        <Text style={styles.parcelHint}>apasă pentru detalii</Text>
       </TouchableOpacity>
     );
   }
@@ -316,7 +331,7 @@ function ParcelBanner({
               disabled={!task.parcelId}
               onPress={() => task.parcelId && onOpenParcel(task.parcelId)}
               accessibilityRole="button"
-              accessibilityLabel={`Deschide detaliile pentru ${task.parcelName ?? 'parcelă'}`}
+              accessibilityLabel={`Deschide detaliile pentru ${task.parcelName ?? task.parcelCode ?? 'parcelă'}`}
             >
               <MaterialCommunityIcons name="circle-small" size={18} color={colors.tertiary} />
               <Text
@@ -324,7 +339,7 @@ function ParcelBanner({
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {task.parcelName ?? 'Parcelă'}
+                {task.parcelName ?? task.parcelCode ?? 'Parcelă'}
               </Text>
               {task.parcelId ? (
                 <MaterialCommunityIcons name="chevron-right" size={18} color={colors.tertiary} />
@@ -433,6 +448,23 @@ const styles = StyleSheet.create({
   parcelName: { fontSize: 20, fontWeight: '700', color: '#0A5C36', marginTop: 2 },
   parcelNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   parcelHint: { fontSize: 13, color: colors.textSecondary },
+
+  presencePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  presenceInside: { backgroundColor: '#DCFCE7' },
+  presenceInsideText: { fontSize: 13, fontWeight: '700', color: '#0A5C36' },
+  presenceOutside: { backgroundColor: '#FEF3C7' },
+  presenceOutsideText: { fontSize: 13, fontWeight: '700', color: '#B7791F' },
+  presenceUnknown: { backgroundColor: '#F1F5F9' },
+  presenceUnknownText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   parcelCandidatesInfo: {
     marginTop: 8,
     paddingTop: 8,

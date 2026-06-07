@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import { useAuthStore } from '@/stores/auth-store';
 import { useActiveParcels, findParcelAtLocation, type ActiveParcel } from './useActiveParcels';
 import { useMyTasks, type MyTask } from './useMyTasks';
+import { distanceToBoundaryMeters, PARCEL_MATCH_TOLERANCE_M } from '@/lib/point-in-geojson';
 import { mobileLogger } from '@/lib/logger';
 
 export type CurrentParcelStatus =
@@ -12,13 +13,22 @@ export type CurrentParcelStatus =
   | 'multiple_active'
   | 'unavailable';
 
+/** Live "am I physically on the field" state. */
+export type ParcelPresence = 'inside' | 'outside' | 'unknown';
+
 export interface CurrentLoaderParcel {
   status: CurrentParcelStatus;
   /** Parcel id when `status === 'resolved'`. */
   parcelId: string | null;
   parcelName: string | null;
+  /** T9.3 — code identifier; used as the display name when name is null. */
+  parcelCode: string | null;
   /** How the parcel was resolved. */
   source: 'in_progress_task' | 'gps' | null;
+  /** Whether the operator's GPS is on the resolved field (with tolerance). */
+  presence: ParcelPresence;
+  /** Metres to the field boundary when `presence === 'outside'`. */
+  distanceM: number | null;
   /**
    * When `status === 'needs_start'`: available tasks to pick from.
    * When `status === 'multiple_active'`: in_progress tasks GPS couldn't disambiguate.
@@ -26,6 +36,21 @@ export interface CurrentLoaderParcel {
   candidates: MyTask[];
   /** Re-run resolution (resets GPS and task state). */
   refresh: () => void;
+}
+
+/** Distance/inside check of a GPS fix against a resolved parcel's boundary. */
+function computePresence(
+  parcelId: string | null,
+  gps: { lat: number; lon: number } | null,
+  gpsReady: boolean,
+  parcels: ActiveParcel[] | undefined,
+): { presence: ParcelPresence; distanceM: number | null } {
+  if (!gpsReady || !gps || !parcelId || !parcels) return { presence: 'unknown', distanceM: null };
+  const p = parcels.find((x) => x.id === parcelId);
+  if (!p || p.boundary == null) return { presence: 'unknown', distanceM: null };
+  const d = distanceToBoundaryMeters(gps.lon, gps.lat, p.boundary);
+  if (d <= PARCEL_MATCH_TOLERANCE_M) return { presence: 'inside', distanceM: 0 };
+  return { presence: 'outside', distanceM: Math.round(d) };
 }
 
 const GPS_TIMEOUT_MS = 15_000;
@@ -110,8 +135,26 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
 
     void attemptGps();
 
+    // Live presence: silently re-sample GPS every 30 s so the inside/outside
+    // badge follows the operator without flickering the card back to "loading".
+    const presenceInterval = setInterval(() => {
+      void (async () => {
+        try {
+          const perm = await Location.getForegroundPermissionsAsync();
+          if (perm.status !== 'granted') return;
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          if (!cancelled) setGps({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+        } catch {
+          // Keep the last known fix; presence stays on the previous value.
+        }
+      })();
+    }, 30_000);
+
     return () => {
       cancelled = true;
+      clearInterval(presenceInterval);
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
@@ -130,7 +173,10 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       status: 'loading',
       parcelId: null,
       parcelName: null,
+      parcelCode: null,
       source: null,
+      presence: 'unknown',
+      distanceM: null,
       candidates: [],
       refresh,
     };
@@ -150,11 +196,21 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   // GPS. The trivial case where there's nothing to pick between.
   if (distinctTaskParcelIds.size === 1) {
     const t = myMachineTasks.find((mt) => !!mt.parcelId)!;
+    const { presence, distanceM } = computePresence(
+      t.parcelId,
+      gps,
+      gpsStatus === 'ready',
+      activeParcels,
+    );
     return {
       status: 'resolved',
       parcelId: t.parcelId,
-      parcelName: t.parcelName,
+      // Unnamed terrains fall back to the code so the card is never blank.
+      parcelName: t.parcelName ?? t.parcelCode,
+      parcelCode: t.parcelCode,
       source: 'in_progress_task',
+      presence,
+      distanceM,
       candidates: [],
       refresh,
     };
@@ -177,7 +233,11 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
         status: 'resolved',
         parcelId: hit.id,
         parcelName: hit.name,
+        parcelCode: hit.code,
         source: 'gps',
+        // findParcelAtLocation already matched within tolerance → on the field.
+        presence: 'inside',
+        distanceM: 0,
         candidates: [],
         refresh,
       };
@@ -190,7 +250,10 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       status: 'multiple_active',
       parcelId: null,
       parcelName: null,
+      parcelCode: null,
       source: null,
+      presence: 'unknown',
+      distanceM: null,
       candidates: inProgress,
       refresh,
     };
@@ -204,7 +267,10 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     status: assignedAny.length ? 'needs_start' : 'unavailable',
     parcelId: null,
     parcelName: null,
+    parcelCode: null,
     source: null,
+    presence: 'unknown',
+    distanceM: null,
     candidates: assignedAny,
     refresh,
   };
