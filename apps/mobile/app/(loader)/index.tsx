@@ -64,6 +64,12 @@ export default function LoaderHomeScreen() {
     });
   }, []);
 
+  // Open the read-only parcel detail (same view the baler uses). Viewing
+  // details never re-resolves the active parcel — GPS stays the source of truth.
+  const openParcel = useCallback((id: string) => {
+    router.push(`/(loader)/parcel/${id}`);
+  }, []);
+
   const handleScan = useCallback(
     (data: string) => {
       setScanError(null);
@@ -130,7 +136,7 @@ export default function LoaderHomeScreen() {
           </View>
         ) : null}
 
-        <ParcelBanner parcel={parcel} />
+        <ParcelBanner parcel={parcel} onOpenParcel={openParcel} />
 
         <View style={styles.trucksHeader}>
           <Text style={styles.sectionTitle}>Camioane la loader</Text>
@@ -226,7 +232,13 @@ export default function LoaderHomeScreen() {
  * assigned parcel, the banner explains where to go and offers a refresh
  * button; no tap-to-start list is shown.
  */
-function ParcelBanner({ parcel }: { parcel: ReturnType<typeof useCurrentLoaderParcel> }) {
+function ParcelBanner({
+  parcel,
+  onOpenParcel,
+}: {
+  parcel: ReturnType<typeof useCurrentLoaderParcel>;
+  onOpenParcel: (parcelId: string) => void;
+}) {
   if (parcel.status === 'loading') {
     return (
       <View style={styles.parcelBanner}>
@@ -237,18 +249,29 @@ function ParcelBanner({ parcel }: { parcel: ReturnType<typeof useCurrentLoaderPa
 
   if (parcel.status === 'resolved') {
     return (
-      <View style={styles.parcelBanner}>
+      <TouchableOpacity
+        style={styles.parcelBanner}
+        activeOpacity={0.8}
+        onPress={() => parcel.parcelId && onOpenParcel(parcel.parcelId)}
+        disabled={!parcel.parcelId}
+        accessibilityRole="button"
+        accessibilityLabel="Deschide detaliile terenului"
+      >
         <View style={styles.parcelHeader}>
           <MaterialCommunityIcons name="map-marker-radius" size={20} color={colors.primary} />
           <Text style={styles.parcelLabel}>Teren activ</Text>
         </View>
-        <Text style={styles.parcelName} numberOfLines={1} ellipsizeMode="tail">
-          {parcel.parcelName}
-        </Text>
+        <View style={styles.parcelNameRow}>
+          <Text style={[styles.parcelName, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
+            {parcel.parcelName}
+          </Text>
+          <MaterialCommunityIcons name="chevron-right" size={24} color={colors.tertiary} />
+        </View>
         <Text style={styles.parcelHint}>
-          {parcel.source === 'gps' ? 'Detectat automat după poziție' : 'Sarcină în lucru'}
+          {parcel.source === 'gps' ? 'Detectat automat după poziție' : 'Sarcină în lucru'} · apasă
+          pentru detalii
         </Text>
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -286,12 +309,27 @@ function ParcelBanner({ parcel }: { parcel: ReturnType<typeof useCurrentLoaderPa
         <View style={styles.parcelCandidatesInfo}>
           <Text style={styles.parcelCandidatesTitle}>Terenurile tale asignate:</Text>
           {parcel.candidates.map((task) => (
-            <View key={task.id} style={styles.parcelCandidateRow}>
+            <TouchableOpacity
+              key={task.id}
+              style={styles.parcelCandidateRow}
+              activeOpacity={0.7}
+              disabled={!task.parcelId}
+              onPress={() => task.parcelId && onOpenParcel(task.parcelId)}
+              accessibilityRole="button"
+              accessibilityLabel={`Deschide detaliile pentru ${task.parcelName ?? 'parcelă'}`}
+            >
               <MaterialCommunityIcons name="circle-small" size={18} color={colors.tertiary} />
-              <Text style={styles.parcelCandidateText} numberOfLines={1} ellipsizeMode="tail">
+              <Text
+                style={[styles.parcelCandidateText, { flex: 1 }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {task.parcelName ?? 'Parcelă'}
               </Text>
-            </View>
+              {task.parcelId ? (
+                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.tertiary} />
+              ) : null}
+            </TouchableOpacity>
           ))}
         </View>
       ) : null}
@@ -393,6 +431,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   parcelName: { fontSize: 20, fontWeight: '700', color: '#0A5C36', marginTop: 2 },
+  parcelNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   parcelHint: { fontSize: 13, color: colors.textSecondary },
   parcelCandidatesInfo: {
     marginTop: 8,

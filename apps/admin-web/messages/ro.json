@@ -318,7 +318,11 @@
     "onlineStatus": "● Online",
     "offlineStatus": "○ Offline",
     "harvestStatus": "Stadiu recoltă",
-    "deposits": "Depozite"
+    "deposits": "Depozite",
+    "myLocation": "Locația mea",
+    "locationDenied": "Acces la locație refuzat. Permite locația în browser.",
+    "locationUnavailable": "Locația nu a putut fi determinată.",
+    "locationUnsupported": "Browserul nu suportă geolocalizarea."
   },
   "farms": {
     "title": "Ferme",

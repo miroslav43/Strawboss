@@ -3,12 +3,16 @@ import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { ReconciliationService } from '../reconciliation/reconciliation.service';
+import { AlertsService } from '../alerts/alerts.service';
 import { buildSimulatedPush, type SimulatePushEvent } from './simulate-push-templates';
 
 @Injectable()
 export class NotificationsService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
+    private readonly reconciliationService: ReconciliationService,
+    private readonly alertsService: AlertsService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -240,16 +244,52 @@ export class NotificationsService {
   /**
    * Send a geofence exit notification asking if the parcel is done.
    */
-  async sendGeofenceExitNotification(
-    assignmentId: string,
-    parcelName: string,
+  /**
+   * Generic field-entry confirmation popup for loader/truck — mirrors the baler
+   * T6 entry overlay. The mobile client shows a short auto-confirm countdown;
+   * confirming POSTs /notifications/confirm-parcel-entry to flip the assignment
+   * to `in_progress`. `action` drives the popup copy ('load' = loader,
+   * 'truck' = truck driver arriving at the source field).
+   */
+  async sendFieldEntryConfirm(
     userId: string,
+    assignmentId: string,
+    parcel: { id: string; code: string; name: string | null },
+    action: 'load' | 'truck',
   ): Promise<void> {
-    await this.sendPush(userId, 'Confirmare recoltare', `Este câmpul ${parcelName} gata?`, {
-      type: 'geofence_exit_confirm',
+    const title = action === 'truck' ? 'Ai ajuns la câmp?' : 'Începi încărcarea?';
+    await this.sendPush(userId, title, `Parcela ${parcel.code}. Confirmare automată în 10 s.`, {
+      type: 'field_entry_confirm',
       assignmentId,
-      parcelName,
+      parcelId: parcel.id,
+      parcelCode: parcel.code,
+      parcelName: parcel.name,
+      action,
     });
+  }
+
+  /**
+   * Loader exit popup: ask the loader operator whether the field is fully
+   * loaded/done. The mobile client renders a Da/Nu modal; "Da" calls
+   * POST /notifications/confirm-parcel-loaded which reconciles produced vs
+   * loaded bales. Replaces the never-wired `sendGeofenceExitNotification`.
+   */
+  async sendLoaderFieldExitConfirm(
+    userId: string,
+    assignmentId: string,
+    parcel: { id: string; name: string | null },
+  ): Promise<void> {
+    await this.sendPush(
+      userId,
+      'Ai terminat de încărcat?',
+      `Ai ieșit din ${parcel.name ?? 'câmp'}. Ai încărcat toți baloții?`,
+      {
+        type: 'loader_exit_confirm',
+        assignmentId,
+        parcelId: parcel.id,
+        parcelName: parcel.name,
+      },
+    );
   }
 
   /**
@@ -375,13 +415,18 @@ export class NotificationsService {
     orgId?: string | null,
   ): Promise<void> {
     const ownerCheck = await this.drizzleProvider.db.execute(sql`
-      SELECT assigned_user_id, organization_id FROM task_assignments
-      WHERE id = ${assignmentId}::uuid AND deleted_at IS NULL
+      SELECT ta.assigned_user_id AS assigned_user_id,
+             ta.organization_id  AS organization_id,
+             m.machine_type      AS machine_type
+      FROM task_assignments ta
+      JOIN machines m ON m.id = ta.machine_id
+      WHERE ta.id = ${assignmentId}::uuid AND ta.deleted_at IS NULL
       LIMIT 1
     `);
     const rows = ownerCheck as unknown as {
       assigned_user_id: string | null;
       organization_id: string | null;
+      machine_type: string | null;
     }[];
     if (rows.length === 0) {
       throw new ForbiddenException('Assignment not found');
@@ -404,13 +449,16 @@ export class NotificationsService {
         AND status = 'available'::task_assignment_status
     `);
 
-    // Advance the parcel to harvesting. The downgrade trigger silently
-    // blocks this when the parcel is already past harvesting; we treat that
-    // as success since the goal (capturing the entry) is reached.
+    // Advance the parcel: a baler entering starts `harvesting`; a loader/truck
+    // entering starts the loading phase (`in_loading`). Both are forward-only —
+    // the downgrade trigger silently blocks a step-back when a higher state
+    // already exists; we treat that as success since the goal (capturing the
+    // entry) is reached.
+    const harvestTarget = rows[0].machine_type === 'baler' ? 'harvesting' : 'in_loading';
     try {
       await this.drizzleProvider.db.execute(sql`
         UPDATE parcels
-        SET harvest_status = 'harvesting'::harvest_status,
+        SET harvest_status = ${harvestTarget}::harvest_status,
             updated_at = now()
         WHERE id = (
           SELECT parcel_id FROM task_assignments
@@ -426,6 +474,8 @@ export class NotificationsService {
     this.winston.log('flow', 'parcels.harvest.entry_confirmed', {
       context: 'NotificationsService',
       assignmentId,
+      machineType: rows[0].machine_type,
+      harvestTarget,
     });
   }
 
@@ -554,4 +604,151 @@ export class NotificationsService {
     );
   }
   // endregion: plan-c =====================================================
+
+  // region: loader-exit ===================================================
+  // Loader field-exit confirmation + produced-vs-loaded reconciliation.
+
+  /**
+   * Loader confirmed "Da, am terminat de încărcat" on the field-exit popup.
+   *  - close the loader's assignment (status='done');
+   *  - reconcile produced (baler) vs loaded (loader) for the parcel using the
+   *    domain `reconcileBales` (via ReconciliationService);
+   *  - if everything produced was loaded → parcel `completed`;
+   *  - if bales are missing → keep the parcel at `loaded` (blocked from
+   *    completion) and raise an anomaly alert + push to admins/dispatchers. Only
+   *    an admin can force-complete such a parcel from the dashboard.
+   *
+   * Returns the reconciliation so the mobile UI can show the operator the gap.
+   */
+  async confirmParcelLoaded(
+    assignmentId: string,
+    callerUserId?: string,
+    orgId?: string | null,
+  ): Promise<{ completed: boolean; produced: number; loaded: number; missing: number }> {
+    const ownerCheck = await this.drizzleProvider.db.execute(sql`
+      SELECT ta.assigned_user_id AS assigned_user_id,
+             ta.organization_id  AS organization_id,
+             ta.parcel_id        AS parcel_id,
+             p.name              AS parcel_name
+      FROM task_assignments ta
+      LEFT JOIN parcels p ON p.id = ta.parcel_id
+      WHERE ta.id = ${assignmentId}::uuid AND ta.deleted_at IS NULL
+      LIMIT 1
+    `);
+    const rows = ownerCheck as unknown as {
+      assigned_user_id: string | null;
+      organization_id: string | null;
+      parcel_id: string | null;
+      parcel_name: string | null;
+    }[];
+    if (rows.length === 0) {
+      throw new ForbiddenException('Assignment not found');
+    }
+    if (orgId !== null && orgId !== undefined && rows[0].organization_id !== orgId) {
+      throw new ForbiddenException('Assignment not found in your organization');
+    }
+    if (callerUserId && rows[0].assigned_user_id && rows[0].assigned_user_id !== callerUserId) {
+      throw new ForbiddenException('You do not own this assignment');
+    }
+
+    // Close the loader's assignment regardless of the reconciliation outcome —
+    // this visit is over even if the parcel is not fully loaded.
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE task_assignments
+      SET status = 'done'::task_assignment_status,
+          actual_end = now(),
+          updated_at = now()
+      WHERE id = ${assignmentId}::uuid AND deleted_at IS NULL
+    `);
+
+    const parcelId = rows[0].parcel_id;
+    if (!parcelId) {
+      return { completed: false, produced: 0, loaded: 0, missing: 0 };
+    }
+
+    const recon = await this.reconciliationService.reconcileBalesForParcel(parcelId);
+    const { produced, loaded } = recon;
+    const missing = Math.max(0, produced - loaded);
+    const fullyLoaded = loaded >= produced;
+
+    // Fully loaded → close the field (`completed`). Otherwise stop at `loaded`
+    // — blocked from completion until an admin resolves the shortage.
+    const harvestTarget = fullyLoaded ? 'completed' : 'loaded';
+    try {
+      await this.drizzleProvider.db.execute(sql`
+        UPDATE parcels
+        SET harvest_status = ${harvestTarget}::harvest_status,
+            updated_at = now()
+        WHERE id = ${parcelId}::uuid AND deleted_at IS NULL
+      `);
+    } catch (err) {
+      const pgCode = (err as { code?: string } | undefined)?.code;
+      if (pgCode !== '23514') throw err;
+    }
+
+    this.winston.log('flow', 'parcels.loaded.confirmed', {
+      context: 'NotificationsService',
+      assignmentId,
+      parcelId,
+      produced,
+      loaded,
+      missing,
+      completed: fullyLoaded,
+    });
+
+    if (!fullyLoaded && rows[0].organization_id) {
+      await this.alertsService
+        .createParcelMismatchAlert({
+          parcelId,
+          parcelName: rows[0].parcel_name,
+          produced,
+          loaded,
+          orgId: rows[0].organization_id,
+        })
+        .catch(() => {});
+      await this.sendParcelLoadMismatchAlert(
+        rows[0].organization_id,
+        rows[0].parcel_name,
+        produced,
+        loaded,
+      ).catch(() => {});
+    }
+
+    return { completed: fullyLoaded, produced, loaded, missing };
+  }
+
+  /**
+   * Fan out a "parcel not fully loaded" alert push to every admin/dispatcher
+   * in the org. Best-effort — a push failure never blocks the confirm flow.
+   */
+  async sendParcelLoadMismatchAlert(
+    orgId: string | null,
+    parcelName: string | null,
+    produced: number,
+    loaded: number,
+  ): Promise<void> {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`role IN ('admin'::user_role, 'dispatcher'::user_role)`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
+    const where = sql.join(conditions, sql` AND `);
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM users WHERE ${where}`,
+    )) as unknown as { id: string }[];
+
+    const missing = Math.max(0, produced - loaded);
+    const label = parcelName ?? 'o parcelă';
+    await Promise.all(
+      rows.map((r) =>
+        this.sendPush(
+          r.id,
+          'Câmp neîncărcat complet',
+          `${label}: lipsă ${missing} baloți (produși ${produced}, încărcați ${loaded}).`,
+          { type: 'parcel_load_mismatch', produced, loaded, missing, parcelName },
+        ).catch(() => {}),
+      ),
+    );
+  }
+  // endregion: loader-exit ================================================
 }

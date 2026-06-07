@@ -14,7 +14,7 @@ import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { mobileLogger } from '@/lib/logger';
 import { generateUuid } from '@/lib/uuid';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
-import { useUndoableSave } from '@/hooks/useUndoableSave';
+import { useUndoableSave, type UndoRecord } from '@/hooks/useUndoableSave';
 import { colors } from '@strawboss/ui-tokens';
 
 /**
@@ -45,6 +45,15 @@ interface FuelEntryFlowProps {
   onComplete: () => void;
   onCancel: () => void;
   onStepChange?: (title: string) => void;
+  /**
+   * Optional. When provided, the flow delegates post-save handling — navigation
+   * AND the undo toast — to the parent instead of resetting itself to the first
+   * step. The parent receives the undo record so it can render the toast at a
+   * level that survives this screen unmounting. Used by ConsumableFlow so a
+   * baler returns to the consumable picker after logging diesel (the undo toast
+   * would otherwise vanish with the unmounted flow).
+   */
+  onSaved?: (record: UndoRecord) => void;
 }
 
 export function FuelEntryFlow({
@@ -53,6 +62,7 @@ export function FuelEntryFlow({
   onComplete,
   onCancel,
   onStepChange,
+  onSaved,
 }: FuelEntryFlowProps) {
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
@@ -149,17 +159,25 @@ export function FuelEntryFlow({
         queryKey: operatorStatsQueryKey(operatorId),
       });
 
-      setLiters('');
-      setPhotoUri(null);
-      goToStep('liters');
-
-      showUndo({
+      const undoRecord: UndoRecord = {
         entityId: id,
         idempotencyKey: `fuel_logs_${id}`,
         label: `Înregistrat — ${quantityLiters} L combustibil`,
-      });
+      };
 
-      onComplete();
+      if (onSaved) {
+        // Parent owns post-save navigation + the undo toast (so it survives
+        // this screen unmounting). Don't reset local state or show our own toast.
+        onSaved(undoRecord);
+      } else {
+        // Standalone use (driver fuel tab, loader consumables): stay on the
+        // flow so the operator can log another fueling right away.
+        setLiters('');
+        setPhotoUri(null);
+        goToStep('liters');
+        showUndo(undoRecord);
+        onComplete();
+      }
     } catch (err) {
       showModal({
         type: 'error',
@@ -176,6 +194,7 @@ export function FuelEntryFlow({
     liters,
     photoUri,
     onComplete,
+    onSaved,
     queryClient,
     goToStep,
     showUndo,

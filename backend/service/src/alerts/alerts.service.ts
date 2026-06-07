@@ -172,6 +172,58 @@ export class AlertsService {
     return created[0];
   }
 
+  /**
+   * Anomaly alert raised when a loader confirms a field is done but fewer bales
+   * were loaded than the baler produced. Deduped per parcel: skip if an
+   * unacknowledged mismatch alert for the same parcel already exists, so a
+   * re-visit does not spam duplicates.
+   */
+  async createParcelMismatchAlert(args: {
+    parcelId: string;
+    parcelName?: string | null;
+    produced: number;
+    loaded: number;
+    orgId: string;
+  }) {
+    const existing = await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM alerts
+          WHERE related_table = 'parcels'
+            AND related_record_id = ${args.parcelId}::uuid
+            AND category = 'anomaly'
+            AND is_acknowledged = false
+            AND organization_id = ${args.orgId}::uuid
+          LIMIT 1`,
+    );
+    if ((existing as unknown as Record<string, unknown>[]).length > 0) {
+      return (existing as unknown as Record<string, unknown>[])[0];
+    }
+    const missing = Math.max(0, args.produced - args.loaded);
+    const lossPct = args.produced > 0 ? (missing / args.produced) * 100 : 0;
+    const severity = lossPct > 10 ? 'high' : 'medium';
+    const label = args.parcelName ?? args.parcelId;
+    const result = await this.drizzleProvider.db.execute(
+      sql`INSERT INTO alerts (
+        category, severity, title, description,
+        related_table, related_record_id, data, is_acknowledged, organization_id
+      ) VALUES (
+        'anomaly'::alert_category, ${severity}::alert_severity,
+        'Câmp neîncărcat complet',
+        ${`Parcela ${label}: produși ${args.produced}, încărcați ${args.loaded}, lipsă ${missing}.`},
+        'parcels', ${args.parcelId}::uuid,
+        jsonb_build_object(
+          'kind', 'parcel_load_mismatch',
+          'parcelId', ${args.parcelId}::text,
+          'produced', ${args.produced},
+          'loaded', ${args.loaded},
+          'missing', ${missing}
+        ),
+        false,
+        ${args.orgId}::uuid
+      ) RETURNING ${ALERT_COLS}`,
+    );
+    return (result as unknown as Record<string, unknown>[])[0];
+  }
+
   async createFromDraft(draft: AlertDraft, orgId: string) {
     // Skip insert if an unacknowledged alert with the same (trip_id, category)
     // already exists — the evaluation job runs every 15 minutes and would

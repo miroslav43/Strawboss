@@ -1,7 +1,10 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
+import { QUEUE_GEOFENCE_CHECK } from '../jobs/queues';
 import type {
   KmByDayResponse,
   LocationReportDto,
@@ -12,7 +15,19 @@ import type {
 
 @Injectable()
 export class LocationService {
-  constructor(private readonly drizzleProvider: DrizzleProvider) {}
+  /**
+   * Wall-clock of the last geofence-check we nudged. Event-driven geofence is
+   * globally throttled to at most once per {@link GEOFENCE_NUDGE_THROTTLE_MS}
+   * so a fleet reporting GPS every few seconds cannot flood the queue (one
+   * check re-evaluates every machine anyway).
+   */
+  private lastGeofenceNudgeMs = 0;
+  private static readonly GEOFENCE_NUDGE_THROTTLE_MS = 15_000;
+
+  constructor(
+    private readonly drizzleProvider: DrizzleProvider,
+    @InjectQueue(QUEUE_GEOFENCE_CHECK) private readonly geofenceQueue: Queue,
+  ) {}
 
   /**
    * Store a single GPS ping from a mobile device.
@@ -55,6 +70,18 @@ export class LocationService {
         ${dto.recordedAt}::timestamptz
       )
     `);
+
+    // Event-driven geofence: nudge an immediate check shortly after a fresh GPS
+    // ping so enter/exit transitions fire in seconds instead of waiting for the
+    // 2-min job. Globally throttled to bound queue load (audit #4). Best-effort
+    // — a queue error must never fail the location report.
+    const now = Date.now();
+    if (now - this.lastGeofenceNudgeMs > LocationService.GEOFENCE_NUDGE_THROTTLE_MS) {
+      this.lastGeofenceNudgeMs = now;
+      void this.geofenceQueue
+        .add('check', {}, { removeOnComplete: true, removeOnFail: true })
+        .catch(() => {});
+    }
   }
 
   /**
@@ -199,7 +226,10 @@ export class LocationService {
     }>
   > {
     const radiusM = options.radiusM ?? 75;
-    const windowMinutes = options.windowMinutes ?? 5;
+    // 15 min (not 5): mobile GPS reporting is time-based but a backgrounded or
+    // briefly-idle device can still gap. A wider window keeps a truck that
+    // arrived at the loader visible through short reporting lulls.
+    const windowMinutes = options.windowMinutes ?? 15;
 
     if (!Number.isInteger(windowMinutes) || windowMinutes < 1 || windowMinutes > 60) {
       throw new BadRequestException('windowMinutes must be an integer between 1 and 60');
@@ -304,7 +334,9 @@ export class LocationService {
     }>
   > {
     const radiusM = options.radiusM ?? 75;
-    const windowMinutes = options.windowMinutes ?? 5;
+    // 15 min (not 5): mirror of getTrucksAtLoader — tolerate short reporting
+    // lulls so a parked loader stays visible to the driver.
+    const windowMinutes = options.windowMinutes ?? 15;
 
     if (!Number.isInteger(windowMinutes) || windowMinutes < 1 || windowMinutes > 60) {
       throw new BadRequestException('windowMinutes must be an integer between 1 and 60');

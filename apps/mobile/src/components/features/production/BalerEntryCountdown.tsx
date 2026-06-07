@@ -23,6 +23,12 @@ export interface BalerEntryCountdownProps {
   parcelCode: string;
   /** Optional crop enum value — appended to the label when present. */
   cropType: string | null;
+  /**
+   * Optional full label override. When set, it replaces the default baler copy
+   * — used to reuse this countdown for loader ("Începi încărcarea în …") and
+   * truck ("Confirmi sosirea la …") entry overlays.
+   */
+  label?: string;
   /** Called when countdown completes — POSTs /confirm-parcel-entry. */
   onConfirm: () => void;
   /** Called when the operator taps Anulează. */
@@ -33,12 +39,13 @@ export function BalerEntryCountdown({
   timeoutMs = 10_000,
   parcelCode,
   cropType,
+  label: labelOverride,
   onConfirm,
   onCancel,
 }: BalerEntryCountdownProps) {
   const seconds = Math.max(1, Math.round(timeoutMs / 1000));
   const cropSuffix = cropType ? ` (${CROP_LABELS[cropType] ?? cropType})` : '';
-  const label = `Începi balotarea în ${parcelCode}${cropSuffix}`;
+  const label = labelOverride ?? `Începi balotarea în ${parcelCode}${cropSuffix}`;
 
   return (
     <ConfirmCountdown

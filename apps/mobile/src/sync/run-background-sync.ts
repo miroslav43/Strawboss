@@ -107,8 +107,9 @@ async function _notifyNewAssignments(
   for (const assignment of assignments) {
     const notifId = `assignment-${assignment.id}`;
 
-    // INSERT OR IGNORE — silently skips if already notified
-    await notificationsRepo.insert({
+    // INSERT OR IGNORE — returns true only the first time we ever see this
+    // assignment. This is the single source of truth for "is this new?".
+    const isNew = await notificationsRepo.insert({
       id: notifId,
       category: MobileNotificationCategory.task,
       type: MobileNotificationType.assignment_created,
@@ -123,10 +124,14 @@ async function _notifyNewAssignments(
       createdAt: Date.now(),
     });
 
-    // Check whether the row was actually inserted (i.e., it's new)
-    // by querying whether it was already there before — we use a simpler
-    // approach: try scheduling a local OS notification with a deduplication
-    // identifier. scheduleNotificationAsync is idempotent per identifier.
+    // Already notified on a previous sync — never re-fire. (scheduleNotificationAsync
+    // with `trigger: null` presents immediately on EVERY call; the identifier only
+    // dedups *pending* schedules, not delivered ones — so gating on isNew is what
+    // prevents the same assignment from buzzing on every sync cycle.)
+    if (!isNew) continue;
+
+    newCount++;
+
     try {
       await Notifications.scheduleNotificationAsync({
         identifier: notifId,
@@ -142,10 +147,13 @@ async function _notifyNewAssignments(
         },
         trigger: null,
       });
-      newCount++;
-    } catch {
-      // scheduleNotificationAsync can throw if the same identifier was already
-      // scheduled and fired. Treat as already-notified — no-op.
+    } catch (err) {
+      // OS notification is best-effort; the in-app bell entry is already persisted
+      // (and deduped), so the next sync will not retry it.
+      mobileLogger.warn('Failed to schedule local task notification', {
+        notifId,
+        err: String(err),
+      });
     }
   }
 

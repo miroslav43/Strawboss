@@ -13,22 +13,30 @@ interface GeofenceOverlayProps {
   onDismiss: () => void;
   onConfirmParcelDone: (assignmentId: string, baleCount?: number) => Promise<void>;
   /**
-   * T6 enter — fires the auto-confirm POST after the 10 s countdown finishes.
-   * Optional so existing loader/driver layouts that have not yet wired up the
-   * baler hook still type-check.
+   * Enter overlay — fires the auto-confirm POST after the countdown finishes.
+   * Optional so layouts that have not wired it up still type-check.
    */
   onConfirmParcelEntry?: (assignmentId: string) => Promise<void>;
-  /** T6 enter — operator tapped Anulează during the countdown. */
+  /** Enter overlay — operator tapped Anulează during the countdown. */
   onCancelParcelEntry?: () => void;
+  /**
+   * Loader field-exit "Da" — reconciles produced vs loaded bales and returns
+   * the result so the modal can surface a shortage. Only the loader layout
+   * wires this.
+   */
+  onConfirmParcelLoaded?: (
+    assignmentId: string,
+  ) => Promise<{ completed: boolean; produced: number; loaded: number; missing: number } | null>;
 }
 
 /**
  * Overlay displayed on top of all screens when a geofence event occurs.
  *
  * - field_entry: green banner at top, auto-dismiss 5s
- * - entry_confirm (T6 baler enter): 10 s countdown modal
+ * - entry_confirm: countdown modal (baler/loader/truck — copy via alert.action)
  * - deposit_entry: bottom-sheet popup with an action to mark arrival
- * - exit_confirm: fullscreen modal with NumericPad for bale count entry
+ * - exit_confirm: fullscreen modal with NumericPad for bale count entry (baler)
+ * - loaded_confirm: loader field-exit Da/Nu popup + reconciliation result
  */
 export function GeofenceOverlay({
   alert,
@@ -36,14 +44,23 @@ export function GeofenceOverlay({
   onConfirmParcelDone,
   onConfirmParcelEntry,
   onCancelParcelEntry,
+  onConfirmParcelLoaded,
 }: GeofenceOverlayProps) {
   if (!alert) return null;
 
   if (alert.type === 'entry_confirm') {
+    const code = alert.parcelCode ?? alert.parcelName;
+    const label =
+      alert.action === 'load'
+        ? `Începi încărcarea în ${code}`
+        : alert.action === 'truck'
+          ? `Confirmi sosirea la ${code}`
+          : undefined; // undefined → BalerEntryCountdown's default baler copy
     return (
       <BalerEntryCountdown
-        parcelCode={alert.parcelCode ?? alert.parcelName}
+        parcelCode={code}
         cropType={alert.cropType ?? null}
+        label={label}
         onConfirm={() => {
           // Defer to the optional handler when present; otherwise just dismiss
           // so the user is not stuck on the overlay (defensive fallback).
@@ -57,6 +74,16 @@ export function GeofenceOverlay({
           if (onCancelParcelEntry) onCancelParcelEntry();
           else onDismiss();
         }}
+      />
+    );
+  }
+
+  if (alert.type === 'loaded_confirm') {
+    return (
+      <LoaderExitConfirmModal
+        alert={alert}
+        onDismiss={onDismiss}
+        onConfirm={onConfirmParcelLoaded}
       />
     );
   }
@@ -218,6 +245,90 @@ function ExitConfirmModal({
             disabled={saving}
           />
         </View>
+      </View>
+    </View>
+  );
+}
+
+// ── Loader Exit Confirm Modal (Da/Nu + reconciliation result) ─────────
+
+function LoaderExitConfirmModal({
+  alert,
+  onDismiss,
+  onConfirm,
+}: {
+  alert: GeofenceAlert;
+  onDismiss: () => void;
+  onConfirm?: (
+    assignmentId: string,
+  ) => Promise<{ completed: boolean; produced: number; loaded: number; missing: number } | null>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<{
+    completed: boolean;
+    produced: number;
+    loaded: number;
+    missing: number;
+  } | null>(null);
+  const insets = useSafeAreaInsets();
+
+  const handleYes = async () => {
+    if (!onConfirm) {
+      onDismiss();
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await onConfirm(alert.assignmentId);
+      // Shortage → keep the modal open to show the gap; the operator
+      // acknowledges. Fully loaded (or no result) → dismiss.
+      if (res && !res.completed) {
+        setResult(res);
+        return;
+      }
+    } catch {
+      // best-effort
+    } finally {
+      setSaving(false);
+    }
+    onDismiss();
+  };
+
+  return (
+    <View style={styles.modalBackdrop}>
+      <View style={[styles.modalContent, { paddingBottom: insets.bottom + 24 }]}>
+        <View style={styles.modalHandle} />
+        {result ? (
+          <>
+            <MaterialCommunityIcons name="alert" size={48} color="#C62828" />
+            <Text style={styles.modalTitle}>Câmp neîncărcat complet</Text>
+            <Text style={styles.modalSubtitle}>
+              Produși {result.produced}, încărcați {result.loaded}. Lipsă {result.missing} baloți.
+              Câmpul rămâne deschis — un administrator a fost anunțat.
+            </Text>
+            <View style={styles.modalActions}>
+              <BigButton title="Am înțeles" onPress={onDismiss} />
+            </View>
+          </>
+        ) : (
+          <>
+            <MaterialCommunityIcons name="package-variant-closed" size={48} color="#0A5C36" />
+            <Text style={styles.modalTitle}>
+              Ai terminat de încărcat{'\n'}
+              <Text style={styles.modalParcelName}>{alert.parcelName}</Text>?
+            </Text>
+            <Text style={styles.modalSubtitle}>Au fost toți baloții balotați și încărcați?</Text>
+            <View style={styles.modalActions}>
+              <BigButton title="Da, am terminat" onPress={handleYes} loading={saving} />
+              <BigButton
+                title="Nu am terminat"
+                variant="outline"
+                onPress={onDismiss}
+                disabled={saving}
+              />
+            </View>
+          </>
+        )}
       </View>
     </View>
   );

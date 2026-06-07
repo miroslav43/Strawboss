@@ -33,6 +33,10 @@ const confirmParcelEntrySchema = z.object({
   assignmentId: z.string().uuid(),
 });
 
+const confirmParcelLoadedSchema = z.object({
+  assignmentId: z.string().uuid(),
+});
+
 @Controller('notifications')
 export class NotificationsController {
   constructor(
@@ -134,7 +138,12 @@ export class NotificationsController {
    * entry-confirm overlay times out. Idempotent.
    */
   @Post('confirm-parcel-entry')
-  @Roles('admin' as UserRole, 'baler_operator' as UserRole)
+  @Roles(
+    'admin' as UserRole,
+    'baler_operator' as UserRole,
+    'loader_operator' as UserRole,
+    'driver' as UserRole,
+  )
   async confirmParcelEntry(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(confirmParcelEntrySchema))
@@ -146,6 +155,26 @@ export class NotificationsController {
       user.organizationId,
     );
     return { ok: true };
+  }
+
+  /**
+   * Loader's answer to the field-exit popup ("Da, am terminat de încărcat").
+   * Closes the loader assignment, reconciles produced vs loaded bales, and
+   * either completes the parcel or blocks it at `loaded` + raises an alert.
+   * Returns the reconciliation so the mobile UI can show the shortage.
+   */
+  @Post('confirm-parcel-loaded')
+  @Roles('admin' as UserRole, 'loader_operator' as UserRole)
+  async confirmParcelLoaded(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(confirmParcelLoadedSchema))
+    body: { assignmentId: string },
+  ) {
+    return this.notificationsService.confirmParcelLoaded(
+      body.assignmentId,
+      user.id,
+      user.organizationId,
+    );
   }
 
   /**

@@ -1,5 +1,10 @@
 import type * as SQLite from 'expo-sqlite';
-import type { MobileNotification, MobileNotificationCategory, MobileNotificationSeverity, MobileNotificationType } from '@/types/notifications';
+import type {
+  MobileNotification,
+  MobileNotificationCategory,
+  MobileNotificationSeverity,
+  MobileNotificationType,
+} from '@/types/notifications';
 
 interface NotificationRow {
   id: string;
@@ -43,8 +48,14 @@ export interface InsertNotificationInput {
 export class NotificationsRepo {
   constructor(private readonly db: SQLite.SQLiteDatabase) {}
 
-  async insert(input: InsertNotificationInput): Promise<void> {
-    await this.db.runAsync(
+  /**
+   * Inserts a notification, ignoring duplicates by primary key.
+   * Returns `true` only when a new row was actually inserted (i.e. this id was
+   * never seen before), `false` when an existing row was ignored. Callers use
+   * this to fire side effects (OS notifications, bell refresh) exactly once.
+   */
+  async insert(input: InsertNotificationInput): Promise<boolean> {
+    const result = await this.db.runAsync(
       `INSERT OR IGNORE INTO notifications (id, category, type, title, body, data_json, severity, is_read, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
       [
@@ -58,6 +69,7 @@ export class NotificationsRepo {
         input.createdAt ?? Date.now(),
       ],
     );
+    return result.changes > 0;
   }
 
   async listRecent(limit = 50): Promise<MobileNotification[]> {
@@ -76,17 +88,16 @@ export class NotificationsRepo {
   }
 
   async markAsRead(id: string): Promise<void> {
-    await this.db.runAsync(
-      `UPDATE notifications SET is_read = 1, read_at = ? WHERE id = ?`,
-      [Date.now(), id],
-    );
+    await this.db.runAsync(`UPDATE notifications SET is_read = 1, read_at = ? WHERE id = ?`, [
+      Date.now(),
+      id,
+    ]);
   }
 
   async markAllAsRead(): Promise<void> {
-    await this.db.runAsync(
-      `UPDATE notifications SET is_read = 1, read_at = ? WHERE is_read = 0`,
-      [Date.now()],
-    );
+    await this.db.runAsync(`UPDATE notifications SET is_read = 1, read_at = ? WHERE is_read = 0`, [
+      Date.now(),
+    ]);
   }
 
   async delete(id: string): Promise<void> {
@@ -95,9 +106,6 @@ export class NotificationsRepo {
 
   async cleanupOlderThan(ageMs: number): Promise<void> {
     const cutoff = Date.now() - ageMs;
-    await this.db.runAsync(
-      `DELETE FROM notifications WHERE created_at < ?`,
-      [cutoff],
-    );
+    await this.db.runAsync(`DELETE FROM notifications WHERE created_at < ?`, [cutoff]);
   }
 }

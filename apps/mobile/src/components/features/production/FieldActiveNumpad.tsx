@@ -40,6 +40,9 @@ const PAD_ROWS: PadKey[][] = [
 
 const MAX_DIGITS = 5;
 const GPS_REFRESH_MS = 45_000;
+// Cap the wait for a fix so production never stalls on a cold/weak GPS. Balanced
+// accuracy resolves faster than High and suffices for parcel-polygon matching.
+const GPS_FIX_TIMEOUT_MS = 12_000;
 
 /**
  * FM-7: Minimal numpad for the "Câmp activ" mode.
@@ -103,9 +106,12 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
         if (!alive) return;
         if (status !== 'granted') return;
         try {
-          const loc = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
+          const loc = await Promise.race([
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('GPS timeout')), GPS_FIX_TIMEOUT_MS),
+            ),
+          ]);
           if (!alive) return;
           if (activeParcels?.length) {
             const hit = findParcelAtLocation(

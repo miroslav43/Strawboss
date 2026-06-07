@@ -318,7 +318,11 @@
     "onlineStatus": "● Online",
     "offlineStatus": "○ Offline",
     "harvestStatus": "Harvest status",
-    "deposits": "Deposits"
+    "deposits": "Deposits",
+    "myLocation": "My location",
+    "locationDenied": "Location access denied. Allow location in your browser.",
+    "locationUnavailable": "Could not determine your location.",
+    "locationUnsupported": "Geolocation is not supported by this browser."
   },
   "farms": {
     "title": "Farms",

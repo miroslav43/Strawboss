@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
+import { getAvailableTransitions } from '@strawboss/domain';
+import type { TripStatus } from '@strawboss/types';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
 import { todayInRomania } from '../common/date';
@@ -18,6 +20,7 @@ interface ActiveAssignment {
   cropType: string | null;
   status: string;
   tripId: string | null;
+  tripStatus: string | null;
   organizationId: string | null;
 }
 
@@ -69,10 +72,12 @@ export class GeofenceService {
         p.crop_type      AS "cropType",
         ta.status,
         ta.trip_id       AS "tripId",
+        t.status         AS "tripStatus",
         ta.organization_id AS "organizationId"
       FROM task_assignments ta
       JOIN machines m ON m.id = ta.machine_id
       LEFT JOIN parcels p ON p.id = ta.parcel_id
+      LEFT JOIN trips t ON t.id = ta.trip_id
       WHERE ta.assignment_date = ${today}
         AND ta.deleted_at IS NULL
         AND ta.status IN ('available', 'in_progress')
@@ -164,62 +169,37 @@ export class GeofenceService {
             pos.lon,
           );
 
-          // Update assignment status to in_progress.
-          // Baler is excluded (Plan B T6): its assignment flips to in_progress
-          // only when the operator confirms the 10 s entry overlay
-          // (POST /notifications/confirm-parcel-entry), so a drive-through that
-          // the operator cancels does not silently start the harvest task.
-          if (assignment.status === 'available' && assignment.machineType !== 'baler') {
-            await this.drizzleProvider.db.execute(sql`
-            UPDATE task_assignments
-            SET status = 'in_progress'::task_assignment_status,
-                actual_start = now(),
-                updated_at = now()
-            WHERE id = ${assignment.assignmentId}::uuid
-          `);
-            this.winston.log(
-              'flow',
-              `Machine ${assignment.machineId} entered ${geofenceType} ${geofenceId} — assignment ${assignment.assignmentId} → in_progress`,
-              {
-                context: 'GeofenceService',
-                machineId: assignment.machineId,
-                geofenceType,
-                geofenceId,
-                assignmentId: assignment.assignmentId,
-                event: 'enter',
-              },
-            );
-          }
-
-          // Notify the FIELD operator when entering an assigned parcel. Trucks
-          // also carry a source parcel on their task, but these pushes drive
-          // the field-operator overlay — a truck driver must NOT receive them.
-          // Trucks entering a parcel are handled separately by
-          // notifyLoadersAtParcel below.
+          // No machine auto-flips to in_progress on a geofence enter anymore.
+          // Every machine type now confirms the entry overlay first
+          // (POST /notifications/confirm-parcel-entry) — so a mere drive-through
+          // does not silently start the task (audit #2). The push below drives
+          // that confirmation overlay, with copy tailored per machine type.
           if (geofenceType === 'parcel' && assignment.assignedUserId && assignment.parcelId) {
+            const parcelRef = {
+              id: assignment.parcelId,
+              code: assignment.parcelCode ?? assignment.parcelName ?? '—',
+              name: assignment.parcelName,
+            };
             if (assignment.machineType === 'baler') {
               // T6 enter — rich 10 s auto-confirm overlay with crop context.
               await this.notificationsService.sendBalerFieldEntryConfirm(
                 assignment.assignedUserId,
                 assignment.assignmentId,
-                {
-                  id: assignment.parcelId,
-                  code: assignment.parcelCode ?? assignment.parcelName ?? '—',
-                  name: assignment.parcelName,
-                  cropType: assignment.cropType,
-                },
+                { ...parcelRef, cropType: assignment.cropType },
               );
             } else if (assignment.machineType === 'loader') {
-              // Loader keeps the simple arrival banner.
-              await this.notificationsService.sendPush(
+              await this.notificationsService.sendFieldEntryConfirm(
                 assignment.assignedUserId,
-                'Ai intrat pe câmp',
-                `Ai ajuns la ${assignment.parcelName ?? 'câmpul asignat'}.`,
-                {
-                  type: 'field_entry',
-                  assignmentId: assignment.assignmentId,
-                  parcelName: assignment.parcelName,
-                },
+                assignment.assignmentId,
+                parcelRef,
+                'load',
+              );
+            } else if (assignment.machineType === 'truck') {
+              await this.notificationsService.sendFieldEntryConfirm(
+                assignment.assignedUserId,
+                assignment.assignmentId,
+                parcelRef,
+                'truck',
               );
             }
           }
@@ -297,6 +277,49 @@ export class GeofenceService {
                 id: assignment.parcelId,
                 code: assignment.parcelCode ?? assignment.parcelName ?? '—',
                 name: assignment.parcelName,
+              },
+            );
+          }
+
+          // Loader exit — only if the loader actually worked this field
+          // (in_progress, i.e. it confirmed the entry overlay). Ask whether the
+          // field is fully loaded/done; "Da" reconciles produced vs loaded
+          // bales via POST /notifications/confirm-parcel-loaded (audit #1).
+          if (
+            geofenceType === 'parcel' &&
+            assignment.machineType === 'loader' &&
+            assignment.assignedUserId &&
+            assignment.parcelId &&
+            assignment.status === 'in_progress'
+          ) {
+            await this.notificationsService.sendLoaderFieldExitConfirm(
+              assignment.assignedUserId,
+              assignment.assignmentId,
+              { id: assignment.parcelId, name: assignment.parcelName },
+            );
+          }
+
+          // Truck exit from the source parcel — if the trip is loaded and DEPART
+          // is a valid transition, prompt the driver to start the departure flow
+          // (audit #3). We never auto-fire DEPART: it needs the real odometer +
+          // driver signature (CMR / fuel anti-fraud), which the driver supplies
+          // in the departure-flow screen this push routes to.
+          if (
+            geofenceType === 'parcel' &&
+            assignment.machineType === 'truck' &&
+            assignment.assignedUserId &&
+            assignment.tripId &&
+            assignment.tripStatus &&
+            getAvailableTransitions(assignment.tripStatus as TripStatus).includes('DEPART')
+          ) {
+            await this.notificationsService.sendPush(
+              assignment.assignedUserId,
+              'Ai plecat de la câmp?',
+              'Confirmă plecarea ca să pornești cursa spre depozit.',
+              {
+                type: 'depart_prompt',
+                assignmentId: assignment.assignmentId,
+                tripId: assignment.tripId,
               },
             );
           }

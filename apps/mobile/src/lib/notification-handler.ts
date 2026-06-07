@@ -56,6 +56,27 @@ function resolveTypeAndCategory(pushType: string): {
         category: MobileNotificationCategory.geofence,
         severity: MobileNotificationSeverity.info,
       };
+    // Previously dropped from history (audit #6): the baler T6 entry/exit pushes
+    // and the loader field-exit confirm now land in the notification centre.
+    case 'field_entry_confirm':
+      return {
+        type: MobileNotificationType.parcel_entered,
+        category: MobileNotificationCategory.geofence,
+        severity: MobileNotificationSeverity.info,
+      };
+    case 'field_exit_production':
+    case 'loader_exit_confirm':
+      return {
+        type: MobileNotificationType.parcel_exit_confirm,
+        category: MobileNotificationCategory.geofence,
+        severity: MobileNotificationSeverity.warning,
+      };
+    case 'parcel_load_mismatch':
+      return {
+        type: MobileNotificationType.parcel_load_mismatch,
+        category: MobileNotificationCategory.system,
+        severity: MobileNotificationSeverity.warning,
+      };
     case 'assignment_created':
       return {
         type: MobileNotificationType.assignment_created,

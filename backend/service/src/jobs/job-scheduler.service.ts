@@ -31,9 +31,11 @@ export class JobSchedulerService implements OnModuleInit {
       context: 'JobSchedulerService',
     });
 
+    // 2-min safety net; near-real-time detection is event-driven — a fresh GPS
+    // report nudges an immediate geofence check (LocationService), throttled.
     await this.geofenceQueue.upsertJobScheduler(
       'geofence-repeat',
-      { every: 5 * 60_000 },
+      { every: 2 * 60_000 },
       { name: 'check', data: {} },
     );
 
@@ -65,7 +67,7 @@ export class JobSchedulerService implements OnModuleInit {
     );
 
     this.winston.info(
-      'Repeating jobs seeded: geofence (5m), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m)',
+      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m)',
       {
         context: 'JobSchedulerService',
       },

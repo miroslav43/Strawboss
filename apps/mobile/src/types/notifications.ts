@@ -34,6 +34,7 @@ export enum MobileNotificationType {
   loader_recall_prompt = 'loader_recall_prompt',
   trip_next_iteration = 'trip_next_iteration',
   truck_idle = 'truck_idle',
+  parcel_load_mismatch = 'parcel_load_mismatch',
 }
 
 export enum MobileNotificationSeverity {

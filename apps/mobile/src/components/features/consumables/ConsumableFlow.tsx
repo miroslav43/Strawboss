@@ -10,6 +10,7 @@ import { ConsumableTypeSelector } from '../../shared/ConsumableTypeSelector';
 import { FuelEntryFlow } from '../fuel/FuelEntryFlow';
 import { getDatabase } from '@/lib/storage';
 import { ConsumableLogsRepo } from '@/db/consumable-logs-repo';
+import { FuelLogsRepo } from '@/db/fuel-logs-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { generateUuid } from '@/lib/uuid';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
@@ -57,12 +58,15 @@ export function ConsumableFlow({
   const [quantity, setQuantity] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Undo for the twine path (diesel uses FuelEntryFlow's own undo).
+  // Single undo for both paths. The diesel toast is surfaced here (not inside
+  // FuelEntryFlow) so it survives that screen unmounting when we return to the
+  // picker after a save. The id belongs to exactly one table; the other delete
+  // is a harmless no-op (DELETE ... WHERE id = ? affects 0 rows).
   const { showUndo, toastState } = useUndoableSave({
     onDeleteLocal: async (entityId) => {
       const db = await getDatabase();
-      const repo = new ConsumableLogsRepo(db);
-      await repo.deleteLocal(entityId);
+      await new ConsumableLogsRepo(db).deleteLocal(entityId);
+      await new FuelLogsRepo(db).deleteLocal(entityId);
       void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(operatorId) });
     },
   });
@@ -159,6 +163,17 @@ export function ConsumableFlow({
         operatorId={operatorId}
         onComplete={onComplete}
         onCancel={lockType ? () => {} : resetToStart}
+        onSaved={
+          lockType
+            ? undefined
+            : (record) => {
+                // Diesel saved → return to the consumable picker (the "main
+                // page") and show the undo toast here, mirroring the twine path.
+                resetToStart();
+                showUndo(record);
+                onComplete();
+              }
+        }
       />
     );
   }

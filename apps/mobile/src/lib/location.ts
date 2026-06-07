@@ -3,7 +3,7 @@
  * (TaskManager + foreground service on Android, UIBackgroundModes on iOS)
  * posting to POST /api/v1/location/report.
  */
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -64,6 +64,17 @@ async function readLastSpeedKmh(): Promise<number | null> {
  * - road  (>30 km/h): less frequent updates, Balanced accuracy
  * - field (<10 km/h): frequent updates, High accuracy
  * - transition (10-30 km/h): Balanced accuracy, medium interval
+ *
+ * All profiles report on a TIME basis (`distanceInterval: 0`), never gated on
+ * movement. A non-zero `distanceInterval` maps to Android `smallestDisplacement`,
+ * which suppresses every update until the device has physically moved that far —
+ * so a *stationary* machine (a truck parked at the loader, a loader idling)
+ * stops reporting GPS entirely. That silently breaks loader↔truck proximity
+ * (`trucks-at-loader` / `loaders-near-truck` only match positions fresher than
+ * `windowMinutes`) and can deadlock a vehicle that parks from road speed — it
+ * gets no callback, so it never re-classifies down to the field profile. Keeping
+ * reporting purely time-based guarantees a fresh position even when idle and
+ * keeps the adaptive re-classification callbacks flowing.
  */
 type SpeedProfile = 'road' | 'field' | 'transition';
 
@@ -83,25 +94,26 @@ interface TrackingParams {
 function trackingParamsForProfile(profile: SpeedProfile): TrackingParams {
   switch (profile) {
     case 'road':
-      // Road: machine is fast-moving — fewer, lighter updates to save battery
+      // Road: fast-moving — lighter cadence to save battery (still time-based).
       return {
         accuracy: Location.Accuracy.Balanced,
         timeInterval: 30_000,
-        distanceInterval: 100,
+        distanceInterval: 0,
       };
     case 'field':
-      // Field: slow-moving — dense updates for accurate geofence checks
+      // Field: slow-moving or idle — frequent, time-based pings so a stationary
+      // machine stays fresh for geofence + loader↔truck proximity.
       return {
         accuracy: Location.Accuracy.High,
-        timeInterval: 10_000,
-        distanceInterval: 20,
+        timeInterval: 20_000,
+        distanceInterval: 0,
       };
     case 'transition':
     default:
       return {
         accuracy: Location.Accuracy.Balanced,
-        timeInterval: 15_000,
-        distanceInterval: 50,
+        timeInterval: 20_000,
+        distanceInterval: 0,
       };
   }
 }
@@ -250,13 +262,27 @@ function coordsToReport(machineId: string, loc: Location.LocationObject): Locati
 // failing sync can never overlap itself nor delay/break location posting.
 let syncInFlight = false;
 let lastSyncAtMs = 0;
-/** Minimum spacing between piggybacked syncs, to bound backend load per device. */
-const PIGGYBACK_SYNC_MIN_INTERVAL_MS = 20_000;
+// Minimum spacing between piggybacked syncs. The location foreground service
+// wakes JS every ~10–30 s; without this throttle a full push/pull sync would
+// run on nearly every wake-up and contend with on-screen queries on the shared
+// JS/SQLite thread (the cause of the "details load slowly" jank).
+//
+// Foreground is throttled HARD: while the app is open the user already has
+// pull-to-refresh, event-driven syncs (trip/delivery transitions) and the REST
+// polling hooks for live views, so a frequent full sync there mostly just
+// causes jank. Background stays tighter so the dispatcher still sees field data
+// without large lag while the screen is off.
+const PIGGYBACK_SYNC_MIN_INTERVAL_FG_MS = 120_000;
+const PIGGYBACK_SYNC_MIN_INTERVAL_BG_MS = 60_000;
 
 async function maybePiggybackSync(): Promise<void> {
   const now = Date.now();
   if (syncInFlight) return; // re-entrancy guard — a previous cycle is still running
-  if (now - lastSyncAtMs < PIGGYBACK_SYNC_MIN_INTERVAL_MS) return; // debounce
+  const minInterval =
+    AppState.currentState === 'active'
+      ? PIGGYBACK_SYNC_MIN_INTERVAL_FG_MS
+      : PIGGYBACK_SYNC_MIN_INTERVAL_BG_MS;
+  if (now - lastSyncAtMs < minInterval) return; // throttle (state-dependent)
   syncInFlight = true;
   lastSyncAtMs = now;
   try {

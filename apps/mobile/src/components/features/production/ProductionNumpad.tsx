@@ -44,6 +44,10 @@ const PAD_ROWS: PadKey[][] = [
 
 const MAX_DIGITS = 5;
 const GPS_REFRESH_MS = 45_000;
+// Cap how long we wait for a fix so the screen never sits in "loading" forever
+// on a cold/weak GPS. Balanced accuracy resolves much faster than High and is
+// plenty for parcel-polygon matching.
+const GPS_FIX_TIMEOUT_MS = 12_000;
 
 export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps) {
   const { tasks } = useMyTasks();
@@ -95,9 +99,12 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
           return;
         }
         try {
-          const loc = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
+          const loc = await Promise.race([
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('GPS timeout')), GPS_FIX_TIMEOUT_MS),
+            ),
+          ]);
           if (!alive) return;
           setLastLonLat({
             lon: loc.coords.longitude,

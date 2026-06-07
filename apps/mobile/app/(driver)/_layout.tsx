@@ -15,7 +15,8 @@ import {
 } from '@/constants/tabBarConfig';
 
 export default function DriverTabLayout() {
-  const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
+  const { activeAlert, dismissAlert, confirmParcelDone, confirmParcelEntry, cancelParcelEntry } =
+    useGeofenceNotifications();
   const { activeAlert: tripAlert, dismiss: dismissTripAlert, onDeparted } = useTripLoadedAlert();
   const insets = useSafeAreaInsets();
 
@@ -86,6 +87,8 @@ export default function DriverTabLayout() {
           alert={activeAlert}
           onDismiss={dismissAlert}
           onConfirmParcelDone={confirmParcelDone}
+          onConfirmParcelEntry={confirmParcelEntry}
+          onCancelParcelEntry={cancelParcelEntry}
         />
         <TripLoadedOverlay
           alert={tripAlert}

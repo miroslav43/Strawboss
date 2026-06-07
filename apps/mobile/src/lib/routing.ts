@@ -30,11 +30,12 @@ export async function calculateRoute(
     if (data.code !== 'Ok' || !data.routes?.length) return null;
 
     const route = data.routes[0];
-    const coords: { lat: number; lon: number }[] =
-      route.geometry.coordinates.map((c: [number, number]) => ({
+    const coords: { lat: number; lon: number }[] = route.geometry.coordinates.map(
+      (c: [number, number]) => ({
         lat: c[1],
         lon: c[0],
-      }));
+      }),
+    );
 
     return {
       points: coords,
@@ -44,6 +45,29 @@ export async function calculateRoute(
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse a parcel/destination centroid into `{ lat, lon }`.
+ *
+ * The backend serialises PostGIS geometry with `ST_AsGeoJSON(...)::json`, so the
+ * value can arrive as a GeoJSON Point `{ coordinates: [lon, lat] }` even though
+ * some TypeScript types model it as `{ lat, lon }`. Accept both shapes and
+ * return `null` for anything unusable.
+ */
+export function parseGeoPoint(raw: unknown): { lat: number; lon: number } | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const obj = raw as { lat?: unknown; lon?: unknown; coordinates?: unknown };
+  if (typeof obj.lat === 'number' && typeof obj.lon === 'number') {
+    return { lat: obj.lat, lon: obj.lon };
+  }
+  if (Array.isArray(obj.coordinates) && obj.coordinates.length >= 2) {
+    const [lon, lat] = obj.coordinates;
+    if (typeof lon === 'number' && typeof lat === 'number') {
+      return { lat, lon };
+    }
+  }
+  return null;
 }
 
 /**
@@ -68,7 +92,11 @@ export function getGoogleMapsWebDirUrl(lat: number, lon: number): string {
  * The first URL that opens successfully wins; some schemes don't report via canOpenURL.
  */
 export async function openExternalNavigation(lat: number, lon: number): Promise<void> {
-  const candidates = [getExternalNavUrl(lat, lon), getGeoUri(lat, lon), getGoogleMapsWebDirUrl(lat, lon)];
+  const candidates = [
+    getExternalNavUrl(lat, lon),
+    getGeoUri(lat, lon),
+    getGoogleMapsWebDirUrl(lat, lon),
+  ];
   let lastError: unknown;
   for (const url of candidates) {
     try {

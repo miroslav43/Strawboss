@@ -13,14 +13,17 @@ interface NotificationData {
   parcelId?: string;
   cropType?: string | null;
   tripId?: string;
+  /** 'load' = loader entry, 'truck' = truck driver arriving at the source field. */
+  action?: 'load' | 'truck';
 }
 
 export interface GeofenceAlert {
   /**
-   * T6 — `entry_confirm` is the baler 10-second auto-confirm overlay; the
-   * legacy `field_entry` banner stays for non-baler machines.
+   * `entry_confirm` is the auto-confirm entry overlay (baler/loader/truck);
+   * `loaded_confirm` is the loader field-exit Da/Nu popup; the legacy
+   * `field_entry` banner stays for back-compat.
    */
-  type: 'field_entry' | 'entry_confirm' | 'exit_confirm' | 'deposit_entry';
+  type: 'field_entry' | 'entry_confirm' | 'exit_confirm' | 'deposit_entry' | 'loaded_confirm';
   parcelName: string;
   /** T9.3 — preferred display identifier for balers. */
   parcelCode?: string;
@@ -30,6 +33,8 @@ export interface GeofenceAlert {
   assignmentId: string;
   /** Present for deposit_entry — lets the overlay open the arrival flow. */
   tripId?: string | null;
+  /** entry_confirm — tailors the overlay copy per machine type. */
+  action?: 'load' | 'truck';
 }
 
 /** Minimum ms between two alerts for the same type+assignmentId key. */
@@ -79,6 +84,40 @@ export function useGeofenceNotifications() {
     }
     setAlertQueue((q) => q.slice(1));
   }, []);
+
+  /**
+   * Loader field-exit "Da, am terminat" → reconcile produced vs loaded bales.
+   * Returns the reconciliation so the modal can show a shortage. The alert is
+   * NOT auto-dismissed here — the modal dismisses after showing the result.
+   */
+  const confirmParcelLoaded = useCallback(
+    async (
+      assignmentId: string,
+    ): Promise<{
+      completed: boolean;
+      produced: number;
+      loaded: number;
+      missing: number;
+    } | null> => {
+      mobileLogger.flow('Geofence: confirm parcel loaded', { assignmentId });
+      try {
+        const res = await mobileApiClient.post<{
+          completed: boolean;
+          produced: number;
+          loaded: number;
+          missing: number;
+        }>('/api/v1/notifications/confirm-parcel-loaded', { assignmentId });
+        return res ?? null;
+      } catch (err) {
+        mobileLogger.flow('Geofence: confirm-parcel-loaded failed', {
+          assignmentId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+    },
+    [],
+  );
 
   /**
    * T6 enter — fired when the 10 s countdown finishes. Idempotent on the
@@ -147,6 +186,20 @@ export function useGeofenceNotifications() {
       });
     };
 
+    /**
+     * Routes a `depart_prompt` push (truck left the source field with a loaded
+     * trip) to the departure-flow screen, where the driver enters the real
+     * odometer + signature to start the trip. Used by both listeners.
+     */
+    const routeToDepartureFlow = (data: NotificationData) => {
+      if (!data.tripId) return;
+      mobileLogger.flow('Geofence: depart prompt → departure-flow', { tripId: data.tripId });
+      router.push({
+        pathname: '/driver-ops/departure-flow',
+        params: { tripId: data.tripId },
+      });
+    };
+
     // Handle foreground notifications → show UI alert
     const fgSubscription = addNotificationListener((notification) => {
       const data = notification.request.content.data as NotificationData | undefined;
@@ -185,11 +238,30 @@ export function useGeofenceNotifications() {
               parcelId: data.parcelId,
               cropType: data.cropType ?? null,
               assignmentId,
+              action: data.action,
             },
           ]);
           break;
         case 'field_exit_production':
           routeToProductionEntry(data, assignmentId);
+          break;
+        case 'loader_exit_confirm':
+          mobileLogger.flow('Geofence: loader exit confirm', {
+            assignmentId,
+            parcelName: data.parcelName,
+          });
+          setAlertQueue((q) => [
+            ...q,
+            {
+              type: 'loaded_confirm',
+              parcelName: data.parcelName ?? 'Câmp',
+              parcelId: data.parcelId,
+              assignmentId,
+            },
+          ]);
+          break;
+        case 'depart_prompt':
+          routeToDepartureFlow(data);
           break;
         case 'deposit_entry':
           mobileLogger.flow('Geofence: entered deposit', {
@@ -255,8 +327,8 @@ export function useGeofenceNotifications() {
           },
         ]);
       } else if (data.type === 'field_entry_confirm') {
-        // Tapping the baler entry push (e.g. from lockscreen) opens the
-        // countdown overlay even when the app was backgrounded.
+        // Tapping the entry push (e.g. from lockscreen) opens the countdown
+        // overlay even when the app was backgrounded.
         setAlertQueue((q) => [
           ...q,
           {
@@ -266,10 +338,23 @@ export function useGeofenceNotifications() {
             parcelId: data.parcelId,
             cropType: data.cropType ?? null,
             assignmentId,
+            action: data.action,
           },
         ]);
       } else if (data.type === 'field_exit_production') {
         routeToProductionEntry(data, assignmentId);
+      } else if (data.type === 'loader_exit_confirm') {
+        setAlertQueue((q) => [
+          ...q,
+          {
+            type: 'loaded_confirm',
+            parcelName: data.parcelName ?? 'Câmp',
+            parcelId: data.parcelId,
+            assignmentId,
+          },
+        ]);
+      } else if (data.type === 'depart_prompt') {
+        routeToDepartureFlow(data);
       }
     });
 
@@ -283,6 +368,7 @@ export function useGeofenceNotifications() {
     activeAlert,
     dismissAlert,
     confirmParcelDone,
+    confirmParcelLoaded,
     confirmParcelEntry,
     cancelParcelEntry,
   };

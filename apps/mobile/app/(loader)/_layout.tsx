@@ -15,7 +15,14 @@ import {
 } from '@/constants/tabBarConfig';
 
 export default function LoaderTabLayout() {
-  const { activeAlert, dismissAlert, confirmParcelDone } = useGeofenceNotifications();
+  const {
+    activeAlert,
+    dismissAlert,
+    confirmParcelDone,
+    confirmParcelLoaded,
+    confirmParcelEntry,
+    cancelParcelEntry,
+  } = useGeofenceNotifications();
   const {
     prompt: recallPrompt,
     respond: respondRecall,
@@ -90,11 +97,18 @@ export default function LoaderTabLayout() {
               ),
             }}
           />
+          {/* Parcel detail is a deep-linked route (opened from the home banner /
+              candidate rows), not a tab. href:null keeps Expo Router from
+              auto-adding a phantom icon-less "parcel" tab. */}
+          <Tabs.Screen name="parcel/[parcelId]" options={{ href: null }} />
         </Tabs>
         <GeofenceOverlay
           alert={activeAlert}
           onDismiss={dismissAlert}
           onConfirmParcelDone={confirmParcelDone}
+          onConfirmParcelEntry={confirmParcelEntry}
+          onCancelParcelEntry={cancelParcelEntry}
+          onConfirmParcelLoaded={confirmParcelLoaded}
         />
         <LoaderRecallOverlay
           prompt={recallPrompt}

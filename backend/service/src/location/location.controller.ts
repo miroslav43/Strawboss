@@ -61,7 +61,7 @@ export class LocationController {
    * GET /api/v1/location/trucks-at-loader/:loaderMachineId
    * Loader/admin-only: returns trucks currently within proximity of the loader,
    * scoped to the caller's organization.
-   * Optional `radiusM` (default 75) and `windowMinutes` (default 5) query params.
+   * Optional `radiusM` (default 75) and `windowMinutes` (default 15) query params.
    */
   @Get('trucks-at-loader/:loaderMachineId')
   @Roles(UserRole.admin, UserRole.loader_operator)
@@ -102,7 +102,7 @@ export class LocationController {
    * GET /api/v1/location/loaders-near-truck/:truckMachineId
    * Driver/admin-only: loaders currently within proximity of the truck,
    * scoped to the caller's organization. Mirror of trucks-at-loader.
-   * Optional `radiusM` (default 75) and `windowMinutes` (default 5) query params.
+   * Optional `radiusM` (default 75) and `windowMinutes` (default 15) query params.
    */
   @Get('loaders-near-truck/:truckMachineId')
   @Roles(UserRole.admin, UserRole.driver)

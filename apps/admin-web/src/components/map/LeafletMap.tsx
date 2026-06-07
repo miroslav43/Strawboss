@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, Plus } from 'lucide-react';
+import { Maximize2, Plus, LocateFixed, Loader2 } from 'lucide-react';
 import type {
   Parcel,
   MachineLastLocation,
@@ -315,6 +315,9 @@ export function LeafletMap({
   const editableLayerRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const routeLayerRef = useRef<any>(null);
+  // User's current GPS position (browser geolocation): dot + accuracy circle.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userLocationLayerRef = useRef<any>(null);
 
   // Index parcels by id so popup button handlers can look up the full object.
   const parcelsIndexRef = useRef<Map<string, Parcel>>(new Map());
@@ -379,6 +382,8 @@ export function LeafletMap({
   const [showLoaders, setShowLoaders] = useState(true);
   const [showDeposits, setShowDeposits] = useState(true);
   const [mapReady, setMapReady] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
 
   const drawToolsDisabled = !!editParcel || !!editingId;
 
@@ -859,6 +864,13 @@ export function LeafletMap({
     onNavigationCompleteRef.current?.();
   }, [navigateToMachineId, mapReady]);
 
+  // Auto-dismiss the geolocation error banner after a few seconds.
+  useEffect(() => {
+    if (!locateError) return;
+    const id = window.setTimeout(() => setLocateError(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [locateError]);
+
   // ── Edit-boundary handlers ───────────────────────────────────────────────
   const handleStartEdit = async (parcel: Parcel) => {
     const map = mapInstanceRef.current;
@@ -926,6 +938,59 @@ export function LeafletMap({
     setEditingId(null);
     setSaveError(null);
     onEditDone?.();
+  };
+
+  // Pan/zoom to the browser's current GPS position and drop a blue dot +
+  // accuracy circle. Requires a secure context (HTTPS or localhost).
+  const handleLocate = () => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocateError(t('leaflet.locationUnsupported'));
+      return;
+    }
+
+    setLocateError(null);
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        const L = (await import('leaflet')).default;
+
+        if (userLocationLayerRef.current) {
+          map.removeLayer(userLocationLayerRef.current);
+          userLocationLayerRef.current = null;
+        }
+
+        const accuracyCircle = L.circle([latitude, longitude], {
+          radius: accuracy,
+          color: '#2563eb',
+          weight: 1,
+          fillColor: '#3b82f6',
+          fillOpacity: 0.12,
+        });
+        const dot = L.circleMarker([latitude, longitude], {
+          radius: 7,
+          color: '#ffffff',
+          weight: 2,
+          fillColor: '#2563eb',
+          fillOpacity: 1,
+        }).bindTooltip(t('leaflet.myLocation'), { permanent: false });
+
+        userLocationLayerRef.current = L.layerGroup([accuracyCircle, dot]).addTo(map);
+        map.setView([latitude, longitude], Math.max(map.getZoom(), 16), { animate: true });
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        setLocateError(
+          err.code === err.PERMISSION_DENIED
+            ? t('leaflet.locationDenied')
+            : t('leaflet.locationUnavailable'),
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
   };
 
   const handleFitBounds = () => {
@@ -1032,6 +1097,20 @@ export function LeafletMap({
           </div>
           <button
             type="button"
+            onClick={handleLocate}
+            disabled={locating}
+            title={t('leaflet.myLocation')}
+            aria-label={t('leaflet.myLocation')}
+            className="rounded-lg bg-white p-2 shadow-lg hover:bg-neutral-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {locating ? (
+              <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+            ) : (
+              <LocateFixed className="h-4 w-4 text-blue-600" />
+            )}
+          </button>
+          <button
+            type="button"
             onClick={handleFitBounds}
             title={t('leaflet.fitBounds')}
             aria-label={t('leaflet.fitBounds')}
@@ -1067,6 +1146,13 @@ export function LeafletMap({
           >
             {t('common.cancel')}
           </button>
+        </div>
+      )}
+
+      {/* Geolocation error banner */}
+      {!selectionOnly && locateError && (
+        <div className="absolute bottom-6 left-1/2 z-[1000] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-5 py-3 shadow-xl">
+          <span className="text-sm font-medium text-red-700">{locateError}</span>
         </div>
       )}
 
