@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "dotenv -e .env.dev -- expo start",
     "build:android": "eas build --platform android --profile apk",
-    "build:android:local": "dotenv -e .env.dev -- sh -c \"expo prebuild --platform android && cd android && ./gradlew assembleDebug\"",
-    "build:apk": "dotenv -e .env.production -- sh -c \"expo prebuild --clean --platform android && cd android && ./gradlew assembleDebug\"",
+    "bump:version": "node scripts/bump-version.mjs",
+    "build:android:local": "node scripts/bump-version.mjs && dotenv -e .env.dev -- sh -c \"expo prebuild --platform android && cd android && ./gradlew assembleDebug\"",
+    "build:apk": "node scripts/bump-version.mjs && dotenv -e .env.production -- sh -c \"expo prebuild --clean --platform android && cd android && ./gradlew assembleDebug\"",
     "build:ios": "eas build --platform ios",
     "typecheck": "tsc --noEmit",
     "lint": "eslint app/ src/",

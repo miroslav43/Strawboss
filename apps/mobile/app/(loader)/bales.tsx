@@ -54,6 +54,28 @@ function startOfTodayIso(): string {
   return d.toISOString();
 }
 
+/**
+ * Format a load timestamp as local `HH:MM`, defensively.
+ *
+ * `loaded_at` should always be ISO 8601 (server sends Date→JSON, local writes
+ * use toISOString()), but legacy/space-separated rows or a flaky Hermes `Intl`
+ * can otherwise surface the literal string "Invalid Date" in the UI. We parse
+ * robustly, normalise the Postgres `YYYY-MM-DD HH:MM:SS` shape, format the time
+ * manually (no `toLocaleTimeString`/Intl dependency), and fall back to "—".
+ */
+function formatLoadedAt(raw: string | null | undefined): string {
+  if (!raw) return '—';
+  let d = new Date(raw);
+  if (isNaN(d.getTime()) && raw.includes(' ') && !raw.includes('T')) {
+    const iso = raw.replace(' ', 'T');
+    d = new Date(/[zZ]|[+-]\d{2}/.test(iso.slice(10)) ? iso : `${iso}Z`);
+  }
+  if (isNaN(d.getTime())) return '—';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   planned: 'Planificat',
   loading: 'Se încarcă',
@@ -231,12 +253,7 @@ export default function LoaderBalesScreen() {
               </View>
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>Ora</Text>
-                <Text style={styles.cardSubtext}>
-                  {new Date(load.loadedAt).toLocaleTimeString('ro-RO', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </Text>
+                <Text style={styles.cardSubtext}>{formatLoadedAt(load.loadedAt)}</Text>
               </View>
               {load.notes ? (
                 <Text style={styles.notes} numberOfLines={3}>

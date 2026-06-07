@@ -1,42 +1,38 @@
-import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SignatureCapture } from '../../shared/SignatureCapture';
 import { BigButton } from '../../ui/BigButton';
 import { colors } from '@strawboss/ui-tokens';
 
 interface SignatureStepProps {
+  /** Receiver = the depot's contact person (pre-filled, read-only). */
   receiverName: string;
-  onReceiverNameChange: (name: string) => void;
   receiverSignature: string | null;
   onSign: (signature: string) => void;
   onComplete: () => void;
 }
 
 /**
- * Delivery signature step — collects the receiver's name and signature.
- * The driver already signed at departure (CMR stage 1); the backend stores
- * only the receiver signature for stage 2, so that is all we collect here.
+ * Delivery signature step — the receiver is the depot's contact person, shown
+ * read-only; they only sign (no name entry). The driver already signed at
+ * departure (CMR stage 1); only the receiver signature is collected for stage 2.
  */
 export function SignatureStep({
   receiverName,
-  onReceiverNameChange,
   receiverSignature,
   onSign,
   onComplete,
 }: SignatureStepProps) {
-  const ready = receiverName.trim().length > 0 && receiverSignature !== null;
+  const ready = receiverSignature !== null;
 
   return (
     <View style={styles.container}>
       <View style={styles.field}>
-        <Text style={styles.label}>Numele primitorului</Text>
-        <TextInput
-          style={styles.input}
-          value={receiverName}
-          onChangeText={onReceiverNameChange}
-          placeholder="ex: Ion Popescu"
-          placeholderTextColor="#9CA3AF"
-        />
+        <Text style={styles.label}>Primitor (persoană de contact depozit)</Text>
+        <View style={styles.nameBox}>
+          <MaterialCommunityIcons name="account" size={18} color={colors.primary} />
+          <Text style={styles.nameText}>{receiverName || '—'}</Text>
+        </View>
       </View>
 
       <SignatureCapture label="Semnătura primitorului" onSave={onSign} />
@@ -69,16 +65,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.neutral,
   },
-  input: {
+  nameBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     borderWidth: 1.5,
     borderColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0A5C36',
     backgroundColor: '#F9FFF9',
+  },
+  nameText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0A5C36',
   },
   signedRow: {
     flexDirection: 'row',

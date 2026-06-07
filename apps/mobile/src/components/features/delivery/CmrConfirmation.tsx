@@ -12,10 +12,12 @@ const ROW_BORDER = '#D0C8C2';
 interface CmrConfirmationProps {
   tripNumber: string;
   baleCount: number;
+  grossWeightKg: number;
+  tareWeightKg: number;
   netWeightKg: number;
   receiverName: string;
   destinationName: string;
-  hasTicketPhoto: boolean;
+  destinationAddress?: string | null;
   hasSignature: boolean;
   onConfirm: () => void;
   onBack: () => void;
@@ -40,16 +42,17 @@ function SummaryRow({ label, value, valueStyle }: SummaryRowProps) {
 export function CmrConfirmation({
   tripNumber,
   baleCount,
+  grossWeightKg,
+  tareWeightKg,
   netWeightKg,
   receiverName,
   destinationName,
-  hasTicketPhoto,
+  destinationAddress,
   hasSignature,
   onConfirm,
   onBack,
   loading,
 }: CmrConfirmationProps) {
-  const ticketDisplay = hasTicketPhoto ? '✓' : '✗';
   const signatureDisplay = hasSignature ? '✓' : '✗';
 
   // FM-6: countdown before executing the irreversible CMR confirmation
@@ -80,14 +83,12 @@ export function CmrConfirmation({
         <View style={styles.card}>
           <SummaryRow label="Cursă" value={tripNumber} />
           <SummaryRow label="Destinație" value={destinationName} />
+          {destinationAddress ? <SummaryRow label="Localitate" value={destinationAddress} /> : null}
           <SummaryRow label="Baloți" value={String(baleCount)} />
+          <SummaryRow label="Greutate brută" value={`${grossWeightKg} kg`} />
+          <SummaryRow label="Tară" value={`${tareWeightKg} kg`} />
           <SummaryRow label="Greutate netă" value={`${netWeightKg} kg`} />
-          <SummaryRow label="Client" value={receiverName} />
-          <SummaryRow
-            label="Poză tichet"
-            value={ticketDisplay}
-            valueStyle={hasTicketPhoto ? styles.successText : styles.dangerText}
-          />
+          <SummaryRow label="Primitor" value={receiverName} />
           <SummaryRow
             label="Semnătură"
             value={signatureDisplay}

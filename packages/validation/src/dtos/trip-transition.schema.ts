@@ -21,8 +21,12 @@ export const startDeliverySchema = z.object({
 });
 
 export const confirmDeliverySchema = z.object({
+  // Driver weighs the loaded truck (gross) and the empty truck (tare) at the
+  // depot weighbridge; net = gross - tare is computed in the DB.
   grossWeightKg: z.number().positive(),
+  tareWeightKg: z.number().nonnegative(),
   weightTicketNumber: z.string().optional(),
+  // Weight-ticket photo was removed from the flow; kept optional for back-compat.
   weightTicketPhotoUrl: z.string().optional(),
   // Mobile sends `null` when the (now-removed) damaged-bales step is skipped —
   // accept null as well as a number/absent, otherwise confirm-delivery 400s.

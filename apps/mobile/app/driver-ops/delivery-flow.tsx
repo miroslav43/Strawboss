@@ -72,7 +72,9 @@ export default function DriverDeliveryFlowScreen() {
         tripId={tripId}
         tripNumber={trip.trip_number ?? 'Cursă'}
         baleCount={trip.bale_count}
+        destinationId={trip.destination_id}
         destinationName={trip.destination_name ?? '—'}
+        destinationAddress={trip.destination_address}
         onComplete={() => router.replace('/(driver)')}
         onCancel={() => router.back()}
       />

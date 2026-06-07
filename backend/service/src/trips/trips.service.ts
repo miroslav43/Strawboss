@@ -881,24 +881,17 @@ export class TripsService implements OnModuleInit {
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'CONFIRM_DELIVERY');
 
-    // Fetch tare weight from the truck.
-    const truckResult = await this.drizzleProvider.db.execute(
-      sql`SELECT tare_weight_kg FROM machines WHERE id = ${trip.truck_id as string} LIMIT 1`,
-    );
-    const truckRows = truckResult as unknown as { tare_weight_kg: number | null }[];
-    const machineTareKg = truckRows[0]?.tare_weight_kg ?? null;
-    // net_weight_kg is a generated column (gross - tare) guarded by
-    // chk_net_weight_sane (gross >= tare). Only subtract the truck tare when the
-    // entered weight is actually a loaded-truck weighbridge reading (>= tare);
-    // otherwise treat the entered value as the delivered weight directly (tare 0)
-    // so ANY positive weight is accepted instead of crashing with a 500.
-    const tareWeightKg =
-      machineTareKg != null && dto.grossWeightKg >= machineTareKg ? machineTareKg : 0;
+    // The driver weighs the loaded truck (gross) and the empty truck (tare) at
+    // the depot; net_weight_kg is the generated column gross - tare, guarded by
+    // chk_net_weight_sane (gross >= tare). The mobile validates gross >= tare
+    // before submit; clamp defensively so a bad payload can never 500.
+    const grossWeightKg = dto.grossWeightKg;
+    const tareWeightKg = Math.min(dto.tareWeightKg, grossWeightKg);
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.delivered},
-        gross_weight_kg = ${dto.grossWeightKg},
+        gross_weight_kg = ${grossWeightKg},
         tare_weight_kg = ${tareWeightKg},
         weight_ticket_number = ${dto.weightTicketNumber ?? null},
         weight_ticket_photo_url = ${dto.weightTicketPhotoUrl ?? null},
