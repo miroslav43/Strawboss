@@ -239,8 +239,15 @@ _ensure_docker_volume_perms() {
     "$log_root/mobile/all" "$log_root/mobile/error" "$log_root/mobile/warn" \
     "$log_root/mobile/info" "$log_root/mobile/flow" "$log_root/mobile/debug"
 
-  chown -R "${DOCKER_APP_UID}:${DOCKER_APP_GID}" "$log_root" "$upload_root"
-  chmod -R u+rwX,g+rwX,o+rX "$log_root" "$upload_root"
+  # Only root can chown to the container UID. When `prod` is run by a non-root
+  # dev user (e.g. miro) these would fail with "Operation not permitted" and,
+  # under `set -e`, abort the whole deploy *before* the containers are recreated
+  # (the image builds but the swap never happens). Skip them off-root — the dirs
+  # keep their ownership from a prior root run and the ACLs below grant access.
+  if [ "$(id -u)" -eq 0 ]; then
+    chown -R "${DOCKER_APP_UID}:${DOCKER_APP_GID}" "$log_root" "$upload_root"
+    chmod -R u+rwX,g+rwX,o+rX "$log_root" "$upload_root"
+  fi
 
   if command -v setfacl &>/dev/null && id "$dev_user" &>/dev/null; then
     setfacl -R -m "u:${dev_user}:rwx" "$log_root" "$upload_root" 2>/dev/null || true
