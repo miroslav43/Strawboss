@@ -29,6 +29,7 @@ import type {
   ArriveDto,
   StartDeliveryDto,
   ConfirmDeliveryDto,
+  ForceStatusDto,
   CompleteDto,
   CancelDto,
   DisputeDto,
@@ -203,11 +204,14 @@ export class TripsService implements OnModuleInit {
           m.internal_code                              AS truck_code,
           u.full_name                                  AS driver_name,
           p.name                                       AS source_parcel_name,
-          p.code                                       AS source_parcel_code
+          p.code                                       AS source_parcel_code,
+          p.municipality                               AS source_parcel_municipality,
+          f.name                                       AS source_farm_name
         FROM trips t
         LEFT JOIN machines m ON m.id = t.truck_id
         LEFT JOIN users    u ON u.id = t.driver_id
         LEFT JOIN parcels  p ON p.id = t.source_parcel_id
+        LEFT JOIN farms    f ON f.id = p.farm_id
         WHERE ${where}
         ORDER BY t.created_at DESC
         LIMIT 1000
@@ -234,13 +238,16 @@ export class TripsService implements OnModuleInit {
             lm.internal_code      AS loader_code,
             lo.full_name          AS loader_operator_name,
             p.name                AS source_parcel_name,
-            p.code                AS source_parcel_code
+            p.code                AS source_parcel_code,
+            p.municipality        AS source_parcel_municipality,
+            f.name                AS source_farm_name
           FROM trips t
           LEFT JOIN machines m  ON m.id  = t.truck_id
           LEFT JOIN users    u  ON u.id  = t.driver_id
           LEFT JOIN machines lm ON lm.id = t.loader_id
           LEFT JOIN users    lo ON lo.id = t.loader_operator_id
           LEFT JOIN parcels  p  ON p.id  = t.source_parcel_id
+          LEFT JOIN farms    f  ON f.id  = p.farm_id
           WHERE ${where}
           LIMIT 1`,
     );
@@ -874,12 +881,19 @@ export class TripsService implements OnModuleInit {
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'CONFIRM_DELIVERY');
 
-    // Fetch tare weight from the truck
+    // Fetch tare weight from the truck.
     const truckResult = await this.drizzleProvider.db.execute(
       sql`SELECT tare_weight_kg FROM machines WHERE id = ${trip.truck_id as string} LIMIT 1`,
     );
     const truckRows = truckResult as unknown as { tare_weight_kg: number | null }[];
-    const tareWeightKg = truckRows[0]?.tare_weight_kg ?? null;
+    const machineTareKg = truckRows[0]?.tare_weight_kg ?? null;
+    // net_weight_kg is a generated column (gross - tare) guarded by
+    // chk_net_weight_sane (gross >= tare). Only subtract the truck tare when the
+    // entered weight is actually a loaded-truck weighbridge reading (>= tare);
+    // otherwise treat the entered value as the delivered weight directly (tare 0)
+    // so ANY positive weight is accepted instead of crashing with a 500.
+    const tareWeightKg =
+      machineTareKg != null && dto.grossWeightKg >= machineTareKg ? machineTareKg : 0;
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
@@ -1321,6 +1335,55 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'CANCEL', from, TripStatus.cancelled);
+    return result;
+  }
+
+  /**
+   * Admin-only manual status override. Bypasses the state machine entirely so an
+   * admin can recover a stuck/edge trip by forcing any status. Sets the matching
+   * lifecycle timestamp (departure/arrival/delivered/…) when it is still null so
+   * downstream reports and the idle/recall checks stay consistent.
+   */
+  async forceStatus(id: string, orgId: string | null, dto: ForceStatusDto) {
+    const trip = await this.findById(id, orgId);
+    const from = trip.status as TripStatus;
+    const target = dto.status;
+
+    // Fixed map (not user input) → safe to interpolate the column name.
+    const stampColumn: Partial<Record<TripStatus, string>> = {
+      [TripStatus.loading]: 'loading_started_at',
+      [TripStatus.loaded]: 'loading_completed_at',
+      [TripStatus.in_transit]: 'departure_at',
+      [TripStatus.arrived]: 'arrival_at',
+      [TripStatus.delivered]: 'delivered_at',
+      [TripStatus.completed]: 'completed_at',
+      [TripStatus.cancelled]: 'cancelled_at',
+    };
+
+    const setClauses: ReturnType<typeof sql>[] = [sql`status = ${target}`, sql`updated_at = NOW()`];
+    const col = stampColumn[target];
+    if (col) {
+      setClauses.push(sql`${sql.raw(col)} = COALESCE(${sql.raw(col)}, NOW())`);
+    }
+    if (target === TripStatus.cancelled && dto.reason) {
+      setClauses.push(sql`cancellation_reason = ${dto.reason}`);
+    }
+
+    const setClause = sql.join(setClauses, sql`, `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET ${setClause} WHERE id = ${id} RETURNING *`,
+    );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip not found');
+    }
+    this.logTripFlow(id, 'FORCE_STATUS', from, target);
+    this.winston.warn(`Admin forced trip ${id} status: ${from} → ${target}`, {
+      context: 'TripsService',
+      tripId: id,
+      from,
+      to: target,
+      reason: dto.reason ?? null,
+    });
     return result;
   }
 

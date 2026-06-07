@@ -7,17 +7,13 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Modal,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { QRScanner } from '@/components/shared/QRScanner';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { NotificationBell } from '@/components/shared/NotificationBell';
-import { ProblemReportModal } from '@/components/shared/ProblemReportModal';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { ActiveFieldCard } from '@/components/shared/ActiveFieldCard';
 import { useAuthStore } from '@/stores/auth-store';
@@ -34,18 +30,13 @@ import { useTheme } from '@/lib/theme';
  *  • Top: current parcel banner (auto-resolved via GPS or in_progress task),
  *    or prompt when resolution fails.
  *  • Body: list of trucks physically at the loader (10s polling).
- *  • Footer: QR scanner fallback for trucks not in the geofence list.
  */
 export default function LoaderHomeScreen() {
   const { colors: themeColors } = useTheme();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
-  const insets = useSafeAreaInsets();
   const parcel = useCurrentLoaderParcel();
   const trucks = useTrucksAtLoader({ pollMs: 10_000 });
-  const [scannerOpen, setScannerOpen] = useState(false);
-  const [problemOpen, setProblemOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
   const { modalProps } = useModal();
 
   // Plan C — loader recall prompt card (T13/T14).
@@ -70,20 +61,6 @@ export default function LoaderHomeScreen() {
   const openParcel = useCallback((id: string) => {
     router.push(`/(loader)/parcel/${id}`);
   }, []);
-
-  const handleScan = useCallback(
-    (data: string) => {
-      setScanError(null);
-      const match = data.match(/strawboss:\/\/truck\/([a-zA-Z0-9-]+)/);
-      if (!match) {
-        setScanError('Cod QR invalid. Scanați codul de pe camion.');
-        return;
-      }
-      setScannerOpen(false);
-      goToLoad(match[1]);
-    },
-    [goToLoad],
-  );
 
   return (
     <View style={styles.outer}>
@@ -168,58 +145,8 @@ export default function LoaderHomeScreen() {
             <TruckCard key={truck.id} truck={truck} onPress={() => goToLoad(truck.id)} />
           ))
         )}
-
-        <View style={styles.fallbackBlock}>
-          <TouchableOpacity
-            style={styles.scanBtn}
-            onPress={() => {
-              setScanError(null);
-              setScannerOpen(true);
-            }}
-          >
-            <MaterialCommunityIcons name="qrcode-scan" size={20} color={colors.primary} />
-            <Text style={styles.scanBtnText}>Scanează QR camion</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.scanBtn, styles.scanBtnSecondary]}
-            onPress={() => setProblemOpen(true)}
-          >
-            <MaterialCommunityIcons name="alert-octagon-outline" size={20} color="#991B1B" />
-            <Text style={[styles.scanBtnText, styles.scanBtnTextSecondary]}>
-              Raportează problemă
-            </Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
 
-      <Modal
-        visible={scannerOpen}
-        animationType="slide"
-        onRequestClose={() => setScannerOpen(false)}
-      >
-        <View style={styles.modalRoot}>
-          <View style={[styles.modalHeader, { paddingTop: Math.max(48, insets.top) }]}>
-            <Text style={styles.modalTitle}>Scanează camion</Text>
-            <TouchableOpacity onPress={() => setScannerOpen(false)}>
-              <MaterialCommunityIcons name="close" size={28} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.modalScanner}>
-            <QRScanner onScan={handleScan} />
-          </View>
-          {scanError ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{scanError}</Text>
-            </View>
-          ) : null}
-        </View>
-      </Modal>
-
-      <ProblemReportModal
-        visible={problemOpen}
-        onClose={() => setProblemOpen(false)}
-        machineId={assignedMachineId ?? undefined}
-      />
       <AppModal {...modalProps} />
     </View>
   );
@@ -248,7 +175,7 @@ function TruckCard({ truck, onPress }: { truck: TruckAtLoader; onPress: () => vo
           ) : null}
           <Text style={styles.truckDistance}>la {distance}</Text>
         </View>
-        {/* Loaded / unloaded badge, in line with the truck row. */}
+        {/* Loaded / ready-to-load badge, in line with the truck row. */}
         <View style={[styles.loadBadge, isLoaded ? styles.loadBadgeLoaded : styles.loadBadgeEmpty]}>
           <MaterialCommunityIcons
             name={isLoaded ? 'package-variant-closed' : 'package-variant'}
@@ -256,12 +183,13 @@ function TruckCard({ truck, onPress }: { truck: TruckAtLoader; onPress: () => vo
             color={isLoaded ? '#0A5C36' : '#92400E'}
           />
           <Text
+            numberOfLines={1}
             style={[
               styles.loadBadgeText,
               isLoaded ? styles.loadBadgeTextLoaded : styles.loadBadgeTextEmpty,
             ]}
           >
-            {isLoaded ? 'Încărcat' : 'Descărcat'}
+            {isLoaded ? 'Încărcat' : 'Pregătit de încărcare'}
           </Text>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={28} color={colors.tertiary} />
@@ -357,36 +285,6 @@ const styles = StyleSheet.create({
 
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
   loadingText: { fontSize: 14, color: '#5D4037' },
-
-  fallbackBlock: { marginTop: 16, gap: 8 },
-  scanBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#FFF',
-    borderRadius: radii.md,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  scanBtnText: { fontSize: 15, fontWeight: '600', color: colors.primary },
-  scanBtnSecondary: { borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
-  scanBtnTextSecondary: { color: '#991B1B' },
-
-  modalRoot: { flex: 1, backgroundColor: '#000' },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 48,
-    paddingBottom: 12,
-  },
-  modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '600' },
-  modalScanner: { flex: 1 },
-  errorBox: { backgroundColor: '#FEE2E2', padding: 12 },
-  errorText: { color: '#991B1B', fontSize: 13, textAlign: 'center' },
 });
 
 // Plan C — loader recall prompt card styles.

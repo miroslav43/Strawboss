@@ -320,6 +320,8 @@
     "harvestStatus": "Stadiu recoltă",
     "deposits": "Depozite",
     "myLocation": "Locația mea",
+    "refreshMap": "Reîmprospătează harta",
+    "refreshAgainIn": "Reîmprospătează din nou în {{n}}s",
     "locationDenied": "Acces la locație refuzat. Permite locația în browser.",
     "locationUnavailable": "Locația nu a putut fi determinată.",
     "locationUnsupported": "Browserul nu suportă geolocalizarea."
@@ -1281,6 +1283,13 @@
   },
   "trip_detail": {
     "trip": "Cursă",
+    "forceStatus": {
+      "title": "Forțează starea (admin)",
+      "hint": "Modifică manual starea cursei. Ocolește fluxul normal — folosește doar pentru a debloca o cursă blocată.",
+      "apply": "Forțează starea",
+      "confirm": "Forțezi cursa în această stare? Ocolește fluxul normal.",
+      "error": "Nu s-a putut schimba starea."
+    },
     "transport": "Transport",
     "route": "Rută",
     "load": "Încărcătură",

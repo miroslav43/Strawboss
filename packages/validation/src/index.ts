@@ -109,6 +109,7 @@ export {
   confirmDeliverySchema,
   completeSchema,
   cancelSchema,
+  forceStatusSchema,
   disputeSchema,
   resolveDisputeSchema,
   registerLoadSchema,

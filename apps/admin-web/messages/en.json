@@ -320,6 +320,8 @@
     "harvestStatus": "Harvest status",
     "deposits": "Deposits",
     "myLocation": "My location",
+    "refreshMap": "Refresh map",
+    "refreshAgainIn": "Refresh again in {{n}}s",
     "locationDenied": "Location access denied. Allow location in your browser.",
     "locationUnavailable": "Could not determine your location.",
     "locationUnsupported": "Geolocation is not supported by this browser."
@@ -1281,6 +1283,13 @@
   },
   "trip_detail": {
     "trip": "Trip",
+    "forceStatus": {
+      "title": "Force status (admin)",
+      "hint": "Manually override the trip status. Bypasses the normal workflow — use only to recover a stuck trip.",
+      "apply": "Force status",
+      "confirm": "Force the trip into this status? This bypasses the normal workflow.",
+      "error": "Could not change the status."
+    },
     "transport": "Transport",
     "route": "Route",
     "load": "Load",

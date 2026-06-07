@@ -138,6 +138,40 @@ export function distanceToBoundaryMeters(lon: number, lat: number, boundaryJson:
   return min;
 }
 
+/**
+ * Rough centroid (average of exterior-ring vertices) of a Polygon/MultiPolygon.
+ * Good enough to drop a navigation pin when a feature has a boundary but no
+ * stored point (delivery destinations store only a boundary). Returns null when
+ * the geometry can't be parsed.
+ */
+export function boundaryCentroidLonLat(boundaryJson: unknown): { lat: number; lon: number } | null {
+  const g = asGeometry(boundaryJson);
+  if (!g) return null;
+  const polys: Ring[][] =
+    g.type === 'Polygon' ? [g.coordinates as Ring[]] : (g.coordinates as Ring[][]);
+  let sumLon = 0;
+  let sumLat = 0;
+  let n = 0;
+  for (const poly of polys) {
+    const ring = poly[0];
+    if (!Array.isArray(ring) || ring.length === 0) continue;
+    // Drop the closing vertex (duplicate of the first) so it isn't double-weighted.
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    const len =
+      ring.length > 1 && first[0] === last[0] && first[1] === last[1]
+        ? ring.length - 1
+        : ring.length;
+    for (let i = 0; i < len; i++) {
+      sumLon += ring[i][0];
+      sumLat += ring[i][1];
+      n++;
+    }
+  }
+  if (n === 0) return null;
+  return { lat: sumLat / n, lon: sumLon / n };
+}
+
 export interface ParcelLikeForHitTest {
   boundary: unknown;
   areaHectares: number;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, Plus, LocateFixed, Loader2 } from 'lucide-react';
+import { Maximize2, Plus, LocateFixed, Loader2, RefreshCw } from 'lucide-react';
 import type {
   Parcel,
   MachineLastLocation,
@@ -213,6 +213,8 @@ export interface LeafletMapProps {
   selectionOnly?: boolean;
   /** Per-machine icon variant map (machineId → 0|1|2). Loaded from localStorage by the parent. */
   iconPrefs?: IconPrefs;
+  /** When provided, shows a refresh button (next to "my location") that re-fetches map data. */
+  onRefresh?: () => void | Promise<void>;
 }
 
 export function LeafletMap({
@@ -244,6 +246,7 @@ export function LeafletMap({
   onMachineMarkerSelect,
   selectionOnly = false,
   iconPrefs = {},
+  onRefresh,
 }: LeafletMapProps) {
   const { t } = useI18n();
 
@@ -384,6 +387,9 @@ export function LeafletMap({
   const [mapReady, setMapReady] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  // Seconds left in the post-refresh cooldown; counts 5 → 4 → 3 → 2 → 1 → 0.
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
 
   const drawToolsDisabled = !!editParcel || !!editingId;
 
@@ -1020,6 +1026,25 @@ export function LeafletMap({
     }
   };
 
+  // Re-fetch map data (parcels/deposits/machines) on demand, then start a 5s cooldown.
+  const handleRefresh = async () => {
+    if (!onRefresh || refreshing || refreshCooldown > 0) return;
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+      setRefreshCooldown(5);
+    }
+  };
+
+  // Tick the cooldown down once per second until it reaches 0.
+  useEffect(() => {
+    if (refreshCooldown <= 0) return;
+    const id = window.setTimeout(() => setRefreshCooldown((s) => s - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [refreshCooldown]);
+
   return (
     <div className="relative h-full w-full">
       <div ref={mapRef} className="h-full w-full" />
@@ -1118,6 +1143,30 @@ export function LeafletMap({
               <LocateFixed className="h-4 w-4 text-blue-600" />
             )}
           </button>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing || refreshCooldown > 0}
+              title={
+                refreshCooldown > 0
+                  ? t('leaflet.refreshAgainIn', { n: refreshCooldown })
+                  : t('leaflet.refreshMap')
+              }
+              aria-label={t('leaflet.refreshMap')}
+              className="rounded-lg bg-white p-2 shadow-lg hover:bg-neutral-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {refreshing ? (
+                <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+              ) : refreshCooldown > 0 ? (
+                <span className="flex h-4 w-4 items-center justify-center text-xs font-bold tabular-nums text-neutral-500">
+                  {refreshCooldown}
+                </span>
+              ) : (
+                <RefreshCw className="h-4 w-4 text-emerald-600" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleFitBounds}

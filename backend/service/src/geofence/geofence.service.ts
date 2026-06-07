@@ -33,6 +33,10 @@ interface ActiveAssignment {
   /** Driver on the linked trip — used as the push recipient for truck tasks,
    *  whose task_assignments often have no assigned_user_id. */
   tripDriverId: string | null;
+  /** Operator assigned to the machine (users.assigned_machine_id) — the push
+   *  recipient fallback for baler/loader tasks that have no assigned_user_id
+   *  (operators are linked to the machine, not the daily task). */
+  machineOperatorId: string | null;
   organizationId: string | null;
 }
 
@@ -84,18 +88,53 @@ export class GeofenceService {
         ta.trip_id       AS "tripId",
         t.status         AS "tripStatus",
         t.driver_id      AS "tripDriverId",
+        mo.id            AS "machineOperatorId",
         ta.organization_id AS "organizationId"
       FROM task_assignments ta
       JOIN machines m ON m.id = ta.machine_id
       LEFT JOIN parcels p ON p.id = ta.parcel_id
       LEFT JOIN trips t ON t.id = ta.trip_id
+      -- Operator linked to the machine (not the task). Baler/loader operators are
+      -- assigned via users.assigned_machine_id, so this is the recipient fallback
+      -- when the daily task has no assigned_user_id.
+      LEFT JOIN LATERAL (
+        SELECT mu.id
+        FROM users mu
+        WHERE mu.assigned_machine_id = ta.machine_id
+          AND mu.deleted_at IS NULL
+          AND mu.organization_id = ta.organization_id
+        ORDER BY mu.updated_at DESC
+        LIMIT 1
+      ) mo ON TRUE
       WHERE ta.assignment_date = ${today}
         AND ta.deleted_at IS NULL
         AND ta.status IN ('available', 'in_progress')
     `);
     const assignments = assignmentsResult as unknown as ActiveAssignment[];
 
-    if (assignments.length === 0) return;
+    if (assignments.length === 0) {
+      this.winston.log('flow', 'geofence check: no active assignments today (nothing to check)', {
+        context: 'GeofenceService',
+        date: today,
+      });
+      return;
+    }
+    const balerAssignments = assignments.filter((a) => a.machineType === 'baler');
+    this.winston.log(
+      'flow',
+      `geofence check: ${assignments.length} active assignment(s), ${balerAssignments.length} baler`,
+      {
+        context: 'GeofenceService',
+        date: today,
+        total: assignments.length,
+        balers: balerAssignments.map((a) => ({
+          machineId: a.machineId,
+          parcelId: a.parcelId,
+          assignedUserId: a.assignedUserId,
+          status: a.status,
+        })),
+      },
+    );
 
     // 2. Get unique machine IDs and their latest GPS positions
     const machineIds = [...new Set(assignments.map((a) => a.machineId))];
@@ -119,12 +158,32 @@ export class GeofenceService {
     const positions = positionsResult as unknown as MachinePosition[];
     const posMap = new Map(positions.map((p) => [p.machineId, p]));
 
-    if (positions.length === 0) return;
+    if (positions.length === 0) {
+      this.winston.log(
+        'flow',
+        'geofence check: no GPS fix in the last 10 min for any assigned machine',
+        {
+          context: 'GeofenceService',
+          machineIds,
+        },
+      );
+      return;
+    }
 
     // 3. For each assignment, check if the machine is inside the target geofence
     for (const assignment of assignments) {
       const pos = posMap.get(assignment.machineId);
-      if (!pos) continue;
+      if (!pos) {
+        if (assignment.machineType === 'baler') {
+          this.winston.log('flow', 'geofence baler: SKIP — no GPS fix in last 10 min', {
+            context: 'GeofenceService',
+            machineId: assignment.machineId,
+            parcelId: assignment.parcelId,
+            assignmentId: assignment.assignmentId,
+          });
+        }
+        continue;
+      }
 
       // A truck task carries BOTH a source parcel and a destination deposit.
       // Check every boundary the assignment has — entering the deposit is what
@@ -154,7 +213,17 @@ export class GeofenceService {
           AND boundary IS NOT NULL
       `);
         const check = (distResult as unknown as GeofenceCheck[])[0];
-        if (!check || check.dist == null) continue;
+        if (!check || check.dist == null) {
+          if (geofenceType === 'parcel' && assignment.machineType === 'baler') {
+            this.winston.log('flow', 'geofence baler: SKIP — parcel has no boundary geometry', {
+              context: 'GeofenceService',
+              machineId: assignment.machineId,
+              parcelId: assignment.parcelId,
+              assignmentId: assignment.assignmentId,
+            });
+          }
+          continue;
+        }
         const distM = Number(check.dist);
 
         // 4. Get last known geofence event for this machine + geofence pair
@@ -176,6 +245,35 @@ export class GeofenceService {
           ? distM <= GEOFENCE_EXIT_TOLERANCE_M
           : distM <= GEOFENCE_ENTER_TOLERANCE_M;
 
+        // Baler diagnostics — exact distance + transition decision per check, so
+        // a field test shows whether ENTER/EXIT fires and why (grep logs:flow).
+        if (geofenceType === 'parcel' && assignment.machineType === 'baler') {
+          this.winston.log('flow', 'geofence baler: parcel proximity check', {
+            context: 'GeofenceService',
+            machineId: assignment.machineId,
+            parcelId: assignment.parcelId,
+            assignmentId: assignment.assignmentId,
+            assignedUserId: assignment.assignedUserId,
+            distM: Math.round(distM),
+            enterTolM: GEOFENCE_ENTER_TOLERANCE_M,
+            exitTolM: GEOFENCE_EXIT_TOLERANCE_M,
+            wasInside,
+            isInside,
+            transition: isInside && !wasInside ? 'ENTER' : !isInside && wasInside ? 'EXIT' : 'none',
+          });
+        }
+
+        // Push recipient. Truck tasks usually have no assigned_user_id (the
+        // driver lives on the trip), and baler/loader tasks are often unassigned
+        // too — the operator is linked to the MACHINE (users.assigned_machine_id),
+        // not the daily task. Fall back to the trip driver for trucks and to the
+        // machine's operator for baler/loader, so the geofence prompts (start-work
+        // on enter, production on exit) actually reach someone.
+        const recipientId =
+          assignment.machineType === 'truck'
+            ? (assignment.assignedUserId ?? assignment.tripDriverId)
+            : (assignment.assignedUserId ?? assignment.machineOperatorId);
+
         // 5. Detect transitions
         if (isInside && !wasInside) {
           // ENTER event
@@ -189,15 +287,20 @@ export class GeofenceService {
             pos.lon,
           );
 
-          // Push recipient. Truck task_assignments often have no
-          // assigned_user_id (the driver lives on the trip, not the task), so a
-          // gate on assigned_user_id silently dropped every truck push. Fall
-          // back to the trip's driver for trucks; baler/loader keep their own
-          // assigned operator (unchanged).
-          const recipientId =
-            assignment.machineType === 'truck'
-              ? (assignment.assignedUserId ?? assignment.tripDriverId)
-              : assignment.assignedUserId;
+          // Baler enter: even the machine-operator fallback found no recipient —
+          // log it so a field test surfaces the gap (no operator on task/machine).
+          if (geofenceType === 'parcel' && assignment.machineType === 'baler' && !recipientId) {
+            this.winston.log(
+              'flow',
+              'geofence baler: ENTER but NO recipient (no operator on task or machine) — no start-work push',
+              {
+                context: 'GeofenceService',
+                machineId: assignment.machineId,
+                parcelId: assignment.parcelId,
+                assignmentId: assignment.assignmentId,
+              },
+            );
+          }
 
           // No machine auto-flips to in_progress on a geofence enter anymore.
           // Every machine type now confirms the entry overlay first
@@ -217,6 +320,13 @@ export class GeofenceService {
                 assignment.assignmentId,
                 { ...parcelRef, cropType: assignment.cropType },
               );
+              this.winston.log('flow', 'geofence baler: ENTER → start-work push sent', {
+                context: 'GeofenceService',
+                machineId: assignment.machineId,
+                parcelId: assignment.parcelId,
+                assignmentId: assignment.assignmentId,
+                recipientId,
+              });
             } else if (assignment.machineType === 'loader') {
               await this.notificationsService.sendFieldEntryConfirm(
                 recipientId,
@@ -299,11 +409,11 @@ export class GeofenceService {
           if (
             geofenceType === 'parcel' &&
             assignment.machineType === 'baler' &&
-            assignment.assignedUserId &&
+            recipientId &&
             assignment.parcelId
           ) {
             await this.notificationsService.sendBalerFieldExitProduction(
-              assignment.assignedUserId,
+              recipientId,
               assignment.assignmentId,
               {
                 id: assignment.parcelId,
@@ -311,6 +421,22 @@ export class GeofenceService {
                 name: assignment.parcelName,
               },
             );
+            this.winston.log('flow', 'geofence baler: EXIT → production push sent', {
+              context: 'GeofenceService',
+              machineId: assignment.machineId,
+              parcelId: assignment.parcelId,
+              assignmentId: assignment.assignmentId,
+              recipientId,
+            });
+          } else if (geofenceType === 'parcel' && assignment.machineType === 'baler') {
+            // EXIT detected but the production push was skipped — surface why.
+            this.winston.log('flow', 'geofence baler: EXIT but production push SKIPPED', {
+              context: 'GeofenceService',
+              machineId: assignment.machineId,
+              parcelId: assignment.parcelId,
+              assignmentId: assignment.assignmentId,
+              reason: !recipientId ? 'no operator (task/machine)' : 'no parcelId',
+            });
           }
 
           // Loader exit — only if the loader actually worked this field
@@ -320,12 +446,12 @@ export class GeofenceService {
           if (
             geofenceType === 'parcel' &&
             assignment.machineType === 'loader' &&
-            assignment.assignedUserId &&
+            recipientId &&
             assignment.parcelId &&
             assignment.status === 'in_progress'
           ) {
             await this.notificationsService.sendLoaderFieldExitConfirm(
-              assignment.assignedUserId,
+              recipientId,
               assignment.assignmentId,
               { id: assignment.parcelId, name: assignment.parcelName },
             );
@@ -339,13 +465,13 @@ export class GeofenceService {
           if (
             geofenceType === 'parcel' &&
             assignment.machineType === 'truck' &&
-            assignment.assignedUserId &&
+            recipientId &&
             assignment.tripId &&
             assignment.tripStatus &&
             getAvailableTransitions(assignment.tripStatus as TripStatus).includes('DEPART')
           ) {
             await this.notificationsService.sendPush(
-              assignment.assignedUserId,
+              recipientId,
               'Ai plecat de la câmp?',
               'Confirmă plecarea ca să pornești cursa spre depozit.',
               {

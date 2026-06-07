@@ -15,6 +15,7 @@ import {
   confirmDeliverySchema,
   completeSchema,
   cancelSchema,
+  forceStatusSchema,
   disputeSchema,
   resolveDisputeSchema,
   registerLoadSchema,
@@ -31,6 +32,7 @@ import type {
   ConfirmDeliveryDto,
   CompleteDto,
   CancelDto,
+  ForceStatusDto,
   DisputeDto,
   ResolveDisputeDto,
   RegisterLoadDto,
@@ -174,6 +176,17 @@ export class TripsController {
     @Body(new ZodValidationPipe(cancelSchema)) dto: CancelDto,
   ) {
     return this.tripsService.cancel(id, user.organizationId, dto);
+  }
+
+  // Admin-only manual status override — bypasses the state machine.
+  @Post(':id/force-status')
+  @Roles('admin' as UserRole)
+  forceStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(forceStatusSchema)) dto: ForceStatusDto,
+  ) {
+    return this.tripsService.forceStatus(id, user.organizationId, dto);
   }
 
   @Post(':id/dispute')

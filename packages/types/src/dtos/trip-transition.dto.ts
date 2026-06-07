@@ -1,6 +1,14 @@
+import type { TripStatus } from '../entities/trip.js';
+
 export interface StartLoadingDto {
   loaderId?: string;
   loaderOperatorId: string;
+}
+
+/** Admin-only manual status override (bypasses the state machine). */
+export interface ForceStatusDto {
+  status: TripStatus;
+  reason?: string;
 }
 
 export interface CompleteLoadingDto {}

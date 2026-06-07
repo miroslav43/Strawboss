@@ -252,8 +252,14 @@ export default function MachineDetailPage() {
             </h3>
             {location ? (
               <dl className="space-y-2 text-sm">
-                <InfoRow label={t('machineDetail.gpsLat')} value={location.lat.toFixed(5)} />
-                <InfoRow label={t('machineDetail.gpsLon')} value={location.lon.toFixed(5)} />
+                <InfoRow
+                  label={t('machineDetail.gpsLat')}
+                  value={Number(location.lat).toFixed(5)}
+                />
+                <InfoRow
+                  label={t('machineDetail.gpsLon')}
+                  value={Number(location.lon).toFixed(5)}
+                />
                 <InfoRow
                   label={t('machineDetail.gpsTime')}
                   value={new Date(location.recordedAt).toLocaleString()}
@@ -264,7 +270,7 @@ export default function MachineDetailPage() {
                 {location.speedMs != null && (
                   <InfoRow
                     label={t('machineDetail.gpsSpeed')}
-                    value={`${(location.speedMs * 3.6).toFixed(1)} km/h`}
+                    value={`${(Number(location.speedMs) * 3.6).toFixed(1)} km/h`}
                   />
                 )}
               </dl>

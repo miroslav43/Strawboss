@@ -696,9 +696,22 @@ export class SyncService {
         isSoftDeleteTable && tombstonesEnabled ? [...pullColumns, 'deleted_at'] : pullColumns;
       // projectedColumns is built from hard-coded constants — safe to sql.raw.
       const colsSql = sql.raw(projectedColumns.map((c) => `"${c}"`).join(', '));
+      // Delta by version, EXCEPT for trips: always include the caller's active
+      // (non-terminal) trips regardless of the cursor. sync_version is stamped by
+      // a global sequence in a BEFORE-UPDATE trigger, so two rows updated in the
+      // same instant can commit out of order — a lower-versioned trip committing
+      // after a higher-versioned one the device already pulled. With a pure
+      // `> cursor` delta that lower-versioned active trip is skipped forever
+      // (observed: an in_transit trip at v21890 stranded behind a completed trip
+      // at v21891). Re-sending active trips every pull (1–2 rows per driver)
+      // makes that impossible; completed/cancelled history stays delta-only.
+      const versionFilter =
+        table === 'trips'
+          ? sql`(sync_version > ${sinceVersion} OR status NOT IN ('completed', 'cancelled'))`
+          : sql`sync_version > ${sinceVersion}`;
       const result = await this.drizzleProvider.db.execute(
         sql`SELECT ${colsSql} FROM ${sql.raw(`"${table}"`)}
-            WHERE sync_version > ${sinceVersion} ${ownerFilter}${softDeleteFilter}${orgFilter}
+            WHERE ${versionFilter} ${ownerFilter}${softDeleteFilter}${orgFilter}
             ORDER BY sync_version ASC
             LIMIT 1000`,
       );

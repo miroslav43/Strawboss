@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 import {
-  Activity,
   KanbanSquare,
   Truck,
   FileText,
@@ -30,7 +29,6 @@ import { SidebarLink } from './SidebarLink';
 function buildNavItems(slug: string) {
   return [
     { href: `/${slug}/command-center`, icon: MonitorDot, labelKey: 'nav.commandCenter' as const },
-    { href: `/${slug}/operations`, icon: Activity, labelKey: 'nav.operations' as const },
     { href: `/${slug}/tasks`, icon: KanbanSquare, labelKey: 'nav.tasks' as const },
     { href: `/${slug}/trips`, icon: Truck, labelKey: 'nav.trips' as const },
     { href: `/${slug}/documents`, icon: FileText, labelKey: 'nav.documents' as const },

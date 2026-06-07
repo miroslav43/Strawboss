@@ -29,6 +29,7 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { BigButton } from '@/components/ui/BigButton';
 import { ActionCard } from '@/components/ui/ActionCard';
+import { OpenMapsToDepotButton } from '@/components/features/driver/OpenMapsToDepotButton';
 import { colors, radii } from '@strawboss/ui-tokens';
 import { mobileLogger } from '@/lib/logger';
 import { mobileApiClient } from '@/lib/api-client';
@@ -247,6 +248,16 @@ export default function TripDetailScreen() {
               />
             )}
           </View>
+
+          {/* Navigate to the destination depot in Google Maps */}
+          {(trip.destination_id || trip.destination_name || trip.destination_address) && (
+            <OpenMapsToDepotButton
+              tripId={trip.id}
+              destinationId={trip.destination_id}
+              destinationName={trip.destination_name}
+              destinationAddress={trip.destination_address}
+            />
+          )}
 
           {/* Actions — only the driver runs the trip workflow */}
           {isDriver ? (

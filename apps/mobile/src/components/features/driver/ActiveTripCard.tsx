@@ -29,8 +29,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 // FM-12 — trips in these statuses are "active". Ranked so the most advanced /
-// actionable one is featured first.
+// actionable one is featured first. `planned` is included so the driver sees an
+// assigned trip even before the loader has loaded it.
 const ACTIVE_STATUSES = new Set([
+  'planned',
   'loading',
   'loaded',
   'in_transit',
@@ -46,6 +48,7 @@ const STATUS_RANK: Record<string, number> = {
   in_transit: 3,
   loaded: 2,
   loading: 1,
+  planned: 0,
 };
 
 /**
@@ -139,6 +142,11 @@ export function ActiveTripCard({ trip, onPress }: ActiveTripCardProps) {
             ) : null}
           </View>
         ) : null}
+        {trip.destination_address ? (
+          <Text style={styles.destinationAddr} numberOfLines={1}>
+            {trip.destination_address}
+          </Text>
+        ) : null}
       </View>
 
       {/* Bale count */}
@@ -196,6 +204,7 @@ const styles = StyleSheet.create({
   tripNumber: { fontSize: 18, fontWeight: '700', color: '#111' },
   destinationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   destination: { fontSize: 13, color: '#5D4037', flex: 1 },
+  destinationAddr: { fontSize: 12, color: '#8D6E63', marginLeft: 18 },
   proxPill: {
     flexDirection: 'row',
     alignItems: 'center',

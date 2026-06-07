@@ -11,6 +11,7 @@ import type {
   ConfirmDeliveryDto,
   CompleteDto,
   CancelDto,
+  ForceStatusDto,
   RegisterLoadDto,
   RegisterLoadResult,
 } from '@strawboss/types';
@@ -141,6 +142,19 @@ export function useCancelTrip(client: ApiClient) {
   });
 }
 
+/** Admin-only manual status override (bypasses the state machine). */
+export function useForceTripStatus(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tripId, data }: { tripId: string; data: ForceStatusDto }) =>
+      client.post<Trip>(`/api/v1/trips/${tripId}/force-status`, data),
+    onSuccess: (_data, { tripId }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+    },
+  });
+}
+
 /**
  * Atomic loader "register load" — single mutation that finds/creates the trip
  * for (truck, today), inserts a `bale_loads` row, and transitions the trip to
@@ -170,8 +184,7 @@ export function useRegisterLoad(client: ApiClient) {
 export function useDeleteTrip(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (tripId: string) =>
-      client.delete<{ id: string }>(`/api/v1/trips/${tripId}`),
+    mutationFn: (tripId: string) => client.delete<{ id: string }>(`/api/v1/trips/${tripId}`),
     onSuccess: (_data, tripId) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });

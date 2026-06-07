@@ -66,5 +66,7 @@ export function toTripCamel(raw: unknown): Trip | null {
     loaderOperatorName: (r.loader_operator_name as string | null) ?? null,
     sourceParcelName: (r.source_parcel_name as string | null) ?? null,
     sourceParcelCode: (r.source_parcel_code as string | null) ?? null,
+    sourceParcelMunicipality: (r.source_parcel_municipality as string | null) ?? null,
+    sourceFarmName: (r.source_farm_name as string | null) ?? null,
   };
 }

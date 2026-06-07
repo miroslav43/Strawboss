@@ -73,4 +73,8 @@ export interface Trip extends Timestamps, SoftDelete {
   loaderOperatorName?: string | null;
   sourceParcelName?: string | null;
   sourceParcelCode?: string | null;
+  /** Locality (municipality) of the source parcel — enriched join label. */
+  sourceParcelMunicipality?: string | null;
+  /** Name of the farm the source parcel belongs to — enriched join label. */
+  sourceFarmName?: string | null;
 }

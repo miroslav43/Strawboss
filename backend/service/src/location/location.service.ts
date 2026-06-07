@@ -103,11 +103,11 @@ export class LocationService {
         u.full_name                                           AS "operatorName",
         au.id                                                 AS "assignedUserId",
         au.full_name                                          AS "assignedUserName",
-        mle.lat,
-        mle.lon,
-        mle.accuracy_m   AS "accuracyM",
-        mle.heading_deg  AS "headingDeg",
-        mle.speed_ms     AS "speedMs",
+        mle.lat::float          AS lat,
+        mle.lon::float          AS lon,
+        mle.accuracy_m::float   AS "accuracyM",
+        mle.heading_deg::float  AS "headingDeg",
+        mle.speed_ms::float     AS "speedMs",
         mle.recorded_at  AS "recordedAt"
       FROM machine_location_events mle
       LEFT JOIN machines m  ON m.id = mle.machine_id
@@ -181,11 +181,11 @@ export class LocationService {
         u.full_name                                           AS "operatorName",
         au.id                                                 AS "assignedUserId",
         au.full_name                                          AS "assignedUserName",
-        mle.lat,
-        mle.lon,
-        mle.accuracy_m   AS "accuracyM",
-        mle.heading_deg  AS "headingDeg",
-        mle.speed_ms     AS "speedMs",
+        mle.lat::float          AS lat,
+        mle.lon::float          AS lon,
+        mle.accuracy_m::float   AS "accuracyM",
+        mle.heading_deg::float  AS "headingDeg",
+        mle.speed_ms::float     AS "speedMs",
         mle.recorded_at  AS "recordedAt"
       FROM machine_location_events mle
       JOIN sibling_machines sm ON sm.machine_id = mle.machine_id

@@ -38,6 +38,26 @@ export const cancelSchema = z.object({
   cancellationReason: z.string().min(1),
 });
 
+/**
+ * Admin-only manual status override. Bypasses the state machine — lets an admin
+ * force a trip into any status to recover from stuck/edge situations.
+ */
+export const forceStatusSchema = z.object({
+  status: z.enum([
+    'planned',
+    'loading',
+    'loaded',
+    'in_transit',
+    'arrived',
+    'delivering',
+    'delivered',
+    'completed',
+    'cancelled',
+    'disputed',
+  ]),
+  reason: z.string().optional(),
+});
+
 export const disputeSchema = z.object({
   reason: z.string().min(1),
 });

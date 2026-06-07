@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Truck,
   MapPin,
@@ -12,7 +13,7 @@ import {
 } from 'lucide-react';
 import type { Trip, Document as StrawbossDocument } from '@strawboss/types';
 import { TripStatus } from '@strawboss/types';
-import { useDocuments } from '@strawboss/api';
+import { useDocuments, useForceTripStatus } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { TripTimeline } from '@/components/shared/TripTimeline';
@@ -68,6 +69,15 @@ export function TripDetail({ trip, className }: TripDetailProps) {
     (d: StrawbossDocument) => d.documentType === 'cmr' && d.status === 'generated',
   );
 
+  // Admin-only manual status override (bypasses the state machine).
+  const forceStatus = useForceTripStatus(apiClient);
+  const [overrideStatus, setOverrideStatus] = useState<TripStatus>(trip.status);
+  const applyForceStatus = () => {
+    if (overrideStatus === trip.status) return;
+    if (!window.confirm(t('trip_detail.forceStatus.confirm'))) return;
+    forceStatus.mutate({ tripId: trip.id, data: { status: overrideStatus } });
+  };
+
   return (
     <div className={cn('space-y-6', className)}>
       {/* Header */}
@@ -79,6 +89,38 @@ export function TripDetail({ trip, className }: TripDetailProps) {
           <p className="mt-1 text-xs text-neutral-500">ID: {trip.id}</p>
         </div>
         <StatusBadge status={trip.status} className="text-sm" />
+      </div>
+
+      {/* Admin: force status override */}
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+        <h3 className="text-sm font-semibold text-amber-800">
+          {t('trip_detail.forceStatus.title')}
+        </h3>
+        <p className="mt-1 mb-3 text-xs text-amber-700">{t('trip_detail.forceStatus.hint')}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={overrideStatus}
+            onChange={(e) => setOverrideStatus(e.target.value as TripStatus)}
+            className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-neutral-800"
+          >
+            {Object.values(TripStatus).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={applyForceStatus}
+            disabled={forceStatus.isPending || overrideStatus === trip.status}
+            className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {forceStatus.isPending ? '…' : t('trip_detail.forceStatus.apply')}
+          </button>
+        </div>
+        {forceStatus.isError && (
+          <p className="mt-2 text-xs text-red-600">{t('trip_detail.forceStatus.error')}</p>
+        )}
       </div>
 
       {/* Timeline */}
@@ -119,7 +161,20 @@ export function TripDetail({ trip, className }: TripDetailProps) {
           <div className="divide-y divide-neutral-100">
             <InfoRow
               label={t('trip_detail.sourceParcel')}
-              value={trip.sourceParcelName ?? trip.sourceParcelCode ?? shortId(trip.sourceParcelId)}
+              value={
+                <div className="flex flex-col">
+                  <span>
+                    {trip.sourceParcelName ?? trip.sourceParcelCode ?? shortId(trip.sourceParcelId)}
+                  </span>
+                  {(trip.sourceFarmName || trip.sourceParcelMunicipality) && (
+                    <span className="text-xs text-neutral-500">
+                      {[trip.sourceFarmName, trip.sourceParcelMunicipality]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  )}
+                </div>
+              }
             />
             <InfoRow label={t('trip_detail.destination')} value={trip.destinationName} />
             <InfoRow label={t('trip_detail.destinationAddress')} value={trip.destinationAddress} />

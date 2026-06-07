@@ -63,7 +63,9 @@ export function ActiveFieldCard({
           <View style={[styles.presencePill, styles.presenceOutside]}>
             <MaterialCommunityIcons name="navigation-variant" size={16} color="#B7791F" />
             <Text style={styles.presenceOutsideText}>
-              Mergi la teren{parcel.distanceM != null ? ` · ~${parcel.distanceM} m` : ''}
+              {parcel.distanceM != null
+                ? `Mai ai ${parcel.distanceM} m până în teren`
+                : 'Mergi la teren'}
             </Text>
           </View>
         ) : (

@@ -39,6 +39,10 @@ const GPS_TIMEOUT_MS = 15_000;
 // imported) to keep `xstate` and other domain-only deps out of the mobile
 // bundle — same pattern as useTripTransition mirroring the trip state machine.
 const DEFAULT_MAX_BALES_PER_TRUCK = 33;
+// A loader may only register a load while physically on the field the bales are
+// attributed to. Small buffer (max 5 m) for GPS jitter right at the boundary —
+// effectively requires the operator to be on the field, not merely nearby.
+const LOAD_FIELD_TOLERANCE_M = 5;
 
 type GpsStatus = 'idle' | 'loading' | 'denied' | 'unavailable' | 'ok';
 
@@ -108,6 +112,15 @@ export default function LoadBalesScreen() {
 
   const baleCount = parseInt(baleCountStr, 10) || 0;
 
+  // In-field gate. Block the load only when GPS *proves* the loader is away from
+  // the field (beyond tolerance). When inside, near (within tolerance), or the
+  // position is unknown (no boundary / GPS not ready) we allow it, to avoid
+  // false lockouts. `presence`/`distanceM` come from useCurrentLoaderParcel.
+  const awayFromField =
+    parcel.presence === 'outside' &&
+    parcel.distanceM != null &&
+    parcel.distanceM > LOAD_FIELD_TOLERANCE_M;
+
   const truckId = truckIdFromParams(truckIdParam);
   const { data: truck } = useQuery<Machine>({
     queryKey: ['machine', truckId],
@@ -171,6 +184,17 @@ export default function LoadBalesScreen() {
   // FM-5: duplicate detection — check for a recent bale_load on same (truckId, parcelId).
   // Uses snapshotParcelId directly (parcelReady = snapshotParcelId !== null, declared later).
   const handleRegisterPress = useCallback(async () => {
+    // Hard gate: must be on the field the bales are attributed to.
+    if (awayFromField) {
+      showModal({
+        type: 'warning',
+        title: 'Nu ești în câmp',
+        message: `Trebuie să fii pe terenul ${snapshotParcelName ?? 'selectat'} ca să încarci. Ești la ${parcel.distanceM} m de câmp — apropie-te și încearcă din nou.`,
+        confirmText: 'Am înțeles',
+        onConfirm: hideModal,
+      });
+      return;
+    }
     if (baleCount <= 0 || !snapshotParcelId || !truckId) {
       setShowSignature(true);
       return;
@@ -379,7 +403,20 @@ export default function LoadBalesScreen() {
         setSaving(false);
       }
     },
-    [userId, assignedMachineId, truckId, snapshotParcelId, baleCount, isOnline, queryClient],
+    [
+      userId,
+      assignedMachineId,
+      truckId,
+      snapshotParcelId,
+      baleCount,
+      isOnline,
+      queryClient,
+      awayFromField,
+      snapshotParcelName,
+      parcel.distanceM,
+      showModal,
+      hideModal,
+    ],
   );
 
   const truckLabel = truck
@@ -509,6 +546,19 @@ export default function LoadBalesScreen() {
                   ? 'Se identifică...'
                   : 'Neconfirmat — confirmă pe ecranul principal'}
             </Text>
+            {parcelReady ? (
+              parcel.presence === 'inside' ? (
+                <Text style={styles.presenceInside}>● Ești în câmp</Text>
+              ) : awayFromField ? (
+                <Text style={styles.presenceOutside}>
+                  ● La {parcel.distanceM} m de câmp — apropie-te ca să încarci
+                </Text>
+              ) : parcel.presence === 'outside' ? (
+                <Text style={styles.presenceNear}>● Aproape de câmp ({parcel.distanceM} m)</Text>
+              ) : (
+                <Text style={styles.presenceUnknown}>Se verifică poziția…</Text>
+              )
+            ) : null}
           </View>
         </View>
 
@@ -530,8 +580,13 @@ export default function LoadBalesScreen() {
         <BigButton
           title="Înregistrează"
           onPress={() => void handleRegisterPress()}
-          disabled={baleCount <= 0 || !parcelReady}
+          disabled={baleCount <= 0 || !parcelReady || awayFromField}
         />
+        {awayFromField ? (
+          <Text style={styles.gateHint}>
+            Trebuie să fii în câmp ca să încarci ({parcel.distanceM} m de teren).
+          </Text>
+        ) : null}
         <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
       </ScrollView>
       <AppModal {...modalProps} />
@@ -653,6 +708,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   parcelName: { fontSize: 16, fontWeight: '700', color: '#0A5C36', marginTop: 2 },
+  presenceInside: { fontSize: 12, fontWeight: '700', color: '#0A5C36', marginTop: 3 },
+  presenceNear: { fontSize: 12, fontWeight: '600', color: '#B7791F', marginTop: 3 },
+  presenceOutside: { fontSize: 12, fontWeight: '700', color: '#991B1B', marginTop: 3 },
+  presenceUnknown: { fontSize: 12, color: '#8D6E63', fontStyle: 'italic', marginTop: 3 },
+  gateHint: { fontSize: 12, color: '#991B1B', textAlign: 'center', marginTop: -4 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: '#5D4037', marginTop: 4 },
   fullTruckButton: {
     backgroundColor: '#FFFFFF',

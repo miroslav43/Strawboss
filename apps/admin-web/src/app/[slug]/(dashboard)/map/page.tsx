@@ -340,10 +340,10 @@ function ModalCancelBtn({ onClick }: { onClick: () => void }) {
 
 export default function MapPage() {
   const { t } = useI18n();
-  const { data: parcelsRaw } = useParcels(apiClient);
-  const { data: machines = [] } = useMachineLocations(apiClient);
-  const { data: farmsRaw = [] } = useFarms(apiClient);
-  const { data: depositsRaw = [] } = useDeliveryDestinations(apiClient);
+  const { data: parcelsRaw, refetch: refetchParcels } = useParcels(apiClient);
+  const { data: machines = [], refetch: refetchMachines } = useMachineLocations(apiClient);
+  const { data: farmsRaw = [], refetch: refetchFarms } = useFarms(apiClient);
+  const { data: depositsRaw = [], refetch: refetchDeposits } = useDeliveryDestinations(apiClient);
   const deleteParcel = useDeleteParcel(apiClient);
   const { realtimeStatus } = useRealtimeStatus();
 
@@ -397,6 +397,11 @@ export default function MapPage() {
   useEffect(() => {
     if (editParcel) setDrawMode(null);
   }, [editParcel]);
+
+  // Manual map refresh (button on the map): re-fetch all map layers at once.
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([refetchParcels(), refetchMachines(), refetchFarms(), refetchDeposits()]);
+  }, [refetchParcels, refetchMachines, refetchFarms, refetchDeposits]);
 
   const handleParcelSelect = useCallback((id: string) => setSelectedParcelId(id), []);
 
@@ -603,6 +608,7 @@ export default function MapPage() {
             hiddenMachineIds={hiddenMachineIds}
             deposits={deposits}
             iconPrefs={iconPrefs}
+            onRefresh={handleRefresh}
           />
           {selectedMachineId && (
             <RouteHistoryPanel

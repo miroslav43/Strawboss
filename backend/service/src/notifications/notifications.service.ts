@@ -372,7 +372,11 @@ export class NotificationsService {
       }
     }
 
-    // Record bale production if count was provided
+    // Record bale production if count was provided. Operators are usually linked
+    // to the MACHINE (users.assigned_machine_id), not the daily task, so fall
+    // back to the machine's operator when assigned_user_id is null — otherwise
+    // geofence-confirmed production for unassigned baler tasks was silently
+    // dropped.
     if (baleCount != null && baleCount > 0) {
       await this.drizzleProvider.db.execute(sql`
         INSERT INTO bale_productions
@@ -380,15 +384,24 @@ export class NotificationsService {
         SELECT
           ta.parcel_id,
           ta.machine_id,
-          ta.assigned_user_id,
+          COALESCE(ta.assigned_user_id, mo.id),
           CURRENT_DATE,
           ${baleCount},
           now(),
           ta.organization_id
         FROM task_assignments ta
+        LEFT JOIN LATERAL (
+          SELECT mu.id
+          FROM users mu
+          WHERE mu.assigned_machine_id = ta.machine_id
+            AND mu.deleted_at IS NULL
+            AND mu.organization_id IS NOT DISTINCT FROM ta.organization_id
+          ORDER BY mu.updated_at DESC
+          LIMIT 1
+        ) mo ON TRUE
         WHERE ta.id = ${assignmentId}::uuid
           AND ta.parcel_id IS NOT NULL
-          AND ta.assigned_user_id IS NOT NULL
+          AND COALESCE(ta.assigned_user_id, mo.id) IS NOT NULL
       `);
 
       this.winston.log('flow', `Bale production recorded via geofence confirm`, {

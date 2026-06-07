@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 import { useAuthStore } from '@/stores/auth-store';
 import { useActiveParcels, findParcelAtLocation, type ActiveParcel } from './useActiveParcels';
 import { useMyTasks, type MyTask } from './useMyTasks';
-import { distanceToBoundaryMeters, PARCEL_MATCH_TOLERANCE_M } from '@/lib/point-in-geojson';
+import { distanceToBoundaryMeters } from '@/lib/point-in-geojson';
 import { mobileLogger } from '@/lib/logger';
 
 export type CurrentParcelStatus =
@@ -25,7 +25,7 @@ export interface CurrentLoaderParcel {
   parcelCode: string | null;
   /** How the parcel was resolved. */
   source: 'in_progress_task' | 'gps' | null;
-  /** Whether the operator's GPS is on the resolved field (with tolerance). */
+  /** Whether the operator's GPS is strictly inside the resolved field boundary. */
   presence: ParcelPresence;
   /** Metres to the field boundary when `presence === 'outside'`. */
   distanceM: number | null;
@@ -55,8 +55,11 @@ function computePresence(
   if (!gpsReady || !gps || !parcelId || !parcels) return { presence: 'unknown', distanceM: null };
   const p = parcels.find((x) => x.id === parcelId);
   if (!p || p.boundary == null) return { presence: 'unknown', distanceM: null };
+  // Strict containment — no tolerance buffer. distanceToBoundaryMeters returns
+  // exactly 0 only when the GPS point is truly inside the polygon; any other
+  // value means "outside" and is the real distance left to reach the field.
   const d = distanceToBoundaryMeters(gps.lon, gps.lat, p.boundary);
-  if (d <= PARCEL_MATCH_TOLERANCE_M) return { presence: 'inside', distanceM: 0 };
+  if (d === 0) return { presence: 'inside', distanceM: 0 };
   return { presence: 'outside', distanceM: Math.round(d) };
 }
 
@@ -236,15 +239,18 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       : activeParcels;
     const hit = findParcelAtLocation(gps.lon, gps.lat, gpsPool);
     if (hit) {
+      // GPS resolves WHICH field (tolerance helps disambiguate between parcels),
+      // but presence is strict: "inside" only when the point is truly within the
+      // boundary, otherwise show the real distance left to reach it.
+      const { presence, distanceM } = computePresence(hit.id, gps, true, activeParcels);
       return {
         status: 'resolved',
         parcelId: hit.id,
         parcelName: hit.name,
         parcelCode: hit.code,
         source: 'gps',
-        // findParcelAtLocation already matched within tolerance → on the field.
-        presence: 'inside',
-        distanceM: 0,
+        presence,
+        distanceM,
         candidates: [],
         refresh,
       };
