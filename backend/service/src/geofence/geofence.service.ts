@@ -8,6 +8,15 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
 import { todayInRomania } from '../common/date';
 
+// GPS-tolerance geofence detection. Phone GPS drifts 5–20 m and operators work
+// at field edges, so exact ST_Contains misses "I'm on the field" constantly
+// (a baler 8 m outside a parcel produced no enter event). We treat the machine
+// as INSIDE within ENTER_M of the boundary, and only OUTSIDE past EXIT_M — the
+// gap is hysteresis so a machine parked near the edge does not flap enter/exit
+// on GPS noise. Both are env-tunable.
+const GEOFENCE_ENTER_TOLERANCE_M = Number(process.env.STRAWBOSS_GEOFENCE_ENTER_M) || 30;
+const GEOFENCE_EXIT_TOLERANCE_M = Number(process.env.STRAWBOSS_GEOFENCE_EXIT_M) || 60;
+
 interface ActiveAssignment {
   assignmentId: string;
   machineId: string;
@@ -31,10 +40,8 @@ interface MachinePosition {
 }
 
 interface GeofenceCheck {
-  machineId: string;
-  geofenceType: 'parcel' | 'deposit';
-  geofenceId: string;
-  isInside: boolean;
+  /** Metres from the GPS point to the geofence boundary (0 when inside). */
+  dist: number | string | null;
 }
 
 interface LastEvent {
@@ -130,18 +137,21 @@ export class GeofenceService {
         const geofenceType: 'parcel' | 'deposit' = target.type;
         const table = geofenceType === 'parcel' ? 'parcels' : 'delivery_destinations';
 
-        // Check ST_Contains
-        const containsResult = await this.drizzleProvider.db.execute(sql`
-        SELECT ST_Contains(
-          boundary,
-          ST_SetSRID(ST_MakePoint(${pos.lon}, ${pos.lat}), 4326)
-        ) AS "isInside"
+        // Distance (metres) from the GPS point to the geofence boundary; 0 when
+        // the point is strictly inside. Tolerance + hysteresis are applied in JS
+        // below — exact ST_Contains was too strict for real phone GPS.
+        const distResult = await this.drizzleProvider.db.execute(sql`
+        SELECT ST_Distance(
+          boundary::geography,
+          ST_SetSRID(ST_MakePoint(${pos.lon}, ${pos.lat}), 4326)::geography
+        ) AS "dist"
         FROM ${sql.raw(table)}
         WHERE id = ${geofenceId}::uuid
           AND boundary IS NOT NULL
       `);
-        const check = (containsResult as unknown as GeofenceCheck[])[0];
-        if (!check) continue;
+        const check = (distResult as unknown as GeofenceCheck[])[0];
+        if (!check || check.dist == null) continue;
+        const distM = Number(check.dist);
 
         // 4. Get last known geofence event for this machine + geofence pair
         const lastEventResult = await this.drizzleProvider.db.execute(sql`
@@ -156,8 +166,14 @@ export class GeofenceService {
         const lastEvent = (lastEventResult as unknown as LastEvent[])[0];
         const wasInside = lastEvent?.eventType === 'enter';
 
+        // Tolerance buffer + hysteresis: enter within ENTER_M, leave only past
+        // EXIT_M (audit: baler was 8 m outside → strict containment never fired).
+        const isInside = wasInside
+          ? distM <= GEOFENCE_EXIT_TOLERANCE_M
+          : distM <= GEOFENCE_ENTER_TOLERANCE_M;
+
         // 5. Detect transitions
-        if (check.isInside && !wasInside) {
+        if (isInside && !wasInside) {
           // ENTER event
           await this.recordEvent(
             assignment.machineId,
@@ -235,7 +251,7 @@ export class GeofenceService {
               },
             );
           }
-        } else if (!check.isInside && wasInside) {
+        } else if (!isInside && wasInside) {
           // EXIT event
           await this.recordEvent(
             assignment.machineId,

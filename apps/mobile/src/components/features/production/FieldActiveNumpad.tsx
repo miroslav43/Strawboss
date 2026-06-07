@@ -74,12 +74,15 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const taskOnlyParcel = useMemo(() => {
-    const withParcel = tasks.filter((t) => t.parcelId !== null && t.parcelName !== null);
+    // Fallback when GPS does not match a polygon: if exactly one assigned task
+    // has a parcel, use it. A null parcel name must NOT exclude it (that would
+    // leave parcelId null and keep SAVE disabled) — fall back to the code.
+    const withParcel = tasks.filter((t) => t.parcelId !== null);
     const uniqueIds = new Set(withParcel.map((t) => t.parcelId));
     if (uniqueIds.size !== 1) return null;
     const first = withParcel[0];
-    if (!first?.parcelId || !first.parcelName) return null;
-    return { id: first.parcelId, name: first.parcelName };
+    if (!first?.parcelId) return null;
+    return { id: first.parcelId, name: first.parcelName ?? first.parcelCode ?? 'Câmp asignat' };
   }, [tasks]);
 
   // Load today's total from local DB

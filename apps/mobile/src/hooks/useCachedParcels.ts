@@ -27,7 +27,10 @@ export interface CachedParcel {
 function apiParcelToCached(p: Parcel): CachedParcel {
   return {
     id: p.id,
-    name: p.name,
+    // Parcel.name is typed string but the API can return null for unnamed
+    // terrains; fall back to the code so it still renders and caches (the local
+    // SQLite parcels.name is NOT NULL — a null here crashed the cache write).
+    name: (p.name as string | null) ?? p.code,
     code: p.code,
     areaHectares: p.areaHectares ?? null,
     municipality: p.municipality ?? null,
@@ -74,7 +77,8 @@ async function persistParcelsToCache(parcels: Parcel[]): Promise<void> {
     for (const p of parcels) {
       await repo.upsert({
         id: p.id,
-        name: p.name,
+        // local parcels.name is NOT NULL — coalesce to code for unnamed terrains.
+        name: (p.name as string | null) ?? p.code,
         code: p.code,
         area_hectares: p.areaHectares ?? null,
         municipality: p.municipality ?? null,

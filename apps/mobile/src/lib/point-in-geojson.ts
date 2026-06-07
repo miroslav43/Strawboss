@@ -14,9 +14,7 @@ function pointInRing(lon: number, lat: number, ring: Ring): boolean {
     const xj = ring[j][0];
     const yj = ring[j][1];
     if (Math.abs(yj - yi) < 1e-12) continue;
-    const intersect =
-      yi > lat !== yj > lat &&
-      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    const intersect = yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
     if (intersect) inside = !inside;
   }
   return inside;
@@ -83,6 +81,63 @@ export function pointInBoundary(lon: number, lat: number, boundaryJson: unknown)
   return false;
 }
 
+/**
+ * Default GPS-tolerance (metres) for "am I on this field" matching. Mirrors the
+ * server geofence enter buffer — phone GPS drifts 5–20 m and operators work at
+ * field edges, so strict containment misses constantly.
+ */
+export const PARCEL_MATCH_TOLERANCE_M = 30;
+
+const M_PER_DEG_LAT = 111_320;
+const metersPerDegLon = (lat: number) => 111_320 * Math.cos((lat * Math.PI) / 180);
+
+/** Distance (m) from point (lon,lat) to segment A→B in a local equirectangular plane. */
+function pointToSegmentMeters(
+  lon: number,
+  lat: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const mLon = metersPerDegLon(lat);
+  const px = (lon - ax) * mLon;
+  const py = (lat - ay) * M_PER_DEG_LAT;
+  const dx = (bx - ax) * mLon;
+  const dy = (by - ay) * M_PER_DEG_LAT;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 > 0 ? (px * dx + py * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - t * dx, py - t * dy);
+}
+
+function ringMinEdgeMeters(lon: number, lat: number, ring: Ring): number {
+  let min = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const d = pointToSegmentMeters(lon, lat, ring[j][0], ring[j][1], ring[i][0], ring[i][1]);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+/** Metres from (lon,lat) to the geometry boundary; 0 when strictly inside. */
+export function distanceToBoundaryMeters(lon: number, lat: number, boundaryJson: unknown): number {
+  if (pointInBoundary(lon, lat, boundaryJson)) return 0;
+  const g = asGeometry(boundaryJson);
+  if (!g) return Infinity;
+  const polys: Ring[][] =
+    g.type === 'Polygon' ? [g.coordinates as Ring[]] : (g.coordinates as Ring[][]);
+  let min = Infinity;
+  for (const poly of polys) {
+    const exterior = poly[0];
+    if (Array.isArray(exterior)) {
+      const d = ringMinEdgeMeters(lon, lat, exterior);
+      if (d < min) min = d;
+    }
+  }
+  return min;
+}
+
 export interface ParcelLikeForHitTest {
   boundary: unknown;
   areaHectares: number;
@@ -97,19 +152,32 @@ export function pickSmallestContainingParcel<T extends ParcelLikeForHitTest>(
   lon: number,
   lat: number,
   parcels: T[],
+  toleranceM = 0,
 ): T | null {
-  const hits = parcels.filter(
-    (p) =>
-      p.boundary != null &&
-      p.boundary !== '' &&
-      pointInBoundary(lon, lat, p.boundary),
-  );
-  if (hits.length === 0) return null;
+  const valid = parcels.filter((p) => p.boundary != null && p.boundary !== '');
+  const hits = valid.filter((p) => pointInBoundary(lon, lat, p.boundary));
   if (hits.length === 1) return hits[0];
-  const sorted = [...hits].sort((a, b) => {
-    const da = Number(a.areaHectares) - Number(b.areaHectares);
-    if (da !== 0) return da;
-    return a.name.localeCompare(b.name);
-  });
-  return sorted[0] ?? null;
+  if (hits.length > 1) {
+    const sorted = [...hits].sort((a, b) => {
+      const da = Number(a.areaHectares) - Number(b.areaHectares);
+      if (da !== 0) return da;
+      return a.name.localeCompare(b.name);
+    });
+    return sorted[0] ?? null;
+  }
+  // No strict containment — fall back to the nearest parcel within tolerance so
+  // an operator at the field edge / under GPS drift still matches the field.
+  if (toleranceM > 0) {
+    let best: T | null = null;
+    let bestDist = Infinity;
+    for (const p of valid) {
+      const d = distanceToBoundaryMeters(lon, lat, p.boundary);
+      if (d <= toleranceM && d < bestDist) {
+        bestDist = d;
+        best = p;
+      }
+    }
+    return best;
+  }
+  return null;
 }
