@@ -654,6 +654,7 @@
     "title": "Reports",
     "tabs": {
       "farms": "Farms",
+      "fields": "Fields",
       "depots": "Depots",
       "rankings": "Rankings",
       "costs": "Costs",
@@ -726,6 +727,15 @@
       "noFields": "No fields in this farm.",
       "chartTitle": "Production by farm",
       "timelineTitle": "Loaded vs delivered over time"
+    },
+    "fields": {
+      "heading": "Production per field",
+      "field": "Field",
+      "farm": "Farm",
+      "produced": "Produced",
+      "loaded": "Loaded",
+      "remaining": "Left on field",
+      "delivered": "Delivered"
     },
     "depots": {
       "heading": "Depot stock",

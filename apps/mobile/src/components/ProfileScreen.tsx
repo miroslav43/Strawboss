@@ -13,6 +13,7 @@ import {
   Image,
   Platform,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { resolveApiUrl } from '@/lib/api-client';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
@@ -147,6 +148,15 @@ export function ProfileScreen() {
     ]);
     setRefreshing(false);
   }, [queryClient, triggerSync]);
+
+  // App version + build number (baked at build time) so the operator can tell
+  // at a glance whether they're on the latest APK. The Android versionCode must
+  // be bumped per release for sideloaded installs, so it's a reliable freshness
+  // signal alongside the marketing version.
+  const appVersion = Constants.expoConfig?.version ?? '—';
+  const buildNumber =
+    Constants.expoConfig?.android?.versionCode ??
+    (Constants.expoConfig?.ios?.buildNumber ? Number(Constants.expoConfig.ios.buildNumber) : null);
 
   const isLoading = profileLoading || (!!assignedMachineId && machineLoading);
   // Every operator role benefits from seeing today's personal totals on the
@@ -424,6 +434,11 @@ export function ProfileScreen() {
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
           <Text style={styles.logoutText}>Deconectare</Text>
         </TouchableOpacity>
+
+        <Text style={styles.versionText}>
+          Versiunea {appVersion}
+          {buildNumber != null ? ` (${buildNumber})` : ''}
+        </Text>
       </ScrollView>
       <AppModal {...modalProps} />
     </View>
@@ -608,6 +623,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   logoutText: { color: colors.white, fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
+  versionText: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: colors.neutral,
+    marginTop: 4,
+  },
   specimenRow: { width: '100%' },
   specimenImage: {
     width: '100%',

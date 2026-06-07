@@ -21,7 +21,7 @@ export interface ConfirmDeliveryDto {
   grossWeightKg: number;
   weightTicketNumber?: string;
   weightTicketPhotoUrl?: string;
-  deterioratedBalesCount?: number;
+  deterioratedBalesCount?: number | null;
 }
 
 export interface CompleteDto {

@@ -15,6 +15,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { ReportFilters } from '@/components/features/reports/ReportFilters';
 import { ReportKpiRow } from '@/components/features/reports/ReportKpiRow';
 import { FarmReportTab } from '@/components/features/reports/FarmReportTab';
+import { FieldReportTab } from '@/components/features/reports/FieldReportTab';
 import { DepotReportTab } from '@/components/features/reports/DepotReportTab';
 import { RankingsTab } from '@/components/features/reports/RankingsTab';
 import { KmPerTruckTab } from '@/components/features/reports/KmPerTruckTab';
@@ -32,6 +33,7 @@ import { useI18n } from '@/lib/i18n';
 
 type Tab =
   | 'farms'
+  | 'fields'
   | 'depots'
   | 'rankings'
   | 'costs'
@@ -43,6 +45,7 @@ type Tab =
 
 const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'farms', labelKey: 'reports.tabs.farms' },
+  { id: 'fields', labelKey: 'reports.tabs.fields' },
   { id: 'depots', labelKey: 'reports.tabs.depots' },
   { id: 'rankings', labelKey: 'reports.tabs.rankings' },
   { id: 'costs', labelKey: 'reports.tabs.costs' },
@@ -113,7 +116,7 @@ export default function ReportsPage() {
   const isDepotsOrRankings = tab === 'depots' || tab === 'rankings';
 
   const farmQuery = useFarmReports(apiClient, activeFilters, {
-    enabled: isFarmsOrRankings,
+    enabled: isFarmsOrRankings || tab === 'fields',
   });
   const depotQuery = useDepotReports(apiClient, activeFilters, {
     enabled: isDepotsOrRankings,
@@ -445,6 +448,14 @@ export default function ReportsPage() {
             timeline={timeline}
             isLoading={farmQuery.isLoading || timelineQuery.isLoading}
             isError={farmQuery.isError || timelineQuery.isError}
+          />
+        )}
+
+        {tab === 'fields' && (
+          <FieldReportTab
+            farms={farms}
+            isLoading={farmQuery.isLoading}
+            isError={farmQuery.isError}
           />
         )}
 

@@ -24,7 +24,9 @@ export const confirmDeliverySchema = z.object({
   grossWeightKg: z.number().positive(),
   weightTicketNumber: z.string().optional(),
   weightTicketPhotoUrl: z.string().optional(),
-  deterioratedBalesCount: z.number().int().min(0).optional(),
+  // Mobile sends `null` when the (now-removed) damaged-bales step is skipped —
+  // accept null as well as a number/absent, otherwise confirm-delivery 400s.
+  deterioratedBalesCount: z.number().int().min(0).nullable().optional(),
 });
 
 export const completeSchema = z.object({

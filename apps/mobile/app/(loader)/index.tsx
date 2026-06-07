@@ -230,6 +230,7 @@ export default function LoaderHomeScreen() {
 function TruckCard({ truck, onPress }: { truck: TruckAtLoader; onPress: () => void }) {
   const label = truck.registrationPlate ?? truck.internalCode ?? 'Camion';
   const distance = truck.distanceM != null ? `${Math.round(truck.distanceM)} m` : '?';
+  const isLoaded = truck.loadState === 'loaded';
   return (
     <TouchableOpacity style={styles.truckCard} activeOpacity={0.85} onPress={onPress}>
       <View style={styles.truckRow}>
@@ -246,6 +247,22 @@ function TruckCard({ truck, onPress }: { truck: TruckAtLoader; onPress: () => vo
             </Text>
           ) : null}
           <Text style={styles.truckDistance}>la {distance}</Text>
+        </View>
+        {/* Loaded / unloaded badge, in line with the truck row. */}
+        <View style={[styles.loadBadge, isLoaded ? styles.loadBadgeLoaded : styles.loadBadgeEmpty]}>
+          <MaterialCommunityIcons
+            name={isLoaded ? 'package-variant-closed' : 'package-variant'}
+            size={13}
+            color={isLoaded ? '#0A5C36' : '#92400E'}
+          />
+          <Text
+            style={[
+              styles.loadBadgeText,
+              isLoaded ? styles.loadBadgeTextLoaded : styles.loadBadgeTextEmpty,
+            ]}
+          >
+            {isLoaded ? 'Încărcat' : 'Descărcat'}
+          </Text>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={28} color={colors.tertiary} />
       </View>
@@ -314,6 +331,19 @@ const styles = StyleSheet.create({
   truckPlate: { fontSize: 18, fontWeight: '700', color: '#0A5C36' },
   truckMeta: { fontSize: 13, color: '#5D4037', marginTop: 1 },
   truckDistance: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  loadBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  loadBadgeLoaded: { backgroundColor: '#E8F5EE' },
+  loadBadgeEmpty: { backgroundColor: '#FEF3C7' },
+  loadBadgeText: { fontSize: 12, fontWeight: '700' },
+  loadBadgeTextLoaded: { color: '#0A5C36' },
+  loadBadgeTextEmpty: { color: '#92400E' },
 
   emptyCard: {
     backgroundColor: '#FFF',

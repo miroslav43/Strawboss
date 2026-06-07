@@ -39,12 +39,27 @@ export default function DriverDeliveryScreen() {
     }
   }, [userId]);
 
-  // Reload whenever the tab regains focus so the card reflects status changes
-  // made elsewhere (e.g. after the depart / delivery flows).
+  // Pull the latest trip state when the tab is focused, THEN load from cache.
+  // On a fresh install the initial (Cursele Mele) sync may not have finished
+  // when the user opens Livrare — and useFocusEffect won't re-run when that
+  // background sync later lands — so an in-delivery trip would be missing until
+  // a manual refresh. Syncing here (best-effort) keeps the card current and
+  // also reflects status changes made elsewhere (depart / delivery flows).
   useFocusEffect(
     useCallback(() => {
-      void loadActiveTrip();
-    }, [loadActiveTrip]),
+      let active = true;
+      void (async () => {
+        try {
+          await triggerSync();
+        } catch {
+          // Offline or sync error — fall back to whatever is cached locally.
+        }
+        if (active) await loadActiveTrip();
+      })();
+      return () => {
+        active = false;
+      };
+    }, [triggerSync, loadActiveTrip]),
   );
 
   const onRefresh = useCallback(async () => {

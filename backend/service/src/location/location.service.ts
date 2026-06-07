@@ -223,6 +223,8 @@ export class LocationService {
       lastSeenAt: string;
       lat: number;
       lon: number;
+      tripStatus: string | null;
+      loadState: 'loaded' | 'empty';
     }>
   > {
     const radiusM = options.radiusM ?? 75;
@@ -282,7 +284,12 @@ export class LocationService {
         ROUND(ST_Distance(ltp.coords::geography, lp.coords::geography)::numeric, 1)::float AS "distanceM",
         ltp.recorded_at                                                AS "lastSeenAt",
         ltp.lat::float                                                 AS lat,
-        ltp.lon::float                                                 AS lon
+        ltp.lon::float                                                 AS lon,
+        ct.trip_status                                                 AS "tripStatus",
+        CASE
+          WHEN ct.trip_status IN ('loaded', 'in_transit', 'arrived', 'delivering')
+            THEN 'loaded' ELSE 'empty'
+        END                                                            AS "loadState"
       FROM latest_truck_pos ltp
       JOIN loader_pos lp        ON TRUE
       JOIN machines m           ON m.id = ltp.machine_id
@@ -290,6 +297,18 @@ export class LocationService {
       LEFT JOIN users u         ON u.assigned_machine_id = m.id
                                 AND u.role = 'driver'::user_role
                                 AND u.deleted_at IS NULL
+      -- Current (non-terminal) trip for the truck, most recent first. Drives the
+      -- loaded/empty badge: 'loaded' once the truck carries bales, else 'empty'
+      -- (waiting / being loaded / no active trip).
+      LEFT JOIN LATERAL (
+        SELECT t.status AS trip_status
+        FROM trips t
+        WHERE t.truck_id = m.id
+          AND t.deleted_at IS NULL
+          AND t.status NOT IN ('completed', 'cancelled')
+        ORDER BY t.updated_at DESC
+        LIMIT 1
+      ) ct ON TRUE
       WHERE ST_DWithin(ltp.coords::geography, lp.coords::geography, ${radiusM})
       ORDER BY "distanceM" ASC
       LIMIT 50
@@ -304,6 +323,8 @@ export class LocationService {
       lastSeenAt: string;
       lat: number;
       lon: number;
+      tripStatus: string | null;
+      loadState: 'loaded' | 'empty';
     }>;
   }
 

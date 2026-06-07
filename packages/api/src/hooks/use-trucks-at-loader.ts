@@ -11,6 +11,10 @@ export interface TruckAtLoader {
   lastSeenAt: string;
   lat: number;
   lon: number;
+  /** Current (non-terminal) trip status of the truck, or null if none. */
+  tripStatus: string | null;
+  /** 'loaded' once the truck carries bales; 'empty' while waiting / being loaded. */
+  loadState: 'loaded' | 'empty';
 }
 
 /**
@@ -30,9 +34,7 @@ export function useTrucksAtLoader(
   return useQuery({
     queryKey: queryKeys.location.trucksAtLoader(loaderMachineId ?? ''),
     queryFn: () =>
-      client.get<TruckAtLoader[]>(
-        `/api/v1/location/trucks-at-loader/${loaderMachineId}${qs}`,
-      ),
+      client.get<TruckAtLoader[]>(`/api/v1/location/trucks-at-loader/${loaderMachineId}${qs}`),
     enabled: !!loaderMachineId,
     refetchInterval: options?.pollMs ?? 10_000,
   });

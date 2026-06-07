@@ -73,16 +73,10 @@ export class ReconciliationService {
     const fuelRows = fuelResult as unknown as { total_liters: number }[];
     const fuelUsedLiters = Number(fuelRows[0]?.total_liters ?? 0);
 
-    // Get expected consumption from machine record
-    const machineResult = await this.drizzleProvider.db.execute(
-      sql`SELECT fuel_consumption_l_per_km FROM machines
-          WHERE id = ${machineId} AND deleted_at IS NULL LIMIT 1`,
-    );
-    const machineRows = machineResult as unknown as {
-      fuel_consumption_l_per_km: number | null;
-    }[];
-    // Default expected consumption: 0.35 L/km for a truck
-    const expectedConsumptionLPerKm = Number(machineRows[0]?.fuel_consumption_l_per_km) || 0.35;
+    // Expected consumption: there is no per-machine consumption column in the
+    // schema (machines never had `fuel_consumption_l_per_km` — selecting it threw
+    // and aborted the whole reconciliation), so use the truck default directly.
+    const expectedConsumptionLPerKm = 0.35;
 
     return reconcileFuel({
       machineId,

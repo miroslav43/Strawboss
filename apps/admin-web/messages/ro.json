@@ -654,6 +654,7 @@
     "title": "Rapoarte",
     "tabs": {
       "farms": "Ferme",
+      "fields": "Câmpuri",
       "depots": "Depozite",
       "rankings": "Clasamente",
       "costs": "Costuri",
@@ -726,6 +727,15 @@
       "noFields": "Nu există terenuri în această fermă.",
       "chartTitle": "Producție pe ferme",
       "timelineTitle": "Încărcat vs livrat în timp"
+    },
+    "fields": {
+      "heading": "Producție pe câmp",
+      "field": "Câmp",
+      "farm": "Fermă",
+      "produced": "Produși",
+      "loaded": "Încărcați",
+      "remaining": "Rămași pe câmp",
+      "delivered": "Livrați"
     },
     "depots": {
       "heading": "Stoc depozite",
