@@ -65,6 +65,12 @@ export function ConfirmCountdown({
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const hasConfirmedRef = useRef(false);
+  // Keep the latest onConfirmed in a ref so a change in its identity (e.g. the
+  // parent re-renders when an async value like the depot contact resolves) does
+  // NOT restart the countdown or reset hasConfirmedRef — which could otherwise
+  // reset the timer mid-flight or double-fire the action.
+  const onConfirmedRef = useRef(onConfirmed);
+  onConfirmedRef.current = onConfirmed;
 
   const clearCountdown = useCallback(() => {
     if (intervalRef.current !== null) {
@@ -118,7 +124,7 @@ export function ConfirmCountdown({
           hasConfirmedRef.current = true;
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           // Defer slightly so React can process this tick's state update first
-          setTimeout(() => onConfirmed(), 0);
+          setTimeout(() => onConfirmedRef.current(), 0);
         }
         return 0;
       });
@@ -127,7 +133,7 @@ export function ConfirmCountdown({
     return () => {
       clearCountdown();
     };
-  }, [visible, countdownSeconds, clearCountdown, pulse, fadeAnim, onConfirmed]);
+  }, [visible, countdownSeconds, clearCountdown, pulse, fadeAnim]);
 
   const handleCancel = useCallback(() => {
     clearCountdown();
@@ -142,8 +148,8 @@ export function ConfirmCountdown({
     hasConfirmedRef.current = true;
     clearCountdown();
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onConfirmed();
-  }, [clearCountdown, onConfirmed]);
+    onConfirmedRef.current();
+  }, [clearCountdown]);
 
   return (
     <Modal

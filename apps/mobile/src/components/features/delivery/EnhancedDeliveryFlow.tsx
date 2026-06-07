@@ -123,9 +123,14 @@ export function EnhancedDeliveryFlow({
           if (draft.grossWeightValue != null) setGrossWeightValue(draft.grossWeightValue);
           if (draft.tareWeightValue != null) setTareWeightValue(draft.tareWeightValue);
           if (draft.receiverSignature != null) setReceiverSignature(draft.receiverSignature);
-          // Resume after the last completed step, clamped to the new total
-          // (older drafts may carry a higher step from the previous flow).
-          const resumeStep = Math.min(trip.delivery_step_progress + 1, LAST_STEP) as Step;
+          // Resume after the last completed step, clamped to the new total.
+          // Pre-redesign drafts (single weight + photo) carry no gross/tare — if
+          // weight data is missing, force step 0 so the driver re-enters it
+          // instead of landing on the confirm step with 0 kg.
+          const hasWeightData = draft.grossWeightValue != null || draft.tareWeightValue != null;
+          const resumeStep = (
+            hasWeightData ? Math.min(trip.delivery_step_progress + 1, LAST_STEP) : 0
+          ) as Step;
           setCurrentStep(resumeStep);
           prevStepRef.current = resumeStep;
           mobileLogger.flow('EnhancedDeliveryFlow: resumed from draft', { tripId, resumeStep });

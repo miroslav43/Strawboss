@@ -64,9 +64,14 @@ export default function DriverDeliveryScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await triggerSync();
-    await loadActiveTrip();
-    setRefreshing(false);
+    try {
+      await triggerSync();
+      await loadActiveTrip();
+    } catch {
+      // Offline or DB error — fall back to whatever is cached locally.
+    } finally {
+      setRefreshing(false);
+    }
   }, [triggerSync, loadActiveTrip]);
 
   const handleTripPress = useCallback((trip: LocalTrip) => {

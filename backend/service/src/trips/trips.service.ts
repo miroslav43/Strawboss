@@ -1363,8 +1363,12 @@ export class TripsService implements OnModuleInit {
     }
 
     const setClause = sql.join(setClauses, sql`, `);
+    // Org filter folded into the UPDATE (not just the prior findById) so the
+    // write is atomically scoped to the caller's org, matching every other
+    // mutation in this file.
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET ${setClause} WHERE id = ${id} RETURNING *`,
+      sql`UPDATE trips SET ${setClause} WHERE id = ${id}${orgFilter} RETURNING *`,
     );
     if (!(result as unknown as unknown[]).length) {
       throw new BadRequestException('Trip not found');
@@ -1714,6 +1718,7 @@ export class TripsService implements OnModuleInit {
     const dest = destRows[0];
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
+            destination_id      = ${dest.id}::uuid,
             destination_name    = ${dest.name},
             destination_address = ${dest.address ?? null},
             destination_coords  = ${dest.coords_geojson ? sql`ST_GeomFromGeoJSON(${dest.coords_geojson})` : sql`NULL`},
