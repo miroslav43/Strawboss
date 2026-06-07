@@ -1,5 +1,5 @@
-import type { Timestamps, SoftDelete } from "../common.js";
-import type { FuelType } from "./machine.js";
+import type { Timestamps, SoftDelete } from '../common.js';
+import type { FuelType } from './machine.js';
 
 export interface FuelLog extends Timestamps, SoftDelete {
   id: string;
@@ -11,7 +11,6 @@ export interface FuelLog extends Timestamps, SoftDelete {
   quantityLiters: number;
   unitPrice: number | null;
   totalCost: number | null;
-  odometerKm: number | null;
   hourmeterHrs: number | null;
   isFullTank: boolean;
   receiptPhotoUrl: string | null;

@@ -6,13 +6,12 @@ export interface StartLoadingDto {
 export interface CompleteLoadingDto {}
 
 export interface DepartDto {
-  departureOdometerKm: number;
   driverSignature: string;
 }
 
-export interface ArriveDto {
-  arrivalOdometerKm: number;
-}
+// Trip distance is derived entirely from the GPS track (depart → arrive),
+// so the arrive payload carries no fields.
+export interface ArriveDto {}
 
 export interface StartDeliveryDto {
   destinationName?: string;

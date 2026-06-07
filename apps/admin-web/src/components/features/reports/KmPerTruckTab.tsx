@@ -39,6 +39,7 @@ function defaultFrom() {
 
 interface CsvRow extends Record<string, unknown> {
   machine: string;
+  driver: string;
   date: string;
   km: number;
   pointCount: number;
@@ -158,6 +159,7 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
       for (const r of rows) {
         out.push({
           machine: r.machineCode ?? id.slice(0, 6),
+          driver: r.operatorName ?? '',
           date: r.date,
           km: r.distanceKm,
           pointCount: r.pointCount,
@@ -172,6 +174,7 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
       'km-per-truck',
       [
         { header: 'machine', value: (r) => r.machine },
+        { header: 'driver', value: (r) => r.driver },
         { header: 'date', value: (r) => r.date },
         { header: 'km', value: (r) => r.km },
         { header: 'pointCount', value: (r) => r.pointCount },
@@ -265,6 +268,9 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
                   <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
                     {t('reports.kmPerTruck.colMachine')}
                   </th>
+                  <th className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                    {t('reports.kmPerTruck.colDriver')}
+                  </th>
                   {chartRows.map((r) => (
                     <th
                       key={r.date}
@@ -292,9 +298,13 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
                     pointByDate.set(r.date, r.pointCount);
                   }
                   const totalKm = rows.reduce((s, r) => s + r.distanceKm, 0);
+                  const drivers = Array.from(
+                    new Set(rows.map((r) => r.operatorName).filter(Boolean) as string[]),
+                  ).join(', ');
                   return (
                     <tr key={machineId} className="hover:bg-neutral-50/60">
                       <td className="px-4 py-2 font-medium text-neutral-800">{code}</td>
+                      <td className="px-4 py-2 text-neutral-600">{drivers || '—'}</td>
                       {chartRows.map((cr) => {
                         const km = kmByDate.get(cr.date) ?? 0;
                         const pc = pointByDate.get(cr.date) ?? 0;

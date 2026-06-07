@@ -232,14 +232,6 @@ export default function MachineDetailPage() {
                 value={machine.tankCapacityLiters != null ? `${machine.tankCapacityLiters} L` : '—'}
               />
               <InfoRow
-                label={t('machineDetail.odometer')}
-                value={
-                  machine.currentOdometerKm != null
-                    ? `${machine.currentOdometerKm.toLocaleString()} km`
-                    : '—'
-                }
-              />
-              <InfoRow
                 label={t('machineDetail.hourmeter')}
                 value={
                   machine.currentHourmeterHrs != null

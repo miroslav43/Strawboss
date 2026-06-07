@@ -6,11 +6,7 @@ import { sql } from 'drizzle-orm';
 import type { Job } from 'bullmq';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { AlertsService } from './alerts.service';
-import {
-  checkOdometerGpsDiscrepancy,
-  checkTimingAnomaly,
-  evaluateAlerts,
-} from '@strawboss/domain';
+import { checkTimingAnomaly, evaluateAlerts } from '@strawboss/domain';
 import { QUEUE_ALERT_EVALUATION } from '../jobs/queues';
 
 @Injectable()
@@ -39,37 +35,20 @@ export class AlertsProcessor extends WorkerHost {
     const trips = tripsResult as unknown as Record<string, unknown>[];
 
     for (const trip of trips) {
-      const departureOdometer = trip.departure_odometer_km as number | null;
-      const arrivalOdometer = trip.arrival_odometer_km as number | null;
       const gpsDistanceKm = trip.gps_distance_km as number | null;
       const departureAt = trip.departure_at as string | null;
       const arrivalAt = trip.arrival_at as string | null;
-      const odometerDistanceKm = trip.odometer_distance_km as number | null;
 
-      // Run odometer-GPS check if data is available
-      const odometerGps =
-        departureOdometer !== null &&
-        arrivalOdometer !== null &&
-        gpsDistanceKm !== null
-          ? checkOdometerGpsDiscrepancy({
-              departureOdometerKm: departureOdometer,
-              arrivalOdometerKm: arrivalOdometer,
-              gpsDistanceKm,
-              tolerancePercent: 15,
-            })
-          : undefined;
-
-      // Run timing check if data is available
-      const distanceKm = odometerDistanceKm ?? gpsDistanceKm;
+      // Run timing/speed check using the GPS-derived route distance.
       let timingAnomaly;
-      if (distanceKm !== null && departureAt && arrivalAt) {
+      if (gpsDistanceKm !== null && departureAt && arrivalAt) {
         const departureTime = new Date(departureAt).getTime();
         const arrivalTime = new Date(arrivalAt).getTime();
         const durationMinutes = (arrivalTime - departureTime) / (1000 * 60);
 
         if (durationMinutes > 0) {
           timingAnomaly = checkTimingAnomaly({
-            distanceKm,
+            distanceKm: gpsDistanceKm,
             durationMinutes,
             maxSpeedKmh: 100,
             minSpeedKmh: 5,
@@ -77,9 +56,8 @@ export class AlertsProcessor extends WorkerHost {
         }
       }
 
-      // Evaluate alerts from the combined results
+      // Evaluate alerts from the results
       const alertDrafts = evaluateAlerts({
-        odometerGps,
         timingAnomaly,
         tripId: trip.id as string,
         machineId: trip.truck_id as string | undefined,

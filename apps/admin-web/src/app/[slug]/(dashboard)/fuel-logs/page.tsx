@@ -25,7 +25,6 @@ interface FuelLogRow {
   logged_at: string;
   fuel_type: string | null;
   quantity_liters: string | number;
-  odometer_km: string | number | null;
   receipt_photo_url: string | null;
   notes: string | null;
 }
@@ -221,11 +220,6 @@ export default function FuelLogsPage() {
                               <span className="flex items-center gap-1 text-neutral-500">
                                 <User className="h-3.5 w-3.5" />
                                 {entry.operator_id.slice(0, 8)}
-                              </span>
-                            ) : null}
-                            {entry.odometer_km != null ? (
-                              <span className="text-neutral-500">
-                                {toNumber(entry.odometer_km).toFixed(0)} km
                               </span>
                             ) : null}
                           </div>

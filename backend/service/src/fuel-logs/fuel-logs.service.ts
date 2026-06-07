@@ -94,32 +94,20 @@ export class FuelLogsService {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO fuel_logs (
         machine_id, operator_id, parcel_id, logged_at, fuel_type,
-        quantity_liters, unit_price, total_cost, odometer_km,
+        quantity_liters, unit_price, total_cost,
         hourmeter_hrs, is_full_tank, receipt_photo_url, notes,
         client_id, organization_id
       ) VALUES (
         ${dto.machineId}, ${dto.operatorId}, ${dto.parcelId ?? null},
         ${dto.loggedAt}, ${dto.fuelType},
         ${dto.quantityLiters}, ${dto.unitPrice ?? null},
-        ${dto.totalCost ?? null}, ${dto.odometerKm ?? null},
+        ${dto.totalCost ?? null},
         ${dto.hourmeterHrs ?? null}, ${dto.isFullTank},
         ${dto.receiptPhotoUrl ?? null}, ${dto.notes ?? null},
         ${dto.clientId ?? null},
         ${orgId}::uuid
       ) RETURNING *`,
     );
-
-    // Update machine's current odometer if provided
-    if (dto.odometerKm !== undefined && dto.odometerKm !== null) {
-      await this.drizzleProvider.db.execute(
-        sql`UPDATE machines SET
-          current_odometer_km = ${dto.odometerKm},
-          updated_at = NOW()
-        WHERE id = ${dto.machineId}
-          AND current_odometer_km < ${dto.odometerKm}
-          ${orgFilter}`,
-      );
-    }
 
     // Update machine's current hourmeter if provided
     if (dto.hourmeterHrs !== undefined && dto.hourmeterHrs !== null) {

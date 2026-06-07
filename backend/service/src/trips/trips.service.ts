@@ -771,7 +771,6 @@ export class TripsService implements OnModuleInit {
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.in_transit},
-        departure_odometer_km = ${dto.departureOdometerKm},
         driver_signature_url = ${dto.driverSignature},
         departure_at = NOW(),
         updated_at = NOW()
@@ -798,18 +797,39 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
-  async arrive(id: string, orgId: string | null, dto: ArriveDto) {
+  async arrive(id: string, orgId: string | null, _dto: ArriveDto) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'ARRIVE');
 
+    // Trip distance comes from the GPS track of the truck between depart and
+    // now (arrival), summed pairwise with ST_DistanceSphere — same approach as
+    // location.service.getKmByDay. NULL/zero-ping cases COALESCE to 0. The
+    // hourly reconciliation job recomputes this for recently-arrived trips to
+    // pick up pings that synced late from the phone.
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET
+      sql`UPDATE trips AS t SET
         status = ${TripStatus.arrived},
-        arrival_odometer_km = ${dto.arrivalOdometerKm},
         arrival_at = NOW(),
+        gps_distance_km = (
+          SELECT ROUND((COALESCE(SUM(leg_m), 0) / 1000.0)::numeric, 2)
+          FROM (
+            SELECT ST_DistanceSphere(
+                     LAG(geom) OVER (ORDER BY recorded_at),
+                     geom
+                   ) AS leg_m
+            FROM (
+              SELECT recorded_at,
+                     ST_SetSRID(ST_MakePoint(lon, lat), 4326) AS geom
+              FROM machine_location_events
+              WHERE machine_id = t.truck_id
+                AND recorded_at >= t.departure_at
+                AND recorded_at <= NOW()
+            ) pts
+          ) pairwise
+        ),
         updated_at = NOW()
-      WHERE id = ${id} AND status = ${from} RETURNING *`,
+      WHERE t.id = ${id} AND t.status = ${from} RETURNING *`,
     );
     if (!(result as unknown as unknown[]).length) {
       throw new BadRequestException('Trip status changed concurrently');

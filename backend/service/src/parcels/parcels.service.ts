@@ -469,6 +469,23 @@ export class ParcelsService {
       }
     }
 
+    // When the boundary geometry changes (e.g. an admin drags a vertex), keep the
+    // derived centroid + area in sync unless the caller passed them explicitly —
+    // otherwise the map pin / mobile "navigate to field" target and the displayed
+    // hectares would drift from the new shape.
+    if ('boundary' in dto && dto.boundary) {
+      const { areaHectares, centroidGeoJson } = await this.computeGeo(
+        dto.boundary,
+        'areaHectares' in dto ? ((dto.areaHectares as number | null) ?? null) : null,
+      );
+      if (!('centroid' in dto) && centroidGeoJson) {
+        setClauses.push(sql`centroid = ST_GeomFromGeoJSON(${centroidGeoJson})`);
+      }
+      if (!('areaHectares' in dto) && areaHectares != null) {
+        setClauses.push(sql`area_hectares = ${areaHectares}`);
+      }
+    }
+
     if ('harvestStatus' in dto && dto.harvestStatus != null) {
       setClauses.push(sql`harvest_status = ${dto.harvestStatus as string}::harvest_status`);
     }

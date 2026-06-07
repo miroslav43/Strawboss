@@ -596,8 +596,6 @@ async function applyOptimistic(input: OptimisticInput): Promise<void> {
         loader_id: input.loaderMachineId,
         loader_operator_id: input.operatorId,
         bale_count: input.baleCount,
-        departure_odometer_km: null,
-        arrival_odometer_km: null,
         gross_weight_kg: null,
         tare_weight_kg: null,
         receiver_name: null,

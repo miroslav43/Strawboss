@@ -5,6 +5,7 @@ import type {
   ReportTimelinePoint,
   TruckDistanceRow,
   TruckDistanceSummary,
+  OperatorDistanceRow,
   ConnectedHoursReport,
   ConnectedHoursGroupBy,
 } from '@strawboss/types';
@@ -94,6 +95,31 @@ export function useTruckDistanceSummary(client: ApiClient, options?: ReportQuery
   });
 }
 
+export interface OperatorDistanceFilters extends Record<string, unknown> {
+  from: string;
+  to: string;
+  operatorId?: string;
+}
+
+/**
+ * Per-operator-per-day distance (km per driver), derived from the GPS trace.
+ * Mirrors useTruckDistanceReport but attributed to the driver.
+ */
+export function useOperatorDistanceReport(
+  client: ApiClient,
+  filters: OperatorDistanceFilters,
+  options?: ReportQueryOptions,
+) {
+  return useQuery({
+    queryKey: queryKeys.reports.operatorDistance(filters),
+    queryFn: () =>
+      client.get<OperatorDistanceRow[]>(
+        `/api/v1/reports/operator-distance${toQueryString(filters)}`,
+      ),
+    enabled: (options?.enabled ?? true) && !!filters.from && !!filters.to,
+  });
+}
+
 export interface ConnectedHoursFilters extends Record<string, unknown> {
   from: string;
   to: string;
@@ -109,9 +135,7 @@ export function useUserConnectedHoursReport(
   return useQuery({
     queryKey: queryKeys.reports.connectedHours(filters),
     queryFn: () =>
-      client.get<ConnectedHoursReport>(
-        `/api/v1/reports/connected-hours${toQueryString(filters)}`,
-      ),
+      client.get<ConnectedHoursReport>(`/api/v1/reports/connected-hours${toQueryString(filters)}`),
     enabled: (options?.enabled ?? true) && !!filters.from && !!filters.to,
   });
 }

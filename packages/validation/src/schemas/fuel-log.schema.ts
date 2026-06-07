@@ -1,10 +1,10 @@
-import { z } from "zod";
-import { FuelType } from "@strawboss/types";
-import { uuidSchema } from "../helpers/uuid.js";
-import { isoDateSchema } from "../helpers/iso-date.js";
-import { timestampsSchema } from "../helpers/common.js";
-import { softDeleteSchema } from "../helpers/common.js";
-import { fuelTypeSchema } from "./machine.schema.js";
+import { z } from 'zod';
+import { FuelType } from '@strawboss/types';
+import { uuidSchema } from '../helpers/uuid.js';
+import { isoDateSchema } from '../helpers/iso-date.js';
+import { timestampsSchema } from '../helpers/common.js';
+import { softDeleteSchema } from '../helpers/common.js';
+import { fuelTypeSchema } from './machine.schema.js';
 
 export const fuelLogSchema = z
   .object({
@@ -17,7 +17,6 @@ export const fuelLogSchema = z
     quantityLiters: z.number().positive(),
     unitPrice: z.number().nonnegative().nullable(),
     totalCost: z.number().nonnegative().nullable(),
-    odometerKm: z.number().nonnegative().nullable(),
     hourmeterHrs: z.number().nonnegative().nullable(),
     isFullTank: z.boolean(),
     receiptPhotoUrl: z.string().url().nullable(),
@@ -37,7 +36,6 @@ export const createFuelLogSchema = z.object({
   quantityLiters: z.number().positive(),
   unitPrice: z.number().nonnegative().nullable().optional(),
   totalCost: z.number().nonnegative().nullable().optional(),
-  odometerKm: z.number().nonnegative().nullable().optional(),
   hourmeterHrs: z.number().nonnegative().nullable().optional(),
   isFullTank: z.boolean(),
   receiptPhotoUrl: z.string().url().nullable().optional(),

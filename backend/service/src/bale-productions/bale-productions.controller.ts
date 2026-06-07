@@ -9,9 +9,7 @@ import type { RequestUser } from '../auth/auth.guard';
 
 @Controller('bale-productions')
 export class BaleProductionsController {
-  constructor(
-    private readonly baleProductionsService: BaleProductionsService,
-  ) {}
+  constructor(private readonly baleProductionsService: BaleProductionsService) {}
 
   @Get('stats')
   stats(
@@ -28,6 +26,19 @@ export class BaleProductionsController {
       dateFrom,
       dateTo,
       groupBy,
+    });
+  }
+
+  /** Bales per baler machine, with a nested per-operator breakdown. */
+  @Get('machine-stats')
+  machineStats(
+    @CurrentUser() user: RequestUser,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.baleProductionsService.getMachineOperatorProduction(user.organizationId, {
+      dateFrom,
+      dateTo,
     });
   }
 

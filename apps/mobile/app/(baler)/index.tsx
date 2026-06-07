@@ -9,24 +9,33 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { TaskList } from '@/components/shared/TaskList';
+import { ActiveFieldCard } from '@/components/shared/ActiveFieldCard';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { NotificationBell } from '@/components/shared/NotificationBell';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyTasks, type MyTask } from '@/hooks/useMyTasks';
+import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 import { useTheme } from '@/lib/theme';
 
 export default function BalerHomeScreen() {
   const { colors: themeColors } = useTheme();
   const { profile, isLoading } = useProfile();
   const { tasks, refetch: refetchTasks } = useMyTasks();
+  // Same "Teren activ" card the loader has — GPS presence + distance to field.
+  const parcel = useCurrentLoaderParcel();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
+    parcel.refresh();
     await refetchTasks();
     setRefreshing(false);
   };
+
+  const openParcel = useCallback((id: string) => {
+    router.push(`/(baler)/parcel/${id}`);
+  }, []);
 
   // T5 — tapping a baler task opens the parcel detail screen when a parcel is
   // attached; falls back to the existing map-focus behaviour for destination-
@@ -62,6 +71,7 @@ export default function BalerHomeScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        <ActiveFieldCard parcel={parcel} onOpenParcel={openParcel} />
         <TaskList tasks={tasks} role="baler_operator" onTaskPress={handleBalerTaskPress} />
       </ScrollView>
     </View>

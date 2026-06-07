@@ -38,9 +38,7 @@ export interface Trip extends Timestamps, SoftDelete {
   recallDecidedAt: string | null;
   loadingStartedAt: string | null;
   loadingCompletedAt: string | null;
-  departureOdometerKm: number | null;
   departureAt: string | null;
-  arrivalOdometerKm: number | null;
   arrivalAt: string | null;
   gpsDistanceKm: number | null;
   destinationName: string | null;
@@ -62,8 +60,6 @@ export interface Trip extends Timestamps, SoftDelete {
   completedAt: string | null;
   cancelledAt: string | null;
   cancellationReason: string | null;
-  odometerDistanceKm: number | null;
-  distanceDiscrepancyKm: number | null;
   fraudFlags: Record<string, unknown> | null;
   clientId: string | null;
   syncVersion: number;

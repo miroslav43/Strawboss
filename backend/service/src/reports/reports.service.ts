@@ -8,6 +8,7 @@ import type {
   ReportTimelinePoint,
   TruckDistanceRow,
   TruckDistanceSummary,
+  OperatorDistanceRow,
   ConnectedHoursGroupBy,
   ConnectedHoursReport,
   ConnectedHoursRow,
@@ -354,6 +355,7 @@ export class ReportsService {
       WITH pts AS (
         SELECT
           mle.machine_id,
+          mle.operator_id,
           (mle.recorded_at AT TIME ZONE 'UTC')::date AS day,
           mle.recorded_at,
           ST_SetSRID(ST_MakePoint(mle.lon, mle.lat), 4326) AS geom
@@ -390,7 +392,18 @@ export class ReportsService {
         m.registration_plate AS "registrationPlate",
         c.day::text AS "date",
         ROUND((SUM(c.leg_m) / 1000.0)::numeric, 2)::float AS "distanceKm",
-        COUNT(*)::int AS "pointCount"
+        COUNT(*)::int AS "pointCount",
+        (
+          SELECT u.full_name
+          FROM pts p2
+          LEFT JOIN users u ON u.id = p2.operator_id
+          WHERE p2.machine_id = c.machine_id
+            AND p2.day = c.day
+            AND p2.operator_id IS NOT NULL
+          GROUP BY u.full_name
+          ORDER BY COUNT(*) DESC
+          LIMIT 1
+        ) AS "operatorName"
       FROM clean c
       JOIN machines m ON m.id = c.machine_id
       GROUP BY c.machine_id, m.internal_code, m.registration_plate, c.day
@@ -401,6 +414,93 @@ export class ReportsService {
       machineId: r.machineId,
       machineCode: r.machineCode ?? null,
       registrationPlate: r.registrationPlate ?? null,
+      date: r.date,
+      distanceKm: numberOrZero(r.distanceKm),
+      pointCount: numberOrZero(r.pointCount),
+      operatorName: r.operatorName ?? null,
+    }));
+  }
+
+  /**
+   * Per-operator-per-day distance, derived from machine_location_events the same
+   * way as getTruckDistance but attributed to the driver (operator_id) instead
+   * of the truck. Trucks only; same noise suppression; range capped at 90 days.
+   */
+  async getOperatorDistance(
+    orgId: string | null,
+    params: { from: string; to: string; operatorId?: string },
+  ): Promise<OperatorDistanceRow[]> {
+    const fromDate = new Date(params.from);
+    const toDate = new Date(params.to);
+    if (Number.isNaN(fromDate.getTime())) {
+      throw new BadRequestException('Invalid "from" parameter');
+    }
+    if (Number.isNaN(toDate.getTime())) {
+      throw new BadRequestException('Invalid "to" parameter');
+    }
+    if (fromDate > toDate) {
+      throw new BadRequestException('"from" must be ≤ "to"');
+    }
+    const diffDays = Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000);
+    if (diffDays > 90) {
+      throw new BadRequestException('Range cannot exceed 90 days');
+    }
+
+    const orgFilter = orgId !== null ? sql`AND m.organization_id = ${orgId}::uuid` : sql``;
+    const operatorFilter = params.operatorId
+      ? sql`AND mle.operator_id = ${params.operatorId}::uuid`
+      : sql``;
+
+    const result = (await this.drizzleProvider.db.execute(sql`
+      WITH pts AS (
+        SELECT
+          mle.operator_id,
+          (mle.recorded_at AT TIME ZONE 'UTC')::date AS day,
+          mle.recorded_at,
+          ST_SetSRID(ST_MakePoint(mle.lon, mle.lat), 4326) AS geom
+        FROM machine_location_events mle
+        JOIN machines m ON m.id = mle.machine_id
+        WHERE m.deleted_at IS NULL
+          AND m.machine_type = 'truck'
+          AND mle.operator_id IS NOT NULL
+          ${orgFilter}
+          ${operatorFilter}
+          AND mle.recorded_at >= ${params.from}::date
+          AND mle.recorded_at <  (${params.to}::date + INTERVAL '1 day')
+      ),
+      pairwise AS (
+        SELECT
+          operator_id, day,
+          ST_DistanceSphere(LAG(geom) OVER w, geom) AS leg_m,
+          EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)) AS dt_s
+        FROM pts
+        WINDOW w AS (PARTITION BY operator_id, day ORDER BY recorded_at)
+      ),
+      clean AS (
+        SELECT operator_id, day,
+          CASE
+            WHEN leg_m IS NULL OR dt_s IS NULL OR dt_s = 0 THEN 0
+            WHEN leg_m > ${SEGMENT_CAP_M} THEN 0
+            WHEN (leg_m / dt_s) > ${SPEED_CAP_MS} THEN 0
+            ELSE leg_m
+          END AS leg_m
+        FROM pairwise
+      )
+      SELECT
+        c.operator_id AS "operatorId",
+        u.full_name AS "operatorName",
+        c.day::text AS "date",
+        ROUND((SUM(c.leg_m) / 1000.0)::numeric, 2)::float AS "distanceKm",
+        COUNT(*)::int AS "pointCount"
+      FROM clean c
+      LEFT JOIN users u ON u.id = c.operator_id
+      GROUP BY c.operator_id, u.full_name, c.day
+      ORDER BY c.day, "operatorName"
+    `)) as unknown as OperatorDistanceRow[];
+
+    return result.map((r) => ({
+      operatorId: r.operatorId,
+      operatorName: r.operatorName ?? null,
       date: r.date,
       distanceKm: numberOrZero(r.distanceKm),
       pointCount: numberOrZero(r.pointCount),

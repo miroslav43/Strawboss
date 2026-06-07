@@ -5,6 +5,7 @@ import { useGeofenceNotifications } from '@/hooks/useGeofenceNotifications';
 import { GeofenceOverlay } from '@/components/shared/GeofenceOverlay';
 import { useTripLoadedAlert } from '@/hooks/useTripLoadedAlert';
 import { TripLoadedOverlay } from '@/components/features/driver/TripLoadedOverlay';
+import { DriverDepotArrivalOverlay } from '@/components/features/driver/DriverDepotArrivalOverlay';
 import { TabBarIcon } from '@/components/ui/TabBarIcon';
 import { SyncQueueBannerHost } from '@/components/shared/SyncQueueBannerHost';
 import {
@@ -95,6 +96,9 @@ export default function DriverTabLayout() {
           onDismiss={() => void dismissTripAlert()}
           onDeparted={onDeparted}
         />
+        {/* Client-side GPS fallback for depot arrival — suppressed while the
+            push-driven deposit_entry overlay is already showing. */}
+        <DriverDepotArrivalOverlay suppressed={activeAlert?.type === 'deposit_entry'} />
         <SyncQueueBannerHost />
       </View>
     </SafeAreaProvider>

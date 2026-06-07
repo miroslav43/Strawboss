@@ -14,7 +14,6 @@ const MACHINE_COLS = sql`
   fuel_type                 AS "fuelType",
   tank_capacity_liters      AS "tankCapacityLiters",
   farmtrack_device_id       AS "farmtrackDeviceId",
-  current_odometer_km       AS "currentOdometerKm",
   current_hourmeter_hrs     AS "currentHourmeterHrs",
   is_active                 AS "isActive",
   max_bale_count            AS "maxBaleCount",
@@ -53,10 +52,7 @@ export class MachinesService {
   }
 
   async findById(id: string, orgId: string | null) {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`id = ${id}::uuid`,
-      sql`deleted_at IS NULL`,
-    ];
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`, sql`deleted_at IS NULL`];
     if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
@@ -75,7 +71,7 @@ export class MachinesService {
         organization_id,
         machine_type, registration_plate, internal_code, make, model, year,
         fuel_type, tank_capacity_liters, farmtrack_device_id,
-        current_odometer_km, current_hourmeter_hrs, is_active,
+        current_hourmeter_hrs, is_active,
         max_bale_count, tare_weight_kg, bale_weight_avg_kg,
         owner_company_name, owner_company_address, owner_company_cui
       ) VALUES (
@@ -87,7 +83,6 @@ export class MachinesService {
         ${dto.fuelType}::fuel_type,
         ${dto.tankCapacityLiters},
         ${dto.farmtrackDeviceId ?? null},
-        ${dto.currentOdometerKm ?? 0},
         ${dto.currentHourmeterHrs ?? 0},
         true,
         ${dto.maxBaleCount ?? null},
@@ -106,31 +101,28 @@ export class MachinesService {
 
     const setClauses: ReturnType<typeof sql>[] = [];
     const fieldMap: Record<string, string> = {
-      machineType:          'machine_type',
-      registrationPlate:    'registration_plate',
-      internalCode:         'internal_code',
-      make:                 'make',
-      model:                'model',
-      year:                 'year',
-      fuelType:             'fuel_type',
-      tankCapacityLiters:   'tank_capacity_liters',
-      farmtrackDeviceId:    'farmtrack_device_id',
-      currentOdometerKm:    'current_odometer_km',
-      currentHourmeterHrs:  'current_hourmeter_hrs',
-      isActive:             'is_active',
-      maxBaleCount:         'max_bale_count',
-      tareWeightKg:         'tare_weight_kg',
-      baleWeightAvgKg:      'bale_weight_avg_kg',
-      ownerCompanyName:     'owner_company_name',
-      ownerCompanyAddress:  'owner_company_address',
-      ownerCompanyCui:      'owner_company_cui',
+      machineType: 'machine_type',
+      registrationPlate: 'registration_plate',
+      internalCode: 'internal_code',
+      make: 'make',
+      model: 'model',
+      year: 'year',
+      fuelType: 'fuel_type',
+      tankCapacityLiters: 'tank_capacity_liters',
+      farmtrackDeviceId: 'farmtrack_device_id',
+      currentHourmeterHrs: 'current_hourmeter_hrs',
+      isActive: 'is_active',
+      maxBaleCount: 'max_bale_count',
+      tareWeightKg: 'tare_weight_kg',
+      baleWeightAvgKg: 'bale_weight_avg_kg',
+      ownerCompanyName: 'owner_company_name',
+      ownerCompanyAddress: 'owner_company_address',
+      ownerCompanyCui: 'owner_company_cui',
     };
 
     for (const [key, column] of Object.entries(fieldMap)) {
       if (key in dto) {
-        setClauses.push(
-          sql`${sql.raw(column)} = ${dto[key] as string | number | boolean | null}`,
-        );
+        setClauses.push(sql`${sql.raw(column)} = ${dto[key] as string | number | boolean | null}`);
       }
     }
 

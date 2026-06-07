@@ -15,8 +15,6 @@ export interface LocalTrip {
   loader_id: string | null;
   loader_operator_id: string | null;
   bale_count: number;
-  departure_odometer_km: number | null;
-  arrival_odometer_km: number | null;
   gross_weight_kg: number | null;
   tare_weight_kg: number | null;
   receiver_name: string | null;

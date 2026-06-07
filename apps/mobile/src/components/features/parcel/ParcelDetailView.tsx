@@ -24,6 +24,7 @@ import {
   ActivityIndicator,
   Pressable,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -77,6 +78,8 @@ interface ApiParcel {
   notes: string | null;
   harvestStatus: string | null;
   cropType: string | null;
+  /** GeoJSON Point `{ coordinates: [lon, lat] }` from ST_AsGeoJSON — used for nav. */
+  centroid?: unknown;
 }
 
 interface BaleAvailability {
@@ -137,14 +140,31 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
   });
 
   // Bales currently on the field (produced − loaded). Online-only; degrades to
-  // a dash when offline so it never blocks the rest of the screen.
+  // a dash when offline so it never blocks the rest of the screen. These are
+  // live counts, so never serve them stale — always refetch when the field is
+  // opened (staleTime 0 + refetchOnMount 'always'); the previous 30 s window
+  // could pin a cached 0 while production/loading data had already landed.
   const baleQuery = useQuery({
     queryKey: ['parcel-bale-availability', parcelId],
     queryFn: () =>
       mobileApiClient.get<BaleAvailability>(`/api/v1/parcels/${parcelId}/bale-availability`),
     enabled: !!parcelId,
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
+
+  // Pull-to-refresh: re-pull the parcel row + live bale counts on demand.
+  const [refreshing, setRefreshing] = useState(false);
+  const refetchApi = apiQuery.refetch;
+  const refetchBale = baleQuery.refetch;
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchApi(), refetchBale()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchApi, refetchBale]);
 
   const merged =
     apiQuery.data ??
@@ -162,17 +182,20 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
         } as ApiParcel)
       : null);
 
-  // Field coordinates for external navigation. Sourced from the offline parcel
-  // cache (the API summary doesn't carry geometry), so the button works even
-  // with no signal — Google Maps itself fetches the route once it opens.
+  // Field coordinates for external navigation. The live API row carries the
+  // centroid (ST_AsGeoJSON), so the button works whenever online — regardless
+  // of whether the map tab ever warmed the local cache. Fall back to the
+  // offline parcel cache so it still works with no signal.
   const navCoords = useMemo(() => {
+    const apiCoords = parseGeoPoint(apiQuery.data?.centroid ?? null);
+    if (apiCoords) return apiCoords;
     if (!localParcel?.centroid_json) return null;
     try {
       return parseGeoPoint(JSON.parse(localParcel.centroid_json));
     } catch {
       return null;
     }
-  }, [localParcel]);
+  }, [apiQuery.data, localParcel]);
 
   const handleNavigate = useCallback(async () => {
     if (!navCoords) return;
@@ -248,6 +271,9 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
       <ScrollView
         style={[styles.body, { backgroundColor: themeColors.background }]}
         contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#0A5C36" />
+        }
       >
         {/* T9.3 — code is the canonical display name */}
         <View style={[styles.card, styles.headerCard]}>

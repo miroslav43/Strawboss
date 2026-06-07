@@ -10,7 +10,6 @@ export interface LocalFuelLog {
   logged_at: string;
   fuel_type: string;
   quantity_liters: number;
-  odometer_km: number | null;
   hourmeter_hrs: number | null;
   is_full_tank: number;
   /** Local file URI captured from the camera/picker; kept for offline preview. */
@@ -30,10 +29,10 @@ export class FuelLogsRepo {
     await this.db.runAsync(
       `INSERT INTO fuel_logs (
         id, machine_id, operator_id, parcel_id, logged_at,
-        fuel_type, quantity_liters, odometer_km, hourmeter_hrs,
+        fuel_type, quantity_liters, hourmeter_hrs,
         is_full_tank, receipt_photo_uri, receipt_photo_url, notes,
         created_at, updated_at, server_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.machine_id,
@@ -42,7 +41,6 @@ export class FuelLogsRepo {
         data.logged_at,
         data.fuel_type,
         data.quantity_liters,
-        data.odometer_km,
         data.hourmeter_hrs,
         data.is_full_tank,
         data.receipt_photo_uri,
@@ -59,10 +57,10 @@ export class FuelLogsRepo {
     await this.db.runAsync(
       `INSERT INTO fuel_logs (
         id, machine_id, operator_id, parcel_id, logged_at,
-        fuel_type, quantity_liters, odometer_km, hourmeter_hrs,
+        fuel_type, quantity_liters, hourmeter_hrs,
         is_full_tank, receipt_photo_uri, receipt_photo_url, notes,
         created_at, updated_at, server_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         machine_id = excluded.machine_id,
         operator_id = excluded.operator_id,
@@ -70,7 +68,6 @@ export class FuelLogsRepo {
         logged_at = excluded.logged_at,
         fuel_type = excluded.fuel_type,
         quantity_liters = excluded.quantity_liters,
-        odometer_km = excluded.odometer_km,
         hourmeter_hrs = excluded.hourmeter_hrs,
         is_full_tank = excluded.is_full_tank,
         receipt_photo_uri = excluded.receipt_photo_uri,
@@ -86,7 +83,6 @@ export class FuelLogsRepo {
         data.logged_at,
         data.fuel_type,
         data.quantity_liters,
-        data.odometer_km,
         data.hourmeter_hrs,
         data.is_full_tank,
         data.receipt_photo_uri,

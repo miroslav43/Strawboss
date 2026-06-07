@@ -1,13 +1,11 @@
-import { setup, assign, createActor } from "xstate";
-import { TripStatus } from "@strawboss/types";
+import { setup, assign, createActor } from 'xstate';
+import { TripStatus } from '@strawboss/types';
 
 export interface TripMachineContext {
   tripId: string;
   status: TripStatus;
   baleCount: number;
   hasBaleLoads: boolean;
-  departureOdometerKm: number | null;
-  arrivalOdometerKm: number | null;
   grossWeightKg: number | null;
   receiverName: string | null;
   receiverSignature: string | null;
@@ -19,60 +17,58 @@ export interface TripMachineContext {
 }
 
 type StartLoadingEvent = {
-  type: "START_LOADING";
+  type: 'START_LOADING';
   loaderOperatorId: string;
   loaderId?: string;
 };
 
 type CompleteLoadingEvent = {
-  type: "COMPLETE_LOADING";
+  type: 'COMPLETE_LOADING';
   baleCount?: number;
 };
 
 type RegisterLoadEvent = {
-  type: "REGISTER_LOAD";
+  type: 'REGISTER_LOAD';
   baleCount?: number;
 };
 
 type DepartEvent = {
-  type: "DEPART";
-  departureOdometerKm: number;
+  type: 'DEPART';
   destinationName?: string;
 };
 
 type ArriveEvent = {
-  type: "ARRIVE";
-  arrivalOdometerKm: number;
+  type: 'ARRIVE';
 };
 
 type StartDeliveryEvent = {
-  type: "START_DELIVERY";
+  type: 'START_DELIVERY';
 };
 
 type ConfirmDeliveryEvent = {
-  type: "CONFIRM_DELIVERY";
+  type: 'CONFIRM_DELIVERY';
   grossWeightKg: number;
 };
 
 type CompleteEvent = {
-  type: "COMPLETE";
+  type: 'COMPLETE';
   receiverName: string;
   receiverSignature: string;
 };
 
 type CancelEvent = {
-  type: "CANCEL";
+  type: 'CANCEL';
   cancellationReason: string;
   cancelledAt?: string;
 };
 
 type DisputeEvent = {
-  type: "DISPUTE";
+  type: 'DISPUTE';
 };
 
 type ResolveDisputeEvent = {
-  type: "RESOLVE_DISPUTE";
-  resolvedTo: "delivered" | "completed";
+  type: 'RESOLVE_DISPUTE';
+  resolvedTo: 'delivered' | 'completed';
 };
 
 type TripEvent =
@@ -89,12 +85,10 @@ type TripEvent =
   | ResolveDisputeEvent;
 
 const defaultContext: TripMachineContext = {
-  tripId: "",
+  tripId: '',
   status: TripStatus.planned,
   baleCount: 0,
   hasBaleLoads: false,
-  departureOdometerKm: null,
-  arrivalOdometerKm: null,
   grossWeightKg: null,
   receiverName: null,
   receiverSignature: null,
@@ -114,55 +108,41 @@ export const tripMachine = setup({
   guards: {
     hasLoaderOperatorId: ({ event }) => {
       return (
-        event.type === "START_LOADING" &&
-        typeof event.loaderOperatorId === "string" &&
+        event.type === 'START_LOADING' &&
+        typeof event.loaderOperatorId === 'string' &&
         event.loaderOperatorId.length > 0
       );
     },
     hasBaleLoads: ({ context }) => {
       return context.hasBaleLoads === true;
     },
-    hasDepartureOdometer: ({ event }) => {
-      return (
-        event.type === "DEPART" &&
-        typeof event.departureOdometerKm === "number" &&
-        event.departureOdometerKm >= 0
-      );
-    },
-    hasArrivalOdometer: ({ event }) => {
-      return (
-        event.type === "ARRIVE" &&
-        typeof event.arrivalOdometerKm === "number" &&
-        event.arrivalOdometerKm >= 0
-      );
-    },
     hasGrossWeight: ({ event }) => {
       return (
-        event.type === "CONFIRM_DELIVERY" &&
-        typeof event.grossWeightKg === "number" &&
+        event.type === 'CONFIRM_DELIVERY' &&
+        typeof event.grossWeightKg === 'number' &&
         event.grossWeightKg > 0
       );
     },
     hasReceiverInfo: ({ event }) => {
       return (
-        event.type === "COMPLETE" &&
-        typeof event.receiverName === "string" &&
+        event.type === 'COMPLETE' &&
+        typeof event.receiverName === 'string' &&
         event.receiverName.length > 0 &&
-        typeof event.receiverSignature === "string" &&
+        typeof event.receiverSignature === 'string' &&
         event.receiverSignature.length > 0
       );
     },
     hasCancellationReason: ({ event }) => {
       return (
-        event.type === "CANCEL" &&
-        typeof event.cancellationReason === "string" &&
+        event.type === 'CANCEL' &&
+        typeof event.cancellationReason === 'string' &&
         event.cancellationReason.length > 0
       );
     },
   },
 }).createMachine({
-  id: "trip",
-  initial: "planned",
+  id: 'trip',
+  initial: 'planned',
   context: ({ input }) => ({
     ...defaultContext,
     ...input,
@@ -172,8 +152,8 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.planned }),
       on: {
         START_LOADING: {
-          target: "loading",
-          guard: "hasLoaderOperatorId",
+          target: 'loading',
+          guard: 'hasLoaderOperatorId',
           actions: assign({
             loaderOperatorId: ({ event }) => event.loaderOperatorId,
             loaderId: ({ event }) => event.loaderId ?? null,
@@ -181,15 +161,15 @@ export const tripMachine = setup({
           }),
         },
         REGISTER_LOAD: {
-          target: "loaded",
+          target: 'loaded',
           actions: assign({
             baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
             status: TripStatus.loaded,
           }),
         },
         CANCEL: {
-          target: "cancelled",
-          guard: "hasCancellationReason",
+          target: 'cancelled',
+          guard: 'hasCancellationReason',
           actions: assign({
             cancellationReason: ({ event }) => event.cancellationReason,
             cancelledAt: ({ event }) => event.cancelledAt ?? new Date().toISOString(),
@@ -202,23 +182,23 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.loading }),
       on: {
         COMPLETE_LOADING: {
-          target: "loaded",
-          guard: "hasBaleLoads",
+          target: 'loaded',
+          guard: 'hasBaleLoads',
           actions: assign({
             baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
             status: TripStatus.loaded,
           }),
         },
         REGISTER_LOAD: {
-          target: "loaded",
+          target: 'loaded',
           actions: assign({
             baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
             status: TripStatus.loaded,
           }),
         },
         CANCEL: {
-          target: "cancelled",
-          guard: "hasCancellationReason",
+          target: 'cancelled',
+          guard: 'hasCancellationReason',
           actions: assign({
             cancellationReason: ({ event }) => event.cancellationReason,
             cancelledAt: ({ event }) => event.cancelledAt ?? new Date().toISOString(),
@@ -231,18 +211,16 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.loaded }),
       on: {
         DEPART: {
-          target: "in_transit",
-          guard: "hasDepartureOdometer",
+          target: 'in_transit',
           actions: assign({
-            departureOdometerKm: ({ event }) => event.departureOdometerKm,
             destinationName: ({ context, event }) =>
               event.destinationName ?? context.destinationName,
             status: TripStatus.in_transit,
           }),
         },
         CANCEL: {
-          target: "cancelled",
-          guard: "hasCancellationReason",
+          target: 'cancelled',
+          guard: 'hasCancellationReason',
           actions: assign({
             cancellationReason: ({ event }) => event.cancellationReason,
             cancelledAt: ({ event }) => event.cancelledAt ?? new Date().toISOString(),
@@ -255,16 +233,14 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.in_transit }),
       on: {
         ARRIVE: {
-          target: "arrived",
-          guard: "hasArrivalOdometer",
+          target: 'arrived',
           actions: assign({
-            arrivalOdometerKm: ({ event }) => event.arrivalOdometerKm,
             status: TripStatus.arrived,
           }),
         },
         CANCEL: {
-          target: "cancelled",
-          guard: "hasCancellationReason",
+          target: 'cancelled',
+          guard: 'hasCancellationReason',
           actions: assign({
             cancellationReason: ({ event }) => event.cancellationReason,
             cancelledAt: ({ event }) => event.cancelledAt ?? new Date().toISOString(),
@@ -277,14 +253,14 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.arrived }),
       on: {
         START_DELIVERY: {
-          target: "delivering",
+          target: 'delivering',
           actions: assign({
             status: TripStatus.delivering,
           }),
         },
         CANCEL: {
-          target: "cancelled",
-          guard: "hasCancellationReason",
+          target: 'cancelled',
+          guard: 'hasCancellationReason',
           actions: assign({
             cancellationReason: ({ event }) => event.cancellationReason,
             cancelledAt: ({ event }) => event.cancelledAt ?? new Date().toISOString(),
@@ -297,16 +273,16 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.delivering }),
       on: {
         CONFIRM_DELIVERY: {
-          target: "delivered",
-          guard: "hasGrossWeight",
+          target: 'delivered',
+          guard: 'hasGrossWeight',
           actions: assign({
             grossWeightKg: ({ event }) => event.grossWeightKg,
             status: TripStatus.delivered,
           }),
         },
         CANCEL: {
-          target: "cancelled",
-          guard: "hasCancellationReason",
+          target: 'cancelled',
+          guard: 'hasCancellationReason',
           actions: assign({
             cancellationReason: ({ event }) => event.cancellationReason,
             cancelledAt: ({ event }) => event.cancelledAt ?? new Date().toISOString(),
@@ -319,8 +295,8 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.delivered }),
       on: {
         COMPLETE: {
-          target: "completed",
-          guard: "hasReceiverInfo",
+          target: 'completed',
+          guard: 'hasReceiverInfo',
           actions: assign({
             receiverName: ({ event }) => event.receiverName,
             receiverSignature: ({ event }) => event.receiverSignature,
@@ -328,14 +304,14 @@ export const tripMachine = setup({
           }),
         },
         DISPUTE: {
-          target: "disputed",
+          target: 'disputed',
           actions: assign({
             status: TripStatus.disputed,
           }),
         },
         CANCEL: {
-          target: "cancelled",
-          guard: "hasCancellationReason",
+          target: 'cancelled',
+          guard: 'hasCancellationReason',
           actions: assign({
             cancellationReason: ({ event }) => event.cancellationReason,
             cancelledAt: ({ event }) => event.cancelledAt ?? new Date().toISOString(),
@@ -348,7 +324,7 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.completed }),
       on: {
         DISPUTE: {
-          target: "disputed",
+          target: 'disputed',
           actions: assign({
             status: TripStatus.disputed,
           }),
@@ -357,22 +333,22 @@ export const tripMachine = setup({
     },
     cancelled: {
       entry: assign({ status: TripStatus.cancelled }),
-      type: "final",
+      type: 'final',
     },
     disputed: {
       entry: assign({ status: TripStatus.disputed }),
       on: {
         RESOLVE_DISPUTE: [
           {
-            target: "delivered",
-            guard: ({ event }) => event.resolvedTo === "delivered",
+            target: 'delivered',
+            guard: ({ event }) => event.resolvedTo === 'delivered',
             actions: assign({
               status: TripStatus.delivered,
             }),
           },
           {
-            target: "completed",
-            guard: ({ event }) => event.resolvedTo === "completed",
+            target: 'completed',
+            guard: ({ event }) => event.resolvedTo === 'completed',
             actions: assign({
               status: TripStatus.completed,
             }),
@@ -383,25 +359,23 @@ export const tripMachine = setup({
   },
 });
 
-export function createTripMachine(
-  initialContext: Partial<TripMachineContext>,
-) {
+export function createTripMachine(initialContext: Partial<TripMachineContext>) {
   return createActor(tripMachine, {
     input: initialContext,
   });
 }
 
 const transitionMap: Record<string, string[]> = {
-  [TripStatus.planned]: ["START_LOADING", "REGISTER_LOAD", "CANCEL"],
-  [TripStatus.loading]: ["COMPLETE_LOADING", "REGISTER_LOAD", "CANCEL"],
-  [TripStatus.loaded]: ["DEPART", "CANCEL"],
-  [TripStatus.in_transit]: ["ARRIVE", "CANCEL"],
-  [TripStatus.arrived]: ["START_DELIVERY", "CANCEL"],
-  [TripStatus.delivering]: ["CONFIRM_DELIVERY", "CANCEL"],
-  [TripStatus.delivered]: ["COMPLETE", "DISPUTE", "CANCEL"],
-  [TripStatus.completed]: ["DISPUTE"],
+  [TripStatus.planned]: ['START_LOADING', 'REGISTER_LOAD', 'CANCEL'],
+  [TripStatus.loading]: ['COMPLETE_LOADING', 'REGISTER_LOAD', 'CANCEL'],
+  [TripStatus.loaded]: ['DEPART', 'CANCEL'],
+  [TripStatus.in_transit]: ['ARRIVE', 'CANCEL'],
+  [TripStatus.arrived]: ['START_DELIVERY', 'CANCEL'],
+  [TripStatus.delivering]: ['CONFIRM_DELIVERY', 'CANCEL'],
+  [TripStatus.delivered]: ['COMPLETE', 'DISPUTE', 'CANCEL'],
+  [TripStatus.completed]: ['DISPUTE'],
   [TripStatus.cancelled]: [],
-  [TripStatus.disputed]: ["RESOLVE_DISPUTE"],
+  [TripStatus.disputed]: ['RESOLVE_DISPUTE'],
 };
 
 export function getAvailableTransitions(status: TripStatus): string[] {

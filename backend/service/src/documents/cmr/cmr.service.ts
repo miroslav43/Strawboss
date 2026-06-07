@@ -18,14 +18,10 @@ export class CmrService {
    * by headless Chromium. Only inline base64 PNG/JPEG data URLs are accepted —
    * any http/https/file URL is dropped to prevent SSRF / data exfiltration.
    */
-  private static readonly SIGNATURE_URL_PATTERN =
-    /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
+  private static readonly SIGNATURE_URL_PATTERN = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
 
   private sanitizeSignatureUrl(value: unknown): string | null {
-    return typeof value === 'string' &&
-      CmrService.SIGNATURE_URL_PATTERN.test(value)
-      ? value
-      : null;
+    return typeof value === 'string' && CmrService.SIGNATURE_URL_PATTERN.test(value) ? value : null;
   }
 
   constructor(
@@ -189,9 +185,9 @@ export class CmrService {
         tareWeightKg: isStage1 ? null : (truck?.tare_weight_kg ?? 'N/A'),
         weightTicketNumber: isStage1 ? null : (trip.weight_ticket_number ?? 'N/A'),
         deterioratedBalesCount: isStage1 ? null : (trip.deteriorated_bales_count ?? null),
-        departureOdometerKm: trip.departure_odometer_km ?? 'N/A',
-        arrivalOdometerKm: isStage1 ? null : (trip.arrival_odometer_km ?? 'N/A'),
-        odometerDistanceKm: isStage1 ? null : (trip.odometer_distance_km ?? 'N/A'),
+        // Route distance is GPS-derived (populated at arrive), so it only
+        // exists from stage-2 onward.
+        gpsDistanceKm: isStage1 ? null : (trip.gps_distance_km ?? 'N/A'),
         departureAt: trip.departure_at
           ? new Date(trip.departure_at as string).toLocaleString('ro-RO')
           : 'N/A',
@@ -235,9 +231,7 @@ export class CmrService {
         page.on('request', (req) => {
           const url = req.url();
           const allowed =
-            url.startsWith('data:') ||
-            url.startsWith('about:') ||
-            url.startsWith('blob:');
+            url.startsWith('data:') || url.startsWith('about:') || url.startsWith('blob:');
           (allowed ? req.continue() : req.abort()).catch(() => {});
         });
         await page.setContent(html, { waitUntil: 'networkidle0' });

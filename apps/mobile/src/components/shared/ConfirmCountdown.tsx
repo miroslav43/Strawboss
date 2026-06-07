@@ -25,6 +25,12 @@ interface ConfirmCountdownProps {
    * Should hide the overlay (set `visible` to false).
    */
   onCancel: () => void;
+  /**
+   * Optional label for an "accept now" button. When provided, an extra button
+   * is shown that fires `onConfirmed` immediately instead of waiting for the
+   * countdown to expire. Omit it to keep the cancel-only behaviour.
+   */
+  confirmLabel?: string;
 }
 
 /**
@@ -52,6 +58,7 @@ export function ConfirmCountdown({
   countdownSeconds = 3,
   onConfirmed,
   onCancel,
+  confirmLabel,
 }: ConfirmCountdownProps) {
   const [remaining, setRemaining] = useState(countdownSeconds);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -128,6 +135,16 @@ export function ConfirmCountdown({
     onCancel();
   }, [clearCountdown, onCancel]);
 
+  // "Accept now" — fire the action immediately instead of waiting out the
+  // countdown. Guarded so it can't double-fire with the expiry handler.
+  const handleConfirmNow = useCallback(() => {
+    if (hasConfirmedRef.current) return;
+    hasConfirmedRef.current = true;
+    clearCountdown();
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onConfirmed();
+  }, [clearCountdown, onConfirmed]);
+
   return (
     <Modal
       transparent
@@ -148,6 +165,19 @@ export function ConfirmCountdown({
           <Animated.Text style={[styles.countdownDigit, { transform: [{ scale: scaleAnim }] }]}>
             {remaining}
           </Animated.Text>
+
+          {confirmLabel ? (
+            <TouchableOpacity
+              style={styles.confirmButton}
+              onPress={handleConfirmNow}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={confirmLabel}
+            >
+              <MaterialCommunityIcons name="check-circle" size={20} color={colors.white} />
+              <Text style={styles.confirmText}>{confirmLabel}</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <TouchableOpacity
             style={styles.cancelButton}
@@ -212,6 +242,23 @@ const styles = StyleSheet.create({
     color: colors.primary,
     lineHeight: fontScale(80),
     marginBottom: 8,
+  },
+  confirmButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    marginTop: 8,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  confirmText: {
+    color: colors.white,
+    fontSize: 17,
+    fontWeight: '800',
   },
   cancelButton: {
     flexDirection: 'row',

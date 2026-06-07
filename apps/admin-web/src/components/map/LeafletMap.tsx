@@ -910,12 +910,21 @@ export function LeafletMap({
     if (!editingId || !editableLayerRef.current) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = editableLayerRef.current as any;
-    const geoJSON: GeoJSON.Feature =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (layer as any).toGeoJSON?.() ?? (layer as any).getLayers?.()[0]?.toGeoJSON();
+    // An existing boundary is loaded via L.geoJSON(), whose toGeoJSON() returns a
+    // FeatureCollection; a freshly-drawn polygon layer returns a single Feature.
+    // Pull the (edited) geometry out of whichever shape Leaflet hands back.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const gj = layer.toGeoJSON?.() as any;
+    const geometry: GeoJSON.Geometry | undefined =
+      gj?.type === 'FeatureCollection' ? gj?.features?.[0]?.geometry : gj?.geometry;
+
+    if (!geometry) {
+      setSaveError(t('leaflet.saveBoundaryFailed'));
+      return;
+    }
 
     updateBoundary.mutate(
-      { id: editingId, boundary: geoJSON.geometry },
+      { id: editingId, boundary: geometry },
       {
         onSuccess: () => {
           setEditingId(null);

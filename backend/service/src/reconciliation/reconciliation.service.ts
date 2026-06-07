@@ -2,10 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { reconcileBales, reconcileFuel } from '@strawboss/domain';
-import type {
-  BaleReconciliationResult,
-  FuelReconciliationResult,
-} from '@strawboss/domain';
+import type { BaleReconciliationResult, FuelReconciliationResult } from '@strawboss/domain';
 
 @Injectable()
 export class ReconciliationService {
@@ -14,9 +11,7 @@ export class ReconciliationService {
   /**
    * Reconcile bale counts for a parcel: produced vs loaded vs delivered.
    */
-  async reconcileBalesForParcel(
-    parcelId: string,
-  ): Promise<BaleReconciliationResult> {
+  async reconcileBalesForParcel(parcelId: string): Promise<BaleReconciliationResult> {
     // Count bales produced (from bale_productions table)
     const producedResult = await this.drizzleProvider.db.execute(
       sql`SELECT COALESCE(SUM(bale_count), 0)::int AS total
@@ -55,12 +50,12 @@ export class ReconciliationService {
   /**
    * Reconcile fuel usage for a machine: actual vs expected consumption.
    */
-  async reconcileFuelForMachine(
-    machineId: string,
-  ): Promise<FuelReconciliationResult> {
-    // Total distance from completed trips using this machine as truck
+  async reconcileFuelForMachine(machineId: string): Promise<FuelReconciliationResult> {
+    // Total distance from completed trips using this machine as truck.
+    // Distance is the GPS-derived route length (gps_distance_km), populated at
+    // arrive and recomputed by recomputeRecentTripDistances() below.
     const distanceResult = await this.drizzleProvider.db.execute(
-      sql`SELECT COALESCE(SUM(odometer_distance_km), 0)::numeric AS total_km
+      sql`SELECT COALESCE(SUM(gps_distance_km), 0)::numeric AS total_km
           FROM trips
           WHERE truck_id = ${machineId}
             AND status IN ('delivered', 'completed')
@@ -87,8 +82,7 @@ export class ReconciliationService {
       fuel_consumption_l_per_km: number | null;
     }[];
     // Default expected consumption: 0.35 L/km for a truck
-    const expectedConsumptionLPerKm =
-      Number(machineRows[0]?.fuel_consumption_l_per_km) || 0.35;
+    const expectedConsumptionLPerKm = Number(machineRows[0]?.fuel_consumption_l_per_km) || 0.35;
 
     return reconcileFuel({
       machineId,
@@ -97,5 +91,42 @@ export class ReconciliationService {
       expectedConsumptionLPerKm,
       tolerancePercent: 20,
     });
+  }
+
+  /**
+   * Recompute gps_distance_km for trips that arrived recently, so the route
+   * length picks up GPS pings that synced late from the driver's phone after
+   * the arrive transition. Mirrors the pairwise ST_DistanceSphere computation
+   * done inline in TripsService.arrive().
+   *
+   * Returns the number of trips updated.
+   */
+  async recomputeRecentTripDistances(): Promise<number> {
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE trips AS t SET
+        gps_distance_km = (
+          SELECT ROUND((COALESCE(SUM(leg_m), 0) / 1000.0)::numeric, 2)
+          FROM (
+            SELECT ST_DistanceSphere(
+                     LAG(geom) OVER (ORDER BY recorded_at),
+                     geom
+                   ) AS leg_m
+            FROM (
+              SELECT recorded_at,
+                     ST_SetSRID(ST_MakePoint(lon, lat), 4326) AS geom
+              FROM machine_location_events
+              WHERE machine_id = t.truck_id
+                AND recorded_at >= t.departure_at
+                AND recorded_at <= COALESCE(t.arrival_at, NOW())
+            ) pts
+          ) pairwise
+        ),
+        updated_at = NOW()
+      WHERE t.arrival_at >= NOW() - INTERVAL '2 hours'
+        AND t.departure_at IS NOT NULL
+        AND t.truck_id IS NOT NULL
+        AND t.deleted_at IS NULL`,
+    );
+    return (result as unknown as unknown[]).length;
   }
 }

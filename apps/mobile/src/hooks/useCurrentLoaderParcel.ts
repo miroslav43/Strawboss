@@ -38,6 +38,13 @@ export interface CurrentLoaderParcel {
   refresh: () => void;
 }
 
+/**
+ * Role-agnostic alias: the resolution logic depends only on the operator's
+ * assigned machine + tasks + GPS, so the baler home reuses the same shape via
+ * the shared ActiveFieldCard. Prefer this name in role-neutral code.
+ */
+export type CurrentFieldParcel = CurrentLoaderParcel;
+
 /** Distance/inside check of a GPS fix against a resolved parcel's boundary. */
 function computePresence(
   parcelId: string | null,

@@ -30,6 +30,9 @@ interface ActiveAssignment {
   status: string;
   tripId: string | null;
   tripStatus: string | null;
+  /** Driver on the linked trip — used as the push recipient for truck tasks,
+   *  whose task_assignments often have no assigned_user_id. */
+  tripDriverId: string | null;
   organizationId: string | null;
 }
 
@@ -80,6 +83,7 @@ export class GeofenceService {
         ta.status,
         ta.trip_id       AS "tripId",
         t.status         AS "tripStatus",
+        t.driver_id      AS "tripDriverId",
         ta.organization_id AS "organizationId"
       FROM task_assignments ta
       JOIN machines m ON m.id = ta.machine_id
@@ -185,12 +189,22 @@ export class GeofenceService {
             pos.lon,
           );
 
+          // Push recipient. Truck task_assignments often have no
+          // assigned_user_id (the driver lives on the trip, not the task), so a
+          // gate on assigned_user_id silently dropped every truck push. Fall
+          // back to the trip's driver for trucks; baler/loader keep their own
+          // assigned operator (unchanged).
+          const recipientId =
+            assignment.machineType === 'truck'
+              ? (assignment.assignedUserId ?? assignment.tripDriverId)
+              : assignment.assignedUserId;
+
           // No machine auto-flips to in_progress on a geofence enter anymore.
           // Every machine type now confirms the entry overlay first
           // (POST /notifications/confirm-parcel-entry) — so a mere drive-through
           // does not silently start the task (audit #2). The push below drives
           // that confirmation overlay, with copy tailored per machine type.
-          if (geofenceType === 'parcel' && assignment.assignedUserId && assignment.parcelId) {
+          if (geofenceType === 'parcel' && recipientId && assignment.parcelId) {
             const parcelRef = {
               id: assignment.parcelId,
               code: assignment.parcelCode ?? assignment.parcelName ?? '—',
@@ -199,20 +213,20 @@ export class GeofenceService {
             if (assignment.machineType === 'baler') {
               // T6 enter — rich 10 s auto-confirm overlay with crop context.
               await this.notificationsService.sendBalerFieldEntryConfirm(
-                assignment.assignedUserId,
+                recipientId,
                 assignment.assignmentId,
                 { ...parcelRef, cropType: assignment.cropType },
               );
             } else if (assignment.machineType === 'loader') {
               await this.notificationsService.sendFieldEntryConfirm(
-                assignment.assignedUserId,
+                recipientId,
                 assignment.assignmentId,
                 parcelRef,
                 'load',
               );
             } else if (assignment.machineType === 'truck') {
               await this.notificationsService.sendFieldEntryConfirm(
-                assignment.assignedUserId,
+                recipientId,
                 assignment.assignmentId,
                 parcelRef,
                 'truck',
@@ -238,10 +252,12 @@ export class GeofenceService {
             );
           }
 
-          // Notify driver when truck enters deposit geofence
-          if (geofenceType === 'deposit' && assignment.assignedUserId) {
+          // Notify driver when truck enters deposit geofence. Uses the
+          // trip-driver fallback so it fires even when the truck task has no
+          // assigned_user_id (the common case — this was the silent gap).
+          if (geofenceType === 'deposit' && recipientId) {
             await this.notificationsService.sendPush(
-              assignment.assignedUserId,
+              recipientId,
               'Ai ajuns la depozit',
               'Confirmă sosirea ca să închei cursa.',
               {
@@ -317,9 +333,9 @@ export class GeofenceService {
 
           // Truck exit from the source parcel — if the trip is loaded and DEPART
           // is a valid transition, prompt the driver to start the departure flow
-          // (audit #3). We never auto-fire DEPART: it needs the real odometer +
-          // driver signature (CMR / fuel anti-fraud), which the driver supplies
-          // in the departure-flow screen this push routes to.
+          // (audit #3). We never auto-fire DEPART: it needs the driver signature
+          // (CMR), which the driver supplies in the departure-flow screen this
+          // push routes to.
           if (
             geofenceType === 'parcel' &&
             assignment.machineType === 'truck' &&

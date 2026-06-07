@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { BaleProduction } from '@strawboss/types';
+import type { BaleProduction, MachineProductionReport } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
@@ -59,6 +59,37 @@ export function useBaleProductionStats(
   return useQuery({
     queryKey: queryKeys.baleProductions.stats(filters as Record<string, unknown> | undefined),
     queryFn: () => client.get<Record<string, unknown>[]>(url),
+    enabled: options?.enabled,
+  });
+}
+
+export interface MachineProductionFilters {
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/**
+ * Bales produced per baler machine, each with a nested per-operator breakdown.
+ * Powers the admin "Producție / mașină" grouped-expandable report.
+ */
+export function useMachineOperatorProduction(
+  client: ApiClient,
+  filters?: MachineProductionFilters,
+  options?: BaleProductionStatsOptions,
+) {
+  const params = new URLSearchParams();
+  if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
+  if (filters?.dateTo) params.set('dateTo', filters.dateTo);
+  const qs = params.toString();
+  const url = qs
+    ? `/api/v1/bale-productions/machine-stats?${qs}`
+    : '/api/v1/bale-productions/machine-stats';
+
+  return useQuery({
+    queryKey: queryKeys.baleProductions.machineStats(
+      filters as Record<string, unknown> | undefined,
+    ),
+    queryFn: () => client.get<MachineProductionReport[]>(url),
     enabled: options?.enabled,
   });
 }

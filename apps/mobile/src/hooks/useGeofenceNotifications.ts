@@ -188,8 +188,8 @@ export function useGeofenceNotifications() {
 
     /**
      * Routes a `depart_prompt` push (truck left the source field with a loaded
-     * trip) to the departure-flow screen, where the driver enters the real
-     * odometer + signature to start the trip. Used by both listeners.
+     * trip) to the departure-flow screen, where the driver signs to start the
+     * trip. Used by both listeners.
      */
     const routeToDepartureFlow = (data: NotificationData) => {
       if (!data.tripId) return;

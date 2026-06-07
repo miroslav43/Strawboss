@@ -1,16 +1,5 @@
 import { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  Image,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
@@ -25,13 +14,13 @@ import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
 import { scale } from '@/utils/responsive';
 
-type Step = 'odometer' | 'signature';
-
+/**
+ * Departure flow — the driver signs to start the trip. Trip distance is derived
+ * from the GPS track between depart and arrive, so no odometer is collected.
+ */
 export default function DepartureFlowScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
 
-  const [step, setStep] = useState<Step>('odometer');
-  const [odometerStr, setOdometerStr] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [pendingSync, setPendingSync] = useState(false);
   // FM-6: countdown state
@@ -40,17 +29,6 @@ export default function DepartureFlowScreen() {
 
   const { enqueueTransition } = useTripTransition();
   const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
-
-  const odometerKm = parseFloat(odometerStr);
-  const odometerValid = !isNaN(odometerKm) && odometerKm >= 0;
-
-  const handleOdometerNext = useCallback(() => {
-    if (!odometerValid) {
-      Alert.alert('Eroare', 'Introduceți kilometrajul de plecare.');
-      return;
-    }
-    setStep('signature');
-  }, [odometerValid]);
 
   // Sign-with-specimen: trigger countdown using the saved specimen URL instead
   // of capturing a fresh canvas signature.
@@ -103,11 +81,9 @@ export default function DepartureFlowScreen() {
         currentStatus,
         transition: 'depart',
         body: {
-          departureOdometerKm: odometerKm,
           driverSignature: signatureValue,
         },
         localMeta: {
-          departure_odometer_km: odometerKm,
           departure_at: new Date().toISOString(),
         },
       });
@@ -126,98 +102,56 @@ export default function DepartureFlowScreen() {
         'Eroare',
         err instanceof Error ? err.message : 'Nu s-a putut porni cursa. Încearcă din nou.',
       );
-      setStep('odometer');
     } finally {
       setSubmitting(false);
     }
-  }, [tripId, odometerKm, enqueueTransition, pendingSignature]);
-
-  if (step === 'signature') {
-    return (
-      <View style={styles.outer}>
-        <ScreenHeader title="Semnătură șofer" />
-        <ScrollView
-          style={[styles.body, { flex: 1 }]}
-          contentContainerStyle={styles.signatureContent}
-        >
-          <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="counter" size={18} color={colors.primary} />
-            <Text style={styles.infoText} numberOfLines={1}>
-              Km plecare: <Text style={styles.infoValue}>{odometerStr}</Text>
-            </Text>
-          </View>
-          {pendingSync && (
-            <View style={styles.badgeRow}>
-              <PendingTransitionBadge />
-            </View>
-          )}
-          <Text style={styles.sigHint}>
-            Confirmă plecarea folosind specimenul de semnătură salvat.
-          </Text>
-          <View style={styles.specimenCard}>
-            <Text style={styles.specimenLabel}>Specimen semnătură</Text>
-            {signatureSpecimenUrl ? (
-              <Image
-                source={{ uri: resolveApiUrl(signatureSpecimenUrl) }}
-                style={styles.specimenImage}
-                resizeMode="contain"
-              />
-            ) : (
-              <Text style={styles.specimenMissing}>Nu ai încă un specimen.</Text>
-            )}
-          </View>
-          <BigButton
-            title="Semnează cu specimen"
-            onPress={handleSignWithSpecimen}
-            disabled={submitting}
-          />
-          {submitting ? null : (
-            <BigButton title="Înapoi" onPress={() => setStep('odometer')} variant="outline" />
-          )}
-        </ScrollView>
-        {/* FM-6: countdown overlay — shown after specimen is selected */}
-        <ConfirmCountdown
-          visible={countdownVisible}
-          actionLabel="Plecare din câmp"
-          countdownSeconds={3}
-          onConfirmed={() => void executeDepart()}
-          onCancel={handleCountdownCancel}
-        />
-      </View>
-    );
-  }
+  }, [tripId, enqueueTransition, pendingSignature]);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.outer}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScreenHeader title="Plecare din câmp" />
-      <ScrollView style={styles.body} contentContainerStyle={styles.content}>
-        <View style={styles.card}>
-          <MaterialCommunityIcons name="counter" size={24} color={colors.primary} />
-          <Text style={styles.cardTitle}>Kilometraj la plecare</Text>
-          <Text style={styles.cardHint}>Introduceți km afișați pe bord în momentul plecării.</Text>
-          <TextInput
-            style={styles.input}
-            value={odometerStr}
-            onChangeText={setOdometerStr}
-            keyboardType="decimal-pad"
-            placeholder="ex: 123456"
-            placeholderTextColor="#9CA3AF"
-            returnKeyType="next"
-            onSubmitEditing={handleOdometerNext}
-          />
+    <View style={styles.outer}>
+      <ScreenHeader title="Semnătură șofer" />
+      <ScrollView
+        style={[styles.body, { flex: 1 }]}
+        contentContainerStyle={styles.signatureContent}
+      >
+        {pendingSync && (
+          <View style={styles.badgeRow}>
+            <PendingTransitionBadge />
+          </View>
+        )}
+        <Text style={styles.sigHint}>
+          Confirmă plecarea folosind specimenul de semnătură salvat.
+        </Text>
+        <View style={styles.specimenCard}>
+          <Text style={styles.specimenLabel}>Specimen semnătură</Text>
+          {signatureSpecimenUrl ? (
+            <Image
+              source={{ uri: resolveApiUrl(signatureSpecimenUrl) }}
+              style={styles.specimenImage}
+              resizeMode="contain"
+            />
+          ) : (
+            <Text style={styles.specimenMissing}>Nu ai încă un specimen.</Text>
+          )}
         </View>
-
         <BigButton
-          title="Continuă — Semnează"
-          onPress={handleOdometerNext}
-          disabled={!odometerValid}
+          title="Semnează cu specimen"
+          onPress={handleSignWithSpecimen}
+          disabled={submitting}
         />
-        <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
+        {submitting ? null : (
+          <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
+        )}
       </ScrollView>
-    </KeyboardAvoidingView>
+      {/* FM-6: countdown overlay — shown after specimen is selected */}
+      <ConfirmCountdown
+        visible={countdownVisible}
+        actionLabel="Plecare din câmp"
+        countdownSeconds={3}
+        onConfirmed={() => void executeDepart()}
+        onCancel={handleCountdownCancel}
+      />
+    </View>
   );
 }
 
@@ -229,42 +163,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
-  content: { padding: 16, gap: 12 },
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    gap: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  cardTitle: { fontSize: 17, fontWeight: '700', color: '#0A5C36' },
-  cardHint: { fontSize: 13, color: '#5D4037' },
-  input: {
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0A5C36',
-    marginTop: 4,
-    backgroundColor: '#F9FFF9',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 16,
-    paddingBottom: 4,
-  },
   badgeRow: {
     paddingHorizontal: 16,
     paddingBottom: 4,
   },
-  infoText: { fontSize: 15, color: '#5D4037' },
-  infoValue: { fontWeight: '700', color: '#0A5C36' },
   sigHint: { fontSize: 14, color: '#5D4037', paddingHorizontal: 16, paddingBottom: 8 },
   signatureContent: { padding: 16, gap: 12 },
   specimenCard: {

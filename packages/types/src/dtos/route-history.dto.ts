@@ -53,6 +53,24 @@ export interface TruckDistanceRow {
   distanceKm: number;
   /** Number of GPS samples used. */
   pointCount: number;
+  /** Driver who logged the most GPS points that day (null if unattributed). */
+  operatorName?: string | null;
+}
+
+/**
+ * One (operator, day) row from the per-operator GPS-distance report.
+ * Returned by GET /api/v1/reports/operator-distance. Distance is attributed to
+ * the driver via machine_location_events.operator_id (trucks only).
+ */
+export interface OperatorDistanceRow {
+  operatorId: string;
+  operatorName: string | null;
+  /** ISO date `YYYY-MM-DD` (UTC partition). */
+  date: string;
+  /** Kilometres driven that day, rounded to two decimals. Noise-capped. */
+  distanceKm: number;
+  /** Number of GPS samples used. */
+  pointCount: number;
 }
 
 /**

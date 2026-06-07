@@ -61,6 +61,14 @@ interface DeliveryDraft {
  * FM-1: Enqueue a single trip transition to the sync queue.
  * Idempotency key: `trip_transition_${tripId}_${transition}` — stable across
  * retries, so a crash between two transitions doesn't create duplicate entries.
+ *
+ * Uses `enqueueOrUpdate` (not `enqueue`): the key is stable, so re-running the
+ * confirm flow — after a resumed draft, a retry, or a server-reverted optimistic
+ * status — must NOT hit the `idempotency_key` UNIQUE constraint. A plain INSERT
+ * would throw "UNIQUE constraint failed" and leave the driver unable to finish
+ * the delivery. enqueueOrUpdate refreshes a pending/failed row and leaves an
+ * in-flight/completed one untouched (already sent), which is exactly the
+ * idempotent behaviour we want here.
  */
 async function enqueueTripTransition(
   tripId: string,
@@ -70,7 +78,7 @@ async function enqueueTripTransition(
   const db = await getDatabase();
   const syncQueueRepo = new SyncQueueRepo(db);
   const payload: TripTransitionPayload = { transition, tripId, body };
-  await syncQueueRepo.enqueue({
+  await syncQueueRepo.enqueueOrUpdate({
     entityType: 'trip_transition',
     entityId: tripId,
     action: 'update',

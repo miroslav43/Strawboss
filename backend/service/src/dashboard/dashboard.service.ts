@@ -30,10 +30,7 @@ export class DashboardService {
   }
 
   /** Filter logged_at on fuel_logs / consumable_logs (mobile sends full-day Z on list APIs). */
-  private loggedAtFilter(
-    range: DashboardDateRange | undefined,
-    alias: 'fl' | 'cl',
-  ) {
+  private loggedAtFilter(range: DashboardDateRange | undefined, alias: 'fl' | 'cl') {
     const parts: ReturnType<typeof sql>[] = [];
     if (range?.dateFrom) {
       parts.push(
@@ -50,9 +47,7 @@ export class DashboardService {
   }
 
   async getOverview(orgId: string | null): Promise<DashboardOverview> {
-    const orgFilter = orgId !== null
-      ? sql` AND organization_id = ${orgId}::uuid`
-      : sql``;
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
@@ -92,11 +87,12 @@ export class DashboardService {
     };
   }
 
-  async getProduction(orgId: string | null, range?: DashboardDateRange): Promise<ProductionReport[]> {
+  async getProduction(
+    orgId: string | null,
+    range?: DashboardDateRange,
+  ): Promise<ProductionReport[]> {
     const prodExtra = this.productionDateFilter(range);
-    const orgFilter = orgId !== null
-      ? sql` AND organization_id = ${orgId}::uuid`
-      : sql``;
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
@@ -131,8 +127,7 @@ export class DashboardService {
     return rows.map((row) => {
       const produced = (row.produced as number) ?? 0;
       const delivered = (row.delivered as number) ?? 0;
-      const lossPercentage =
-        produced > 0 ? ((produced - delivered) / produced) * 100 : 0;
+      const lossPercentage = produced > 0 ? ((produced - delivered) / produced) * 100 : 0;
 
       return {
         parcelId: row.parcel_id as string,
@@ -150,9 +145,7 @@ export class DashboardService {
     const consMachineDates = this.loggedAtFilter(range, 'cl');
     const fuelParcelDates = this.loggedAtFilter(range, 'fl');
     const consParcelDates = this.loggedAtFilter(range, 'cl');
-    const orgFilter = orgId !== null
-      ? sql` AND organization_id = ${orgId}::uuid`
-      : sql``;
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
 
     // Costs by machine (machines has no 'name' column — build display name from available fields)
     const machineResult = await this.drizzleProvider.db.execute(sql`
@@ -248,9 +241,7 @@ export class DashboardService {
   }
 
   async getTrending(orgId: string | null) {
-    const orgFilter = orgId !== null
-      ? sql` AND organization_id = ${orgId}::uuid`
-      : sql``;
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
 
     const result = await this.drizzleProvider.db.execute(sql`
       WITH dates AS (
@@ -279,18 +270,13 @@ export class DashboardService {
   }
 
   async getAntiFraud(orgId: string | null): Promise<AntiFraudReport> {
-    const orgFilter = orgId !== null
-      ? sql` AND organization_id = ${orgId}::uuid`
-      : sql``;
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         (SELECT COUNT(*)::int FROM alerts
          WHERE category = 'fraud' ${orgFilter}
         ) AS flagged_trips,
-        (SELECT COUNT(*)::int FROM alerts
-         WHERE title LIKE '%Odometer%' ${orgFilter}
-        ) AS odometer_anomalies,
         (SELECT COUNT(*)::int FROM alerts
          WHERE title LIKE '%Fuel%' ${orgFilter}
         ) AS fuel_anomalies,
@@ -313,7 +299,6 @@ export class DashboardService {
 
     return {
       flaggedTrips: (row.flagged_trips as number) ?? 0,
-      odometerAnomalies: (row.odometer_anomalies as number) ?? 0,
       fuelAnomalies: (row.fuel_anomalies as number) ?? 0,
       timingAnomalies: (row.timing_anomalies as number) ?? 0,
       recentAlerts: recentAlerts as unknown as AntiFraudReport['recentAlerts'],

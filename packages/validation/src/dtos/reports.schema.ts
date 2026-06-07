@@ -74,6 +74,27 @@ export const truckDistanceQuerySchema = z
 export type TruckDistanceQuery = z.infer<typeof truckDistanceQuerySchema>;
 
 /**
+ * Per-operator GPS-distance report query. Mirrors the truck-distance query but
+ * narrows by driver instead of machine. `from`/`to` are inclusive ISO dates,
+ * capped at 90 days to match the server-side limit.
+ */
+export const operatorDistanceQuerySchema = z
+  .object({
+    from: dateOnlySchema,
+    to: dateOnlySchema,
+    operatorId: uuidSchema.optional(),
+  })
+  .refine(
+    (d) => {
+      const diff = (Date.parse(d.to) - Date.parse(d.from)) / 86_400_000;
+      return diff >= 0 && diff <= 90;
+    },
+    { message: 'Range must be 0–90 days with from ≤ to' },
+  );
+
+export type OperatorDistanceQuery = z.infer<typeof operatorDistanceQuerySchema>;
+
+/**
  * Plan A T4 — connected-hours admin report query.
  *
  * `from` and `to` are inclusive ISO dates. `groupBy` picks the bucket size

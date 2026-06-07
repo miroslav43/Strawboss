@@ -18,6 +18,7 @@ import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { useSync } from '@/hooks/useSync';
+import { useTripTransition } from '@/hooks/useTripTransition';
 import { useMyTasks } from '@/hooks/useMyTasks';
 import { useRelatedMachines } from '@/hooks/useRelatedMachines';
 import { useAuthStore } from '@/stores/auth-store';
@@ -38,6 +39,7 @@ export default function TripDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { triggerSync } = useSync();
+  const { enqueueTransition } = useTripTransition();
   const { tasks } = useMyTasks();
   const { data: relatedMachines } = useRelatedMachines();
   // Only the driver runs the trip workflow. Loaders, balers and others reach
@@ -135,6 +137,32 @@ export default function TripDetailScreen() {
     },
     [tripId, loadTrip, triggerSync],
   );
+
+  // Arrival is a single-tap confirm — distance comes from the GPS track, so no
+  // odometer screen. Optimistically applies "arrived" locally and enqueues the
+  // transition (offline-first, with a pending badge until it syncs).
+  const handleArrive = useCallback(async () => {
+    if (!trip) return;
+    setActionLoading(true);
+    try {
+      await enqueueTransition({
+        tripId: trip.id,
+        currentStatus: trip.status,
+        transition: 'arrive',
+        body: {},
+        localMeta: { arrival_at: new Date().toISOString() },
+      });
+      await loadTrip();
+    } catch (err) {
+      mobileLogger.error('Trip detail: arrive failed', {
+        tripId: trip.id,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
+      Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu am putut marca sosirea.');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [trip, enqueueTransition, loadTrip]);
 
   if (loading) {
     return (
@@ -250,7 +278,7 @@ export default function TripDetailScreen() {
                 (trip.destination_name != null || trip.destination_id != null) && (
                   <ActionCard
                     title="Plecare"
-                    subtitle="Introduceți km și semnați pentru a pleca"
+                    subtitle="Semnați pentru a pleca"
                     icon={
                       <MaterialCommunityIcons
                         name="arrow-right-bold"
@@ -271,16 +299,12 @@ export default function TripDetailScreen() {
               {trip.status === 'in_transit' && (
                 <ActionCard
                   title="Sosit la destinație"
-                  subtitle="Introduceți km la sosire"
+                  subtitle="Confirmați sosirea"
                   icon={
                     <MaterialCommunityIcons name="map-marker" size={24} color={colors.primary} />
                   }
-                  onPress={() =>
-                    router.push({
-                      pathname: '/driver-ops/arrival-flow',
-                      params: { tripId: trip.id },
-                    })
-                  }
+                  onPress={() => void handleArrive()}
+                  disabled={actionLoading}
                   variant="active"
                 />
               )}

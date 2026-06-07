@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { alertSchema } from "../schemas/alert.schema.js";
+import { z } from 'zod';
+import { alertSchema } from '../schemas/alert.schema.js';
 
 export const dashboardOverviewSchema = z.object({
   activeTrips: z.number().int().nonnegative(),
@@ -22,7 +22,7 @@ export const productionReportSchema = z.object({
 export const costReportSchema = z.object({
   entityId: z.string().uuid(),
   entityName: z.string(),
-  entityType: z.enum(["parcel", "machine"]),
+  entityType: z.enum(['parcel', 'machine']),
   fuelCost: z.number().nonnegative(),
   consumableCost: z.number().nonnegative(),
   totalCost: z.number().nonnegative(),
@@ -30,7 +30,6 @@ export const costReportSchema = z.object({
 
 export const antiFraudReportSchema = z.object({
   flaggedTrips: z.number().int().nonnegative(),
-  odometerAnomalies: z.number().int().nonnegative(),
   fuelAnomalies: z.number().int().nonnegative(),
   timingAnomalies: z.number().int().nonnegative(),
   recentAlerts: z.array(alertSchema),

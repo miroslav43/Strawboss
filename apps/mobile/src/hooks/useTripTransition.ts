@@ -42,11 +42,11 @@ export interface EnqueueTransitionOptions {
   currentStatus: string;
   /** Transition name matching the REST path segment (e.g. "depart", "arrive"). */
   transition: string;
-  /** Body to send to the endpoint (odometer, weights, signatures, …). */
+  /** Body to send to the endpoint (weights, signatures, …). */
   body: Record<string, unknown>;
   /**
    * Local SQLite fields to optimistically update alongside the status change.
-   * e.g. { departure_odometer_km: 12345, departure_at: new Date().toISOString() }
+   * e.g. { departure_at: new Date().toISOString() }
    */
   localMeta?: Partial<import('../db/trips-repo').LocalTrip>;
 }

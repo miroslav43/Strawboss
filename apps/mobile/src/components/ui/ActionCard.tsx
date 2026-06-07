@@ -10,6 +10,7 @@ interface ActionCardProps {
   icon: React.ReactNode;
   onPress: () => void;
   variant?: 'default' | 'active' | 'completed';
+  disabled?: boolean;
 }
 
 export function ActionCard({
@@ -18,6 +19,7 @@ export function ActionCard({
   icon,
   onPress,
   variant = 'default',
+  disabled = false,
 }: ActionCardProps) {
   const { colors: themeColors } = useTheme();
 
@@ -31,8 +33,10 @@ export function ActionCard({
           { backgroundColor: themeColors.primary50, borderColor: themeColors.primary },
         ],
         variant === 'completed' && [styles.completed, { backgroundColor: themeColors.primary50 }],
+        disabled && styles.disabled,
       ]}
       onPress={onPress}
+      disabled={disabled}
       activeOpacity={0.7}
     >
       <View style={[styles.iconContainer, { backgroundColor: themeColors.surface }]}>{icon}</View>
@@ -95,6 +99,9 @@ const styles = StyleSheet.create({
   },
   completed: {
     backgroundColor: colors.primary50,
+  },
+  disabled: {
+    opacity: 0.5,
   },
   iconContainer: {
     width: ICON_SIZE,

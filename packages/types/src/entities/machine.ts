@@ -1,15 +1,15 @@
-import type { Timestamps, SoftDelete } from "../common.js";
+import type { Timestamps, SoftDelete } from '../common.js';
 
 export enum MachineType {
-  truck = "truck",
-  loader = "loader",
-  baler = "baler",
+  truck = 'truck',
+  loader = 'loader',
+  baler = 'baler',
 }
 
 export enum FuelType {
-  diesel = "diesel",
-  gasoline = "gasoline",
-  electric = "electric",
+  diesel = 'diesel',
+  gasoline = 'gasoline',
+  electric = 'electric',
 }
 
 export interface Machine extends Timestamps, SoftDelete {
@@ -23,7 +23,6 @@ export interface Machine extends Timestamps, SoftDelete {
   fuelType: FuelType;
   tankCapacityLiters: number;
   farmtrackDeviceId: string | null;
-  currentOdometerKm: number;
   currentHourmeterHrs: number;
   isActive: boolean;
   maxBaleCount: number | null;

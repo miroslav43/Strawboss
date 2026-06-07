@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { uuidSchema } from "../helpers/uuid.js";
+import { z } from 'zod';
+import { uuidSchema } from '../helpers/uuid.js';
 
 export const startLoadingSchema = z.object({
   loaderId: uuidSchema.optional(),
@@ -9,13 +9,12 @@ export const startLoadingSchema = z.object({
 export const completeLoadingSchema = z.object({});
 
 export const departSchema = z.object({
-  departureOdometerKm: z.number().nonnegative(),
   driverSignature: z.string().min(1),
 });
 
-export const arriveSchema = z.object({
-  arrivalOdometerKm: z.number().nonnegative(),
-});
+// Trip distance comes entirely from the GPS track (depart → arrive), so the
+// arrive payload carries no fields.
+export const arriveSchema = z.object({});
 
 export const startDeliverySchema = z.object({
   destinationName: z.string().optional(),

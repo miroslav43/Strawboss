@@ -18,6 +18,8 @@ import { FarmReportTab } from '@/components/features/reports/FarmReportTab';
 import { DepotReportTab } from '@/components/features/reports/DepotReportTab';
 import { RankingsTab } from '@/components/features/reports/RankingsTab';
 import { KmPerTruckTab } from '@/components/features/reports/KmPerTruckTab';
+import { KmPerOperatorTab } from '@/components/features/reports/KmPerOperatorTab';
+import { MachineProductionTab } from '@/components/features/reports/MachineProductionTab';
 import { ConnectedHoursTab } from '@/components/features/reports/ConnectedHoursTab';
 import { CostBreakdownChart } from '@/components/features/reports/CostBreakdownChart';
 import { OperatorProductionChart } from '@/components/features/reports/OperatorProductionChart';
@@ -34,7 +36,9 @@ type Tab =
   | 'rankings'
   | 'costs'
   | 'operators'
+  | 'machineProduction'
   | 'kmPerTruck'
+  | 'kmPerOperator'
   | 'connectedHours';
 
 const TABS: { id: Tab; labelKey: string }[] = [
@@ -43,7 +47,9 @@ const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'rankings', labelKey: 'reports.tabs.rankings' },
   { id: 'costs', labelKey: 'reports.tabs.costs' },
   { id: 'operators', labelKey: 'reports.tabs.operators' },
+  { id: 'machineProduction', labelKey: 'reports.tabs.machineProduction' },
   { id: 'kmPerTruck', labelKey: 'reports.tabs.kmPerTruck' },
+  { id: 'kmPerOperator', labelKey: 'reports.tabs.kmPerOperator' },
   { id: 'connectedHours', labelKey: 'reports.tabs.connectedHours' },
 ];
 
@@ -492,7 +498,13 @@ export default function ReportsPage() {
           </div>
         )}
 
+        {tab === 'machineProduction' && (
+          <MachineProductionTab dateFrom={dateFrom} dateTo={dateTo} />
+        )}
+
         {tab === 'kmPerTruck' && <KmPerTruckTab dateFrom={dateFrom} dateTo={dateTo} />}
+
+        {tab === 'kmPerOperator' && <KmPerOperatorTab dateFrom={dateFrom} dateTo={dateTo} />}
 
         {tab === 'connectedHours' && (
           <ConnectedHoursTab

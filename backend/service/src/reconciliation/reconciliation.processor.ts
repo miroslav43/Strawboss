@@ -28,6 +28,21 @@ export class ReconciliationProcessor extends WorkerHost {
       jobId: job.id,
     });
 
+    // Recompute GPS route distance for recently-arrived trips first, so fuel
+    // reconciliation below sees pings that synced late from drivers' phones.
+    try {
+      const updated = await this.reconciliationService.recomputeRecentTripDistances();
+      this.winston.log('flow', `Recomputed gps_distance_km for ${updated} recent trip(s)`, {
+        context: 'ReconciliationProcessor',
+        jobId: job.id,
+      });
+    } catch (err: unknown) {
+      this.winston.error('GPS distance recompute failed', {
+        context: 'ReconciliationProcessor',
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
+    }
+
     // Reconcile bales for all active parcels
     const parcelsResult = await this.drizzleProvider.db.execute(
       sql`SELECT id FROM parcels WHERE is_active = true AND deleted_at IS NULL`,
@@ -38,17 +53,11 @@ export class ReconciliationProcessor extends WorkerHost {
       try {
         await this.reconciliationService.reconcileBalesForParcel(parcel.id);
       } catch (err: unknown) {
-        this.winston.error(
-          `Bale reconciliation failed for parcel ${parcel.id}`,
-          {
-            context: 'ReconciliationProcessor',
-            parcelId: parcel.id,
-            err:
-              err instanceof Error
-                ? { message: err.message, stack: err.stack }
-                : err,
-          },
-        );
+        this.winston.error(`Bale reconciliation failed for parcel ${parcel.id}`, {
+          context: 'ReconciliationProcessor',
+          parcelId: parcel.id,
+          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+        });
       }
     }
 
@@ -63,17 +72,11 @@ export class ReconciliationProcessor extends WorkerHost {
       try {
         await this.reconciliationService.reconcileFuelForMachine(machine.id);
       } catch (err: unknown) {
-        this.winston.error(
-          `Fuel reconciliation failed for machine ${machine.id}`,
-          {
-            context: 'ReconciliationProcessor',
-            machineId: machine.id,
-            err:
-              err instanceof Error
-                ? { message: err.message, stack: err.stack }
-                : err,
-          },
-        );
+        this.winston.error(`Fuel reconciliation failed for machine ${machine.id}`, {
+          context: 'ReconciliationProcessor',
+          machineId: machine.id,
+          err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+        });
       }
     }
 

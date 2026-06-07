@@ -5,6 +5,8 @@ import {
   type ReportQuery,
   truckDistanceQuerySchema,
   type TruckDistanceQuery,
+  operatorDistanceQuerySchema,
+  type OperatorDistanceQuery,
   connectedHoursQuerySchema,
   type ConnectedHoursQuery,
 } from '@strawboss/validation';
@@ -69,6 +71,18 @@ export class ReportsController {
   @Get('truck-distance/summary')
   getTruckDistanceSummary(@CurrentUser() user: RequestUser) {
     return this.reportsService.getTruckDistanceSummary(user.organizationId);
+  }
+
+  /**
+   * Per-operator-per-day distance from the GPS trace (km per driver).
+   * Query: `from`, `to` (inclusive ISO dates), optional `operatorId`.
+   */
+  @Get('operator-distance')
+  getOperatorDistance(
+    @CurrentUser() user: RequestUser,
+    @Query(new ZodValidationPipe(operatorDistanceQuerySchema)) query: OperatorDistanceQuery,
+  ) {
+    return this.reportsService.getOperatorDistance(user.organizationId, query);
   }
 
   /**

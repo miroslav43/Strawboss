@@ -211,8 +211,11 @@ async function sendTripTransition(
  * one to their dedicated endpoint — they don't fit the generic
  * "table/recordId/action" sync envelope.
  *
- * trip_transition entries are sent in created_at ASC order (guaranteed by
- * dequeue) so state machine steps arrive in the correct sequence.
+ * trip_transition entries are sent in (created_at ASC, id ASC) order (guaranteed
+ * by dequeue) so multi-step transitions enqueued in the same second — e.g. the
+ * delivery flow's start-delivery → confirm-delivery → complete — arrive in the
+ * correct sequence. They are awaited one at a time, so each server-side step is
+ * applied before the next is sent.
  */
 export async function pushMutations(
   entries: SyncQueueEntry[],
@@ -230,7 +233,26 @@ export async function pushMutations(
   const directEntries = entries.filter((e) => DIRECT_ENDPOINT_TYPES.has(e.entity_type));
   const tableEntries = entries.filter((e) => !DIRECT_ENDPOINT_TYPES.has(e.entity_type));
 
+  // Multi-step transitions for the SAME trip (the delivery flow enqueues
+  // start-delivery → confirm-delivery → complete) must be applied in order. If
+  // one fails this cycle, sending the next would reach the server while it's
+  // still in the earlier state, and sendTripTransition treats the resulting
+  // "not allowed from status" as success — silently dropping the dependent
+  // transition and stranding the trip. So once a trip's transition fails this
+  // cycle, we DEFER (fail without sending) the rest of that trip's transitions.
+  // They fail together with the predecessor and recover together — replayed in
+  // order on the next retry (manual "retry failed", or a re-confirm which resets
+  // failed rows to pending via enqueueOrUpdate). entity_id is the trip id for
+  // trip_transition entries.
+  const blockedTrips = new Set<string>();
   for (const entry of directEntries) {
+    if (entry.entity_type === 'trip_transition' && blockedTrips.has(entry.entity_id)) {
+      const msg = `deferred: an earlier transition for trip ${entry.entity_id} failed this sync cycle`;
+      errors.push(msg);
+      failedEntries.push({ id: entry.id, error: msg });
+      continue;
+    }
+
     let res: { ok: true } | { ok: false; error: string };
     if (entry.entity_type === 'register_load') {
       res = await sendRegisterLoad(entry, apiClient);
@@ -249,6 +271,11 @@ export async function pushMutations(
     } else {
       errors.push(res.error);
       failedEntries.push({ id: entry.id, error: res.error });
+      // Block later transitions for the same trip so they are not applied out of
+      // order (and silently consumed) before this one succeeds.
+      if (entry.entity_type === 'trip_transition') {
+        blockedTrips.add(entry.entity_id);
+      }
     }
   }
 

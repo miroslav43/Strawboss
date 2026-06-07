@@ -1,4 +1,4 @@
-import type { Alert } from "../entities/alert.js";
+import type { Alert } from '../entities/alert.js';
 
 export interface DashboardOverview {
   activeTrips: number;
@@ -21,7 +21,7 @@ export interface ProductionReport {
 export interface CostReport {
   entityId: string;
   entityName: string;
-  entityType: "parcel" | "machine";
+  entityType: 'parcel' | 'machine';
   fuelCost: number;
   consumableCost: number;
   totalCost: number;
@@ -29,7 +29,6 @@ export interface CostReport {
 
 export interface AntiFraudReport {
   flaggedTrips: number;
-  odometerAnomalies: number;
   fuelAnomalies: number;
   timingAnomalies: number;
   recentAlerts: Alert[];

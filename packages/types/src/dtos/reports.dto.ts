@@ -39,6 +39,29 @@ export interface DepotReport {
   deliveryCount: number;
 }
 
+/** One operator's bale production on a specific machine (baler). */
+export interface MachineOperatorProductionRow {
+  /** `null` for production rows with no recorded operator. */
+  operatorId: string | null;
+  operatorName: string;
+  totalBales: number;
+  sessionCount: number;
+}
+
+/**
+ * Bales produced per baler machine, with a breakdown of the operators who
+ * produced on it. Returned by GET /api/v1/bale-productions/machine-stats.
+ */
+export interface MachineProductionReport {
+  /** `null` for the synthetic "no machine" bucket. */
+  machineId: string | null;
+  machineCode: string;
+  totalBales: number;
+  sessionCount: number;
+  operatorCount: number;
+  operators: MachineOperatorProductionRow[];
+}
+
 /** One day in the loaded-vs-delivered timeline series. */
 export interface ReportTimelinePoint {
   date: string;

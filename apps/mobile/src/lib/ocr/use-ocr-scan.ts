@@ -1,16 +1,14 @@
 import { useState, useCallback } from 'react';
 import { recognizeText } from './text-recognition';
 import { parseFuelReceipt, parseConsumableQuantity } from './parse-receipt';
-import { parseOdometer } from './parse-odometer';
 import { mobileLogger } from '@/lib/logger';
 
-export type OcrMode = 'fuel' | 'consumable' | 'odometer';
+export type OcrMode = 'fuel' | 'consumable';
 
 /** Flat suggestion — the caller reads the field relevant to its mode. */
 export interface OcrSuggestion {
   liters?: number;
   quantity?: number;
-  km?: number;
   totalCost?: number;
   unitPrice?: number;
 }
@@ -47,10 +45,8 @@ export function useOcrScan() {
         suggestion = {};
       } else if (mode === 'fuel') {
         suggestion = parseFuelReceipt(ocr);
-      } else if (mode === 'consumable') {
-        suggestion = parseConsumableQuantity(ocr);
       } else {
-        suggestion = parseOdometer(ocr);
+        suggestion = parseConsumableQuantity(ocr);
       }
 
       mobileLogger.flow('OCR scan complete', { mode, suggestion, ocrFailed });

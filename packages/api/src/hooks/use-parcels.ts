@@ -85,8 +85,13 @@ export function useDeleteParcel(client: ApiClient) {
 export function useUpdateParcelBoundary(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, boundary }: { id: string; boundary: object }) =>
-      client.patch<Parcel>(`/api/v1/parcels/${id}`, { boundary }),
+    mutationFn: ({ id, boundary }: { id: string; boundary: object | string }) =>
+      // The API stores the boundary as a stringified GeoJSON geometry (the
+      // create + import paths do the same). Stringify objects so the
+      // `updateParcelSchema` (boundary: string) accepts the payload.
+      client.patch<Parcel>(`/api/v1/parcels/${id}`, {
+        boundary: typeof boundary === 'string' ? boundary : JSON.stringify(boundary),
+      }),
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.detail(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.all });

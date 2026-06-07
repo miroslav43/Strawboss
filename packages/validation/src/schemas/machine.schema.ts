@@ -1,8 +1,8 @@
-import { z } from "zod";
-import { MachineType, FuelType } from "@strawboss/types";
-import { uuidSchema } from "../helpers/uuid.js";
-import { timestampsSchema } from "../helpers/common.js";
-import { softDeleteSchema } from "../helpers/common.js";
+import { z } from 'zod';
+import { MachineType, FuelType } from '@strawboss/types';
+import { uuidSchema } from '../helpers/uuid.js';
+import { timestampsSchema } from '../helpers/common.js';
+import { softDeleteSchema } from '../helpers/common.js';
 
 export const machineTypeSchema = z.nativeEnum(MachineType);
 export const fuelTypeSchema = z.nativeEnum(FuelType);
@@ -19,7 +19,6 @@ export const machineSchema = z
     fuelType: fuelTypeSchema,
     tankCapacityLiters: z.number().nonnegative(),
     farmtrackDeviceId: z.string().nullable(),
-    currentOdometerKm: z.number().nonnegative(),
     currentHourmeterHrs: z.number().nonnegative(),
     isActive: z.boolean(),
     maxBaleCount: z.number().int().positive().nullable(),
@@ -42,7 +41,6 @@ export const createMachineSchema = z.object({
   fuelType: fuelTypeSchema,
   tankCapacityLiters: z.number().nonnegative(),
   farmtrackDeviceId: z.string().nullable().optional(),
-  currentOdometerKm: z.number().nonnegative().optional(),
   currentHourmeterHrs: z.number().nonnegative().optional(),
   maxBaleCount: z.number().int().positive().nullable().optional(),
   tareWeightKg: z.number().nonnegative().nullable().optional(),
@@ -63,7 +61,6 @@ export const updateMachineSchema = z
     fuelType: fuelTypeSchema,
     tankCapacityLiters: z.number().nonnegative(),
     farmtrackDeviceId: z.string().nullable(),
-    currentOdometerKm: z.number().nonnegative(),
     currentHourmeterHrs: z.number().nonnegative(),
     isActive: z.boolean(),
     maxBaleCount: z.number().int().positive().nullable(),

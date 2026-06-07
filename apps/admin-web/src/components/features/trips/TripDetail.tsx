@@ -124,18 +124,6 @@ export function TripDetail({ trip, className }: TripDetailProps) {
             <InfoRow label={t('trip_detail.destination')} value={trip.destinationName} />
             <InfoRow label={t('trip_detail.destinationAddress')} value={trip.destinationAddress} />
             <InfoRow
-              label={t('trip_detail.departureOdometer')}
-              value={trip.departureOdometerKm != null ? `${trip.departureOdometerKm} km` : null}
-            />
-            <InfoRow
-              label={t('trip_detail.arrivalOdometer')}
-              value={trip.arrivalOdometerKm != null ? `${trip.arrivalOdometerKm} km` : null}
-            />
-            <InfoRow
-              label={t('trip_detail.odometerDistance')}
-              value={trip.odometerDistanceKm != null ? `${trip.odometerDistanceKm} km` : null}
-            />
-            <InfoRow
               label={t('trip_detail.gpsDistance')}
               value={trip.gpsDistanceKm != null ? `${trip.gpsDistanceKm} km` : null}
             />

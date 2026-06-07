@@ -97,11 +97,17 @@ export class SyncQueueRepo {
   }
 
   async dequeue(limit: number = 50): Promise<SyncQueueEntry[]> {
+    // `id ASC` is a required tiebreaker: created_at is only second-precision, so
+    // several entries enqueued in the same second (e.g. the delivery flow's
+    // start-delivery → confirm-delivery → complete) would otherwise come back in
+    // a non-deterministic order. The push layer sends trip transitions in this
+    // order, and the state machine rejects out-of-order steps, so FIFO by id
+    // (insertion order) is what keeps multi-step transitions correct.
     return this.db.getAllAsync<SyncQueueEntry>(
       `SELECT * FROM sync_queue
        WHERE status = 'pending'
          AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
-       ORDER BY created_at ASC
+       ORDER BY created_at ASC, id ASC
        LIMIT ?`,
       [limit],
     );

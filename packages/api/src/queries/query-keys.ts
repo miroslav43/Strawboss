@@ -73,6 +73,8 @@ export const queryKeys = {
     list: (filters?: Record<string, unknown>) => ['baleProductions', 'list', filters] as const,
     byOperator: (operatorId: string) => ['baleProductions', 'operator', operatorId] as const,
     stats: (filters?: Record<string, unknown>) => ['baleProductions', 'stats', filters] as const,
+    machineStats: (filters?: Record<string, unknown>) =>
+      ['baleProductions', 'machineStats', filters] as const,
   },
   farms: {
     all: ['farms'] as const,
@@ -92,6 +94,8 @@ export const queryKeys = {
     truckDistance: (filters?: Record<string, unknown>) =>
       ['reports', 'truckDistance', filters] as const,
     truckDistanceSummary: () => ['reports', 'truckDistanceSummary'] as const,
+    operatorDistance: (filters?: Record<string, unknown>) =>
+      ['reports', 'operatorDistance', filters] as const,
     connectedHours: (filters?: Record<string, unknown>) =>
       ['reports', 'connectedHours', filters] as const,
   },

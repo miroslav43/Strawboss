@@ -102,12 +102,14 @@ export {
 export {
   useBaleProductions,
   useBaleProductionStats,
+  useMachineOperatorProduction,
   useCreateBaleProduction,
 } from './use-bale-productions.js';
 export type {
   BaleProductionFilters,
   BaleProductionStatsFilters,
   BaleProductionStatsOptions,
+  MachineProductionFilters,
 } from './use-bale-productions.js';
 
 export {
@@ -133,10 +135,12 @@ export {
   useReportTimeline,
   useTruckDistanceReport,
   useTruckDistanceSummary,
+  useOperatorDistanceReport,
   useUserConnectedHoursReport,
 } from './use-reports.js';
 export type {
   ReportQueryOptions,
   TruckDistanceFilters,
+  OperatorDistanceFilters,
   ConnectedHoursFilters,
 } from './use-reports.js';

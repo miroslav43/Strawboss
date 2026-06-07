@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -6,6 +6,11 @@ import { router } from 'expo-router';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { BigButton } from '@/components/ui/BigButton';
 import { BalerEntryCountdown } from '@/components/features/production/BalerEntryCountdown';
+import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
+import { useTripTransition } from '@/hooks/useTripTransition';
+import { getDatabase } from '@/lib/storage';
+import { TripsRepo } from '@/db/trips-repo';
+import { mobileLogger } from '@/lib/logger';
 import type { GeofenceAlert } from '@/hooks/useGeofenceNotifications';
 
 interface GeofenceOverlayProps {
@@ -93,7 +98,7 @@ export function GeofenceOverlay({
   }
 
   if (alert.type === 'deposit_entry') {
-    return <DepositArrivalModal alert={alert} onDismiss={onDismiss} />;
+    return <DepositArrivalCountdown alert={alert} onDismiss={onDismiss} />;
   }
 
   return <EntryBanner alert={alert} onDismiss={onDismiss} />;
@@ -147,41 +152,63 @@ function EntryBanner({ alert, onDismiss }: { alert: GeofenceAlert; onDismiss: ()
   );
 }
 
-// ── Deposit Arrival Popup (deposit_entry) ────────────────────────────
+// ── Deposit Arrival Countdown (deposit_entry) ────────────────────────
+//
+// 10s auto-confirm overlay shown when the truck enters the destination deposit
+// geofence. If the driver does nothing, the trip moves to "arrived"
+// automatically when the countdown expires; they can confirm early or cancel.
+// Distance is GPS-derived, so there is no odometer screen — the transition is
+// enqueued offline-first and the trip opens so they can proceed to delivery.
 
-function DepositArrivalModal({
+function DepositArrivalCountdown({
   alert,
   onDismiss,
 }: {
   alert: GeofenceAlert;
   onDismiss: () => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const handleArrive = () => {
-    onDismiss();
-    if (alert.tripId) {
-      router.push({
-        pathname: '/driver-ops/arrival-flow',
-        params: { tripId: alert.tripId },
+  const { enqueueTransition } = useTripTransition();
+
+  const doArrive = useCallback(async () => {
+    if (!alert.tripId) return;
+    try {
+      const db = await getDatabase();
+      const tripsRepo = new TripsRepo(db);
+      const trip = await tripsRepo.findById(alert.tripId);
+      const currentStatus = trip?.status ?? 'in_transit';
+      await enqueueTransition({
+        tripId: alert.tripId,
+        currentStatus,
+        transition: 'arrive',
+        body: {},
+        localMeta: { arrival_at: new Date().toISOString() },
+      });
+      mobileLogger.flow('GeofenceOverlay: arrive enqueued offline-first', {
+        tripId: alert.tripId,
+      });
+      router.push(`/trip/${alert.tripId}`);
+    } catch (err) {
+      mobileLogger.error('GeofenceOverlay: arrive failed', {
+        tripId: alert.tripId,
+        err: err instanceof Error ? err.message : String(err),
       });
     }
-  };
+  }, [alert.tripId, enqueueTransition]);
+
+  const handleConfirmed = useCallback(() => {
+    onDismiss();
+    void doArrive();
+  }, [onDismiss, doArrive]);
 
   return (
-    <View style={styles.modalBackdrop}>
-      <View style={[styles.modalContent, { paddingBottom: insets.bottom + 24 }]}>
-        <View style={styles.modalHandle} />
-
-        <MaterialCommunityIcons name="warehouse" size={48} color="#1565C0" />
-        <Text style={styles.modalTitle}>Ai ajuns la depozit!</Text>
-        <Text style={styles.modalSubtitle}>Confirmă sosirea ca să poți încheia cursa.</Text>
-
-        <View style={styles.modalActions}>
-          {alert.tripId ? <BigButton title="Marchează sosirea" onPress={handleArrive} /> : null}
-          <BigButton title="Mai târziu" variant="outline" onPress={onDismiss} />
-        </View>
-      </View>
-    </View>
+    <ConfirmCountdown
+      visible
+      actionLabel="Sosire la depozit"
+      countdownSeconds={10}
+      confirmLabel="Confirmă acum"
+      onConfirmed={handleConfirmed}
+      onCancel={onDismiss}
+    />
   );
 }
 

@@ -26,8 +26,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
   trips: new Set([
     'id',
     'bale_count',
-    'departure_odometer_km',
-    'arrival_odometer_km',
     'departure_at',
     'arrival_at',
     'delivered_at',
@@ -97,7 +95,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'quantity_liters',
     'unit_price',
     'total_cost',
-    'odometer_km',
     'hourmeter_hrs',
     'is_full_tank',
     'receipt_photo_url',
@@ -152,7 +149,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'fuel_type',
     'tank_capacity_liters',
     'is_active',
-    'current_odometer_km',
     'current_hourmeter_hrs',
     'max_payload_kg',
     'max_bale_count',
@@ -261,8 +257,6 @@ const PULL_COLUMNS: Record<string, string[]> = {
     'loader_id',
     'loader_operator_id',
     'bale_count',
-    'departure_odometer_km',
-    'arrival_odometer_km',
     'gross_weight_kg',
     'tare_weight_kg',
     'receiver_name',
@@ -315,7 +309,6 @@ const PULL_COLUMNS: Record<string, string[]> = {
     'logged_at',
     'fuel_type',
     'quantity_liters',
-    'odometer_km',
     'hourmeter_hrs',
     'is_full_tank',
     'receipt_photo_url',
@@ -675,8 +668,7 @@ export class SyncService {
       let ownerFilter = sql``;
       if (_callerId && table === 'trips') {
         if (callerRole === 'depot_manager') {
-          const userOrgFilter =
-            orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+          const userOrgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
           ownerFilter = sql` AND destination_id = (
             SELECT assigned_delivery_destination_id FROM users
             WHERE id = ${_callerId}::uuid AND deleted_at IS NULL${userOrgFilter}

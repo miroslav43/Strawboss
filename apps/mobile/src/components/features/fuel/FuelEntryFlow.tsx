@@ -21,13 +21,13 @@ import { colors } from '@strawboss/ui-tokens';
  * Plan C (T17) — fuel flow simplified to two real entries + confirm:
  *   1. liters         — operator types how many liters they pumped.
  *   2. station-photo  — operator photographs the fuel station (audit only,
- *                       NO OCR, NO receipt/bon fiscal, NO odometer).
+ *                       NO OCR, NO receipt/bon fiscal).
  *   3. confirm        — summary + Save.
  *
- * The previous 5-step flow (receipt OCR, liters, odometer-photo, odometer,
- * confirm) was unreliable on phones and tedious for drivers. Existing fuel
- * log entries on the server still render correctly; only NEW entries follow
- * the simplified flow. The server accepts `odometerKm: null`.
+ * The previous 5-step flow (receipt OCR, liters, photo, confirm) was
+ * unreliable on phones and tedious for drivers. Existing fuel log entries on
+ * the server still render correctly; only NEW entries follow the simplified
+ * flow.
  */
 type FuelStep = 'liters' | 'station-photo' | 'confirm';
 
@@ -122,7 +122,6 @@ export function FuelEntryFlow({
         logged_at: now,
         fuel_type: 'diesel',
         quantity_liters: quantityLiters,
-        odometer_km: null,
         hourmeter_hrs: null,
         is_full_tank: 0,
         receipt_photo_uri: photoUri,
@@ -145,7 +144,6 @@ export function FuelEntryFlow({
           logged_at: now,
           fuel_type: 'diesel',
           quantity_liters: quantityLiters,
-          odometer_km: null,
           is_full_tank: false,
           receipt_photo_url: receiptPhotoUrl,
           notes: null,

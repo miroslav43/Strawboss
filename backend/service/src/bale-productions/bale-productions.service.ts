@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import type { MachineProductionReport } from '@strawboss/types';
 
 @Injectable()
 export class BaleProductionsService {
@@ -138,25 +139,102 @@ export class BaleProductionsService {
     return this.drizzleProvider.db.execute(query);
   }
 
+  /**
+   * Bales produced per baler machine, each with a breakdown of the operators
+   * who produced on it. One grouped query (baler_id × operator_id) assembled
+   * into the nested shape the admin "Producție / mașină" tab renders.
+   */
+  async getMachineOperatorProduction(
+    orgId: string | null,
+    filters?: { dateFrom?: string; dateTo?: string },
+  ): Promise<MachineProductionReport[]> {
+    const conditions: ReturnType<typeof sql>[] = [sql`bp.deleted_at IS NULL`];
+    if (orgId !== null) {
+      conditions.push(sql`bp.organization_id = ${orgId}::uuid`);
+    }
+    if (filters?.dateFrom) {
+      conditions.push(sql`bp.production_date >= ${filters.dateFrom}`);
+    }
+    if (filters?.dateTo) {
+      conditions.push(sql`bp.production_date <= ${filters.dateTo}`);
+    }
+    const where = sql.join(conditions, sql` AND `);
+
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      SELECT
+        bp.baler_id AS "machineId",
+        COALESCE(m.internal_code, m.registration_plate) AS "machineCode",
+        bp.operator_id AS "operatorId",
+        u.full_name AS "operatorName",
+        SUM(bp.bale_count)::int AS "totalBales",
+        COUNT(*)::int AS "sessionCount"
+      FROM bale_productions bp
+      LEFT JOIN machines m ON m.id = bp.baler_id
+      LEFT JOIN users u ON u.id = bp.operator_id
+      WHERE ${where}
+      GROUP BY bp.baler_id, m.internal_code, m.registration_plate, bp.operator_id, u.full_name
+      ORDER BY "totalBales" DESC
+    `)) as unknown as Array<{
+      machineId: string | null;
+      machineCode: string | null;
+      operatorId: string | null;
+      operatorName: string | null;
+      totalBales: number;
+      sessionCount: number;
+    }>;
+
+    const byMachine = new Map<string, MachineProductionReport>();
+    for (const r of rows) {
+      const key = r.machineId ?? '__none__';
+      let group = byMachine.get(key);
+      if (!group) {
+        group = {
+          machineId: r.machineId ?? null,
+          machineCode: r.machineCode ?? 'Fără mașină',
+          totalBales: 0,
+          sessionCount: 0,
+          operatorCount: 0,
+          operators: [],
+        };
+        byMachine.set(key, group);
+      }
+      const bales = Number(r.totalBales) || 0;
+      const sessions = Number(r.sessionCount) || 0;
+      group.operators.push({
+        operatorId: r.operatorId ?? null,
+        operatorName: r.operatorName ?? 'N/A',
+        totalBales: bales,
+        sessionCount: sessions,
+      });
+      group.totalBales += bales;
+      group.sessionCount += sessions;
+      group.operatorCount += 1;
+    }
+
+    return Array.from(byMachine.values()).sort((a, b) => b.totalBales - a.totalBales);
+  }
+
   async create(orgId: string, dto: Record<string, unknown>) {
     if (orgId !== null) {
-      const parcelCheck = await this.drizzleProvider.db.execute(sql`
+      const parcelCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM parcels
         WHERE id = ${dto.parcelId}::uuid
           AND organization_id = ${orgId}::uuid
           AND deleted_at IS NULL
         LIMIT 1
-      `) as unknown as { id: string }[];
-      if (!parcelCheck.length) throw new BadRequestException('Parcel not found in your organization');
+      `)) as unknown as { id: string }[];
+      if (!parcelCheck.length)
+        throw new BadRequestException('Parcel not found in your organization');
 
-      const balerCheck = await this.drizzleProvider.db.execute(sql`
+      const balerCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines
         WHERE id = ${dto.balerId}::uuid
           AND organization_id = ${orgId}::uuid
           AND deleted_at IS NULL
         LIMIT 1
-      `) as unknown as { id: string }[];
-      if (!balerCheck.length) throw new BadRequestException('Baler machine not found in your organization');
+      `)) as unknown as { id: string }[];
+      if (!balerCheck.length)
+        throw new BadRequestException('Baler machine not found in your organization');
     }
 
     const result = await this.drizzleProvider.db.execute(
