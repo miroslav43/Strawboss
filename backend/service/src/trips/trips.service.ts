@@ -1554,8 +1554,17 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
-   * Soft-delete a trip and detach it from any linked task_assignment so a
-   * future admin edit on the task can re-trigger auto-creation cleanly.
+   * Soft-delete a trip.
+   *
+   * The originating truck task_assignment KEEPS its `trip_id` pointing at the
+   * (now soft-deleted) trip — we deliberately do NOT reset it to NULL. Nulling
+   * it made a deliberately-deleted trip indistinguishable from a task that
+   * never had one, so the boot backfill (`onModuleInit`) and any later
+   * auto-upsert would resurrect it with a fresh `created_at`. Keeping the link
+   * preserves the invariant `task_assignments.trip_id IS NULL` ⟺ "never
+   * materialized", so a deleted trip stays deleted across restarts. (If work
+   * already started, the UPDATE path is also gated on status = 'planned', so a
+   * later task edit still can't un-delete it.)
    *
    * Idempotent: if the trip is already soft-deleted, throws 404.
    *
@@ -1575,10 +1584,9 @@ export class TripsService implements OnModuleInit {
       }
     }
 
-    await this.drizzleProvider.db.execute(
-      sql`UPDATE task_assignments SET trip_id = NULL, updated_at = NOW() WHERE trip_id = ${id}`,
-    );
-
+    // NOTE: we intentionally do NOT clear task_assignments.trip_id here — see the
+    // doc comment above. Detaching it would let onModuleInit / autoUpsert
+    // resurrect the trip on the next backend boot.
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} RETURNING id`,
     );
