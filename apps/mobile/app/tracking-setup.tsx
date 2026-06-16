@@ -33,7 +33,9 @@ import {
   requestBatteryOptimizationExemption,
   openOemAutostartSettings,
   hasOemAutostartScreen,
+  openFullScreenIntentSettings,
 } from '@/lib/oem-helpers';
+import { isDeviceOwner, canUseFullScreenIntent } from '@/lib/device-owner';
 
 type MCIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -86,7 +88,11 @@ export default function TrackingSetupScreen() {
 
   const [bgGranted, setBgGranted] = useState(false);
   const [batteryExempt, setBatteryExempt] = useState(false);
+  const [fsiGranted, setFsiGranted] = useState(false);
   const showAutostart = hasOemAutostartScreen();
+  // Full-screen-intent grant only matters on Android 14+ (auto-granted below).
+  const showFsi = Platform.OS === 'android' && (Platform.Version as number) >= 34;
+  const stepCount = 2 + (showAutostart ? 1 : 0) + (showFsi ? 1 : 0);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -98,6 +104,11 @@ export default function TrackingSetupScreen() {
     // isBatteryOptimizationActive === true means NOT exempt yet.
     const active = await isBatteryOptimizationActive();
     setBatteryExempt(!active);
+    try {
+      setFsiGranted(await canUseFullScreenIntent());
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   // Refresh on mount and whenever the user returns from a system settings screen.
@@ -123,6 +134,11 @@ export default function TrackingSetupScreen() {
     await openOemAutostartSettings();
   }, []);
 
+  const onFsi = useCallback(async () => {
+    await openFullScreenIntentSettings();
+    // status refresh happens on AppState 'active' when the user returns
+  }, []);
+
   const finish = useCallback(async () => {
     await markTrackingSetupSeen();
     mobileLogger.flow('tracking-setup: completed', {
@@ -141,6 +157,17 @@ export default function TrackingSetupScreen() {
     }
   }, [finish]);
 
+  // Device-owner phones auto-grant location/battery/notifications/full-screen —
+  // there is nothing for the user to do, so skip the walkthrough entirely.
+  useEffect(() => {
+    void (async () => {
+      if (await isDeviceOwner()) {
+        await markTrackingSetupSeen();
+        void finish();
+      }
+    })();
+  }, [finish]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -149,8 +176,8 @@ export default function TrackingSetupScreen() {
           <Text style={styles.title}>Urmărire permanentă</Text>
           <Text style={styles.subtitle}>
             Pentru ca poziția să fie transmisă mereu — chiar cu ecranul stins sau aplicația în
-            fundal — activează cei {showAutostart ? '3' : '2'} pași de mai jos. Se fac o singură
-            dată pe acest telefon.
+            fundal — activează cei {stepCount} pași de mai jos. Se fac o singură dată pe acest
+            telefon.
           </Text>
         </View>
 
@@ -180,6 +207,17 @@ export default function TrackingSetupScreen() {
             done={false}
             actionLabel="Deschide"
             onPress={onAutostart}
+          />
+        )}
+
+        {showFsi && (
+          <SetupStep
+            icon="bell-ring"
+            title="Alerte ecran complet"
+            body="Permite afișarea alertelor peste ecranul blocat, ca să vezi imediat intrarea/ieșirea din câmp."
+            done={fsiGranted}
+            actionLabel={fsiGranted ? 'Acordat' : 'Deschide'}
+            onPress={onFsi}
           />
         )}
 

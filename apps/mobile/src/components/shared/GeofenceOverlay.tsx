@@ -101,6 +101,10 @@ export function GeofenceOverlay({
     return <DepositArrivalCountdown alert={alert} onDismiss={onDismiss} />;
   }
 
+  if (alert.type === 'truck_approaching') {
+    return <TruckApproachingBanner alert={alert} onDismiss={onDismiss} />;
+  }
+
   return <EntryBanner alert={alert} onDismiss={onDismiss} />;
 }
 
@@ -148,6 +152,75 @@ function EntryBanner({ alert, onDismiss }: { alert: GeofenceAlert; onDismiss: ()
           Ai început câmpul {alert.parcelName}
         </Text>
       </Pressable>
+    </Animated.View>
+  );
+}
+
+// ── Truck Approaching Banner (truck_approaching) ─────────────────────
+//
+// One-time alert to a loader: the truck they are waiting for is within 5 km.
+// Top banner that slides in, auto-closes after 5 s, and carries an explicit X
+// close button. Fire-once is enforced server-side (a single 'approach'
+// geofence event per truck/parcel/assignment).
+
+function TruckApproachingBanner({
+  alert,
+  onDismiss,
+}: {
+  alert: GeofenceAlert;
+  onDismiss: () => void;
+}) {
+  const slideAnim = useRef(new Animated.Value(-120)).current;
+  const insets = useSafeAreaInsets();
+
+  const close = useCallback(() => {
+    Animated.timing(slideAnim, {
+      toValue: -120,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => onDismiss());
+  }, [slideAnim, onDismiss]);
+
+  useEffect(() => {
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 12,
+    }).start();
+
+    // Auto-dismiss after 5 seconds.
+    const timer = setTimeout(close, 5000);
+    return () => clearTimeout(timer);
+  }, [slideAnim, close]);
+
+  const plate = alert.truckPlate ?? '—';
+
+  return (
+    <Animated.View
+      style={[
+        styles.bannerContainer,
+        {
+          paddingTop: insets.top + 12,
+          backgroundColor: '#1565C0',
+          transform: [{ translateY: slideAnim }],
+        },
+      ]}
+    >
+      <View style={styles.bannerContent}>
+        <MaterialCommunityIcons name="truck-fast" size={28} color="#FFF" />
+        <Text style={styles.bannerText} numberOfLines={2}>
+          Camionul {plate} — șoferul se apropie spre tine
+        </Text>
+        <Pressable
+          onPress={close}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Închide"
+        >
+          <MaterialCommunityIcons name="close" size={26} color="#FFF" />
+        </Pressable>
+      </View>
     </Animated.View>
   );
 }

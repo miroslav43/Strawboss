@@ -1,13 +1,9 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Body,
-  Headers,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Headers } from '@nestjs/common';
 import { SyncService } from './sync.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { syncPushRequestSchema, syncPullRequestSchema } from '@strawboss/validation';
 import type { SyncPushRequest, SyncPullRequest } from '@strawboss/types';
 
 /**
@@ -30,7 +26,7 @@ export class SyncController {
 
   @Post('push')
   async push(
-    @Body() body: SyncPushRequest,
+    @Body(new ZodValidationPipe(syncPushRequestSchema)) body: SyncPushRequest,
     @CurrentUser() user: RequestUser,
   ) {
     const results = await this.syncService.push(body.mutations, user.id, user.organizationId);
@@ -42,7 +38,7 @@ export class SyncController {
 
   @Post('pull')
   pull(
-    @Body() body: SyncPullRequest,
+    @Body(new ZodValidationPipe(syncPullRequestSchema)) body: SyncPullRequest,
     @CurrentUser() user: RequestUser,
     @Headers('x-sync-caps') caps?: string,
   ) {

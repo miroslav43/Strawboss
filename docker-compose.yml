@@ -65,6 +65,7 @@ services:
       - letsencrypt:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
       - /srv/apps/Service Proof:/srv/apps/Service Proof:ro
+      - /srv/apps/StayTravel:/srv/apps/StayTravel:ro
     entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
     depends_on:
       - backend

@@ -107,6 +107,12 @@ function resolveTypeAndCategory(pushType: string): {
         category: MobileNotificationCategory.trip_state,
         severity: MobileNotificationSeverity.info,
       };
+    case 'truck_approaching_loader':
+      return {
+        type: MobileNotificationType.truck_approaching_loader,
+        category: MobileNotificationCategory.trip_state,
+        severity: MobileNotificationSeverity.info,
+      };
     case 'trip_completed':
       return {
         type: MobileNotificationType.trip_completed,

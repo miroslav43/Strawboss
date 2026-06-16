@@ -20,18 +20,25 @@ export const startDeliverySchema = z.object({
   destinationName: z.string().optional(),
 });
 
-export const confirmDeliverySchema = z.object({
-  // Driver weighs the loaded truck (gross) and the empty truck (tare) at the
-  // depot weighbridge; net = gross - tare is computed in the DB.
-  grossWeightKg: z.number().positive(),
-  tareWeightKg: z.number().nonnegative(),
-  weightTicketNumber: z.string().optional(),
-  // Weight-ticket photo was removed from the flow; kept optional for back-compat.
-  weightTicketPhotoUrl: z.string().optional(),
-  // Mobile sends `null` when the (now-removed) damaged-bales step is skipped —
-  // accept null as well as a number/absent, otherwise confirm-delivery 400s.
-  deterioratedBalesCount: z.number().int().min(0).nullable().optional(),
-});
+export const confirmDeliverySchema = z
+  .object({
+    // Driver weighs the loaded truck (gross) and the empty truck (tare) at the
+    // depot weighbridge; net = gross - tare is computed in the DB.
+    grossWeightKg: z.number().positive(),
+    tareWeightKg: z.number().nonnegative(),
+    weightTicketNumber: z.string().optional(),
+    // Weight-ticket photo was removed from the flow; kept optional for back-compat.
+    weightTicketPhotoUrl: z.string().optional(),
+    // Mobile sends `null` when the (now-removed) damaged-bales step is skipped —
+    // accept null as well as a number/absent, otherwise confirm-delivery 400s.
+    deterioratedBalesCount: z.number().int().min(0).nullable().optional(),
+  })
+  // Tare can never exceed gross (net would be negative). Reject instead of
+  // letting the backend clamp it to net=0 on a legally binding CMR.
+  .refine((d) => d.tareWeightKg <= d.grossWeightKg, {
+    message: 'Tara nu poate depăși greutatea brută',
+    path: ['tareWeightKg'],
+  });
 
 export const completeSchema = z.object({
   receiverName: z.string().min(1),

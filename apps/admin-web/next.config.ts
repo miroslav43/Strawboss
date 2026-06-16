@@ -25,10 +25,7 @@ function mergeRootEnvFromDotenvFile(): void {
     const key = trimmed.slice(0, eq).trim();
     if (!key.startsWith('NEXT_PUBLIC_')) continue;
     let val = trimmed.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
     const cur = process.env[key];
@@ -145,7 +142,9 @@ function devApiUpstreamOrigin(): string {
     try {
       const u = new URL(raw);
       return `${u.protocol}//${u.host}`;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
   return 'http://localhost:3001';
 }
@@ -156,16 +155,23 @@ const nextConfig: NextConfig = {
    * The dev server proxies to NEXT_PUBLIC_API_URL (e.g. https://nortiauno.com).
    * Production uses NEXT_PUBLIC_API_URL directly in the client bundle (no rewrite).
    */
-        async rewrites() {
-           if (process.env.NODE_ENV !== 'development') return [];
-           const upstream = devApiUpstreamOrigin();
-           return [
-             {
-               source: '/api/v1/:path*',
-               destination: `${upstream}/api/v1/:path*`,
-             },
-           ];
-         },
+  async rewrites() {
+    // Serve the static marketing landing page at `/` (public/landing/index.html).
+    // `beforeFiles` rewrites the URL before route/filesystem resolution, so the
+    // public file is served even though there is no `app/page.tsx`.
+    const beforeFiles = [{ source: '/', destination: '/landing/index.html' }];
+    if (process.env.NODE_ENV !== 'development') return { beforeFiles };
+    const upstream = devApiUpstreamOrigin();
+    return {
+      beforeFiles,
+      afterFiles: [
+        {
+          source: '/api/v1/:path*',
+          destination: `${upstream}/api/v1/:path*`,
+        },
+      ],
+    };
+  },
   /**
    * Production bundles must use webpack (`next build --webpack`) so the
    * `webpack()` aliases below run. Default `next build` uses Turbopack, which
@@ -196,7 +202,7 @@ const nextConfig: NextConfig = {
           if (esm) return [pkg, esm.relative];
         }
         return [pkg, resolveShared(pkg).relative];
-      })
+      }),
     ),
   },
   webpack(config) {

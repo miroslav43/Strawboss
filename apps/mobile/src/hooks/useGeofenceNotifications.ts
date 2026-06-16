@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { AppState } from 'react-native';
 import { router } from 'expo-router';
 import { addNotificationResponseListener, addNotificationListener } from '@/lib/notifications';
+import { drainPendingWakes } from '@/lib/wake-alert';
 import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
 import { useAuthStore } from '@/stores/auth-store';
@@ -15,6 +17,8 @@ interface NotificationData {
   tripId?: string;
   /** 'load' = loader entry, 'truck' = truck driver arriving at the source field. */
   action?: 'load' | 'truck';
+  /** truck_approaching_loader — registration plate of the incoming truck. */
+  truckPlate?: string;
 }
 
 export interface GeofenceAlert {
@@ -23,7 +27,13 @@ export interface GeofenceAlert {
    * `loaded_confirm` is the loader field-exit Da/Nu popup; the legacy
    * `field_entry` banner stays for back-compat.
    */
-  type: 'field_entry' | 'entry_confirm' | 'exit_confirm' | 'deposit_entry' | 'loaded_confirm';
+  type:
+    | 'field_entry'
+    | 'entry_confirm'
+    | 'exit_confirm'
+    | 'deposit_entry'
+    | 'loaded_confirm'
+    | 'truck_approaching';
   parcelName: string;
   /** T9.3 — preferred display identifier for balers. */
   parcelCode?: string;
@@ -35,6 +45,8 @@ export interface GeofenceAlert {
   tripId?: string | null;
   /** entry_confirm — tailors the overlay copy per machine type. */
   action?: 'load' | 'truck';
+  /** truck_approaching — registration plate shown on the approach banner. */
+  truckPlate?: string;
 }
 
 /** Minimum ms between two alerts for the same type+assignmentId key. */
@@ -292,6 +304,21 @@ export function useGeofenceNotifications() {
             },
           ]);
           break;
+        case 'truck_approaching_loader':
+          mobileLogger.flow('Geofence: truck approaching (<5km)', {
+            assignmentId,
+            truckPlate: data.truckPlate,
+          });
+          setAlertQueue((q) => [
+            ...q,
+            {
+              type: 'truck_approaching',
+              parcelName: data.parcelName ?? 'Câmp',
+              truckPlate: data.truckPlate,
+              assignmentId,
+            },
+          ]);
+          break;
       }
     });
 
@@ -355,6 +382,16 @@ export function useGeofenceNotifications() {
         ]);
       } else if (data.type === 'depart_prompt') {
         routeToDepartureFlow(data);
+      } else if (data.type === 'truck_approaching_loader') {
+        setAlertQueue((q) => [
+          ...q,
+          {
+            type: 'truck_approaching',
+            parcelName: data.parcelName ?? 'Câmp',
+            truckPlate: data.truckPlate,
+            assignmentId,
+          },
+        ]);
       }
     });
 
@@ -362,6 +399,48 @@ export function useGeofenceNotifications() {
       fgSubscription.remove();
       tapSubscription.remove();
     };
+  }, []);
+
+  // Surface client-detected geofence wakes (raised by the background GPS task in
+  // src/lib/geofence-wake.ts) once the app is foregrounded. Same debounce map as
+  // the push pipeline, so a client wake + a server push for the same event
+  // collapse into one banner.
+  useEffect(() => {
+    const enqueueWith = (type: string, assignmentId: string): boolean => {
+      const key = `${type}:${assignmentId}`;
+      const now = Date.now();
+      const last = lastAlertAt.current.get(key) ?? 0;
+      if (now - last < GEOFENCE_ALERT_DEBOUNCE_MS) return false;
+      lastAlertAt.current.set(key, now);
+      return true;
+    };
+
+    const drain = async () => {
+      try {
+        const wakes = await drainPendingWakes();
+        for (const w of wakes) {
+          const a = w.alert;
+          if (!a) continue; // wake-only (depot arrival / field exit) — overlay/push owns the UI
+          if (!enqueueWith(a.type, a.assignmentId)) continue;
+          mobileLogger.flow('Geofence: client wake → banner', {
+            assignmentId: a.assignmentId,
+            parcelName: a.parcelName,
+          });
+          setAlertQueue((q) => [
+            ...q,
+            { type: a.type, parcelName: a.parcelName, assignmentId: a.assignmentId },
+          ]);
+        }
+      } catch {
+        // Non-critical — the wake already foregrounded the app.
+      }
+    };
+
+    void drain();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void drain();
+    });
+    return () => sub.remove();
   }, []);
 
   return {

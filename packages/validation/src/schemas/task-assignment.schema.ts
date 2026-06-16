@@ -1,9 +1,9 @@
-import { z } from "zod";
-import { AssignmentPriority, AssignmentStatus } from "@strawboss/types";
-import { uuidSchema } from "../helpers/uuid.js";
-import { isoDateSchema } from "../helpers/iso-date.js";
-import { timestampsSchema } from "../helpers/common.js";
-import { softDeleteSchema } from "../helpers/common.js";
+import { z } from 'zod';
+import { AssignmentPriority, AssignmentStatus } from '@strawboss/types';
+import { uuidSchema } from '../helpers/uuid.js';
+import { isoDateSchema } from '../helpers/iso-date.js';
+import { timestampsSchema } from '../helpers/common.js';
+import { softDeleteSchema } from '../helpers/common.js';
 
 export const assignmentPrioritySchema = z.nativeEnum(AssignmentPriority);
 export const assignmentStatusSchema = z.nativeEnum(AssignmentStatus);
@@ -46,4 +46,26 @@ export const createTaskAssignmentSchema = z.object({
 
 export const updateAssignmentStatusSchema = z.object({
   status: assignmentStatusSchema,
+});
+
+/**
+ * Partial update for PATCH /task-assignments/:id. Every field optional; mirrors
+ * the columns the service whitelists. Unknown keys are stripped by Zod, closing
+ * the previously-unvalidated @Body() on the update endpoint.
+ */
+export const updateTaskAssignmentSchema = z.object({
+  assignmentDate: z.string().min(1).optional(),
+  machineId: uuidSchema.optional(),
+  parcelId: uuidSchema.nullable().optional(),
+  assignedUserId: uuidSchema.nullable().optional(),
+  priority: assignmentPrioritySchema.optional(),
+  sequenceOrder: z.number().int().nonnegative().optional(),
+  status: assignmentStatusSchema.optional(),
+  parentAssignmentId: uuidSchema.nullable().optional(),
+  destinationId: uuidSchema.nullable().optional(),
+  estimatedStart: isoDateSchema.nullable().optional(),
+  estimatedEnd: isoDateSchema.nullable().optional(),
+  actualStart: isoDateSchema.nullable().optional(),
+  actualEnd: isoDateSchema.nullable().optional(),
+  notes: z.string().nullable().optional(),
 });

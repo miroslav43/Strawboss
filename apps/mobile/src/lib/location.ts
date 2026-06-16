@@ -12,6 +12,7 @@ import type { LocationReportDto } from '@strawboss/types';
 import { getAuthToken } from './auth';
 import { mobileLogger } from './logger';
 import { runBackgroundSyncCycle } from '../sync/run-background-sync';
+import { maybeRaiseGeofenceWake } from './geofence-wake';
 
 export type { LocationSubscription } from 'expo-location';
 
@@ -358,6 +359,17 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
   // or slow network can never delay/break location posting. Debounced + guarded
   // inside maybePiggybackSync.
   void maybePiggybackSync();
+
+  // Client-side geofence wake: detect boundary crossings against local geometry
+  // and bring the app to the foreground (over any app / lock screen) on a fresh
+  // crossing. Fire-and-forget + edge-triggered + debounced inside the helper, so
+  // it can never delay/break location posting.
+  if (lastLoc) {
+    void maybeRaiseGeofenceWake(machineId, {
+      lat: lastLoc.coords.latitude,
+      lon: lastLoc.coords.longitude,
+    });
+  }
 
   // FM-15: after processing the batch, check whether the speed profile has
   // changed enough to warrant restarting with different intervals. We only

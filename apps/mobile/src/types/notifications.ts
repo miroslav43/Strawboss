@@ -24,6 +24,7 @@ export enum MobileNotificationType {
   deposit_entered = 'deposit_entered',
   assignment_created = 'assignment_created',
   truck_arrived_at_loader = 'truck_arrived_at_loader',
+  truck_approaching_loader = 'truck_approaching_loader',
   trip_loaded = 'trip_loaded',
   trip_departed = 'trip_departed',
   trip_arrived = 'trip_arrived',

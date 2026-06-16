@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import { mobileApiClient } from '@/lib/api-client';
 import { getSupabaseClient } from '@/lib/auth';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { clearLocalData } from '@/lib/storage';
+import { isDeviceOwner, releaseDeviceOwner } from '@/lib/device-owner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDevModeStore } from '@/stores/dev-mode-store';
 import { useThemeStore } from '@/stores/theme-store';
@@ -61,7 +62,14 @@ export function ProfileScreen() {
   const { highContrast, toggleHighContrast } = useThemeStore();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const { modalProps, showModal, hideModal } = useModal();
+
+  // Detect Device Owner once — surfaces the (hidden, technician-gated)
+  // decommission action below.
+  useEffect(() => {
+    void (async () => setIsOwner(await isDeviceOwner()))();
+  }, []);
 
   const { isConnected } = useNetworkStatus();
   const {
@@ -164,6 +172,35 @@ export function ProfileScreen() {
   // screen without these counters since they don't register usage.
   const OPERATOR_ROLES = new Set(['baler_operator', 'loader_operator', 'driver']);
   const showStats = !!profile?.id && OPERATOR_ROLES.has(profile.role);
+
+  // Decommission valve: relinquish Device Owner so the phone can be handed back /
+  // the app uninstalled WITHOUT a factory reset. Hidden behind the same dev-mode
+  // gesture (5 taps on the role badge) so an operator can't trigger it.
+  const handleReleaseDevice = useCallback(() => {
+    showModal({
+      type: 'confirm',
+      title: 'Eliberează dispozitivul',
+      message:
+        'Oprește protecția Device Owner: aplicația va putea fi din nou oprită și dezinstalată. Folosește doar la scoaterea din uz a acestui telefon. Continui?',
+      confirmText: 'Eliberează',
+      cancelText: 'Anulează',
+      onCancel: hideModal,
+      onConfirm: async () => {
+        hideModal();
+        const ok = await releaseDeviceOwner();
+        setIsOwner(false);
+        showModal({
+          type: ok ? 'success' : 'error',
+          title: ok ? 'Gata' : 'Eroare',
+          message: ok
+            ? 'Dispozitivul a fost eliberat. Aplicația poate fi acum dezinstalată.'
+            : 'Nu s-a putut elibera dispozitivul.',
+          autoDismiss: ok,
+          onConfirm: hideModal,
+        });
+      },
+    });
+  }, [showModal, hideModal]);
 
   const handleClearFailedQueue = useCallback(() => {
     showModal({
@@ -430,6 +467,24 @@ export function ProfileScreen() {
             />
           </View>
         </View>
+
+        {/* Device Owner decommission — revealed by the hidden dev gesture only */}
+        {devSyncVisible && isOwner ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Administrare dispozitiv</Text>
+            <Text style={styles.syncFailedHint}>
+              Telefon gestionat (Device Owner). Eliberarea oprește protecția și permite
+              dezinstalarea aplicației.
+            </Text>
+            <TouchableOpacity
+              style={styles.clearQueueButton}
+              onPress={handleReleaseDevice}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.clearQueueButtonText}>Eliberează dispozitivul</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
           <Text style={styles.logoutText}>Deconectare</Text>

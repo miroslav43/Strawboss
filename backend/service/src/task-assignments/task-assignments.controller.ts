@@ -4,7 +4,11 @@ import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { createTaskAssignmentSchema, updateAssignmentStatusSchema } from '@strawboss/validation';
+import {
+  createTaskAssignmentSchema,
+  updateAssignmentStatusSchema,
+  updateTaskAssignmentSchema,
+} from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import { z } from 'zod';
 import { todayInRomania } from '../common/date';
@@ -18,6 +22,11 @@ const myTasksQuerySchema = z.object({
 });
 
 const bulkCreateSchema = z.array(createTaskAssignmentSchema);
+
+/** Body for POST /task-assignments/auto-complete */
+const autoCompleteSchema = z.object({
+  beforeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'beforeDate must be YYYY-MM-DD'),
+});
 
 @Controller('task-assignments')
 export class TaskAssignmentsController {
@@ -144,14 +153,18 @@ export class TaskAssignmentsController {
   update(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
-    @Body() dto: Record<string, unknown>,
+    @Body(new ZodValidationPipe(updateTaskAssignmentSchema))
+    dto: Record<string, unknown>,
   ) {
     return this.taskAssignmentsService.update(id, user.organizationId, dto);
   }
 
   @Post('auto-complete')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
-  autoComplete(@CurrentUser() user: RequestUser, @Body() dto: { beforeDate: string }) {
+  autoComplete(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(autoCompleteSchema)) dto: { beforeDate: string },
+  ) {
     return this.taskAssignmentsService.autoCompletePastAssignments(
       user.organizationId,
       dto.beforeDate,

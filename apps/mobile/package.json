@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint app/ src/",
     "android": "dotenv -e .env.dev -- expo run:android",
-    "ios": "dotenv -e .env.dev -- expo run:ios"
+    "ios": "dotenv -e .env.dev -- expo run:ios",
+    "provision:qr": "node tools/provisioning/generate-qr.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -61,6 +62,7 @@
   "devDependencies": {
     "@types/react": "^19.1.17",
     "dotenv-cli": "^8.0.0",
+    "qrcode": "^1.5.4",
     "typescript": "^5.7.0"
   }
 }

@@ -21,14 +21,14 @@ export class ReconciliationService {
     const producedRows = producedResult as unknown as { total: number }[];
     const produced = producedRows[0]?.total ?? 0;
 
-    // Count bales loaded (from bale_loads for trips sourced from this parcel)
+    // Count bales loaded directly off bale_loads.parcel_id — the SAME source of
+    // truth as computeRemainingBalesOnParcel() / registerLoad()'s availability
+    // check. Joining through trips.source_parcel_id undercounts loads whose trip
+    // has a NULL/different source_parcel_id, diverging from the operational gate.
     const loadedResult = await this.drizzleProvider.db.execute(
-      sql`SELECT COALESCE(SUM(bl.bale_count), 0)::int AS total
-          FROM bale_loads bl
-          JOIN trips t ON t.id = bl.trip_id
-          WHERE t.source_parcel_id = ${parcelId}
-            AND bl.deleted_at IS NULL
-            AND t.deleted_at IS NULL`,
+      sql`SELECT COALESCE(SUM(bale_count), 0)::int AS total
+          FROM bale_loads
+          WHERE parcel_id = ${parcelId} AND deleted_at IS NULL`,
     );
     const loadedRows = loadedResult as unknown as { total: number }[];
     const loaded = loadedRows[0]?.total ?? 0;
@@ -99,12 +99,20 @@ export class ReconciliationService {
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips AS t SET
         gps_distance_km = (
-          SELECT ROUND((COALESCE(SUM(leg_m), 0) / 1000.0)::numeric, 2)
+          SELECT ROUND((COALESCE(SUM(
+            -- Same GPS noise filter as TripsService.arrive() / reports.service.ts:
+            -- drop legs > 5 km or implying > 130 km/h (36 m/s).
+            CASE
+              WHEN leg_m IS NULL OR dt_s IS NULL OR dt_s = 0 THEN 0
+              WHEN leg_m > 5000 THEN 0
+              WHEN (leg_m / dt_s) > 36 THEN 0
+              ELSE leg_m
+            END
+          ), 0) / 1000.0)::numeric, 2)
           FROM (
-            SELECT ST_DistanceSphere(
-                     LAG(geom) OVER (ORDER BY recorded_at),
-                     geom
-                   ) AS leg_m
+            SELECT
+              ST_DistanceSphere(LAG(geom) OVER w, geom) AS leg_m,
+              EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)) AS dt_s
             FROM (
               SELECT recorded_at,
                      ST_SetSRID(ST_MakePoint(lon, lat), 4326) AS geom
@@ -113,6 +121,7 @@ export class ReconciliationService {
                 AND recorded_at >= t.departure_at
                 AND recorded_at <= COALESCE(t.arrival_at, NOW())
             ) pts
+            WINDOW w AS (ORDER BY recorded_at)
           ) pairwise
         ),
         updated_at = NOW()

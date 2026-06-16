@@ -90,6 +90,7 @@ export {
   taskAssignmentSchema,
   createTaskAssignmentSchema,
   updateAssignmentStatusSchema,
+  updateTaskAssignmentSchema,
 } from './schemas/task-assignment.schema.js';
 
 export {

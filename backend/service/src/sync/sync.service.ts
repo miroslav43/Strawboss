@@ -147,7 +147,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'year',
     'fuel_type',
     'tank_capacity_liters',
-    'is_active',
     'current_hourmeter_hrs',
     'max_payload_kg',
     'max_bale_count',
@@ -170,7 +169,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'address',
     'municipality',
     'notes',
-    'is_active',
     'harvest_status',
     'crop_type',
     'farmtrack_geofence_id',
@@ -401,6 +399,7 @@ export class SyncService {
         sql`SELECT 1 FROM ${sql.raw(`"${referencedTable}"`)}
             WHERE id = ${value}::uuid
               AND organization_id = ${orgId}::uuid
+              AND deleted_at IS NULL
             LIMIT 1`,
       );
       const rows = result as unknown as unknown[];

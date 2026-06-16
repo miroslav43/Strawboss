@@ -16,6 +16,9 @@ import { todayInRomania } from '../common/date';
 // on GPS noise. Both are env-tunable.
 const GEOFENCE_ENTER_TOLERANCE_M = Number(process.env.STRAWBOSS_GEOFENCE_ENTER_M) || 30;
 const GEOFENCE_EXIT_TOLERANCE_M = Number(process.env.STRAWBOSS_GEOFENCE_EXIT_M) || 60;
+// Radius at which a truck nearing its source parcel triggers a one-time
+// "truck approaching" alert to the loaders waiting at that field. Env-tunable.
+const GEOFENCE_APPROACH_M = Number(process.env.STRAWBOSS_GEOFENCE_APPROACH_M) || 5000;
 
 interface ActiveAssignment {
   assignmentId: string;
@@ -226,13 +229,60 @@ export class GeofenceService {
         }
         const distM = Number(check.dist);
 
-        // 4. Get last known geofence event for this machine + geofence pair
+        // Truck-approaching alert: when a truck nears its source parcel (within
+        // APPROACH_M but not yet "arrived" past the enter tolerance), tell the
+        // loaders waiting at that field — once. The fire-once guard is a single
+        // 'approach' row per (truck, parcel, assignment); a re-check at a closer
+        // distance finds the row and stays silent.
+        if (
+          geofenceType === 'parcel' &&
+          assignment.machineType === 'truck' &&
+          assignment.parcelId &&
+          distM > GEOFENCE_ENTER_TOLERANCE_M &&
+          distM <= GEOFENCE_APPROACH_M
+        ) {
+          const approachedResult = await this.drizzleProvider.db.execute(sql`
+            SELECT 1
+            FROM geofence_events
+            WHERE machine_id = ${assignment.machineId}::uuid
+              AND geofence_id = ${geofenceId}::uuid
+              AND assignment_id = ${assignment.assignmentId}::uuid
+              AND event_type = 'approach'
+            LIMIT 1
+          `);
+          const alreadyApproached = (approachedResult as unknown as unknown[]).length > 0;
+          if (!alreadyApproached) {
+            await this.recordEvent(
+              assignment.machineId,
+              assignment.assignmentId,
+              geofenceType,
+              geofenceId,
+              'approach',
+              pos.lat,
+              pos.lon,
+            );
+            await this.notifyLoadersApproaching(
+              assignment.parcelId,
+              assignment.machineId,
+              assignment.parcelName,
+              assignment.assignmentId,
+              today,
+              assignment.organizationId,
+              Math.round(distM),
+            );
+          }
+        }
+
+        // 4. Get last known geofence event for this machine + geofence pair.
+        // Restricted to enter/exit so a separately-recorded 'approach' row
+        // (truck-approaching alert, fire-once) never flips the hysteresis.
         const lastEventResult = await this.drizzleProvider.db.execute(sql`
         SELECT event_type AS "eventType"
         FROM geofence_events
         WHERE machine_id = ${assignment.machineId}::uuid
           AND geofence_id = ${geofenceId}::uuid
           AND assignment_id = ${assignment.assignmentId}::uuid
+          AND event_type IN ('enter', 'exit')
         ORDER BY created_at DESC
         LIMIT 1
       `);
@@ -563,6 +613,87 @@ export class GeofenceService {
   }
 
   /**
+   * Notify the loader/baler operators waiting at a parcel that the truck they
+   * expect is approaching (within APPROACH_M). Mirrors notifyLoadersAtParcel's
+   * org-scoped fan-out but carries the plate so the mobile overlay can read it.
+   * Best-effort: a missing assignment, push token, or Expo error never blocks
+   * the geofence loop.
+   */
+  private async notifyLoadersApproaching(
+    parcelId: string,
+    truckMachineId: string,
+    parcelName: string | null,
+    truckAssignmentId: string,
+    today: string,
+    orgId: string | null,
+    distanceM: number,
+  ): Promise<void> {
+    try {
+      const loaderRows = (await this.drizzleProvider.db.execute(sql`
+        SELECT
+          ta.assigned_user_id AS "userId",
+          ta.id               AS "assignmentId",
+          (SELECT registration_plate FROM machines WHERE id = ${truckMachineId}::uuid) AS "truckPlate"
+        FROM task_assignments ta
+        JOIN machines m ON m.id = ta.machine_id
+        WHERE ta.parcel_id = ${parcelId}::uuid
+          AND ta.assignment_date = ${today}
+          AND ta.deleted_at IS NULL
+          AND ta.status IN ('available', 'in_progress')
+          AND m.machine_type IN ('loader', 'baler')
+          AND ta.assigned_user_id IS NOT NULL
+          AND ta.organization_id IS NOT DISTINCT FROM ${orgId}::uuid
+      `)) as unknown as { userId: string; assignmentId: string; truckPlate: string | null }[];
+
+      if (loaderRows.length === 0) return;
+
+      const plate = loaderRows[0]?.truckPlate ?? 'un camion';
+
+      await Promise.all(
+        loaderRows.map((row) =>
+          this.notificationsService
+            .sendPush(
+              row.userId,
+              'Camion în apropiere',
+              `Camionul ${plate} — șoferul se apropie spre tine.`,
+              {
+                type: 'truck_approaching_loader',
+                assignmentId: row.assignmentId,
+                truckMachineId,
+                truckAssignmentId,
+                truckPlate: plate,
+                parcelName,
+                distanceM,
+              },
+            )
+            .catch(() => {
+              // Best-effort — push failures must not break the geofence loop.
+            }),
+        ),
+      );
+
+      this.winston.log(
+        'flow',
+        `Notified ${loaderRows.length} loader(s) that truck ${truckMachineId} is approaching parcel ${parcelId} (${distanceM} m)`,
+        {
+          context: 'GeofenceService',
+          truckMachineId,
+          parcelId,
+          distanceM,
+          loaderCount: loaderRows.length,
+        },
+      );
+    } catch (err) {
+      this.winston.warn(`notifyLoadersApproaching failed (parcel ${parcelId})`, {
+        context: 'GeofenceService',
+        parcelId,
+        truckMachineId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
+  }
+
+  /**
    * Run a geofence check immediately (instead of waiting for the 5-minute job)
    * and return a small diagnostic summary. Backs the admin trigger endpoint so
    * the full GPS → geofence → push chain can be tested on demand. The summary
@@ -623,7 +754,7 @@ export class GeofenceService {
     assignmentId: string,
     geofenceType: 'parcel' | 'deposit',
     geofenceId: string,
-    eventType: 'enter' | 'exit',
+    eventType: 'enter' | 'exit' | 'approach',
     lat: number,
     lon: number,
   ): Promise<void> {

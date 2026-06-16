@@ -81,6 +81,24 @@ export async function openAppDetailsSettings(): Promise<void> {
 }
 
 /**
+ * Open the per-app "Use full screen intents" special-access screen (Android 14+).
+ * Lets the user grant the permission that allows our alert to wake the screen
+ * over the lock screen on non-device-owner phones. Falls back to app details.
+ */
+export async function openFullScreenIntentSettings(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    // expo-intent-launcher's ActivityAction enum may not include this constant,
+    // so pass the raw action string.
+    await IntentLauncher.startActivityAsync('android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT', {
+      data: `package:${APP_PACKAGE}`,
+    });
+  } catch {
+    await openAppDetailsSettings();
+  }
+}
+
+/**
  * Known OEM autostart / background-management screens, by manufacturer. Each
  * entry is tried in order (component names drift across ROM versions). Sourced
  * from the widely used AutoStarter component list.

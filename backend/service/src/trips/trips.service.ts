@@ -362,6 +362,26 @@ export class TripsService implements OnModuleInit {
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'START_LOADING');
 
+    // The PATCH/transition path must validate org membership of the loader
+    // pointers just like create() does — otherwise an operator can stamp a
+    // foreign-org user/machine onto the trip via start-loading.
+    if (orgId !== null) {
+      if (dto.loaderOperatorId) {
+        const opCheck = (await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM users WHERE id = ${dto.loaderOperatorId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `)) as unknown as { id: string }[];
+        if (!opCheck.length)
+          throw new ForbiddenException('Loader operator not found in your organization');
+      }
+      if (dto.loaderId) {
+        const loaderCheck = (await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM machines WHERE id = ${dto.loaderId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `)) as unknown as { id: string }[];
+        if (!loaderCheck.length)
+          throw new ForbiddenException('Loader not found in your organization');
+      }
+    }
+
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.loading},
@@ -819,12 +839,21 @@ export class TripsService implements OnModuleInit {
         status = ${TripStatus.arrived},
         arrival_at = NOW(),
         gps_distance_km = (
-          SELECT ROUND((COALESCE(SUM(leg_m), 0) / 1000.0)::numeric, 2)
+          SELECT ROUND((COALESCE(SUM(
+            -- Drop GPS noise: legs implying > 130 km/h (36 m/s) or > 5 km in a
+            -- single segment. Mirrors reports.service.ts so arrive() and the
+            -- reports never disagree on a trip's distance.
+            CASE
+              WHEN leg_m IS NULL OR dt_s IS NULL OR dt_s = 0 THEN 0
+              WHEN leg_m > 5000 THEN 0
+              WHEN (leg_m / dt_s) > 36 THEN 0
+              ELSE leg_m
+            END
+          ), 0) / 1000.0)::numeric, 2)
           FROM (
-            SELECT ST_DistanceSphere(
-                     LAG(geom) OVER (ORDER BY recorded_at),
-                     geom
-                   ) AS leg_m
+            SELECT
+              ST_DistanceSphere(LAG(geom) OVER w, geom) AS leg_m,
+              EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)) AS dt_s
             FROM (
               SELECT recorded_at,
                      ST_SetSRID(ST_MakePoint(lon, lat), 4326) AS geom
@@ -833,6 +862,7 @@ export class TripsService implements OnModuleInit {
                 AND recorded_at >= t.departure_at
                 AND recorded_at <= NOW()
             ) pts
+            WINDOW w AS (ORDER BY recorded_at)
           ) pairwise
         ),
         updated_at = NOW()
@@ -884,9 +914,18 @@ export class TripsService implements OnModuleInit {
     // The driver weighs the loaded truck (gross) and the empty truck (tare) at
     // the depot; net_weight_kg is the generated column gross - tare, guarded by
     // chk_net_weight_sane (gross >= tare). The mobile validates gross >= tare
-    // before submit; clamp defensively so a bad payload can never 500.
+    // before submit. Reject (not silently clamp) a swapped/typo'd payload — a
+    // clamp would write net=0 to a legally binding CMR without any error.
     const grossWeightKg = dto.grossWeightKg;
-    const tareWeightKg = Math.min(dto.tareWeightKg, grossWeightKg);
+    if (dto.tareWeightKg > grossWeightKg) {
+      throw new BadRequestException({
+        error: 'tare_exceeds_gross',
+        message: 'Tara nu poate depăși greutatea brută.',
+        grossWeightKg,
+        tareWeightKg: dto.tareWeightKg,
+      });
+    }
+    const tareWeightKg = dto.tareWeightKg;
 
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
@@ -1667,8 +1706,12 @@ export class TripsService implements OnModuleInit {
     // NOTE: we intentionally do NOT clear task_assignments.trip_id here — see the
     // doc comment above. Detaching it would let onModuleInit / autoUpsert
     // resurrect the trip on the next backend boot.
+    // Fold the org filter into the UPDATE (not just the prior findById) so the
+    // write is atomically scoped to the caller's org, matching forceStatus and
+    // every other mutation in this file.
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} RETURNING id`,
+      sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} AND deleted_at IS NULL${orgFilter} RETURNING id`,
     );
 
     this.logTripFlow(id, 'DELETE', from, 'deleted');
@@ -1740,16 +1783,32 @@ export class TripsService implements OnModuleInit {
     const targetStatus =
       dto.resolvedTo === 'completed' ? TripStatus.completed : TripStatus.delivered;
 
+    // A dispute resolved straight to `completed` must mirror complete(): stamp
+    // completed_at (truck-idle/recall scans filter on it) and generate the final
+    // CMR (stage 2). Without this, such trips have completed_at = NULL and never
+    // get their stage-2 document.
+    const completedStamp =
+      targetStatus === TripStatus.completed
+        ? sql`, completed_at = COALESCE(completed_at, NOW())`
+        : sql``;
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${targetStatus},
-        updated_at = NOW()
+        updated_at = NOW()${completedStamp}
       WHERE id = ${id} AND status = ${from} RETURNING *`,
     );
     if (!(result as unknown as unknown[]).length) {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'RESOLVE_DISPUTE', from, targetStatus);
+
+    if (targetStatus === TripStatus.completed) {
+      await this.cmrQueue.add('generate', { tripId: id, orgId: orgId, stage: 2 });
+      this.winston.log('flow', `CMR stage-2 queued for disputed→completed trip ${id}`, {
+        context: 'TripsService',
+        tripId: id,
+      });
+    }
     return result;
   }
 }

@@ -28,3 +28,10 @@ apps/mobile/android/app/google-services.json
 # Firebase Admin / FCM service account (Expo only — never commit)
 *firebase-adminsdk*.json
 strawboss-*firebase*.json
+# Local Claude Code settings + scheduled-task lock (per-machine, never committed)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+# Local scratch / backup artefacts (not project content)
+Strawboss.zip
+test.txt
+tascuriv*.txt

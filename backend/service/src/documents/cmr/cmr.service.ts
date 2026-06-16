@@ -182,7 +182,11 @@ export class CmrService {
         baleCount: trip.bale_count ?? 0,
         grossWeightKg: isStage1 ? null : (trip.gross_weight_kg ?? 'N/A'),
         netWeightKg: isStage1 ? null : (trip.net_weight_kg ?? 'N/A'),
-        tareWeightKg: isStage1 ? null : (truck?.tare_weight_kg ?? 'N/A'),
+        // Use the trip's actual weigh-ticket tare (the same value net_weight_kg
+        // is generated from) so Brut − Tară = Net holds on the document. The
+        // machine's static reference tare (truck.tare_weight_kg) is not what was
+        // measured at the weighbridge.
+        tareWeightKg: isStage1 ? null : (trip.tare_weight_kg ?? 'N/A'),
         weightTicketNumber: isStage1 ? null : (trip.weight_ticket_number ?? 'N/A'),
         deterioratedBalesCount: isStage1 ? null : (trip.deteriorated_bales_count ?? null),
         // Route distance is GPS-derived (populated at arrive), so it only

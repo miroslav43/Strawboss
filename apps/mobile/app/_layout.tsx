@@ -38,6 +38,7 @@ import {
 } from '@/lib/location';
 import { checkMachineInactivity } from '@/lib/inactivity-alarm';
 import { ensureTrackingArmed } from '@/lib/tracking-watchdog';
+import { isDeviceOwner, applyDeviceOwnerPolicies } from '@/lib/device-owner';
 import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/background-sync';
 import { startHeartbeat, stopHeartbeat } from '@/lib/heartbeat';
 import { hasSeenOnboarding } from './onboarding';
@@ -294,6 +295,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, storeHydrated, role, setProfile]);
 
+  // Device Owner: re-assert all device-owner policies idempotently on every
+  // launch (the admin receiver's onEnabled does NOT re-fire after an APK/OS
+  // update). No-op on non-device-owner installs / iOS / Expo Go.
+  useEffect(() => {
+    void (async () => {
+      if (await isDeviceOwner()) {
+        await applyDeviceOwnerPolicies();
+      }
+    })();
+  }, []);
+
   // Intercept all incoming pushes → persist to local notifications table
   useEffect(() => {
     const fgSub = addNotificationListener((notification) => {
@@ -417,8 +429,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     trackingSetupCheckedRef.current = true;
     void (async () => {
       try {
+        // Device-owner phones auto-grant everything (location/battery/notif) — the
+        // walkthrough has nothing to do, so skip it entirely.
+        const owner = await isDeviceOwner();
         const seen = await hasSeenTrackingSetup();
-        if (!seen) {
+        if (!owner && !seen) {
           router.push('/tracking-setup' as Parameters<typeof router.push>[0]);
         }
       } catch {

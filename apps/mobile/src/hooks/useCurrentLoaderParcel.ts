@@ -16,6 +16,13 @@ export type CurrentParcelStatus =
 /** Live "am I physically on the field" state. */
 export type ParcelPresence = 'inside' | 'outside' | 'unknown';
 
+/**
+ * GPS acquisition state, surfaced so callers can tell "still locating" (wait)
+ * apart from "GPS unavailable" (permission denied / timed out) when `presence`
+ * is `unknown`. The in-field load gate uses this to pick the right message.
+ */
+export type ParcelGpsState = 'locating' | 'ready' | 'unavailable';
+
 export interface CurrentLoaderParcel {
   status: CurrentParcelStatus;
   /** Parcel id when `status === 'resolved'`. */
@@ -29,6 +36,8 @@ export interface CurrentLoaderParcel {
   presence: ParcelPresence;
   /** Metres to the field boundary when `presence === 'outside'`. */
   distanceM: number | null;
+  /** GPS acquisition state — disambiguates `presence === 'unknown'`. */
+  gpsState: ParcelGpsState;
   /**
    * When `status === 'needs_start'`: available tasks to pick from.
    * When `status === 'multiple_active'`: in_progress tasks GPS couldn't disambiguate.
@@ -178,6 +187,12 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     setRefreshKey((k) => k + 1);
   };
 
+  // Collapse the internal GPS lifecycle into the 3-state public signal: a fresh
+  // fix is `ready`, a hard failure is `unavailable`, everything in between
+  // (idle/loading/retrying) is still `locating`.
+  const gpsState: ParcelGpsState =
+    gpsStatus === 'ready' ? 'ready' : gpsStatus === 'unavailable' ? 'unavailable' : 'locating';
+
   if (tasksLoading || parcelsLoading) {
     return {
       status: 'loading',
@@ -187,6 +202,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       source: null,
       presence: 'unknown',
       distanceM: null,
+      gpsState,
       candidates: [],
       refresh,
     };
@@ -221,6 +237,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       source: 'in_progress_task',
       presence,
       distanceM,
+      gpsState,
       candidates: [],
       refresh,
     };
@@ -251,6 +268,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
         source: 'gps',
         presence,
         distanceM,
+        gpsState,
         candidates: [],
         refresh,
       };
@@ -267,6 +285,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       source: null,
       presence: 'unknown',
       distanceM: null,
+      gpsState,
       candidates: inProgress,
       refresh,
     };
@@ -284,6 +303,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     source: null,
     presence: 'unknown',
     distanceM: null,
+    gpsState,
     candidates: assignedAny,
     refresh,
   };

@@ -112,10 +112,19 @@ export default function LoadBalesScreen() {
 
   const baleCount = parseInt(baleCountStr, 10) || 0;
 
-  // In-field gate. Block the load only when GPS *proves* the loader is away from
-  // the field (beyond tolerance). When inside, near (within tolerance), or the
-  // position is unknown (no boundary / GPS not ready) we allow it, to avoid
-  // false lockouts. `presence`/`distanceM` come from useCurrentLoaderParcel.
+  // In-field gate (hard). A load may only be registered when GPS *proves* the
+  // loader is inside the field (or within tolerance of its boundary), so bales
+  // are never attributed to a field the operator isn't standing on. Unknown
+  // position (no boundary / GPS not ready / GPS denied) blocks the load — the
+  // operator must get a fix first. `presence`/`distanceM`/`gpsState` come from
+  // useCurrentLoaderParcel.
+  const inField =
+    parcel.presence === 'inside' ||
+    (parcel.presence === 'outside' &&
+      parcel.distanceM != null &&
+      parcel.distanceM <= LOAD_FIELD_TOLERANCE_M);
+  // GPS proves the loader is past the tolerance — used for the precise distance
+  // copy. `unknown` is handled separately (locating vs unavailable).
   const awayFromField =
     parcel.presence === 'outside' &&
     parcel.distanceM != null &&
@@ -184,15 +193,42 @@ export default function LoadBalesScreen() {
   // FM-5: duplicate detection — check for a recent bale_load on same (truckId, parcelId).
   // Uses snapshotParcelId directly (parcelReady = snapshotParcelId !== null, declared later).
   const handleRegisterPress = useCallback(async () => {
-    // Hard gate: must be on the field the bales are attributed to.
-    if (awayFromField) {
-      showModal({
-        type: 'warning',
-        title: 'Nu ești în câmp',
-        message: `Trebuie să fii pe terenul ${snapshotParcelName ?? 'selectat'} ca să încarci. Ești la ${parcel.distanceM} m de câmp — apropie-te și încearcă din nou.`,
-        confirmText: 'Am înțeles',
-        onConfirm: hideModal,
-      });
+    // Hard gate: must be provably on the field the bales are attributed to.
+    if (!inField) {
+      if (awayFromField) {
+        // GPS proves the loader is too far from the field.
+        showModal({
+          type: 'warning',
+          title: 'Nu ești în câmp',
+          message: `Trebuie să fii pe terenul ${snapshotParcelName ?? 'selectat'} ca să încarci. Ești la ${parcel.distanceM} m de câmp — apropie-te și încearcă din nou.`,
+          confirmText: 'Am înțeles',
+          onConfirm: hideModal,
+        });
+      } else if (parcel.gpsState === 'unavailable') {
+        // GPS denied / timed out / field has no boundary — can't confirm position.
+        showModal({
+          type: 'warning',
+          title: 'Poziție neconfirmată',
+          message:
+            'Nu putem confirma că ești pe teren (GPS indisponibil sau locația oprită). Activează locația și încearcă din nou.',
+          confirmText: 'Reîncearcă GPS',
+          cancelText: 'Anulează',
+          onConfirm: () => {
+            hideModal();
+            parcel.refresh();
+          },
+          onCancel: hideModal,
+        });
+      } else {
+        // Still acquiring a fix — ask the operator to wait.
+        showModal({
+          type: 'warning',
+          title: 'Se determină poziția',
+          message: 'Așteaptă semnalul GPS ca să confirmăm că ești pe teren, apoi încearcă din nou.',
+          confirmText: 'Am înțeles',
+          onConfirm: hideModal,
+        });
+      }
       return;
     }
     if (baleCount <= 0 || !snapshotParcelId || !truckId) {
@@ -411,9 +447,12 @@ export default function LoadBalesScreen() {
       baleCount,
       isOnline,
       queryClient,
+      inField,
       awayFromField,
       snapshotParcelName,
       parcel.distanceM,
+      parcel.gpsState,
+      parcel.refresh,
       showModal,
       hideModal,
     ],
@@ -555,6 +594,8 @@ export default function LoadBalesScreen() {
                 </Text>
               ) : parcel.presence === 'outside' ? (
                 <Text style={styles.presenceNear}>● Aproape de câmp ({parcel.distanceM} m)</Text>
+              ) : parcel.gpsState === 'unavailable' ? (
+                <Text style={styles.presenceOutside}>● GPS indisponibil — activează locația</Text>
               ) : (
                 <Text style={styles.presenceUnknown}>Se verifică poziția…</Text>
               )
@@ -580,11 +621,15 @@ export default function LoadBalesScreen() {
         <BigButton
           title="Înregistrează"
           onPress={() => void handleRegisterPress()}
-          disabled={baleCount <= 0 || !parcelReady || awayFromField}
+          disabled={baleCount <= 0 || !parcelReady || !inField}
         />
-        {awayFromField ? (
+        {parcelReady && !inField ? (
           <Text style={styles.gateHint}>
-            Trebuie să fii în câmp ca să încarci ({parcel.distanceM} m de teren).
+            {awayFromField
+              ? `Trebuie să fii în câmp ca să încarci (${parcel.distanceM} m de teren).`
+              : parcel.gpsState === 'unavailable'
+                ? 'Nu putem confirma poziția — activează GPS-ul ca să încarci.'
+                : 'Se așteaptă semnalul GPS ca să confirmăm că ești pe teren…'}
           </Text>
         ) : null}
         <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
