@@ -366,14 +366,29 @@ export class SyncManager {
     if (update.table === 'trips') {
       const existing = await this.tripsRepo.findById(update.recordId);
       if (existing) {
+        // If a trip_transition for this trip is still queued (pending / in-flight
+        // / failed), the local optimistic status is authoritative until it pushes.
+        // Otherwise a pull returning the server's PRE-transition status would
+        // silently revert the trip AND clear the pending badge — the driver would
+        // see the old status with no sign the transition is still retrying.
+        const transitionStillQueued = await this.syncQueueRepo.hasUnsentTransitionForTrip(
+          update.recordId,
+        );
         const { merged, divergentFields } = mergeRecords(
           update.table,
           update.recordId,
           existing as unknown as Record<string, unknown>,
           { ...update.data, server_version: update.serverVersion },
         );
-        // Server confirmed the trip state — clear the local pending-transition flag.
-        (merged as Record<string, unknown>)['has_pending_transition'] = 0;
+        const m = merged as Record<string, unknown>;
+        if (transitionStillQueued) {
+          // Keep the optimistic status + badge; the server hasn't applied it yet.
+          m['status'] = (existing as unknown as Record<string, unknown>)['status'];
+          m['has_pending_transition'] = 1;
+        } else {
+          // Server confirmed the trip state — clear the local pending-transition flag.
+          m['has_pending_transition'] = 0;
+        }
         await this.tripsRepo.upsert(merged as unknown as LocalTrip);
         await notifyDivergentFields(update.table, update.recordId, divergentFields);
       } else {

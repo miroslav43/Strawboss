@@ -269,6 +269,23 @@ export class SyncQueueRepo {
   }
 
   /**
+   * Whether a `trip_transition` for this trip is still unsent — pending,
+   * in-flight, or failed (i.e. NOT yet confirmed by the server). Used by the
+   * pull merge so a server row at its pre-transition status cannot revert the
+   * local optimistic status while the transition is still queued/retrying.
+   */
+  async hasUnsentTransitionForTrip(tripId: string): Promise<boolean> {
+    const row = await this.db.getFirstAsync<{ n: number }>(
+      `SELECT COUNT(*) as n FROM sync_queue
+       WHERE entity_type = 'trip_transition'
+         AND entity_id = ?
+         AND status IN ('pending', 'in_flight', 'failed')`,
+      [tripId],
+    );
+    return (row?.n ?? 0) > 0;
+  }
+
+  /**
    * FM-4: Check whether a sync queue entry with the given idempotency key
    * is still `pending` (not yet dispatched to the server).
    */

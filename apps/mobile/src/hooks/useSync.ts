@@ -29,6 +29,7 @@ export function useSync() {
   const [errors, setErrors] = useState<string[]>([]);
   const { isConnected } = useNetworkStatus();
   const wasDisconnected = useRef(false);
+  const syncingRef = useRef(false);
   const queryClient = useQueryClient();
 
   const refreshPendingCount = useCallback(async () => {
@@ -44,7 +45,10 @@ export function useSync() {
   }, []);
 
   const triggerSync = useCallback(async () => {
-    if (syncing) return;
+    // Ref-based mutex: React state lags a render, so two rapid calls could both
+    // read syncing===false and start concurrent cycles. The ref flips synchronously.
+    if (syncingRef.current) return;
+    syncingRef.current = true;
 
     setSyncing(true);
     setErrors([]);
@@ -52,11 +56,15 @@ export function useSync() {
     try {
       const db = await getDatabase();
       const supabase = getSupabaseClient();
-      const { data } = await supabase.auth.getSession();
 
       const apiClient = new ApiClient({
         baseUrl: API_BASE_URL,
-        getToken: async () => data.session?.access_token ?? null,
+        // Resolve the token per request (not a one-time snapshot) so a long sync
+        // that crosses a token refresh keeps sending a valid access token.
+        getToken: async () => {
+          const { data } = await supabase.auth.getSession();
+          return data.session?.access_token ?? null;
+        },
         // Advertise tombstone support so /sync/pull returns deletions[].
         defaultHeaders: { 'X-Sync-Caps': 'tombstones-v1' },
       });
@@ -107,9 +115,10 @@ export function useSync() {
       const message = err instanceof Error ? err.message : 'Sync failed';
       setErrors((prev) => [...prev, message]);
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
-  }, [syncing, refreshPendingCount, queryClient]);
+  }, [refreshPendingCount, queryClient]);
 
   const retryFailedAndSync = useCallback(async () => {
     try {

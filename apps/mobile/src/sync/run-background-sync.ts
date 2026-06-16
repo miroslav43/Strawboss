@@ -12,6 +12,7 @@ import { FuelLogsRepo } from '../db/fuel-logs-repo';
 import { ConsumableLogsRepo } from '../db/consumable-logs-repo';
 import { BaleLoadsRepo } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo } from '../db/task-assignments-repo';
+import { ParcelsRepo } from '../db/parcels-repo';
 import { SyncCursorsRepo } from '../db/sync-cursors-repo';
 import { SyncManager } from './SyncManager';
 import { NotificationsRepo } from '../db/notifications-repo';
@@ -51,6 +52,7 @@ export async function runBackgroundSyncCycle(): Promise<void> {
   const consumableLogsRepo = new ConsumableLogsRepo(db);
   const baleLoadsRepo = new BaleLoadsRepo(db);
   const taskAssignmentsRepo = new TaskAssignmentsRepo(db);
+  const parcelsRepo = new ParcelsRepo(db);
   const syncCursorsRepo = new SyncCursorsRepo(db);
 
   const manager = new SyncManager(
@@ -62,7 +64,10 @@ export async function runBackgroundSyncCycle(): Promise<void> {
     consumableLogsRepo,
     baleLoadsRepo,
     taskAssignmentsRepo,
-    undefined,
+    // Pass ParcelsRepo so background sync applies parcel geometry updates and
+    // tombstones — previously `undefined`, so the background path (the primary
+    // periodic updater) silently dropped every parcel change.
+    parcelsRepo,
     syncCursorsRepo,
   );
 
