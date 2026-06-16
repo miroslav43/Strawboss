@@ -34,6 +34,10 @@ export const queryKeys = {
     all: ['fuelLogs'] as const,
     byMachine: (machineId: string) => ['fuelLogs', 'machine', machineId] as const,
   },
+  consumableLogs: {
+    all: ['consumableLogs'] as const,
+    byMachine: (machineId: string) => ['consumableLogs', 'machine', machineId] as const,
+  },
   documents: {
     all: ['documents'] as const,
     byTrip: (tripId: string) => ['documents', 'trip', tripId] as const,

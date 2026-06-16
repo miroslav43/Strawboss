@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useMachines } from '@strawboss/api';
+import { useMachines, queryKeys } from '@strawboss/api';
 import type { Machine } from '@strawboss/types';
 import { ChevronDown, ChevronRight, Package, User, Calendar } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -73,7 +73,7 @@ export default function ConsumableLogsPage() {
   }, [machines]);
 
   const logsQuery = useQuery({
-    queryKey: ['consumable-logs', 'admin-list', dateFrom, dateTo],
+    queryKey: [...queryKeys.consumableLogs.all, 'admin-list', dateFrom, dateTo],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (dateFrom) params.set('dateFrom', `${dateFrom}T00:00:00Z`);

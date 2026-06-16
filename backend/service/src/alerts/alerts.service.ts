@@ -240,6 +240,22 @@ export class AlertsService {
       if ((existing as unknown as Record<string, unknown>[]).length > 0) {
         return existing;
       }
+    } else if (draft.data && (draft.data as Record<string, unknown>).parcelId) {
+      // Trip-less drafts (e.g. the hourly bale reconciliation) carry no trip_id,
+      // so dedup per parcel instead — otherwise a persistent discrepancy spawns a
+      // fresh alert every cycle.
+      const parcelId = String((draft.data as Record<string, unknown>).parcelId);
+      const existing = await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM alerts
+            WHERE category = ${draft.category}
+              AND is_acknowledged = false
+              AND organization_id = ${orgId}::uuid
+              AND data->>'parcelId' = ${parcelId}
+            LIMIT 1`,
+      );
+      if ((existing as unknown as Record<string, unknown>[]).length > 0) {
+        return existing;
+      }
     }
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO alerts (
