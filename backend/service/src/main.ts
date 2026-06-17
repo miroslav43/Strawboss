@@ -1,22 +1,19 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { promises as fsp } from 'node:fs';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { AppModule } from './app.module';
 import { resolveUploadsRoot } from './uploads/uploads.service';
+import { verifyUploadSignature } from './uploads/uploads-signing';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter(),
-    { bufferLogs: true },
-  );
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+    bufferLogs: true,
+  });
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
   app.setGlobalPrefix('api/v1');
 
@@ -42,21 +39,44 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const uploadsRoot = resolveUploadsRoot(configService);
   await fsp.mkdir(uploadsRoot, { recursive: true });
+
+  // The static route below lives OUTSIDE NestJS routing, so the AuthGuard never
+  // runs for it. Gate it with a short-lived HMAC signature instead: every upload
+  // URL is signed at response egress (UploadUrlSigningInterceptor) and verified
+  // here on each GET. Unsigned / expired / tampered requests get 401 — closing
+  // the previously world-readable signatures/receipts/avatars hole.
+  const uploadsSecret = configService.getOrThrow<string>('SUPABASE_JWT_SECRET');
+  fastify.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
+    // Only the static file-serving GET/HEAD requests are signature-gated. The
+    // POST upload endpoints (/uploads/receipt, /uploads/signature) are Nest
+    // controller routes guarded by the AuthGuard — let them through untouched.
+    if (req.method !== 'GET' && req.method !== 'HEAD') return;
+    const rawUrl: string = req.url ?? '';
+    if (!rawUrl.startsWith('/api/v1/uploads/')) return;
+    const qIndex = rawUrl.indexOf('?');
+    const pathname = qIndex === -1 ? rawUrl : rawUrl.slice(0, qIndex);
+    const query = new URLSearchParams(qIndex === -1 ? '' : rawUrl.slice(qIndex + 1));
+    const ok = verifyUploadSignature(
+      pathname,
+      query.get('exp'),
+      query.get('sig'),
+      uploadsSecret,
+      Date.now(),
+    );
+    if (!ok) {
+      return reply.code(401).send({ statusCode: 401, message: 'Invalid or expired upload URL' });
+    }
+  });
+
   await fastify.register(fastifyStatic, {
     root: uploadsRoot,
     prefix: '/api/v1/uploads/',
     decorateReply: false,
   });
 
-  const corsOrigins = [
-    'https://nortiauno.com',
-    'https://www.nortiauno.com',
-  ];
+  const corsOrigins = ['https://nortiauno.com', 'https://www.nortiauno.com'];
   if (process.env.NODE_ENV !== 'production') {
-    corsOrigins.push(
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-    );
+    corsOrigins.push('http://localhost:3000', 'http://127.0.0.1:3000');
   }
   // Production Docker images still use NODE_ENV=production. If you run admin at
   // http://localhost:3000 against this API (e.g. ./strawboss.sh production), add:
@@ -77,8 +97,6 @@ async function bootstrap() {
   });
   const port = process.env.PORT ?? 3001;
   await app.listen(port, '0.0.0.0');
-  app.get(WINSTON_MODULE_NEST_PROVIDER).log(
-    `StrawBoss backend listening on ${port}`,
-  );
+  app.get(WINSTON_MODULE_NEST_PROVIDER).log(`StrawBoss backend listening on ${port}`);
 }
 bootstrap();
