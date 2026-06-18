@@ -1,8 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { ProfileService } from '../profile/profile.service';
 import { todayInRomania } from '../common/date';
 import { QUEUE_GEOFENCE_CHECK } from '../jobs/queues';
 import type {
@@ -24,8 +25,11 @@ export class LocationService {
   private lastGeofenceNudgeMs = 0;
   private static readonly GEOFENCE_NUDGE_THROTTLE_MS = 15_000;
 
+  private readonly logger = new Logger(LocationService.name);
+
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
+    private readonly profileService: ProfileService,
     @InjectQueue(QUEUE_GEOFENCE_CHECK) private readonly geofenceQueue: Queue,
   ) {}
 
@@ -70,6 +74,18 @@ export class LocationService {
         ${dto.recordedAt}::timestamptz
       )
     `);
+
+    // Presence: a backgrounded operator (screen off) pauses the JS heartbeat,
+    // but a machine-bound device keeps streaming GPS via its foreground service.
+    // Touch last_seen_at here so such operators stay "online" on the dashboard
+    // without a dedicated heartbeat. Best-effort — presence must never fail the
+    // location report.
+    void this.profileService.touchLastSeen(operatorId).catch((err) => {
+      this.logger.warn(
+        `touchLastSeen from location report failed for ${operatorId}: ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    });
 
     // Event-driven geofence: nudge an immediate check shortly after a fresh GPS
     // ping so enter/exit transitions fire in seconds instead of waiting for the

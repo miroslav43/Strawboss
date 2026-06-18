@@ -9,5 +9,8 @@ import { UploadsModule } from '../uploads/uploads.module';
   imports: [DatabaseModule, AuthModule, UploadsModule],
   controllers: [ProfileController],
   providers: [ProfileService],
+  // Exported so LocationService can touch presence (last_seen_at) on each GPS
+  // report — keeps machine-bound operators "online" while backgrounded.
+  exports: [ProfileService],
 })
 export class ProfileModule {}
