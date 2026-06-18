@@ -21,6 +21,8 @@ interface DeviceOwnerNative {
   launchAlertActivityOverEverything(deepLink: string): Promise<boolean>;
   canUseFullScreenIntent(): Promise<boolean>;
   presentFullScreenAlert(title: string, body: string, deepLink: string): Promise<boolean>;
+  startPresenceService(): Promise<boolean>;
+  stopPresenceService(): Promise<boolean>;
 }
 
 const native: DeviceOwnerNative | null =
@@ -36,18 +38,32 @@ const native: DeviceOwnerNative | null =
  */
 let deviceOwnerCache: Promise<boolean> | null = null;
 
+/**
+ * Last resolved device-owner value, exposed synchronously. Defaults to false
+ * until {@link isDeviceOwner} first resolves. Lets non-async call sites (e.g. the
+ * AppState background handler) branch without awaiting.
+ */
+let deviceOwnerResolved = false;
+
 export function isDeviceOwner(): Promise<boolean> {
   if (!deviceOwnerCache) {
     deviceOwnerCache = (async () => {
       if (!native) return false;
       try {
-        return await native.isDeviceOwner();
+        const owner = await native.isDeviceOwner();
+        deviceOwnerResolved = owner;
+        return owner;
       } catch {
         return false;
       }
     })();
   }
   return deviceOwnerCache;
+}
+
+/** Synchronous view of the memoized device-owner status (false until resolved). */
+export function isDeviceOwnerResolved(): boolean {
+  return deviceOwnerResolved;
 }
 
 /** Idempotently re-assert all device-owner policies. No-op when not device owner. */
@@ -110,6 +126,39 @@ export async function presentFullScreenAlert(
 }
 
 /**
+ * Keep-alive presence service (device-owner only). Starts a tiny foreground
+ * service so the OS does not freeze the JS thread while backgrounded — the 30 s
+ * heartbeat then keeps reporting presence even with the screen off. Needed for
+ * roles WITHOUT an assigned machine (geofence_maker, depot_manager); machine
+ * roles already keep JS alive via the location foreground service. No-op when
+ * the native module is missing (Expo Go / iOS).
+ */
+export async function startPresenceService(): Promise<boolean> {
+  if (!native?.startPresenceService) return false;
+  try {
+    return await native.startPresenceService();
+  } catch (err) {
+    mobileLogger.warn('startPresenceService failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/** Stop the keep-alive presence service. Safe to call when it isn't running. */
+export async function stopPresenceService(): Promise<boolean> {
+  if (!native?.stopPresenceService) return false;
+  try {
+    return await native.stopPresenceService();
+  } catch (err) {
+    mobileLogger.warn('stopPresenceService failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
  * Decommission valve — relinquish device ownership so the phone can be wiped of
  * StrawBoss control without a factory reset. Admin-gated by callers.
  */
@@ -120,6 +169,7 @@ export async function releaseDeviceOwner(): Promise<boolean> {
     mobileLogger.flow('Device owner released', { ok });
     // Ownership changed — invalidate the memoized result.
     deviceOwnerCache = null;
+    deviceOwnerResolved = false;
     return ok;
   } catch (err) {
     mobileLogger.warn('releaseDeviceOwner failed', {

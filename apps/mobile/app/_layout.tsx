@@ -38,7 +38,13 @@ import {
 } from '@/lib/location';
 import { checkMachineInactivity } from '@/lib/inactivity-alarm';
 import { ensureTrackingArmed } from '@/lib/tracking-watchdog';
-import { isDeviceOwner, applyDeviceOwnerPolicies } from '@/lib/device-owner';
+import {
+  isDeviceOwner,
+  isDeviceOwnerResolved,
+  applyDeviceOwnerPolicies,
+  startPresenceService,
+  stopPresenceService,
+} from '@/lib/device-owner';
 import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/background-sync';
 import { startHeartbeat, stopHeartbeat } from '@/lib/heartbeat';
 import { hasSeenOnboarding } from './onboarding';
@@ -382,7 +388,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   // Plan C — presence heartbeat (T4). Pings /profile/heartbeat every 30 s so
   // the admin board can render a green dot next to active operators.
-  // Paused when the app is backgrounded by the AppState listener below.
+  // On device-owner builds it keeps running while backgrounded (a foreground
+  // service holds the JS thread); elsewhere the AppState listener pauses it.
   useEffect(() => {
     if (!isAuthenticated || !profileReady || !role) return;
     startHeartbeat();
@@ -390,6 +397,30 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       stopHeartbeat();
     };
   }, [isAuthenticated, profileReady, role]);
+
+  // Device-owner only, Android, mobile roles WITHOUT an assigned machine
+  // (geofence_maker, depot_manager): start a keep-alive foreground service so
+  // the OS doesn't freeze the JS thread when backgrounded — the heartbeat then
+  // keeps the operator "online" with the screen off. Machine roles already get
+  // this from the location foreground service, so we stop the presence one for
+  // them to avoid a redundant notification.
+  useEffect(() => {
+    if (!isAuthenticated || !profileReady || !role || Platform.OS !== 'android') return;
+    let cancelled = false;
+    void (async () => {
+      const owner = await isDeviceOwner();
+      if (cancelled) return;
+      if (owner && !assignedMachineId) {
+        await startPresenceService();
+      } else {
+        await stopPresenceService();
+      }
+    })();
+    return () => {
+      cancelled = true;
+      void stopPresenceService();
+    };
+  }, [isAuthenticated, profileReady, role, assignedMachineId]);
 
   // Android only: GPS foreground service for users with an assigned machine.
   useEffect(() => {
@@ -561,10 +592,15 @@ export default function RootLayout() {
 
   useEffect(() => {
     void cleanupOldMobileLogFiles();
+    // Prime the memoized device-owner flag so the background branch below can
+    // read it synchronously.
+    void isDeviceOwner();
     const sub = AppState.addEventListener('change', (state) => {
-      // Plan C — pause heartbeat in background, resume on foreground.
+      // Plan C — pause heartbeat in background to save battery. On device-owner
+      // builds a foreground service (location or presence) keeps the JS thread
+      // alive, so we keep pinging to stay "online" with the screen off.
       if (state === 'background') {
-        stopHeartbeat();
+        if (!isDeviceOwnerResolved()) stopHeartbeat();
       }
       if (state === 'active') {
         void cleanupOldMobileLogFiles();
