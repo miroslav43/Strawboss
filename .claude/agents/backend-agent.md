@@ -3,6 +3,7 @@ name: backend-agent
 description: Specialist in the NestJS backend -- modules, Drizzle ORM, auth, sync, geofence, BullMQ
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
+updated: 2026-06-19
 ---
 
 # StrawBoss Backend Agent
@@ -66,6 +67,9 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - `JobSchedulerService` (`jobs/job-scheduler.service.ts`): Seeds repeating jobs on startup via `upsertJobScheduler`.
 - Processors are `@Processor(QUEUE_NAME)` classes in their respective module directories.
 - **CMR generation** is two-stage: job payload includes `{ tripId, stage: 1 | 2 }`. Stage 1 is queued at `depart` (partial PDF), stage 2 at `complete` (final PDF). `CmrProcessor` reads `job.data.stage` to select the rendering path.
+
+### Location / Presence (Layer 1)
+`POST /location/report` inserts into `machine_location_events` and also calls `ProfileService.touchLastSeen(operatorId)` best-effort (swallowed in a `.catch()`) — `LocationModule` imports `ProfileModule` for this. Machine-bound devices keep streaming GPS while backgrounded, so this keeps operators "online" (`users.last_seen_at`) even when the explicit `/profile/heartbeat` is paused.
 
 ### Geofence
 `geofence.service.ts` runs every 5 minutes:

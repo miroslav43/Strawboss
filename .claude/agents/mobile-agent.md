@@ -3,6 +3,7 @@ name: mobile-agent
 description: Specialist in the Expo/React Native mobile app -- offline-first, sync, geofence, role-based layouts
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
+updated: 2026-06-19
 ---
 
 # StrawBoss Mobile Agent
@@ -48,6 +49,16 @@ apps/mobile/app/
 - admin/dispatcher (default) -> `/(tabs)`
 
 The `AuthGate` component fetches the user profile via `mobileApiClient.get<User>('/api/v1/profile')` after authentication, stores the role in `useAuthStore`, and redirects to the correct layout group.
+
+### Auth & session persistence
+
+`src/lib/auth.ts` — `getSupabaseClient()` passes a **SecureStore-backed adapter** (`src/lib/secure-store-adapter.ts`) so the Supabase session is encrypted at rest and survives cold restarts. `detectSessionInUrl: false`.
+
+Key invariants:
+- Session is lost **only** on explicit logout or a genuinely revoked refresh token.
+- Profile-fetch failure does **not** sign the user out — it shows a retry modal instead.
+- `AuthGate` waits for `useAuthStore.persist.hasHydrated()` before fetching the profile; a returning operator with a persisted `role` boots offline without a network call.
+- `src/lib/secure-store-adapter.ts` chunks values > 1800 bytes across sibling keys to clear SecureStore's ~2 KB/key ceiling.
 
 ### Auth store
 
@@ -135,6 +146,15 @@ Two-step screen that replaces a direct `depart` API call:
 1. Odometer reading entry.
 2. Driver signature capture.
 Calls `POST /trips/:id/depart` with `{ departureOdometerKm, driverSignature }`.
+
+### Heartbeat & background presence (`src/lib/heartbeat.ts`, `src/lib/device-owner.ts`)
+
+`startHeartbeat()` pings `POST /api/v1/profile/heartbeat` every 30 s.
+
+- **Non-device-owner**: heartbeat is stopped when `AppState` goes `'background'` (battery saving).
+- **Device-owner**: `isDeviceOwnerResolved()` (synchronous memoized flag) returns `true`; the heartbeat is NOT stopped on background because a foreground service keeps the JS thread alive.
+
+**PresenceService** (native, `plugins/withDeviceOwner.js`): a `specialUse` Android FGS that holds the process at foreground importance. Started for device-owner installs whose role has **no** `assignedMachineId` (`geofence_maker`, `depot_manager`). Roles with a machine skip it — they already have the GPS location FGS. Notification channel: `strawboss-presence`, `IMPORTANCE_MIN`. JS bindings: `startPresenceService()` / `stopPresenceService()` in `src/lib/device-owner.ts`.
 
 ### Location tracking (`src/lib/location.ts`)
 

@@ -2,7 +2,7 @@
 type: meta
 title: "Hot Context — StrawBoss"
 created: 2026-05-25
-updated: 2026-05-25
+updated: 2026-06-19
 tags: [meta, hot, context]
 status: developing
 ---
@@ -25,6 +25,7 @@ Read this first every session. ~500 words covering what's load-bearing right now
 
 ## What's Changing Now
 
+- **Presence + auth persistence (Jun 2026):** Machine-bound operators now stay **online while backgrounded** — `POST /location/report` touches `users.last_seen_at` via `ProfileService.touchLastSeen` (Layer 1, [[backend]]); non-GPS roles use a native `PresenceService` keep-alive foreground service on device-owner builds (Layer 2, [[mobile]]). Mobile Supabase session now **persists across restarts** via a SecureStore-backed adapter (`apps/mobile/src/lib/secure-store-adapter.ts`, wired through `createClient` in [[packages-api]]); the forced logout on a failed profile fetch was removed — session is lost only on explicit logout.
 - **Recent merge (855fa58):** Integrated Plan B's harvest helper into trip lifecycle — check `packages/domain` for new harvest-related exports and `backend/service/src/trips/` for updated transition logic.
 - **Pending docs work:** `hot.md` (this file), `log.md`, and wikilink cross-references across docs are being set up. `.vault-meta/` and `scripts/` (DragonScale tooling) coming next.
 

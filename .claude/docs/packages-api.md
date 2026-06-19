@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/api"
 created: 2026-04-16
-updated: 2026-05-25
+updated: 2026-06-19
 tags: [doc, package, api, tanstack-query, supabase]
 status: mature
 related:
@@ -53,10 +53,25 @@ interface ApiClientConfig {
 ## Supabase Client Factory (`client/supabase.ts`)
 
 ```ts
-function createClient(supabaseUrl: string, supabaseKey: string): SupabaseClient
+interface AuthStorage {
+  getItem(key: string): string | null | Promise<string | null>;
+  setItem(key: string, value: string): void | Promise<void>;
+  removeItem(key: string): void | Promise<void>;
+}
+
+interface CreateClientOptions {
+  storage?: AuthStorage;           // omit on web (defaults to localStorage)
+  detectSessionInUrl?: boolean;    // set false on React Native (no URL to parse)
+}
+
+function createClient(
+  supabaseUrl: string,
+  supabaseKey: string,
+  options?: CreateClientOptions,
+): SupabaseClient
 ```
 
-Wraps `@supabase/supabase-js` with `persistSession: true` and `autoRefreshToken: true`.
+Wraps `@supabase/supabase-js` with `persistSession: true` and `autoRefreshToken: true`. The optional third argument is backward-compatible: `admin-web` calls `createClient(url, key)` with no options and is unchanged. The [[mobile]] app passes a `SecureStore`-backed `AuthStorage` adapter so the session survives cold starts on React Native (which has no `localStorage`). Both `AuthStorage` and `CreateClientOptions` are re-exported from `client/index.ts`.
 
 ## Query Keys Factory (`queries/query-keys.ts`)
 

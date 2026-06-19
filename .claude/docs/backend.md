@@ -2,7 +2,7 @@
 type: doc
 title: "Backend Service (backend/service)"
 created: 2026-04-16
-updated: 2026-05-25
+updated: 2026-06-19
 tags: [doc, backend, layer, nestjs, drizzle, bullmq]
 status: mature
 related:
@@ -125,7 +125,7 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 - `GET /sync/status` -- any authenticated -- last processed version per table for client
 
 ### Location (`src/location/location.controller.ts`)
-- `POST /location/report` -- any authenticated -- store GPS ping (lat, lon, accuracy, heading, speed)
+- `POST /location/report` -- any authenticated -- store GPS ping (lat, lon, accuracy, heading, speed); also calls `ProfileService.touchLastSeen(operatorId)` best-effort (non-fatal) to refresh `users.last_seen_at` — keeps machine-bound operators "online" on the dashboard while their JS heartbeat is paused (backgrounded). See [[backend]] module deps: `LocationModule` imports `ProfileModule`.
 - `GET /location/machines` -- @Roles(admin) -- last known position of all machines (JOIN with users)
 - `GET /location/related-machines` -- any authenticated -- positions of machines sharing today's assignments (siblings via parent_assignment_id)
 - `GET /location/machines/:machineId/route?from=...&to=...` -- @Roles(admin) -- GPS route history (up to 50,000 points)
@@ -239,6 +239,8 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 
 ### Profile Heartbeat
 - `POST /profile/heartbeat` -- any authenticated -- updates `users.last_seen_at` to now (mobile calls every 30s, Plan C)
+
+Note: `users.last_seen_at` is also refreshed via `POST /location/report` (Layer 1 presence). Machine-bound operators whose JS heartbeat is paused when backgrounded still stay "online" because their device foreground service continues to stream GPS. The two paths are independent; the GPS path is best-effort and never fails the location report.
 
 ---
 
