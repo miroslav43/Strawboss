@@ -150,6 +150,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [profileReady, setProfileReady] = useState(false); // true once profile fetch settled
+  const [profileRetry, setProfileRetry] = useState(0); // bumped to retry a failed profile fetch
   // Track whether the Zustand persist middleware has finished reading from
   // SecureStore. Until hydration is complete, `role` may be null even for a
   // returning user, so we must not fire a profile fetch prematurely.
@@ -276,16 +277,19 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         profileFetchFailed = true;
         if (__DEV__) console.warn('[StrawBoss] Profile fetch failed', err);
+        // Do NOT sign out: a transient network error at shift start must not
+        // wipe the session. Keep the operator signed in and offer a retry; the
+        // session persists until they explicitly log out.
         showModal({
           type: 'error',
           title: 'Eroare de conectare',
-          message: 'Nu s-a putut încărca profilul. Verificați conexiunea și reconectați-vă.',
-          onConfirm: hideModal,
+          message: 'Nu s-a putut încărca profilul. Verificați conexiunea și încercați din nou.',
+          onConfirm: () => {
+            hideModal();
+            setProfileRetry((n) => n + 1);
+          },
         });
-        const supabase = getSupabaseClient();
-        await supabase.auth.signOut();
         if (!cancelled) {
-          setIsAuthenticated(false);
           setProfileReady(false);
         }
       })
@@ -299,7 +303,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       cancelled = true;
       clearWatchdog();
     };
-  }, [isAuthenticated, storeHydrated, role, setProfile]);
+  }, [isAuthenticated, storeHydrated, role, setProfile, profileRetry]);
 
   // Device Owner: re-assert all device-owner policies idempotently on every
   // launch (the admin receiver's onEnabled does NOT re-fire after an APK/OS
