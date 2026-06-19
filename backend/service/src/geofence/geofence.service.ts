@@ -206,14 +206,22 @@ export class GeofenceService {
         // Distance (metres) from the GPS point to the geofence boundary; 0 when
         // the point is strictly inside. Tolerance + hysteresis are applied in JS
         // below — exact ST_Contains was too strict for real phone GPS.
+        // Depots fall back to their centroid `coords` when they have no boundary
+        // polygon (temporary depots), so approach/enter detection still works.
+        const geomExpr =
+          geofenceType === 'deposit' ? sql`COALESCE(boundary, coords)` : sql`boundary`;
+        const geomNotNull =
+          geofenceType === 'deposit'
+            ? sql`(boundary IS NOT NULL OR coords IS NOT NULL)`
+            : sql`boundary IS NOT NULL`;
         const distResult = await this.drizzleProvider.db.execute(sql`
         SELECT ST_Distance(
-          boundary::geography,
+          ${geomExpr}::geography,
           ST_SetSRID(ST_MakePoint(${pos.lon}, ${pos.lat}), 4326)::geography
         ) AS "dist"
         FROM ${sql.raw(table)}
         WHERE id = ${geofenceId}::uuid
-          AND boundary IS NOT NULL
+          AND ${geomNotNull}
       `);
         const check = (distResult as unknown as GeofenceCheck[])[0];
         if (!check || check.dist == null) {
@@ -269,6 +277,49 @@ export class GeofenceService {
               today,
               assignment.organizationId,
               Math.round(distM),
+            );
+          }
+        }
+
+        // Truck-approaching-DEPOT alert: when a truck en route nears its
+        // destination depot (within APPROACH_M but not yet arrived past the enter
+        // tolerance), tell the depot operator(s) — ONCE. Same fire-once guard as
+        // the parcel approach: a single 'approach' row per (truck, depot,
+        // assignment). Gated to in_transit so it only fires while actually driving
+        // to the depot, not while the truck still sits at a nearby loader.
+        if (
+          geofenceType === 'deposit' &&
+          assignment.machineType === 'truck' &&
+          assignment.tripStatus === 'in_transit' &&
+          distM > GEOFENCE_ENTER_TOLERANCE_M &&
+          distM <= GEOFENCE_APPROACH_M
+        ) {
+          const approachedResult = await this.drizzleProvider.db.execute(sql`
+            SELECT 1
+            FROM geofence_events
+            WHERE machine_id = ${assignment.machineId}::uuid
+              AND geofence_id = ${geofenceId}::uuid
+              AND assignment_id = ${assignment.assignmentId}::uuid
+              AND event_type = 'approach'
+            LIMIT 1
+          `);
+          const alreadyApproached = (approachedResult as unknown as unknown[]).length > 0;
+          if (!alreadyApproached) {
+            await this.recordEvent(
+              assignment.machineId,
+              assignment.assignmentId,
+              geofenceType,
+              geofenceId,
+              'approach',
+              pos.lat,
+              pos.lon,
+            );
+            await this.notifyDepotOperatorsApproaching(
+              geofenceId,
+              assignment.machineId,
+              assignment.tripId,
+              Math.round(distM),
+              assignment.organizationId,
             );
           }
         }
@@ -685,6 +736,78 @@ export class GeofenceService {
       );
     } catch (err) {
       this.winston.warn(`notifyDepotOperatorsAtArrival failed (depot ${destinationId})`, {
+        context: 'GeofenceService',
+        destinationId,
+        truckMachineId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
+  }
+
+  /**
+   * One-time heads-up to the depot operator(s) that a truck en route is
+   * approaching their depot (within APPROACH_M, ~5 km). Fired once per
+   * (truck, depot, assignment) — the fire-once guard lives in the caller via a
+   * single 'approach' geofence_events row. Best-effort, org-scoped fan-out.
+   */
+  private async notifyDepotOperatorsApproaching(
+    destinationId: string,
+    truckMachineId: string,
+    tripId: string | null,
+    distanceM: number,
+    orgId: string | null,
+  ): Promise<void> {
+    try {
+      const rows = (await this.drizzleProvider.db.execute(sql`
+        SELECT
+          u.id AS "userId",
+          (SELECT registration_plate FROM machines WHERE id = ${truckMachineId}::uuid) AS "truckPlate"
+        FROM users u
+        WHERE u.assigned_delivery_destination_id = ${destinationId}::uuid
+          AND u.role = 'depot_manager'::user_role
+          AND u.deleted_at IS NULL
+          AND u.organization_id IS NOT DISTINCT FROM ${orgId}::uuid
+      `)) as unknown as { userId: string; truckPlate: string | null }[];
+
+      if (rows.length === 0) return;
+
+      const plate = rows[0]?.truckPlate ?? 'Un camion';
+      const km = (distanceM / 1000).toFixed(distanceM < 1000 ? 1 : 0);
+
+      await Promise.all(
+        rows.map((row) =>
+          this.notificationsService
+            .sendPush(
+              row.userId,
+              'Camion în apropiere',
+              `Camionul ${plate} se apropie de depozit (~${km} km).`,
+              {
+                type: 'depot_truck_approaching',
+                destinationId,
+                truckMachineId,
+                tripId,
+                distanceM,
+              },
+            )
+            .catch(() => {
+              // Best-effort — push failures must not break the geofence loop.
+            }),
+        ),
+      );
+
+      this.winston.log(
+        'flow',
+        `Notified ${rows.length} depot operator(s) that truck ${truckMachineId} is approaching depot ${destinationId} (${distanceM} m)`,
+        {
+          context: 'GeofenceService',
+          truckMachineId,
+          destinationId,
+          distanceM,
+          operatorCount: rows.length,
+        },
+      );
+    } catch (err) {
+      this.winston.warn(`notifyDepotOperatorsApproaching failed (depot ${destinationId})`, {
         context: 'GeofenceService',
         destinationId,
         truckMachineId,
