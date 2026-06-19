@@ -60,6 +60,9 @@ export default function DepositTabLayout() {
               ),
             }}
           />
+          {/* Confirm-delivery is a detail screen reached from the Curse tab, not
+              a tab itself. href:null suppresses the phantom tab icon. */}
+          <Tabs.Screen name="confirm-delivery" options={{ href: null }} />
         </Tabs>
         <SyncQueueBannerHost />
       </View>

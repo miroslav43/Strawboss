@@ -76,6 +76,10 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
   const [contactEmail, setContactEmail] = useState(deposit?.contactEmail ?? '');
   const [isActive, setIsActive] = useState(deposit?.isActive ?? true);
   const [isDefault, setIsDefault] = useState(deposit?.isDefault ?? false);
+  const [depotType, setDepotType] = useState<'principal' | 'temporary'>(
+    deposit?.depotType ?? 'principal',
+  );
+  const [confirmRadiusM, setConfirmRadiusM] = useState(deposit?.confirmRadiusM ?? 300);
   const [error, setError] = useState('');
 
   const createDeposit = useCreateDeliveryDestination(apiClient);
@@ -97,6 +101,8 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
       contactPhone: contactPhone.trim() || null,
       contactEmail: contactEmail.trim() || null,
       isDefault,
+      depotType,
+      confirmRadiusM,
       ...(isEdit ? { isActive } : {}),
     };
 
@@ -123,6 +129,8 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
     contactEmail,
     isActive,
     isDefault,
+    depotType,
+    confirmRadiusM,
     isEdit,
     deposit,
     createDeposit,
@@ -235,6 +243,38 @@ function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
               placeholder={t('deposits.form.contactEmailPlaceholder')}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
+          </div>
+
+          {/* Depot type + Confirm radius */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">
+                {t('deposits.form.depotType')}
+              </label>
+              <select
+                value={depotType}
+                onChange={(e) => setDepotType(e.target.value as 'principal' | 'temporary')}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="principal">{t('deposits.form.depotTypePrincipal')}</option>
+                <option value="temporary">{t('deposits.form.depotTypeTemporary')}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">
+                {t('deposits.form.confirmRadiusM')}
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={confirmRadiusM}
+                onChange={(e) => setConfirmRadiusM(Math.max(1, Number(e.target.value)))}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <p className="mt-1 text-xs text-neutral-400">
+                {t('deposits.form.confirmRadiusHint')}
+              </p>
+            </div>
           </div>
 
           {/* Active toggle (edit only) */}

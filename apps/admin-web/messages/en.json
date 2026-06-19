@@ -991,6 +991,11 @@
       "contactEmailPlaceholder": "email@example.com",
       "activeDeposit": "Active deposit",
       "defaultDeposit": "Default deposit (used when no other deposit can be derived)",
+      "depotType": "Depot type",
+      "depotTypePrincipal": "Principal",
+      "depotTypeTemporary": "Temporary",
+      "confirmRadiusM": "Confirm radius (m)",
+      "confirmRadiusHint": "Geofence radius within which the depot operator can confirm an arriving truck.",
       "createError": "Error creating. Try again.",
       "updateError": "Error updating. Try again."
     },
@@ -1317,7 +1322,11 @@
     "completed": "Completed",
     "created": "Created",
     "receiver": "Receiver",
-    "notes": "Notes"
+    "notes": "Notes",
+    "depotConfirmation": "Depot confirmation",
+    "depotConfirmedAt": "Confirmed at",
+    "depotOperator": "Depot operator",
+    "scaleBroken": "Scale broken — count-only confirmation"
   },
   "trips_list": {
     "colTripNumber": "Trip #",

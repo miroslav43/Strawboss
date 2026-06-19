@@ -24,6 +24,14 @@ export interface LocalTrip {
   arrival_at: string | null;
   delivered_at: string | null;
   completed_at: string | null;
+  /** Depot-operator confirmation (driver → operator depozit), pulled from server. */
+  depot_operator_id: string | null;
+  depot_confirmed_at: string | null;
+  depot_operator_signature_url: string | null;
+  /** 1 when the principal-depot scale was broken (bale count only, no weights). */
+  scale_broken: number | null;
+  /** 1 when the destination depot has an assigned operator → driver is read-only. */
+  destination_has_operator: number | null;
   /** Local-only: when the driver tapped the trip card to dismiss the NOU badge. */
   acknowledged_at: string | null;
   /** FM-1: 1 when a transition was applied locally but not yet confirmed by server. */

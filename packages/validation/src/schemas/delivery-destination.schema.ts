@@ -1,8 +1,8 @@
-import { z } from "zod";
-import { uuidSchema } from "../helpers/uuid.js";
-import { geoPointSchema } from "../helpers/geo.js";
-import { timestampsSchema } from "../helpers/common.js";
-import { softDeleteSchema } from "../helpers/common.js";
+import { z } from 'zod';
+import { uuidSchema } from '../helpers/uuid.js';
+import { geoPointSchema } from '../helpers/geo.js';
+import { timestampsSchema } from '../helpers/common.js';
+import { softDeleteSchema } from '../helpers/common.js';
 
 export const deliveryDestinationSchema = z
   .object({
@@ -17,6 +17,8 @@ export const deliveryDestinationSchema = z
     boundary: z.string().nullable(),
     isActive: z.boolean(),
     isDefault: z.boolean(),
+    depotType: z.enum(['principal', 'temporary']),
+    confirmRadiusM: z.number().int().positive(),
   })
   .merge(timestampsSchema)
   .merge(softDeleteSchema);
@@ -31,6 +33,8 @@ export const createDeliveryDestinationSchema = z.object({
   contactEmail: z.string().email().nullable().optional(),
   boundary: z.string().nullable().optional(),
   isDefault: z.boolean().optional(),
+  depotType: z.enum(['principal', 'temporary']).optional(),
+  confirmRadiusM: z.number().int().positive().optional(),
 });
 
 export const updateDeliveryDestinationSchema = z
@@ -45,5 +49,7 @@ export const updateDeliveryDestinationSchema = z
     boundary: z.string().nullable(),
     isActive: z.boolean(),
     isDefault: z.boolean(),
+    depotType: z.enum(['principal', 'temporary']),
+    confirmRadiusM: z.number().int().positive(),
   })
   .partial();

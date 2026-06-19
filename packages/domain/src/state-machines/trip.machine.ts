@@ -50,6 +50,19 @@ type ConfirmDeliveryEvent = {
   grossWeightKg: number;
 };
 
+// Depot-operator confirmation. Valid from `arrived` or `delivering`; the operator
+// always reports a bale count, plus gross/tare on a `principal` depot with a
+// working scale. On a `temporary` depot or when the scale is broken, weights are
+// omitted (the guard does not require gross). The service then collapses
+// delivered→completed in one transaction.
+type ConfirmDeliveryAtDepotEvent = {
+  type: 'CONFIRM_DELIVERY_AT_DEPOT';
+  baleCount: number;
+  grossWeightKg?: number | null;
+  scaleBroken?: boolean;
+  depotType?: 'principal' | 'temporary';
+};
+
 type CompleteEvent = {
   type: 'COMPLETE';
   receiverName: string;
@@ -79,6 +92,7 @@ type TripEvent =
   | ArriveEvent
   | StartDeliveryEvent
   | ConfirmDeliveryEvent
+  | ConfirmDeliveryAtDepotEvent
   | CompleteEvent
   | CancelEvent
   | DisputeEvent
@@ -122,6 +136,16 @@ export const tripMachine = setup({
         typeof event.grossWeightKg === 'number' &&
         event.grossWeightKg > 0
       );
+    },
+    hasDepotConfirmInfo: ({ event }) => {
+      if (event.type !== 'CONFIRM_DELIVERY_AT_DEPOT') return false;
+      if (typeof event.baleCount !== 'number' || event.baleCount <= 0) return false;
+      // A principal depot with a working scale must carry a gross weight; a
+      // temporary depot or a broken scale confirms with the bale count only.
+      if (event.depotType === 'principal' && event.scaleBroken !== true) {
+        return typeof event.grossWeightKg === 'number' && event.grossWeightKg > 0;
+      }
+      return true;
     },
     hasReceiverInfo: ({ event }) => {
       return (
@@ -258,6 +282,15 @@ export const tripMachine = setup({
             status: TripStatus.delivering,
           }),
         },
+        CONFIRM_DELIVERY_AT_DEPOT: {
+          target: 'delivered',
+          guard: 'hasDepotConfirmInfo',
+          actions: assign({
+            baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
+            grossWeightKg: ({ event }) => event.grossWeightKg ?? null,
+            status: TripStatus.delivered,
+          }),
+        },
         CANCEL: {
           target: 'cancelled',
           guard: 'hasCancellationReason',
@@ -277,6 +310,15 @@ export const tripMachine = setup({
           guard: 'hasGrossWeight',
           actions: assign({
             grossWeightKg: ({ event }) => event.grossWeightKg,
+            status: TripStatus.delivered,
+          }),
+        },
+        CONFIRM_DELIVERY_AT_DEPOT: {
+          target: 'delivered',
+          guard: 'hasDepotConfirmInfo',
+          actions: assign({
+            baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
+            grossWeightKg: ({ event }) => event.grossWeightKg ?? null,
             status: TripStatus.delivered,
           }),
         },
@@ -370,8 +412,8 @@ const transitionMap: Record<string, string[]> = {
   [TripStatus.loading]: ['COMPLETE_LOADING', 'REGISTER_LOAD', 'CANCEL'],
   [TripStatus.loaded]: ['DEPART', 'CANCEL'],
   [TripStatus.in_transit]: ['ARRIVE', 'CANCEL'],
-  [TripStatus.arrived]: ['START_DELIVERY', 'CANCEL'],
-  [TripStatus.delivering]: ['CONFIRM_DELIVERY', 'CANCEL'],
+  [TripStatus.arrived]: ['START_DELIVERY', 'CONFIRM_DELIVERY_AT_DEPOT', 'CANCEL'],
+  [TripStatus.delivering]: ['CONFIRM_DELIVERY', 'CONFIRM_DELIVERY_AT_DEPOT', 'CANCEL'],
   [TripStatus.delivered]: ['COMPLETE', 'DISPUTE', 'CANCEL'],
   [TripStatus.completed]: ['DISPUTE'],
   [TripStatus.cancelled]: [],

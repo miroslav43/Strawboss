@@ -9,6 +9,7 @@ import type {
   ArriveDto,
   StartDeliveryDto,
   ConfirmDeliveryDto,
+  ConfirmDepotDeliveryDto,
   CompleteDto,
   CancelDto,
   ForceStatusDto,
@@ -114,6 +115,25 @@ export function useConfirmDelivery(client: ApiClient) {
     onSuccess: (_data, { tripId }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+    },
+  });
+}
+
+/**
+ * Depot-operator delivery confirmation (online path). A depot_manager confirms
+ * the arriving bale count (+weights on a principal depot) and signs; the single
+ * action drives the trip arrived→delivered→completed server-side. Mobile uses the
+ * offline sync queue instead; this hook is for admin/online use.
+ */
+export function useConfirmDepotDelivery(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tripId, data }: { tripId: string; data: ConfirmDepotDeliveryDto }) =>
+      client.post<Trip>(`/api/v1/trips/${tripId}/confirm-depot-delivery`, data),
+    onSuccess: (_data, { tripId }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.depotInventory.all });
     },
   });
 }

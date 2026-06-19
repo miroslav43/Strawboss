@@ -427,6 +427,18 @@ export class GeofenceService {
               },
             );
           }
+
+          // Also notify the depot operator(s) assigned to this destination that a
+          // truck has arrived and is awaiting their bale confirmation. Best-effort,
+          // org-scoped fan-out — mirrors notifyLoadersAtParcel.
+          if (geofenceType === 'deposit') {
+            await this.notifyDepotOperatorsAtArrival(
+              geofenceId,
+              assignment.machineId,
+              assignment.tripId,
+              assignment.organizationId,
+            );
+          }
         } else if (!isInside && wasInside) {
           // EXIT event
           await this.recordEvent(
@@ -606,6 +618,75 @@ export class GeofenceService {
       this.winston.warn(`notifyLoadersAtParcel failed (parcel ${parcelId})`, {
         context: 'GeofenceService',
         parcelId,
+        truckMachineId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
+  }
+
+  /**
+   * Notify the depot operator(s) assigned to a destination depot that a truck has
+   * arrived and is awaiting their bale confirmation. Fan-out to every
+   * depot_manager linked via users.assigned_delivery_destination_id, scoped to the
+   * truck's organization. Best-effort — push failures must not break the geofence
+   * loop.
+   */
+  private async notifyDepotOperatorsAtArrival(
+    destinationId: string,
+    truckMachineId: string,
+    tripId: string | null,
+    orgId: string | null,
+  ): Promise<void> {
+    try {
+      const rows = (await this.drizzleProvider.db.execute(sql`
+        SELECT
+          u.id AS "userId",
+          (SELECT registration_plate FROM machines WHERE id = ${truckMachineId}::uuid) AS "truckPlate"
+        FROM users u
+        WHERE u.assigned_delivery_destination_id = ${destinationId}::uuid
+          AND u.role = 'depot_manager'::user_role
+          AND u.deleted_at IS NULL
+          AND u.organization_id IS NOT DISTINCT FROM ${orgId}::uuid
+      `)) as unknown as { userId: string; truckPlate: string | null }[];
+
+      if (rows.length === 0) return;
+
+      const plate = rows[0]?.truckPlate ?? 'Un camion';
+
+      await Promise.all(
+        rows.map((row) =>
+          this.notificationsService
+            .sendPush(
+              row.userId,
+              'Camion sosit la depozit',
+              `Camionul ${plate} a sosit. Confirmă baloții pentru a descărca.`,
+              {
+                type: 'depot_truck_arrived',
+                destinationId,
+                truckMachineId,
+                tripId,
+              },
+            )
+            .catch(() => {
+              // Best-effort — push failures must not break the geofence loop.
+            }),
+        ),
+      );
+
+      this.winston.log(
+        'flow',
+        `Notified ${rows.length} depot operator(s) of truck ${truckMachineId} at depot ${destinationId}`,
+        {
+          context: 'GeofenceService',
+          truckMachineId,
+          destinationId,
+          operatorCount: rows.length,
+        },
+      );
+    } catch (err) {
+      this.winston.warn(`notifyDepotOperatorsAtArrival failed (depot ${destinationId})`, {
+        context: 'GeofenceService',
+        destinationId,
         truckMachineId,
         err: err instanceof Error ? { message: err.message } : err,
       });

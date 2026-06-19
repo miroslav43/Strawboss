@@ -13,6 +13,7 @@ import {
   arriveSchema,
   startDeliverySchema,
   confirmDeliverySchema,
+  confirmDepotDeliverySchema,
   completeSchema,
   cancelSchema,
   forceStatusSchema,
@@ -30,6 +31,7 @@ import type {
   ArriveDto,
   StartDeliveryDto,
   ConfirmDeliveryDto,
+  ConfirmDepotDeliveryDto,
   CompleteDto,
   CancelDto,
   ForceStatusDto,
@@ -156,6 +158,16 @@ export class TripsController {
     @Body(new ZodValidationPipe(confirmDeliverySchema)) dto: ConfirmDeliveryDto,
   ) {
     return this.tripsService.confirmDelivery(id, user.organizationId, dto);
+  }
+
+  @Post(':id/confirm-depot-delivery')
+  @Roles('admin' as UserRole, 'depot_manager' as UserRole)
+  confirmDepotDelivery(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(confirmDepotDeliverySchema)) dto: ConfirmDepotDeliveryDto,
+  ) {
+    return this.tripsService.confirmDepotDelivery(id, user, dto);
   }
 
   @Post(':id/complete')

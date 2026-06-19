@@ -45,6 +45,30 @@ export const completeSchema = z.object({
   receiverSignature: z.string().min(1),
 });
 
+/**
+ * Depot-operator confirmation payload. `baleCount` is always required; weights
+ * are optional (omitted on a temporary depot or when the scale is broken). The
+ * depot-type rule — "principal depot with a working scale must send gross" — is
+ * enforced server-side (the schema can't see the depot type). The cross-field
+ * tare ≤ gross check applies only when both weights are present.
+ */
+export const confirmDepotDeliverySchema = z
+  .object({
+    baleCount: z.number().int().positive(),
+    grossWeightKg: z.number().positive().nullable().optional(),
+    tareWeightKg: z.number().nonnegative().nullable().optional(),
+    scaleBroken: z.boolean().optional(),
+    depotOperatorSignature: z.string().min(1),
+    idempotencyKey: uuidSchema,
+  })
+  .refine(
+    (d) => d.grossWeightKg == null || d.tareWeightKg == null || d.tareWeightKg <= d.grossWeightKg,
+    {
+      message: 'Tara nu poate depăși greutatea brută',
+      path: ['tareWeightKg'],
+    },
+  );
+
 export const cancelSchema = z.object({
   cancellationReason: z.string().min(1),
 });

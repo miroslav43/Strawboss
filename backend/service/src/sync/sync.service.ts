@@ -264,6 +264,10 @@ const PULL_COLUMNS: Record<string, string[]> = {
     'arrival_at',
     'delivered_at',
     'completed_at',
+    'depot_operator_id',
+    'depot_confirmed_at',
+    'depot_operator_signature_url',
+    'scale_broken',
     'parent_trip_id',
     'iteration_index',
     'created_at',
@@ -695,6 +699,19 @@ export class SyncService {
         isSoftDeleteTable && tombstonesEnabled ? [...pullColumns, 'deleted_at'] : pullColumns;
       // projectedColumns is built from hard-coded constants — safe to sql.raw.
       const colsSql = sql.raw(projectedColumns.map((c) => `"${c}"`).join(', '));
+      // trips carry a computed read-model flag: does the destination depot have a
+      // depot_manager assigned? Drives the driver app's read-only delivery view.
+      // It is NOT a stored column, so it is appended as an expression here rather
+      // than listed in PULL_COLUMNS (the mobile trips schema mirrors it).
+      const extraSelect =
+        table === 'trips'
+          ? sql`, EXISTS(
+              SELECT 1 FROM users du
+              WHERE du.assigned_delivery_destination_id = "trips".destination_id
+                AND du.role = 'depot_manager'::user_role
+                AND du.deleted_at IS NULL
+            ) AS destination_has_operator`
+          : sql``;
       // Delta by version, EXCEPT for trips: always include the caller's active
       // (non-terminal) trips regardless of the cursor. sync_version is stamped by
       // a global sequence in a BEFORE-UPDATE trigger, so two rows updated in the
@@ -709,7 +726,7 @@ export class SyncService {
           ? sql`(sync_version > ${sinceVersion} OR status NOT IN ('completed', 'cancelled'))`
           : sql`sync_version > ${sinceVersion}`;
       const result = await this.drizzleProvider.db.execute(
-        sql`SELECT ${colsSql} FROM ${sql.raw(`"${table}"`)}
+        sql`SELECT ${colsSql}${extraSelect} FROM ${sql.raw(`"${table}"`)}
             WHERE ${versionFilter} ${ownerFilter}${softDeleteFilter}${orgFilter}
             ORDER BY sync_version ASC
             LIMIT 1000`,

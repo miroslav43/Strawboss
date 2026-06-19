@@ -10,6 +10,8 @@ import {
   FileText,
   FileSignature,
   Download,
+  ClipboardCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import type { Trip, Document as StrawbossDocument } from '@strawboss/types';
 import { TripStatus } from '@strawboss/types';
@@ -275,6 +277,32 @@ export function TripDetail({ trip, className }: TripDetailProps) {
             <InfoRow label={t('trip_detail.notes')} value={trip.deliveryNotes} />
           </div>
         </Section>
+
+        {/* Depot confirmation */}
+        {trip.depotConfirmedAt && (
+          <Section title={t('trip_detail.depotConfirmation')} icon={ClipboardCheck}>
+            <div className="divide-y divide-neutral-100">
+              <InfoRow
+                label={t('trip_detail.depotConfirmedAt')}
+                value={new Date(trip.depotConfirmedAt).toLocaleString()}
+              />
+              {trip.depotOperatorId && (
+                <InfoRow
+                  label={t('trip_detail.depotOperator')}
+                  value={shortId(trip.depotOperatorId)}
+                />
+              )}
+              {trip.scaleBroken && (
+                <div className="flex items-center gap-2 py-2">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
+                  <span className="text-sm font-medium text-amber-700">
+                    {t('trip_detail.scaleBroken')}
+                  </span>
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
 
         {/* Signatures */}
         {(trip.loaderSignatureUrl || trip.driverSignatureUrl || trip.receiverSignatureUrl) && (

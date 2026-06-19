@@ -37,6 +37,14 @@ export const TABLES = {
     arrival_at TEXT,
     delivered_at TEXT,
     completed_at TEXT,
+    -- Depot-operator confirmation (driver → operator depozit). Pulled from server.
+    depot_operator_id TEXT,
+    depot_confirmed_at TEXT,
+    depot_operator_signature_url TEXT,
+    scale_broken INTEGER DEFAULT 0,
+    -- Read-model flag: destination depot has an assigned operator (drives the
+    -- driver's read-only delivery view).
+    destination_has_operator INTEGER DEFAULT 0,
     acknowledged_at TEXT,
     has_pending_transition INTEGER DEFAULT 0,
     delivery_step_progress INTEGER,

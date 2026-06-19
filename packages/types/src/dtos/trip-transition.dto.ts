@@ -38,6 +38,50 @@ export interface CompleteDto {
   receiverSignature: string;
 }
 
+/**
+ * Depot-operator delivery confirmation. A depot_manager assigned to the trip's
+ * destination depot confirms the arriving bale count and signs; the single action
+ * drives the trip arrived→delivered→completed server-side.
+ *
+ * - `baleCount` is always required (the count the truck actually arrived with).
+ * - `grossWeightKg`/`tareWeightKg` are entered only on a `principal` depot with a
+ *   working scale; on a `temporary` depot or when `scaleBroken` they are omitted.
+ * - `depotOperatorSignature` is stored as both the depot-operator and receiver
+ *   signature.
+ * - `idempotencyKey` (the client mutation UUID) dedupes retries via
+ *   `sync_idempotency`.
+ */
+export interface ConfirmDepotDeliveryDto {
+  baleCount: number;
+  grossWeightKg?: number | null;
+  tareWeightKg?: number | null;
+  scaleBroken?: boolean;
+  depotOperatorSignature: string;
+  idempotencyKey: string;
+}
+
+/**
+ * One inbound truck heading to a depot, as shown to the depot operator: distance
+ * to the depot and whether it is inside the confirm-geofence (ready to confirm).
+ */
+export interface DepotIncomingTruck {
+  tripId: string;
+  tripNumber: string;
+  status: TripStatus;
+  truckId: string;
+  truckPlate: string | null;
+  truckCode: string | null;
+  driverName: string | null;
+  baleCount: number;
+  /** Metres from the truck's latest GPS fix to the depot; null if no recent fix. */
+  distanceM: number | null;
+  /** True when distanceM is within the depot's confirmRadiusM. */
+  isInsideGeofence: boolean;
+  /** True when the truck has arrived and is awaiting depot confirmation. */
+  awaitingConfirmation: boolean;
+  lastSeenAt: string | null;
+}
+
 export interface CancelDto {
   cancellationReason: string;
 }

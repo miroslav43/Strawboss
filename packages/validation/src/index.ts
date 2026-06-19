@@ -108,6 +108,7 @@ export {
   arriveSchema,
   startDeliverySchema,
   confirmDeliverySchema,
+  confirmDepotDeliverySchema,
   completeSchema,
   cancelSchema,
   forceStatusSchema,

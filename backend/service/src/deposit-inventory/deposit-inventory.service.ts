@@ -48,7 +48,10 @@ export class DepositInventoryService {
     if (orgId !== null) checkConditions.push(sql`organization_id = ${orgId}::uuid`);
     const checkWhere = sql.join(checkConditions, sql` AND `);
     const depot = (await this.drizzleProvider.db.execute(sql`
-      SELECT id, code, name, address, ST_AsGeoJSON(coords) AS "coordsGeoJson"
+      SELECT id, code, name, address,
+             ST_AsGeoJSON(coords) AS "coordsGeoJson",
+             depot_type AS "depotType",
+             confirm_radius_m AS "confirmRadiusM"
         FROM delivery_destinations
        WHERE ${checkWhere}
        LIMIT 1
@@ -86,22 +89,44 @@ export class DepositInventoryService {
     if (orgId !== null) incomingConditions.push(sql`t.organization_id = ${orgId}::uuid`);
     const incomingWhere = sql.join(incomingConditions, sql` AND `);
 
+    // Live truck distance to the depot drives the depot-operator UI: a truck can
+    // only be confirmed once it is inside the depot's confirm_radius_m. The
+    // distance comes from the truck's latest GPS fix (15-min window — tolerate
+    // short reporting lulls, mirrors getTrucksAtLoader); no recent fix → NULL
+    // distance, not inside.
     const incoming = await this.drizzleProvider.db.execute(sql`
       SELECT
         t.id                            AS "tripId",
         t.trip_number                   AS "tripNumber",
         t.status,
+        t.truck_id                      AS "truckId",
         t.bale_count                    AS "baleCount",
         t.iteration_index               AS "iterationIndex",
         m.registration_plate            AS "truckPlate",
         m.internal_code                 AS "truckCode",
-        u.full_name                     AS "driverName"
+        u.full_name                     AS "driverName",
+        CASE WHEN ltp.coords IS NOT NULL AND dd.coords IS NOT NULL
+          THEN ROUND(ST_Distance(ltp.coords::geography, dd.coords::geography)::numeric, 1)::float
+          ELSE NULL END                 AS "distanceM",
+        CASE WHEN ltp.coords IS NOT NULL AND dd.coords IS NOT NULL
+          THEN ST_DWithin(ltp.coords::geography, dd.coords::geography, dd.confirm_radius_m)
+          ELSE FALSE END                AS "isInsideGeofence",
+        (t.status IN ('arrived'::trip_status, 'delivering'::trip_status)) AS "awaitingConfirmation",
+        ltp.recorded_at                 AS "lastSeenAt"
       FROM trips t
       JOIN delivery_destinations dd ON dd.id = ${depotId}::uuid
       LEFT JOIN machines m ON m.id = t.truck_id
       LEFT JOIN users u ON u.id = t.driver_id
+      LEFT JOIN LATERAL (
+        SELECT mle.coords, mle.recorded_at
+        FROM machine_location_events mle
+        WHERE mle.machine_id = t.truck_id
+          AND mle.recorded_at >= NOW() - INTERVAL '15 minutes'
+        ORDER BY mle.recorded_at DESC
+        LIMIT 1
+      ) ltp ON TRUE
       WHERE ${incomingWhere}
-      ORDER BY t.departure_at ASC NULLS LAST
+      ORDER BY "distanceM" ASC NULLS LAST
       LIMIT 50
     `);
 

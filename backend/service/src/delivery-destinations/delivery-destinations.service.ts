@@ -11,6 +11,8 @@ const DEST_COLS = sql`
   ST_AsGeoJSON(boundary)::json AS boundary,
   is_active       AS "isActive",
   is_default      AS "isDefault",
+  depot_type      AS "depotType",
+  confirm_radius_m AS "confirmRadiusM",
   created_at      AS "createdAt",
   updated_at      AS "updatedAt",
   deleted_at      AS "deletedAt"
@@ -44,6 +46,8 @@ export class DeliveryDestinationsService {
         ST_AsGeoJSON(d.boundary)::json AS boundary,
         d.is_active       AS "isActive",
         d.is_default      AS "isDefault",
+        d.depot_type      AS "depotType",
+        d.confirm_radius_m AS "confirmRadiusM",
         d.created_at      AS "createdAt",
         d.updated_at      AS "updatedAt",
         d.deleted_at      AS "deletedAt",
@@ -99,7 +103,8 @@ export class DeliveryDestinationsService {
         sql`INSERT INTO delivery_destinations (
               organization_id,
               code, name, address, coords,
-              contact_name, contact_phone, contact_email, boundary, is_default
+              contact_name, contact_phone, contact_email, boundary, is_default,
+              depot_type, confirm_radius_m
             ) VALUES (
               ${orgId}::uuid,
               ${dto.code as string},
@@ -110,7 +115,9 @@ export class DeliveryDestinationsService {
               ${(dto.contactPhone as string) ?? null},
               ${(dto.contactEmail as string) ?? null},
               ${toGeo(dto.boundary)},
-              ${isDefault}
+              ${isDefault},
+              ${(dto.depotType as string) ?? 'principal'},
+              ${(dto.confirmRadiusM as number) ?? 300}
             )
             RETURNING ${DEST_COLS}`,
       );
@@ -130,6 +137,8 @@ export class DeliveryDestinationsService {
       contactEmail: 'contact_email',
       isActive: 'is_active',
       isDefault: 'is_default',
+      depotType: 'depot_type',
+      confirmRadiusM: 'confirm_radius_m',
     };
 
     return await this.drizzleProvider.db.transaction(async (tx) => {

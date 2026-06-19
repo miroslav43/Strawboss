@@ -29,6 +29,7 @@ import type {
   ArriveDto,
   StartDeliveryDto,
   ConfirmDeliveryDto,
+  ConfirmDepotDeliveryDto,
   ForceStatusDto,
   CompleteDto,
   CancelDto,
@@ -240,7 +241,13 @@ export class TripsService implements OnModuleInit {
             p.name                AS source_parcel_name,
             p.code                AS source_parcel_code,
             p.municipality        AS source_parcel_municipality,
-            f.name                AS source_farm_name
+            f.name                AS source_farm_name,
+            EXISTS(
+              SELECT 1 FROM users du
+              WHERE du.assigned_delivery_destination_id = t.destination_id
+                AND du.role = 'depot_manager'::user_role
+                AND du.deleted_at IS NULL
+            )                     AS destination_has_operator
           FROM trips t
           LEFT JOIN machines m  ON m.id  = t.truck_id
           LEFT JOIN users    u  ON u.id  = t.driver_id
@@ -979,11 +986,28 @@ export class TripsService implements OnModuleInit {
       tripId: id,
     });
 
-    // Plan C — multi-iteration hook.
-    // After a trip completes:
-    //  - If the parcel still has bales, prompt the loader to recall the truck.
-    //  - If the parcel is empty, advance the parcel harvest status via Plan B's
-    //    parcelsService.advanceHarvestOnLoadEvent helper.
+    // Plan C — multi-iteration hook (shared with confirmDepotDelivery).
+    await this.runPostCompleteHooks(trip, orgId);
+
+    return result;
+  }
+
+  /**
+   * Post-complete side effects shared by `complete()` (driver/admin receiver
+   * completion) and `confirmDepotDelivery()` (depot-operator confirmation).
+   * Plan C multi-iteration: if the source parcel still has bales, prompt the
+   * loader to recall the truck (idempotency-guarded by recall_decided_at); if it
+   * is empty, advance the parcel harvest status via Plan B's helper. Best-effort —
+   * never throws (a push/harvest failure must not fail the completed transition).
+   *
+   * `trip` is the pre-update findById row (carries source_parcel_id,
+   * loader_operator_id, recall_decided_at, truck_code/plate enrichment).
+   */
+  private async runPostCompleteHooks(
+    trip: Record<string, unknown>,
+    orgId: string | null,
+  ): Promise<void> {
+    const id = trip.id as string;
     try {
       const sourceParcelId = trip.source_parcel_id as string | null;
       const loaderOperatorId = trip.loader_operator_id as string | null;
@@ -1012,7 +1036,7 @@ export class TripsService implements OnModuleInit {
               orgId,
             );
           } catch (err) {
-            this.winston.warn('complete: advanceHarvestOnLoadEvent failed', {
+            this.winston.warn('runPostCompleteHooks: advanceHarvestOnLoadEvent failed', {
               context: 'TripsService',
               tripId: id,
               parcelId: sourceParcelId,
@@ -1022,12 +1046,227 @@ export class TripsService implements OnModuleInit {
         }
       }
     } catch (err) {
-      this.winston.warn('complete() multi-iteration hook failed', {
+      this.winston.warn('runPostCompleteHooks failed', {
         context: 'TripsService',
         tripId: id,
         err: err instanceof Error ? { message: err.message } : err,
       });
     }
+  }
+
+  /**
+   * Depot-operator delivery confirmation (driver → operator depozit). A
+   * depot_manager assigned to the trip's destination depot confirms the arriving
+   * bale count (+ gross/tare on a principal depot with a working scale; bale count
+   * only on a temporary depot or when the scale is broken), signs with their
+   * specimen, and this single action drives the trip arrived/delivering →
+   * delivered → completed in one transaction (the operator's signature is stored
+   * as the receiver signature). Server-enforced geofence: the truck's latest GPS
+   * must be within the depot's confirm_radius_m. Idempotent on `idempotencyKey`.
+   */
+  async confirmDepotDelivery(
+    id: string,
+    user: { id: string; role: string; organizationId: string | null },
+    dto: ConfirmDepotDeliveryDto,
+  ) {
+    const orgId = user.organizationId;
+    const trip = await this.findById(id, orgId);
+    const from = trip.status as TripStatus;
+
+    // Idempotency — a replay returns the cached completed trip rows.
+    const idempotencyTable = 'confirm_depot_delivery';
+    const existing = (await this.drizzleProvider.db.execute(
+      sql`SELECT result_data FROM sync_idempotency
+          WHERE client_id = ${user.id}
+            AND table_name = ${idempotencyTable}
+            AND record_id = ${dto.idempotencyKey}
+          LIMIT 1`,
+    )) as unknown as { result_data: unknown }[];
+    if (existing[0]?.result_data) {
+      return existing[0].result_data;
+    }
+
+    const destinationId = trip.destination_id as string | null;
+    if (!destinationId) {
+      throw new BadRequestException({
+        error: 'no_destination',
+        message: 'Cursa nu are un depozit de destinație.',
+      });
+    }
+
+    // Authorization: a depot_manager may only confirm at their assigned depot
+    // (admin bypasses). Mirrors deposit-inventory.ensureUserCanAccessDepot.
+    if (user.role !== 'admin') {
+      const userRows = (await this.drizzleProvider.db.execute(sql`
+        SELECT assigned_delivery_destination_id AS "assignedId"
+          FROM users
+         WHERE id = ${user.id}::uuid AND deleted_at IS NULL
+           ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+         LIMIT 1
+      `)) as unknown as { assignedId: string | null }[];
+      if ((userRows[0]?.assignedId ?? null) !== destinationId) {
+        throw new ForbiddenException('You can only confirm deliveries at your assigned depot');
+      }
+    }
+
+    // Depot type + geofence config.
+    const depotRows = (await this.drizzleProvider.db.execute(sql`
+      SELECT depot_type AS "depotType",
+             confirm_radius_m AS "confirmRadiusM",
+             (coords IS NOT NULL) AS "hasCoords",
+             (boundary IS NOT NULL) AS "hasBoundary"
+        FROM delivery_destinations
+       WHERE id = ${destinationId}::uuid AND deleted_at IS NULL
+       LIMIT 1
+    `)) as unknown as {
+      depotType: string;
+      confirmRadiusM: number;
+      hasCoords: boolean;
+      hasBoundary: boolean;
+    }[];
+    const depot = depotRows[0];
+    if (!depot) {
+      throw new BadRequestException({
+        error: 'depot_not_found',
+        message: 'Depozitul nu a fost găsit.',
+      });
+    }
+
+    // Weight rules. Principal depot with a working scale must carry gross; tare ≤
+    // gross. Temporary depot or broken scale → weights stay NULL (net auto-NULL).
+    const scaleBroken = dto.scaleBroken === true;
+    let grossWeightKg: number | null = null;
+    let tareWeightKg: number | null = null;
+    if (depot.depotType === 'principal' && !scaleBroken) {
+      if (typeof dto.grossWeightKg !== 'number' || dto.grossWeightKg <= 0) {
+        throw new BadRequestException({
+          error: 'gross_weight_required',
+          message:
+            'Depozitul principal necesită greutatea brută (sau marcați „Cântarul nu merge").',
+        });
+      }
+      grossWeightKg = dto.grossWeightKg;
+      tareWeightKg = typeof dto.tareWeightKg === 'number' ? dto.tareWeightKg : 0;
+      if (tareWeightKg > grossWeightKg) {
+        throw new BadRequestException({
+          error: 'tare_exceeds_gross',
+          message: 'Tara nu poate depăși greutatea brută.',
+          grossWeightKg,
+          tareWeightKg,
+        });
+      }
+    }
+
+    // Server-enforced geofence: the truck's latest GPS must be within the depot's
+    // confirm radius of the boundary polygon (or the centroid coords when a
+    // temporary depot has no polygon). No recent fix → reject (do not allow).
+    if (!depot.hasCoords && !depot.hasBoundary) {
+      throw new BadRequestException({
+        error: 'depot_no_location',
+        message: 'Depozitul nu are o locație definită; nu se poate verifica perimetrul.',
+      });
+    }
+    const truckId = trip.truck_id as string | null;
+    const geoRows = (await this.drizzleProvider.db.execute(sql`
+      WITH ltp AS (
+        SELECT coords, recorded_at
+        FROM machine_location_events
+        WHERE machine_id = ${truckId}::uuid
+          AND recorded_at >= NOW() - INTERVAL '15 minutes'
+        ORDER BY recorded_at DESC
+        LIMIT 1
+      )
+      SELECT
+        (ltp.recorded_at IS NOT NULL) AS "hasFix",
+        CASE WHEN ltp.coords IS NOT NULL THEN
+          ST_DWithin(ltp.coords::geography, COALESCE(dd.boundary, dd.coords)::geography, dd.confirm_radius_m)
+          ELSE FALSE END AS "inside",
+        CASE WHEN ltp.coords IS NOT NULL THEN
+          ROUND(ST_Distance(ltp.coords::geography, COALESCE(dd.boundary, dd.coords)::geography)::numeric, 1)::float
+          ELSE NULL END AS "distanceM"
+      FROM delivery_destinations dd
+      LEFT JOIN ltp ON TRUE
+      WHERE dd.id = ${destinationId}::uuid
+      LIMIT 1
+    `)) as unknown as { hasFix: boolean; inside: boolean; distanceM: number | null }[];
+    const geo = geoRows[0];
+    if (!geo?.hasFix) {
+      throw new BadRequestException({
+        error: 'gps_stale',
+        message: 'Camionul nu a transmis o poziție GPS recentă. Așteaptă o actualizare.',
+      });
+    }
+    if (!geo.inside) {
+      throw new BadRequestException({
+        error: 'outside_geofence',
+        message: 'Camionul nu este în perimetrul depozitului.',
+        distanceM: geo.distanceM,
+        radiusM: depot.confirmRadiusM,
+      });
+    }
+
+    this.validateTransition(from, 'CONFIRM_DELIVERY_AT_DEPOT');
+
+    // The operator is the receiver — their name + signature fill the receiver
+    // fields so the completed CMR is signed.
+    const opRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT full_name FROM users WHERE id = ${user.id}::uuid LIMIT 1`,
+    )) as unknown as { full_name: string | null }[];
+    const operatorName = opRows[0]?.full_name ?? 'Operator depozit';
+
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      const updated = (await tx.execute(
+        sql`UPDATE trips SET
+          status = ${TripStatus.completed},
+          bale_count = ${dto.baleCount},
+          gross_weight_kg = ${grossWeightKg},
+          tare_weight_kg = ${tareWeightKg},
+          scale_broken = ${scaleBroken},
+          delivered_at = NOW(),
+          depot_operator_id = ${user.id},
+          depot_confirmed_at = NOW(),
+          depot_operator_signature_url = ${dto.depotOperatorSignature},
+          receiver_name = ${operatorName},
+          receiver_signature_url = ${dto.depotOperatorSignature},
+          receiver_signed_at = NOW(),
+          completed_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${id} AND status = ${from} RETURNING *`,
+      )) as unknown as Record<string, unknown>[];
+      if (!updated.length) {
+        throw new BadRequestException('Trip status changed concurrently');
+      }
+      // Mirror the result so retries are no-ops.
+      await tx.execute(
+        sql`INSERT INTO sync_idempotency (
+              client_id, table_name, record_id,
+              client_version, server_version, result_data
+            ) VALUES (
+              ${user.id}, ${idempotencyTable}, ${dto.idempotencyKey},
+              1, 1, ${JSON.stringify(updated)}::jsonb
+            )
+            ON CONFLICT DO NOTHING`,
+      );
+      return updated;
+    });
+
+    this.logTripFlow(id, 'CONFIRM_DELIVERY_AT_DEPOT', from, TripStatus.completed);
+    void this.pushToDriver(
+      id,
+      'Livrare confirmată la depozit',
+      'Depozitul a confirmat baloții. Cursa este finalizată.',
+      'trip_depot_confirmed',
+    );
+
+    // CMR stage 2 — the completed document with the operator (receiver) signature.
+    await this.cmrQueue.add('generate', { tripId: id, orgId: orgId, stage: 2 });
+    this.winston.log('flow', `CMR generation queued for trip ${id}`, {
+      context: 'TripsService',
+      tripId: id,
+    });
+
+    // Plan C — multi-iteration hook (same as complete()).
+    await this.runPostCompleteHooks(trip, orgId);
 
     return result;
   }

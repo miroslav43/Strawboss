@@ -2,10 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Warehouse, X, Loader2, Check } from 'lucide-react';
-import {
-  useCreateDeliveryDestination,
-  useUpdateDeliveryDestination,
-} from '@strawboss/api';
+import { useCreateDeliveryDestination, useUpdateDeliveryDestination } from '@strawboss/api';
 import type { DeliveryDestination } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -26,11 +23,7 @@ export interface DepositGeofenceModalProps {
 
 type TabKey = 'existing' | 'new';
 
-export function DepositGeofenceModal({
-  geometry,
-  deposits,
-  onClose,
-}: DepositGeofenceModalProps) {
+export function DepositGeofenceModal({ geometry, deposits, onClose }: DepositGeofenceModalProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<TabKey>('existing');
   const [selectedId, setSelectedId] = useState('');
@@ -103,6 +96,8 @@ export function DepositGeofenceModal({
         contactEmail: emailTrim ? emailTrim : null,
         boundary: JSON.stringify(geometry),
         isDefault: false,
+        depotType: 'principal',
+        confirmRadiusM: 300,
       },
       {
         onSuccess: onClose,
@@ -177,9 +172,7 @@ export function DepositGeofenceModal({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {tab === 'existing' ? (
             <div className="space-y-4">
-              <p className="text-sm text-neutral-600">
-                {t('map.depositGeofence.existingHint')}
-              </p>
+              <p className="text-sm text-neutral-600">{t('map.depositGeofence.existingHint')}</p>
               {eligibleDeposits.length === 0 ? (
                 <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700">
                   <p>{t('map.depositGeofence.noEligibleDeposits')}</p>
@@ -219,9 +212,7 @@ export function DepositGeofenceModal({
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-neutral-600">
-                {t('map.depositGeofence.newHint')}
-              </p>
+              <p className="text-sm text-neutral-600">{t('map.depositGeofence.newHint')}</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-neutral-600">

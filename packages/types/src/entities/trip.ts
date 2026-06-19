@@ -58,11 +58,27 @@ export interface Trip extends Timestamps, SoftDelete {
   receiverSignatureUrl: string | null;
   receiverSignedAt: string | null;
   completedAt: string | null;
+  // Depot-operator delivery confirmation (driver → operator depozit). Set when a
+  // depot_manager confirms the arriving truck at the destination depot. The
+  // operator's signature is also written to receiverSignatureUrl (they are the
+  // receiver), and scaleBroken/NULL weights flag a count-only confirmation.
+  depotOperatorId: string | null;
+  depotConfirmedAt: string | null;
+  depotOperatorSignatureUrl: string | null;
+  scaleBroken: boolean;
   cancelledAt: string | null;
   cancellationReason: string | null;
   fraudFlags: Record<string, unknown> | null;
   clientId: string | null;
   syncVersion: number;
+
+  /**
+   * Read-model flag: true when the destination depot has a depot_manager
+   * assigned. Drives the driver app to a read-only delivery view (the operator
+   * confirms) vs. the legacy driver-confirms flow. Populated by GET /trips/:id
+   * and the sync pull; optional elsewhere.
+   */
+  destinationHasOperator?: boolean;
 
   // Enriched join labels — populated only by GET /trips/:id, optional elsewhere.
   truckPlate?: string | null;

@@ -11,6 +11,10 @@ export interface DepotInventoryPayload {
     name: string;
     address: string | null;
     coordsGeoJson: string | null;
+    /** 'temporary' depots take only a bale count; 'principal' also take weights. */
+    depotType: 'principal' | 'temporary';
+    /** Geofence radius (m) within which the operator may confirm an arriving truck. */
+    confirmRadiusM: number;
   };
   inventory: {
     totalBales: number;
@@ -21,11 +25,19 @@ export interface DepotInventoryPayload {
     tripId: string;
     tripNumber: string;
     status: string;
+    truckId: string | null;
     baleCount: number;
     iterationIndex: number | null;
     truckPlate: string | null;
     truckCode: string | null;
     driverName: string | null;
+    /** Metres from the truck's latest GPS fix to the depot; null if no recent fix. */
+    distanceM: number | null;
+    /** True when the truck is within the depot's confirm geofence. */
+    isInsideGeofence: boolean;
+    /** True when the truck has arrived and is awaiting depot confirmation. */
+    awaitingConfirmation: boolean;
+    lastSeenAt: string | null;
   }>;
 }
 

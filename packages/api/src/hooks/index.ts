@@ -8,6 +8,7 @@ export {
   useArrive,
   useStartDelivery,
   useConfirmDelivery,
+  useConfirmDepotDelivery,
   useCompleteTrip,
   useCancelTrip,
   useForceTripStatus,

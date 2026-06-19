@@ -56,6 +56,16 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await addColumnIfMissing(db, 'trips', 'parent_trip_id', 'TEXT');
   await addColumnIfMissing(db, 'trips', 'iteration_index', 'INTEGER DEFAULT 1');
 
+  // Depot-operator confirmation (matches server migration 00053). These round-trip
+  // from the server pull; the SyncManager upserts the raw row, so the local trips
+  // table must carry every pulled column or TripsRepo.upsert crashes.
+  await addColumnIfMissing(db, 'trips', 'depot_operator_id', 'TEXT');
+  await addColumnIfMissing(db, 'trips', 'depot_confirmed_at', 'TEXT');
+  await addColumnIfMissing(db, 'trips', 'depot_operator_signature_url', 'TEXT');
+  await addColumnIfMissing(db, 'trips', 'scale_broken', 'INTEGER DEFAULT 0');
+  // Computed read-model flag from the pull (not a server-stored column).
+  await addColumnIfMissing(db, 'trips', 'destination_has_operator', 'INTEGER DEFAULT 0');
+
   // Plan B T9.1 — local parcel cache mirrors crop_type for offline map labels
   // and the baler parcel detail screen.
   await addColumnIfMissing(db, 'parcels', 'crop_type', 'TEXT');

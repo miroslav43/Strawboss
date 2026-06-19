@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDeliveryDestinations } from '@strawboss/api';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
@@ -19,6 +20,7 @@ import { TripsRepo } from '@/db/trips-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { useSync } from '@/hooks/useSync';
 import { useQueryClient } from '@tanstack/react-query';
+import { colors } from '@strawboss/ui-tokens';
 import type { TripTransitionPayload } from '@/sync/push';
 
 const BACKGROUND = '#F3DED8';
@@ -31,6 +33,14 @@ interface EnhancedDeliveryFlowProps {
   destinationId?: string | null;
   destinationName: string;
   destinationAddress?: string | null;
+  /**
+   * Plan C: when truthy, the destination depot has an assigned operator who
+   * will confirm the delivery from their side. The driver must NOT submit
+   * weights or a signature — the UI switches to a read-only waiting state.
+   */
+  destinationHasOperator?: boolean;
+  /** Confirmed bale count from the depot operator (shown in the completed state). */
+  depotConfirmedBaleCount?: number | null;
   onComplete: () => void;
   onCancel: () => void;
 }
@@ -81,6 +91,8 @@ export function EnhancedDeliveryFlow({
   destinationId,
   destinationName,
   destinationAddress,
+  destinationHasOperator = false,
+  depotConfirmedBaleCount,
   onComplete,
   onCancel,
 }: EnhancedDeliveryFlowProps) {
@@ -279,6 +291,42 @@ export function EnhancedDeliveryFlow({
   // Don't render until draft restoration is complete (avoids step flicker).
   if (!draftLoaded) return null;
 
+  // Plan C: when the destination has an assigned depot operator, the driver
+  // must not enter weights or sign — confirmation comes from the operator side.
+  if (destinationHasOperator) {
+    const isConfirmed = depotConfirmedBaleCount != null && depotConfirmedBaleCount > 0;
+    return (
+      <View style={styles.flow}>
+        <ScreenHeader title="Aștepți confirmarea depozitului" onBack={onCancel} />
+        <View style={styles.operatorWaitBody}>
+          <MaterialCommunityIcons
+            name={isConfirmed ? 'check-circle' : 'clock-outline'}
+            size={64}
+            color={isConfirmed ? colors.primary : '#B7791F'}
+          />
+          <Text style={styles.operatorWaitTitle}>
+            {isConfirmed
+              ? 'Livrare confirmată de operator'
+              : 'Livrarea este confirmată de operatorul depozitului'}
+          </Text>
+          <Text style={styles.operatorWaitSubtitle}>
+            {isConfirmed
+              ? `Operatorul depozitului a confirmat ${depotConfirmedBaleCount} baloți.`
+              : 'Aștepți confirmarea. Nu trebuie să introduci greutăți sau semnătură — operatorul de la depozit face asta.'}
+          </Text>
+          {isConfirmed ? (
+            <View style={styles.operatorConfirmedRow}>
+              <MaterialCommunityIcons name="grain" size={20} color={colors.primary} />
+              <Text style={styles.operatorConfirmedValue}>{depotConfirmedBaleCount} baloți</Text>
+              <Text style={styles.operatorConfirmedLabel}>confirmați de depozit</Text>
+            </View>
+          ) : null}
+        </View>
+        <AppModal {...modalProps} />
+      </View>
+    );
+  }
+
   const renderStep = () => {
     switch (currentStep) {
       case 0:
@@ -367,5 +415,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 12,
     paddingBottom: 4,
+  },
+  // Plan C: destination_has_operator read-only waiting state
+  operatorWaitBody: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 16,
+  },
+  operatorWaitTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  operatorWaitSubtitle: {
+    fontSize: 14,
+    color: '#5D4037',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  operatorConfirmedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    marginTop: 8,
+  },
+  operatorConfirmedValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  operatorConfirmedLabel: {
+    fontSize: 13,
+    color: '#5D4037',
   },
 });

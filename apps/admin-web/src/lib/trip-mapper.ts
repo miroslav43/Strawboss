@@ -68,5 +68,12 @@ export function toTripCamel(raw: unknown): Trip | null {
     sourceParcelCode: (r.source_parcel_code as string | null) ?? null,
     sourceParcelMunicipality: (r.source_parcel_municipality as string | null) ?? null,
     sourceFarmName: (r.source_farm_name as string | null) ?? null,
+    // Depot-operator delivery confirmation fields.
+    depotOperatorId: (r.depot_operator_id as string | null) ?? null,
+    depotConfirmedAt: (r.depot_confirmed_at as string | null) ?? null,
+    depotOperatorSignatureUrl: (r.depot_operator_signature_url as string | null) ?? null,
+    scaleBroken: Boolean(r.scale_broken),
+    destinationHasOperator:
+      r.destination_has_operator != null ? Boolean(r.destination_has_operator) : undefined,
   };
 }

@@ -991,6 +991,11 @@
       "contactEmailPlaceholder": "email@exemplu.com",
       "activeDeposit": "Depozit activ",
       "defaultDeposit": "Depozit implicit (folosit când nu se găsește alt depozit)",
+      "depotType": "Tip depozit",
+      "depotTypePrincipal": "Principal",
+      "depotTypeTemporary": "Temporar",
+      "confirmRadiusM": "Rază confirmare (m)",
+      "confirmRadiusHint": "Raza geofence în interiorul căreia operatorul depozitului poate confirma un camion sosit.",
       "createError": "Eroare la creare. Încearcă din nou.",
       "updateError": "Eroare la actualizare. Încearcă din nou."
     },
@@ -1317,7 +1322,11 @@
     "completed": "Finalizat",
     "created": "Creat",
     "receiver": "Primitor",
-    "notes": "Note"
+    "notes": "Note",
+    "depotConfirmation": "Confirmare depozit",
+    "depotConfirmedAt": "Confirmat la",
+    "depotOperator": "Operator depozit",
+    "scaleBroken": "Cântar defect — confirmare doar pe bază de număr"
   },
   "trips_list": {
     "colTripNumber": "Cursă #",

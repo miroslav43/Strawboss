@@ -13,6 +13,17 @@ export interface DeliveryDestination extends Timestamps, SoftDelete {
   isActive: boolean;
   isDefault: boolean;
   /**
+   * Depot kind. `temporary` (provizoriu) depots take only a bale count at
+   * delivery; `principal` (fix) depots also take gross/tare weights (net is
+   * computed) unless the operator flags a broken scale.
+   */
+  depotType: 'principal' | 'temporary';
+  /**
+   * Geofence radius (metres) inside which a depot operator may confirm an
+   * arriving truck's delivery. Server-enforced against the truck's latest GPS.
+   */
+  confirmRadiusM: number;
+  /**
    * Latest activity touching this destination — currently the MAX(updated_at)
    * across non-deleted task_assignments referencing it. Only populated by the
    * list endpoint (`GET /delivery-destinations`); other endpoints leave it
