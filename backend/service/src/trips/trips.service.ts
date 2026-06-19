@@ -1268,6 +1268,33 @@ export class TripsService implements OnModuleInit {
     // Plan C — multi-iteration hook (same as complete()).
     await this.runPostCompleteHooks(trip, orgId);
 
+    // Variant B — a delivered-vs-loaded bale-count discrepancy does NOT block the
+    // completion, but surfaces in admin as a high/critical fraud alert. Runs only
+    // on a fresh confirmation (idempotent replays returned earlier). Best-effort.
+    // Only compare against a real loaded baseline (>0); a trip with no recorded
+    // loading has nothing to reconcile against and would just produce noise.
+    const loadedBaleCount = Number(trip.bale_count ?? 0);
+    if (loadedBaleCount > 0 && dto.baleCount !== loadedBaleCount) {
+      try {
+        await this.alertsService.createBaleMismatchAlert({
+          tripId: id,
+          truckId: (trip.truck_id as string | null) ?? null,
+          truckLabel:
+            (trip.truck_code as string | null) ?? (trip.truck_plate as string | null) ?? null,
+          depotName: (trip.destination_name as string | null) ?? null,
+          loaded: loadedBaleCount,
+          delivered: dto.baleCount,
+          orgId,
+        });
+      } catch (err) {
+        this.winston.warn('confirmDepotDelivery: bale-mismatch alert failed', {
+          context: 'TripsService',
+          tripId: id,
+          err: err instanceof Error ? { message: err.message } : err,
+        });
+      }
+    }
+
     return result;
   }
 

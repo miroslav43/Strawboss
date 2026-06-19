@@ -224,6 +224,69 @@ export class AlertsService {
     return (result as unknown as Record<string, unknown>[])[0];
   }
 
+  /**
+   * Fraud/loss alert raised when the depot operator confirms a different bale
+   * count than was loaded for the trip. A shortfall (delivered < loaded) means
+   * bales went missing in transit → severity 'critical'; a surplus is a likely
+   * miscount → 'high'. The trip still completes (variant B); this only surfaces
+   * the discrepancy in admin. Deduped per (trip, fraud) so a retry of the
+   * confirmation does not spawn duplicates.
+   */
+  async createBaleMismatchAlert(args: {
+    tripId: string;
+    truckId: string | null;
+    truckLabel?: string | null;
+    depotName?: string | null;
+    loaded: number;
+    delivered: number;
+    orgId: string | null;
+  }) {
+    const existing = await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM alerts
+          WHERE trip_id = ${args.tripId}::uuid
+            AND category = 'fraud'
+            AND is_acknowledged = false
+            AND organization_id IS NOT DISTINCT FROM ${args.orgId ? sql`${args.orgId}::uuid` : sql`NULL`}
+          LIMIT 1`,
+    );
+    if ((existing as unknown as Record<string, unknown>[]).length > 0) {
+      return (existing as unknown as Record<string, unknown>[])[0];
+    }
+    const diff = args.delivered - args.loaded;
+    const missing = Math.max(0, -diff);
+    const surplus = Math.max(0, diff);
+    const severity = missing > 0 ? 'critical' : 'high';
+    const truck = args.truckLabel ?? 'camion';
+    const depot = args.depotName ?? 'depozit';
+    const description =
+      missing > 0
+        ? `Încărcate ${args.loaded}, confirmate la ${depot} ${args.delivered} — lipsă ${missing} baloți (${truck}).`
+        : `Încărcate ${args.loaded}, confirmate la ${depot} ${args.delivered} — ${surplus} baloți în plus (${truck}).`;
+    const result = await this.drizzleProvider.db.execute(
+      sql`INSERT INTO alerts (
+        category, severity, title, description,
+        trip_id, related_table, related_record_id, machine_id,
+        data, is_acknowledged, organization_id
+      ) VALUES (
+        'fraud'::alert_category, ${severity}::alert_severity,
+        'Nepotrivire baloți la livrare',
+        ${description},
+        ${args.tripId}::uuid, 'trips', ${args.tripId}::uuid,
+        ${args.truckId ? sql`${args.truckId}::uuid` : sql`NULL`},
+        jsonb_build_object(
+          'kind', 'delivery_bale_mismatch',
+          'loaded', ${args.loaded},
+          'delivered', ${args.delivered},
+          'missing', ${missing},
+          'surplus', ${surplus}
+        ),
+        false,
+        ${args.orgId ? sql`${args.orgId}::uuid` : sql`NULL`}
+      ) RETURNING ${ALERT_COLS}`,
+    );
+    return (result as unknown as Record<string, unknown>[])[0];
+  }
+
   async createFromDraft(draft: AlertDraft, orgId: string) {
     // Skip insert if an unacknowledged alert with the same (trip_id, category)
     // already exists — the evaluation job runs every 15 minutes and would
