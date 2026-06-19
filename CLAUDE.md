@@ -122,6 +122,14 @@ The `.claude/` directory carries a custom automation setup that keeps the knowle
 
 Domain specialists: `backend-agent`, `db-agent`, `devops-agent`, `frontend-agent`, `mobile-agent`. Review agents: `security-reviewer` (backend + DB/RLS), `web-reviewer` (admin-web XSS/i18n/React), `mobile-reviewer` (sync/offline/secrets), `logic-reviewer` (state machine, reconciliation, race conditions). Plus `docs-updater` (subagent form of `strawboss-sync-docs`, for large PRs).
 
+### Plugin: `strawboss-farm` (`plugins/strawboss-farm/`)
+
+An in-repo Claude Code plugin (local marketplace at `.claude-plugin/marketplace.json`) that **adds**, on top of the layer agents above, one specialist agent **per account type (role)** plus two skills. Install once: `/plugin marketplace add /srv/apps/Strawboss` then `/plugin install strawboss-farm` (or add to `enabledPlugins` in `.claude/settings.json`).
+
+- **Per-role agents** (cross-layer, role-scoped — they orchestrate the layer agents): `role-driver`, `role-loader-operator`, `role-baler-operator`, `role-geofence-maker`, `role-depot-manager`, `role-dispatcher`, `role-admin`, `role-super-admin`. Each knows its mobile route group / web pages, backend `@Roles`, RLS, and trip-state transitions.
+- **`/strawboss-account`** — router skill: develop/modify a feature for a given role; picks the matching `role-*` agent and applies the cross-layer per-role checklist.
+- **`/strawboss-docs-sync`** — parallel docs sync: fans out `docs-updater` agents per doc-area (backend/db/mobile/web/packages/cross-cutting) in one message, then consolidates `log.md`/`_index.md`. High-throughput companion to the sequential `strawboss-sync-docs`.
+
 ### Hooks (`.claude/settings.json`)
 
 - **PostToolUse / Edit**: auto-formats `.ts/.tsx/.js/.jsx/.json/.css` with Prettier.

@@ -1,0 +1,16 @@
+{
+  "name": "strawboss",
+  "owner": {
+    "name": "StrawBoss"
+  },
+  "metadata": {
+    "description": "Local marketplace for StrawBoss in-repo Claude Code plugins."
+  },
+  "plugins": [
+    {
+      "name": "strawboss-farm",
+      "source": "./plugins/strawboss-farm",
+      "description": "Per-account-type (role) specialist agents + skills for fast StrawBoss development. Adds 8 role agents, a role-feature router skill, and a parallel multi-agent docs-sync skill on top of the existing .claude/ layer agents."
+    }
+  ]
+}

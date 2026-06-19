@@ -1,0 +1,9 @@
+{
+  "name": "strawboss-farm",
+  "version": "0.1.0",
+  "description": "StrawBoss farm-logistics dev pack: per-account-type (role) specialist agents and skills for fast, convention-correct development across mobile, admin-web, backend, and RLS. Complements the layer agents in .claude/.",
+  "author": {
+    "name": "StrawBoss"
+  },
+  "keywords": ["strawboss", "farm", "logistics", "roles", "rbac", "monorepo"]
+}
