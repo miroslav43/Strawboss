@@ -1,5 +1,5 @@
 import { ApiClient } from '@strawboss/api';
-import { getAuthToken } from './auth';
+import { getAuthToken, refreshAuthToken } from './auth';
 import { mobileLogger } from './logger';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -22,6 +22,10 @@ export function resolveApiUrl(pathOrUrl: string): string {
 export const mobileApiClient = new ApiClient({
   baseUrl: API_URL,
   getToken: getAuthToken,
+  // On 401, force a real session refresh (not just re-read the cached token) so
+  // a backgrounded device recovers from an expired access token instead of
+  // 401-ing forever and dropping presence. See refreshAuthToken.
+  refreshToken: refreshAuthToken,
   // Declare client capabilities so the server can return forward-compatible
   // response shapes. `tombstones-v1` makes /sync/pull include a `deletions[]`
   // array for soft-deleted rows so the local cache can converge.

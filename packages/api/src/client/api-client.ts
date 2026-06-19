@@ -2,6 +2,14 @@
 export interface ApiClientConfig {
   baseUrl: string;
   getToken: () => Promise<string | null>;
+  /**
+   * Optional: force a real session refresh and return the fresh token. Called on
+   * a 401 before retrying — unlike `getToken()` (which may return the same
+   * expired/cached token), this should actually renew the session (e.g.
+   * `supabase.auth.refreshSession()`). Without it, the 401 retry just re-sends
+   * the same dead token. Falls back to `getToken()` when not provided.
+   */
+  refreshToken?: () => Promise<string | null>;
   /** Optional hook for structured client logging (e.g. admin-web clientLogger). */
   onApiError?: (info: {
     method: string;
@@ -54,9 +62,11 @@ export class ApiClient {
       body: hasBody ? JSON.stringify(body) : undefined,
     });
 
-    // On 401, refresh the token and retry once
+    // On 401, force a real token refresh and retry once.
     if (res.status === 401) {
-      const newToken = await this.config.getToken();
+      const newToken = this.config.refreshToken
+        ? await this.config.refreshToken()
+        : await this.config.getToken();
       const retryRes = await fetch(`${this.config.baseUrl}${path}`, {
         method,
         headers: buildHeaders(newToken),
@@ -125,9 +135,11 @@ export class ApiClient {
       body: formData,
     });
 
-    // On 401, refresh the token and retry once
+    // On 401, force a real token refresh and retry once.
     if (res.status === 401) {
-      const newToken = await this.config.getToken();
+      const newToken = this.config.refreshToken
+        ? await this.config.refreshToken()
+        : await this.config.getToken();
       const retryRes = await fetch(`${this.config.baseUrl}${path}`, {
         method: 'POST',
         headers: buildUploadHeaders(newToken),

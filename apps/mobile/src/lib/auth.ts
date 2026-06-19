@@ -36,6 +36,34 @@ export async function getAuthToken(): Promise<string | null> {
 }
 
 /**
+ * Force a real session refresh and return the fresh access token. Used by the
+ * ApiClient on a 401 — unlike {@link getAuthToken}, this renews the session
+ * instead of returning the (possibly expired) cached token. Returns null if the
+ * refresh fails (e.g. revoked refresh token) so the caller can treat it as
+ * unauthenticated.
+ */
+export async function refreshAuthToken(): Promise<string | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.auth.refreshSession();
+  if (error) return null;
+  return data.session?.access_token ?? null;
+}
+
+/**
+ * Start/stop Supabase's background token auto-refresh ticker. supabase-js does
+ * NOT auto-start it on React Native — without this the access token expires
+ * (~1 h) and every authenticated request 401s once the screen has been off long
+ * enough. Wired to AppState in `app/_layout.tsx`.
+ */
+export function startAuthAutoRefresh(): void {
+  void getSupabaseClient().auth.startAutoRefresh();
+}
+
+export function stopAuthAutoRefresh(): void {
+  void getSupabaseClient().auth.stopAutoRefresh();
+}
+
+/**
  * Check if the user is currently authenticated.
  */
 export async function isAuthenticated(): Promise<boolean> {

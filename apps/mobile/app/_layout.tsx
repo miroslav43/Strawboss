@@ -5,6 +5,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { useKeepAwake } from 'expo-keep-awake';
 import {
   AppState,
   Platform,
@@ -18,7 +19,7 @@ import {
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { getDatabase, clearLocalData } from '@/lib/storage';
-import { getSupabaseClient } from '@/lib/auth';
+import { getSupabaseClient, startAuthAutoRefresh, stopAuthAutoRefresh } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
 import { mobileApiClient } from '@/lib/api-client';
 import { cleanupOldMobileLogFiles } from '@/lib/logger';
@@ -552,6 +553,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 type DbState = 'loading' | 'ready' | 'error';
 
 export default function RootLayout() {
+  // Keep the screen on for the whole app while it is in the foreground — the
+  // OS never auto-dims/locks it on its own. Distinct tag so it coexists with
+  // the per-screen keep-awake in (baler)/production.tsx. No effect while
+  // backgrounded (the screen turns off normally then).
+  useKeepAwake('strawboss-screen');
+
   const [dbState, setDbState] = useState<DbState>('loading');
   // incrementing this key triggers a retry attempt
   const [retryCount, setRetryCount] = useState(0);
@@ -599,14 +606,24 @@ export default function RootLayout() {
     // Prime the memoized device-owner flag so the background branch below can
     // read it synchronously.
     void isDeviceOwner();
+    // Start Supabase's token auto-refresh ticker. supabase-js does NOT start it
+    // automatically on RN; without it the access token expires (~1 h) and every
+    // authenticated request 401s once the screen has been off long enough,
+    // freezing last_seen_at (driver drops offline after ~1 h).
+    startAuthAutoRefresh();
     const sub = AppState.addEventListener('change', (state) => {
       // Plan C — pause heartbeat in background to save battery. On device-owner
       // builds a foreground service (location or presence) keeps the JS thread
-      // alive, so we keep pinging to stay "online" with the screen off.
+      // alive, so we keep pinging — and refreshing the token — to stay "online"
+      // with the screen off. Non-device-owner installs pause both for battery.
       if (state === 'background') {
-        if (!isDeviceOwnerResolved()) stopHeartbeat();
+        if (!isDeviceOwnerResolved()) {
+          stopHeartbeat();
+          stopAuthAutoRefresh();
+        }
       }
       if (state === 'active') {
+        startAuthAutoRefresh();
         void cleanupOldMobileLogFiles();
         const { userId, assignedMachineId, role: currentRole } = useAuthStore.getState();
         if (currentRole && userId) {
