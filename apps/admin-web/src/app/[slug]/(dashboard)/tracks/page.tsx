@@ -55,7 +55,9 @@ interface Track extends TrackRoute {
 }
 
 function toMachineList(raw: unknown): Machine[] {
-  const paginated = raw as { data?: Machine[] } | undefined;
+  // /api/v1/machines returns a plain array; tolerate a paginated wrapper too.
+  if (Array.isArray(raw)) return raw as Machine[];
+  const paginated = raw as { data?: Machine[] } | null | undefined;
   return paginated?.data ?? [];
 }
 
