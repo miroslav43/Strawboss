@@ -191,8 +191,9 @@ export class NotificationsController {
     body: { tripId: string; recall: boolean },
   ) {
     // P2 — a loader_operator may only answer for the trip they are assigned to.
-    // Admins / super_admins may answer on anyone's behalf.
-    if (user.role !== 'admin' && user.role !== 'super_admin') {
+    // Admins may answer on anyone's behalf. (super_admin is org-less and is
+    // already blocked from this endpoint by @Roles — no operational access.)
+    if (user.role !== 'admin') {
       const trip = await this.tripsService.findById(body.tripId, user.organizationId);
       if (trip.loader_operator_id !== user.id) {
         throw new ForbiddenException('Nu ești loaderul atribuit acestei curse.');

@@ -16,7 +16,7 @@ export class GeofenceController {
    */
   @Post('check')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.super_admin, UserRole.admin, UserRole.dispatcher)
+  @Roles(UserRole.admin, UserRole.dispatcher)
   runCheck() {
     return this.geofenceService.runManualCheck();
   }
