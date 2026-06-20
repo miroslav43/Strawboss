@@ -150,14 +150,12 @@ export default function RequestPortalPage() {
     setSubmitError(null);
     setSubmitting(true);
     try {
-      const res = await fetch(
-        `/api/v1/public/portal/${slug}/requests?code=${encodeURIComponent(code)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(toDto(form)),
-        },
-      );
+      const res = await fetch(`/api/v1/public/portal/${slug}/requests`, {
+        method: 'POST',
+        // Code travels in the body (not the URL) so it never lands in logs.
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...toDto(form), code }),
+      });
       if (!res.ok) {
         setSubmitError(t('portal.submitError'));
         return;

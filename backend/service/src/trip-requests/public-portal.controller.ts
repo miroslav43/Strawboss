@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { TripRequestsService } from './trip-requests.service';
 import { TripsService } from '../trips/trips.service';
 import { Public } from '../auth';
@@ -10,6 +10,10 @@ import {
   portalCodeSchema,
 } from '@strawboss/validation';
 import type { CreateTripRequestDto } from '@strawboss/types';
+
+// The portal code travels in the request BODY (never the URL/query) so it does
+// not leak into access logs, proxies, or browser history.
+const submitTripRequestSchema = createTripRequestSchema.extend({ code: portalCodeSchema });
 
 /**
  * Unauthenticated, code-gated portal endpoints.
@@ -38,12 +42,11 @@ export class PublicPortalController {
   @Public()
   submit(
     @Param('slug') slug: string,
-    @Query('code') code: string,
-    @Body(new ZodValidationPipe(createTripRequestSchema)) dto: CreateTripRequestDto,
+    @Body(new ZodValidationPipe(submitTripRequestSchema))
+    dto: CreateTripRequestDto & { code: string },
   ) {
-    const parsed = portalCodeSchema.safeParse(code);
-    if (!parsed.success) throw new BadRequestException('Cod invalid.');
-    return this.service.submitPublicRequest(slug, parsed.data, dto);
+    const { code, ...request } = dto;
+    return this.service.submitPublicRequest(slug, code, request);
   }
 
   @Get('sign/:token')
