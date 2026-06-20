@@ -140,9 +140,11 @@ export const tripMachine = setup({
     hasDepotConfirmInfo: ({ event }) => {
       if (event.type !== 'CONFIRM_DELIVERY_AT_DEPOT') return false;
       if (typeof event.baleCount !== 'number' || event.baleCount <= 0) return false;
-      // A principal depot with a working scale must carry a gross weight; a
-      // temporary depot or a broken scale confirms with the bale count only.
-      if (event.depotType === 'principal' && event.scaleBroken !== true) {
+      // A principal depot with a working scale must carry a gross weight; only an
+      // explicitly temporary depot or a broken scale may confirm with the bale
+      // count alone. Default to the strict (gross-required) case when depotType is
+      // omitted, so the guard never passes a weightless principal confirmation.
+      if (event.depotType !== 'temporary' && event.scaleBroken !== true) {
         return typeof event.grossWeightKg === 'number' && event.grossWeightKg > 0;
       }
       return true;

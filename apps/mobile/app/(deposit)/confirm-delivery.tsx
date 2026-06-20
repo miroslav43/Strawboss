@@ -180,15 +180,16 @@ export default function ConfirmDeliveryScreen() {
         body: transitionBody,
       };
 
-      // Enqueue the transition — use a fresh idempotency key so each submission
-      // is distinguishable (the operator may correct and resubmit).
-      const queueIdempotencyKey = generateUuid();
-      await syncQueueRepo.enqueue({
+      // Deterministic local queue key (one confirmation per trip) so a double-tap
+      // or a correct-and-resubmit SUPERSEDES the pending entry instead of appending
+      // a second row — only the latest payload is pushed. The body carries the
+      // server idempotency UUID (`idempotencyKey`) for server-side dedup.
+      await syncQueueRepo.enqueueOrUpdate({
         entityType: 'trip_transition',
         entityId: tripId,
         action: 'update',
         payload: queuePayload,
-        idempotencyKey: queueIdempotencyKey,
+        idempotencyKey: `confirm-depot-delivery::${tripId}`,
       });
 
       // Optimistic local update

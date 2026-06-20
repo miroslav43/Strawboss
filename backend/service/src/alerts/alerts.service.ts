@@ -245,6 +245,7 @@ export class AlertsService {
       sql`SELECT id FROM alerts
           WHERE trip_id = ${args.tripId}::uuid
             AND category = 'fraud'
+            AND data->>'kind' = 'delivery_bale_mismatch'
             AND is_acknowledged = false
             AND organization_id IS NOT DISTINCT FROM ${args.orgId ? sql`${args.orgId}::uuid` : sql`NULL`}
           LIMIT 1`,

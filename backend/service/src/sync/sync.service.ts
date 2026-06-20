@@ -708,6 +708,7 @@ export class SyncService {
           ? sql`, EXISTS(
               SELECT 1 FROM users du
               WHERE du.assigned_delivery_destination_id = "trips".destination_id
+                AND du.organization_id = "trips".organization_id
                 AND du.role = 'depot_manager'::user_role
                 AND du.deleted_at IS NULL
             ) AS destination_has_operator`

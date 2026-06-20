@@ -245,6 +245,7 @@ export class TripsService implements OnModuleInit {
             EXISTS(
               SELECT 1 FROM users du
               WHERE du.assigned_delivery_destination_id = t.destination_id
+                AND du.organization_id = t.organization_id
                 AND du.role = 'depot_manager'::user_role
                 AND du.deleted_at IS NULL
             )                     AS destination_has_operator
@@ -1086,6 +1087,11 @@ export class TripsService implements OnModuleInit {
       return existing[0].result_data;
     }
 
+    // Validate the transition up-front (after the idempotency replay check) so an
+    // already-completed/cancelled trip returns a clear "invalid transition" error
+    // instead of a misleading gps_stale/outside_geofence error from the checks below.
+    this.validateTransition(from, 'CONFIRM_DELIVERY_AT_DEPOT');
+
     const destinationId = trip.destination_id as string | null;
     if (!destinationId) {
       throw new BadRequestException({
@@ -1167,6 +1173,12 @@ export class TripsService implements OnModuleInit {
       });
     }
     const truckId = trip.truck_id as string | null;
+    if (!truckId) {
+      throw new BadRequestException({
+        error: 'no_truck',
+        message: 'Cursa nu are un camion asociat.',
+      });
+    }
     const geoRows = (await this.drizzleProvider.db.execute(sql`
       WITH ltp AS (
         SELECT coords, recorded_at
@@ -1204,8 +1216,6 @@ export class TripsService implements OnModuleInit {
         radiusM: depot.confirmRadiusM,
       });
     }
-
-    this.validateTransition(from, 'CONFIRM_DELIVERY_AT_DEPOT');
 
     // The operator is the receiver — their name + signature fill the receiver
     // fields so the completed CMR is signed.
