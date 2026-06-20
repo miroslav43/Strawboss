@@ -4,6 +4,33 @@
   /* Primary brand color — agriculture green */
   --color-primary: #4f7942;
   --color-primary-700: #3a5a30;
+
+  /* Warm agricultural palette — public request portal (deep forest, cream, straw) */
+  --color-forest: #114a2c;
+  --color-forest-deep: #0a3a21;
+  --color-cream: #f7f2e9;
+  --color-straw: #e6c79c;
+  --color-bark: #2a2018;
+}
+
+/* Gentle entrance for the request portal — disabled under reduced motion. */
+@keyframes portalRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.portal-rise {
+  animation: portalRise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .portal-rise {
+    animation: none;
+  }
 }
 
 /* Print layout — hide shell, show only the report content */
