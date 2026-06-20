@@ -559,6 +559,18 @@ export class TaskAssignmentsService {
   }
 
   async create(orgId: string | null, dto: Record<string, unknown>) {
+    // task_assignments.organization_id is NOT NULL. A null org here means the
+    // caller has no organization context — a super_admin (org-less by design) or
+    // an account whose org could not be resolved. Without this guard the INSERT
+    // fails with a raw Postgres NOT-NULL 500; reject with a clear, actionable
+    // error instead. (Covers bulkCreate too — it loops through create().)
+    if (orgId === null) {
+      throw new BadRequestException({
+        error: 'no_organization',
+        message:
+          'Nu poți crea sarcini fără o organizație. Autentifică-te ca admin sau dispecer al unei organizații (conturile super_admin nu sunt legate de o organizație).',
+      });
+    }
     const assignmentDate = dto.assignmentDate as string;
     const machineId = dto.machineId as string;
 
