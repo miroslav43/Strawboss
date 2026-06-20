@@ -25,14 +25,8 @@ import {
   useFarms,
   useDeliveryDestinations,
 } from '@strawboss/api';
-import type {
-  Parcel,
-  MachineLastLocation,
-  RoutePoint,
-  DeliveryDestination,
-} from '@strawboss/types';
+import type { Parcel, MachineLastLocation, DeliveryDestination } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { RouteHistoryPanel } from '@/components/map/RouteHistoryPanel';
 import { DepositGeofenceModal } from '@/components/map/DepositGeofenceModal';
 import { FilterableMachineList } from '@/components/map/FilterableMachineList';
 import { FilterableFarmList } from '@/components/map/FilterableFarmList';
@@ -361,8 +355,6 @@ export default function MapPage() {
   const [drawnDepositGeometry, setDrawnDepositGeometry] = useState<GeoJSON.Geometry | null>(null);
   const [drawMode, setDrawMode] = useState<'parcel' | 'deposit' | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
-  const [routePoints, setRoutePoints] = useState<RoutePoint[] | undefined>(undefined);
   const [navigateToParcelId, setNavigateToParcelId] = useState<string | null>(null);
   const [navigateToMachineId, setNavigateToMachineId] = useState<string | null>(null);
 
@@ -440,15 +432,6 @@ export default function MapPage() {
   }, []);
 
   const handleDrawCancel = useCallback(() => setDrawMode(null), []);
-
-  const handleShowRoute = useCallback((machineId: string) => {
-    setSelectedMachineId(machineId);
-  }, []);
-
-  const handleCloseRoute = useCallback(() => {
-    setSelectedMachineId(null);
-    setRoutePoints(undefined);
-  }, []);
 
   const handleParcelNavigate = useCallback((parcel: Parcel) => {
     setSelectedParcelId(parcel.id);
@@ -541,7 +524,6 @@ export default function MapPage() {
             hiddenMachineIds={hiddenMachineIds}
             onToggleMachineVisibility={handleToggleMachineVisibility}
             onMachineNavigate={handleMachineNavigate}
-            onMachineShowRoute={handleShowRoute}
             open={sectionsOpen.machines}
             onOpenChange={(next) => setSectionsOpen((prev) => ({ ...prev, machines: next }))}
           />
@@ -599,8 +581,6 @@ export default function MapPage() {
             onNewParcelDrawn={handleNewParcelDrawn}
             onNewDepositDrawn={handleNewDepositDrawn}
             onDrawCancel={handleDrawCancel}
-            routePoints={routePoints}
-            onShowRoute={handleShowRoute}
             navigateToParcelId={navigateToParcelId}
             navigateToMachineId={navigateToMachineId}
             onNavigationComplete={handleNavigationComplete}
@@ -610,19 +590,6 @@ export default function MapPage() {
             iconPrefs={iconPrefs}
             onRefresh={handleRefresh}
           />
-          {selectedMachineId && (
-            <RouteHistoryPanel
-              machineId={selectedMachineId}
-              machineCode={
-                machines.find((m) => m.machineId === selectedMachineId)?.machineCode ?? null
-              }
-              machineType={
-                machines.find((m) => m.machineId === selectedMachineId)?.machineType ?? null
-              }
-              onClose={handleCloseRoute}
-              onRouteData={setRoutePoints}
-            />
-          )}
         </div>
       </div>
 

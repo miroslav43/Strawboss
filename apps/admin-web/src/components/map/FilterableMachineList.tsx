@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { Crosshair, Route, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
+import { Crosshair, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
 import type { MachineLastLocation } from '@strawboss/types';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { useI18n } from '@/lib/i18n';
@@ -17,7 +17,6 @@ interface FilterableMachineListProps {
   hiddenMachineIds: Set<string>;
   onToggleMachineVisibility: (machineId: string) => void;
   onMachineNavigate: (machine: MachineLastLocation) => void;
-  onMachineShowRoute: (machineId: string) => void;
   /** Optional controlled-collapse state from the parent. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -28,7 +27,6 @@ export function FilterableMachineList({
   hiddenMachineIds,
   onToggleMachineVisibility,
   onMachineNavigate,
-  onMachineShowRoute,
   open: openProp,
   onOpenChange,
 }: FilterableMachineListProps) {
@@ -197,15 +195,6 @@ export function FilterableMachineList({
                       aria-label={t('mapList.showOnMap')}
                     >
                       <Crosshair className="h-3.5 w-3.5" />
-                    </button>
-                    {/* Show route */}
-                    <button
-                      onClick={() => onMachineShowRoute(m.machineId)}
-                      className="flex-shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-blue-500"
-                      title={t('leaflet.showRoute')}
-                      aria-label={t('leaflet.showRoute')}
-                    >
-                      <Route className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </li>

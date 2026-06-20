@@ -47,7 +47,6 @@ type MapStrings = {
   labelHarvestStatus: (status: string | undefined) => string;
   onlineStatus: string;
   offlineStatus: string;
-  showRoute: string;
   routeStart: string;
   routeEnd: string;
   formatAgo: (recordedAt: string) => string;
@@ -134,27 +133,12 @@ function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): stri
     </div>`;
 }
 
-function machinePopupHtml(
-  m: MachineLastLocation,
-  s: MapStrings,
-  typeLabel: string,
-  selectionOnly: boolean,
-): string {
+function machinePopupHtml(m: MachineLastLocation, s: MapStrings, typeLabel: string): string {
   const online = isOnline(m.recordedAt);
   const ago = s.formatAgo(m.recordedAt);
-  const btnBase = `
-    cursor:pointer;border:1px solid #d1d5db;border-radius:6px;
-    padding:4px 10px;font-size:11px;font-family:sans-serif;
-    background:#fff;color:#374151;
-  `;
   const title = esc(m.machineCode ?? typeLabel);
   const line = `${esc(s.typeLabel)}: ${esc(typeLabel)}`;
   const status = online ? s.onlineStatus : s.offlineStatus;
-  const routeRow = selectionOnly
-    ? ''
-    : `<div style="margin-top:8px;">
-        <button data-show-route-machine-id="${esc(m.machineId)}" style="${btnBase}color:#3b82f6;border-color:#93c5fd;">${esc(s.showRoute)}</button>
-      </div>`;
   return `
     <div style="min-width:180px;font-family:sans-serif;line-height:1.5;">
       <div style="font-weight:700;font-size:14px;margin-bottom:4px;">
@@ -165,7 +149,6 @@ function machinePopupHtml(
       <div style="margin-top:6px;font-size:11px;color:${online ? '#16a34a' : '#9ca3af'};">
         ${esc(status)} · ${esc(ago)}
       </div>
-      ${routeRow}
     </div>`;
 }
 
@@ -191,8 +174,6 @@ export interface LeafletMapProps {
   /** Trigger: pan/zoom to this machine, then reset via onNavigationComplete. */
   navigateToMachineId?: string | null;
   onNavigationComplete?: () => void;
-  /** Called when user clicks "Arată traseu" in a machine popup. */
-  onShowRoute?: (machineId: string) => void;
   /** Parcel IDs to hide on map (farm/parcel toggles from sidebar). */
   hiddenParcelIds?: Set<string>;
   /** Machine IDs to hide individually on map. */
@@ -235,7 +216,6 @@ export function LeafletMap({
   navigateToParcelId,
   navigateToMachineId,
   onNavigationComplete,
-  onShowRoute,
   hiddenParcelIds,
   hiddenMachineIds,
   deposits,
@@ -286,7 +266,6 @@ export function LeafletMap({
       },
       onlineStatus: t('leaflet.onlineStatus'),
       offlineStatus: t('leaflet.offlineStatus'),
-      showRoute: t('leaflet.showRoute'),
       routeStart: t('leaflet.routeStart'),
       routeEnd: t('leaflet.routeEnd'),
       formatAgo,
@@ -357,11 +336,6 @@ export function LeafletMap({
   useEffect(() => {
     drawModeRef.current = drawMode;
   }, [drawMode]);
-
-  const onShowRouteRef = useRef(onShowRoute);
-  useEffect(() => {
-    onShowRouteRef.current = onShowRoute;
-  }, [onShowRoute]);
 
   const onNavigationCompleteRef = useRef(onNavigationComplete);
   useEffect(() => {
@@ -513,18 +487,6 @@ export function LeafletMap({
             map.closePopup();
           };
         }
-
-        const routeBtn = container.querySelector(
-          '[data-show-route-machine-id]',
-        ) as HTMLElement | null;
-        if (routeBtn) {
-          const mid = routeBtn.getAttribute('data-show-route-machine-id');
-          routeBtn.onclick = () => {
-            if (!mid) return;
-            onShowRouteRef.current?.(mid);
-            map.closePopup();
-          };
-        }
       });
 
       mapInstanceRef.current = map;
@@ -654,7 +616,7 @@ export function LeafletMap({
         const variant = (iconPrefs[m.machineId] ?? 0) as IconVariant;
         const icon = createMachineIcon(L, m.machineType, online, pickSelected, variant);
         const marker = L.marker([m.lat, m.lon], { icon }).bindPopup(
-          machinePopupHtml(m, mapStrings, machineTypeLabel(m.machineType), selectionOnly),
+          machinePopupHtml(m, mapStrings, machineTypeLabel(m.machineType)),
           { maxWidth: 260 },
         );
 
