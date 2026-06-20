@@ -74,9 +74,30 @@ function truckIdFromParams(raw: string | string[] | undefined): string | null {
 }
 
 export default function LoadBalesScreen() {
-  const { truckId: truckIdParam } = useLocalSearchParams<{
+  const {
+    truckId: truckIdParam,
+    parcelId: parcelIdParam,
+    isAuxiliary: isAuxiliaryParam,
+  } = useLocalSearchParams<{
     truckId?: string | string[];
+    parcelId?: string | string[];
+    isAuxiliary?: string | string[];
   }>();
+
+  // Auxiliary flag: passed from the aux truck card on the loader home.
+  // When true, proximity/geofence checks are bypassed — the external truck
+  // arrives wherever; the loader loads it on demand at any location.
+  const isAuxiliary =
+    (Array.isArray(isAuxiliaryParam) ? isAuxiliaryParam[0] : isAuxiliaryParam) === '1';
+
+  // For auxiliary trips the parcel is pre-resolved from the trip row (passed via
+  // route param). For normal trips it still comes from useCurrentLoaderParcel.
+  const auxParcelId = !isAuxiliary
+    ? null
+    : (() => {
+        const raw = Array.isArray(parcelIdParam) ? parcelIdParam[0] : parcelIdParam;
+        return raw && raw.length > 0 ? raw : null;
+      })();
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
@@ -91,12 +112,18 @@ export default function LoadBalesScreen() {
   const [snapshotParcelName, setSnapshotParcelName] = useState<string | null>(null);
 
   useEffect(() => {
-    if (parcel.status === 'resolved' && parcel.parcelId && !snapshotParcelId) {
+    // For auxiliary trips the parcel comes from the route param — freeze it immediately.
+    if (isAuxiliary && auxParcelId && !snapshotParcelId) {
+      setSnapshotParcelId(auxParcelId);
+      // No parcelName available from the param; the server knows via parcelId.
+      return;
+    }
+    if (!isAuxiliary && parcel.status === 'resolved' && parcel.parcelId && !snapshotParcelId) {
       setSnapshotParcelId(parcel.parcelId);
       setSnapshotParcelName(parcel.parcelName);
     }
     // Only run when parcel resolves; snapshot is intentionally frozen after first capture.
-  }, [parcel.status, parcel.parcelId]);
+  }, [isAuxiliary, auxParcelId, parcel.status, parcel.parcelId, snapshotParcelId]);
 
   const [baleCountStr, setBaleCountStr] = useState('');
   const [saving, setSaving] = useState(false);
@@ -147,6 +174,9 @@ export default function LoadBalesScreen() {
   }, [truckId]);
 
   useEffect(() => {
+    // Auxiliary trips have their parcel pre-resolved from the route param — the
+    // GPS-based parcel resolution is irrelevant and must not block or redirect.
+    if (isAuxiliary) return;
     if (
       parcel.status === 'needs_start' ||
       parcel.status === 'unavailable' ||
@@ -159,7 +189,7 @@ export default function LoadBalesScreen() {
         [{ text: 'Înapoi', onPress: () => router.back() }],
       );
     }
-  }, [parcel.status]);
+  }, [isAuxiliary, parcel.status]);
 
   // Best-effort GPS for audit trail.
   useEffect(() => {
@@ -194,7 +224,9 @@ export default function LoadBalesScreen() {
   // Uses snapshotParcelId directly (parcelReady = snapshotParcelId !== null, declared later).
   const handleRegisterPress = useCallback(async () => {
     // Hard gate: must be provably on the field the bales are attributed to.
-    if (!inField) {
+    // Auxiliary loads bypass this entirely — the external truck arrives wherever;
+    // proximity is irrelevant and must never block the operator.
+    if (!isAuxiliary && !inField) {
       if (awayFromField) {
         // GPS proves the loader is too far from the field.
         showModal({
@@ -311,7 +343,22 @@ export default function LoadBalesScreen() {
     }
 
     setShowSignature(true);
-  }, [baleCount, truckId, snapshotParcelId, isOnline, fullTruckCount, showModal, hideModal]);
+  }, [
+    isAuxiliary,
+    inField,
+    awayFromField,
+    baleCount,
+    truckId,
+    snapshotParcelId,
+    snapshotParcelName,
+    isOnline,
+    fullTruckCount,
+    parcel.distanceM,
+    parcel.gpsState,
+    parcel.refresh,
+    showModal,
+    hideModal,
+  ]);
 
   const handleSignatureConfirm = useCallback(
     async (loaderSignature: string) => {
@@ -345,6 +392,8 @@ export default function LoadBalesScreen() {
           await applyOptimistic({
             baleLoadId: result.baleLoadId,
             tripId: result.trip.id,
+            // Server collapses auxiliary trips straight to `completed`; normal → `loaded`.
+            tripStatus: (result.trip.status as string) ?? (isAuxiliary ? 'completed' : 'loaded'),
             truckId,
             parcelId: snapshotParcelId,
             loaderMachineId: assignedMachineId,
@@ -362,6 +411,7 @@ export default function LoadBalesScreen() {
           await applyOptimistic({
             baleLoadId: idempotencyKey,
             tripId: localTripId,
+            tripStatus: isAuxiliary ? 'completed' : 'loaded',
             truckId,
             parcelId: snapshotParcelId,
             loaderMachineId: assignedMachineId,
@@ -621,9 +671,11 @@ export default function LoadBalesScreen() {
         <BigButton
           title="Înregistrează"
           onPress={() => void handleRegisterPress()}
-          disabled={baleCount <= 0 || !parcelReady || !inField}
+          // Auxiliary loads bypass the in-field geofence gate (the external truck
+          // arrives wherever) — but still require a known parcel.
+          disabled={baleCount <= 0 || !parcelReady || (!isAuxiliary && !inField)}
         />
-        {parcelReady && !inField ? (
+        {!isAuxiliary && parcelReady && !inField ? (
           <Text style={styles.gateHint}>
             {awayFromField
               ? `Trebuie să fii în câmp ca să încarci (${parcel.distanceM} m de teren).`
@@ -642,6 +694,7 @@ export default function LoadBalesScreen() {
 interface OptimisticInput {
   baleLoadId: string;
   tripId: string;
+  tripStatus: string;
   truckId: string;
   parcelId: string;
   loaderMachineId: string;
@@ -686,7 +739,7 @@ async function applyOptimistic(input: OptimisticInput): Promise<void> {
       await tripsRepo.upsert({
         id: input.tripId,
         trip_number: null,
-        status: 'loaded',
+        status: input.tripStatus,
         source_parcel_id: input.parcelId,
         destination_id: null,
         destination_name: null,

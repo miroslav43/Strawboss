@@ -141,7 +141,11 @@ export function TripDetail({ trip, className }: TripDetailProps) {
             />
             <InfoRow
               label={t('trip_detail.driver')}
-              value={trip.driverName ?? shortId(trip.driverId)}
+              value={
+                trip.driverName ??
+                trip.externalDriverName ??
+                (trip.driverId ? shortId(trip.driverId) : '—')
+              }
             />
             {trip.loaderId && (
               <InfoRow

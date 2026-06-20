@@ -425,3 +425,17 @@ const transitionMap: Record<string, string[]> = {
 export function getAvailableTransitions(status: TripStatus): string[] {
   return transitionMap[status] ?? [];
 }
+
+/**
+ * Auxiliary (one-time external) trucks collapse the trip lifecycle: there is no
+ * app driver and no depart/arrive/depot step. The loader finishing the load IS
+ * the end of the operational trip, so REGISTER_LOAD lands an auxiliary trip on
+ * `completed` instead of `loaded`. The driver's later public-link signature only
+ * finalizes the document (stage-2 CMR); it does not change trip status.
+ *
+ * Single source of truth for the backend register-load branch — keep the SQL in
+ * trips.service in step with this.
+ */
+export function registerLoadTargetStatus(isAuxiliary: boolean): TripStatus {
+  return isAuxiliary ? TripStatus.completed : TripStatus.loaded;
+}

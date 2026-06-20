@@ -94,6 +94,13 @@ export class CmrService {
     const baleLoads = baleLoadsResult as unknown as Record<string, unknown>[];
     const loaderOperator = (loaderOperatorResult as unknown as Record<string, unknown>[])[0];
 
+    // Auxiliary trips have no driver user — fall back to the external driver name
+    // captured from the request so the document still names the real driver.
+    const driverName =
+      (driver?.full_name as string | undefined) ??
+      (trip.external_driver_name as string | null) ??
+      null;
+
     // 3. Find existing partial document (for stage 2 update) or create a new record
     let docId: string;
     const isStage1 = stage === 1;
@@ -130,7 +137,7 @@ export class CmrService {
             tripNumber: trip.trip_number,
             parcelName: parcel?.name ?? null,
             truckPlate: truck?.registration_plate ?? null,
-            driverName: driver?.full_name ?? null,
+            driverName: driverName,
             baleLoadCount: baleLoads.length,
             totalBales: trip.bale_count,
           },
@@ -150,7 +157,7 @@ export class CmrService {
           tripNumber: trip.trip_number,
           parcelName: parcel?.name ?? null,
           truckPlate: truck?.registration_plate ?? null,
-          driverName: driver?.full_name ?? null,
+          driverName: driverName,
           baleLoadCount: baleLoads.length,
           totalBales: trip.bale_count,
           stage: 1,
@@ -177,7 +184,7 @@ export class CmrService {
         destinationAddress: trip.destination_address ?? 'N/A',
         truckName: truck?.internal_code ?? truck?.make ?? 'N/A',
         truckPlate: truck?.registration_plate ?? 'N/A',
-        driverName: driver?.full_name ?? 'N/A',
+        driverName: driverName ?? 'N/A',
         loaderName: loaderOperator?.full_name ?? '',
         baleCount: trip.bale_count ?? 0,
         grossWeightKg: isStage1 ? null : (trip.gross_weight_kg ?? 'N/A'),

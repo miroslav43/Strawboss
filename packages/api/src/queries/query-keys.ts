@@ -94,6 +94,14 @@ export const queryKeys = {
     all: ['deposit-inventory'] as const,
     detail: (depotId: string) => ['deposit-inventory', depotId] as const,
   },
+  tripRequests: {
+    all: ['tripRequests'] as const,
+    list: (filters?: Record<string, unknown>) => ['tripRequests', 'list', filters] as const,
+    detail: (id: string) => ['tripRequests', 'detail', id] as const,
+  },
+  orgRequestSettings: {
+    all: ['orgRequestSettings'] as const,
+  },
   reports: {
     all: ['reports'] as const,
     farms: (filters?: Record<string, unknown>) => ['reports', 'farms', filters] as const,

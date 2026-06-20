@@ -22,6 +22,7 @@ import {
   Fuel,
   Package,
   MonitorDot,
+  ClipboardList,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
@@ -32,6 +33,7 @@ function buildNavItems(slug: string) {
     { href: `/${slug}/command-center`, icon: MonitorDot, labelKey: 'nav.commandCenter' as const },
     { href: `/${slug}/tasks`, icon: KanbanSquare, labelKey: 'nav.tasks' as const },
     { href: `/${slug}/trips`, icon: Truck, labelKey: 'nav.trips' as const },
+    { href: `/${slug}/trip-requests`, icon: ClipboardList, labelKey: 'nav.tripRequests' as const },
     { href: `/${slug}/documents`, icon: FileText, labelKey: 'nav.documents' as const },
     { href: `/${slug}/reports`, icon: BarChart3, labelKey: 'nav.reports' as const },
     { href: `/${slug}/alerts`, icon: Bell, labelKey: 'nav.alerts' as const },

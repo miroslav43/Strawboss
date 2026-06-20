@@ -31,4 +31,10 @@ export interface Machine extends Timestamps, SoftDelete {
   ownerCompanyName: string | null;
   ownerCompanyAddress: string | null;
   ownerCompanyCui: string | null;
+  /**
+   * One-time auxiliary truck spun up from a confirmed external trip_request.
+   * Has no linked driver user; shown with an "AUX" badge on the truck board and
+   * auto-deactivated (isActive=false) once its trip completes.
+   */
+  isAuxiliary: boolean;
 }

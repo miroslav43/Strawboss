@@ -100,6 +100,19 @@ export class TripsController {
     return this.tripsService.registerLoad(dto, user.id, user.organizationId);
   }
 
+  /**
+   * Auxiliary (external) trucks assigned to this loader, regardless of GPS/
+   * distance. Rendered as loadable "AUX" cards in the mobile loader app.
+   */
+  @Get('auxiliary/at-loader/:loaderMachineId')
+  @Roles('admin' as UserRole, 'loader_operator' as UserRole)
+  auxiliaryAtLoader(
+    @Param('loaderMachineId') loaderMachineId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.tripsService.listAuxiliaryForLoader(loaderMachineId, user.organizationId);
+  }
+
   @Post(':id/start-loading')
   @Roles('admin' as UserRole, 'loader_operator' as UserRole)
   startLoading(

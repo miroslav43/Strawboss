@@ -98,6 +98,22 @@ export {
   upsertParcelDailyStatusSchema,
 } from './schemas/parcel-daily-status.schema.js';
 
+export {
+  portalCodeSchema,
+  createTripRequestSchema,
+  verifyPortalCodeSchema,
+  signTripSchema,
+  updateOrgRequestSettingsSchema,
+  confirmTripRequestSchema,
+  cancelTripRequestSchema,
+} from './schemas/trip-request.schema.js';
+export type {
+  CreateTripRequestInput,
+  VerifyPortalCodeInput,
+  SignTripInput,
+  UpdateOrgRequestSettingsInput,
+} from './schemas/trip-request.schema.js';
+
 // DTO schemas
 export { tripCreateDtoSchema } from './dtos/trip-create.schema.js';
 

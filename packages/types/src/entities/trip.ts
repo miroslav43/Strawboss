@@ -22,7 +22,11 @@ export interface Trip extends Timestamps, SoftDelete {
   loaderId: string | null;
   truckId: string;
   loaderOperatorId: string | null;
-  driverId: string;
+  /**
+   * NULL for an auxiliary trip — the external truck's driver has no app account
+   * (see externalDriver* below). Non-null for every normal trip.
+   */
+  driverId: string | null;
   baleCount: number;
   /** Plan C — NULL for the root iteration, non-null for iteration N>=2. */
   parentTripId: string | null;
@@ -68,6 +72,24 @@ export interface Trip extends Timestamps, SoftDelete {
   scaleBroken: boolean;
   cancelledAt: string | null;
   cancellationReason: string | null;
+
+  // ── Auxiliary (one-time external) truck support ───────────────────────────
+  /**
+   * True for a trip spun up from a confirmed external trip_request. Drives the
+   * collapsed lifecycle: loader finishes loading ⇒ status=completed (no
+   * arrive/depot/receiver step), and the driver signs via publicSignToken.
+   */
+  isAuxiliary: boolean;
+  /** External driver contact, captured from the request (no users row). */
+  externalDriverName: string | null;
+  externalDriverPhone: string | null;
+  externalDriverEmail: string | null;
+  /** One-time token for the public driver sign-and-leave link (/<slug>/sign/<token>). */
+  publicSignToken: string | null;
+  publicSignTokenUsedAt: string | null;
+  /** The trip_request this auxiliary trip was created from. */
+  tripRequestId: string | null;
+
   fraudFlags: Record<string, unknown> | null;
   clientId: string | null;
   syncVersion: number;

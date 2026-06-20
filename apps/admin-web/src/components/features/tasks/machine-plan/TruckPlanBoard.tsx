@@ -122,6 +122,13 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
     [trucks, assignedTruckIds],
   );
 
+  // One-time external "auxiliary" trucks — flagged on the board; their
+  // destination is pre-filled from the request, so the deposit selector is hidden.
+  const auxiliaryMachineIds = useMemo(
+    () => new Set(machines.filter((m) => m.isAuxiliary).map((m) => m.id)),
+    [machines],
+  );
+
   // Unique loader assignments (one per loader)
   const uniqueLoaders = useMemo(() => {
     const seen = new Set<string>();
@@ -241,8 +248,13 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                   className="flex w-full items-center gap-3 rounded-lg border border-green-200 px-4 py-3 text-left transition-colors hover:bg-green-50 hover:shadow-sm"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-neutral-800">
+                    <p className="flex items-center gap-1.5 truncate text-sm font-medium text-neutral-800">
                       {m.internalCode}
+                      {m.isAuxiliary ? (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                          {t('tripRequests.auxBadge')}
+                        </span>
+                      ) : null}
                     </p>
                     <p className="truncate text-xs text-neutral-400">{m.registrationPlate}</p>
                   </div>
@@ -270,7 +282,7 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {assignedTrucks.map(({ rowKey, code, plate, assignment }) => (
+            {assignedTrucks.map(({ rowKey, machineId, code, plate, assignment }) => (
               <div key={rowKey} className="rounded-lg border border-green-200 bg-white shadow-sm">
                 {/* Truck header */}
                 <div className="flex items-center justify-between rounded-t-lg bg-green-50 px-4 py-2.5">
@@ -278,6 +290,11 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                     <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
                     <span className="font-medium text-neutral-800 text-sm">{code}</span>
                     <span className="text-xs text-neutral-400">{plate}</span>
+                    {auxiliaryMachineIds.has(machineId) ? (
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                        {t('tripRequests.auxBadge')}
+                      </span>
+                    ) : null}
                     {assignment.assignedUserName ? (
                       <span className="ml-2 flex items-center gap-1.5 text-xs text-neutral-600">
                         {assignment.assignedUserName}
@@ -326,35 +343,44 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                   </div>
                 </div>
 
-                {/* Deposit selector */}
-                <div className="border-t border-neutral-100 px-4 py-3 space-y-2">
-                  <label className="block text-xs font-medium text-neutral-500">
-                    {t('tasks.selectDeposit')}
-                  </label>
-                  <div className="flex flex-wrap items-stretch gap-2">
-                    <select
-                      value={assignment.destinationId ?? ''}
-                      onChange={(e) => handleSetDeposit(assignment.id, e.target.value || null)}
-                      className="min-w-0 flex-1 rounded-md border border-neutral-200 px-2.5 py-1.5 text-sm text-neutral-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                    >
-                      <option value="">{t('tasks.noDepositAssigned')}</option>
-                      {activeDeposits.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.code})
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={activeDeposits.length === 0}
-                      onClick={() => setDepositMapForTruckAssignmentId(assignment.id)}
-                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <MapPin className="h-3.5 w-3.5" aria-hidden />
-                      {t('tasks.selectDepositOnMap')}
-                    </button>
+                {/* Deposit selector — hidden for auxiliary trucks (destination
+                    is pre-filled from the external request). */}
+                {auxiliaryMachineIds.has(machineId) ? (
+                  <div className="border-t border-neutral-100 px-4 py-3">
+                    <p className="text-xs italic text-neutral-400">
+                      {t('tripRequests.depositFromRequest')}
+                    </p>
                   </div>
-                </div>
+                ) : (
+                  <div className="border-t border-neutral-100 px-4 py-3 space-y-2">
+                    <label className="block text-xs font-medium text-neutral-500">
+                      {t('tasks.selectDeposit')}
+                    </label>
+                    <div className="flex flex-wrap items-stretch gap-2">
+                      <select
+                        value={assignment.destinationId ?? ''}
+                        onChange={(e) => handleSetDeposit(assignment.id, e.target.value || null)}
+                        className="min-w-0 flex-1 rounded-md border border-neutral-200 px-2.5 py-1.5 text-sm text-neutral-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      >
+                        <option value="">{t('tasks.noDepositAssigned')}</option>
+                        {activeDeposits.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} ({d.code})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={activeDeposits.length === 0}
+                        onClick={() => setDepositMapForTruckAssignmentId(assignment.id)}
+                        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <MapPin className="h-3.5 w-3.5" aria-hidden />
+                        {t('tasks.selectDepositOnMap')}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Plan C — multi-iteration list (T13/T15) */}
                 {(assignment.iterations ?? []).length > 0 ? (

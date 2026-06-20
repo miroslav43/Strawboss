@@ -2,13 +2,26 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback } from 'react';
-import { User, Bell, MonitorCog, Lock, Check, AlertCircle, Loader2, Signature } from 'lucide-react';
+import {
+  User,
+  Bell,
+  MonitorCog,
+  Lock,
+  Check,
+  AlertCircle,
+  Loader2,
+  Signature,
+  KeyRound,
+} from 'lucide-react';
 import {
   useProfile,
   useUpdateProfile,
   useChangePassword,
   useUpdateProfileLocale,
+  useOrgRequestSettings,
+  useUpdateOrgRequestSettings,
 } from '@strawboss/api';
+import { CropType } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SpecimenSection } from '@/components/features/profile/SpecimenSection';
 import { apiClient } from '@/lib/api';
@@ -166,6 +179,127 @@ const defaultNotifPrefs: NotifPrefs = {
   trips: false,
   digest: true,
 };
+
+/* ------------------------------------------------------------------ */
+/*  Organization / request-portal settings (admin only)               */
+/* ------------------------------------------------------------------ */
+
+function OrgRequestPortalSection() {
+  const { t } = useI18n();
+  const settingsQuery = useOrgRequestSettings(apiClient);
+  const updateSettings = useUpdateOrgRequestSettings(apiClient);
+  const fb = useFeedback();
+
+  const [code, setCode] = useState('');
+  const [crops, setCrops] = useState<CropType[]>([]);
+  const [codeError, setCodeError] = useState('');
+
+  useEffect(() => {
+    if (settingsQuery.data) {
+      setCode(settingsQuery.data.requestAccessCode ?? '');
+      setCrops(settingsQuery.data.allowedCropTypes ?? []);
+    }
+  }, [settingsQuery.data]);
+
+  const toggleCrop = (c: CropType) =>
+    setCrops((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+
+  const handleSave = () => {
+    setCodeError('');
+    fb.clear();
+    if (!/^\d{4}$/.test(code)) {
+      setCodeError(t('settings.organization.accessCodeError'));
+      return;
+    }
+    updateSettings.mutate(
+      { requestAccessCode: code, allowedCropTypes: crops },
+      {
+        onSuccess: () => fb.show('success', t('settings.organization.saveSuccess')),
+        onError: () => fb.show('error', t('settings.organization.saveError')),
+      },
+    );
+  };
+
+  return (
+    <SettingsSection
+      title={t('settings.organization.title')}
+      description={t('settings.organization.description')}
+      icon={KeyRound}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">
+            {t('settings.organization.accessCode')}
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            placeholder={t('settings.organization.accessCodePlaceholder')}
+            className={cn(
+              'w-40 rounded-md border border-neutral-200 bg-white px-3 py-2 text-center text-lg tracking-[0.3em] text-neutral-700',
+              'focus:border-green-700 focus:outline-none focus:ring-1 focus:ring-green-700',
+            )}
+          />
+          <p className="mt-1 text-xs text-neutral-500">
+            {t('settings.organization.accessCodeHint')}
+          </p>
+          {codeError && <p className="mt-1 text-xs text-red-600">{codeError}</p>}
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">
+            {t('settings.organization.allowedCropTypes')}
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {Object.values(CropType).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => toggleCrop(c)}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  crops.includes(c)
+                    ? 'border-green-700 bg-green-700 text-white'
+                    : 'border-neutral-300 bg-white text-neutral-600',
+                )}
+              >
+                {t(`settings.organization.crop.${c}`)}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-neutral-500">
+            {t('settings.organization.allowedCropTypesHint')}
+          </p>
+        </div>
+      </div>
+
+      {fb.type && (
+        <div className="mt-4">
+          <FeedbackBanner type={fb.type} message={fb.message} />
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          disabled={updateSettings.isPending}
+          onClick={handleSave}
+          className={cn(
+            'flex items-center gap-2 rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white',
+            'hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60',
+          )}
+        >
+          {updateSettings.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          {updateSettings.isPending
+            ? t('settings.organization.saving')
+            : t('settings.organization.save')}
+        </button>
+      </div>
+    </SettingsSection>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
@@ -490,6 +624,9 @@ export default function SettingsPage() {
             </button>
           </div>
         </SettingsSection>
+
+        {/* ── Organization / request portal (admin only) ── */}
+        {profile?.role === 'admin' ? <OrgRequestPortalSection /> : null}
 
         {/* ── Signature specimen ── */}
         {profile ? (

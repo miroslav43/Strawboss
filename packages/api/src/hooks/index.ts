@@ -59,6 +59,15 @@ export { useDocuments, useDocument, useGenerateCmr } from './use-documents.js';
 export { useAlerts, useUnacknowledgedAlerts, useAcknowledgeAlert } from './use-alerts.js';
 
 export {
+  useTripRequests,
+  useTripRequest,
+  useConfirmTripRequest,
+  useCancelTripRequest,
+  useOrgRequestSettings,
+  useUpdateOrgRequestSettings,
+} from './use-trip-requests.js';
+
+export {
   useDashboardOverview,
   useDashboardTrending,
   useProductionReport,

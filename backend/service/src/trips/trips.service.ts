@@ -8,8 +8,10 @@ import {
   OnModuleInit,
   forwardRef,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
@@ -19,7 +21,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { DeliveryDestinationsService } from '../delivery-destinations/delivery-destinations.service';
 import { ParcelsService } from '../parcels/parcels.service';
 import { AlertsService } from '../alerts/alerts.service';
-import { TripStatus, type UserRole } from '@strawboss/types';
+import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
+import { messageTemplates, fmtCoordsUrl } from '../messaging/message-templates';
+import { TripStatus, MessageKind, type UserRole, type PublicSignInfo } from '@strawboss/types';
 import { QUEUE_CMR_GENERATION } from '../jobs/queues';
 import type {
   TripCreateDto,
@@ -65,7 +69,18 @@ export class TripsService implements OnModuleInit {
     private readonly deliveryDestinationsService: DeliveryDestinationsService,
     private readonly parcelsService: ParcelsService,
     private readonly alertsService: AlertsService,
+    private readonly configService: ConfigService,
+    @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
   ) {}
+
+  /** Public web base URL for driver-facing links (sign-and-leave). */
+  private publicWebBaseUrl(): string {
+    return (
+      this.configService.get<string>('NEXT_PUBLIC_SITE_URL') ??
+      this.configService.get<string>('PUBLIC_WEB_URL') ??
+      'https://nortiauno.com'
+    ).replace(/\/$/, '');
+  }
 
   /**
    * On boot, reconcile any truck task_assignments that were fully wired
@@ -503,6 +518,15 @@ export class TripsService implements OnModuleInit {
         throw new ForbiddenException('Parcel not found in your organization');
     }
 
+    // Auxiliary (one-time external) trucks take a collapsed path: no date filter,
+    // no driver lookup, status → completed, + driver sign-link SMS.
+    const auxRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT is_auxiliary FROM machines WHERE id = ${dto.truckId}::uuid LIMIT 1`,
+    )) as unknown as { is_auxiliary: boolean }[];
+    if (auxRows[0]?.is_auxiliary) {
+      return this.registerAuxiliaryLoad(dto, callerId, orgId);
+    }
+
     const idempotencyTable = 'register_load';
 
     const existing = (await this.drizzleProvider.db.execute(
@@ -796,6 +820,207 @@ export class TripsService implements OnModuleInit {
       });
     }
     return result;
+  }
+
+  /**
+   * Loader registers a load onto an AUXILIARY (one-time external) truck. The
+   * external truck has no app driver and no depot step, so this single action
+   * COLLAPSES the trip to `completed`: stage-1 CMR is queued here (an auxiliary
+   * trip never calls depart()), a one-time public sign token is minted, and the
+   * external driver is SMS'd a sign-and-leave link. The driver's later signature
+   * (via signByPublicToken) finalizes stage-2 of the document.
+   */
+  private async registerAuxiliaryLoad(
+    dto: RegisterLoadDto,
+    callerId: string,
+    orgId: string | null,
+  ): Promise<RegisterLoadResult> {
+    const idempotencyTable = 'register_load';
+    const existing = (await this.drizzleProvider.db.execute(
+      sql`SELECT result_data FROM sync_idempotency
+          WHERE client_id = ${callerId}
+            AND table_name = ${idempotencyTable}
+            AND record_id = ${dto.idempotencyKey}
+          LIMIT 1`,
+    )) as unknown as { result_data: RegisterLoadResult | null }[];
+    if (existing[0]?.result_data) {
+      return existing[0].result_data;
+    }
+
+    const signToken = randomUUID();
+
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      // The auxiliary trip is created up-front by autoUpsertAuxiliaryTrip when the
+      // admin assigns a loader — there is no date filter (the external truck may
+      // arrive any day) and we never auto-create here.
+      const openRows = (await tx.execute(
+        sql`SELECT id, status, public_sign_token, external_driver_phone, organization_id
+            FROM trips
+            WHERE truck_id = ${dto.truckId}
+              AND is_auxiliary = true
+              AND deleted_at IS NULL
+              AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
+              ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+            ORDER BY created_at DESC
+            LIMIT 1
+            FOR UPDATE`,
+      )) as unknown as {
+        id: string;
+        status: TripStatus;
+        public_sign_token: string | null;
+        external_driver_phone: string | null;
+        organization_id: string | null;
+      }[];
+
+      if (!openRows[0]) {
+        throw new BadRequestException(
+          'Camionul auxiliar nu are o cursă activă. Dispecerul trebuie să asigneze un loader.',
+        );
+      }
+      const tripId = openRows[0].id;
+      const fromStatus = openRows[0].status;
+      this.validateTransition(fromStatus, 'REGISTER_LOAD');
+
+      await tx.execute(
+        sql`INSERT INTO bale_loads (
+              organization_id,
+              id, trip_id, parcel_id, loader_id, operator_id,
+              bale_count, loaded_at, gps_lat, gps_lon
+            ) VALUES (
+              ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
+              ${dto.idempotencyKey}, ${tripId}, ${dto.parcelId},
+              ${dto.loaderMachineId}, ${callerId},
+              ${dto.baleCount}, NOW(),
+              ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null}
+            )`,
+      );
+
+      // Collapse straight to `completed` (no depart/arrive/depot for auxiliary).
+      const updated = (await tx.execute(
+        sql`UPDATE trips SET
+              status = ${TripStatus.completed}::trip_status,
+              loading_started_at = COALESCE(loading_started_at, NOW()),
+              loading_completed_at = NOW(),
+              completed_at = NOW(),
+              loader_signature_url = ${dto.loaderSignature ?? null},
+              loader_id = ${dto.loaderMachineId},
+              loader_operator_id = COALESCE(loader_operator_id, ${callerId}),
+              public_sign_token = COALESCE(public_sign_token, ${signToken}),
+              bale_count = (
+                SELECT COALESCE(SUM(bale_count), 0)::int
+                FROM bale_loads
+                WHERE trip_id = ${tripId} AND deleted_at IS NULL
+                  ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+              ),
+              updated_at = NOW()
+            WHERE id = ${tripId}
+              AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
+            RETURNING *`,
+      )) as unknown as Record<string, unknown>[];
+
+      if (!updated.length) {
+        throw new BadRequestException(
+          'Trip status changed concurrently — nu se poate închide încărcarea.',
+        );
+      }
+
+      const payload: RegisterLoadResult = {
+        trip: updated[0],
+        baleLoadId: dto.idempotencyKey,
+        created: false,
+      };
+
+      await tx.execute(
+        sql`INSERT INTO sync_idempotency (
+              client_id, table_name, record_id,
+              client_version, server_version, result_data
+            ) VALUES (
+              ${callerId}, ${idempotencyTable}, ${dto.idempotencyKey},
+              1, 1, ${JSON.stringify(payload)}::jsonb
+            )
+            ON CONFLICT DO NOTHING`,
+      );
+
+      return payload;
+    });
+
+    const trip = result.trip;
+    const tripId = trip.id as string;
+    this.logTripFlow(tripId, 'REGISTER_LOAD_AUX', 'planned', TripStatus.completed);
+
+    // Stage-1 CMR (loading part) — auxiliary trips never depart(), so queue here.
+    await this.cmrQueue.add('generate', { tripId, orgId, stage: 1 });
+
+    // SMS the external driver a one-time sign-and-leave link (stubbed).
+    const token = (trip.public_sign_token as string | null) ?? signToken;
+    const driverPhone = trip.external_driver_phone as string | null;
+    if (driverPhone) {
+      const slug = await this.resolveOrgSlug(trip.organization_id as string | null);
+      const signUrl = slug
+        ? `${this.publicWebBaseUrl()}/${slug}/sign/${token}`
+        : `${this.publicWebBaseUrl()}/sign/${token}`;
+      const tpl = messageTemplates[MessageKind.driver_loaded_sign_link]({
+        signUrl,
+        baleCount: Number(trip.bale_count ?? 0),
+      });
+      void this.messaging
+        .sendSms({
+          to: driverPhone,
+          body: tpl.body,
+          kind: MessageKind.driver_loaded_sign_link,
+          metadata: { tripId },
+        })
+        .catch((err) =>
+          this.winston.warn('registerAuxiliaryLoad: sign-link SMS failed', {
+            context: 'TripsService',
+            tripId,
+            err: err instanceof Error ? { message: err.message } : err,
+          }),
+        );
+    }
+
+    return result;
+  }
+
+  /** Org slug for building public driver links; null if not resolvable. */
+  private async resolveOrgSlug(orgId: string | null): Promise<string | null> {
+    if (!orgId) return null;
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT slug FROM organizations WHERE id = ${orgId}::uuid LIMIT 1`,
+    )) as unknown as { slug: string }[];
+    return rows[0]?.slug ?? null;
+  }
+
+  /**
+   * Open auxiliary trips assigned to a loader machine — independent of GPS
+   * distance (the external truck has no device, so it never appears in the
+   * trucks-at-loader proximity query). Drives the mobile loader's AUX cards.
+   */
+  async listAuxiliaryForLoader(loaderMachineId: string, orgId: string | null) {
+    const rows = await this.drizzleProvider.db.execute(
+      sql`SELECT
+            t.id, t.trip_number AS "tripNumber", t.status,
+            t.bale_count AS "baleCount",
+            t.source_parcel_id AS "sourceParcelId",
+            t.external_driver_name AS "externalDriverName",
+            t.external_driver_phone AS "externalDriverPhone",
+            t.destination_name AS "destinationName",
+            m.registration_plate AS "truckPlate", m.internal_code AS "truckCode",
+            p.name AS "sourceParcelName", p.code AS "sourceParcelCode",
+            p.municipality AS "sourceParcelMunicipality",
+            tr.crop_type AS "cropType"
+          FROM trips t
+          JOIN machines m ON m.id = t.truck_id
+          LEFT JOIN parcels p ON p.id = t.source_parcel_id
+          LEFT JOIN trip_requests tr ON tr.id = t.trip_request_id
+          WHERE t.is_auxiliary = true
+            AND t.loader_id = ${loaderMachineId}::uuid
+            AND t.deleted_at IS NULL
+            AND t.status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
+            ${orgId ? sql`AND t.organization_id = ${orgId}::uuid` : sql``}
+          ORDER BY t.created_at ASC`,
+    );
+    return rows as unknown as Record<string, unknown>[];
   }
 
   async depart(id: string, orgId: string | null, dto: DepartDto) {
@@ -1743,7 +1968,7 @@ export class TripsService implements OnModuleInit {
       sql`SELECT
         ta.id, ta.machine_id, ta.parent_assignment_id, ta.destination_id,
         ta.trip_id, ta.deleted_at, ta.organization_id AS "organizationId",
-        m.machine_type
+        m.machine_type, m.is_auxiliary
       FROM task_assignments ta
       JOIN machines m ON m.id = ta.machine_id
       WHERE ta.id = ${taskId}
@@ -1757,10 +1982,25 @@ export class TripsService implements OnModuleInit {
       deleted_at: string | null;
       organizationId: string | null;
       machine_type: string;
+      is_auxiliary: boolean;
     }[];
     const task = taskRows[0];
     if (!task || task.deleted_at !== null) return;
     if (task.machine_type !== 'truck') return;
+
+    // Auxiliary trucks have NO driver user and a free-text destination from the
+    // request (no destination_id) — handle them on a dedicated path.
+    if (task.is_auxiliary) {
+      await this.autoUpsertAuxiliaryTrip({
+        taskId,
+        machineId: task.machine_id,
+        parentAssignmentId: task.parent_assignment_id,
+        tripId: task.trip_id,
+        organizationId: task.organizationId,
+      });
+      return;
+    }
+
     if (!task.parent_assignment_id || !task.destination_id) {
       // Not enough info yet — keep any existing trip as-is and wait
       // for admin to finish wiring up the task.
@@ -1913,6 +2153,278 @@ export class TripsService implements OnModuleInit {
       tripId: task.trip_id,
       taskId,
     });
+  }
+
+  /**
+   * Materialize an AUXILIARY (external one-time) truck's trip from its task.
+   * Unlike the normal path: driver_id is NULL (external driver only), the
+   * destination is the requester's free-text address (no delivery_destination),
+   * and on first creation (loader assigned) the external driver is SMS'd the
+   * pickup details + loader phone.
+   */
+  private async autoUpsertAuxiliaryTrip(input: {
+    taskId: string;
+    machineId: string;
+    parentAssignmentId: string | null;
+    tripId: string | null;
+    organizationId: string | null;
+  }): Promise<void> {
+    const { taskId, machineId, parentAssignmentId, tripId, organizationId } = input;
+    // Need a loader to know the pickup parcel + who loads — wait until set.
+    if (!parentAssignmentId) return;
+
+    const parentRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id, machine_id, parcel_id, assigned_user_id
+          FROM task_assignments
+          WHERE id = ${parentAssignmentId} AND deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as {
+      id: string;
+      machine_id: string;
+      parcel_id: string | null;
+      assigned_user_id: string | null;
+    }[];
+    const parent = parentRows[0];
+    if (!parent) return;
+
+    const sourceParcelId = parent.parcel_id;
+    const loaderMachineId = parent.machine_id;
+    let loaderOperatorId: string | null = parent.assigned_user_id;
+    if (!loaderOperatorId && loaderMachineId) {
+      const opRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM users
+            WHERE assigned_machine_id = ${loaderMachineId}
+              AND role = 'loader_operator'::user_role
+              AND deleted_at IS NULL
+            ORDER BY created_at ASC
+            LIMIT 1`,
+      )) as unknown as { id: string }[];
+      loaderOperatorId = opRows[0]?.id ?? null;
+    }
+
+    // The confirmed request carries the external driver + free-text destination.
+    const reqRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id, driver_name, driver_phone, driver_email,
+                 crop_type, destination_address, destination_locality,
+                 company_name, ST_AsGeoJSON(destination_coords) AS coords_geojson
+          FROM trip_requests
+          WHERE machine_id = ${machineId}::uuid AND deleted_at IS NULL
+          ORDER BY confirmed_at DESC NULLS LAST, created_at DESC
+          LIMIT 1`,
+    )) as unknown as {
+      id: string;
+      driver_name: string;
+      driver_phone: string;
+      driver_email: string | null;
+      crop_type: string | null;
+      destination_address: string | null;
+      destination_locality: string | null;
+      company_name: string | null;
+      coords_geojson: string | null;
+    }[];
+    const req = reqRows[0];
+    if (!req) return;
+
+    const destName = req.destination_locality ?? req.company_name ?? 'Adresă solicitant';
+    const destAddress = req.destination_address ?? null;
+
+    if (!tripId) {
+      const orgId = organizationId ?? null;
+      const newTripId = await this.drizzleProvider.db.transaction(async (tx) => {
+        const tripNumber = await this.generateTripNumber(orgId, tx);
+        const inserted = (await tx.execute(
+          sql`INSERT INTO trips (
+                organization_id,
+                trip_number, status, source_parcel_id, truck_id, driver_id,
+                loader_id, loader_operator_id,
+                destination_name, destination_address, destination_coords,
+                bale_count, source_parcel_auto,
+                is_auxiliary, external_driver_name, external_driver_phone,
+                external_driver_email, trip_request_id
+              ) VALUES (
+                ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
+                ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
+                ${machineId}, NULL,
+                ${loaderMachineId}, ${loaderOperatorId},
+                ${destName}, ${destAddress},
+                ${req.coords_geojson ? sql`ST_GeomFromGeoJSON(${req.coords_geojson})` : sql`NULL`},
+                0, false,
+                true, ${req.driver_name}, ${req.driver_phone},
+                ${req.driver_email ?? null}, ${req.id}::uuid
+              ) RETURNING id`,
+        )) as unknown as { id: string }[];
+        const id = inserted[0]?.id;
+        if (!id) return null;
+        await tx.execute(
+          sql`UPDATE task_assignments SET trip_id = ${id}, updated_at = NOW() WHERE id = ${taskId}`,
+        );
+        await tx.execute(
+          sql`UPDATE trip_requests SET trip_id = ${id}, updated_at = NOW() WHERE id = ${req.id}::uuid`,
+        );
+        return id;
+      });
+      if (!newTripId) return;
+
+      this.logTripFlow(newTripId, 'AUTO_CREATE_AUX_FROM_TASK', 'new', TripStatus.planned);
+      await this.sendDriverAssignedSms({
+        driverPhone: req.driver_phone,
+        loaderOperatorId,
+        sourceParcelId,
+        cropType: req.crop_type,
+        tripId: newTripId,
+      });
+      return;
+    }
+
+    // UPDATE path — only while still planned (don't reshape an in-progress trip).
+    const statusRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT status FROM trips WHERE id = ${tripId} LIMIT 1`,
+    )) as unknown as { status: string }[];
+    if (statusRows[0]?.status !== TripStatus.planned) return;
+
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+            source_parcel_id = ${sourceParcelId},
+            loader_id = ${loaderMachineId},
+            loader_operator_id = ${loaderOperatorId},
+            destination_name = ${destName},
+            destination_address = ${destAddress},
+            updated_at = NOW()
+          WHERE id = ${tripId} AND status = ${TripStatus.planned}`,
+    );
+  }
+
+  /** SMS the external driver their pickup details + loader phone (stubbed). */
+  private async sendDriverAssignedSms(args: {
+    driverPhone: string | null;
+    loaderOperatorId: string | null;
+    sourceParcelId: string | null;
+    cropType: string | null;
+    tripId: string;
+  }): Promise<void> {
+    if (!args.driverPhone) return;
+    try {
+      let loaderName: string | null = null;
+      let loaderPhone: string | null = null;
+      if (args.loaderOperatorId) {
+        const u = (await this.drizzleProvider.db.execute(
+          sql`SELECT full_name, phone FROM users WHERE id = ${args.loaderOperatorId}::uuid LIMIT 1`,
+        )) as unknown as { full_name: string; phone: string | null }[];
+        loaderName = u[0]?.full_name ?? null;
+        loaderPhone = u[0]?.phone ?? null;
+      }
+      let parcelName: string | null = null;
+      let locality: string | null = null;
+      let mapsUrl: string | null = null;
+      if (args.sourceParcelId) {
+        const p = (await this.drizzleProvider.db.execute(
+          sql`SELECT name, municipality,
+                     ST_Y(ST_Centroid(boundary)) AS lat,
+                     ST_X(ST_Centroid(boundary)) AS lon
+              FROM parcels WHERE id = ${args.sourceParcelId}::uuid LIMIT 1`,
+        )) as unknown as {
+          name: string;
+          municipality: string | null;
+          lat: number | null;
+          lon: number | null;
+        }[];
+        parcelName = p[0]?.name ?? null;
+        locality = p[0]?.municipality ?? null;
+        mapsUrl = fmtCoordsUrl(p[0]?.lat, p[0]?.lon);
+      }
+      const tpl = messageTemplates[MessageKind.driver_assigned]({
+        loaderName,
+        loaderPhone,
+        parcelName,
+        locality,
+        mapsUrl,
+        cropType: args.cropType,
+      });
+      await this.messaging.sendSms({
+        to: args.driverPhone,
+        body: tpl.body,
+        kind: MessageKind.driver_assigned,
+        metadata: { tripId: args.tripId },
+      });
+    } catch (err) {
+      this.winston.warn('sendDriverAssignedSms failed', {
+        context: 'TripsService',
+        tripId: args.tripId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
+  }
+
+  /** Public driver page: load summary for a sign token (no auth). */
+  async getPublicSignInfo(token: string): Promise<PublicSignInfo> {
+    const rows = (await this.drizzleProvider.db
+      .execute(
+        sql`SELECT t.bale_count, t.public_sign_token_used_at,
+                 o.name AS org_name,
+                 p.name AS parcel_name, p.municipality AS parcel_municipality,
+                 tr.crop_type AS req_crop_type
+          FROM trips t
+          JOIN organizations o ON o.id = t.organization_id
+          LEFT JOIN parcels p ON p.id = t.source_parcel_id
+          LEFT JOIN trip_requests tr ON tr.id = t.trip_request_id
+          WHERE t.public_sign_token = ${token}
+            AND t.is_auxiliary = true
+            AND t.deleted_at IS NULL
+          LIMIT 1`,
+      )
+      .catch(() => [])) as unknown as {
+      bale_count: number | null;
+      public_sign_token_used_at: string | null;
+      org_name: string;
+      parcel_name: string | null;
+      parcel_municipality: string | null;
+      req_crop_type: string | null;
+    }[];
+    const row = rows[0];
+    if (!row) throw new NotFoundException('Link invalid sau expirat.');
+    return {
+      organizationName: row.org_name,
+      cropType: (row.req_crop_type as PublicSignInfo['cropType']) ?? null,
+      baleCount: Number(row.bale_count ?? 0),
+      sourceParcelName: row.parcel_name,
+      sourceParcelMunicipality: row.parcel_municipality,
+      alreadySigned: row.public_sign_token_used_at != null,
+    };
+  }
+
+  /**
+   * Public driver page submit: store the driver's signature (the "last
+   * signature") and finalize stage-2 of the CMR. One-time per token.
+   */
+  async signByPublicToken(token: string, signature: string): Promise<{ ok: true }> {
+    const updated = (await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+            driver_signature_url = ${signature},
+            public_sign_token_used_at = NOW(),
+            updated_at = NOW()
+          WHERE public_sign_token = ${token}
+            AND is_auxiliary = true
+            AND deleted_at IS NULL
+            AND public_sign_token_used_at IS NULL
+          RETURNING id, organization_id`,
+    )) as unknown as { id: string; organization_id: string | null }[];
+    const row = updated[0];
+    if (!row) {
+      // Either invalid token or already signed — surface a clear, non-leaky error.
+      const exists = (await this.drizzleProvider.db.execute(
+        sql`SELECT public_sign_token_used_at FROM trips
+            WHERE public_sign_token = ${token} AND is_auxiliary = true AND deleted_at IS NULL
+            LIMIT 1`,
+      )) as unknown as { public_sign_token_used_at: string | null }[];
+      if (exists[0]?.public_sign_token_used_at) {
+        throw new ConflictException('Documentul a fost deja semnat.');
+      }
+      throw new NotFoundException('Link invalid sau expirat.');
+    }
+    this.logTripFlow(row.id, 'AUX_DRIVER_SIGNED', TripStatus.completed, TripStatus.completed);
+    // Stage-2 CMR — finalize the document now that the driver has signed.
+    await this.cmrQueue.add('generate', { tripId: row.id, orgId: row.organization_id, stage: 2 });
+    return { ok: true };
   }
 
   /**

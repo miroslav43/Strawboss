@@ -19,6 +19,8 @@ import { ActiveFieldCard } from '@/components/shared/ActiveFieldCard';
 import { useAuthStore } from '@/stores/auth-store';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 import { useTrucksAtLoader } from '@/hooks/useTrucksAtLoader';
+import { useAuxiliaryTrips } from '@/hooks/useAuxiliaryTrips';
+import type { AuxiliaryTrip } from '@/hooks/useAuxiliaryTrips';
 import { useLoaderRecallPrompt } from '@/hooks/useLoaderRecallPrompt';
 import { colors, radii } from '@strawboss/ui-tokens';
 import type { TruckAtLoader } from '@strawboss/api';
@@ -36,6 +38,7 @@ export default function LoaderHomeScreen() {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const parcel = useCurrentLoaderParcel();
   const trucks = useTrucksAtLoader({ pollMs: 10_000 });
+  const auxTrips = useAuxiliaryTrips({ pollMs: 15_000 });
   const [refreshing, setRefreshing] = useState(false);
   const { modalProps } = useModal();
 
@@ -45,14 +48,25 @@ export default function LoaderHomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     parcel.refresh();
-    await trucks.refetch();
+    await Promise.all([trucks.refetch(), auxTrips.refetch()]);
     setRefreshing(false);
-  }, [parcel, trucks]);
+  }, [parcel, trucks, auxTrips]);
 
   const goToLoad = useCallback((truckId: string) => {
     router.push({
       pathname: '/loader-ops/load-bales',
       params: { truckId },
+    });
+  }, []);
+
+  const goToAuxLoad = useCallback((trip: AuxiliaryTrip) => {
+    router.push({
+      pathname: '/loader-ops/load-bales',
+      params: {
+        truckId: trip.id,
+        parcelId: trip.sourceParcelId ?? '',
+        isAuxiliary: '1',
+      },
     });
   }, []);
 
@@ -145,6 +159,39 @@ export default function LoaderHomeScreen() {
             <TruckCard key={truck.id} truck={truck} onPress={() => goToLoad(truck.id)} />
           ))
         )}
+
+        {/* ─── Auxiliary trucks section ─────────────────────────────────── */}
+        {assignedMachineId ? (
+          <>
+            <View style={styles.trucksHeader}>
+              <Text style={styles.sectionTitle}>Camioane auxiliare</Text>
+              {auxTrips.isFetching && !auxTrips.isLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : null}
+            </View>
+
+            {auxTrips.isLoading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={styles.loadingText}>Caut camioane auxiliare...</Text>
+              </View>
+            ) : (auxTrips.data ?? []).length === 0 ? (
+              <EmptyCard
+                icon="truck-plus-outline"
+                title="Niciun camion auxiliar"
+                subtitle="Camioanele auxiliare atribuite de dispecer apar aici, indiferent de distanță."
+              />
+            ) : (
+              (auxTrips.data ?? []).map((trip) => (
+                <AuxTruckCard
+                  key={trip.id}
+                  trip={trip}
+                  onPress={trip.sourceParcelId ? () => goToAuxLoad(trip) : undefined}
+                />
+              ))
+            )}
+          </>
+        ) : null}
       </ScrollView>
 
       <AppModal {...modalProps} />
@@ -213,6 +260,65 @@ function EmptyCard({
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.emptySub}>{subtitle}</Text>
     </View>
+  );
+}
+
+function AuxTruckCard({ trip, onPress }: { trip: AuxiliaryTrip; onPress?: () => void }) {
+  const label = trip.truckPlate ?? trip.truckCode ?? 'Camion auxiliar';
+  const parcelLine = [trip.sourceParcelName, trip.sourceParcelMunicipality]
+    .filter(Boolean)
+    .join(', ');
+  const disabled = !onPress;
+
+  return (
+    <TouchableOpacity
+      style={[auxStyles.card, disabled && auxStyles.cardDisabled]}
+      activeOpacity={disabled ? 1 : 0.85}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <View style={styles.truckRow}>
+        <View style={auxStyles.iconWrap}>
+          <MaterialCommunityIcons name="truck-plus" size={28} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={auxStyles.plateRow}>
+            <Text style={styles.truckPlate} numberOfLines={1} ellipsizeMode="tail">
+              {label}
+            </Text>
+            <View style={auxStyles.auxBadge}>
+              <Text style={auxStyles.auxBadgeText}>AUX</Text>
+            </View>
+          </View>
+          {trip.externalDriverName ? (
+            <Text style={styles.truckMeta} numberOfLines={1} ellipsizeMode="tail">
+              {trip.externalDriverName}
+              {trip.externalDriverPhone ? `  •  ${trip.externalDriverPhone}` : ''}
+            </Text>
+          ) : null}
+          {parcelLine ? (
+            <Text style={auxStyles.parcelLine} numberOfLines={1} ellipsizeMode="tail">
+              <MaterialCommunityIcons name="map-marker" size={11} color={colors.textSecondary} />{' '}
+              {parcelLine}
+            </Text>
+          ) : null}
+          {trip.cropType ? (
+            <Text style={auxStyles.metaLine} numberOfLines={1} ellipsizeMode="tail">
+              {trip.cropType}
+              {trip.baleCount != null ? `  ·  ${trip.baleCount} baloți` : ''}
+            </Text>
+          ) : trip.baleCount != null ? (
+            <Text style={auxStyles.metaLine}>{trip.baleCount} baloți</Text>
+          ) : null}
+          {disabled ? (
+            <Text style={auxStyles.disabledHint}>Teren neatribuit — contactează dispecerul</Text>
+          ) : null}
+        </View>
+        {!disabled ? (
+          <MaterialCommunityIcons name="chevron-right" size={28} color={colors.tertiary} />
+        ) : null}
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -311,4 +417,65 @@ const recallStyles = StyleSheet.create({
   btnPrimaryText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
   btnSecondary: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB' },
   btnSecondaryText: { color: '#374151', fontWeight: '600', fontSize: 14 },
+});
+
+// Auxiliary truck card styles.
+const auxStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#FFF',
+    borderRadius: radii.lg,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderLeftWidth: 3,
+    borderLeftColor: '#7C3AED',
+  },
+  cardDisabled: {
+    opacity: 0.6,
+    borderLeftColor: '#D1D5DB',
+  },
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  auxBadge: {
+    backgroundColor: '#7C3AED',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  auxBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 0.5,
+  },
+  parcelLine: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  metaLine: {
+    fontSize: 12,
+    color: '#5D4037',
+    marginTop: 1,
+  },
+  disabledHint: {
+    fontSize: 11,
+    color: '#991B1B',
+    fontStyle: 'italic',
+    marginTop: 3,
+  },
 });
