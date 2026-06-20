@@ -22,6 +22,7 @@ const MACHINE_COLS = sql`
   owner_company_name        AS "ownerCompanyName",
   owner_company_address     AS "ownerCompanyAddress",
   owner_company_cui         AS "ownerCompanyCui",
+  is_auxiliary              AS "isAuxiliary",
   created_at                AS "createdAt",
   updated_at                AS "updatedAt",
   deleted_at                AS "deletedAt"
