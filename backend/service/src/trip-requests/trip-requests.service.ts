@@ -213,17 +213,17 @@ export class TripRequestsService {
       sql`INSERT INTO trip_requests (
             organization_id, requester_name, requester_phone, requester_email,
             company_name, company_address, company_cui,
-            truck_registration_plate, truck_make, truck_model, truck_capacity_tons,
+            truck_registration_plate, truck_model, truck_capacity_tons,
             driver_name, driver_phone, driver_email,
             crop_type, needed_date, tons_requested,
-            destination_address, destination_locality, destination_coords, notes
+            destination_address, destination_coords, notes
           ) VALUES (
             ${org.id}::uuid, ${dto.requesterName}, ${dto.requesterPhone}, ${dto.requesterEmail ?? null},
             ${dto.companyName ?? null}, ${dto.companyAddress ?? null}, ${dto.companyCui ?? null},
-            ${dto.truckRegistrationPlate}, ${dto.truckMake ?? null}, ${dto.truckModel ?? null}, ${dto.truckCapacityTons ?? null},
+            ${dto.truckRegistrationPlate}, ${dto.truckModel ?? null}, ${dto.truckCapacityTons ?? null},
             ${dto.driverName}, ${dto.driverPhone}, ${dto.driverEmail ?? null},
             ${dto.cropType ? sql`${dto.cropType}::crop_type` : sql`NULL`}, ${dto.neededDate ?? null}, ${dto.tonsRequested ?? null},
-            ${dto.destinationAddress ?? null}, ${dto.destinationLocality ?? null},
+            ${dto.destinationAddress ?? null},
             ${coords ? sql`ST_SetSRID(ST_MakePoint(${coords.lon}, ${coords.lat}), 4326)` : sql`NULL`},
             ${dto.notes ?? null}
           )

@@ -58,7 +58,6 @@ export interface CreateTripRequestDto {
   companyAddress?: string | null;
   companyCui?: string | null;
   truckRegistrationPlate: string;
-  truckMake?: string | null;
   truckModel?: string | null;
   truckCapacityTons?: number | null;
   driverName: string;
@@ -68,7 +67,6 @@ export interface CreateTripRequestDto {
   neededDate?: string | null;
   tonsRequested?: number | null;
   destinationAddress?: string | null;
-  destinationLocality?: string | null;
   destinationCoords?: GeoPoint | null;
   notes?: string | null;
 }

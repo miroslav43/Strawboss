@@ -27,17 +27,23 @@ const inputCls =
 function Field({
   label,
   required,
+  optional,
   children,
 }: {
   label: string;
   required?: boolean;
+  optional?: boolean;
   children: React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <label className="block">
       <span className="mb-1.5 block text-[13px] font-medium text-stone-600">
         {label}
         {required && <span className="ml-0.5 text-rose-500">*</span>}
+        {optional && (
+          <span className="ml-1 font-normal text-stone-400">({t('portal.optional')})</span>
+        )}
       </span>
       {children}
     </label>
@@ -65,7 +71,6 @@ type FormState = {
   companyAddress: string;
   companyCui: string;
   truckRegistrationPlate: string;
-  truckMake: string;
   truckModel: string;
   truckCapacityTons: string;
   driverName: string;
@@ -75,7 +80,6 @@ type FormState = {
   neededDate: string;
   tonsRequested: string;
   destinationAddress: string;
-  destinationLocality: string;
   notes: string;
 };
 
@@ -87,7 +91,6 @@ const BLANK: FormState = {
   companyAddress: '',
   companyCui: '',
   truckRegistrationPlate: '',
-  truckMake: '',
   truckModel: '',
   truckCapacityTons: '',
   driverName: '',
@@ -97,7 +100,6 @@ const BLANK: FormState = {
   neededDate: '',
   tonsRequested: '',
   destinationAddress: '',
-  destinationLocality: '',
   notes: '',
 };
 
@@ -112,7 +114,6 @@ function toDto(f: FormState): CreateTripRequestDto {
     companyAddress: trim(f.companyAddress),
     companyCui: trim(f.companyCui),
     truckRegistrationPlate: f.truckRegistrationPlate.trim(),
-    truckMake: trim(f.truckMake),
     truckModel: trim(f.truckModel),
     truckCapacityTons: numOrNull(f.truckCapacityTons),
     driverName: f.driverName.trim(),
@@ -122,7 +123,6 @@ function toDto(f: FormState): CreateTripRequestDto {
     neededDate: trim(f.neededDate),
     tonsRequested: numOrNull(f.tonsRequested),
     destinationAddress: trim(f.destinationAddress),
-    destinationLocality: trim(f.destinationLocality),
     notes: trim(f.notes),
   };
 }
@@ -425,6 +425,7 @@ export default function RequestPortalPage() {
                   <Field label={t('portal.requesterName')} required>
                     <input
                       className={inputCls}
+                      required
                       value={form.requesterName}
                       onChange={(e) => patch({ requesterName: e.target.value })}
                     />
@@ -432,35 +433,40 @@ export default function RequestPortalPage() {
                   <Field label={t('portal.requesterPhone')} required>
                     <input
                       className={inputCls}
+                      required
                       value={form.requesterPhone}
                       onChange={(e) => patch({ requesterPhone: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.requesterEmail')}>
+                  <Field label={t('portal.requesterEmail')} required>
                     <input
                       type="email"
                       className={inputCls}
+                      required
                       value={form.requesterEmail}
                       onChange={(e) => patch({ requesterEmail: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.companyName')}>
+                  <Field label={t('portal.companyName')} required>
                     <input
                       className={inputCls}
+                      required
                       value={form.companyName}
                       onChange={(e) => patch({ companyName: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.companyAddress')}>
+                  <Field label={t('portal.companyAddress')} required>
                     <input
                       className={inputCls}
+                      required
                       value={form.companyAddress}
                       onChange={(e) => patch({ companyAddress: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.companyCui')}>
+                  <Field label={t('portal.companyCui')} required>
                     <input
                       className={inputCls}
+                      required
                       value={form.companyCui}
                       onChange={(e) => patch({ companyCui: e.target.value })}
                     />
@@ -477,30 +483,26 @@ export default function RequestPortalPage() {
                   <Field label={t('portal.truckRegistrationPlate')} required>
                     <input
                       className={inputCls}
+                      required
                       value={form.truckRegistrationPlate}
                       onChange={(e) => patch({ truckRegistrationPlate: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.truckCapacityTons')}>
+                  <Field label={t('portal.truckCapacityTons')} required>
                     <input
                       type="number"
                       min="0"
                       step="0.1"
                       className={inputCls}
+                      required
                       value={form.truckCapacityTons}
                       onChange={(e) => patch({ truckCapacityTons: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.truckMake')}>
+                  <Field label={t('portal.truckModel')} required>
                     <input
                       className={inputCls}
-                      value={form.truckMake}
-                      onChange={(e) => patch({ truckMake: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('portal.truckModel')}>
-                    <input
-                      className={inputCls}
+                      required
                       value={form.truckModel}
                       onChange={(e) => patch({ truckModel: e.target.value })}
                     />
@@ -508,6 +510,7 @@ export default function RequestPortalPage() {
                   <Field label={t('portal.driverName')} required>
                     <input
                       className={inputCls}
+                      required
                       value={form.driverName}
                       onChange={(e) => patch({ driverName: e.target.value })}
                     />
@@ -515,11 +518,12 @@ export default function RequestPortalPage() {
                   <Field label={t('portal.driverPhone')} required>
                     <input
                       className={inputCls}
+                      required
                       value={form.driverPhone}
                       onChange={(e) => patch({ driverPhone: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.driverEmail')}>
+                  <Field label={t('portal.driverEmail')} optional>
                     <input
                       type="email"
                       className={inputCls}
@@ -536,9 +540,10 @@ export default function RequestPortalPage() {
                   label={t('portal.sectionRequest')}
                 />
                 <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <Field label={t('portal.cropType')}>
+                  <Field label={t('portal.cropType')} required>
                     <select
                       className={inputCls}
+                      required
                       value={form.cropType}
                       onChange={(e) => patch({ cropType: e.target.value })}
                     >
@@ -550,42 +555,38 @@ export default function RequestPortalPage() {
                       ))}
                     </select>
                   </Field>
-                  <Field label={t('portal.tonsRequested')}>
+                  <Field label={t('portal.tonsRequested')} required>
                     <input
                       type="number"
                       min="0"
                       step="0.1"
                       className={inputCls}
+                      required
                       value={form.tonsRequested}
                       onChange={(e) => patch({ tonsRequested: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.neededDate')}>
+                  <Field label={t('portal.neededDate')} required>
                     <input
                       type="date"
                       className={inputCls}
+                      required
                       value={form.neededDate}
                       onChange={(e) => patch({ neededDate: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('portal.destinationLocality')}>
-                    <input
-                      className={inputCls}
-                      value={form.destinationLocality}
-                      onChange={(e) => patch({ destinationLocality: e.target.value })}
-                    />
-                  </Field>
                   <div className="sm:col-span-2">
-                    <Field label={t('portal.destinationAddress')}>
+                    <Field label={t('portal.destinationAddress')} required>
                       <input
                         className={inputCls}
+                        required
                         value={form.destinationAddress}
                         onChange={(e) => patch({ destinationAddress: e.target.value })}
                       />
                     </Field>
                   </div>
                   <div className="sm:col-span-2">
-                    <Field label={t('portal.notes')}>
+                    <Field label={t('portal.notes')} optional>
                       <textarea
                         className={inputCls}
                         rows={3}

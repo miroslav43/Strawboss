@@ -7,29 +7,30 @@ import { cropTypeSchema } from './parcel.schema.js';
 export const portalCodeSchema = z.string().regex(/^\d{4}$/, 'Code must be exactly 4 digits');
 
 /** Public submission payload for the external request portal (no auth). */
+// All fields are required EXCEPT driverEmail, notes, and destinationCoords
+// (the public form does not capture coords). truckMake / destinationLocality
+// were dropped from the form entirely.
 export const createTripRequestSchema = z.object({
   // who is requesting
   requesterName: z.string().min(1).max(120),
   requesterPhone: z.string().min(4).max(40),
-  requesterEmail: z.string().email().max(160).nullable().optional(),
-  companyName: z.string().max(160).nullable().optional(),
-  companyAddress: z.string().max(300).nullable().optional(),
-  companyCui: z.string().max(40).nullable().optional(),
+  requesterEmail: z.string().email().max(160),
+  companyName: z.string().min(1).max(160),
+  companyAddress: z.string().min(1).max(300),
+  companyCui: z.string().min(1).max(40),
   // their truck
   truckRegistrationPlate: z.string().min(1).max(40),
-  truckMake: z.string().max(80).nullable().optional(),
-  truckModel: z.string().max(80).nullable().optional(),
-  truckCapacityTons: z.number().positive().max(1000).nullable().optional(),
+  truckModel: z.string().min(1).max(80),
+  truckCapacityTons: z.number().positive().max(1000),
   // their driver (no app account)
   driverName: z.string().min(1).max(120),
   driverPhone: z.string().min(4).max(40),
   driverEmail: z.string().email().max(160).nullable().optional(),
   // the ask
-  cropType: cropTypeSchema.nullable().optional(),
-  neededDate: isoDateSchema.nullable().optional(),
-  tonsRequested: z.number().positive().max(100000).nullable().optional(),
-  destinationAddress: z.string().max(300).nullable().optional(),
-  destinationLocality: z.string().max(160).nullable().optional(),
+  cropType: cropTypeSchema,
+  neededDate: isoDateSchema,
+  tonsRequested: z.number().positive().max(100000),
+  destinationAddress: z.string().min(1).max(300),
   destinationCoords: geoPointSchema.nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
