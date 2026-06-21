@@ -183,11 +183,7 @@ export default function LoaderHomeScreen() {
               />
             ) : (
               (auxTrips.data ?? []).map((trip) => (
-                <AuxTruckCard
-                  key={trip.id}
-                  trip={trip}
-                  onPress={trip.sourceParcelId ? () => goToAuxLoad(trip) : undefined}
-                />
+                <AuxTruckCard key={trip.id} trip={trip} onPress={() => goToAuxLoad(trip)} />
               ))
             )}
           </>
@@ -309,9 +305,6 @@ function AuxTruckCard({ trip, onPress }: { trip: AuxiliaryTrip; onPress?: () => 
             </Text>
           ) : trip.baleCount != null ? (
             <Text style={auxStyles.metaLine}>{trip.baleCount} baloți</Text>
-          ) : null}
-          {disabled ? (
-            <Text style={auxStyles.disabledHint}>Teren neatribuit — contactează dispecerul</Text>
           ) : null}
         </View>
         {!disabled ? (

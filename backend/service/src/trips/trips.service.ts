@@ -905,6 +905,9 @@ export class TripsService implements OnModuleInit {
               loader_signature_url = ${dto.loaderSignature ?? null},
               loader_id = ${dto.loaderMachineId},
               loader_operator_id = COALESCE(loader_operator_id, ${callerId}),
+              -- record the actual pickup parcel (the loader's field) if the trip
+              -- was created without one (aux trucks aren't tied to a fixed parcel).
+              source_parcel_id = COALESCE(source_parcel_id, ${dto.parcelId}),
               public_sign_token = COALESCE(public_sign_token, ${signToken}),
               bale_count = (
                 SELECT COALESCE(SUM(bale_count), 0)::int

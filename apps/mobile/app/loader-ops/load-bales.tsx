@@ -112,18 +112,34 @@ export default function LoadBalesScreen() {
   const [snapshotParcelName, setSnapshotParcelName] = useState<string | null>(null);
 
   useEffect(() => {
-    // For auxiliary trips the parcel comes from the route param — freeze it immediately.
-    if (isAuxiliary && auxParcelId && !snapshotParcelId) {
-      setSnapshotParcelId(auxParcelId);
-      // No parcelName available from the param; the server knows via parcelId.
+    if (snapshotParcelId) return;
+    if (isAuxiliary) {
+      // Prefer the parcel the trip was created with; otherwise the auxiliary load
+      // is attributed to the loader's OWN current/assigned field (the external
+      // truck isn't tied to a fixed parcel — it loads wherever the loader is).
+      if (auxParcelId) {
+        setSnapshotParcelId(auxParcelId);
+        return;
+      }
+      if (parcel.status === 'resolved' && parcel.parcelId) {
+        setSnapshotParcelId(parcel.parcelId);
+        setSnapshotParcelName(parcel.parcelName);
+      }
       return;
     }
-    if (!isAuxiliary && parcel.status === 'resolved' && parcel.parcelId && !snapshotParcelId) {
+    if (parcel.status === 'resolved' && parcel.parcelId) {
       setSnapshotParcelId(parcel.parcelId);
       setSnapshotParcelName(parcel.parcelName);
     }
     // Only run when parcel resolves; snapshot is intentionally frozen after first capture.
-  }, [isAuxiliary, auxParcelId, parcel.status, parcel.parcelId, snapshotParcelId]);
+  }, [
+    isAuxiliary,
+    auxParcelId,
+    parcel.status,
+    parcel.parcelId,
+    parcel.parcelName,
+    snapshotParcelId,
+  ]);
 
   const [baleCountStr, setBaleCountStr] = useState('');
   const [saving, setSaving] = useState(false);
@@ -682,6 +698,13 @@ export default function LoadBalesScreen() {
               : parcel.gpsState === 'unavailable'
                 ? 'Nu putem confirma poziția — activează GPS-ul ca să încarci.'
                 : 'Se așteaptă semnalul GPS ca să confirmăm că ești pe teren…'}
+          </Text>
+        ) : null}
+        {isAuxiliary && !parcelReady ? (
+          <Text style={styles.gateHint}>
+            {parcel.gpsState === 'unavailable'
+              ? 'Activează GPS-ul sau confirmă terenul în ecranul principal ca să încarci.'
+              : 'Se determină terenul din locația ta…'}
           </Text>
         ) : null}
         <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
