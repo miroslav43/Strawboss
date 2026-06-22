@@ -3,7 +3,7 @@ type: doc
 title: "StrawBoss — System Architecture"
 created: 2026-04-16
 updated: 2026-06-22
-tags: [doc, architecture, overview, top-level]
+tags: [doc, architecture, overview, top-level, fleet, tailscale]
 status: mature
 related:
   - "[[backend]]"
@@ -12,6 +12,7 @@ related:
   - "[[database]]"
   - "[[sync-protocol]]"
   - "[[infrastructure]]"
+  - "[[scripts]]"
   - "[[packages-types]]"
   - "[[packages-domain]]"
 ---
@@ -335,6 +336,59 @@ Enums: `ota_state`, `ota_deployment_status`, `release_status`, `ota_target_kind`
 RLS is enabled on all four tables but the backend connects as table owner (bypasses RLS). One permissive read policy on `devices` allows org-admins to see their assigned devices via a future direct PostgREST path.
 
 See [[database]] for full schema, [[admin-web]] for the super-admin Fleet pages.
+
+## Fleet Tailscale Remote Access
+
+A second remote-access channel overlays the poll-based OTA architecture. Where the OTA check-in is device-initiated (outbound HTTP, works through NAT), the Tailscale channel makes the VM capable of reaching any fleet phone for debugging and ADB access.
+
+### Model
+
+```
+VM host (tailscaled, miro user)
+  │
+  ├─ tailscale status --json ──→ scripts/tailscale-sync.mjs ──→ SQL UPDATE devices
+  │   (systemd timer, every 60s)                                  tailscale_online / ip / last_seen
+  │
+  └─ adb connect <tailscale-ip>:5555 ──→ ADB shell (over Tailscale P2P tunnel)
+      (fleet:tunnel command, interactive)
+```
+
+The backend Docker container runs on a bridge network and **cannot** reach the tailnet. All fleet-host commands run on the VM via `scripts/10-fleet.sh`. The 60-second systemd timer (`deploy/systemd/strawboss-fleet-sync.{service,timer}`) feeds the red/green dot in the [[admin-web]] super-admin Fleet UI.
+
+### MDM / Tailscale app control
+
+- Tailscale is managed on the Device-Owner phones as a controlled install (not Play Store).
+- The official Tailscale APK is hosted under `{UPLOADS_ROOT}/tailscale/tailscale.apk` — uploaded once via the super-admin API and served via the existing signed-URL mechanism.
+- The OTA check-in response can carry a `tailscaleApkUrl` so a freshly provisioned phone can install Tailscale without Play Store access.
+- The super-admin can toggle `tailscale_desired` per device (`PATCH /super-admin/devices/:id/tailscale`); the [[mobile]] client reads this flag on check-in and enables/disables the Tailscale MDM profile accordingly.
+
+### Per-device ephemeral keys
+
+Ephemeral Tailscale auth keys are issued per device via the OAuth client stored in `app_settings` (never in the repo). Keys auto-expire; the [[backend]] `FleetService` issues a fresh key on demand so the phone can join or re-join the tailnet without admin interaction.
+
+### Auth key / OAuth storage
+
+- Stored in [[database]] `app_settings` table.
+- Read/written only via `GET|PUT /api/v1/super-admin/settings/tailscale` (raw secrets never returned by GET — masked booleans only).
+
+### Online dot — data flow
+
+```
+tailscale status --json (host)
+  │
+  └─ tailscale-sync.mjs ──→ SQL emitted to stdout
+       │  1. UPDATE devices SET tailscale_online = false  (reset all)
+       │  2. UPDATE devices SET tailscale_online = true,
+       │         tailscale_ip = '100.x.x.x',
+       │         tailscale_last_seen = <p.LastSeen>
+       │     WHERE tailscale_hostname = '<lower(p.HostName)>'
+       │
+       └─ piped to psql "$DATABASE_URL"
+            │
+            └─ [[admin-web]] Fleet page reads tailscale_online col → red/green dot
+```
+
+Cross-references: [[backend]] (FleetService, OTA check-in, settings endpoints), [[mobile]] (Tailscale MDM, OTA client), [[admin-web]] (Fleet super-admin pages, online dot), [[database]] (devices table, app_settings), [[scripts]] (fleet:* commands), [[infrastructure]] (systemd timer, ADB-over-TCP).
 
 ## Component Documentation Index
 

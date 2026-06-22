@@ -98,6 +98,7 @@ Centralized TanStack Query key definitions. Every hook references these for cach
 | `devices` | `.all`, `.list(filters?)`, `.detail(id)`, `.otaStatus(id)`, `.logs(id, filters?)` |
 | `releases` | `.all` |
 | `deployments` | `.all` |
+| `settings` | `.tailscale()` → `['super-admin', 'settings', 'tailscale']` |
 
 ## React Query Hooks
 
@@ -246,5 +247,16 @@ Local interfaces in `use-fleet.ts`: `DeviceLogFilters`, `DeviceLogEntry`, `Devic
 | `useDeployments(client)` | Query | `GET /api/v1/super-admin/deployments` | Returns `OtaDeployment[]` |
 | `useCreateDeployment(client)` | Mutation | `POST /api/v1/super-admin/deployments` | Accepts `CreateDeploymentInput` |
 | `useCancelDeployment(client)` | Mutation | `POST /api/v1/super-admin/deployments/:id/cancel` | |
+
+#### Tailscale Remote Access
+
+| Hook | Type | Endpoint | Notes |
+|---|---|---|---|
+| `useSetDeviceTailscale(client)` | Mutation | `PATCH /api/v1/super-admin/devices/:id/tailscale` | Accepts `{ id, desired: boolean }`; sets `tailscaleDesired` on the device; invalidates `devices.all` + sets detail cache |
+| `useTailscaleSettings(client)` | Query | `GET /api/v1/super-admin/settings/tailscale` | Returns `AppSettings` (no raw secrets); refetches every 60 s |
+| `useUpdateTailscaleSettings(client)` | Mutation | `PUT /api/v1/super-admin/settings/tailscale` | Accepts `UpdateTailscaleSettingsInput` (`authKey`, `tailnet`, `oauthClientId`, `oauthClientSecret`, `tag`); invalidates `settings.tailscale` |
+| `useUploadTailscaleApk(client)` | Mutation | `POST /api/v1/super-admin/settings/tailscale-apk` | Accepts `FormData` (field `apk`); sets the hosted Tailscale APK for zero-touch auto-install; invalidates `settings.tailscale` |
+
+`useUpdateTailscaleSettings` uses `client.put` (full replace semantics). `useUploadTailscaleApk` uses `client.upload` (multipart). Both return `AppSettings` on success.
 
 See [[packages-types]] for entity shapes and [[packages-validation]] for input schemas.

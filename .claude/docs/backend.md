@@ -257,6 +257,10 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 - `GET /super-admin/deployments` -- @Roles(super_admin) -- list deployments with per-state device counts
 - `POST /super-admin/deployments` -- @Roles(super_admin) -- create deployment (`createDeploymentSchema`); immediate if no `scheduledAt`, otherwise queues a BullMQ delayed job
 - `POST /super-admin/deployments/:id/cancel` -- @Roles(super_admin) -- cancel a deployment
+- `PATCH /super-admin/devices/:id/tailscale` -- @Roles(super_admin) -- set `tailscale_desired` on a device; triggers best-effort FCM wake push so the device checks in quickly (`setDeviceTailscaleSchema`: `{ desired: boolean }`)
+- `GET /super-admin/settings/tailscale` -- @Roles(super_admin) -- read masked global Tailscale settings (raw secrets never returned; fields: `tailscaleAuthKeySet`, `tailscaleOauthConfigured`, `tailscaleTailnet`, `tailscaleTag`, `tailscaleApkSet`, `updatedAt`)
+- `PUT /super-admin/settings/tailscale` -- @Roles(super_admin) -- update global Tailscale settings (`updateTailscaleSettingsSchema`: `authKey`, `tailnet`, `oauthClientId`, `oauthClientSecret`, `tag`; send `''` to clear a field, omit to leave unchanged)
+- `POST /super-admin/settings/tailscale-apk` -- @Roles(super_admin) -- upload the official Tailscale APK (multipart field `apk`, max 250 MB); stores at `{UPLOADS_ROOT}/tailscale/tailscale.apk`; records SHA-256 and size in `app_settings`; overwrites any previous APK; returns masked `AppSettings`
 
 Note: `users.last_seen_at` is also refreshed via `POST /location/report` (Layer 1 presence). Machine-bound operators whose JS heartbeat is paused when backgrounded still stay "online" because their device foreground service continues to stream GPS. The two paths are independent; the GPS path is best-effort and never fails the location report.
 
@@ -330,7 +334,8 @@ Called by the mobile app on startup, foreground, and after sync. Uses `deviceChe
 - **First call** (unknown `deviceUuid`): registers the device; returns a `deviceTokenIssued` (HMAC token) that the app must store and present on every subsequent call.
 - **Returning device**: must supply `deviceToken`; verified with `timingSafeEqual(HMAC-SHA256(SUPABASE_JWT_SECRET, deviceUuid), token)`.
 - **OTA reports**: the payload may include an `otaReports[]` array reporting the current state of one or more deployments (`downloading | downloaded | installing | installed | failed`). The anti-skew rule prevents false `installed` confirmations: if the device's reported `versionCode` is lower than the release's `versionCode`, the state is clamped to `installing`.
-- **Response**: `{ deviceId, assignedOrgId, deviceTokenIssued?, pendingDeployment? }`. `pendingDeployment` is non-null when there is an active deployment targeting this device that it has not yet installed.
+- **Command reports**: the payload may include a `commandReports[]` array (`[{ commandId, status: 'success' | 'failure', error? }]`) reporting the outcome of previously issued `DeviceCommand`s (e.g. Tailscale up/down). Applied before `pendingCommand` is computed. Success sets `tailscale_applied = tailscale_desired`; failure records `tailscale_last_error`.
+- **Response**: `{ deviceId, assignedOrgId, deviceTokenIssued?, pendingDeployment?, pendingCommand? }`. `pendingDeployment` is non-null when there is an active deployment targeting this device that it has not yet installed. `pendingCommand` is non-null when `tailscale_desired <> tailscale_applied`; see [[backend#Tailscale remote-access control]].
 
 ### OTA state machine (`device_ota_status.state`)
 
@@ -359,6 +364,53 @@ When `createDeploymentSchema.scheduledAt` is set, a BullMQ delayed job is added 
 ### Mobile log viewer (`GET /super-admin/devices/:id/logs`)
 
 Reads Winston NDJSON log files under `logs/mobile/{level}/{YYYY-MM-DD}.log`, filters lines where `meta.deviceId` or top-level `deviceId` matches the device's `deviceUuid`. Returns the last 1000 matching lines. `date` must match `/^\d{4}-\d{2}-\d{2}$/` (path traversal guard). `level` is allow-listed to `all | error | warn | info | flow | debug | http`.
+
+### Tailscale remote-access control
+
+The fleet module implements a command-channel pattern so super-admins can toggle Tailscale on/off on individual devices without a persistent connection.
+
+**Device fields** (columns on `devices`):
+
+| Column | Type | Meaning |
+|---|---|---|
+| `tailscale_desired` | boolean | What the admin wants (toggled via `PATCH /super-admin/devices/:id/tailscale`) |
+| `tailscale_applied` | boolean | What the device last successfully applied |
+| `tailscale_online` | boolean | Whether Tailscale reports the device as online (updated by host sync script) |
+| `tailscale_ip` | text | Tailscale IP address once connected |
+| `tailscale_hostname` | text | Sanitized DNS label sent to the device in the `up` command |
+| `tailscale_last_seen` | timestamptz | Last Tailscale heartbeat (from host sync) |
+| `tailscale_last_error` | text | Last error message from a failed command |
+
+**Command channel in check-in response**
+
+`computePendingCommand(deviceId)` runs after OTA reports are applied. It issues a `DeviceCommand` only when `tailscale_desired <> tailscale_applied`:
+
+- `action: 'down'` — returned immediately with no auth key; device runs `tailscale down`.
+- `action: 'up'` — issued only to a device that has token-verified its `deviceToken` (the HMAC guard on check-in). Reads `app_settings` for Tailscale config, then:
+  1. Calls `sanitizeHostname(device.name, deviceId)` — lowercases, replaces non-`[a-z0-9-]` runs with `-`, strips leading/trailing `-`; fallback `phone-<first-8-chars-of-deviceId>`.
+  2. Eagerly writes `tailscale_hostname` to the DB so the host sync script can match the node.
+  3. Calls `mintEphemeralAuthKey` if OAuth is configured (preferred); falls back to the shared `tailscale_auth_key` from `app_settings`.
+  4. If no usable auth key exists at all, records `tailscale_last_error` and returns `null` (no command issued).
+  5. Attaches a signed `tailscaleApk` URL + SHA-256 to the payload if `tailscale_apk_key` is set in `app_settings` (zero-touch install on Device-Owner phones).
+
+The `DeviceCommand` returned in the check-in response carries a new `id` (`randomUUID()`) so the device can report back with `commandReports[{ commandId, status, error? }]`. On success, `tailscale_applied` is set to `tailscale_desired` and `tailscale_last_error` is cleared. On failure, only `tailscale_last_error` is updated.
+
+**Ephemeral key minting (`mintEphemeralAuthKey`)**
+
+Two sequential HTTP calls to the Tailscale API:
+
+1. `POST https://api.tailscale.com/api/v2/oauth/token` with `grant_type=client_credentials` + `client_id` + `client_secret` → `access_token`.
+2. `POST https://api.tailscale.com/api/v2/tailnet/-/keys` with `Authorization: Bearer <access_token>` → key with `capabilities.devices.create = { reusable: false, ephemeral: true, preauthorized: true, tags: [tag] }`, `expirySeconds: 3600`, `description: "fleet <hostname>"`.
+
+Returns the `key` string or `null` on any error (network or non-2xx). The caller falls back to the shared `app_settings.tailscale_auth_key` if minting fails. OAuth minting requires `tailscale_oauth_client_id`, `tailscale_oauth_client_secret`, and `tailscale_tag` all to be configured in `app_settings`.
+
+**APK hosting for zero-touch install**
+
+`POST /super-admin/settings/tailscale-apk` stores the Tailscale APK at `{UPLOADS_ROOT}/tailscale/tailscale.apk`, records `tailscale_apk_key` and `tailscale_apk_sha256` in `app_settings`. When an `up` command is built, the payload includes `tailscaleApk: { url: <signed-URL>, sha256 }` if the APK is present. Device-Owner phones can silently install it before connecting.
+
+**Global settings (`app_settings` singleton)**
+
+`GET /super-admin/settings/tailscale` returns an `AppSettings` object. Secrets are **never** returned — they are masked to boolean flags (`tailscaleAuthKeySet`, `tailscaleOauthConfigured`). `PUT /super-admin/settings/tailscale` accepts partial updates via `updateTailscaleSettingsSchema`; send `''` to clear a secret field, omit the field to leave it unchanged.
 
 ### `MobileLogsService` change
 

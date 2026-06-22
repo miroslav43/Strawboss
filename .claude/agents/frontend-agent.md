@@ -41,10 +41,10 @@ apps/admin-web/src/app/
     (dashboard)/    -- Super-admin only pages (role gate in layout.tsx)
       layout.tsx    -- Minimal dark header; enforces super_admin role from JWT app_metadata
       organizations/        -- Organization CRUD
-      devices/              -- Fleet device list (grouped by org, online dot, OTA-state badge)
-        page.tsx            -- Device list + PushUpdateModal + EditDeviceModal + DeleteDeviceDialog
-        releases/page.tsx   -- APK upload + release list (publish/archive actions)
-        [id]/page.tsx       -- Device detail: identity card, OTA status timeline, log viewer
+      devices/              -- Fleet device list (grouped by org, online dot, OTA-state badge, Tailscale column)
+        page.tsx            -- Device list + TailscaleSettingsModal + PushUpdateModal + EditDeviceModal + DeleteDeviceDialog
+        releases/page.tsx   -- APK upload + release list (publish/archive actions; APK filename shown)
+        [id]/page.tsx       -- Device detail: identity card, OTA tab, Logs tab, Tailscale tab
   api/              -- Next.js API routes (client-log, etc.)
 ```
 
@@ -124,6 +124,34 @@ return <h1>{t('trips.title')}</h1>;
 - `useDevices` — every 20 s (device list)
 - `useDeviceOtaStatus` — every 8 s (OTA timeline on the device detail page)
 - Log viewer — manual refresh only (button triggers `refetch()`)
+
+### Tailscale device controls (super-admin fleet)
+
+The fleet pages expose full Tailscale management. Key patterns to follow:
+
+**Per-device toggle (`useSetDeviceTailscale`):**
+```typescript
+const setTailscale = useSetDeviceTailscale(apiClient);
+setTailscale.mutate({ id: device.id, desired: true | false });
+```
+Used in both the list row (`TailscaleToggle`) and the device detail tab (`TailscalePanel`). Always stopPropagation on click in list rows so navigation is not triggered.
+
+**Three-state Tailscale dot:**
+- `tailscaleDesired === false` → grey (`bg-neutral-300`) = disabled
+- `tailscaleDesired === true && tailscaleOnline === true` → teal (`bg-teal-500`) = connected
+- `tailscaleDesired === true && tailscaleOnline === false` → amber (`bg-amber-400`) = pending
+
+The app-online dot (green/grey) and the Tailscale dot are separate controls and must never be merged.
+
+**Tunnel command injection safety:** always use `device.tailscaleHostname` (the backend-sanitized `[a-z0-9-]` field) when building the `./strawboss.sh fleet:tunnel <hostname>` shell command. Never use `device.name` directly — it may contain spaces or shell metacharacters.
+
+**Tailscale Settings Modal (`TailscaleSettingsModal`):**
+- Read with `useTailscaleSettings(apiClient)`, write with `useUpdateTailscaleSettings(apiClient)`.
+- Shared auth key and OAuth client secret are always shown masked (`type="password"` with eye toggle). The raw value is never echoed back from the API; the UI only displays set/unset status.
+- Clearing a secret: a checkbox sends the empty-string sentinel (`authKey: ''` / `oauthClientId: ''` + `oauthClientSecret: ''`) rather than omitting the field.
+- Tailscale APK upload is a separate mutation: `useUploadTailscaleApk(apiClient)` → `POST /api/v1/super-admin/tailscale-apk` (`multipart/form-data`, field name `apk`).
+
+**Releases page — APK filename:** render `r.apkKey.split('/').pop()` as truncated monospace below the version number in the release list table. Use `title={...}` for the full filename on hover.
 
 ### API client
 

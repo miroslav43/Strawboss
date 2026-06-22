@@ -3,7 +3,7 @@ type: doc
 title: "Infrastructure"
 created: 2026-04-16
 updated: 2026-06-22
-tags: [doc, devops, infra, docker, nginx, redis]
+tags: [doc, devops, infra, docker, nginx, redis, fleet, tailscale]
 status: mature
 related:
   - "[[architecture]]"
@@ -222,3 +222,70 @@ The maximum APK upload size is 250 MB (enforced per-request in `FleetAdminContro
 ### Admin Web Client Logs
 
 Browser logs are batched to `POST /api/client-log` (rate-limited). The `onApiError` hook on `ApiClient` records failed API calls.
+
+## Tailscale Fleet Remote Access
+
+The ~30 Device-Owner fleet phones join the same tailnet as the production VM. This enables two capabilities: a live online/offline dot in the super-admin UI, and direct `adb` shell access to any phone without physical USB access.
+
+### Tailnet
+
+- **Tailnet**: `tail2b4c34.ts.net`
+- The VM runs `tailscaled` as the dev/ops user (`miro`). The backend Docker container lives on a bridge network and **cannot** reach the tailnet or run `adb` — all fleet host commands run on the VM itself via `scripts/10-fleet.sh`.
+- `adb` must be installed on the host (`sudo apt-get install -y android-tools-adb`).
+
+### Credentials / Secrets
+
+Tailscale auth key and OAuth client credentials (client ID + client secret) are stored in the `app_settings` DB table — **never** in the repository. The super-admin UI reads/writes them via:
+
+- `GET /api/v1/super-admin/settings/tailscale` — returns masked view (`tailscaleAuthKeySet`, `tailscaleOauthConfigured`, `tailscaleTailnet`, `tailscaleTag`, `tailscaleApkSet`, `updatedAt`; raw secrets are never returned).
+- `PUT /api/v1/super-admin/settings/tailscale` — updates `authKey`, `tailnet`, `oauthClientId`, `oauthClientSecret`, `tag`; send `''` to clear, omit to leave unchanged.
+
+Per-device ephemeral keys are issued via the OAuth client so each phone gets a short-lived key that auto-expires on revocation.
+
+### Tailscale APK hosting
+
+The official Tailscale APK is hosted at `{UPLOADS_ROOT}/tailscale/tailscale.apk` for zero-touch install on managed phones. Uploaded via `POST /api/v1/super-admin/settings/tailscale-apk` (multipart `apk` field, 250 MB limit); SHA-256 and size are recorded in `app_settings`. This allows the mobile OTA check-in response to carry a `tailscaleApkUrl` so a newly provisioned Device-Owner phone can install Tailscale without hitting the Play Store.
+
+### Status sync — systemd timer
+
+The backend container cannot query the tailnet, so a host-side systemd timer feeds the red/green dot in the UI:
+
+**Unit files**: `deploy/systemd/strawboss-fleet-sync.service` and `strawboss-fleet-sync.timer`
+
+**Service** (`strawboss-fleet-sync.service`):
+- `Type=oneshot`, runs as `User=miro`, `WorkingDirectory=/srv/apps/Strawboss`
+- `ExecStart=/srv/apps/Strawboss/strawboss.sh fleet:tailscale-sync`
+- `After=network-online.target tailscaled.service`
+
+**Timer** (`strawboss-fleet-sync.timer`):
+- `OnBootSec=2min`, `OnUnitActiveSec=60`, `AccuracySec=15s`
+- Fires every ~60 seconds after first activation
+
+**Install / remove**:
+```bash
+./strawboss.sh fleet:install-sync-timer     # sudo cp units → /etc/systemd/system, daemon-reload, enable --now
+./strawboss.sh fleet:uninstall-sync-timer   # disable --now, rm units, daemon-reload
+```
+
+**Logs**: `journalctl -u strawboss-fleet-sync.service -f`
+
+### ADB-over-TCP (one-time per phone)
+
+Android does not allow non-root processes to persist `adb` TCP mode across reboots. The flow is:
+
+1. Connect phone via USB with USB debugging authorized.
+2. Run `./strawboss.sh fleet:enable-adb-tcp` — calls `adb tcpip 5555`.
+3. Unplug USB. Phone is now reachable at `<tailscale-ip>:5555` until next reboot.
+4. After a reboot, repeat step 2.
+
+### ADB tunnel
+
+```bash
+./strawboss.sh fleet:tunnel "combina-man"
+# Also accepts free-form nicknames: fleet:tunnel "Combina MAN"
+# Arg is normalized to [a-z0-9-] — neutralizes shell/SQL metacharacters.
+```
+
+Resolution order: DB `tailscale_ip` (from last sync) → live `tailscale status --json` fallback → error with hint.
+
+See [[scripts]] for full command reference, [[architecture]] for the Fleet Tailscale subsystem design.

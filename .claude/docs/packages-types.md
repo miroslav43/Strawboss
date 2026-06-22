@@ -202,6 +202,14 @@ Added in the Fleet Management + OTA feature. Exported from `packages/types/src/i
 | `lastSeenAt` | `string \| null` | |
 | `lastCheckinAt` | `string \| null` | |
 | `lastActiveTrip` | `boolean` | true if device was mid-trip at last check-in (idle gate) |
+| `tailscaleDesired` | `boolean` | Desired Tailscale state set by super-admin |
+| `tailscaleOnline` | `boolean` | Whether the peer is currently online (from host-side status sync) |
+| `tailscaleIp` | `string \| null` | Device's 100.x tailnet IP |
+| `tailscaleHostname` | `string \| null` | Sanitized nickname used as the Tailscale hostname |
+| `tailscaleLastSeen` | `string \| null` | |
+| `tailscaleLastError` | `string \| null` | Best-effort error from the last tailscale command (device-reported) |
+
+Note: `tailscaleApplied` (whether the device confirmed it applied the last command) is tracked in the `devices` DB table but is not exposed in the `Device` TS interface — it is an internal backend field used to decide when to issue a new command.
 
 **`FleetDeviceListItem`** extends `Device`. List-row enriched with joins: `organizationName: string | null`, `latestOtaState: OtaState | null`, `latestDeploymentId: string | null`.
 
@@ -211,15 +219,37 @@ Added in the Fleet Management + OTA feature. Exported from `packages/types/src/i
 
 **`DeviceOtaStatus`** (standalone, no mixins). `id`, `deploymentId`, `deviceId`, `state: OtaState`, `error: string | null`, `attempt: number`, `notifiedAt`, `downloadedAt`, `installedAt`, `updatedAt`.
 
+**`AppSettings`**: Singleton global config returned by `GET /api/v1/super-admin/settings/tailscale`. Raw secrets are never returned — the API surfaces only masked booleans and non-secret strings.
+
+| Field | Type | Notes |
+|---|---|---|
+| `tailscaleAuthKeySet` | `boolean` | Whether a shared auth key is configured |
+| `tailscaleTailnet` | `string \| null` | The tailnet name (non-secret) |
+| `tailscaleOauthConfigured` | `boolean` | Whether an OAuth client is configured (enables per-device ephemeral keys) |
+| `tailscaleTag` | `string \| null` | Tag applied to OAuth-minted keys, e.g. `tag:fleet-phone` (non-secret) |
+| `tailscaleApkSet` | `boolean` | Whether a Tailscale APK is hosted for zero-touch auto-install |
+| `updatedAt` | `string \| null` | |
+
 #### Check-in Protocol Interfaces
 
 **`DeviceOtaReport`**: A device-driven OTA state transition reported on check-in. `deploymentId`, `state: OtaState`, `error?: string`.
 
-**`DeviceCheckinRequest`**: Device → backend (PUBLIC endpoint). `deviceUuid`, `deviceToken?` (omitted on first registration), `appVersion`, `versionCode`, `model?`, `manufacturer?`, `osVersion?`, `androidId?`, `pushToken?`, `isDeviceOwner: boolean`, `activeTrip: boolean`, `otaReports?: DeviceOtaReport[]`, `lastError?`.
+**`DeviceCommand`**: A one-shot remote command the backend hands a device on check-in (currently Tailscale up/down for remote ADB access). The device applies it via Device-Owner MDM controls and reports the result in `commandReports[]` on the next check-in.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `string` | Idempotency id; the device echoes it back in its report |
+| `type` | `'tailscale'` | |
+| `action` | `'up' \| 'down'` | |
+| `payload?` | `{ authKey, hostname, tailnet, tailscaleApk? }` | Present for `action = 'up'`. `tailscaleApk?: { url, sha256 }` — if set and Tailscale is not installed, the device silently installs this APK before configuring Tailscale |
+
+**`DeviceCommandReport`**: Result of applying a `DeviceCommand`, reported on the next check-in. `commandId: string`, `status: 'success' | 'failure'`, `error?: string`.
+
+**`DeviceCheckinRequest`**: Device → backend (PUBLIC endpoint). `deviceUuid`, `deviceToken?` (omitted on first registration), `appVersion`, `versionCode`, `model?`, `manufacturer?`, `osVersion?`, `androidId?`, `pushToken?`, `isDeviceOwner: boolean`, `activeTrip: boolean`, `otaReports?: DeviceOtaReport[]`, `commandReports?: DeviceCommandReport[]`, `lastError?`.
 
 **`PendingDeployment`**: The signed APK + install policy returned when an update is pending. `deploymentId`, `releaseId`, `version`, `versionCode`, `apkUrl` (signed time-limited download URL), `sha256`, `sizeBytes`, `installPolicy: { forceNow: boolean; mandatory: boolean }`.
 
-**`DeviceCheckinResponse`**: Backend → device. `deviceId`, `assignedOrgId: string | null`, `deviceTokenIssued?: string` (present ONLY on the first registration response — the raw HMAC token to persist), `pendingDeployment: PendingDeployment | null`.
+**`DeviceCheckinResponse`**: Backend → device. `deviceId`, `assignedOrgId: string | null`, `deviceTokenIssued?: string` (present ONLY on the first registration response — the raw HMAC token to persist), `pendingDeployment: PendingDeployment | null`, `pendingCommand: DeviceCommand | null` (a Tailscale up/down command to apply, or null).
 
 See [[database]] for the backing SQL enums and [[packages-validation]] for the corresponding Zod schemas.
 

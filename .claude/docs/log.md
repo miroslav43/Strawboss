@@ -39,3 +39,12 @@ Actions: `save` (update), `new doc` (created), `delete`, `rename`.
 [2026-06-22] save | `architecture.md` — Fleet/OTA subsystem (poll model, 8-state machine, deferred-until-idle)
 [2026-06-22] save | `scripts.md` + `infrastructure.md` — keystore guard (verify-keystore.sh, pre-commit, keystore-guard.yml), FIREBASE_SERVICE_ACCOUNT, apks/ storage
 [2026-06-22] save | `hot.md` — added Fleet/OTA + keystore invariant to "What's Changing Now"; migration range 00055
+[2026-06-22] save | `scripts.md` — mobile-build-local release auto-archives+registers APK (strawboss-v<ver>-vc<code>-<gitshort>.apk, prune-to-10) + scripts/10-fleet.sh (fleet:tailscale-sync/tunnel/status/enable-adb-tcp/install-sync-timer)
+[2026-06-22] save | `database.md` — migrations 00056 (devices.tailscale_*, app_settings singleton) + 00057 (app_settings oauth/tag/apk); range 00001–00057
+[2026-06-22] save | `packages-types.md` + `packages-validation.md` — DeviceCommand/DeviceCommandReport (+tailscaleApk), AppSettings, pendingCommand/commandReports, tailscale schemas
+[2026-06-22] save | `packages-api.md` — useSetDeviceTailscale/useTailscaleSettings/useUpdateTailscaleSettings/useUploadTailscaleApk + settings.tailscale key
+[2026-06-22] save | `backend.md` + `backend-agent.md` — tailscale command channel, PATCH devices/:id/tailscale, settings GET/PUT, tailscale-apk upload, mintEphemeralAuthKey (OAuth)
+[2026-06-22] save | `mobile.md` + `mobile-agent.md` — native setTailscaleManaged/clearTailscaleManaged/isPackageInstalled, handleTailscaleCommand, zero-touch Tailscale auto-install
+[2026-06-22] save | `admin-web.md` + `frontend-agent.md` — tailscale dot/toggle/settings (OAuth+APK upload), nickname-first, injection-safe tunnel cmd, APK filename
+[2026-06-22] save | `infrastructure.md` + `architecture.md` — Tailscale fleet remote access (tailnet, systemd timer, adb host req, ephemeral keys, app_settings secrets)
+[2026-06-22] save | `hot.md` — added Fleet Tailscale remote + release auto-register to "What's Changing Now"; migration range 00057

@@ -136,7 +136,8 @@ Enum validators:
 **Check-in (PUBLIC endpoint)**
 
 - `deviceOtaReportSchema`: `deploymentId` (UUID), `state` (otaState), optional `error` (max 4000).
-- `deviceCheckinSchema` / `DeviceCheckinInput`: `deviceUuid` (min 8 max 128), optional `deviceToken` (max 256), `appVersion` (min 1 max 64), `versionCode` (int nonneg), optional `model`/`manufacturer`/`osVersion`/`androidId` (max 128/128/64/128), optional `pushToken` (max 512), `isDeviceOwner` (boolean), `activeTrip` (boolean), optional `otaReports` (array max 50), optional `lastError` (max 4000).
+- `deviceCommandReportSchema`: `commandId` (UUID), `status` (enum `['success', 'failure']`), optional `error` (max 4000). Validates the result of a remote `DeviceCommand` (e.g. Tailscale up/down) reported on the next check-in.
+- `deviceCheckinSchema` / `DeviceCheckinInput`: `deviceUuid` (min 8 max 128), optional `deviceToken` (max 256), `appVersion` (min 1 max 64), `versionCode` (int nonneg), optional `model`/`manufacturer`/`osVersion`/`androidId` (max 128/128/64/128), optional `pushToken` (max 512), `isDeviceOwner` (boolean), `activeTrip` (boolean), optional `otaReports` (array max 50), optional `commandReports` (array of `deviceCommandReportSchema`, max 50), optional `lastError` (max 4000).
 
 **Super-admin: releases**
 
@@ -150,6 +151,11 @@ Enum validators:
 **Super-admin: device assignment / rename**
 
 - `updateDeviceSchema` / `UpdateDeviceInput`: optional `name` (min 1 max 120, nullable), optional `organizationId` (UUID, nullable).
+
+**Super-admin: Tailscale remote access**
+
+- `setDeviceTailscaleSchema` / `SetDeviceTailscaleInput`: `desired` (boolean). Toggles the desired Tailscale state for one device; the device applies it via MDM on the next check-in command.
+- `updateTailscaleSettingsSchema` / `UpdateTailscaleSettingsInput`: All fields optional/nullable. `authKey` (max 512, null = leave unchanged, `''` = clear), `tailnet` (max 200), `oauthClientId` (max 256), `oauthClientSecret` (max 512), `tag` (max 128 — applied to OAuth-minted keys, e.g. `tag:fleet-phone`).
 
 See [[packages-types]] for the corresponding TypeScript interfaces and [[database]] for the backing SQL schema.
 
