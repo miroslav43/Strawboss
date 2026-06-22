@@ -445,6 +445,16 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
       val admin = DeviceOwnerPolicies.admin(ctx)
       dpm.setAlwaysOnVpnPackage(admin, "com.tailscale.ipn", false)
       Log.i("StrawbossTS", "Tailscale managed config applied, always-on VPN set")
+      // Hide Tailscale from the launcher/app drawer so operators don't see or open it.
+      // The always-on VPN is enforced by the system framework and keeps running while the
+      // app is hidden. Best-effort: a hide failure must NOT fail the command (Tailscale is
+      // already connected; hiding is cosmetic).
+      try {
+        dpm.setApplicationHidden(admin, "com.tailscale.ipn", true)
+        Log.i("StrawbossTS", "Tailscale hidden from launcher")
+      } catch (h: Throwable) {
+        Log.w("StrawbossTS", "setApplicationHidden(true) failed: " + (h.message ?: h.toString()))
+      }
       promise.resolve(true)
     } catch (t: Throwable) {
       promise.reject("TS_ALWAYSON", t.message ?: t.toString())
@@ -460,6 +470,10 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
     try {
       val dpm = DeviceOwnerPolicies.dpm(ctx)
       val admin = DeviceOwnerPolicies.admin(ctx)
+      // Un-hide Tailscale first so its icon returns when the VPN is turned off.
+      try { dpm.setApplicationHidden(admin, "com.tailscale.ipn", false) } catch (h: Throwable) {
+        Log.w("StrawbossTS", "setApplicationHidden(false) failed: " + (h.message ?: h.toString()))
+      }
       dpm.setAlwaysOnVpnPackage(admin, null, false)
       val bundle = android.os.Bundle().apply {
         putBoolean("AlwaysOn.Enabled", false)
