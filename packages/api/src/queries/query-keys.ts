@@ -33,10 +33,12 @@ export const queryKeys = {
   fuelLogs: {
     all: ['fuelLogs'] as const,
     byMachine: (machineId: string) => ['fuelLogs', 'machine', machineId] as const,
+    adminList: (from: string, to: string) => ['fuelLogs', 'admin-list', from, to] as const,
   },
   consumableLogs: {
     all: ['consumableLogs'] as const,
     byMachine: (machineId: string) => ['consumableLogs', 'machine', machineId] as const,
+    adminList: (from: string, to: string) => ['consumableLogs', 'admin-list', from, to] as const,
   },
   documents: {
     all: ['documents'] as const,
