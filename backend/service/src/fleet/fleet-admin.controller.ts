@@ -24,12 +24,14 @@ import {
   createDeploymentSchema,
   setDeviceTailscaleSchema,
   updateTailscaleSettingsSchema,
+  createRemoteCommandSchema,
   type UpdateDeviceInput,
   type CreateReleaseInput,
   type UpdateReleaseInput,
   type CreateDeploymentInput,
   type SetDeviceTailscaleInput,
   type UpdateTailscaleSettingsInput,
+  type CreateRemoteCommandInput,
 } from '@strawboss/validation';
 import { FleetService } from './fleet.service';
 
@@ -232,5 +234,40 @@ export class FleetAdminController {
     }
 
     return this.fleetService.uploadTailscaleApk(file.file);
+  }
+
+  // ─── One-shot remote-debug command queue ──────────────────────────────────
+
+  /**
+   * POST /api/v1/super-admin/devices/:id/commands
+   * Enqueue a one-shot management/diagnostic command for a device.
+   * The command is delivered on the device's next check-in.
+   */
+  @Post('devices/:id/commands')
+  enqueueCommand(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(createRemoteCommandSchema)) dto: CreateRemoteCommandInput,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.fleetService.enqueueCommand(id, dto, user.id);
+  }
+
+  /**
+   * GET /api/v1/super-admin/devices/:id/commands
+   * List the one-shot command history for a device (newest-first, max 50).
+   */
+  @Get('devices/:id/commands')
+  listCommands(@Param('id') id: string) {
+    return this.fleetService.listCommands(id);
+  }
+
+  /**
+   * POST /api/v1/super-admin/devices/:id/reapply-tailscale
+   * Clear the Tailscale applied flag so the existing channel re-issues an 'up'
+   * on the next check-in (re-applies config for already-enrolled devices).
+   */
+  @Post('devices/:id/reapply-tailscale')
+  reapplyTailscale(@Param('id') id: string) {
+    return this.fleetService.reapplyTailscale(id);
   }
 }

@@ -33,6 +33,8 @@ interface DeviceOwnerNative {
   installApkSilent(path: string, expectedSha256: string, packageName: string): Promise<boolean>;
   setTailscaleManaged(authKey: string, hostname: string, tailnet: string): Promise<boolean>;
   clearTailscaleManaged(): Promise<boolean>;
+  deviceReboot(): Promise<boolean>;
+  getDeviceState(): Promise<Record<string, unknown>>;
 }
 
 const native: DeviceOwnerNative | null =
@@ -311,5 +313,46 @@ export async function clearTailscaleManaged(): Promise<boolean> {
       message: err instanceof Error ? err.message : String(err),
     });
     return false;
+  }
+}
+
+/**
+ * Reboot the device via the Device Owner API (Android API 27+).
+ *
+ * Resolves true immediately before the OS kills the process. Callers must
+ * persist any state they need before invoking this — mirrors the OTA install
+ * pattern where state is written BEFORE calling installApkSilent.
+ *
+ * Returns false (and logs) on iOS / Expo Go / API < 27 / non-device-owner.
+ */
+export async function deviceReboot(): Promise<boolean> {
+  if (!native?.deviceReboot) return false;
+  try {
+    return await native.deviceReboot();
+  } catch (err) {
+    mobileLogger.warn('deviceReboot failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Gather a diagnostic snapshot of device state for the `report_state` remote
+ * command. Returns an empty object (never throws) when the native module is
+ * absent (iOS / Expo Go).
+ *
+ * Fields: batteryPct, isCharging, isDeviceOwner, tailscaleInstalled,
+ *         installedPackageCount, appVersion, grantedPermissions[].
+ */
+export async function getDeviceState(): Promise<Record<string, unknown>> {
+  if (!native?.getDeviceState) return {};
+  try {
+    return await native.getDeviceState();
+  } catch (err) {
+    mobileLogger.warn('getDeviceState failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return {};
   }
 }

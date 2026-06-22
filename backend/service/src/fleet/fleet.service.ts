@@ -22,6 +22,9 @@ import { resolveUploadsRoot } from '../uploads/uploads.service';
 import { signUploadUrl, UPLOADS_URL_PREFIX } from '../uploads/uploads-signing';
 import type {
   DeviceCheckinResponse,
+  DeviceRemoteCommand,
+  DeviceRemoteCommandRecord,
+  DeviceRemoteCommandReport,
   PendingDeployment,
   OtaState,
   DeviceCommand,
@@ -35,6 +38,7 @@ import type {
   UpdateDeviceInput,
   SetDeviceTailscaleInput,
   UpdateTailscaleSettingsInput,
+  CreateRemoteCommandInput,
 } from '@strawboss/validation';
 import { FleetPushService } from './fleet-push.service';
 import { QUEUE_OTA_DEPLOY } from '../jobs/queues';
@@ -64,6 +68,8 @@ const DEVICE_COLS = sql`
   tailscale_hostname      AS "tailscaleHostname",
   tailscale_last_seen     AS "tailscaleLastSeen",
   tailscale_last_error    AS "tailscaleLastError",
+  last_state              AS "lastState",
+  last_state_at           AS "lastStateAt",
   created_at              AS "createdAt",
   updated_at              AS "updatedAt",
   deleted_at              AS "deletedAt"
@@ -259,6 +265,7 @@ export class FleetService {
         deviceTokenIssued,
         pendingDeployment: null,
         pendingCommand: null,
+        pendingCommands: [],
       };
     }
 
@@ -280,11 +287,19 @@ export class FleetService {
       await this.applyCommandReports(deviceId, dto.commandReports);
     }
 
-    // 4. Compute pending deployment
+    // 4. Apply one-shot remote-debug command reports
+    if (dto.remoteCommandReports && dto.remoteCommandReports.length > 0) {
+      await this.applyRemoteCommandReports(deviceId, dto.remoteCommandReports);
+    }
+
+    // 5. Compute pending deployment
     const pendingDeployment = await this.computePendingDeployment(deviceId, dto.versionCode, orgId);
 
-    // 5. Compute pending Tailscale command
+    // 6. Compute pending Tailscale command
     const pendingCommand = await this.computePendingCommand(deviceId);
+
+    // 7. Compute pending one-shot remote-debug commands
+    const pendingCommands = await this.computePendingRemoteCommands(deviceId);
 
     return {
       deviceId,
@@ -292,6 +307,7 @@ export class FleetService {
       ...(deviceTokenIssued ? { deviceTokenIssued } : {}),
       pendingDeployment,
       pendingCommand,
+      pendingCommands,
     };
   }
 
@@ -358,6 +374,272 @@ export class FleetService {
         });
       }
     }
+  }
+
+  // ─── One-shot remote-debug command queue ─────────────────────────────────────
+
+  /**
+   * Apply device-reported results for one-shot remote-debug commands.
+   * On `report_state` success, also persists the gathered state snapshot to the device row.
+   */
+  private async applyRemoteCommandReports(
+    deviceId: string,
+    reports: DeviceRemoteCommandReport[],
+  ): Promise<void> {
+    const db = this.drizzleProvider.db;
+
+    for (const report of reports) {
+      const commandRows = await db.execute(
+        sql`SELECT id, command_type AS "commandType"
+            FROM device_remote_commands
+            WHERE id = ${report.commandId}::uuid
+              AND device_id = ${deviceId}::uuid
+            LIMIT 1`,
+      );
+      const commandRow = (commandRows as unknown as { id: string; commandType: string }[])[0];
+      if (!commandRow) continue;
+
+      if (report.status === 'success') {
+        await db.execute(
+          sql`UPDATE device_remote_commands
+              SET status       = 'completed',
+                  result       = ${report.result ? JSON.stringify(report.result) : null}::jsonb,
+                  completed_at = now(),
+                  updated_at   = now()
+              WHERE id = ${commandRow.id}::uuid`,
+        );
+
+        // For report_state: persist the gathered snapshot onto the device row
+        if (commandRow.commandType === 'report_state' && report.result) {
+          await db.execute(
+            sql`UPDATE devices
+                SET last_state    = ${JSON.stringify(report.result)}::jsonb,
+                    last_state_at = now(),
+                    updated_at    = now()
+                WHERE id = ${deviceId}::uuid`,
+          );
+          this.winston.log('flow', 'Device state snapshot recorded', {
+            context: 'FleetService',
+            deviceId,
+            commandId: commandRow.id,
+          });
+        }
+      } else {
+        await db.execute(
+          sql`UPDATE device_remote_commands
+              SET status       = 'failed',
+                  last_error   = ${report.error ?? 'unknown error'},
+                  completed_at = now(),
+                  updated_at   = now()
+              WHERE id = ${commandRow.id}::uuid`,
+        );
+        this.winston.warn('Remote command failed on device', {
+          context: 'FleetService',
+          deviceId,
+          commandId: commandRow.id,
+          commandType: commandRow.commandType,
+          error: report.error,
+        });
+      }
+    }
+  }
+
+  /**
+   * Return pending/sent one-shot remote-debug commands for the device (oldest-first, max 10).
+   * Marks newly-pending rows as 'sent' so we know they've been delivered at least once.
+   * Re-returns 'sent' commands each check-in — the device deduplicates by id.
+   * For `reinstall_apk`, resolves the releaseId to a fresh signed APK URL at delivery time.
+   */
+  private async computePendingRemoteCommands(deviceId: string): Promise<DeviceRemoteCommand[]> {
+    const db = this.drizzleProvider.db;
+
+    const rows = await db.execute(
+      sql`SELECT id,
+                 command_type AS "commandType",
+                 params,
+                 status
+          FROM device_remote_commands
+          WHERE device_id = ${deviceId}::uuid
+            AND status IN ('pending', 'sent')
+          ORDER BY created_at ASC
+          LIMIT 10`,
+    );
+
+    type CommandRow = {
+      id: string;
+      commandType: string;
+      params: Record<string, unknown> | null;
+      status: string;
+    };
+    const commandRows = rows as unknown as CommandRow[];
+    if (!commandRows.length) return [];
+
+    // Mark all currently-pending rows as 'sent' (idempotent for already-sent rows)
+    const pendingIds = commandRows.filter((r) => r.status === 'pending').map((r) => r.id);
+    if (pendingIds.length > 0) {
+      await db.execute(
+        sql`UPDATE device_remote_commands
+            SET status   = 'sent',
+                sent_at  = now(),
+                updated_at = now()
+            WHERE id = ANY(${`{${pendingIds.join(',')}}`}::uuid[])
+              AND status = 'pending'`,
+      );
+    }
+
+    // Build the DeviceRemoteCommand[] array
+    const commands: DeviceRemoteCommand[] = [];
+    for (const row of commandRows) {
+      if (row.commandType === 'reinstall_apk') {
+        // Resolve releaseId → fresh signed URL
+        const releaseId = row.params?.releaseId as string | undefined;
+        if (!releaseId) continue; // malformed — skip
+
+        const releaseRows = await db.execute(
+          sql`SELECT apk_key AS "apkKey", sha256
+              FROM app_releases
+              WHERE id = ${releaseId}::uuid AND deleted_at IS NULL
+              LIMIT 1`,
+        );
+        const release = (releaseRows as unknown as { apkKey: string; sha256: string }[])[0];
+        if (!release) continue; // release deleted — skip
+
+        commands.push({
+          id: row.id,
+          type: 'reinstall_apk',
+          params: {
+            packageName: 'com.strawboss.mobile',
+            apkUrl: this.signApkUrl(release.apkKey),
+            sha256: release.sha256,
+          },
+        });
+      } else {
+        commands.push({
+          id: row.id,
+          type: row.commandType as DeviceRemoteCommand['type'],
+          ...(row.params ? { params: row.params } : {}),
+        });
+      }
+    }
+
+    return commands;
+  }
+
+  /**
+   * Enqueue a one-shot remote-debug command for a device.
+   * Sends a best-effort FCM wake push so the device checks in promptly.
+   */
+  async enqueueCommand(
+    deviceId: string,
+    dto: CreateRemoteCommandInput,
+    createdBy: string,
+  ): Promise<DeviceRemoteCommandRecord> {
+    const db = this.drizzleProvider.db;
+
+    // 404 guard
+    await this.getDevice(deviceId);
+
+    const result = await db.execute(
+      sql`INSERT INTO device_remote_commands
+            (device_id, command_type, params, status, created_by)
+          VALUES (
+            ${deviceId}::uuid,
+            ${dto.type},
+            ${dto.params ? JSON.stringify(dto.params) : null}::jsonb,
+            'pending',
+            ${createdBy}::uuid
+          )
+          RETURNING
+            id,
+            device_id      AS "deviceId",
+            command_type   AS "type",
+            params,
+            status,
+            result,
+            last_error     AS "lastError",
+            sent_at        AS "sentAt",
+            completed_at   AS "completedAt",
+            created_by     AS "createdBy",
+            created_at     AS "createdAt",
+            updated_at     AS "updatedAt"`,
+    );
+    const record = (result as unknown as DeviceRemoteCommandRecord[])[0];
+
+    this.winston.log('flow', 'Remote command enqueued', {
+      context: 'FleetService',
+      deviceId,
+      commandId: record.id,
+      commandType: dto.type,
+      createdBy,
+    });
+
+    // Best-effort FCM wake
+    const deviceRows = await db.execute(
+      sql`SELECT push_token AS "pushToken"
+          FROM devices
+          WHERE id = ${deviceId}::uuid AND deleted_at IS NULL
+          LIMIT 1`,
+    );
+    const pushToken = (deviceRows as unknown as { pushToken: string | null }[])[0]?.pushToken;
+    if (pushToken) {
+      this.fleetPushService.sendOtaCheckinPush([pushToken], `remote-cmd`).catch(() => {});
+    }
+
+    return record;
+  }
+
+  /**
+   * List one-shot command history for a device (newest-first, max 50).
+   */
+  async listCommands(deviceId: string): Promise<DeviceRemoteCommandRecord[]> {
+    // 404 guard
+    await this.getDevice(deviceId);
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`SELECT
+            id,
+            device_id      AS "deviceId",
+            command_type   AS "type",
+            params,
+            status,
+            result,
+            last_error     AS "lastError",
+            sent_at        AS "sentAt",
+            completed_at   AS "completedAt",
+            created_by     AS "createdBy",
+            created_at     AS "createdAt",
+            updated_at     AS "updatedAt"
+          FROM device_remote_commands
+          WHERE device_id = ${deviceId}::uuid
+          ORDER BY created_at DESC
+          LIMIT 50`,
+    );
+    return result as unknown as DeviceRemoteCommandRecord[];
+  }
+
+  /**
+   * Re-issue the Tailscale 'up' command to a device by clearing the applied flag.
+   * The existing `computePendingCommand` will re-issue an 'up' on the next check-in.
+   */
+  async reapplyTailscale(deviceId: string): Promise<{ ok: boolean }> {
+    // 404 guard
+    await this.getDevice(deviceId);
+
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE devices
+          SET tailscale_applied              = false,
+              tailscale_pending_command_id   = NULL,
+              tailscale_pending_action       = NULL,
+              updated_at                     = now()
+          WHERE id = ${deviceId}::uuid`,
+    );
+
+    this.winston.log('flow', 'Tailscale reapply requested', {
+      context: 'FleetService',
+      deviceId,
+    });
+
+    return { ok: true };
   }
 
   private async computePendingCommand(deviceId: string): Promise<DeviceCommand | null> {
@@ -1127,7 +1409,7 @@ export class FleetService {
             ${dto.releaseId}::uuid,
             ${dto.targetKind}::ota_target_kind,
             ${dto.targetOrgId ?? null}::uuid,
-            ${dto.targetDeviceIds ? JSON.stringify(dto.targetDeviceIds.map((id) => id)) : null}::uuid[],
+            ${dto.targetDeviceIds ? `{${dto.targetDeviceIds.join(',')}}` : null}::uuid[],
             ${dto.scheduledAt ?? null},
             ${dto.forceNow ?? false},
             ${status}::ota_deployment_status,
@@ -1210,7 +1492,7 @@ export class FleetService {
       deviceQuery = sql`SELECT id, push_token, version_code FROM devices WHERE organization_id = ${dep.target_org_id}::uuid AND deleted_at IS NULL`;
     } else {
       // device_set
-      deviceQuery = sql`SELECT id, push_token, version_code FROM devices WHERE id = ANY(${JSON.stringify(dep.target_device_ids ?? [])}::uuid[]) AND deleted_at IS NULL`;
+      deviceQuery = sql`SELECT id, push_token, version_code FROM devices WHERE id = ANY(${`{${(dep.target_device_ids ?? []).join(',')}}`}::uuid[]) AND deleted_at IS NULL`;
     }
 
     const deviceRows = await db.execute(deviceQuery);

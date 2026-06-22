@@ -15,15 +15,35 @@ import {
   RefreshCw,
   Copy,
   Check,
+  Power,
+  FileDown,
+  PackageOpen,
+  Network,
+  Radio,
+  BatteryCharging,
+  Battery,
+  ShieldCheck,
+  Package,
+  Tag,
+  Lock,
 } from 'lucide-react';
 import {
   useDevice,
   useDeviceOtaStatus,
   useDeviceLogs,
   useSetDeviceTailscale,
+  useSendDeviceCommand,
+  useDeviceCommands,
+  useReapplyTailscale,
+  useReleases,
 } from '@strawboss/api';
 import type { DeviceOtaStatusWithVersion } from '@strawboss/api';
-import { OtaState } from '@strawboss/types';
+import { OtaState, ReleaseStatus } from '@strawboss/types';
+import type {
+  RemoteCommandStatus,
+  RemoteCommandType,
+  DeviceRemoteCommandRecord,
+} from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
@@ -454,6 +474,521 @@ function TailscalePanel({ device }: { device: ReturnType<typeof useDevice>['data
   );
 }
 
+// ── Remote panel ──────────────────────────────────────────────────────────────
+
+const CMD_STATUS_STYLES: Record<RemoteCommandStatus, string> = {
+  pending: 'bg-amber-100 text-amber-700',
+  sent: 'bg-amber-100 text-amber-700',
+  completed: 'bg-green-100 text-green-700',
+  failed: 'bg-red-100 text-red-700',
+};
+
+const CMD_STATUS_ICONS: Record<RemoteCommandStatus, React.ReactNode> = {
+  pending: <Clock className="h-3 w-3" />,
+  sent: <Radio className="h-3 w-3" />,
+  completed: <CheckCircle2 className="h-3 w-3" />,
+  failed: <XCircle className="h-3 w-3" />,
+};
+
+function CommandStatusBadge({ status }: { status: RemoteCommandStatus }) {
+  const { t } = useI18n();
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${CMD_STATUS_STYLES[status]}`}
+    >
+      {CMD_STATUS_ICONS[status]}
+      {t(`superAdmin.devices.remote.status${status.charAt(0).toUpperCase()}${status.slice(1)}`)}
+    </span>
+  );
+}
+
+function CommandHistoryTable({
+  records,
+  isLoading,
+}: {
+  records: DeviceRemoteCommandRecord[];
+  isLoading: boolean;
+}) {
+  const { t } = useI18n();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-6 text-sm text-neutral-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {t('superAdmin.devices.remote.historyLoading')}
+      </div>
+    );
+  }
+
+  if (records.length === 0) {
+    return (
+      <p className="py-6 text-center text-sm text-neutral-400">
+        {t('superAdmin.devices.remote.historyEmpty')}
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-neutral-200">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-xs font-medium text-neutral-500">
+            <th className="px-4 py-2.5">{t('superAdmin.devices.remote.historyColType')}</th>
+            <th className="px-4 py-2.5">{t('superAdmin.devices.remote.historyColStatus')}</th>
+            <th className="px-4 py-2.5">{t('superAdmin.devices.remote.historyColSent')}</th>
+            <th className="px-4 py-2.5">{t('superAdmin.devices.remote.historyColCompleted')}</th>
+            <th className="px-4 py-2.5">{t('superAdmin.devices.remote.historyColError')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-neutral-100 bg-white">
+          {records.map((rec) => (
+            <tr key={rec.id} className="hover:bg-neutral-50">
+              <td className="px-4 py-2.5">
+                <span className="font-medium text-neutral-800">
+                  {t(`superAdmin.devices.remote.commandType.${rec.type}`)}
+                </span>
+                {rec.params && rec.type === 'reinstall_apk' && !!rec.params.releaseId && (
+                  <p className="mt-0.5 font-mono text-xs text-neutral-400">
+                    {String(rec.params.releaseId).slice(0, 8)}…
+                  </p>
+                )}
+              </td>
+              <td className="px-4 py-2.5">
+                <CommandStatusBadge status={rec.status} />
+              </td>
+              <td className="px-4 py-2.5 text-xs text-neutral-500">
+                {rec.sentAt
+                  ? new Date(rec.sentAt).toLocaleString('ro-RO', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })
+                  : '—'}
+              </td>
+              <td className="px-4 py-2.5 text-xs text-neutral-500">
+                {rec.completedAt
+                  ? new Date(rec.completedAt).toLocaleString('ro-RO', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })
+                  : '—'}
+              </td>
+              <td className="px-4 py-2.5">
+                {rec.lastError ? (
+                  <span className="text-xs text-red-600" title={rec.lastError}>
+                    {rec.lastError.length > 60 ? `${rec.lastError.slice(0, 60)}…` : rec.lastError}
+                  </span>
+                ) : (
+                  <span className="text-neutral-300">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Simple inline toast shown briefly after queuing a command. */
+function InlineToast({
+  message,
+  kind,
+  onDismiss,
+}: {
+  message: string;
+  kind: 'success' | 'error';
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${
+        kind === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+      }`}
+    >
+      {kind === 'success' ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+      ) : (
+        <XCircle className="h-4 w-4 shrink-0 text-red-600" />
+      )}
+      <span className="flex-1">{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="text-xs opacity-60 hover:opacity-100"
+        aria-label="Dismiss"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/** Inline confirm dialog (no modal dependency). */
+function ConfirmInline({
+  title,
+  body,
+  onConfirm,
+  onCancel,
+  isPending,
+}: {
+  title: string;
+  body: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+      <p className="font-medium text-amber-900">{title}</p>
+      <p className="mt-1 text-sm text-amber-700">{body}</p>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isPending}
+          className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+        >
+          {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {t('superAdmin.devices.remote.confirm')}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isPending}
+          className="rounded-lg border border-neutral-200 px-4 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+        >
+          {t('superAdmin.devices.remote.cancel')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type ConfirmKind = 'reboot' | 'reinstall' | null;
+
+function RemotePanel({ device }: { device: ReturnType<typeof useDevice>['data'] }) {
+  const { t } = useI18n();
+
+  const sendCommand = useSendDeviceCommand(apiClient);
+  const reapplyTs = useReapplyTailscale(apiClient);
+  const { data: commands = [], isLoading: cmdLoading } = useDeviceCommands(
+    apiClient,
+    device?.id ?? '',
+  );
+  const { data: releases = [] } = useReleases(apiClient);
+
+  const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
+  const [selectedReleaseId, setSelectedReleaseId] = useState('');
+  const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
+
+  if (!device) return null;
+
+  const publishedReleases = releases.filter((r) => r.status === ReleaseStatus.published);
+
+  const showToast = (message: string, kind: 'success' | 'error') => {
+    setToast({ message, kind });
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  const queueCommand = (type: RemoteCommandType, params?: Record<string, unknown>) => {
+    sendCommand.mutate(
+      { id: device.id, command: { type, params } },
+      {
+        onSuccess: () => showToast(t('superAdmin.devices.remote.queued'), 'success'),
+        onError: () => showToast(t('superAdmin.devices.remote.queueFailed'), 'error'),
+      },
+    );
+  };
+
+  const handleReboot = () => setConfirmKind('reboot');
+  const handleRebootConfirm = () => {
+    queueCommand('reboot');
+    setConfirmKind(null);
+  };
+
+  const handleFetchLogs = () => queueCommand('fetch_logs');
+
+  const handleReinstallApk = () => {
+    if (!selectedReleaseId) return;
+    setConfirmKind('reinstall');
+  };
+  const handleReinstallConfirm = () => {
+    queueCommand('reinstall_apk', { releaseId: selectedReleaseId });
+    setConfirmKind(null);
+  };
+
+  const handleReapplyTailscale = () => {
+    reapplyTs.mutate(device.id, {
+      onSuccess: () => showToast(t('superAdmin.devices.remote.queued'), 'success'),
+      onError: () => showToast(t('superAdmin.devices.remote.queueFailed'), 'error'),
+    });
+  };
+
+  const handleRefreshState = () => queueCommand('report_state');
+
+  const isBusy = sendCommand.isPending || reapplyTs.isPending;
+
+  const { lastState, lastStateAt } = device;
+
+  const relativeTime = (iso: string) => {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return '< 1 min ago';
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH} h ago`;
+    return `${Math.floor(diffH / 24)} d ago`;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Toast */}
+      {toast && (
+        <InlineToast message={toast.message} kind={toast.kind} onDismiss={() => setToast(null)} />
+      )}
+
+      {/* Confirm dialogs */}
+      {confirmKind === 'reboot' && (
+        <ConfirmInline
+          title={t('superAdmin.devices.remote.rebootConfirmTitle')}
+          body={t('superAdmin.devices.remote.rebootConfirmBody')}
+          onConfirm={handleRebootConfirm}
+          onCancel={() => setConfirmKind(null)}
+          isPending={isBusy}
+        />
+      )}
+      {confirmKind === 'reinstall' && (
+        <ConfirmInline
+          title={t('superAdmin.devices.remote.reinstallConfirmTitle')}
+          body={t('superAdmin.devices.remote.reinstallConfirmBody')}
+          onConfirm={handleReinstallConfirm}
+          onCancel={() => setConfirmKind(null)}
+          isPending={isBusy}
+        />
+      )}
+
+      {/* ── Actions ── */}
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          {t('superAdmin.devices.remote.actionsTitle')}
+        </h3>
+        <div className="flex flex-wrap gap-3">
+          {/* Reboot */}
+          <button
+            type="button"
+            onClick={handleReboot}
+            disabled={isBusy}
+            className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+          >
+            <Power className="h-4 w-4" />
+            {t('superAdmin.devices.remote.reboot')}
+          </button>
+
+          {/* Fetch logs */}
+          <button
+            type="button"
+            onClick={handleFetchLogs}
+            disabled={isBusy}
+            className="flex items-center gap-2 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          >
+            <FileDown className="h-4 w-4" />
+            {t('superAdmin.devices.remote.fetchLogs')}
+          </button>
+
+          {/* Reinstall APK */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedReleaseId}
+              onChange={(e) => setSelectedReleaseId(e.target.value)}
+              className="rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 focus:border-neutral-400 focus:outline-none"
+              aria-label={t('superAdmin.devices.remote.releaseLabel')}
+            >
+              <option value="">{t('superAdmin.devices.remote.selectRelease')}</option>
+              {publishedReleases.length === 0 ? (
+                <option disabled value="">
+                  {t('superAdmin.devices.remote.noPublishedReleases')}
+                </option>
+              ) : (
+                publishedReleases.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.version} (v{r.versionCode})
+                  </option>
+                ))
+              )}
+            </select>
+            <button
+              type="button"
+              onClick={handleReinstallApk}
+              disabled={isBusy || !selectedReleaseId}
+              className="flex items-center gap-2 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              <PackageOpen className="h-4 w-4" />
+              {t('superAdmin.devices.remote.reinstallApk')}
+            </button>
+          </div>
+
+          {/* Re-apply Tailscale */}
+          <button
+            type="button"
+            onClick={handleReapplyTailscale}
+            disabled={isBusy}
+            className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+          >
+            <Network className="h-4 w-4" />
+            {t('superAdmin.devices.remote.reapplyTailscale')}
+          </button>
+
+          {/* Refresh state */}
+          <button
+            type="button"
+            onClick={handleRefreshState}
+            disabled={isBusy}
+            className="flex items-center gap-2 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${isBusy ? 'animate-spin' : ''}`} />
+            {t('superAdmin.devices.remote.refreshState')}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Device state snapshot ── */}
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+            {t('superAdmin.devices.remote.stateTitle')}
+          </h3>
+          {lastStateAt && (
+            <span className="text-xs text-neutral-400">
+              {t('superAdmin.devices.remote.stateAt')}: {relativeTime(lastStateAt)}
+            </span>
+          )}
+        </div>
+
+        {!lastState ? (
+          <p className="text-sm text-neutral-400">
+            {t('superAdmin.devices.remote.stateNoSnapshot')}
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* Battery */}
+            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+              {lastState.isCharging ? (
+                <BatteryCharging className="h-4 w-4 shrink-0 text-green-600" />
+              ) : (
+                <Battery className="h-4 w-4 shrink-0 text-neutral-500" />
+              )}
+              <div>
+                <p className="text-xs text-neutral-400">
+                  {t('superAdmin.devices.remote.stateBattery')}
+                </p>
+                <p className="text-sm font-medium text-neutral-800">
+                  {lastState.batteryPct != null ? `${lastState.batteryPct}%` : '—'}
+                  {lastState.isCharging && (
+                    <span className="ml-2 text-xs text-green-600">
+                      {t('superAdmin.devices.remote.stateCharging')}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Device Owner */}
+            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+              <ShieldCheck
+                className={`h-4 w-4 shrink-0 ${lastState.isDeviceOwner ? 'text-green-600' : 'text-neutral-400'}`}
+              />
+              <div>
+                <p className="text-xs text-neutral-400">
+                  {t('superAdmin.devices.remote.stateDeviceOwner')}
+                </p>
+                <p className="text-sm font-medium text-neutral-800">
+                  {lastState.isDeviceOwner ? t('common.yes') : t('common.no')}
+                </p>
+              </div>
+            </div>
+
+            {/* Tailscale installed */}
+            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+              <Network
+                className={`h-4 w-4 shrink-0 ${lastState.tailscaleInstalled ? 'text-teal-600' : 'text-neutral-400'}`}
+              />
+              <div>
+                <p className="text-xs text-neutral-400">
+                  {t('superAdmin.devices.remote.stateTailscaleInstalled')}
+                </p>
+                <p className="text-sm font-medium text-neutral-800">
+                  {lastState.tailscaleInstalled ? t('common.yes') : t('common.no')}
+                </p>
+              </div>
+            </div>
+
+            {/* Package count */}
+            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+              <Package className="h-4 w-4 shrink-0 text-neutral-500" />
+              <div>
+                <p className="text-xs text-neutral-400">
+                  {t('superAdmin.devices.remote.statePackageCount')}
+                </p>
+                <p className="text-sm font-medium text-neutral-800">
+                  {lastState.installedPackageCount ?? '—'}
+                </p>
+              </div>
+            </div>
+
+            {/* App version */}
+            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+              <Tag className="h-4 w-4 shrink-0 text-neutral-500" />
+              <div>
+                <p className="text-xs text-neutral-400">
+                  {t('superAdmin.devices.remote.stateAppVersion')}
+                </p>
+                <p className="text-sm font-medium text-neutral-800">
+                  {lastState.appVersion ?? '—'}
+                </p>
+              </div>
+            </div>
+
+            {/* Granted permissions */}
+            <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3 sm:col-span-2">
+              <div className="mb-2 flex items-center gap-2">
+                <Lock className="h-4 w-4 shrink-0 text-neutral-500" />
+                <p className="text-xs text-neutral-400">
+                  {t('superAdmin.devices.remote.statePermissions')}
+                </p>
+              </div>
+              {lastState.grantedPermissions.length === 0 ? (
+                <p className="text-sm text-neutral-400">
+                  {t('superAdmin.devices.remote.statePermissionsNone')}
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {lastState.grantedPermissions.map((perm) => (
+                    <span
+                      key={perm}
+                      className="rounded-full bg-neutral-200 px-2 py-0.5 font-mono text-xs text-neutral-700"
+                    >
+                      {perm.replace('android.permission.', '')}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Command history ── */}
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          {t('superAdmin.devices.remote.historyTitle')}
+        </h3>
+        <CommandHistoryTable records={commands} isLoading={cmdLoading} />
+      </div>
+    </div>
+  );
+}
+
 // ── Info row ──────────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -469,7 +1004,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-type Tab = 'ota' | 'logs' | 'tailscale';
+type Tab = 'ota' | 'logs' | 'tailscale' | 'remote';
 
 export default function DeviceDetailPage() {
   const { t } = useI18n();
@@ -658,7 +1193,7 @@ export default function DeviceDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 rounded-xl border border-neutral-200 bg-neutral-100 p-1">
-        {(['ota', 'logs', 'tailscale'] as Tab[]).map((tab) => (
+        {(['ota', 'logs', 'tailscale', 'remote'] as Tab[]).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -678,6 +1213,7 @@ export default function DeviceDetailPage() {
       {activeTab === 'ota' && <OtaTimeline entries={otaEntries} isLoading={otaLoading} />}
       {activeTab === 'logs' && <LogViewer deviceId={id} />}
       {activeTab === 'tailscale' && <TailscalePanel device={device} />}
+      {activeTab === 'remote' && <RemotePanel device={device} />}
     </div>
   );
 }

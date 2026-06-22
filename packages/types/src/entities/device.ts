@@ -79,6 +79,20 @@ export interface Device extends Timestamps, SoftDelete {
   tailscaleLastSeen: string | null;
   /** Best-effort reason the last tailscale command failed (device-reported). */
   tailscaleLastError: string | null;
+  /** Latest device-reported state snapshot (from a `report_state` remote command). */
+  lastState: DeviceState | null;
+  lastStateAt: string | null;
+}
+
+/** A device-reported diagnostic snapshot (gathered by the `report_state` remote command). */
+export interface DeviceState {
+  batteryPct: number | null;
+  isCharging: boolean | null;
+  isDeviceOwner: boolean;
+  tailscaleInstalled: boolean;
+  installedPackageCount: number | null;
+  appVersion: string | null;
+  grantedPermissions: string[];
 }
 
 /** Singleton global config the super-admin edits (e.g. the Tailscale auth key).
@@ -186,6 +200,42 @@ export interface DeviceCommandReport {
   error?: string;
 }
 
+// ── Tier-1 one-shot remote-debug command queue (separate from the Tailscale channel) ─────
+
+export type RemoteCommandType = 'reboot' | 'fetch_logs' | 'reinstall_apk' | 'report_state';
+export type RemoteCommandStatus = 'pending' | 'sent' | 'completed' | 'failed';
+
+/** A one-shot management/diagnostic command handed to a device on check-in. */
+export interface DeviceRemoteCommand {
+  id: string;
+  type: RemoteCommandType;
+  /** Type-specific params: reinstall_apk → {packageName,apkUrl,sha256}; fetch_logs → {date?}. */
+  params?: Record<string, unknown>;
+}
+
+/** Device → backend result for a one-shot command. */
+export interface DeviceRemoteCommandReport {
+  commandId: string;
+  status: 'success' | 'failure';
+  /** For report_state, the gathered DeviceState; other commands may return small info. */
+  result?: Record<string, unknown>;
+  error?: string;
+}
+
+/** A row of the one-shot command history (super-admin view). */
+export interface DeviceRemoteCommandRecord extends Timestamps {
+  id: string;
+  deviceId: string;
+  type: RemoteCommandType;
+  params: Record<string, unknown> | null;
+  status: RemoteCommandStatus;
+  result: Record<string, unknown> | null;
+  lastError: string | null;
+  sentAt: string | null;
+  completedAt: string | null;
+  createdBy: string | null;
+}
+
 /** Device → backend. Public endpoint; `deviceToken` proves identity after the first
  * (registration) check-in, which omits it and receives `deviceTokenIssued` once. */
 export interface DeviceCheckinRequest {
@@ -203,6 +253,8 @@ export interface DeviceCheckinRequest {
   otaReports?: DeviceOtaReport[];
   /** Results of remote commands (e.g. Tailscale up/down) applied since the last check-in. */
   commandReports?: DeviceCommandReport[];
+  /** Results of one-shot remote-debug commands (reboot/fetch_logs/reinstall_apk/report_state). */
+  remoteCommandReports?: DeviceRemoteCommandReport[];
   lastError?: string;
 }
 
@@ -231,4 +283,6 @@ export interface DeviceCheckinResponse {
   pendingDeployment: PendingDeployment | null;
   /** A remote command to apply now (Tailscale up/down), or null. */
   pendingCommand: DeviceCommand | null;
+  /** One-shot remote-debug commands to run now (deduped on the device by id). */
+  pendingCommands: DeviceRemoteCommand[];
 }

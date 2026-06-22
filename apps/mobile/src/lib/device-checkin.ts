@@ -25,6 +25,8 @@ import type {
   DeviceCommand,
   DeviceCommandReport,
   DeviceOtaReport,
+  DeviceRemoteCommand,
+  DeviceRemoteCommandReport,
   OtaState,
   PendingDeployment,
 } from '@strawboss/types';
@@ -36,7 +38,11 @@ import {
   installApkSilent,
   setTailscaleManaged,
   clearTailscaleManaged,
+  deviceReboot,
+  getDeviceState,
 } from './device-owner';
+import { uploadTodayMobileLogs } from '../sync/mobile-log-upload';
+import { mobileApiClient } from './api-client';
 import { getDatabase } from './storage';
 import { TripsRepo } from '../db/trips-repo';
 import { mobileLogger } from './logger';
@@ -62,6 +68,21 @@ const COMMAND_REPORTS_KEY = 'strawboss.command_reports';
  * Used to skip a redundant native call while still reporting success.
  */
 const TAILSCALE_APPLIED_STATE_KEY = 'strawboss.tailscale_state';
+
+/**
+ * JSON-serialised array of DeviceRemoteCommandReport objects awaiting delivery.
+ * Written after each remote-debug command completes; cleared after a successful POST.
+ */
+const REMOTE_COMMAND_REPORTS_KEY = 'strawboss.remote_command_reports';
+
+/**
+ * JSON-serialised array of command id strings (capped at MAX_EXECUTED_IDS).
+ * Prevents re-execution of a command if the server re-delivers it.
+ */
+const EXECUTED_COMMAND_IDS_KEY = 'strawboss.executed_remote_command_ids';
+
+/** Maximum number of executed command ids to retain (rolling). */
+const MAX_EXECUTED_IDS = 100;
 
 const MAX_INSTALL_ATTEMPTS = 3;
 
@@ -221,6 +242,69 @@ async function writeTailscaleAppliedState(state: 'up' | 'down'): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Remote command report queue — mirrors the commandReports pattern
+// ---------------------------------------------------------------------------
+
+async function readRemoteCommandReports(): Promise<DeviceRemoteCommandReport[]> {
+  try {
+    const raw = await SecureStore.getItemAsync(REMOTE_COMMAND_REPORTS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as DeviceRemoteCommandReport[];
+  } catch {
+    return [];
+  }
+}
+
+async function appendRemoteCommandReport(report: DeviceRemoteCommandReport): Promise<void> {
+  try {
+    const existing = await readRemoteCommandReports();
+    // Replace any prior report for the same commandId (idempotent).
+    const filtered = existing.filter((r) => r.commandId !== report.commandId);
+    await SecureStore.setItemAsync(
+      REMOTE_COMMAND_REPORTS_KEY,
+      JSON.stringify([...filtered, report]),
+    );
+  } catch {
+    // Non-critical — worst case the server doesn't hear back until next check-in
+  }
+}
+
+async function clearRemoteCommandReports(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(REMOTE_COMMAND_REPORTS_KEY);
+  } catch {
+    // Non-critical
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Executed remote command ids — dedup so each command runs at most once
+// ---------------------------------------------------------------------------
+
+async function readExecutedCommandIds(): Promise<Set<string>> {
+  try {
+    const raw = await SecureStore.getItemAsync(EXECUTED_COMMAND_IDS_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+async function markCommandExecuted(commandId: string): Promise<void> {
+  try {
+    const existing = await readExecutedCommandIds();
+    existing.add(commandId);
+    // Cap to MAX_EXECUTED_IDS — keep the most recent entries (array tail = newest).
+    const asArray = Array.from(existing);
+    const capped = asArray.slice(Math.max(0, asArray.length - MAX_EXECUTED_IDS));
+    await SecureStore.setItemAsync(EXECUTED_COMMAND_IDS_KEY, JSON.stringify(capped));
+  } catch {
+    // Non-critical
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Tailscale command handler
 // ---------------------------------------------------------------------------
 
@@ -331,6 +415,127 @@ async function handleTailscaleCommand(command: DeviceCommand): Promise<void> {
     ...(errorMsg && !success ? { error: errorMsg } : {}),
   };
   await appendCommandReport(report);
+}
+
+// ---------------------------------------------------------------------------
+// Remote-debug command dispatcher
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute one `DeviceRemoteCommand` received from the server.
+ * Defensive: never throws. Appends a DeviceRemoteCommandReport to the queue so
+ * the result is delivered on the next check-in.
+ *
+ * Idempotency: callers MUST check the executed-ids set before calling this.
+ */
+async function handleRemoteCommand(cmd: DeviceRemoteCommand): Promise<void> {
+  const commandId = cmd.id;
+  let success = false;
+  let result: Record<string, unknown> | undefined;
+  let errorMsg: string | undefined;
+
+  try {
+    switch (cmd.type) {
+      case 'report_state': {
+        const state = await getDeviceState();
+        // The native side returns the OS version; report the real APP version instead.
+        result = { ...state, appVersion: Constants.expoConfig?.version ?? null };
+        success = true;
+        mobileLogger.flow('Fleet: report_state command executed', { commandId });
+        break;
+      }
+
+      case 'fetch_logs': {
+        // Upload today's logs immediately (ignore optional date param — mobile
+        // logger only keeps today's file in-process; the server has older logs).
+        await uploadTodayMobileLogs(mobileApiClient);
+        success = true;
+        mobileLogger.flow('Fleet: fetch_logs command executed', { commandId });
+        break;
+      }
+
+      case 'reinstall_apk': {
+        const params = cmd.params ?? {};
+        const packageName = params.packageName as string | undefined;
+        const apkUrl = params.apkUrl as string | undefined;
+        const sha256 = params.sha256 as string | undefined;
+
+        if (!packageName || !apkUrl || !sha256) {
+          throw new Error('reinstall_apk: missing required params (packageName, apkUrl, sha256)');
+        }
+
+        const fullUrl = `${API_URL}${apkUrl}`;
+        const tempUri = `${FileSystem.documentDirectory ?? ''}reinstall-${commandId}.apk`;
+
+        mobileLogger.flow('Fleet: reinstall_apk downloading', { commandId, packageName });
+        const downloadResult = await FileSystem.downloadAsync(fullUrl, tempUri);
+
+        if (downloadResult.status !== 200) {
+          await FileSystem.deleteAsync(tempUri, { idempotent: true });
+          throw new Error(`APK download failed with status ${downloadResult.status}`);
+        }
+
+        mobileLogger.flow('Fleet: reinstall_apk installing', { commandId, packageName });
+        let installed = false;
+        try {
+          installed = await installApkSilent(downloadResult.uri, sha256, packageName);
+        } finally {
+          await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
+        }
+
+        if (!installed) {
+          throw new Error('installApkSilent returned false');
+        }
+
+        success = true;
+        mobileLogger.flow('Fleet: reinstall_apk installed', { commandId, packageName });
+        break;
+      }
+
+      case 'reboot': {
+        // Persist the report BEFORE rebooting — process is killed by the OS.
+        // The report will ship on the next boot's check-in (mirrors OTA install pattern).
+        await markCommandExecuted(commandId);
+        await appendRemoteCommandReport({ commandId, status: 'success' });
+        mobileLogger.flow('Fleet: reboot command — persisting report then rebooting', {
+          commandId,
+        });
+        const ok = await deviceReboot();
+        if (!ok) {
+          // Reboot not available (not device owner, or API < 27) — overwrite with failure.
+          await appendRemoteCommandReport({
+            commandId,
+            status: 'failure',
+            error: 'deviceReboot returned false (not device owner or API < 27)',
+          });
+        }
+        // Whether it succeeded or failed, don't fall through to the generic append below.
+        return;
+      }
+
+      default: {
+        throw new Error(
+          `Unknown remote command type: ${String((cmd as DeviceRemoteCommand).type)}`,
+        );
+      }
+    }
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    errorMsg = raw.slice(0, 300);
+    mobileLogger.warn('Fleet: remote command failed', {
+      commandId,
+      type: cmd.type,
+      error: errorMsg,
+    });
+  }
+
+  const report: DeviceRemoteCommandReport = {
+    commandId,
+    status: success ? 'success' : 'failure',
+    ...(result !== undefined ? { result } : {}),
+    ...(errorMsg && !success ? { error: errorMsg } : {}),
+  };
+  await appendRemoteCommandReport(report);
 }
 
 // ---------------------------------------------------------------------------
@@ -580,6 +785,9 @@ export function runDeviceCheckin(): Promise<void> {
       // Accumulate pending command reports (e.g. Tailscale up/down outcomes)
       const commandReports = await readCommandReports();
 
+      // Accumulate pending remote-debug command reports
+      const remoteCommandReports = await readRemoteCommandReports();
+
       const body: DeviceCheckinRequest = {
         deviceUuid,
         ...(deviceToken ? { deviceToken } : {}),
@@ -594,6 +802,7 @@ export function runDeviceCheckin(): Promise<void> {
         activeTrip: activeTripFlag,
         ...(otaReports.length > 0 ? { otaReports } : {}),
         ...(commandReports.length > 0 ? { commandReports } : {}),
+        ...(remoteCommandReports.length > 0 ? { remoteCommandReports } : {}),
       };
 
       mobileLogger.flow('Fleet: check-in start', { deviceUuid, appVersion, versionCode });
@@ -620,11 +829,17 @@ export function runDeviceCheckin(): Promise<void> {
         await clearCommandReports();
       }
 
+      // Clear sent remote-debug command reports now that they were delivered
+      if (remoteCommandReports.length > 0) {
+        await clearRemoteCommandReports();
+      }
+
       mobileLogger.flow('Fleet: check-in ok', {
         deviceId: response.deviceId,
         assignedOrgId: response.assignedOrgId,
         hasPendingDeployment: !!response.pendingDeployment,
         hasPendingCommand: !!response.pendingCommand,
+        pendingCommandCount: response.pendingCommands?.length ?? 0,
       });
 
       // Handle OTA deployment if one is pending
@@ -635,6 +850,28 @@ export function runDeviceCheckin(): Promise<void> {
       // Handle remote command if one is pending (currently: Tailscale up/down)
       if (response.pendingCommand?.type === 'tailscale') {
         await handleTailscaleCommand(response.pendingCommand);
+      }
+
+      // Handle one-shot remote-debug commands (reboot/fetch_logs/reinstall_apk/report_state).
+      // Dedup by commandId: if already executed, re-append the success report so the
+      // backend converges (idempotent delivery) but skip re-execution.
+      const pendingCommands: DeviceRemoteCommand[] = response.pendingCommands ?? [];
+      if (pendingCommands.length > 0) {
+        const executedIds = await readExecutedCommandIds();
+        for (const cmd of pendingCommands) {
+          if (executedIds.has(cmd.id)) {
+            // Already ran — re-queue a success report so the server sees ack.
+            await appendRemoteCommandReport({ commandId: cmd.id, status: 'success' });
+            mobileLogger.flow('Fleet: remote command already executed — re-acking', {
+              commandId: cmd.id,
+              type: cmd.type,
+            });
+          } else {
+            // Mark executed before dispatching (reboot kills the process mid-function).
+            await markCommandExecuted(cmd.id);
+            await handleRemoteCommand(cmd);
+          }
+        }
       }
     } catch (err) {
       // Check-in is fire-and-forget — log at warn but never propagate.

@@ -173,6 +173,9 @@ export {
   useTailscaleSettings,
   useUpdateTailscaleSettings,
   useUploadTailscaleApk,
+  useSendDeviceCommand,
+  useDeviceCommands,
+  useReapplyTailscale,
 } from './use-fleet.js';
 export type {
   DeviceLogFilters,
@@ -180,4 +183,5 @@ export type {
   DeviceLogResponse,
   DeviceOtaStatusWithVersion,
   UpdateTailscaleSettingsInput,
+  SendDeviceCommandInput,
 } from './use-fleet.js';

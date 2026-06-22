@@ -6,6 +6,8 @@ import type {
   OtaDeployment,
   DeviceOtaStatus,
   AppSettings,
+  DeviceRemoteCommandRecord,
+  RemoteCommandType,
 } from '@strawboss/types';
 import type {
   UpdateDeviceInput,
@@ -224,6 +226,59 @@ export function useUploadTailscaleApk(client: ApiClient) {
       client.upload<AppSettings>('/api/v1/super-admin/settings/tailscale-apk', formData),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings.tailscale() });
+    },
+  });
+}
+
+// ── Remote commands ───────────────────────────────────────────────────────────
+
+export interface SendDeviceCommandInput {
+  type: RemoteCommandType;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * POST a one-shot remote-debug command to a device. The command is queued server-side
+ * and delivered on the device's next check-in (≤60 s).
+ * Invalidates device detail + command history on success.
+ */
+export function useSendDeviceCommand(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, command }: { id: string; command: SendDeviceCommandInput }) =>
+      client.post<DeviceRemoteCommandRecord>(`/api/v1/super-admin/devices/${id}/commands`, command),
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.detail(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.commands(id) });
+    },
+  });
+}
+
+/**
+ * GET the command history for a device. Auto-refetches every 10 s so the status
+ * column updates as the device processes queued commands.
+ */
+export function useDeviceCommands(client: ApiClient, id: string) {
+  return useQuery({
+    queryKey: queryKeys.devices.commands(id),
+    queryFn: () =>
+      client.get<DeviceRemoteCommandRecord[]>(`/api/v1/super-admin/devices/${id}/commands`),
+    enabled: !!id,
+    refetchInterval: 10_000,
+  });
+}
+
+/**
+ * POST to re-apply Tailscale on a single device (forces a fresh auth-key issue + tailscale up).
+ * Invalidates device detail on success.
+ */
+export function useReapplyTailscale(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      client.post<{ ok: true }>(`/api/v1/super-admin/devices/${id}/reapply-tailscale`),
+    onSuccess: (_data, id) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.detail(id) });
     },
   });
 }

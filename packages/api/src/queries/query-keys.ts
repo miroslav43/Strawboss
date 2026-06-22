@@ -111,6 +111,7 @@ export const queryKeys = {
     otaStatus: (id: string) => ['devices', 'otaStatus', id] as const,
     logs: (id: string, filters?: Record<string, unknown>) =>
       ['devices', 'logs', id, filters] as const,
+    commands: (id: string) => ['devices', 'commands', id] as const,
   },
   releases: {
     all: ['releases'] as const,

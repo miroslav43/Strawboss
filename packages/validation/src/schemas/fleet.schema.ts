@@ -20,6 +20,34 @@ export const deviceCommandReportSchema = z.object({
   error: z.string().max(4000).optional(),
 });
 
+// One-shot remote-debug command queue (Tier 1).
+export const remoteCommandTypeSchema = z.enum([
+  'reboot',
+  'fetch_logs',
+  'reinstall_apk',
+  'report_state',
+]);
+
+export const deviceRemoteCommandReportSchema = z.object({
+  commandId: uuidSchema,
+  status: z.enum(['success', 'failure']),
+  result: z.record(z.unknown()).optional(),
+  error: z.string().max(4000).optional(),
+});
+
+/** Super-admin enqueues a one-shot command. `reinstall_apk` takes a releaseId (the backend
+ * resolves it to a fresh signed apkUrl + packageName + sha256 at delivery time). */
+export const createRemoteCommandSchema = z
+  .object({
+    type: remoteCommandTypeSchema,
+    params: z.record(z.unknown()).optional(),
+  })
+  .refine((c) => c.type !== 'reinstall_apk' || typeof c.params?.releaseId === 'string', {
+    message: 'reinstall_apk requires params.releaseId',
+    path: ['params'],
+  });
+export type CreateRemoteCommandInput = z.infer<typeof createRemoteCommandSchema>;
+
 export const deviceCheckinSchema = z.object({
   deviceUuid: z.string().min(8).max(128),
   deviceToken: z.string().max(256).optional(),
@@ -34,6 +62,7 @@ export const deviceCheckinSchema = z.object({
   activeTrip: z.boolean(),
   otaReports: z.array(deviceOtaReportSchema).max(50).optional(),
   commandReports: z.array(deviceCommandReportSchema).max(50).optional(),
+  remoteCommandReports: z.array(deviceRemoteCommandReportSchema).max(50).optional(),
   lastError: z.string().max(4000).optional(),
 });
 export type DeviceCheckinInput = z.infer<typeof deviceCheckinSchema>;
