@@ -447,7 +447,7 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
       Log.i("StrawbossTS", "Tailscale managed config applied, always-on VPN set")
       promise.resolve(true)
     } catch (t: Throwable) {
-      promise.reject("TS_ALWAYSON", "setAlwaysOnVpnPackage failed: ${t.message ?: t.toString()}")
+      promise.reject("TS_ALWAYSON", t.message ?: t.toString())
     }
   }
 

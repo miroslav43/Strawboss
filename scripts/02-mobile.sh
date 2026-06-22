@@ -97,6 +97,14 @@ cmd_mobile__build__local() {
   pnpm --filter @strawboss/ui-tokens build
   pnpm --filter @strawboss/api build
 
+  # Config-plugin .js files are NOT covered by tsc; a syntax error in them only surfaces as a
+  # cryptic `expo prebuild` failure. Validate them up front with node --check.
+  info "Validating config plugins (node --check)..."
+  for _plugin in "$mobile_dir"/plugins/*.js; do
+    [ -f "$_plugin" ] || continue
+    node --check "$_plugin" || { error "Config plugin syntax error: $_plugin"; exit 1; }
+  done
+
   info "expo prebuild --platform android..."
   # Use the workspace-local dotenv-cli explicitly: a system-wide python-dotenv on
   # PATH would otherwise be picked up by `pnpm exec dotenv` and reject `-e <file>`.
