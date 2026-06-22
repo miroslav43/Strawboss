@@ -15,6 +15,7 @@ import {
   Settings,
   Eye,
   EyeOff,
+  Upload,
 } from 'lucide-react';
 import {
   useDevices,
@@ -25,6 +26,7 @@ import {
   useSetDeviceTailscale,
   useTailscaleSettings,
   useUpdateTailscaleSettings,
+  useUploadTailscaleApk,
 } from '@strawboss/api';
 import type { FleetDeviceListItem, AppRelease } from '@strawboss/types';
 import { OtaState, OtaTargetKind, ReleaseStatus } from '@strawboss/types';
@@ -210,36 +212,82 @@ function TailscaleSettingsModal({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const { data: settings, isLoading } = useTailscaleSettings(apiClient);
   const updateSettings = useUpdateTailscaleSettings(apiClient);
+  const uploadApk = useUploadTailscaleApk(apiClient);
 
+  // Shared auth key
   const [authKey, setAuthKey] = useState('');
   const [clearKey, setClearKey] = useState(false);
-  const [tailnet, setTailnet] = useState('');
   const [showKey, setShowKey] = useState(false);
 
-  // Seed tailnet from loaded settings (once)
+  // Tailnet
+  const [tailnet, setTailnet] = useState('');
+
+  // OAuth client
+  const [oauthClientId, setOauthClientId] = useState('');
+  const [oauthClientSecret, setOauthClientSecret] = useState('');
+  const [showOauthSecret, setShowOauthSecret] = useState(false);
+  const [clearOauth, setClearOauth] = useState(false);
+
+  // Tag
+  const [tag, setTag] = useState('');
+
+  // APK upload
+  const [apkFile, setApkFile] = useState<File | null>(null);
+
+  // Seed text fields from loaded settings (once)
   const [seeded, setSeeded] = useState(false);
   if (settings && !seeded) {
     setTailnet(settings.tailscaleTailnet ?? '');
+    setTag(settings.tailscaleTag ?? '');
     setSeeded(true);
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: { authKey?: string | null; tailnet?: string | null } = {
+    const payload: {
+      authKey?: string | null;
+      tailnet?: string | null;
+      oauthClientId?: string | null;
+      oauthClientSecret?: string | null;
+      tag?: string | null;
+    } = {
       tailnet: tailnet.trim() || null,
+      tag: tag.trim() || null,
     };
+
+    // Auth key — omit if field is empty and not clearing
     if (clearKey) {
       payload.authKey = '';
     } else if (authKey.trim()) {
       payload.authKey = authKey.trim();
     }
-    // if authKey field is empty and clearKey is false → omit (keep existing)
+
+    // OAuth client — omit both if neither changed and not clearing
+    if (clearOauth) {
+      payload.oauthClientId = '';
+      payload.oauthClientSecret = '';
+    } else {
+      if (oauthClientId.trim()) payload.oauthClientId = oauthClientId.trim();
+      if (oauthClientSecret.trim()) payload.oauthClientSecret = oauthClientSecret.trim();
+    }
+
     updateSettings.mutate(payload, { onSuccess: () => onClose() });
+  };
+
+  const handleApkUpload = () => {
+    if (!apkFile) return;
+    const formData = new FormData();
+    formData.append('apk', apkFile);
+    uploadApk.mutate(formData, {
+      onSuccess: () => {
+        setApkFile(null);
+      },
+    });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
+      <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
           <h2 className="text-base font-semibold text-neutral-800">
             {t('superAdmin.devices.tailscale.settingsTitle')}
@@ -257,105 +305,250 @@ function TailscaleSettingsModal({ onClose }: { onClose: () => void }) {
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 p-6">
-            <p className="text-sm text-neutral-500">
-              {t('superAdmin.devices.tailscale.settingsSubtitle')}
-            </p>
-
-            {/* Key expiry warning */}
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <p className="text-xs text-amber-700">
-                {t('superAdmin.devices.tailscale.keyWarning')}
+          <div className="max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleSubmit} className="space-y-5 p-6">
+              <p className="text-sm text-neutral-500">
+                {t('superAdmin.devices.tailscale.settingsSubtitle')}
               </p>
-            </div>
 
-            {/* Auth key */}
-            <FormField label={t('superAdmin.devices.tailscale.authKeyLabel')}>
-              <div className="space-y-2">
-                <p className="text-xs text-neutral-500">
-                  {t('superAdmin.devices.tailscale.authKeyLabel')}:{' '}
+              {/* ── Shared auth key section ── */}
+              <div className="space-y-3 rounded-lg border border-neutral-200 p-4">
+                {/* Key expiry warning */}
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <p className="text-xs text-amber-700">
+                    {t('superAdmin.devices.tailscale.keyWarning')}
+                  </p>
+                </div>
+
+                <FormField label={t('superAdmin.devices.tailscale.authKeyLabel')}>
+                  <div className="space-y-2">
+                    <p className="text-xs text-neutral-500">
+                      {t('superAdmin.devices.tailscale.authKeyLabel')}:{' '}
+                      <span
+                        className={`font-medium ${settings?.tailscaleAuthKeySet ? 'text-green-700' : 'text-red-600'}`}
+                      >
+                        {settings?.tailscaleAuthKeySet
+                          ? t('superAdmin.devices.tailscale.authKeySet')
+                          : t('superAdmin.devices.tailscale.authKeyUnset')}
+                      </span>
+                    </p>
+                    <div className="relative">
+                      <input
+                        type={showKey ? 'text' : 'password'}
+                        value={authKey}
+                        onChange={(e) => setAuthKey(e.target.value)}
+                        disabled={clearKey}
+                        className={`${inputCls} pr-10`}
+                        placeholder={t('superAdmin.devices.tailscale.authKeyPlaceholder')}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowKey((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                        tabIndex={-1}
+                      >
+                        {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-600">
+                      <input
+                        type="checkbox"
+                        checked={clearKey}
+                        onChange={(e) => setClearKey(e.target.checked)}
+                        className="accent-red-600"
+                      />
+                      {t('superAdmin.devices.tailscale.authKeyClear')}
+                    </label>
+                    <p className="text-xs text-neutral-400">
+                      {t('superAdmin.devices.tailscale.authKeyClearHint')}
+                    </p>
+                  </div>
+                </FormField>
+              </div>
+
+              {/* ── Tailnet ── */}
+              <FormField label={t('superAdmin.devices.tailscale.tailnetLabel')}>
+                <input
+                  type="text"
+                  value={tailnet}
+                  onChange={(e) => setTailnet(e.target.value)}
+                  className={inputCls}
+                  placeholder={t('superAdmin.devices.tailscale.tailnetPlaceholder')}
+                />
+              </FormField>
+
+              {/* ── OAuth client section ── */}
+              <div className="space-y-3 rounded-lg border border-teal-100 bg-teal-50/30 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-teal-800">
+                    {t('superAdmin.devices.tailscale.oauthSectionTitle')}
+                  </p>
                   <span
-                    className={`font-medium ${settings?.tailscaleAuthKeySet ? 'text-green-700' : 'text-red-600'}`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      settings?.tailscaleOauthConfigured
+                        ? 'bg-teal-100 text-teal-700'
+                        : 'bg-neutral-100 text-neutral-500'
+                    }`}
                   >
-                    {settings?.tailscaleAuthKeySet
-                      ? t('superAdmin.devices.tailscale.authKeySet')
-                      : t('superAdmin.devices.tailscale.authKeyUnset')}
+                    {settings?.tailscaleOauthConfigured
+                      ? t('superAdmin.devices.tailscale.oauthConfigured')
+                      : t('superAdmin.devices.tailscale.oauthNotConfigured')}
                   </span>
+                </div>
+                <p className="text-xs text-teal-700">
+                  {t('superAdmin.devices.tailscale.oauthHint')}
                 </p>
-                <div className="relative">
+
+                <FormField label={t('superAdmin.devices.tailscale.oauthClientIdLabel')}>
                   <input
-                    type={showKey ? 'text' : 'password'}
-                    value={authKey}
-                    onChange={(e) => setAuthKey(e.target.value)}
-                    disabled={clearKey}
-                    className={`${inputCls} pr-10`}
-                    placeholder={t('superAdmin.devices.tailscale.authKeyPlaceholder')}
+                    type="text"
+                    value={oauthClientId}
+                    onChange={(e) => setOauthClientId(e.target.value)}
+                    disabled={clearOauth}
+                    className={inputCls}
+                    placeholder={t('superAdmin.devices.tailscale.oauthClientIdPlaceholder')}
                     autoComplete="off"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-                    tabIndex={-1}
-                  >
-                    {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
+                </FormField>
+
+                <FormField label={t('superAdmin.devices.tailscale.oauthClientSecretLabel')}>
+                  <div className="relative">
+                    <input
+                      type={showOauthSecret ? 'text' : 'password'}
+                      value={oauthClientSecret}
+                      onChange={(e) => setOauthClientSecret(e.target.value)}
+                      disabled={clearOauth}
+                      className={`${inputCls} pr-10`}
+                      placeholder={t('superAdmin.devices.tailscale.oauthClientSecretPlaceholder')}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowOauthSecret((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                      tabIndex={-1}
+                    >
+                      {showOauthSecret ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </FormField>
+
                 <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-600">
                   <input
                     type="checkbox"
-                    checked={clearKey}
-                    onChange={(e) => setClearKey(e.target.checked)}
+                    checked={clearOauth}
+                    onChange={(e) => setClearOauth(e.target.checked)}
                     className="accent-red-600"
                   />
-                  {t('superAdmin.devices.tailscale.authKeyClear')}
+                  {t('superAdmin.devices.tailscale.oauthClientIdClear')}
                 </label>
                 <p className="text-xs text-neutral-400">
-                  {t('superAdmin.devices.tailscale.authKeyClearHint')}
+                  {t('superAdmin.devices.tailscale.oauthClientIdClearHint')}
                 </p>
               </div>
-            </FormField>
 
-            {/* Tailnet */}
-            <FormField label={t('superAdmin.devices.tailscale.tailnetLabel')}>
-              <input
-                type="text"
-                value={tailnet}
-                onChange={(e) => setTailnet(e.target.value)}
-                className={inputCls}
-                placeholder={t('superAdmin.devices.tailscale.tailnetPlaceholder')}
-              />
-            </FormField>
+              {/* ── Tag ── */}
+              <FormField label={t('superAdmin.devices.tailscale.tagLabel')}>
+                <input
+                  type="text"
+                  value={tag}
+                  onChange={(e) => setTag(e.target.value)}
+                  className={inputCls}
+                  placeholder={t('superAdmin.devices.tailscale.tagPlaceholder')}
+                />
+                <p className="mt-1 text-xs text-neutral-400">
+                  {t('superAdmin.devices.tailscale.tagHint')}
+                </p>
+              </FormField>
 
-            {/* Last updated */}
-            {settings?.updatedAt && (
-              <p className="text-xs text-neutral-400">
-                {t('superAdmin.devices.tailscale.updatedAt')}:{' '}
-                {new Date(settings.updatedAt).toLocaleString('ro-RO', {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
+              {/* Last updated */}
+              {settings?.updatedAt && (
+                <p className="text-xs text-neutral-400">
+                  {t('superAdmin.devices.tailscale.updatedAt')}:{' '}
+                  {new Date(settings.updatedAt).toLocaleString('ro-RO', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </p>
+              )}
+
+              {updateSettings.isError && (
+                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                  {(updateSettings.error as Error)?.message ?? t('common.error')}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={onClose} className={cancelBtnCls}>
+                  {t('common.cancel')}
+                </button>
+                <button type="submit" disabled={updateSettings.isPending} className={submitBtnCls}>
+                  {updateSettings.isPending
+                    ? t('superAdmin.devices.tailscale.saving')
+                    : t('superAdmin.devices.tailscale.save')}
+                </button>
+              </div>
+            </form>
+
+            {/* ── Tailscale APK section (separate action) ── */}
+            <div className="space-y-3 border-t border-neutral-200 p-6">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-neutral-800">
+                  {t('superAdmin.devices.tailscale.apkSectionTitle')}
+                </p>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    settings?.tailscaleApkSet
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-neutral-100 text-neutral-500'
+                  }`}
+                >
+                  {settings?.tailscaleApkSet
+                    ? t('superAdmin.devices.tailscale.apkSet')
+                    : t('superAdmin.devices.tailscale.apkUnset')}
+                </span>
+              </div>
+              <p className="text-xs text-neutral-500">
+                {t('superAdmin.devices.tailscale.apkHint')}
               </p>
-            )}
 
-            {updateSettings.isError && (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-                {(updateSettings.error as Error)?.message ?? t('common.error')}
-              </p>
-            )}
+              <FormField label={t('superAdmin.devices.tailscale.apkFileLabel')}>
+                <input
+                  type="file"
+                  accept=".apk"
+                  onChange={(e) => setApkFile(e.target.files?.[0] ?? null)}
+                  className="block w-full text-sm text-neutral-600 file:mr-3 file:rounded-lg file:border file:border-neutral-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-neutral-700 hover:file:bg-neutral-50"
+                />
+              </FormField>
 
-            <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={onClose} className={cancelBtnCls}>
-                {t('common.cancel')}
-              </button>
-              <button type="submit" disabled={updateSettings.isPending} className={submitBtnCls}>
-                {updateSettings.isPending
-                  ? t('superAdmin.devices.tailscale.saving')
-                  : t('superAdmin.devices.tailscale.save')}
-              </button>
+              {uploadApk.isError && (
+                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                  {(uploadApk.error as Error)?.message ??
+                    t('superAdmin.devices.tailscale.apkUploadError')}
+                </p>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleApkUpload}
+                  disabled={!apkFile || uploadApk.isPending}
+                  className={submitBtnCls}
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploadApk.isPending
+                    ? t('superAdmin.devices.tailscale.apkUploading')
+                    : t('superAdmin.devices.tailscale.apkUploadButton')}
+                </button>
+              </div>
             </div>
-          </form>
+          </div>
         )}
       </div>
     </div>

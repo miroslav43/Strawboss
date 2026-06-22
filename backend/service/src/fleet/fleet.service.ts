@@ -350,31 +350,30 @@ export class FleetService {
       };
     }
 
-    // action === 'up' — need the auth key from app_settings
+    // action === 'up' — fetch all relevant settings from app_settings
     const settingsRows = await db.execute(
-      sql`SELECT tailscale_auth_key AS "tailscaleAuthKey", tailscale_tailnet AS "tailscaleTailnet"
+      sql`SELECT tailscale_auth_key            AS "tailscaleAuthKey",
+                 tailscale_tailnet             AS "tailscaleTailnet",
+                 tailscale_oauth_client_id     AS "tailscaleOauthClientId",
+                 tailscale_oauth_client_secret AS "tailscaleOauthClientSecret",
+                 tailscale_tag                 AS "tailscaleTag",
+                 tailscale_apk_key             AS "tailscaleApkKey",
+                 tailscale_apk_sha256          AS "tailscaleApkSha256"
           FROM app_settings
           WHERE id = true
           LIMIT 1`,
     );
     const settings = (
-      settingsRows as unknown as { tailscaleAuthKey: string | null; tailscaleTailnet: string }[]
+      settingsRows as unknown as {
+        tailscaleAuthKey: string | null;
+        tailscaleTailnet: string | null;
+        tailscaleOauthClientId: string | null;
+        tailscaleOauthClientSecret: string | null;
+        tailscaleTag: string | null;
+        tailscaleApkKey: string | null;
+        tailscaleApkSha256: string | null;
+      }[]
     )[0];
-
-    if (!settings?.tailscaleAuthKey) {
-      // No auth key configured — record error, don't issue command
-      await db.execute(
-        sql`UPDATE devices SET
-              tailscale_last_error = 'no Tailscale auth key configured',
-              updated_at           = now()
-            WHERE id = ${deviceId}::uuid`,
-      );
-      this.winston.warn('Cannot issue Tailscale up command — no auth key configured', {
-        context: 'FleetService',
-        deviceId,
-      });
-      return null;
-    }
 
     const hostname = this.sanitizeHostname(device.name, deviceId);
 
@@ -386,14 +385,72 @@ export class FleetService {
           WHERE id = ${deviceId}::uuid`,
     );
 
+    // Decide which auth key to use:
+    // Prefer OAuth-minted ephemeral keys; fall back to the shared key; error if neither.
+    let authKey: string | null = null;
+    const oauthConfigured =
+      settings?.tailscaleOauthClientId &&
+      settings.tailscaleOauthClientSecret &&
+      settings.tailscaleTag;
+
+    if (oauthConfigured) {
+      // Attempt to mint a single-use ephemeral key
+      authKey = await this.mintEphemeralAuthKey(
+        settings.tailscaleOauthClientId!,
+        settings.tailscaleOauthClientSecret!,
+        settings.tailscaleTag!,
+        hostname,
+      );
+      if (!authKey) {
+        // Minting failed — try shared key as fallback
+        this.winston.warn('OAuth minting failed; falling back to shared Tailscale auth key', {
+          context: 'FleetService',
+          deviceId,
+        });
+        authKey = settings?.tailscaleAuthKey ?? null;
+      }
+    } else {
+      // No OAuth configured — use shared key (existing behavior)
+      authKey = settings?.tailscaleAuthKey ?? null;
+    }
+
+    if (!authKey) {
+      // No usable auth key at all — record error, don't issue command
+      const errorMsg = oauthConfigured
+        ? 'Tailscale auth key minting failed and no shared key set'
+        : 'no Tailscale auth key configured';
+      await db.execute(
+        sql`UPDATE devices SET
+              tailscale_last_error = ${errorMsg},
+              updated_at           = now()
+            WHERE id = ${deviceId}::uuid`,
+      );
+      this.winston.warn('Cannot issue Tailscale up command', {
+        context: 'FleetService',
+        deviceId,
+        reason: errorMsg,
+      });
+      return null;
+    }
+
+    // Build the APK payload if a Tailscale APK is hosted
+    const tailscaleApk =
+      settings?.tailscaleApkKey && settings.tailscaleApkSha256
+        ? {
+            url: this.signApkUrl(settings.tailscaleApkKey),
+            sha256: settings.tailscaleApkSha256,
+          }
+        : undefined;
+
     return {
       id: randomUUID(),
       type: 'tailscale',
       action: 'up',
       payload: {
-        authKey: settings.tailscaleAuthKey,
+        authKey,
         hostname,
-        tailnet: settings.tailscaleTailnet ?? 'tail2b4c34.ts.net',
+        tailnet: settings?.tailscaleTailnet ?? 'tail2b4c34.ts.net',
+        ...(tailscaleApk ? { tailscaleApk } : {}),
       },
     };
   }
@@ -1120,21 +1177,31 @@ export class FleetService {
   private maskSettings(row: {
     tailscaleAuthKey: string | null;
     tailscaleTailnet: string | null;
+    tailscaleOauthClientId: string | null;
+    tailscaleOauthClientSecret: string | null;
+    tailscaleTag: string | null;
+    tailscaleApkKey: string | null;
     updatedAt: string | null;
   }): AppSettings {
     return {
-      tailscaleAuthKey: null, // NEVER return the raw key
       tailscaleAuthKeySet: !!row.tailscaleAuthKey,
       tailscaleTailnet: row.tailscaleTailnet,
+      tailscaleOauthConfigured: !!(row.tailscaleOauthClientId && row.tailscaleOauthClientSecret),
+      tailscaleTag: row.tailscaleTag,
+      tailscaleApkSet: !!row.tailscaleApkKey,
       updatedAt: row.updatedAt,
     };
   }
 
   async getTailscaleSettings(): Promise<AppSettings> {
     const rows = await this.drizzleProvider.db.execute(
-      sql`SELECT tailscale_auth_key AS "tailscaleAuthKey",
-                 tailscale_tailnet  AS "tailscaleTailnet",
-                 updated_at         AS "updatedAt"
+      sql`SELECT tailscale_auth_key           AS "tailscaleAuthKey",
+                 tailscale_tailnet            AS "tailscaleTailnet",
+                 tailscale_oauth_client_id    AS "tailscaleOauthClientId",
+                 tailscale_oauth_client_secret AS "tailscaleOauthClientSecret",
+                 tailscale_tag               AS "tailscaleTag",
+                 tailscale_apk_key           AS "tailscaleApkKey",
+                 updated_at                  AS "updatedAt"
           FROM app_settings
           WHERE id = true
           LIMIT 1`,
@@ -1143,6 +1210,10 @@ export class FleetService {
       rows as unknown as {
         tailscaleAuthKey: string | null;
         tailscaleTailnet: string | null;
+        tailscaleOauthClientId: string | null;
+        tailscaleOauthClientSecret: string | null;
+        tailscaleTag: string | null;
+        tailscaleApkKey: string | null;
         updatedAt: string | null;
       }[]
     )[0];
@@ -1150,9 +1221,11 @@ export class FleetService {
     if (!row) {
       // Should not happen (migration seeds the singleton row), but be defensive
       return {
-        tailscaleAuthKey: null,
         tailscaleAuthKeySet: false,
-        tailscaleTailnet: 'tail2b4c34.ts.net',
+        tailscaleTailnet: null,
+        tailscaleOauthConfigured: false,
+        tailscaleTag: null,
+        tailscaleApkSet: false,
         updatedAt: null,
       };
     }
@@ -1169,11 +1242,9 @@ export class FleetService {
       sql`updated_by = ${updatedBy}::uuid`,
     ];
 
-    if (dto.authKey !== undefined) {
-      // null or omitted = leave unchanged, empty string = clear to NULL, non-empty = set
-      if (dto.authKey === null) {
-        // null means "leave unchanged" per schema doc — skip
-      } else if (dto.authKey === '') {
+    // authKey: undefined/null = leave unchanged; '' = clear; non-empty string = set
+    if (dto.authKey !== undefined && dto.authKey !== null) {
+      if (dto.authKey === '') {
         setClauses.push(sql`tailscale_auth_key = NULL`);
       } else {
         setClauses.push(sql`tailscale_auth_key = ${dto.authKey}`);
@@ -1184,18 +1255,53 @@ export class FleetService {
       setClauses.push(sql`tailscale_tailnet = ${dto.tailnet}`);
     }
 
+    // oauthClientId: undefined/null = leave unchanged; '' = clear; non-empty = set
+    if (dto.oauthClientId !== undefined && dto.oauthClientId !== null) {
+      if (dto.oauthClientId === '') {
+        setClauses.push(sql`tailscale_oauth_client_id = NULL`);
+      } else {
+        setClauses.push(sql`tailscale_oauth_client_id = ${dto.oauthClientId}`);
+      }
+    }
+
+    // oauthClientSecret: undefined/null = leave unchanged; '' = clear; non-empty = set
+    if (dto.oauthClientSecret !== undefined && dto.oauthClientSecret !== null) {
+      if (dto.oauthClientSecret === '') {
+        setClauses.push(sql`tailscale_oauth_client_secret = NULL`);
+      } else {
+        setClauses.push(sql`tailscale_oauth_client_secret = ${dto.oauthClientSecret}`);
+      }
+    }
+
+    // tag: undefined/null = leave unchanged; '' = clear; non-empty = set
+    if (dto.tag !== undefined && dto.tag !== null) {
+      if (dto.tag === '') {
+        setClauses.push(sql`tailscale_tag = NULL`);
+      } else {
+        setClauses.push(sql`tailscale_tag = ${dto.tag}`);
+      }
+    }
+
     const set = sql.join(setClauses, sql`, `);
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE app_settings SET ${set}
           WHERE id = true
-          RETURNING tailscale_auth_key AS "tailscaleAuthKey",
-                    tailscale_tailnet  AS "tailscaleTailnet",
-                    updated_at         AS "updatedAt"`,
+          RETURNING tailscale_auth_key           AS "tailscaleAuthKey",
+                    tailscale_tailnet            AS "tailscaleTailnet",
+                    tailscale_oauth_client_id    AS "tailscaleOauthClientId",
+                    tailscale_oauth_client_secret AS "tailscaleOauthClientSecret",
+                    tailscale_tag               AS "tailscaleTag",
+                    tailscale_apk_key           AS "tailscaleApkKey",
+                    updated_at                  AS "updatedAt"`,
     );
     const row = (
       result as unknown as {
         tailscaleAuthKey: string | null;
         tailscaleTailnet: string | null;
+        tailscaleOauthClientId: string | null;
+        tailscaleOauthClientSecret: string | null;
+        tailscaleTag: string | null;
+        tailscaleApkKey: string | null;
         updatedAt: string | null;
       }[]
     )[0];
@@ -1205,8 +1311,154 @@ export class FleetService {
       updatedBy,
       authKeyChanged: dto.authKey !== undefined,
       tailnetChanged: dto.tailnet !== undefined,
+      oauthChanged: dto.oauthClientId !== undefined || dto.oauthClientSecret !== undefined,
+      tagChanged: dto.tag !== undefined,
     });
 
     return this.maskSettings(row);
+  }
+
+  // ─── Tailscale OAuth: mint ephemeral auth key ─────────────────────────────────
+
+  /**
+   * Mint a single-use ephemeral Tailscale auth key via the OAuth2 client-credentials
+   * flow. Two API calls:
+   *   1. POST https://api.tailscale.com/api/v2/oauth/token  → access_token
+   *   2. POST https://api.tailscale.com/api/v2/tailnet/-/keys  → key
+   *
+   * Returns the minted key string, or null on any error (network, non-2xx). The
+   * caller is responsible for falling back to the shared auth key.
+   */
+  private async mintEphemeralAuthKey(
+    clientId: string,
+    clientSecret: string,
+    tag: string,
+    hostname: string,
+  ): Promise<string | null> {
+    try {
+      // Step 1: client-credentials token exchange
+      const tokenBody = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'client_credentials',
+      });
+      const tokenRes = await fetch('https://api.tailscale.com/api/v2/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: tokenBody.toString(),
+      });
+      if (!tokenRes.ok) {
+        this.winston.warn('Tailscale OAuth token exchange failed', {
+          context: 'FleetService',
+          status: tokenRes.status,
+        });
+        return null;
+      }
+      const tokenJson = (await tokenRes.json()) as { access_token?: string };
+      const accessToken = tokenJson.access_token;
+      if (!accessToken) {
+        this.winston.warn('Tailscale OAuth token response missing access_token', {
+          context: 'FleetService',
+        });
+        return null;
+      }
+
+      // Step 2: mint ephemeral key
+      const keyRes = await fetch('https://api.tailscale.com/api/v2/tailnet/-/keys', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          capabilities: {
+            devices: {
+              create: {
+                reusable: false,
+                ephemeral: true,
+                preauthorized: true,
+                tags: [tag],
+              },
+            },
+          },
+          expirySeconds: 3600,
+          description: `fleet ${hostname}`,
+        }),
+      });
+      if (!keyRes.ok) {
+        this.winston.warn('Tailscale key minting failed', {
+          context: 'FleetService',
+          status: keyRes.status,
+        });
+        return null;
+      }
+      const keyJson = (await keyRes.json()) as { key?: string };
+      const key = keyJson.key;
+      if (!key) {
+        this.winston.warn('Tailscale key response missing key field', {
+          context: 'FleetService',
+        });
+        return null;
+      }
+
+      return key;
+    } catch (err) {
+      this.winston.warn('Tailscale mintEphemeralAuthKey threw', {
+        context: 'FleetService',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  // ─── Tailscale APK upload ─────────────────────────────────────────────────────
+
+  async uploadTailscaleApk(stream: Readable): Promise<AppSettings> {
+    const db = this.drizzleProvider.db;
+    const apkKey = 'tailscale/tailscale.apk';
+    const dir = path.join(this.uploadsRoot, 'tailscale');
+    await fsp.mkdir(dir, { recursive: true });
+    const absolute = path.join(this.uploadsRoot, apkKey);
+
+    let sizeBytes = 0;
+    const hashStream = createHash('sha256');
+
+    const ws = createWriteStream(absolute);
+    stream.on('data', (chunk: Buffer) => {
+      sizeBytes += chunk.length;
+      hashStream.update(chunk);
+      if (sizeBytes > APK_MAX_BYTES) {
+        stream.destroy(
+          new BadRequestException(`Tailscale APK exceeds max size of ${APK_MAX_BYTES} bytes`),
+        );
+      }
+    });
+
+    try {
+      await pipeline(stream, ws);
+    } catch (err) {
+      await fsp.unlink(absolute).catch(() => {});
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(err instanceof Error ? err.message : 'Upload failed');
+    }
+
+    const sha256 = hashStream.digest('hex');
+
+    await db.execute(
+      sql`UPDATE app_settings
+          SET tailscale_apk_key    = ${apkKey},
+              tailscale_apk_sha256 = ${sha256},
+              tailscale_apk_size   = ${sizeBytes},
+              updated_at           = now()
+          WHERE id = true`,
+    );
+
+    this.winston.log('flow', 'Tailscale APK uploaded', {
+      context: 'FleetService',
+      sha256,
+      sizeBytes,
+    });
+
+    return this.getTailscaleSettings();
   }
 }

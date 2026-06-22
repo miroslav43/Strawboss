@@ -183,14 +183,11 @@ export function useSetDeviceTailscale(client: ApiClient) {
   });
 }
 
-/** GET the masked Tailscale settings (auth key set/unset, tailnet, updatedAt). */
+/** GET the masked Tailscale settings. Returns the full AppSettings shape (no raw secrets). */
 export function useTailscaleSettings(client: ApiClient) {
   return useQuery({
     queryKey: queryKeys.settings.tailscale(),
-    queryFn: () =>
-      client.get<Pick<AppSettings, 'tailscaleAuthKeySet' | 'tailscaleTailnet' | 'updatedAt'>>(
-        '/api/v1/super-admin/settings/tailscale',
-      ),
+    queryFn: () => client.get<AppSettings>('/api/v1/super-admin/settings/tailscale'),
     refetchInterval: 60_000,
   });
 }
@@ -198,17 +195,33 @@ export function useTailscaleSettings(client: ApiClient) {
 export interface UpdateTailscaleSettingsInput {
   authKey?: string | null;
   tailnet?: string | null;
+  oauthClientId?: string | null;
+  oauthClientSecret?: string | null;
+  tag?: string | null;
 }
 
-/** PUT Tailscale settings (authKey + tailnet). Invalidates the settings cache. */
+/** PUT Tailscale settings (authKey, tailnet, OAuth client, tag). Invalidates the settings cache. */
 export function useUpdateTailscaleSettings(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: UpdateTailscaleSettingsInput) =>
-      client.put<Pick<AppSettings, 'tailscaleAuthKeySet' | 'tailscaleTailnet' | 'updatedAt'>>(
-        '/api/v1/super-admin/settings/tailscale',
-        data,
-      ),
+      client.put<AppSettings>('/api/v1/super-admin/settings/tailscale', data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.tailscale() });
+    },
+  });
+}
+
+/**
+ * POST a Tailscale APK file (multipart, field name `apk`).
+ * Phones without Tailscale will install it automatically from this APK.
+ * Invalidates the settings cache on success.
+ */
+export function useUploadTailscaleApk(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      client.upload<AppSettings>('/api/v1/super-admin/settings/tailscale-apk', formData),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings.tailscale() });
     },

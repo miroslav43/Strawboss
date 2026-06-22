@@ -104,5 +104,10 @@ export type SetDeviceTailscaleInput = z.infer<typeof setDeviceTailscaleSchema>;
 export const updateTailscaleSettingsSchema = z.object({
   authKey: z.string().max(512).nullable().optional(),
   tailnet: z.string().max(200).nullable().optional(),
+  /** Tailscale OAuth client (enables per-device ephemeral keys; '' clears). */
+  oauthClientId: z.string().max(256).nullable().optional(),
+  oauthClientSecret: z.string().max(512).nullable().optional(),
+  /** Tag applied to OAuth-minted keys, e.g. 'tag:fleet-phone'. */
+  tag: z.string().max(128).nullable().optional(),
 });
 export type UpdateTailscaleSettingsInput = z.infer<typeof updateTailscaleSettingsSchema>;

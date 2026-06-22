@@ -32,6 +32,7 @@ import { generateUuid } from './uuid';
 import {
   isDeviceOwner,
   getDeviceHardwareInfo,
+  isPackageInstalled,
   installApkSilent,
   setTailscaleManaged,
   clearTailscaleManaged,
@@ -251,6 +252,29 @@ async function handleTailscaleCommand(command: DeviceCommand): Promise<void> {
         });
         success = true;
       } else {
+        // Zero-touch auto-install: if Tailscale isn't installed yet, install it
+        // silently first (Device Owner) before attempting to configure it.
+        const tailscaleInstalled = await isPackageInstalled('com.tailscale.ipn');
+        if (!tailscaleInstalled) {
+          const apkRef = payload.tailscaleApk;
+          if (!apkRef) {
+            throw new Error('Tailscale not installed and no APK provided');
+          }
+          mobileLogger.flow('Fleet: Tailscale not installed — downloading APK', { commandId });
+          const destUri = `${FileSystem.documentDirectory ?? ''}tailscale-install.apk`;
+          const fullUrl = `${API_URL}${apkRef.url}`;
+          const downloadResult = await FileSystem.downloadAsync(fullUrl, destUri);
+          if (downloadResult.status !== 200) {
+            throw new Error(`Tailscale APK download failed with status ${downloadResult.status}`);
+          }
+          mobileLogger.flow('Fleet: Tailscale APK downloaded — installing', { commandId });
+          const installed = await installApkSilent(downloadResult.uri, apkRef.sha256);
+          if (!installed) {
+            throw new Error('Tailscale APK install failed');
+          }
+          mobileLogger.flow('Fleet: Tailscale APK installed', { commandId });
+        }
+
         const ok = await setTailscaleManaged(payload.authKey, payload.hostname, payload.tailnet);
         if (!ok) {
           throw new Error(

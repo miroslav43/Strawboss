@@ -192,7 +192,7 @@ export class FleetAdminController {
 
   /**
    * GET /api/v1/super-admin/settings/tailscale
-   * Returns masked settings — the raw auth key is NEVER returned.
+   * Returns masked settings — raw secrets are NEVER returned.
    */
   @Get('settings/tailscale')
   getTailscaleSettings() {
@@ -201,8 +201,8 @@ export class FleetAdminController {
 
   /**
    * PUT /api/v1/super-admin/settings/tailscale
-   * Update the Tailscale auth key and/or tailnet.
-   * authKey: undefined/null = leave unchanged; '' = clear; non-empty = set.
+   * Update Tailscale settings: auth key, tailnet, OAuth client, tag.
+   * For each secret field: undefined/null = leave unchanged; '' = clear; non-empty = set.
    */
   @Put('settings/tailscale')
   updateTailscaleSettings(
@@ -210,5 +210,27 @@ export class FleetAdminController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.fleetService.updateTailscaleSettings(dto, user.id);
+  }
+
+  /**
+   * POST /api/v1/super-admin/settings/tailscale-apk
+   * Upload the official Tailscale APK so Device-Owner phones can silently self-install it.
+   * Multipart field name: `apk`. Max 250 MB. Overwrites any previously uploaded APK.
+   * Returns masked AppSettings so the UI can reflect tailscaleApkSet immediately.
+   */
+  @Post('settings/tailscale-apk')
+  async uploadTailscaleApk(@Req() req: FastifyRequest) {
+    if (!req.isMultipart()) {
+      throw new BadRequestException('Expected multipart/form-data');
+    }
+
+    // Override per-request file size limit for APK uploads (250 MB)
+    const APK_LIMIT = 250 * 1024 * 1024;
+    const file = await req.file({ limits: { fileSize: APK_LIMIT } });
+    if (!file) {
+      throw new BadRequestException('Missing file part `apk`');
+    }
+
+    return this.fleetService.uploadTailscaleApk(file.file);
   }
 }

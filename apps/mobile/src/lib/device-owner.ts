@@ -29,6 +29,7 @@ interface DeviceOwnerNative {
     osVersion: string;
     androidId: string;
   }>;
+  isPackageInstalled(packageName: string): Promise<boolean>;
   installApkSilent(path: string, expectedSha256: string): Promise<boolean>;
   setTailscaleManaged(authKey: string, hostname: string, tailnet: string): Promise<boolean>;
   clearTailscaleManaged(): Promise<boolean>;
@@ -213,6 +214,26 @@ export async function getDeviceHardwareInfo(): Promise<{
       message: err instanceof Error ? err.message : String(err),
     });
     return {};
+  }
+}
+
+/**
+ * Check whether a given package is installed on the device.
+ *
+ * Uses `PackageManager.getPackageInfo()` natively — no dangerous permission needed.
+ * Returns false defensively when the native module is absent (iOS / Expo Go) or on
+ * any unexpected error, so callers can treat the result as a safe boolean gate.
+ */
+export async function isPackageInstalled(packageName: string): Promise<boolean> {
+  if (!native?.isPackageInstalled) return false;
+  try {
+    return await native.isPackageInstalled(packageName);
+  } catch (err) {
+    mobileLogger.warn('isPackageInstalled failed', {
+      packageName,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
   }
 }
 

@@ -172,6 +172,7 @@ export {
   useSetDeviceTailscale,
   useTailscaleSettings,
   useUpdateTailscaleSettings,
+  useUploadTailscaleApk,
 } from './use-fleet.js';
 export type {
   DeviceLogFilters,

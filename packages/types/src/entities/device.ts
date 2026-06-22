@@ -81,13 +81,18 @@ export interface Device extends Timestamps, SoftDelete {
   tailscaleLastError: string | null;
 }
 
-/** Singleton global config the super-admin edits (e.g. the Tailscale auth key). */
+/** Singleton global config the super-admin edits (e.g. the Tailscale auth key).
+ * Secrets are NEVER returned raw — the API exposes only `*Set` booleans. */
 export interface AppSettings {
-  /** Tailscale auth key pushed to phones to join the tailnet (write-only in the UI). */
-  tailscaleAuthKey: string | null;
-  /** Whether an auth key is configured (so the UI can show status without exposing it). */
+  /** Whether a shared auth key is configured (raw value never returned). */
   tailscaleAuthKeySet: boolean;
   tailscaleTailnet: string | null;
+  /** Whether a Tailscale OAuth client is configured (enables per-device ephemeral keys). */
+  tailscaleOauthConfigured: boolean;
+  /** Tag applied to OAuth-minted keys (e.g. 'tag:fleet-phone'). Required for OAuth minting. */
+  tailscaleTag: string | null;
+  /** Whether a Tailscale APK is hosted for zero-touch auto-install on phones. */
+  tailscaleApkSet: boolean;
   updatedAt: string | null;
 }
 
@@ -165,6 +170,12 @@ export interface DeviceCommand {
     authKey: string;
     hostname: string;
     tailnet: string;
+    /** If set and the Tailscale app isn't installed, the device silently installs this APK
+     * (signed URL + sha256) before configuring Tailscale. */
+    tailscaleApk?: {
+      url: string;
+      sha256: string;
+    };
   };
 }
 

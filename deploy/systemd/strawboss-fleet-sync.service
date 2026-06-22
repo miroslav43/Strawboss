@@ -1,0 +1,13 @@
+[Unit]
+Description=StrawBoss fleet — sync Tailscale status into the devices table
+# tailscaled must be up so `tailscale status` returns peers.
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Dev/ops user that owns the checkout (this VM's user is `miro`). node/psql/tailscale
+# are in /usr/bin, covered by systemd's default PATH.
+User=miro
+WorkingDirectory=/srv/apps/Strawboss
+ExecStart=/srv/apps/Strawboss/strawboss.sh fleet:tailscale-sync

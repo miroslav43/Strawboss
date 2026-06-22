@@ -462,6 +462,23 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
   }
 
   /**
+   * Check whether a package is installed on this device.
+   * Returns true if [packageName] is installed, false if not (NameNotFoundException).
+   * Safe to call on any Android API level; never throws to JS.
+   */
+  @ReactMethod
+  fun isPackageInstalled(packageName: String, promise: Promise) {
+    try {
+      ctx.packageManager.getPackageInfo(packageName, 0)
+      promise.resolve(true)
+    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+      promise.resolve(false)
+    } catch (t: Throwable) {
+      promise.reject("DO_PKG_CHECK", t.message ?: t.toString())
+    }
+  }
+
+  /**
    * Silently install an APK via the Device Owner PackageInstaller API.
    *
    * Steps:

@@ -118,6 +118,31 @@ cmd_fleet__status() {
     ORDER BY organization_id NULLS FIRST, name NULLS LAST;"
 }
 
+# @cmd fleet:install-sync-timer "Install + start the systemd timer that runs fleet:tailscale-sync every 60s"
+cmd_fleet__install__sync__timer() {
+  header "Install systemd timer (fleet:tailscale-sync)"
+  require_cmd systemctl
+  local src="$STRAWBOSS_ROOT/deploy/systemd"
+  [ -f "$src/strawboss-fleet-sync.service" ] || { error "Unit files missing under deploy/systemd/"; exit 1; }
+  info "Copying unit files to /etc/systemd/system (needs sudo)..."
+  sudo cp "$src/strawboss-fleet-sync.service" "$src/strawboss-fleet-sync.timer" /etc/systemd/system/ || { error "copy failed"; exit 1; }
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now strawboss-fleet-sync.timer
+  success "Timer installed + started — fleet:tailscale-sync runs every 60s."
+  sudo systemctl status strawboss-fleet-sync.timer --no-pager 2>/dev/null | head -4 || true
+  echo -e "  ${DIM}Logs: journalctl -u strawboss-fleet-sync.service -f${NC}"
+}
+
+# @cmd fleet:uninstall-sync-timer "Stop + remove the fleet:tailscale-sync systemd timer"
+cmd_fleet__uninstall__sync__timer() {
+  header "Uninstall systemd timer (fleet:tailscale-sync)"
+  require_cmd systemctl
+  sudo systemctl disable --now strawboss-fleet-sync.timer 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/strawboss-fleet-sync.service /etc/systemd/system/strawboss-fleet-sync.timer
+  sudo systemctl daemon-reload
+  success "Timer removed."
+}
+
 # @cmd fleet:enable-adb-tcp "One-time: enable ADB-over-TCP on a USB-connected phone"
 cmd_fleet__enable__adb__tcp() {
   header "Enable ADB-over-TCP (one-time, USB)"
