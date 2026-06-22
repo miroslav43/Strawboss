@@ -340,6 +340,14 @@ export default function ReleasesPage() {
                     <td className="px-4 py-3">
                       <p className="font-medium text-neutral-800">{r.version}</p>
                       <p className="text-xs text-neutral-400">v{r.versionCode}</p>
+                      {r.apkKey ? (
+                        <p
+                          className="mt-0.5 max-w-[14rem] truncate font-mono text-[10px] text-neutral-300"
+                          title={r.apkKey.split('/').pop() ?? r.apkKey}
+                        >
+                          {r.apkKey.split('/').pop() ?? r.apkKey}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <ReleaseStatusBadge status={r.status} />
