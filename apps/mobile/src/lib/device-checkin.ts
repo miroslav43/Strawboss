@@ -261,16 +261,28 @@ async function handleTailscaleCommand(command: DeviceCommand): Promise<void> {
             throw new Error('Tailscale not installed and no APK provided');
           }
           mobileLogger.flow('Fleet: Tailscale not installed — downloading APK', { commandId });
-          const destUri = `${FileSystem.documentDirectory ?? ''}tailscale-install.apk`;
+          // Use a per-command filename to avoid collisions (Bug 7).
+          const tsApkUri = `${FileSystem.documentDirectory ?? ''}tailscale-install-${commandId}.apk`;
           const fullUrl = `${API_URL}${apkRef.url}`;
-          const downloadResult = await FileSystem.downloadAsync(fullUrl, destUri);
+          const downloadResult = await FileSystem.downloadAsync(fullUrl, tsApkUri);
           if (downloadResult.status !== 200) {
+            // Clean up partial download before throwing.
+            await FileSystem.deleteAsync(tsApkUri, { idempotent: true });
             throw new Error(`Tailscale APK download failed with status ${downloadResult.status}`);
           }
           mobileLogger.flow('Fleet: Tailscale APK downloaded — installing', { commandId });
-          const installed = await installApkSilent(downloadResult.uri, apkRef.sha256);
-          if (!installed) {
-            throw new Error('Tailscale APK install failed');
+          try {
+            const installed = await installApkSilent(
+              downloadResult.uri,
+              apkRef.sha256,
+              'com.tailscale.ipn',
+            );
+            if (!installed) {
+              throw new Error('Tailscale APK install failed');
+            }
+          } finally {
+            // Always clean up the APK temp file (success and failure paths).
+            await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
           }
           mobileLogger.flow('Fleet: Tailscale APK installed', { commandId });
         }
@@ -304,14 +316,19 @@ async function handleTailscaleCommand(command: DeviceCommand): Promise<void> {
       throw new Error(`Unknown tailscale action: ${String(action)}`);
     }
   } catch (err) {
-    errorMsg = err instanceof Error ? err.message : String(err);
-    mobileLogger.warn('Fleet: Tailscale command failed', { commandId, action, error: errorMsg });
+    // Bug 8: never log the raw error message for tailscale commands — it may
+    // contain the authKey if a native exception echoes the Bundle. Log only
+    // commandId + action for traceability, use a short error code in the report.
+    const errName = err instanceof Error ? err.constructor.name : 'UnknownError';
+    errorMsg = errName; // sanitized: no message/payload that could echo authKey
+    mobileLogger.warn('Fleet: Tailscale command failed', { commandId, action });
   }
 
   const report: DeviceCommandReport = {
     commandId,
     status: success ? 'success' : 'failure',
-    ...(errorMsg ? { error: errorMsg } : {}),
+    // Report only the sanitized error name, never the raw message (Bug 8).
+    ...(errorMsg && !success ? { error: errorMsg } : {}),
   };
   await appendCommandReport(report);
 }
@@ -390,12 +407,18 @@ async function handlePendingDeployment(
     });
   }
 
-  // Hard stop: too many failed install attempts.
-  if (mirror.attempt >= MAX_INSTALL_ATTEMPTS && mirror.state === ('failed' as OtaState)) {
+  // Hard stop: too many attempts regardless of current state.
+  // Gates on attempt count alone so a mirror stuck in awaiting_idle or any
+  // other non-failed state with attempt >= MAX cannot retry forever.
+  if (mirror.attempt >= MAX_INSTALL_ATTEMPTS) {
     mobileLogger.warn('Fleet OTA: max install attempts reached, giving up', {
       deploymentId: deployment.deploymentId,
       attempt: mirror.attempt,
     });
+    // Leave in failed state so the server knows we gave up.
+    if (mirror.state !== ('failed' as OtaState)) {
+      mirror = await appendOtaReport(mirror, 'failed' as OtaState, 'max attempts exceeded');
+    }
     return;
   }
 
@@ -420,8 +443,15 @@ async function handlePendingDeployment(
       mobileLogger.flow('Fleet OTA: APK downloaded', { localUri: mirror.localUri });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Increment attempt on download failure so repeated failures count toward
+      // the MAX_INSTALL_ATTEMPTS cap and the gate above eventually fires.
+      mirror = { ...mirror, attempt: mirror.attempt + 1 };
       mirror = await appendOtaReport(mirror, 'failed' as OtaState, msg);
-      mobileLogger.warn('Fleet OTA: download failed', { error: msg });
+      mobileLogger.warn('Fleet OTA: download failed', {
+        error: msg,
+        attempt: mirror.attempt,
+        deploymentId: deployment.deploymentId,
+      });
       return;
     }
   }
@@ -455,7 +485,7 @@ async function handlePendingDeployment(
   });
 
   try {
-    const ok = await installApkSilent(localUri, deployment.sha256);
+    const ok = await installApkSilent(localUri, deployment.sha256, 'com.strawboss.mobile');
     if (!ok) {
       throw new Error('installApkSilent returned false');
     }
@@ -484,6 +514,19 @@ async function handlePendingDeployment(
 // Main check-in (Part 2)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// In-flight mutex — prevents concurrent check-in calls from racing
+// ---------------------------------------------------------------------------
+
+/**
+ * At most one runDeviceCheckin() executes at a time. Concurrent callers await
+ * the same in-flight promise rather than creating a second concurrent cycle.
+ * This prevents:
+ *   - clearCommandReports() wiping reports appended by a sibling call.
+ *   - Two parallel ensureDeviceId() calls generating two device UUIDs on first run.
+ */
+let checkinInFlight: Promise<void> | null = null;
+
 /**
  * Run one fleet check-in cycle:
  *   1. Gather device identity + hardware info + push token + trip state.
@@ -492,106 +535,115 @@ async function handlePendingDeployment(
  *   4. Handle any pendingDeployment via the OTA orchestrator.
  *
  * Fire-and-forget: errors are logged but never thrown.
+ * Concurrent callers share the same in-flight promise — only one cycle runs at a time.
  */
-export async function runDeviceCheckin(): Promise<void> {
-  try {
-    const { deviceUuid, deviceToken } = await ensureDeviceId();
-
-    // App version
-    const appVersion: string = Constants.expoConfig?.version ?? '0.0.0';
-    const versionCode: number =
-      Constants.expoConfig?.android?.versionCode ??
-      (Constants.expoConfig?.ios?.buildNumber ? Number(Constants.expoConfig.ios.buildNumber) : 0) ??
-      0;
-
-    // Hardware info — best effort
-    const hwInfo = await getDeviceHardwareInfo();
-
-    // Raw FCM push token — best effort (may throw in dev without Firebase)
-    let pushToken: string | undefined;
+export function runDeviceCheckin(): Promise<void> {
+  if (checkinInFlight) return checkinInFlight;
+  checkinInFlight = (async () => {
     try {
-      const devicePushToken = await Notifications.getDevicePushTokenAsync();
-      if (typeof devicePushToken.data === 'string' && devicePushToken.data) {
-        pushToken = devicePushToken.data;
+      const { deviceUuid, deviceToken } = await ensureDeviceId();
+
+      // App version
+      const appVersion: string = Constants.expoConfig?.version ?? '0.0.0';
+      const versionCode: number =
+        Constants.expoConfig?.android?.versionCode ??
+        (Constants.expoConfig?.ios?.buildNumber
+          ? Number(Constants.expoConfig.ios.buildNumber)
+          : 0) ??
+        0;
+
+      // Hardware info — best effort
+      const hwInfo = await getDeviceHardwareInfo();
+
+      // Raw FCM push token — best effort (may throw in dev without Firebase)
+      let pushToken: string | undefined;
+      try {
+        const devicePushToken = await Notifications.getDevicePushTokenAsync();
+        if (typeof devicePushToken.data === 'string' && devicePushToken.data) {
+          pushToken = devicePushToken.data;
+        }
+      } catch {
+        // Not critical — the Expo push token is used for notifications, raw FCM
+        // token for device-keyed check-in acceleration push. If unavailable, skip.
       }
-    } catch {
-      // Not critical — the Expo push token is used for notifications, raw FCM
-      // token for device-keyed check-in acceleration push. If unavailable, skip.
+
+      // Device owner flag
+      const ownerFlag = await isDeviceOwner();
+
+      // Active trip flag
+      const activeTripFlag = await hasActiveTrip();
+
+      // Accumulate pending OTA reports from the local mirror
+      const mirror = await readOtaMirror();
+      const otaReports: DeviceOtaReport[] = mirror?.reports?.length ? mirror.reports : [];
+
+      // Accumulate pending command reports (e.g. Tailscale up/down outcomes)
+      const commandReports = await readCommandReports();
+
+      const body: DeviceCheckinRequest = {
+        deviceUuid,
+        ...(deviceToken ? { deviceToken } : {}),
+        appVersion,
+        versionCode,
+        ...(hwInfo.model !== undefined ? { model: hwInfo.model } : {}),
+        ...(hwInfo.manufacturer !== undefined ? { manufacturer: hwInfo.manufacturer } : {}),
+        ...(hwInfo.osVersion !== undefined ? { osVersion: hwInfo.osVersion } : {}),
+        ...(hwInfo.androidId !== undefined ? { androidId: hwInfo.androidId } : {}),
+        ...(pushToken !== undefined ? { pushToken } : {}),
+        isDeviceOwner: ownerFlag,
+        activeTrip: activeTripFlag,
+        ...(otaReports.length > 0 ? { otaReports } : {}),
+        ...(commandReports.length > 0 ? { commandReports } : {}),
+      };
+
+      mobileLogger.flow('Fleet: check-in start', { deviceUuid, appVersion, versionCode });
+
+      const response = await fleetApiClient.post<DeviceCheckinResponse>(
+        '/api/v1/fleet/checkin',
+        body,
+      );
+
+      // Persist a newly issued device token
+      if (response.deviceTokenIssued) {
+        await SecureStore.setItemAsync(DEVICE_TOKEN_KEY, response.deviceTokenIssued);
+        mobileLogger.flow('Fleet: device token persisted');
+      }
+
+      // Clear sent OTA reports from mirror now that they were delivered
+      if (mirror && otaReports.length > 0) {
+        const updatedMirror: OtaMirror = { ...mirror, reports: [] };
+        await writeOtaMirror(updatedMirror);
+      }
+
+      // Clear sent command reports now that they were delivered
+      if (commandReports.length > 0) {
+        await clearCommandReports();
+      }
+
+      mobileLogger.flow('Fleet: check-in ok', {
+        deviceId: response.deviceId,
+        assignedOrgId: response.assignedOrgId,
+        hasPendingDeployment: !!response.pendingDeployment,
+        hasPendingCommand: !!response.pendingCommand,
+      });
+
+      // Handle OTA deployment if one is pending
+      if (response.pendingDeployment) {
+        await handlePendingDeployment(response.pendingDeployment, activeTripFlag);
+      }
+
+      // Handle remote command if one is pending (currently: Tailscale up/down)
+      if (response.pendingCommand?.type === 'tailscale') {
+        await handleTailscaleCommand(response.pendingCommand);
+      }
+    } catch (err) {
+      // Check-in is fire-and-forget — log at warn but never propagate.
+      mobileLogger.warn('Fleet: check-in failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
-
-    // Device owner flag
-    const ownerFlag = await isDeviceOwner();
-
-    // Active trip flag
-    const activeTripFlag = await hasActiveTrip();
-
-    // Accumulate pending OTA reports from the local mirror
-    const mirror = await readOtaMirror();
-    const otaReports: DeviceOtaReport[] = mirror?.reports?.length ? mirror.reports : [];
-
-    // Accumulate pending command reports (e.g. Tailscale up/down outcomes)
-    const commandReports = await readCommandReports();
-
-    const body: DeviceCheckinRequest = {
-      deviceUuid,
-      ...(deviceToken ? { deviceToken } : {}),
-      appVersion,
-      versionCode,
-      ...(hwInfo.model !== undefined ? { model: hwInfo.model } : {}),
-      ...(hwInfo.manufacturer !== undefined ? { manufacturer: hwInfo.manufacturer } : {}),
-      ...(hwInfo.osVersion !== undefined ? { osVersion: hwInfo.osVersion } : {}),
-      ...(hwInfo.androidId !== undefined ? { androidId: hwInfo.androidId } : {}),
-      ...(pushToken !== undefined ? { pushToken } : {}),
-      isDeviceOwner: ownerFlag,
-      activeTrip: activeTripFlag,
-      ...(otaReports.length > 0 ? { otaReports } : {}),
-      ...(commandReports.length > 0 ? { commandReports } : {}),
-    };
-
-    mobileLogger.flow('Fleet: check-in start', { deviceUuid, appVersion, versionCode });
-
-    const response = await fleetApiClient.post<DeviceCheckinResponse>(
-      '/api/v1/fleet/checkin',
-      body,
-    );
-
-    // Persist a newly issued device token
-    if (response.deviceTokenIssued) {
-      await SecureStore.setItemAsync(DEVICE_TOKEN_KEY, response.deviceTokenIssued);
-      mobileLogger.flow('Fleet: device token persisted');
-    }
-
-    // Clear sent OTA reports from mirror now that they were delivered
-    if (mirror && otaReports.length > 0) {
-      const updatedMirror: OtaMirror = { ...mirror, reports: [] };
-      await writeOtaMirror(updatedMirror);
-    }
-
-    // Clear sent command reports now that they were delivered
-    if (commandReports.length > 0) {
-      await clearCommandReports();
-    }
-
-    mobileLogger.flow('Fleet: check-in ok', {
-      deviceId: response.deviceId,
-      assignedOrgId: response.assignedOrgId,
-      hasPendingDeployment: !!response.pendingDeployment,
-      hasPendingCommand: !!response.pendingCommand,
-    });
-
-    // Handle OTA deployment if one is pending
-    if (response.pendingDeployment) {
-      await handlePendingDeployment(response.pendingDeployment, activeTripFlag);
-    }
-
-    // Handle remote command if one is pending (currently: Tailscale up/down)
-    if (response.pendingCommand?.type === 'tailscale') {
-      await handleTailscaleCommand(response.pendingCommand);
-    }
-  } catch (err) {
-    // Check-in is fire-and-forget — log at warn but never propagate.
-    mobileLogger.warn('Fleet: check-in failed', {
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
+  })().finally(() => {
+    checkinInFlight = null;
+  });
+  return checkinInFlight;
 }

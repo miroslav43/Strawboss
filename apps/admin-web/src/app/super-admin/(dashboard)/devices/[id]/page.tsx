@@ -290,7 +290,7 @@ function LogViewer({ deviceId }: { deviceId: string }) {
           {entries.map((entry, i) => {
             const ts = entry.timestamp ?? entry.recordedAt;
             return (
-              <div key={i} className="flex gap-2 py-0.5">
+              <div key={`${ts ?? ''}-${i}`} className="flex gap-2 py-0.5">
                 <span className="shrink-0 text-neutral-500">
                   {ts
                     ? new Date(ts).toLocaleTimeString('ro-RO', {

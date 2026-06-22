@@ -30,7 +30,7 @@ interface DeviceOwnerNative {
     androidId: string;
   }>;
   isPackageInstalled(packageName: string): Promise<boolean>;
-  installApkSilent(path: string, expectedSha256: string): Promise<boolean>;
+  installApkSilent(path: string, expectedSha256: string, packageName: string): Promise<boolean>;
   setTailscaleManaged(authKey: string, hostname: string, tailnet: string): Promise<boolean>;
   clearTailscaleManaged(): Promise<boolean>;
 }
@@ -246,15 +246,24 @@ export async function isPackageInstalled(packageName: string): Promise<boolean> 
  * state BEFORE awaiting this, because the process is typically killed mid-install
  * when Android replaces the APK.
  *
+ * [packageName] must be the target package being installed (e.g.
+ * 'com.strawboss.mobile' for self-update, 'com.tailscale.ipn' for Tailscale).
+ *
+ * expo-file-system returns file:// URIs; the native File(path) constructor needs
+ * a bare filesystem path, so we strip the scheme here (single choke-point fix).
+ *
  * Returns false and logs a warning when the module is absent (iOS / Expo Go).
  */
 export async function installApkSilent(
   absolutePath: string,
   expectedSha256: string,
+  packageName: string,
 ): Promise<boolean> {
   if (!native?.installApkSilent) return false;
+  // Strip file:// scheme so Kotlin's File(path) gets a real filesystem path.
+  const nativePath = absolutePath.replace(/^file:\/\//, '');
   try {
-    return await native.installApkSilent(absolutePath, expectedSha256);
+    return await native.installApkSilent(nativePath, expectedSha256, packageName);
   } catch (err) {
     mobileLogger.warn('installApkSilent failed', {
       message: err instanceof Error ? err.message : String(err),

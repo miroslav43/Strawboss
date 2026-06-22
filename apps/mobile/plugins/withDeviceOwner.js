@@ -411,8 +411,10 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
    * owner. Call this for a 'tailscale' command with action 'up'.
    *
    * Requires API 24+ (setAlwaysOnVpnPackage), which is well within our minimum SDK.
-   * If the Tailscale app (com.tailscale.ipn) is not installed the PackageManager
-   * throws NameNotFoundException → rejected with TS_NOT_INSTALLED.
+   * setApplicationRestrictions silently stores restrictions even when the package is
+   * absent; only setAlwaysOnVpnPackage signals a missing / incompatible package.
+   * On some ROMs that signal arrives as IllegalArgumentException or SecurityException
+   * rather than NameNotFoundException, so we catch Throwable there.
    */
   @ReactMethod
   fun setTailscaleManaged(authKey: String, hostname: String, tailnet: String, promise: Promise) {
@@ -429,14 +431,23 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
         putString("Tailnet", tailnet)
         putBoolean("AlwaysOn.Enabled", true)
       }
+      // setApplicationRestrictions stores config silently (no throw for missing package).
       dpm.setApplicationRestrictions(admin, "com.tailscale.ipn", bundle)
+    } catch (t: Throwable) {
+      promise.reject("TS_SET_RESTRICTIONS", t.message ?: t.toString())
+      return
+    }
+    // setAlwaysOnVpnPackage requires the package to be present and VPN-capable.
+    // Catch Throwable: NameNotFoundException, IllegalArgumentException, SecurityException
+    // all surface on different ROM versions when Tailscale is absent/incompatible.
+    try {
+      val dpm = DeviceOwnerPolicies.dpm(ctx)
+      val admin = DeviceOwnerPolicies.admin(ctx)
       dpm.setAlwaysOnVpnPackage(admin, "com.tailscale.ipn", false)
       Log.i("StrawbossTS", "Tailscale managed config applied, always-on VPN set")
       promise.resolve(true)
-    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
-      promise.reject("TS_NOT_INSTALLED", "Tailscale app not installed")
     } catch (t: Throwable) {
-      promise.reject("TS_SET_MANAGED", t.message ?: t.toString())
+      promise.reject("TS_ALWAYSON", "setAlwaysOnVpnPackage failed: ${t.message ?: t.toString()}")
     }
   }
 
@@ -465,11 +476,17 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
    * Check whether a package is installed on this device.
    * Returns true if [packageName] is installed, false if not (NameNotFoundException).
    * Safe to call on any Android API level; never throws to JS.
+   * Uses PackageInfoFlags on API 33+ to avoid the deprecated int-flag overload.
    */
   @ReactMethod
   fun isPackageInstalled(packageName: String, promise: Promise) {
     try {
-      ctx.packageManager.getPackageInfo(packageName, 0)
+      if (Build.VERSION.SDK_INT >= 33) {
+        ctx.packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+      } else {
+        @Suppress("DEPRECATION")
+        ctx.packageManager.getPackageInfo(packageName, 0)
+      }
       promise.resolve(true)
     } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
       promise.resolve(false)
@@ -491,9 +508,13 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
    *      Owner this silently installs with no user prompt.
    *   4. Resolve true after commit is dispatched. The process is typically KILLED
    *      during self-update — JS must persist intent BEFORE calling this.
+   *
+   * [packageName] must be the target package (e.g. "com.strawboss.mobile" for a
+   * self-update or "com.tailscale.ipn" for Tailscale). Passing the wrong name
+   * here causes a package-name conflict during install.
    */
   @ReactMethod
-  fun installApkSilent(path: String, expectedSha256: String, promise: Promise) {
+  fun installApkSilent(path: String, expectedSha256: String, packageName: String, promise: Promise) {
     try {
       // Step 1: SHA-256 verify
       val file = File(path)
@@ -518,7 +539,7 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
       // Step 2: Open a PackageInstaller session
       val installer = ctx.packageManager.packageInstaller
       val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-      params.setAppPackageName(ctx.packageName)
+      params.setAppPackageName(packageName)
       val sessionId = installer.createSession(params)
       val session = installer.openSession(sessionId)
 

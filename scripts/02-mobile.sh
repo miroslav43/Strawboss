@@ -227,7 +227,10 @@ WHERE ar.id = r.id AND r.rn > 10
   )
 RETURNING ar.apk_key;
 SQL
-  )
+  ) || {
+    warn "Release registration failed (DB unreachable?) — APK is built; you can upload it from the UI."
+    pruned=""
+  }
 
   if [ -n "$pruned" ]; then
     local n=0

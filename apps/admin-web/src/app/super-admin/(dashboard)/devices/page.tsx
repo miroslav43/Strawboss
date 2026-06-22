@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, Fragment } from 'react';
 import {
   Smartphone,
   Rocket,
@@ -33,6 +33,7 @@ import { OtaState, OtaTargetKind, ReleaseStatus } from '@strawboss/types';
 import type { UpdateDeviceInput, CreateDeploymentInput } from '@strawboss/validation';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { normalizeList } from '@/lib/normalize-api-list';
 
 // ── Shared CSS atoms ──────────────────────────────────────────────────────────
 
@@ -234,13 +235,16 @@ function TailscaleSettingsModal({ onClose }: { onClose: () => void }) {
   // APK upload
   const [apkFile, setApkFile] = useState<File | null>(null);
 
-  // Seed text fields from loaded settings (once)
+  // Seed text fields from loaded settings (once). Must be an effect, not a render-phase
+  // side effect (which double-fires under StrictMode / concurrent rendering).
   const [seeded, setSeeded] = useState(false);
-  if (settings && !seeded) {
-    setTailnet(settings.tailscaleTailnet ?? '');
-    setTag(settings.tailscaleTag ?? '');
-    setSeeded(true);
-  }
+  useEffect(() => {
+    if (settings && !seeded) {
+      setTailnet(settings.tailscaleTailnet ?? '');
+      setTag(settings.tailscaleTag ?? '');
+      setSeeded(true);
+    }
+  }, [settings, seeded]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -947,20 +951,19 @@ export default function FleetDevicesPage() {
   const [showTailscaleSettings, setShowTailscaleSettings] = useState(false);
 
   // Fetch org list once for modals
-  useState(() => {
+  useEffect(() => {
     void apiClient
       .get<Org[] | { data: Org[] }>('/api/v1/organizations')
       .then((res) => {
-        const list = Array.isArray(res) ? res : ((res as { data: Org[] }).data ?? []);
-        setOrgs(list);
+        setOrgs(normalizeList<Org>(res));
       })
       .catch(() => {
         /* non-critical */
       });
-  });
+  }, []);
 
-  const devices: FleetDeviceListItem[] = Array.isArray(devicesRaw) ? devicesRaw : [];
-  const releases: AppRelease[] = Array.isArray(releasesRaw) ? releasesRaw : [];
+  const devices = normalizeList<FleetDeviceListItem>(devicesRaw);
+  const releases = normalizeList<AppRelease>(releasesRaw);
 
   // Group by organizationName (null → "Unassigned" group first)
   const groups = useMemo(() => {
@@ -1068,7 +1071,7 @@ export default function FleetDevicesPage() {
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {groups.map((group) => (
-                <>
+                <Fragment key={group.key}>
                   <tr
                     key={`group-${group.key}`}
                     className="border-y border-neutral-200 bg-neutral-50"
@@ -1146,7 +1149,7 @@ export default function FleetDevicesPage() {
                       </td>
                     </tr>
                   ))}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
