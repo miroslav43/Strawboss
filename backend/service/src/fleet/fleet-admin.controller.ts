@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Delete,
   Body,
   Param,
@@ -21,10 +22,14 @@ import {
   createReleaseSchema,
   updateReleaseSchema,
   createDeploymentSchema,
+  setDeviceTailscaleSchema,
+  updateTailscaleSettingsSchema,
   type UpdateDeviceInput,
   type CreateReleaseInput,
   type UpdateReleaseInput,
   type CreateDeploymentInput,
+  type SetDeviceTailscaleInput,
+  type UpdateTailscaleSettingsInput,
 } from '@strawboss/validation';
 import { FleetService } from './fleet.service';
 
@@ -166,5 +171,66 @@ export class FleetAdminController {
   @Post('deployments/:id/cancel')
   cancelDeployment(@Param('id') id: string) {
     return this.fleetService.cancelDeployment(id);
+  }
+
+  // ─── Tailscale per-device toggle ──────────────────────────────────────────
+
+  /**
+   * PATCH /api/v1/super-admin/devices/:id/tailscale
+   * Set the desired Tailscale state for a device. The device applies it via MDM
+   * on next check-in. Triggers a best-effort FCM wake push.
+   */
+  @Patch('devices/:id/tailscale')
+  setDeviceTailscale(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(setDeviceTailscaleSchema)) dto: SetDeviceTailscaleInput,
+  ) {
+    return this.fleetService.setDeviceTailscale(id, dto);
+  }
+
+  // ─── Tailscale global settings ─────────────────────────────────────────────
+
+  /**
+   * GET /api/v1/super-admin/settings/tailscale
+   * Returns masked settings — raw secrets are NEVER returned.
+   */
+  @Get('settings/tailscale')
+  getTailscaleSettings() {
+    return this.fleetService.getTailscaleSettings();
+  }
+
+  /**
+   * PUT /api/v1/super-admin/settings/tailscale
+   * Update Tailscale settings: auth key, tailnet, OAuth client, tag.
+   * For each secret field: undefined/null = leave unchanged; '' = clear; non-empty = set.
+   */
+  @Put('settings/tailscale')
+  updateTailscaleSettings(
+    @Body(new ZodValidationPipe(updateTailscaleSettingsSchema)) dto: UpdateTailscaleSettingsInput,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.fleetService.updateTailscaleSettings(dto, user.id);
+  }
+
+  /**
+   * POST /api/v1/super-admin/settings/tailscale-apk
+   * Upload the official Tailscale APK so Device-Owner phones can silently self-install it.
+   * Multipart field name: `apk`. Max 250 MB. Overwrites any previously uploaded APK.
+   * Returns masked AppSettings so the UI can reflect tailscaleApkSet immediately.
+   */
+  @Post('settings/tailscale-apk')
+  async uploadTailscaleApk(@Req() req: FastifyRequest) {
+    if (!req.isMultipart()) {
+      throw new BadRequestException('Expected multipart/form-data');
+    }
+
+    // Override per-request file size limit for APK uploads (250 MB)
+    const APK_LIMIT = 250 * 1024 * 1024;
+    const file = await req.file({ limits: { fileSize: APK_LIMIT } });
+    if (!file) {
+      throw new BadRequestException('Missing file part `apk`');
+    }
+
+    return this.fleetService.uploadTailscaleApk(file.file);
   }
 }

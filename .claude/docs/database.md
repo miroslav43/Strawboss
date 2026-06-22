@@ -14,7 +14,7 @@ related:
 
 # Database Schema
 
-PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00055).
+PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00057).
 
 ## Extensions (00001)
 
@@ -103,6 +103,10 @@ Migration `00055_fleet_devices.sql`. These tables are **server-authoritative** (
 
 **devices**: Registry of every installed app instance. `id` (UUID PK), `device_uuid` (TEXT UNIQUE — SecureStore-persisted identity), `organization_id` (FK organizations, nullable until super-admin assigns it), `name`, `android_id`, `model`, `manufacturer`, `os_version`, `app_version` (versionName), `version_code` (INT — monotonic, for downgrade/skew checks), `push_token` (FCM), `device_token_hash` (NOT NULL — HMAC of device_uuid issued on first registration, verified on every check-in), `is_device_owner` (BOOLEAN, default false), `last_seen_at`, `last_checkin_at`, `last_active_trip` (BOOLEAN, default false — idle-gate flag), timestamps, `deleted_at`.
 
+Additional Tailscale columns added in 00056 (all idempotent `ADD COLUMN IF NOT EXISTS`): `tailscale_desired` (BOOLEAN NOT NULL DEFAULT false — super-admin sets the desired state), `tailscale_applied` (BOOLEAN NOT NULL DEFAULT false — last confirmed state the device applied via a command report), `tailscale_online` (BOOLEAN NOT NULL DEFAULT false — written by a host-side `tailscale status` sync), `tailscale_ip` (TEXT — 100.x tailnet IP), `tailscale_hostname` (TEXT — sanitized Tailscale nickname), `tailscale_last_seen` (TIMESTAMPTZ), `tailscale_last_error` (TEXT — best-effort device-reported error from the last command attempt).
+
+The backend issues a Tailscale command only while `tailscale_applied <> tailscale_desired`. The online/IP/hostname fields are populated by a host-side daemon (the backend container cannot reach the tailnet directly).
+
 Indexes: `idx_devices_org` (organization_id WHERE deleted_at IS NULL), `idx_devices_last_seen` (last_seen_at WHERE deleted_at IS NULL).
 
 **app_releases**: An uploaded APK. `id` (UUID PK), `version` (TEXT), `version_code` (INT UNIQUE among non-deleted rows — prevents two releases claiming the same code), `apk_key` (TEXT — storage path under `UPLOADS_ROOT/apks/`), `sha256` (hex digest, verified on-device before install), `size_bytes` (BIGINT), `changelog`, `mandatory` (BOOLEAN, default false), `status` (release_status, default `draft`), `uploaded_by` (FK users), timestamps, `deleted_at`.
@@ -118,6 +122,32 @@ Index: `idx_ota_deployments_status`.
 State machine: the **device** drives forward transitions (reported on check-in via `DeviceOtaReport`); the backend only sets `pending → notified` and confirms `installed` on versionCode proof.
 
 Indexes: `idx_device_ota_status_device` (device_id, state), `idx_device_ota_status_deployment` (deployment_id, state).
+
+### app_settings Singleton (00056, extended 00057)
+
+**app_settings**: Global config the super-admin edits. Enforced as a singleton via a BOOLEAN primary key (`id` always `true`) and a CHECK constraint (`app_settings_singleton: id = true`). A seed `INSERT ... ON CONFLICT DO NOTHING` ensures the row always exists. RLS enabled; **no permissive policy** — service-role (backend) only; raw secret values are never surfaced to clients.
+
+Columns added in `00056_fleet_tailscale.sql`:
+
+| Column | Type | Notes |
+|---|---|---|
+| `tailscale_auth_key` | TEXT | Shared Tailscale auth key (secret, masked) |
+| `tailscale_tailnet` | TEXT NOT NULL DEFAULT `'tail2b4c34.ts.net'` | The tailnet name |
+| `updated_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+| `updated_by` | UUID FK users | |
+
+Columns added in `00057_fleet_tailscale_oauth_apk.sql` (all `ADD COLUMN IF NOT EXISTS`):
+
+| Column | Type | Notes |
+|---|---|---|
+| `tailscale_oauth_client_id` | TEXT | OAuth client ID (enables per-device ephemeral keys) |
+| `tailscale_oauth_client_secret` | TEXT | OAuth secret (secret, masked) |
+| `tailscale_tag` | TEXT | Tag applied to OAuth-minted keys, e.g. `tag:fleet-phone`; must exist in the tailnet ACL |
+| `tailscale_apk_key` | TEXT | Storage path of the hosted Tailscale APK (served via signed URL) |
+| `tailscale_apk_sha256` | TEXT | Hex SHA-256 of the APK, verified before install |
+| `tailscale_apk_size` | BIGINT | APK size in bytes |
+
+The OAuth path mints short-lived, tagged, ephemeral auth keys per device on demand (one per check-in command), so the long-lived shared key is never broadcast to phones.
 
 ### RLS Posture (00055)
 

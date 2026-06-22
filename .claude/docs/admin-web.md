@@ -12,6 +12,8 @@ related:
   - "[[backend]]"
 ---
 
+<!-- updated 2026-06-22: Fleet — Tailscale controls, nickname-first display, APK filename column -->
+
 # Admin Web (`apps/admin-web`)
 
 Next.js 15 App Router + Tailwind CSS v4. Consumes backend API via `@strawboss/api` React Query hooks. Real-time updates via Supabase Realtime channels.
@@ -70,9 +72,11 @@ All pages live under `src/app/super-admin/(dashboard)/devices/`. They are **supe
 
 Renders all registered mobile devices grouped by organization. The "Unassigned" group (devices with `organizationId = null`) appears first; other groups are keyed by `organizationId` with the `organizationName` as the heading label.
 
-Per-device row columns: online dot, name / `deviceUuid` (monospace), manufacturer + model, `appVersion (versionCode)`, OTA-state badge, last-seen timestamp, edit + delete actions.
+**Nickname-first display (`DeviceNickname` component):** `devices.name` is shown as the primary, bold identifier everywhere in this page — list rows, the device multi-select in the push modal, the edit modal header, and the delete confirmation dialog. The organization name is shown below as secondary text; the first 8 characters of `deviceUuid` (monospace) are shown below that. When no nickname is set, an italicized placeholder is used.
 
-**Online threshold:** `lastSeenAt` within 90 seconds → green dot (stricter than the 15-minute threshold used on the main `/map` page).
+Per-device row columns: app-online dot, nickname/org/UUID, manufacturer + model, `appVersion (versionCode)`, OTA-state badge, Tailscale cell, last-seen timestamp, edit + delete actions.
+
+**App-online dot (`OnlineDot`):** green when `lastSeenAt` within 90 seconds, grey otherwise. This threshold is stricter than the 15-minute threshold used on the main `/map` page.
 
 **OTA state badge (`OtaStateBadge`):** color-coded pill per `OtaState` enum value:
 - `pending`, `notified` → neutral
@@ -81,14 +85,46 @@ Per-device row columns: online dot, name / `deviceUuid` (monospace), manufacture
 - `installed` → green
 - `failed` → red
 
-**Modals on this page:**
-- `EditDeviceModal` — rename device and assign/reassign to an organization (`PATCH /api/v1/super-admin/devices/:id`). Uses `useUpdateDevice`.
-- `DeleteDeviceDialog` — confirm-delete with device name shown. Uses `useDeleteDevice`.
-- `PushUpdateModal` — create a new `OtaDeployment`. See Push/Schedule Modal below.
+**Tailscale column (`TailscaleCell`):** each row shows two controls side by side:
 
-Header actions: link to `/super-admin/devices/releases` (PackageOpen icon) and the "Push Update" button that opens `PushUpdateModal`.
+1. `TailscaleDot` — a distinct colored dot (separate from the app-online dot):
+   - Grey: Tailscale not desired (disabled)
+   - Teal/green: desired AND online
+   - Amber: desired but not yet online (pending registration)
+
+2. `TailscaleToggle` — a teal pill toggle switch. Calls `useSetDeviceTailscale(apiClient)` → `PATCH /api/v1/super-admin/devices/:id/tailscale` with `{ desired: boolean }`. Disabled while the mutation is in-flight. Click is stopPropagated so it does not navigate to the device detail page.
+
+**Modals on this page:**
+- `EditDeviceModal` — rename device (`devices.name`) and assign/reassign to an organization (`PATCH /api/v1/super-admin/devices/:id`). Uses `useUpdateDevice`. Nickname is shown prominently in the modal header.
+- `DeleteDeviceDialog` — confirm-delete. Shows nickname (or "noName" placeholder) and full `deviceUuid`. Uses `useDeleteDevice`.
+- `PushUpdateModal` — create a new `OtaDeployment`. Device multi-select lists devices nickname-first. See Push/Schedule Modal below.
+- `TailscaleSettingsModal` — global Tailscale configuration. See Tailscale Settings Modal below.
+
+Header actions (left-to-right): "Tailscale Settings" button (teal-bordered, opens `TailscaleSettingsModal`), link to `/super-admin/devices/releases` (PackageOpen icon), and the "Push Update" button that opens `PushUpdateModal`.
 
 Data hooks: `useDevices(apiClient)` — `refetchInterval: 20_000` ms. Also fetches `useReleases` for the push modal and loads the organization list once via a raw `apiClient.get('/api/v1/organizations')` call (non-critical, failure is swallowed).
+
+### Tailscale Settings Modal (`TailscaleSettingsModal`)
+
+A full-screen overlay opened from the device list header. Reads current settings with `useTailscaleSettings(apiClient)` and saves with `useUpdateTailscaleSettings(apiClient)`. Contains two independent sections:
+
+**Settings form (submitted together):**
+
+| Field | Type | Notes |
+|---|---|---|
+| Shared auth key | `<input type="password">` with eye toggle | Shown masked. Status label indicates "set" / "unset". A "Clear" checkbox sends `authKey: ''` to revoke. An amber warning box reminds that shared auth keys expire. |
+| Tailnet | `<input type="text">` | Seeded from `settings.tailscaleTailnet`. |
+| OAuth client ID | `<input type="text">` | For per-device ephemeral key minting. |
+| OAuth client secret | `<input type="password">` with eye toggle | Shown masked. A "Clear" checkbox sends both ID and secret as `''`. A teal badge shows configured/not-configured status. |
+| Tag | `<input type="text">` | ACL tag applied to ephemeral keys (e.g. `tag:strawboss-device`). Seeded from `settings.tailscaleTag`. |
+
+Submit → `PATCH /api/v1/super-admin/tailscale-settings`. Closes modal on success.
+
+**Tailscale APK upload (separate action below the form):**
+
+A file picker (`accept=".apk"`) and an Upload button. Calls `useUploadTailscaleApk(apiClient)` — `POST /api/v1/super-admin/tailscale-apk` as `multipart/form-data`. A green/neutral badge indicates whether the APK is currently stored. Used to distribute the Tailscale Android client to managed devices via OTA without relying on Google Play.
+
+Secrets are never displayed in plain text; the raw key is never echoed back. The UI only shows set/unset status.
 
 ### Push / Schedule modal (`PushUpdateModal`)
 
@@ -109,7 +145,7 @@ Submit calls `useCreateDeployment(apiClient)` → `POST /api/v1/super-admin/depl
 
 **Upload form (`UploadReleaseForm`):** drag-click APK file picker (`accept=".apk"`), semver `version`, integer `versionCode`, optional `changelog` textarea, `mandatory` checkbox. Submits as `multipart/form-data` via `useUploadRelease(apiClient)` → `POST /api/v1/super-admin/releases`. Clears form on success and shows a 3-second green toast.
 
-**Release list:** table showing version / `versionCode`, `ReleaseStatusBadge`, mandatory flag, file size (converted to MB), changelog snippet (truncated), upload date.
+**Release list:** table showing version / `versionCode`, `ReleaseStatusBadge`, mandatory flag, file size (converted to MB), changelog snippet (truncated), upload date, and the **APK filename** (`r.apkKey.split('/').pop()` — the storage path's basename, rendered as truncated monospace below the version number, max-width 14 rem). The filename is also shown in the cell title attribute for the full name on hover.
 
 `ReleaseStatusBadge` colors: `draft` = neutral, `published` = green, `archived` = neutral-grey.
 
@@ -119,19 +155,34 @@ Data hook: `useReleases(apiClient)` — no polling interval (reads are cheap, ch
 
 ### Device detail (`devices/[id]/page.tsx`)
 
-Identity card: device name + `deviceUuid` (monospace), online dot + text label (same 90 s threshold), `appVersion (versionCode)` in the top-right corner. Info grid: manufacturer/model, OS version, Android ID (monospace), `isDeviceOwner` (green tick if true), last-seen, last-checkin.
+**Breadcrumb:** shows the device nickname (`devices.name`) prominently as the terminal segment; falls back to an italicized "noName" placeholder.
 
-Two tabs: **OTA** and **Logs**.
+**Identity card:** nickname displayed as the primary `<h1>` (bold, large). `deviceUuid` (monospace) shown as secondary below the title. The card header shows two status rows side by side:
+- App-online dot + text ("Online" / "Offline"), same 90 s threshold.
+- Tailscale status dot + text ("Tailscale online" / "pending" / "offline") with the tailnet IP in parentheses when online.
+
+`appVersion (versionCode)` shown top-right. Info grid: manufacturer/model, OS version, Android ID (monospace), `isDeviceOwner` (green tick if true), last-seen, last-checkin.
+
+Three tabs: **OTA**, **Logs**, and **Tailscale**.
 
 **OTA tab (`OtaTimeline`):** list of `DeviceOtaStatusWithVersion` entries from `useDeviceOtaStatus(apiClient, id)` — `refetchInterval: 8_000` ms. Each card shows: state badge (with icon — `Clock`, `Download`, `RefreshCw spin`, `CheckCircle2`, `XCircle`), `version (versionCode)`, deployment UUID, retry-attempt badge (shown when `attempt > 1`), inline error block, and per-row timestamps (notified, downloaded, installed, updated).
 
 **Logs tab (`LogViewer`):** calls `useDeviceLogs(apiClient, id, { level?, date? })` — no polling (manual refresh). Filters: level pills (`all / error / warn / info / flow / debug`) and a date picker (`<input type="date">`). Output rendered in a dark (`bg-neutral-950`) monospace scrollable panel (max height 480 px). Each line: timestamp (HH:mm:ss), colored level tag, optional context bracket, message. Level colors: `error`=red, `warn`=amber, `info`=blue, `flow`=purple, `debug`=neutral.
 
-Data hooks used on this page: `useDevice`, `useDeviceOtaStatus`, `useDeviceLogs` (all from `@strawboss/api`).
+**Tailscale tab (`TailscalePanel`):** displays and controls this device's Tailscale membership.
+
+- **Status + toggle row:** three-state dot (teal = desired+online, amber = desired but pending, grey = off) with a descriptive label. ON/OFF toggle calls `useSetDeviceTailscale(apiClient)` → `PATCH /api/v1/super-admin/devices/:id/tailscale`.
+- **Tailnet IP card:** shown when `tailscaleIp` is present. Includes a `CopyButton` that copies the IP to the clipboard.
+- **Tunnel command card:** shows `./strawboss.sh fleet:tunnel <hostname>` with a `CopyButton`. The hostname used is `device.tailscaleHostname` — the **backend-sanitized** hostname (`[a-z0-9-]` only), NOT the free-form `devices.name`. This is injection-safe: no shell metacharacters can appear in the command regardless of what the nickname contains. When no sanitized hostname is available, an amber warning is shown instead.
+- **"Why off" card:** shown when `tailscaleLastError` or `tailscaleLastSeen` is present. Displays the last error in a red panel and the last-seen timestamp as a best-effort explanation for why the device is not online.
+
+Data hooks used on this page: `useDevice`, `useDeviceOtaStatus`, `useDeviceLogs`, `useSetDeviceTailscale` (all from `@strawboss/api`).
 
 ### i18n
 
-All user-visible strings use the `superAdmin.devices.*` namespace in `messages/en.json` and `messages/ro.json`. Key sub-namespaces: `otaState.*` (one key per `OtaState` value), `releaseStatus.*` (one key per `ReleaseStatus`), `pushModal.*`, `editModal.*`, `deleteDialog.*`, `releases.*`, `detail.*`.
+All user-visible strings use the `superAdmin.devices.*` namespace in `messages/en.json` and `messages/ro.json`. Key sub-namespaces: `otaState.*` (one key per `OtaState` value), `releaseStatus.*` (one key per `ReleaseStatus`), `pushModal.*`, `editModal.*`, `deleteDialog.*`, `releases.*`, `detail.*`, `tailscale.*`.
+
+`tailscale.*` keys include: `online`, `offline`, `pending`, `enable`, `disable`, `settingsTitle`, `settingsSubtitle`, `settingsButton`, `authKeyLabel`, `authKeySet`, `authKeyUnset`, `authKeyPlaceholder`, `authKeyClear`, `authKeyClearHint`, `keyWarning`, `tailnetLabel`, `tailnetPlaceholder`, `oauthSectionTitle`, `oauthConfigured`, `oauthNotConfigured`, `oauthHint`, `oauthClientIdLabel`, `oauthClientIdPlaceholder`, `oauthClientSecretLabel`, `oauthClientSecretPlaceholder`, `oauthClientIdClear`, `oauthClientIdClearHint`, `tagLabel`, `tagPlaceholder`, `tagHint`, `updatedAt`, `saving`, `save`, `apkSectionTitle`, `apkSet`, `apkUnset`, `apkHint`, `apkFileLabel`, `apkUploading`, `apkUploadButton`, `apkUploadError`, `ip`, `tunnelCmd`, `tunnelCopy`, `tunnelNoName`, `lastError`, `lastSeen`.
 
 ### Types and hooks reference
 
@@ -145,6 +196,7 @@ Fleet hooks live in `packages/api/src/hooks/use-fleet.ts` and are re-exported fr
 | `useDevice` | none | `GET /api/v1/super-admin/devices/:id` |
 | `useUpdateDevice` | mutation | `PATCH /api/v1/super-admin/devices/:id` |
 | `useDeleteDevice` | mutation | `DELETE /api/v1/super-admin/devices/:id` |
+| `useSetDeviceTailscale` | mutation | `PATCH /api/v1/super-admin/devices/:id/tailscale` |
 | `useDeviceOtaStatus` | 8 s | `GET /api/v1/super-admin/devices/:id/ota-status` |
 | `useDeviceLogs` | none | `GET /api/v1/super-admin/devices/:id/logs` |
 | `useReleases` | none | `GET /api/v1/super-admin/releases` |
@@ -153,6 +205,9 @@ Fleet hooks live in `packages/api/src/hooks/use-fleet.ts` and are re-exported fr
 | `useDeployments` | none | `GET /api/v1/super-admin/deployments` |
 | `useCreateDeployment` | mutation | `POST /api/v1/super-admin/deployments` |
 | `useCancelDeployment` | mutation | `POST /api/v1/super-admin/deployments/:id/cancel` |
+| `useTailscaleSettings` | none | `GET /api/v1/super-admin/tailscale-settings` |
+| `useUpdateTailscaleSettings` | mutation | `PATCH /api/v1/super-admin/tailscale-settings` |
+| `useUploadTailscaleApk` | mutation | `POST /api/v1/super-admin/tailscale-apk` (multipart) |
 
 ---
 

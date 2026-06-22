@@ -69,7 +69,7 @@ export default function FuelLogsPage() {
   }, [machines]);
 
   const logsQuery = useQuery({
-    queryKey: [...queryKeys.fuelLogs.all, 'admin-list', dateFrom, dateTo],
+    queryKey: queryKeys.fuelLogs.adminList(dateFrom, dateTo),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (dateFrom) params.set('dateFrom', `${dateFrom}T00:00:00Z`);

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run StrawBoss fleet Tailscale status sync every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60
+AccuracySec=15s
+Unit=strawboss-fleet-sync.service
+
+[Install]
+WantedBy=timers.target

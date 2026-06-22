@@ -73,7 +73,7 @@ export default function ConsumableLogsPage() {
   }, [machines]);
 
   const logsQuery = useQuery({
-    queryKey: [...queryKeys.consumableLogs.all, 'admin-list', dateFrom, dateTo],
+    queryKey: queryKeys.consumableLogs.adminList(dateFrom, dateTo),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (dateFrom) params.set('dateFrom', `${dateFrom}T00:00:00Z`);

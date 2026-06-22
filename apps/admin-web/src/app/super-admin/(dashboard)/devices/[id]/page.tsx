@@ -13,9 +13,15 @@ import {
   Download,
   AlertTriangle,
   RefreshCw,
-  ChevronDown,
+  Copy,
+  Check,
 } from 'lucide-react';
-import { useDevice, useDeviceOtaStatus, useDeviceLogs } from '@strawboss/api';
+import {
+  useDevice,
+  useDeviceOtaStatus,
+  useDeviceLogs,
+  useSetDeviceTailscale,
+} from '@strawboss/api';
 import type { DeviceOtaStatusWithVersion } from '@strawboss/api';
 import { OtaState } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
@@ -73,6 +79,29 @@ function LogLevelTag({ level }: { level: string }) {
     <span className={`font-mono text-xs font-semibold uppercase ${cls}`}>
       [{level.toUpperCase()}]
     </span>
+  );
+}
+
+// ── Copy button ───────────────────────────────────────────────────────────────
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={label}
+      className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50 active:bg-neutral-100"
+    >
+      {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
+      {copied ? '✓' : label}
+    </button>
   );
 }
 
@@ -261,7 +290,7 @@ function LogViewer({ deviceId }: { deviceId: string }) {
           {entries.map((entry, i) => {
             const ts = entry.timestamp ?? entry.recordedAt;
             return (
-              <div key={i} className="flex gap-2 py-0.5">
+              <div key={`${ts ?? ''}-${i}`} className="flex gap-2 py-0.5">
                 <span className="shrink-0 text-neutral-500">
                   {ts
                     ? new Date(ts).toLocaleTimeString('ro-RO', {
@@ -291,6 +320,140 @@ function LogViewer({ deviceId }: { deviceId: string }) {
   );
 }
 
+// ── Tailscale panel ───────────────────────────────────────────────────────────
+
+function TailscalePanel({ device }: { device: ReturnType<typeof useDevice>['data'] }) {
+  const { t } = useI18n();
+  const setTailscale = useSetDeviceTailscale(apiClient);
+
+  if (!device) return null;
+
+  const { tailscaleDesired, tailscaleOnline, tailscaleIp, tailscaleLastSeen, tailscaleLastError } =
+    device;
+
+  // Use the backend-sanitized hostname ([a-z0-9-] only) — NOT the free-form name — so the
+  // copy-paste command can never carry shell metacharacters (no quoting/injection possible).
+  const tunnelCmd = device.tailscaleHostname
+    ? `./strawboss.sh fleet:tunnel ${device.tailscaleHostname}`
+    : null;
+
+  // Tailscale dot color
+  let dotCls = 'bg-neutral-300'; // off
+  let dotLabel = t('superAdmin.devices.tailscale.offline');
+  if (tailscaleDesired && tailscaleOnline) {
+    dotCls = 'bg-teal-500';
+    dotLabel = t('superAdmin.devices.tailscale.online');
+  } else if (tailscaleDesired && !tailscaleOnline) {
+    dotCls = 'bg-amber-400';
+    dotLabel = t('superAdmin.devices.tailscale.pending');
+  }
+
+  const handleToggle = () => {
+    setTailscale.mutate({ id: device.id, desired: !tailscaleDesired });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Status + toggle row */}
+      <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className={`inline-block h-3 w-3 rounded-full ${dotCls}`} title={dotLabel} />
+          <div>
+            <p className="text-sm font-semibold text-neutral-800">{dotLabel}</p>
+            {tailscaleIp && <p className="font-mono text-xs text-neutral-500">{tailscaleIp}</p>}
+          </div>
+        </div>
+
+        {/* Toggle */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-neutral-500">
+            {tailscaleDesired
+              ? t('superAdmin.devices.tailscale.disable')
+              : t('superAdmin.devices.tailscale.enable')}
+          </span>
+          <button
+            type="button"
+            onClick={handleToggle}
+            disabled={setTailscale.isPending}
+            aria-label={
+              tailscaleDesired
+                ? t('superAdmin.devices.tailscale.disable')
+                : t('superAdmin.devices.tailscale.enable')
+            }
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1 disabled:opacity-50 ${
+              tailscaleDesired ? 'bg-teal-500' : 'bg-neutral-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                tailscaleDesired ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* IP + tunnel command */}
+      {tailscaleIp && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-wider text-neutral-400">
+              {t('superAdmin.devices.tailscale.ip')}
+            </p>
+            <CopyButton text={tailscaleIp} label={t('superAdmin.devices.tailscale.tunnelCopy')} />
+          </div>
+          <p className="font-mono text-sm text-neutral-800">{tailscaleIp}</p>
+        </div>
+      )}
+
+      {/* Tunnel command */}
+      <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs font-medium uppercase tracking-wider text-neutral-400">
+            {t('superAdmin.devices.tailscale.tunnelCmd')}
+          </p>
+          {tunnelCmd && (
+            <CopyButton text={tunnelCmd} label={t('superAdmin.devices.tailscale.tunnelCopy')} />
+          )}
+        </div>
+        {tunnelCmd ? (
+          <code className="block rounded-lg bg-neutral-950 px-3 py-2 font-mono text-xs text-teal-300">
+            {tunnelCmd}
+          </code>
+        ) : (
+          <p className="text-xs text-amber-700">{t('superAdmin.devices.tailscale.tunnelNoName')}</p>
+        )}
+      </div>
+
+      {/* Why off — last error + last seen */}
+      {(tailscaleLastError || tailscaleLastSeen) && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <p className="mb-3 text-xs font-medium uppercase tracking-wider text-neutral-400">
+            {t('superAdmin.devices.tailscale.lastError')}
+          </p>
+          <div className="space-y-2">
+            {tailscaleLastError && (
+              <div className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+                <p className="text-xs text-red-700">{tailscaleLastError}</p>
+              </div>
+            )}
+            {tailscaleLastSeen && (
+              <p className="text-xs text-neutral-500">
+                {t('superAdmin.devices.tailscale.lastSeen')}:{' '}
+                {new Date(tailscaleLastSeen).toLocaleString('ro-RO', {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Info row ──────────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -306,7 +469,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-type Tab = 'ota' | 'logs';
+type Tab = 'ota' | 'logs' | 'tailscale';
 
 export default function DeviceDetailPage() {
   const { t } = useI18n();
@@ -350,7 +513,12 @@ export default function DeviceDetailPage() {
           {t('superAdmin.devices.navLabel')}
         </a>
         <span className="text-neutral-300">/</span>
-        <span className="font-medium text-neutral-800">{device.name ?? device.deviceUuid}</span>
+        {/* Nickname-first in breadcrumb */}
+        <span className="font-semibold text-neutral-800">
+          {device.name ?? (
+            <span className="italic text-neutral-400">{t('superAdmin.devices.noName')}</span>
+          )}
+        </span>
       </div>
 
       {/* Identity card */}
@@ -360,19 +528,73 @@ export default function DeviceDetailPage() {
             <Smartphone className="h-7 w-7 text-neutral-500" />
           </div>
           <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-neutral-800">
-                {device.name ?? t('superAdmin.devices.unnamed')}
-              </h1>
-              <span
-                className={`inline-flex h-2 w-2 rounded-full ${online ? 'bg-green-500' : 'bg-neutral-300'}`}
-                title={online ? t('superAdmin.devices.online') : t('superAdmin.devices.offline')}
-              />
-              <span className={`text-xs ${online ? 'text-green-600' : 'text-neutral-400'}`}>
-                {online ? t('superAdmin.devices.online') : t('superAdmin.devices.offline')}
-              </span>
+            {/* Nickname — primary, large */}
+            <h1 className="text-xl font-bold text-neutral-900">
+              {device.name ?? (
+                <span className="italic text-neutral-400">{t('superAdmin.devices.noName')}</span>
+              )}
+            </h1>
+            {/* Org name — secondary */}
+            <p className="mt-0.5 text-sm text-neutral-500">
+              {/* organizationId is on Device but organizationName is on FleetDeviceListItem;
+                  useDevice returns Device which doesn't have organizationName. Fall back
+                  to showing deviceUuid as the secondary line. */}
+              <span className="font-mono text-xs text-neutral-400">{device.deviceUuid}</span>
+            </p>
+
+            {/* App online + Tailscale status row */}
+            <div className="mt-2 flex flex-wrap items-center gap-4">
+              {/* App online */}
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${online ? 'bg-green-500' : 'bg-neutral-300'}`}
+                  title={online ? t('superAdmin.devices.online') : t('superAdmin.devices.offline')}
+                />
+                <span className={`text-xs ${online ? 'text-green-700' : 'text-neutral-400'}`}>
+                  {online ? t('superAdmin.devices.online') : t('superAdmin.devices.offline')}
+                </span>
+              </div>
+
+              {/* Tailscale status */}
+              <div className="flex items-center gap-1.5">
+                {device.tailscaleDesired && device.tailscaleOnline ? (
+                  <>
+                    <span
+                      className="inline-block h-2 w-2 rounded-full bg-teal-500"
+                      title={t('superAdmin.devices.tailscale.online')}
+                    />
+                    <span className="text-xs text-teal-700">
+                      {t('superAdmin.devices.tailscale.online')}
+                      {device.tailscaleIp && (
+                        <span className="ml-1 font-mono text-neutral-400">
+                          ({device.tailscaleIp})
+                        </span>
+                      )}
+                    </span>
+                  </>
+                ) : device.tailscaleDesired ? (
+                  <>
+                    <span
+                      className="inline-block h-2 w-2 rounded-full bg-amber-400"
+                      title={t('superAdmin.devices.tailscale.pending')}
+                    />
+                    <span className="text-xs text-amber-700">
+                      {t('superAdmin.devices.tailscale.pending')}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      className="inline-block h-2 w-2 rounded-full bg-neutral-300"
+                      title={t('superAdmin.devices.tailscale.offline')}
+                    />
+                    <span className="text-xs text-neutral-400">
+                      Tailscale {t('superAdmin.devices.tailscale.offline').toLowerCase()}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
-            <p className="mt-0.5 font-mono text-sm text-neutral-400">{device.deviceUuid}</p>
           </div>
           <div className="text-right">
             <p className="text-lg font-bold text-neutral-800">{device.appVersion ?? '—'}</p>
@@ -436,7 +658,7 @@ export default function DeviceDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 rounded-xl border border-neutral-200 bg-neutral-100 p-1">
-        {(['ota', 'logs'] as Tab[]).map((tab) => (
+        {(['ota', 'logs', 'tailscale'] as Tab[]).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -455,6 +677,7 @@ export default function DeviceDetailPage() {
       {/* Tab content */}
       {activeTab === 'ota' && <OtaTimeline entries={otaEntries} isLoading={otaLoading} />}
       {activeTab === 'logs' && <LogViewer deviceId={id} />}
+      {activeTab === 'tailscale' && <TailscalePanel device={device} />}
     </div>
   );
 }

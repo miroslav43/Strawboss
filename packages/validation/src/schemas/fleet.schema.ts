@@ -14,6 +14,12 @@ export const deviceOtaReportSchema = z.object({
   error: z.string().max(4000).optional(),
 });
 
+export const deviceCommandReportSchema = z.object({
+  commandId: uuidSchema,
+  status: z.enum(['success', 'failure']),
+  error: z.string().max(4000).optional(),
+});
+
 export const deviceCheckinSchema = z.object({
   deviceUuid: z.string().min(8).max(128),
   deviceToken: z.string().max(256).optional(),
@@ -27,6 +33,7 @@ export const deviceCheckinSchema = z.object({
   isDeviceOwner: z.boolean(),
   activeTrip: z.boolean(),
   otaReports: z.array(deviceOtaReportSchema).max(50).optional(),
+  commandReports: z.array(deviceCommandReportSchema).max(50).optional(),
   lastError: z.string().max(4000).optional(),
 });
 export type DeviceCheckinInput = z.infer<typeof deviceCheckinSchema>;
@@ -83,3 +90,24 @@ export const updateDeviceSchema = z.object({
   organizationId: uuidSchema.nullable().optional(),
 });
 export type UpdateDeviceInput = z.infer<typeof updateDeviceSchema>;
+
+// ── Super-admin: Tailscale remote access ──────────────────────────────────────
+
+/** Toggle the desired Tailscale state for one device (the device applies it via MDM). */
+export const setDeviceTailscaleSchema = z.object({
+  desired: z.boolean(),
+});
+export type SetDeviceTailscaleInput = z.infer<typeof setDeviceTailscaleSchema>;
+
+/** Global Tailscale settings the super-admin edits. authKey null = leave unchanged;
+ * empty string = clear. */
+export const updateTailscaleSettingsSchema = z.object({
+  authKey: z.string().max(512).nullable().optional(),
+  tailnet: z.string().max(200).nullable().optional(),
+  /** Tailscale OAuth client (enables per-device ephemeral keys; '' clears). */
+  oauthClientId: z.string().max(256).nullable().optional(),
+  oauthClientSecret: z.string().max(512).nullable().optional(),
+  /** Tag applied to OAuth-minted keys, e.g. 'tag:fleet-phone'. */
+  tag: z.string().max(128).nullable().optional(),
+});
+export type UpdateTailscaleSettingsInput = z.infer<typeof updateTailscaleSettingsSchema>;

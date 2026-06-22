@@ -71,6 +71,17 @@ export function useGeofenceNotifications() {
   /** Tracks the last time each alert key (type:assignmentId) was enqueued. */
   const lastAlertAt = useRef<Map<string, number>>(new Map());
 
+  // Append to the queue but skip if an alert with the same (type, assignmentId)
+  // is already waiting — a duplicate push (e.g. server retry + client wake) must
+  // not surface the same modal twice.
+  const pushAlert = useCallback((alert: GeofenceAlert) => {
+    setAlertQueue((q) =>
+      q.some((a) => a.type === alert.type && a.assignmentId === alert.assignmentId)
+        ? q
+        : [...q, alert],
+    );
+  }, []);
+
   useEffect(() => {
     if (!userId) {
       setAlertQueue([]);
@@ -226,14 +237,11 @@ export function useGeofenceNotifications() {
             assignmentId,
             parcelName: data.parcelName,
           });
-          setAlertQueue((q) => [
-            ...q,
-            {
-              type: 'field_entry',
-              parcelName: data.parcelName ?? 'Câmp',
-              assignmentId,
-            },
-          ]);
+          pushAlert({
+            type: 'field_entry',
+            parcelName: data.parcelName ?? 'Câmp',
+            assignmentId,
+          });
           break;
         case 'field_entry_confirm':
           mobileLogger.flow('Geofence: entry_confirm (baler 10s)', {
@@ -241,18 +249,15 @@ export function useGeofenceNotifications() {
             parcelCode: data.parcelCode,
             cropType: data.cropType,
           });
-          setAlertQueue((q) => [
-            ...q,
-            {
-              type: 'entry_confirm',
-              parcelName: data.parcelName ?? data.parcelCode ?? 'Câmp',
-              parcelCode: data.parcelCode,
-              parcelId: data.parcelId,
-              cropType: data.cropType ?? null,
-              assignmentId,
-              action: data.action,
-            },
-          ]);
+          pushAlert({
+            type: 'entry_confirm',
+            parcelName: data.parcelName ?? data.parcelCode ?? 'Câmp',
+            parcelCode: data.parcelCode,
+            parcelId: data.parcelId,
+            cropType: data.cropType ?? null,
+            assignmentId,
+            action: data.action,
+          });
           break;
         case 'field_exit_production':
           routeToProductionEntry(data, assignmentId);
@@ -262,15 +267,12 @@ export function useGeofenceNotifications() {
             assignmentId,
             parcelName: data.parcelName,
           });
-          setAlertQueue((q) => [
-            ...q,
-            {
-              type: 'loaded_confirm',
-              parcelName: data.parcelName ?? 'Câmp',
-              parcelId: data.parcelId,
-              assignmentId,
-            },
-          ]);
+          pushAlert({
+            type: 'loaded_confirm',
+            parcelName: data.parcelName ?? 'Câmp',
+            parcelId: data.parcelId,
+            assignmentId,
+          });
           break;
         case 'depart_prompt':
           routeToDepartureFlow(data);
@@ -280,44 +282,35 @@ export function useGeofenceNotifications() {
             assignmentId,
             tripId: data.tripId,
           });
-          setAlertQueue((q) => [
-            ...q,
-            {
-              type: 'deposit_entry',
-              parcelName: 'Depozit',
-              assignmentId,
-              tripId: data.tripId ?? null,
-            },
-          ]);
+          pushAlert({
+            type: 'deposit_entry',
+            parcelName: 'Depozit',
+            assignmentId,
+            tripId: data.tripId ?? null,
+          });
           break;
         case 'geofence_exit_confirm':
           mobileLogger.flow('Geofence: exit confirm foreground', {
             assignmentId,
             parcelName: data.parcelName,
           });
-          setAlertQueue((q) => [
-            ...q,
-            {
-              type: 'exit_confirm',
-              parcelName: data.parcelName ?? 'Câmp',
-              assignmentId,
-            },
-          ]);
+          pushAlert({
+            type: 'exit_confirm',
+            parcelName: data.parcelName ?? 'Câmp',
+            assignmentId,
+          });
           break;
         case 'truck_approaching_loader':
           mobileLogger.flow('Geofence: truck approaching (<5km)', {
             assignmentId,
             truckPlate: data.truckPlate,
           });
-          setAlertQueue((q) => [
-            ...q,
-            {
-              type: 'truck_approaching',
-              parcelName: data.parcelName ?? 'Câmp',
-              truckPlate: data.truckPlate,
-              assignmentId,
-            },
-          ]);
+          pushAlert({
+            type: 'truck_approaching',
+            parcelName: data.parcelName ?? 'Câmp',
+            truckPlate: data.truckPlate,
+            assignmentId,
+          });
           break;
       }
     });
@@ -334,64 +327,49 @@ export function useGeofenceNotifications() {
 
       if (data.type === 'geofence_exit_confirm') {
         // Show the exit modal so user can enter bale count
-        setAlertQueue((q) => [
-          ...q,
-          {
-            type: 'exit_confirm',
-            parcelName: data.parcelName ?? 'Câmp',
-            assignmentId,
-          },
-        ]);
+        pushAlert({
+          type: 'exit_confirm',
+          parcelName: data.parcelName ?? 'Câmp',
+          assignmentId,
+        });
       } else if (data.type === 'deposit_entry') {
         // Tapping the deposit push opens the arrival popup.
-        setAlertQueue((q) => [
-          ...q,
-          {
-            type: 'deposit_entry',
-            parcelName: 'Depozit',
-            assignmentId,
-            tripId: data.tripId ?? null,
-          },
-        ]);
+        pushAlert({
+          type: 'deposit_entry',
+          parcelName: 'Depozit',
+          assignmentId,
+          tripId: data.tripId ?? null,
+        });
       } else if (data.type === 'field_entry_confirm') {
         // Tapping the entry push (e.g. from lockscreen) opens the countdown
         // overlay even when the app was backgrounded.
-        setAlertQueue((q) => [
-          ...q,
-          {
-            type: 'entry_confirm',
-            parcelName: data.parcelName ?? data.parcelCode ?? 'Câmp',
-            parcelCode: data.parcelCode,
-            parcelId: data.parcelId,
-            cropType: data.cropType ?? null,
-            assignmentId,
-            action: data.action,
-          },
-        ]);
+        pushAlert({
+          type: 'entry_confirm',
+          parcelName: data.parcelName ?? data.parcelCode ?? 'Câmp',
+          parcelCode: data.parcelCode,
+          parcelId: data.parcelId,
+          cropType: data.cropType ?? null,
+          assignmentId,
+          action: data.action,
+        });
       } else if (data.type === 'field_exit_production') {
         routeToProductionEntry(data, assignmentId);
       } else if (data.type === 'loader_exit_confirm') {
-        setAlertQueue((q) => [
-          ...q,
-          {
-            type: 'loaded_confirm',
-            parcelName: data.parcelName ?? 'Câmp',
-            parcelId: data.parcelId,
-            assignmentId,
-          },
-        ]);
+        pushAlert({
+          type: 'loaded_confirm',
+          parcelName: data.parcelName ?? 'Câmp',
+          parcelId: data.parcelId,
+          assignmentId,
+        });
       } else if (data.type === 'depart_prompt') {
         routeToDepartureFlow(data);
       } else if (data.type === 'truck_approaching_loader') {
-        setAlertQueue((q) => [
-          ...q,
-          {
-            type: 'truck_approaching',
-            parcelName: data.parcelName ?? 'Câmp',
-            truckPlate: data.truckPlate,
-            assignmentId,
-          },
-        ]);
+        pushAlert({
+          type: 'truck_approaching',
+          parcelName: data.parcelName ?? 'Câmp',
+          truckPlate: data.truckPlate,
+          assignmentId,
+        });
       }
     });
 
@@ -426,10 +404,7 @@ export function useGeofenceNotifications() {
             assignmentId: a.assignmentId,
             parcelName: a.parcelName,
           });
-          setAlertQueue((q) => [
-            ...q,
-            { type: a.type, parcelName: a.parcelName, assignmentId: a.assignmentId },
-          ]);
+          pushAlert({ type: a.type, parcelName: a.parcelName, assignmentId: a.assignmentId });
         }
       } catch {
         // Non-critical — the wake already foregrounded the app.

@@ -67,6 +67,33 @@ export interface Device extends Timestamps, SoftDelete {
   lastCheckinAt: string | null;
   /** Last reported idle gate — true if the device was mid-trip at last check-in. */
   lastActiveTrip: boolean;
+  // ── Tailscale (remote access for debugging) ──
+  /** Desired state set by super-admin; the device applies it via MDM on next check-in. */
+  tailscaleDesired: boolean;
+  /** Whether the peer is currently online in the VM's tailnet (set by the host status sync). */
+  tailscaleOnline: boolean;
+  /** The device's 100.x tailnet IP (from `tailscale status`). */
+  tailscaleIp: string | null;
+  /** The sanitized nickname used as the Tailscale hostname. */
+  tailscaleHostname: string | null;
+  tailscaleLastSeen: string | null;
+  /** Best-effort reason the last tailscale command failed (device-reported). */
+  tailscaleLastError: string | null;
+}
+
+/** Singleton global config the super-admin edits (e.g. the Tailscale auth key).
+ * Secrets are NEVER returned raw — the API exposes only `*Set` booleans. */
+export interface AppSettings {
+  /** Whether a shared auth key is configured (raw value never returned). */
+  tailscaleAuthKeySet: boolean;
+  tailscaleTailnet: string | null;
+  /** Whether a Tailscale OAuth client is configured (enables per-device ephemeral keys). */
+  tailscaleOauthConfigured: boolean;
+  /** Tag applied to OAuth-minted keys (e.g. 'tag:fleet-phone'). Required for OAuth minting. */
+  tailscaleTag: string | null;
+  /** Whether a Tailscale APK is hosted for zero-touch auto-install on phones. */
+  tailscaleApkSet: boolean;
+  updatedAt: string | null;
 }
 
 /** A device list row enriched with joins the UI needs (org name + latest OTA state). */
@@ -130,6 +157,35 @@ export interface DeviceOtaReport {
   error?: string;
 }
 
+/** A one-shot remote command the backend hands a device on check-in (currently Tailscale
+ * up/down for remote ADB access). The device applies it via the Device-Owner MDM controls
+ * and reports the result in `commandReports[]` on its next check-in. */
+export interface DeviceCommand {
+  /** Idempotency id; the device echoes it back in its report. */
+  id: string;
+  type: 'tailscale';
+  action: 'up' | 'down';
+  /** Present for `up`: what the device pushes into the Tailscale app's managed config. */
+  payload?: {
+    authKey: string;
+    hostname: string;
+    tailnet: string;
+    /** If set and the Tailscale app isn't installed, the device silently installs this APK
+     * (signed URL + sha256) before configuring Tailscale. */
+    tailscaleApk?: {
+      url: string;
+      sha256: string;
+    };
+  };
+}
+
+/** Result of applying a `DeviceCommand`, reported on the next check-in. */
+export interface DeviceCommandReport {
+  commandId: string;
+  status: 'success' | 'failure';
+  error?: string;
+}
+
 /** Device → backend. Public endpoint; `deviceToken` proves identity after the first
  * (registration) check-in, which omits it and receives `deviceTokenIssued` once. */
 export interface DeviceCheckinRequest {
@@ -145,6 +201,8 @@ export interface DeviceCheckinRequest {
   isDeviceOwner: boolean;
   activeTrip: boolean;
   otaReports?: DeviceOtaReport[];
+  /** Results of remote commands (e.g. Tailscale up/down) applied since the last check-in. */
+  commandReports?: DeviceCommandReport[];
   lastError?: string;
 }
 
@@ -171,4 +229,6 @@ export interface DeviceCheckinResponse {
   /** Present ONLY on the first (registration) response — the raw HMAC token to persist. */
   deviceTokenIssued?: string;
   pendingDeployment: PendingDeployment | null;
+  /** A remote command to apply now (Tailscale up/down), or null. */
+  pendingCommand: DeviceCommand | null;
 }

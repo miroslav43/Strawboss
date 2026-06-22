@@ -4,15 +4,15 @@ import {
   UnauthorizedException,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
-import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
+import { timingSafeEqual, randomUUID, randomBytes, createHash } from 'node:crypto';
 import { createWriteStream, promises as fsp } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
-import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import type { Readable } from 'node:stream';
 import type { Logger } from 'winston';
@@ -20,13 +20,21 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { resolveUploadsRoot } from '../uploads/uploads.service';
 import { signUploadUrl, UPLOADS_URL_PREFIX } from '../uploads/uploads-signing';
-import type { DeviceCheckinResponse, PendingDeployment, OtaState } from '@strawboss/types';
+import type {
+  DeviceCheckinResponse,
+  PendingDeployment,
+  OtaState,
+  DeviceCommand,
+  AppSettings,
+} from '@strawboss/types';
 import type {
   DeviceCheckinInput,
   CreateReleaseInput,
   UpdateReleaseInput,
   CreateDeploymentInput,
   UpdateDeviceInput,
+  SetDeviceTailscaleInput,
+  UpdateTailscaleSettingsInput,
 } from '@strawboss/validation';
 import { FleetPushService } from './fleet-push.service';
 import { QUEUE_OTA_DEPLOY } from '../jobs/queues';
@@ -36,23 +44,29 @@ export const APK_MAX_BYTES = 250 * 1024 * 1024;
 
 const DEVICE_COLS = sql`
   id,
-  device_uuid           AS "deviceUuid",
-  organization_id       AS "organizationId",
+  device_uuid             AS "deviceUuid",
+  organization_id         AS "organizationId",
   name,
-  android_id            AS "androidId",
+  android_id              AS "androidId",
   model,
   manufacturer,
-  os_version            AS "osVersion",
-  app_version           AS "appVersion",
-  version_code          AS "versionCode",
-  push_token            AS "pushToken",
-  is_device_owner       AS "isDeviceOwner",
-  last_seen_at          AS "lastSeenAt",
-  last_checkin_at       AS "lastCheckinAt",
-  last_active_trip      AS "lastActiveTrip",
-  created_at            AS "createdAt",
-  updated_at            AS "updatedAt",
-  deleted_at            AS "deletedAt"
+  os_version              AS "osVersion",
+  app_version             AS "appVersion",
+  version_code            AS "versionCode",
+  push_token              AS "pushToken",
+  is_device_owner         AS "isDeviceOwner",
+  last_seen_at            AS "lastSeenAt",
+  last_checkin_at         AS "lastCheckinAt",
+  last_active_trip        AS "lastActiveTrip",
+  tailscale_desired       AS "tailscaleDesired",
+  tailscale_online        AS "tailscaleOnline",
+  tailscale_ip            AS "tailscaleIp",
+  tailscale_hostname      AS "tailscaleHostname",
+  tailscale_last_seen     AS "tailscaleLastSeen",
+  tailscale_last_error    AS "tailscaleLastError",
+  created_at              AS "createdAt",
+  updated_at              AS "updatedAt",
+  deleted_at              AS "deletedAt"
 `;
 
 const RELEASE_COLS = sql`
@@ -103,16 +117,42 @@ export class FleetService {
     this.jwtSecret = configService.getOrThrow<string>('SUPABASE_JWT_SECRET');
   }
 
-  // ─── HMAC helpers ────────────────────────────────────────────────────────────
+  // ─── Tailscale hostname sanitizer ────────────────────────────────────────────
 
-  private computeDeviceToken(deviceUuid: string): string {
-    return createHmac('sha256', this.jwtSecret).update(deviceUuid).digest('hex');
+  /**
+   * Convert a device display name into a Tailscale-safe DNS label.
+   * Lowercase, replace runs of non-[a-z0-9-] with '-', strip leading/trailing '-'.
+   * Fallback: "phone-<first 8 chars of device id>".
+   */
+  sanitizeHostname(name: string | null | undefined, deviceId: string): string {
+    if (!name) return `phone-${deviceId.slice(0, 8)}`;
+    const sanitized = name
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return sanitized || `phone-${deviceId.slice(0, 8)}`;
   }
 
-  private verifyDeviceToken(deviceUuid: string, token: string): boolean {
-    const expected = this.computeDeviceToken(deviceUuid);
-    const a = Buffer.from(token);
-    const b = Buffer.from(expected);
+  // ─── Device token helpers ─────────────────────────────────────────────────────
+
+  /**
+   * Generate a new per-device token (64 hex chars) and its SHA-256 hash.
+   * The raw token is returned once (at registration); only the hash is stored.
+   */
+  private generateDeviceToken(): { token: string; tokenHash: string } {
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    return { token, tokenHash };
+  }
+
+  /**
+   * Verify a submitted token against the stored SHA-256 hash.
+   * Uses timing-safe comparison to prevent timing attacks.
+   */
+  private verifyDeviceToken(submittedToken: string, storedHash: string): boolean {
+    const submittedHash = createHash('sha256').update(submittedToken).digest('hex');
+    const a = Buffer.from(submittedHash);
+    const b = Buffer.from(storedHash);
     if (a.length !== b.length) return false;
     return timingSafeEqual(a, b);
   }
@@ -147,9 +187,12 @@ export class FleetService {
     let deviceTokenIssued: string | undefined;
     let orgId: string | null;
 
+    let isRegistration = false;
+
     if (rows.length === 0) {
       // REGISTRATION — first check-in for this deviceUuid
-      const token = this.computeDeviceToken(dto.deviceUuid);
+      isRegistration = true;
+      const { token, tokenHash } = this.generateDeviceToken();
       const inserted = await db.execute(
         sql`INSERT INTO devices (
               device_uuid, device_token_hash,
@@ -157,7 +200,7 @@ export class FleetService {
               push_token, is_device_owner, last_active_trip,
               last_seen_at, last_checkin_at
             ) VALUES (
-              ${dto.deviceUuid}, ${token},
+              ${dto.deviceUuid}, ${tokenHash},
               ${dto.appVersion}, ${dto.versionCode},
               ${dto.model ?? null}, ${dto.manufacturer ?? null},
               ${dto.osVersion ?? null}, ${dto.androidId ?? null},
@@ -181,7 +224,7 @@ export class FleetService {
       if (!dto.deviceToken) {
         throw new UnauthorizedException('deviceToken required for known device');
       }
-      if (!this.verifyDeviceToken(dto.deviceUuid, dto.deviceToken)) {
+      if (!this.verifyDeviceToken(dto.deviceToken, row.device_token_hash)) {
         throw new UnauthorizedException('Invalid device token');
       }
 
@@ -207,6 +250,18 @@ export class FleetService {
       );
     }
 
+    // On first registration, return immediately with no pending work.
+    // An unverified registrant must not receive signed APK URLs or inflate stats.
+    if (isRegistration) {
+      return {
+        deviceId,
+        assignedOrgId: orgId,
+        deviceTokenIssued,
+        pendingDeployment: null,
+        pendingCommand: null,
+      };
+    }
+
     // 2. Apply OTA reports
     if (dto.otaReports && dto.otaReports.length > 0) {
       for (const report of dto.otaReports) {
@@ -220,14 +275,310 @@ export class FleetService {
       }
     }
 
-    // 3. Compute pending deployment
+    // 3. Apply command reports (Tailscale up/down outcomes)
+    if (dto.commandReports && dto.commandReports.length > 0) {
+      await this.applyCommandReports(deviceId, dto.commandReports);
+    }
+
+    // 4. Compute pending deployment
     const pendingDeployment = await this.computePendingDeployment(deviceId, dto.versionCode, orgId);
+
+    // 5. Compute pending Tailscale command
+    const pendingCommand = await this.computePendingCommand(deviceId);
 
     return {
       deviceId,
       assignedOrgId: orgId,
       ...(deviceTokenIssued ? { deviceTokenIssued } : {}),
       pendingDeployment,
+      pendingCommand,
+    };
+  }
+
+  private async applyCommandReports(
+    deviceId: string,
+    reports: { commandId: string; status: 'success' | 'failure'; error?: string }[],
+  ): Promise<void> {
+    const db = this.drizzleProvider.db;
+
+    // Fetch the persisted pending command for this device so we can verify commandId
+    const deviceRows = await db.execute(
+      sql`SELECT tailscale_pending_command_id  AS "pendingCommandId",
+                 tailscale_pending_action       AS "pendingAction"
+          FROM devices
+          WHERE id = ${deviceId}::uuid AND deleted_at IS NULL
+          LIMIT 1`,
+    );
+    const deviceRow = (
+      deviceRows as unknown as {
+        pendingCommandId: string | null;
+        pendingAction: string | null;
+      }[]
+    )[0];
+    if (!deviceRow) return;
+
+    for (const report of reports) {
+      // Only act on reports that match the stored pending command id
+      if (report.commandId !== deviceRow.pendingCommandId) continue;
+
+      if (report.status === 'success') {
+        // Derive the new applied value from the pending action ('up' → true, 'down' → false)
+        const newApplied = deviceRow.pendingAction === 'up';
+        await db.execute(
+          sql`UPDATE devices SET
+                tailscale_applied              = ${newApplied},
+                tailscale_pending_command_id   = NULL,
+                tailscale_pending_action       = NULL,
+                tailscale_last_error           = NULL,
+                updated_at                     = now()
+              WHERE id = ${deviceId}::uuid`,
+        );
+        this.winston.log('flow', 'Tailscale command applied by device', {
+          context: 'FleetService',
+          deviceId,
+          commandId: report.commandId,
+          action: deviceRow.pendingAction,
+          newApplied,
+        });
+      } else {
+        // Failure — clear the pending command so a fresh one is issued next check-in
+        await db.execute(
+          sql`UPDATE devices SET
+                tailscale_pending_command_id = NULL,
+                tailscale_pending_action     = NULL,
+                tailscale_last_error         = ${report.error ?? 'unknown error'},
+                updated_at                   = now()
+              WHERE id = ${deviceId}::uuid`,
+        );
+        this.winston.warn('Tailscale command failed on device', {
+          context: 'FleetService',
+          deviceId,
+          commandId: report.commandId,
+          error: report.error,
+        });
+      }
+    }
+  }
+
+  private async computePendingCommand(deviceId: string): Promise<DeviceCommand | null> {
+    const db = this.drizzleProvider.db;
+
+    // Read device tailscale state (re-read after applying reports)
+    // Also read the persisted pending command so we can reuse a stable id across check-ins.
+    const deviceRows = await db.execute(
+      sql`SELECT name,
+                 tailscale_desired              AS "tailscaleDesired",
+                 tailscale_applied              AS "tailscaleApplied",
+                 tailscale_pending_command_id   AS "pendingCommandId",
+                 tailscale_pending_action       AS "pendingAction"
+          FROM devices
+          WHERE id = ${deviceId}::uuid AND deleted_at IS NULL
+          LIMIT 1`,
+    );
+    const device = (
+      deviceRows as unknown as {
+        name: string | null;
+        tailscaleDesired: boolean;
+        tailscaleApplied: boolean;
+        pendingCommandId: string | null;
+        pendingAction: string | null;
+      }[]
+    )[0];
+    if (!device) return null;
+
+    // If desired === applied, the command has been fully executed (or was never needed).
+    if (device.tailscaleDesired === device.tailscaleApplied) {
+      // Clear any stale pending command that may linger
+      if (device.pendingCommandId) {
+        await db.execute(
+          sql`UPDATE devices SET
+                tailscale_pending_command_id = NULL,
+                tailscale_pending_action     = NULL,
+                updated_at                   = now()
+              WHERE id = ${deviceId}::uuid`,
+        );
+      }
+      return null;
+    }
+
+    const action = device.tailscaleDesired ? 'up' : 'down';
+
+    if (action === 'down') {
+      // No auth key needed for 'down'. Reuse or generate a stable command id.
+      let commandId: string;
+      if (device.pendingCommandId && device.pendingAction === 'down') {
+        commandId = device.pendingCommandId;
+      } else {
+        commandId = randomUUID();
+        await db.execute(
+          sql`UPDATE devices SET
+                tailscale_pending_command_id = ${commandId}::uuid,
+                tailscale_pending_action     = 'down',
+                updated_at                   = now()
+              WHERE id = ${deviceId}::uuid`,
+        );
+      }
+      return {
+        id: commandId,
+        type: 'tailscale',
+        action: 'down',
+      };
+    }
+
+    // action === 'up' — fetch all relevant settings from app_settings
+    const settingsRows = await db.execute(
+      sql`SELECT tailscale_auth_key            AS "tailscaleAuthKey",
+                 tailscale_tailnet             AS "tailscaleTailnet",
+                 tailscale_oauth_client_id     AS "tailscaleOauthClientId",
+                 tailscale_oauth_client_secret AS "tailscaleOauthClientSecret",
+                 tailscale_tag                 AS "tailscaleTag",
+                 tailscale_apk_key             AS "tailscaleApkKey",
+                 tailscale_apk_sha256          AS "tailscaleApkSha256",
+                 tailscale_mint_failed_at      AS "tailscaleMintFailedAt"
+          FROM app_settings
+          WHERE id = true
+          LIMIT 1`,
+    );
+    const settings = (
+      settingsRows as unknown as {
+        tailscaleAuthKey: string | null;
+        tailscaleTailnet: string | null;
+        tailscaleOauthClientId: string | null;
+        tailscaleOauthClientSecret: string | null;
+        tailscaleTag: string | null;
+        tailscaleApkKey: string | null;
+        tailscaleApkSha256: string | null;
+        tailscaleMintFailedAt: string | null;
+      }[]
+    )[0];
+
+    const hostname = this.sanitizeHostname(device.name, deviceId);
+
+    // Eagerly persist the hostname so the host status-sync script can match it
+    await db.execute(
+      sql`UPDATE devices SET
+            tailscale_hostname = ${hostname},
+            updated_at         = now()
+          WHERE id = ${deviceId}::uuid`,
+    );
+
+    // Decide which auth key to use:
+    // Prefer OAuth-minted ephemeral keys; fall back to the shared key; error if neither.
+    let authKey: string | null = null;
+    const oauthFullyConfigured =
+      settings?.tailscaleOauthClientId &&
+      settings.tailscaleOauthClientSecret &&
+      settings.tailscaleTag;
+    const oauthPartiallyConfigured =
+      !oauthFullyConfigured &&
+      (settings?.tailscaleOauthClientId || settings?.tailscaleOauthClientSecret);
+
+    // Warn on partial OAuth config (clientId+secret present but tag missing)
+    if (oauthPartiallyConfigured) {
+      this.winston.warn('Partial Tailscale OAuth config: tag missing — using shared auth key', {
+        context: 'FleetService',
+        deviceId,
+      });
+    }
+
+    if (oauthFullyConfigured) {
+      // Check mint back-off: if minting failed within the last 15 minutes, skip
+      const mintFailedAt = settings.tailscaleMintFailedAt
+        ? new Date(settings.tailscaleMintFailedAt).getTime()
+        : null;
+      const backOffMs = 15 * 60 * 1000;
+      const inBackOff = mintFailedAt !== null && Date.now() - mintFailedAt < backOffMs;
+
+      if (inBackOff) {
+        this.winston.debug('Tailscale OAuth minting in back-off; using shared auth key', {
+          context: 'FleetService',
+          deviceId,
+          mintFailedAt: settings.tailscaleMintFailedAt,
+        });
+        authKey = settings?.tailscaleAuthKey ?? null;
+      } else {
+        // Attempt to mint a single-use ephemeral key
+        authKey = await this.mintEphemeralAuthKey(
+          settings.tailscaleOauthClientId!,
+          settings.tailscaleOauthClientSecret!,
+          settings.tailscaleTag!,
+          hostname,
+        );
+        if (!authKey) {
+          // Minting failed — record the failure timestamp and fall back to shared key
+          await db.execute(
+            sql`UPDATE app_settings SET tailscale_mint_failed_at = now() WHERE id = true`,
+          );
+          this.winston.warn('OAuth minting failed; falling back to shared Tailscale auth key', {
+            context: 'FleetService',
+            deviceId,
+          });
+          authKey = settings?.tailscaleAuthKey ?? null;
+        } else {
+          // Minting succeeded — clear any prior failure timestamp
+          await db.execute(
+            sql`UPDATE app_settings SET tailscale_mint_failed_at = NULL WHERE id = true`,
+          );
+        }
+      }
+    } else {
+      // No (full) OAuth configured — use shared key
+      authKey = settings?.tailscaleAuthKey ?? null;
+    }
+
+    if (!authKey) {
+      // No usable auth key at all — record error, don't issue command
+      const errorMsg = oauthFullyConfigured
+        ? 'Tailscale auth key minting failed and no shared key set'
+        : 'no Tailscale auth key configured';
+      await db.execute(
+        sql`UPDATE devices SET
+              tailscale_last_error = ${errorMsg},
+              updated_at           = now()
+            WHERE id = ${deviceId}::uuid`,
+      );
+      this.winston.warn('Cannot issue Tailscale up command', {
+        context: 'FleetService',
+        deviceId,
+        reason: errorMsg,
+      });
+      return null;
+    }
+
+    // Build the APK payload if a Tailscale APK is hosted
+    const tailscaleApk =
+      settings?.tailscaleApkKey && settings.tailscaleApkSha256
+        ? {
+            url: this.signApkUrl(settings.tailscaleApkKey),
+            sha256: settings.tailscaleApkSha256,
+          }
+        : undefined;
+
+    // Reuse existing pending command id if the action is the same; otherwise generate a new one.
+    let commandId: string;
+    if (device.pendingCommandId && device.pendingAction === 'up') {
+      commandId = device.pendingCommandId;
+    } else {
+      commandId = randomUUID();
+      await db.execute(
+        sql`UPDATE devices SET
+              tailscale_pending_command_id = ${commandId}::uuid,
+              tailscale_pending_action     = 'up',
+              updated_at                   = now()
+            WHERE id = ${deviceId}::uuid`,
+      );
+    }
+
+    return {
+      id: commandId,
+      type: 'tailscale',
+      action: 'up',
+      payload: {
+        authKey,
+        hostname,
+        tailnet: settings?.tailscaleTailnet ?? 'tail2b4c34.ts.net',
+        ...(tailscaleApk ? { tailscaleApk } : {}),
+      },
     };
   }
 
@@ -384,14 +735,13 @@ export class FleetService {
           return null;
         }
 
-        // Lazy fan-out — create the status row as notified
+        // Lazy fan-out — create the status row as notified.
+        // Use DO NOTHING to avoid resetting state on a concurrent insert;
+        // if a row already exists we'll pick it up via the existing-row query on the next check-in.
         const inserted = await db.execute(
           sql`INSERT INTO device_ota_status (deployment_id, device_id, state, notified_at)
               VALUES (${fanRow.deploymentId}::uuid, ${deviceId}::uuid, 'notified'::ota_state, now())
-              ON CONFLICT (deployment_id, device_id) DO UPDATE SET
-                state = EXCLUDED.state,
-                notified_at = EXCLUDED.notified_at,
-                updated_at = now()
+              ON CONFLICT (deployment_id, device_id) DO NOTHING
               RETURNING id`,
         );
         const insertedId = (inserted as unknown as { id: string }[])[0]?.id;
@@ -455,26 +805,32 @@ export class FleetService {
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT
             d.id,
-            d.device_uuid        AS "deviceUuid",
-            d.organization_id    AS "organizationId",
+            d.device_uuid           AS "deviceUuid",
+            d.organization_id       AS "organizationId",
             d.name,
-            d.android_id         AS "androidId",
+            d.android_id            AS "androidId",
             d.model,
             d.manufacturer,
-            d.os_version         AS "osVersion",
-            d.app_version        AS "appVersion",
-            d.version_code       AS "versionCode",
-            d.push_token         AS "pushToken",
-            d.is_device_owner    AS "isDeviceOwner",
-            d.last_seen_at       AS "lastSeenAt",
-            d.last_checkin_at    AS "lastCheckinAt",
-            d.last_active_trip   AS "lastActiveTrip",
-            d.created_at         AS "createdAt",
-            d.updated_at         AS "updatedAt",
-            d.deleted_at         AS "deletedAt",
-            o.name               AS "organizationName",
-            latest.state         AS "latestOtaState",
-            latest.deployment_id AS "latestDeploymentId"
+            d.os_version            AS "osVersion",
+            d.app_version           AS "appVersion",
+            d.version_code          AS "versionCode",
+            d.push_token            AS "pushToken",
+            d.is_device_owner       AS "isDeviceOwner",
+            d.last_seen_at          AS "lastSeenAt",
+            d.last_checkin_at       AS "lastCheckinAt",
+            d.last_active_trip      AS "lastActiveTrip",
+            d.tailscale_desired     AS "tailscaleDesired",
+            d.tailscale_online      AS "tailscaleOnline",
+            d.tailscale_ip          AS "tailscaleIp",
+            d.tailscale_hostname    AS "tailscaleHostname",
+            d.tailscale_last_seen   AS "tailscaleLastSeen",
+            d.tailscale_last_error  AS "tailscaleLastError",
+            d.created_at            AS "createdAt",
+            d.updated_at            AS "updatedAt",
+            d.deleted_at            AS "deletedAt",
+            o.name                  AS "organizationName",
+            latest.state            AS "latestOtaState",
+            latest.deployment_id    AS "latestDeploymentId"
           FROM devices d
           LEFT JOIN organizations o ON o.id = d.organization_id AND o.deleted_at IS NULL
           LEFT JOIN LATERAL (
@@ -630,10 +986,25 @@ export class FleetService {
 
     let sizeBytes = 0;
     const hashStream = createHash('sha256');
+    let firstChunkChecked = false;
 
-    // Write to disk while computing hash + size
+    // Write to disk while computing hash + size, validating ZIP magic on first chunk
     const ws = createWriteStream(absolute);
     stream.on('data', (chunk: Buffer) => {
+      if (!firstChunkChecked) {
+        firstChunkChecked = true;
+        // APK files are ZIP archives — magic bytes: 50 4b 03 04 ("PK\x03\x04")
+        if (
+          chunk.length < 4 ||
+          chunk[0] !== 0x50 ||
+          chunk[1] !== 0x4b ||
+          chunk[2] !== 0x03 ||
+          chunk[3] !== 0x04
+        ) {
+          stream.destroy(new BadRequestException('Not a valid APK (missing ZIP header)'));
+          return;
+        }
+      }
       sizeBytes += chunk.length;
       hashStream.update(chunk);
       if (sizeBytes > APK_MAX_BYTES) {
@@ -881,16 +1252,25 @@ export class FleetService {
   }
 
   async cancelDeployment(id: string) {
+    // Check existence first (without status filter) so we can give a proper 404
     const rows = await this.drizzleProvider.db.execute(
       sql`SELECT id FROM ota_deployments WHERE id = ${id}::uuid LIMIT 1`,
     );
     if (!(rows as unknown as Row[]).length)
       throw new NotFoundException(`Deployment ${id} not found`);
 
-    await this.drizzleProvider.db.execute(
-      sql`UPDATE ota_deployments SET status = 'cancelled'::ota_deployment_status, updated_at = now()
-          WHERE id = ${id}::uuid`,
+    // Only cancel non-terminal deployments; skip already-cancelled/completed ones
+    const updated = await this.drizzleProvider.db.execute(
+      sql`UPDATE ota_deployments
+          SET status = 'cancelled'::ota_deployment_status, updated_at = now()
+          WHERE id = ${id}::uuid
+            AND status NOT IN ('cancelled', 'completed')
+          RETURNING id`,
     );
+
+    if (!(updated as unknown as Row[]).length) {
+      throw new ConflictException(`Deployment ${id} is already in a terminal state`);
+    }
 
     this.winston.log('flow', 'OTA deployment cancelled', {
       context: 'FleetService',
@@ -898,5 +1278,361 @@ export class FleetService {
     });
 
     return { ok: true };
+  }
+
+  // ─── Super-admin: Tailscale per-device toggle ─────────────────────────────────
+
+  async setDeviceTailscale(id: string, dto: SetDeviceTailscaleInput): Promise<Row> {
+    await this.getDevice(id); // 404 check
+
+    const setClauses: ReturnType<typeof sql>[] = [
+      sql`tailscale_desired = ${dto.desired}`,
+      sql`updated_at = now()`,
+    ];
+
+    // Eagerly set hostname when turning on so the host sync can match immediately
+    if (dto.desired) {
+      // Read the device name to compute hostname
+      const nameRows = await this.drizzleProvider.db.execute(
+        sql`SELECT name FROM devices WHERE id = ${id}::uuid AND deleted_at IS NULL LIMIT 1`,
+      );
+      const deviceName = (nameRows as unknown as { name: string | null }[])[0]?.name ?? null;
+      const hostname = this.sanitizeHostname(deviceName, id);
+      setClauses.push(sql`tailscale_hostname = ${hostname}`);
+    }
+
+    const set = sql.join(setClauses, sql`, `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE devices SET ${set} WHERE id = ${id}::uuid AND deleted_at IS NULL RETURNING ${DEVICE_COLS}`,
+    );
+    const updated = (result as unknown as Row[])[0];
+
+    this.winston.log('flow', 'Tailscale desired state toggled', {
+      context: 'FleetService',
+      deviceId: id,
+      desired: dto.desired,
+    });
+
+    // Best-effort FCM wake so the device checks in quickly
+    const pushToken = updated?.pushToken as string | null | undefined;
+    if (pushToken) {
+      this.fleetPushService.sendOtaCheckinPush([pushToken], `tailscale-${id}`).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  // ─── Super-admin: app_settings (Tailscale global config) ─────────────────────
+
+  private maskSettings(row: {
+    tailscaleAuthKey: string | null;
+    tailscaleTailnet: string | null;
+    tailscaleOauthClientId: string | null;
+    tailscaleOauthClientSecret: string | null;
+    tailscaleTag: string | null;
+    tailscaleApkKey: string | null;
+    updatedAt: string | null;
+  }): AppSettings {
+    return {
+      tailscaleAuthKeySet: !!row.tailscaleAuthKey,
+      tailscaleTailnet: row.tailscaleTailnet,
+      tailscaleOauthConfigured: !!(row.tailscaleOauthClientId && row.tailscaleOauthClientSecret),
+      tailscaleTag: row.tailscaleTag,
+      tailscaleApkSet: !!row.tailscaleApkKey,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  async getTailscaleSettings(): Promise<AppSettings> {
+    const rows = await this.drizzleProvider.db.execute(
+      sql`SELECT tailscale_auth_key           AS "tailscaleAuthKey",
+                 tailscale_tailnet            AS "tailscaleTailnet",
+                 tailscale_oauth_client_id    AS "tailscaleOauthClientId",
+                 tailscale_oauth_client_secret AS "tailscaleOauthClientSecret",
+                 tailscale_tag               AS "tailscaleTag",
+                 tailscale_apk_key           AS "tailscaleApkKey",
+                 updated_at                  AS "updatedAt"
+          FROM app_settings
+          WHERE id = true
+          LIMIT 1`,
+    );
+    const row = (
+      rows as unknown as {
+        tailscaleAuthKey: string | null;
+        tailscaleTailnet: string | null;
+        tailscaleOauthClientId: string | null;
+        tailscaleOauthClientSecret: string | null;
+        tailscaleTag: string | null;
+        tailscaleApkKey: string | null;
+        updatedAt: string | null;
+      }[]
+    )[0];
+
+    if (!row) {
+      // Should not happen (migration seeds the singleton row), but be defensive
+      return {
+        tailscaleAuthKeySet: false,
+        tailscaleTailnet: null,
+        tailscaleOauthConfigured: false,
+        tailscaleTag: null,
+        tailscaleApkSet: false,
+        updatedAt: null,
+      };
+    }
+
+    return this.maskSettings(row);
+  }
+
+  async updateTailscaleSettings(
+    dto: UpdateTailscaleSettingsInput,
+    updatedBy: string,
+  ): Promise<AppSettings> {
+    const setClauses: ReturnType<typeof sql>[] = [
+      sql`updated_at = now()`,
+      sql`updated_by = ${updatedBy}::uuid`,
+    ];
+
+    // authKey: undefined/null = leave unchanged; '' = clear; non-empty string = set
+    if (dto.authKey !== undefined && dto.authKey !== null) {
+      if (dto.authKey === '') {
+        setClauses.push(sql`tailscale_auth_key = NULL`);
+      } else {
+        setClauses.push(sql`tailscale_auth_key = ${dto.authKey}`);
+      }
+    }
+
+    if (dto.tailnet !== undefined && dto.tailnet !== null) {
+      setClauses.push(sql`tailscale_tailnet = ${dto.tailnet}`);
+    }
+
+    // oauthClientId: undefined/null = leave unchanged; '' = clear; non-empty = set
+    if (dto.oauthClientId !== undefined && dto.oauthClientId !== null) {
+      if (dto.oauthClientId === '') {
+        setClauses.push(sql`tailscale_oauth_client_id = NULL`);
+      } else {
+        setClauses.push(sql`tailscale_oauth_client_id = ${dto.oauthClientId}`);
+      }
+    }
+
+    // oauthClientSecret: undefined/null = leave unchanged; '' = clear; non-empty = set
+    if (dto.oauthClientSecret !== undefined && dto.oauthClientSecret !== null) {
+      if (dto.oauthClientSecret === '') {
+        setClauses.push(sql`tailscale_oauth_client_secret = NULL`);
+      } else {
+        setClauses.push(sql`tailscale_oauth_client_secret = ${dto.oauthClientSecret}`);
+      }
+    }
+
+    // tag: undefined/null = leave unchanged; '' = clear; non-empty = set
+    if (dto.tag !== undefined && dto.tag !== null) {
+      if (dto.tag === '') {
+        setClauses.push(sql`tailscale_tag = NULL`);
+      } else {
+        setClauses.push(sql`tailscale_tag = ${dto.tag}`);
+      }
+    }
+
+    // A settings change always resets the OAuth mint back-off so the new credentials
+    // are tried immediately on the next check-in.
+    setClauses.push(sql`tailscale_mint_failed_at = NULL`);
+
+    const set = sql.join(setClauses, sql`, `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE app_settings SET ${set}
+          WHERE id = true
+          RETURNING tailscale_auth_key           AS "tailscaleAuthKey",
+                    tailscale_tailnet            AS "tailscaleTailnet",
+                    tailscale_oauth_client_id    AS "tailscaleOauthClientId",
+                    tailscale_oauth_client_secret AS "tailscaleOauthClientSecret",
+                    tailscale_tag               AS "tailscaleTag",
+                    tailscale_apk_key           AS "tailscaleApkKey",
+                    updated_at                  AS "updatedAt"`,
+    );
+    const row = (
+      result as unknown as {
+        tailscaleAuthKey: string | null;
+        tailscaleTailnet: string | null;
+        tailscaleOauthClientId: string | null;
+        tailscaleOauthClientSecret: string | null;
+        tailscaleTag: string | null;
+        tailscaleApkKey: string | null;
+        updatedAt: string | null;
+      }[]
+    )[0];
+
+    this.winston.log('flow', 'Tailscale settings updated', {
+      context: 'FleetService',
+      updatedBy,
+      authKeyChanged: dto.authKey !== undefined,
+      tailnetChanged: dto.tailnet !== undefined,
+      oauthChanged: dto.oauthClientId !== undefined || dto.oauthClientSecret !== undefined,
+      tagChanged: dto.tag !== undefined,
+    });
+
+    // Guard against missing singleton row (should never happen, but be defensive)
+    if (!row) {
+      return this.getTailscaleSettings();
+    }
+
+    return this.maskSettings(row);
+  }
+
+  // ─── Tailscale OAuth: mint ephemeral auth key ─────────────────────────────────
+
+  /**
+   * Mint a single-use ephemeral Tailscale auth key via the OAuth2 client-credentials
+   * flow. Two API calls:
+   *   1. POST https://api.tailscale.com/api/v2/oauth/token  → access_token
+   *   2. POST https://api.tailscale.com/api/v2/tailnet/-/keys  → key
+   *
+   * Returns the minted key string, or null on any error (network, non-2xx). The
+   * caller is responsible for falling back to the shared auth key.
+   */
+  private async mintEphemeralAuthKey(
+    clientId: string,
+    clientSecret: string,
+    tag: string,
+    hostname: string,
+  ): Promise<string | null> {
+    try {
+      // Step 1: client-credentials token exchange
+      const tokenBody = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'client_credentials',
+      });
+      const tokenRes = await fetch('https://api.tailscale.com/api/v2/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: tokenBody.toString(),
+      });
+      if (!tokenRes.ok) {
+        this.winston.warn('Tailscale OAuth token exchange failed', {
+          context: 'FleetService',
+          status: tokenRes.status,
+        });
+        return null;
+      }
+      const tokenJson = (await tokenRes.json()) as { access_token?: string };
+      const accessToken = tokenJson.access_token;
+      if (!accessToken) {
+        this.winston.warn('Tailscale OAuth token response missing access_token', {
+          context: 'FleetService',
+        });
+        return null;
+      }
+
+      // Step 2: mint ephemeral key
+      const keyRes = await fetch('https://api.tailscale.com/api/v2/tailnet/-/keys', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          capabilities: {
+            devices: {
+              create: {
+                reusable: false,
+                ephemeral: true,
+                preauthorized: true,
+                tags: [tag],
+              },
+            },
+          },
+          expirySeconds: 3600,
+          description: `fleet ${hostname}`,
+        }),
+      });
+      if (!keyRes.ok) {
+        this.winston.warn('Tailscale key minting failed', {
+          context: 'FleetService',
+          status: keyRes.status,
+        });
+        return null;
+      }
+      const keyJson = (await keyRes.json()) as { key?: string };
+      const key = keyJson.key;
+      if (!key) {
+        this.winston.warn('Tailscale key response missing key field', {
+          context: 'FleetService',
+        });
+        return null;
+      }
+
+      return key;
+    } catch (err) {
+      this.winston.warn('Tailscale mintEphemeralAuthKey threw', {
+        context: 'FleetService',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  // ─── Tailscale APK upload ─────────────────────────────────────────────────────
+
+  async uploadTailscaleApk(stream: Readable): Promise<AppSettings> {
+    const db = this.drizzleProvider.db;
+    const apkKey = 'tailscale/tailscale.apk';
+    const dir = path.join(this.uploadsRoot, 'tailscale');
+    await fsp.mkdir(dir, { recursive: true });
+    const absolute = path.join(this.uploadsRoot, apkKey);
+
+    let sizeBytes = 0;
+    const hashStream = createHash('sha256');
+    let firstChunkChecked = false;
+
+    const ws = createWriteStream(absolute);
+    stream.on('data', (chunk: Buffer) => {
+      if (!firstChunkChecked) {
+        firstChunkChecked = true;
+        // APK files are ZIP archives — magic bytes: 50 4b 03 04 ("PK\x03\x04")
+        if (
+          chunk.length < 4 ||
+          chunk[0] !== 0x50 ||
+          chunk[1] !== 0x4b ||
+          chunk[2] !== 0x03 ||
+          chunk[3] !== 0x04
+        ) {
+          stream.destroy(new BadRequestException('Not a valid APK (missing ZIP header)'));
+          return;
+        }
+      }
+      sizeBytes += chunk.length;
+      hashStream.update(chunk);
+      if (sizeBytes > APK_MAX_BYTES) {
+        stream.destroy(
+          new BadRequestException(`Tailscale APK exceeds max size of ${APK_MAX_BYTES} bytes`),
+        );
+      }
+    });
+
+    try {
+      await pipeline(stream, ws);
+    } catch (err) {
+      await fsp.unlink(absolute).catch(() => {});
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(err instanceof Error ? err.message : 'Upload failed');
+    }
+
+    const sha256 = hashStream.digest('hex');
+
+    await db.execute(
+      sql`UPDATE app_settings
+          SET tailscale_apk_key    = ${apkKey},
+              tailscale_apk_sha256 = ${sha256},
+              tailscale_apk_size   = ${sizeBytes},
+              updated_at           = now()
+          WHERE id = true`,
+    );
+
+    this.winston.log('flow', 'Tailscale APK uploaded', {
+      context: 'FleetService',
+      sha256,
+      sizeBytes,
+    });
+
+    return this.getTailscaleSettings();
   }
 }

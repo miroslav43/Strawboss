@@ -29,7 +29,10 @@ interface DeviceOwnerNative {
     osVersion: string;
     androidId: string;
   }>;
-  installApkSilent(path: string, expectedSha256: string): Promise<boolean>;
+  isPackageInstalled(packageName: string): Promise<boolean>;
+  installApkSilent(path: string, expectedSha256: string, packageName: string): Promise<boolean>;
+  setTailscaleManaged(authKey: string, hostname: string, tailnet: string): Promise<boolean>;
+  clearTailscaleManaged(): Promise<boolean>;
 }
 
 const native: DeviceOwnerNative | null =
@@ -215,6 +218,26 @@ export async function getDeviceHardwareInfo(): Promise<{
 }
 
 /**
+ * Check whether a given package is installed on the device.
+ *
+ * Uses `PackageManager.getPackageInfo()` natively — no dangerous permission needed.
+ * Returns false defensively when the native module is absent (iOS / Expo Go) or on
+ * any unexpected error, so callers can treat the result as a safe boolean gate.
+ */
+export async function isPackageInstalled(packageName: string): Promise<boolean> {
+  if (!native?.isPackageInstalled) return false;
+  try {
+    return await native.isPackageInstalled(packageName);
+  } catch (err) {
+    mobileLogger.warn('isPackageInstalled failed', {
+      packageName,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
  * Silently install an APK via the Device Owner PackageInstaller API.
  *
  * The native side verifies the SHA-256 digest before opening a session — if the
@@ -223,17 +246,68 @@ export async function getDeviceHardwareInfo(): Promise<{
  * state BEFORE awaiting this, because the process is typically killed mid-install
  * when Android replaces the APK.
  *
+ * [packageName] must be the target package being installed (e.g.
+ * 'com.strawboss.mobile' for self-update, 'com.tailscale.ipn' for Tailscale).
+ *
+ * expo-file-system returns file:// URIs; the native File(path) constructor needs
+ * a bare filesystem path, so we strip the scheme here (single choke-point fix).
+ *
  * Returns false and logs a warning when the module is absent (iOS / Expo Go).
  */
 export async function installApkSilent(
   absolutePath: string,
   expectedSha256: string,
+  packageName: string,
 ): Promise<boolean> {
   if (!native?.installApkSilent) return false;
+  // Strip file:// scheme so Kotlin's File(path) gets a real filesystem path.
+  const nativePath = absolutePath.replace(/^file:\/\//, '');
   try {
-    return await native.installApkSilent(absolutePath, expectedSha256);
+    return await native.installApkSilent(nativePath, expectedSha256, packageName);
   } catch (err) {
     mobileLogger.warn('installApkSilent failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Device-owner MDM: push the official Tailscale app's managed config (App
+ * Restrictions) and set it as the always-on VPN — no user tap required.
+ * Corresponds to a `DeviceCommand { type:'tailscale', action:'up' }`.
+ *
+ * Returns false (and logs) when the native module is absent (iOS / Expo Go) or
+ * the Tailscale app is not installed on the device.
+ */
+export async function setTailscaleManaged(
+  authKey: string,
+  hostname: string,
+  tailnet: string,
+): Promise<boolean> {
+  if (!native?.setTailscaleManaged) return false;
+  try {
+    return await native.setTailscaleManaged(authKey, hostname, tailnet);
+  } catch (err) {
+    mobileLogger.warn('setTailscaleManaged failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Device-owner MDM: clear the Tailscale always-on VPN and push a managed config
+ * that disables it. Corresponds to a `DeviceCommand { type:'tailscale', action:'down' }`.
+ *
+ * Returns false (and logs) when the native module is absent (iOS / Expo Go).
+ */
+export async function clearTailscaleManaged(): Promise<boolean> {
+  if (!native?.clearTailscaleManaged) return false;
+  try {
+    return await native.clearTailscaleManaged();
+  } catch (err) {
+    mobileLogger.warn('clearTailscaleManaged failed', {
       message: err instanceof Error ? err.message : String(err),
     });
     return false;

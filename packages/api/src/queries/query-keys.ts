@@ -33,10 +33,12 @@ export const queryKeys = {
   fuelLogs: {
     all: ['fuelLogs'] as const,
     byMachine: (machineId: string) => ['fuelLogs', 'machine', machineId] as const,
+    adminList: (from: string, to: string) => ['fuelLogs', 'admin-list', from, to] as const,
   },
   consumableLogs: {
     all: ['consumableLogs'] as const,
     byMachine: (machineId: string) => ['consumableLogs', 'machine', machineId] as const,
+    adminList: (from: string, to: string) => ['consumableLogs', 'admin-list', from, to] as const,
   },
   documents: {
     all: ['documents'] as const,
@@ -115,6 +117,9 @@ export const queryKeys = {
   },
   deployments: {
     all: ['deployments'] as const,
+  },
+  settings: {
+    tailscale: () => ['super-admin', 'settings', 'tailscale'] as const,
   },
   reports: {
     all: ['reports'] as const,

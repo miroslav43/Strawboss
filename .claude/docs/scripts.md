@@ -3,7 +3,7 @@ type: doc
 title: "Scripts (strawboss.sh)"
 created: 2026-04-16
 updated: 2026-06-22
-tags: [doc, scripts, tooling, bash]
+tags: [doc, scripts, tooling, bash, fleet, tailscale]
 status: mature
 related:
   - "[[architecture]]"
@@ -107,6 +107,60 @@ cmd_my__command() {
 | `mobile-build` | Android APK via Expo EAS cloud build |
 | `mobile-build-local` | Android APK via local Gradle (`debug` or `release`, optional `--fast` to skip `gradlew clean`) |
 | `mobile-install` | Install APK on connected device via adb (auto-finds latest APK) |
+
+#### Release-build auto-archive (`_mobile_register_release`)
+
+When `mobile-build-local release` succeeds, the shell function `_mobile_register_release` runs automatically:
+
+1. **Version bump** — `apps/mobile/scripts/bump-version.mjs` increments `android.versionCode` by 1 and the version patch by 1 in `app.json` before `expo prebuild`. This ensures Android's PackageInstaller always accepts the OTA self-update (it rejects same/lower versionCode).
+
+2. **APK naming** — the output APK is copied to `<UPLOADS_ROOT>/apks/` with the descriptive filename: `strawboss-v<version>-vc<versionCode>-<gitshort>.apk`. The subdirectory is created automatically.
+
+3. **DB registration** — using `psql "$DATABASE_URL"`, the function runs an idempotent upsert into `app_releases`:
+   ```sql
+   INSERT INTO app_releases (id, version, version_code, apk_key, sha256, size_bytes, changelog, mandatory, status)
+   VALUES (...) ON CONFLICT (version_code) WHERE deleted_at IS NULL
+   DO UPDATE SET apk_key = ..., sha256 = ..., status = 'published', updated_at = now();
+   ```
+   The `changelog` field is set to `"<gitshort> — <last commit subject>"`. Status is always `published`.
+
+4. **Prune to newest 10** — immediately after insert, a `WITH ranked AS (...)` CTE soft-deletes (`deleted_at = now()`) all rows beyond the top 10 by `version_code DESC`, and physically removes their APK files from disk — but only if no `ota_deployments` row with `status IN ('pending', 'active')` references them.
+
+**Best-effort**: if `psql` is not on PATH or `DATABASE_URL` is unset, the function warns and returns 0 — the APK is still built and can be uploaded from the UI (Fleet → Releases).
+
+See [[architecture]] for the OTA/Fleet subsystem, [[infrastructure]] for APK storage path.
+
+### Fleet (`scripts/10-fleet.sh`)
+
+Host-side utilities for Tailscale remote access to the ~30 Device-Owner fleet phones. The backend container lives on a bridge network and cannot reach the tailnet or run `adb`, so these run directly on the VM.
+
+| Command | Description |
+|---|---|
+| `fleet:tailscale-sync` | Sync `tailscale status --json` into the `devices` table (drives the red/green online dot in the super-admin UI) |
+| `fleet:tunnel <hostname>` | Open an `adb` shell to a fleet phone over Tailscale; arg is normalized to `[a-z0-9-]` (also accepts free nicknames like "Combina MAN") |
+| `fleet:status` | Tabular view of all devices: name, tailscale online state, tailnet IP, last tailscale seen, last app check-in |
+| `fleet:enable-adb-tcp` | One-time per-phone: over USB, runs `adb tcpip 5555` to enable ADB-over-TCP (resets on Android reboot — non-root limit) |
+| `fleet:install-sync-timer` | Install + start the systemd timer (`deploy/systemd/strawboss-fleet-sync.{service,timer}`) that runs `fleet:tailscale-sync` every 60 s |
+| `fleet:uninstall-sync-timer` | Stop and remove the fleet sync timer |
+
+#### `fleet:tailscale-sync` internals
+
+Pipes `tailscale status --json` into `scripts/tailscale-sync.mjs`, which emits SQL:
+
+1. First statement: `UPDATE devices SET tailscale_online = false WHERE deleted_at IS NULL` — resets everyone so phones that dropped off the tailnet go red.
+2. For each online peer (`p.Online == true`): updates `tailscale_online = true`, `tailscale_ip` (first IP from `TailscaleIPs[]`), `tailscale_last_seen` (from `p.LastSeen` or `now()`), matched via `tailscale_hostname = lower(p.HostName)`.
+
+#### `fleet:tunnel` resolution order
+
+1. Looks up `tailscale_ip` from `devices` table by `tailscale_hostname` (keyed on the normalized arg).
+2. Falls back to live `tailscale status --json` parsed in-process via Node.js if the DB has no IP.
+3. Connects via `adb connect <ip>:5555`, then opens an interactive `adb shell`.
+
+#### Prerequisite: ADB-over-TCP
+
+`adb tcpip 5555` must be run once per phone over USB before wireless/tailnet tunneling works. Android resets this on every reboot (non-root security limit). Use `fleet:enable-adb-tcp` while the phone is USB-connected with USB debugging authorized.
+
+See [[infrastructure]] for the systemd timer and Tailscale fleet setup.
 
 ### Status & Diagnostics (`scripts/03-status.sh`)
 

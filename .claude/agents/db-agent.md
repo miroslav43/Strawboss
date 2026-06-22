@@ -51,6 +51,8 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 00043_trip_multi_iteration_and_presence.sql -- parent_trip_id/iteration_index on trips, users.last_seen_at, trip_courses view, depot_manager role, truck-idle indexes
 ... (migrations 00044–00054 added in subsequent feature branches)
 00055_fleet_devices.sql                    -- Fleet management + OTA: devices, app_releases, ota_deployments, device_ota_status; 4 new enums (ota_state, ota_deployment_status, release_status, ota_target_kind); server-authoritative tables (no sync_version); RLS defense-in-depth only (backend bypasses as table owner)
+00056_fleet_tailscale.sql                  -- Tailscale columns on devices (desired/applied/online/ip/hostname/last_seen/last_error) + singleton app_settings table (auth_key, tailnet, updated_at/by); RLS: no permissive policy, service-role only
+00057_fleet_tailscale_oauth_apk.sql        -- app_settings += tailscale_oauth_client_id/secret, tailscale_tag, tailscale_apk_key/sha256/size; OAuth enables per-device ephemeral keys; APK enables zero-touch Tailscale auto-install
 ```
 
 ### Key enums (current values)
@@ -147,7 +149,7 @@ The backend checks this table before processing each sync mutation. If the key e
 
 ### Writing new migrations
 
-The next migration should be `supabase/migrations/00056_<descriptive_name>.sql` (current last: 00055).
+The next migration should be `supabase/migrations/00058_<descriptive_name>.sql` (current last: 00057).
 
 Rules:
 1. **Idempotent**: Safe to run multiple times.
