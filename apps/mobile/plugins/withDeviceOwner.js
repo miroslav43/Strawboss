@@ -406,6 +406,62 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
   }
 
   /**
+   * Push the official Tailscale app's managed config (App Restrictions) via MDM
+   * and set it as the always-on VPN — no user interaction required on a device
+   * owner. Call this for a 'tailscale' command with action 'up'.
+   *
+   * Requires API 24+ (setAlwaysOnVpnPackage), which is well within our minimum SDK.
+   * If the Tailscale app (com.tailscale.ipn) is not installed the PackageManager
+   * throws NameNotFoundException → rejected with TS_NOT_INSTALLED.
+   */
+  @ReactMethod
+  fun setTailscaleManaged(authKey: String, hostname: String, tailnet: String, promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+      promise.reject("SDK_TOO_LOW", "setAlwaysOnVpnPackage requires API 24+")
+      return
+    }
+    try {
+      val dpm = DeviceOwnerPolicies.dpm(ctx)
+      val admin = DeviceOwnerPolicies.admin(ctx)
+      val bundle = android.os.Bundle().apply {
+        putString("AuthKey", authKey)
+        putString("Hostname", hostname)
+        putString("Tailnet", tailnet)
+        putBoolean("AlwaysOn.Enabled", true)
+      }
+      dpm.setApplicationRestrictions(admin, "com.tailscale.ipn", bundle)
+      dpm.setAlwaysOnVpnPackage(admin, "com.tailscale.ipn", false)
+      Log.i("StrawbossTS", "Tailscale managed config applied, always-on VPN set")
+      promise.resolve(true)
+    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+      promise.reject("TS_NOT_INSTALLED", "Tailscale app not installed")
+    } catch (t: Throwable) {
+      promise.reject("TS_SET_MANAGED", t.message ?: t.toString())
+    }
+  }
+
+  /**
+   * Clear the Tailscale always-on VPN and push a managed config that disables it.
+   * Call this for a 'tailscale' command with action 'down'.
+   */
+  @ReactMethod
+  fun clearTailscaleManaged(promise: Promise) {
+    try {
+      val dpm = DeviceOwnerPolicies.dpm(ctx)
+      val admin = DeviceOwnerPolicies.admin(ctx)
+      dpm.setAlwaysOnVpnPackage(admin, null, false)
+      val bundle = android.os.Bundle().apply {
+        putBoolean("AlwaysOn.Enabled", false)
+      }
+      dpm.setApplicationRestrictions(admin, "com.tailscale.ipn", bundle)
+      Log.i("StrawbossTS", "Tailscale always-on VPN cleared")
+      promise.resolve(true)
+    } catch (t: Throwable) {
+      promise.reject("TS_CLEAR_MANAGED", t.message ?: t.toString())
+    }
+  }
+
+  /**
    * Silently install an APK via the Device Owner PackageInstaller API.
    *
    * Steps:

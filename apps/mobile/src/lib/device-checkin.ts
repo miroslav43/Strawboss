@@ -22,12 +22,20 @@ import { ApiClient } from '@strawboss/api';
 import type {
   DeviceCheckinRequest,
   DeviceCheckinResponse,
+  DeviceCommand,
+  DeviceCommandReport,
   DeviceOtaReport,
   OtaState,
   PendingDeployment,
 } from '@strawboss/types';
 import { generateUuid } from './uuid';
-import { isDeviceOwner, getDeviceHardwareInfo, installApkSilent } from './device-owner';
+import {
+  isDeviceOwner,
+  getDeviceHardwareInfo,
+  installApkSilent,
+  setTailscaleManaged,
+  clearTailscaleManaged,
+} from './device-owner';
 import { getDatabase } from './storage';
 import { TripsRepo } from '../db/trips-repo';
 import { mobileLogger } from './logger';
@@ -41,6 +49,18 @@ const DEVICE_TOKEN_KEY = 'strawboss.device_token';
 const OTA_MIRROR_KEY = 'strawboss.ota_mirror';
 /** Set just before installApkSilent() — read on boot-rearm to report `installed`. */
 export const PENDING_INSTALL_DEPLOYMENT_ID_KEY = 'strawboss.pending_install_deployment_id';
+
+/**
+ * JSON-serialised array of DeviceCommandReport objects awaiting delivery.
+ * Written after each command is applied; cleared after a successful POST.
+ */
+const COMMAND_REPORTS_KEY = 'strawboss.command_reports';
+
+/**
+ * Last-applied Tailscale action ('up' | 'down' | null).
+ * Used to skip a redundant native call while still reporting success.
+ */
+const TAILSCALE_APPLIED_STATE_KEY = 'strawboss.tailscale_state';
 
 const MAX_INSTALL_ATTEMPTS = 3;
 
@@ -142,6 +162,134 @@ async function appendOtaReport(
   }
   await writeOtaMirror(updated);
   return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Command reports — persisted queue flushed on next successful check-in
+// ---------------------------------------------------------------------------
+
+async function readCommandReports(): Promise<DeviceCommandReport[]> {
+  try {
+    const raw = await SecureStore.getItemAsync(COMMAND_REPORTS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as DeviceCommandReport[];
+  } catch {
+    return [];
+  }
+}
+
+async function appendCommandReport(report: DeviceCommandReport): Promise<void> {
+  try {
+    const existing = await readCommandReports();
+    // Replace any prior report for the same commandId (idempotent).
+    const filtered = existing.filter((r) => r.commandId !== report.commandId);
+    await SecureStore.setItemAsync(COMMAND_REPORTS_KEY, JSON.stringify([...filtered, report]));
+  } catch {
+    // Non-critical — worst case the server doesn't hear back until next check-in
+  }
+}
+
+async function clearCommandReports(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(COMMAND_REPORTS_KEY);
+  } catch {
+    // Non-critical
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tailscale applied-state mirror
+// ---------------------------------------------------------------------------
+
+async function readTailscaleAppliedState(): Promise<'up' | 'down' | null> {
+  try {
+    const raw = await SecureStore.getItemAsync(TAILSCALE_APPLIED_STATE_KEY);
+    if (raw === 'up' || raw === 'down') return raw;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeTailscaleAppliedState(state: 'up' | 'down'): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(TAILSCALE_APPLIED_STATE_KEY, state);
+  } catch {
+    // Non-critical
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tailscale command handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply a Tailscale up/down command received from the server.
+ * Defensive: never throws. Appends a DeviceCommandReport to the queue so the
+ * result is reported on the next check-in.
+ *
+ * Optimization: if the local applied-state mirror already matches the requested
+ * action we skip the native call but still push a success report so the backend
+ * knows it is applied.
+ */
+async function handleTailscaleCommand(command: DeviceCommand): Promise<void> {
+  const { id: commandId, action, payload } = command;
+  let success = false;
+  let errorMsg: string | undefined;
+
+  try {
+    const alreadyApplied = await readTailscaleAppliedState();
+
+    if (action === 'up') {
+      if (!payload?.authKey || !payload?.hostname || !payload?.tailnet) {
+        throw new Error('tailscale:up command missing payload fields');
+      }
+
+      if (alreadyApplied === 'up') {
+        mobileLogger.flow('Fleet: Tailscale already up — reporting success without native call', {
+          commandId,
+        });
+        success = true;
+      } else {
+        const ok = await setTailscaleManaged(payload.authKey, payload.hostname, payload.tailnet);
+        if (!ok) {
+          throw new Error(
+            'setTailscaleManaged returned false (module absent or Tailscale not installed)',
+          );
+        }
+        await writeTailscaleAppliedState('up');
+        mobileLogger.flow('Fleet: Tailscale up applied', { commandId });
+        success = true;
+      }
+    } else if (action === 'down') {
+      if (alreadyApplied === 'down') {
+        mobileLogger.flow('Fleet: Tailscale already down — reporting success without native call', {
+          commandId,
+        });
+        success = true;
+      } else {
+        const ok = await clearTailscaleManaged();
+        if (!ok) {
+          throw new Error('clearTailscaleManaged returned false (module absent)');
+        }
+        await writeTailscaleAppliedState('down');
+        mobileLogger.flow('Fleet: Tailscale down applied', { commandId });
+        success = true;
+      }
+    } else {
+      throw new Error(`Unknown tailscale action: ${String(action)}`);
+    }
+  } catch (err) {
+    errorMsg = err instanceof Error ? err.message : String(err);
+    mobileLogger.warn('Fleet: Tailscale command failed', { commandId, action, error: errorMsg });
+  }
+
+  const report: DeviceCommandReport = {
+    commandId,
+    status: success ? 'success' : 'failure',
+    ...(errorMsg ? { error: errorMsg } : {}),
+  };
+  await appendCommandReport(report);
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +505,9 @@ export async function runDeviceCheckin(): Promise<void> {
     const mirror = await readOtaMirror();
     const otaReports: DeviceOtaReport[] = mirror?.reports?.length ? mirror.reports : [];
 
+    // Accumulate pending command reports (e.g. Tailscale up/down outcomes)
+    const commandReports = await readCommandReports();
+
     const body: DeviceCheckinRequest = {
       deviceUuid,
       ...(deviceToken ? { deviceToken } : {}),
@@ -370,6 +521,7 @@ export async function runDeviceCheckin(): Promise<void> {
       isDeviceOwner: ownerFlag,
       activeTrip: activeTripFlag,
       ...(otaReports.length > 0 ? { otaReports } : {}),
+      ...(commandReports.length > 0 ? { commandReports } : {}),
     };
 
     mobileLogger.flow('Fleet: check-in start', { deviceUuid, appVersion, versionCode });
@@ -385,21 +537,32 @@ export async function runDeviceCheckin(): Promise<void> {
       mobileLogger.flow('Fleet: device token persisted');
     }
 
-    // Clear sent reports from mirror now that they were delivered
+    // Clear sent OTA reports from mirror now that they were delivered
     if (mirror && otaReports.length > 0) {
       const updatedMirror: OtaMirror = { ...mirror, reports: [] };
       await writeOtaMirror(updatedMirror);
+    }
+
+    // Clear sent command reports now that they were delivered
+    if (commandReports.length > 0) {
+      await clearCommandReports();
     }
 
     mobileLogger.flow('Fleet: check-in ok', {
       deviceId: response.deviceId,
       assignedOrgId: response.assignedOrgId,
       hasPendingDeployment: !!response.pendingDeployment,
+      hasPendingCommand: !!response.pendingCommand,
     });
 
     // Handle OTA deployment if one is pending
     if (response.pendingDeployment) {
       await handlePendingDeployment(response.pendingDeployment, activeTripFlag);
+    }
+
+    // Handle remote command if one is pending (currently: Tailscale up/down)
+    if (response.pendingCommand?.type === 'tailscale') {
+      await handleTailscaleCommand(response.pendingCommand);
     }
   } catch (err) {
     // Check-in is fire-and-forget — log at warn but never propagate.

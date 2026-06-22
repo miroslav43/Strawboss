@@ -1379,6 +1379,7 @@
       "groupUnassigned": "Neatribuite",
       "pushButton": "Trimite actualizare",
       "releasesLink": "Versiuni",
+      "noName": "(fără nume)",
       "col": {
         "status": "Status",
         "name": "Nume / UUID",
@@ -1386,6 +1387,7 @@
         "version": "Versiune",
         "otaState": "Stare OTA",
         "lastSeen": "Ultima vedere",
+        "tailscale": "Tailscale",
         "actions": "Acțiuni"
       },
       "actions": {
@@ -1474,10 +1476,44 @@
           "actions": "Acțiuni"
         }
       },
+      "tailscale": {
+        "colHeader": "Tailscale",
+        "online": "Tailscale activ",
+        "offline": "Tailscale inactiv",
+        "pending": "Tailscale în așteptare",
+        "enable": "Activează Tailscale",
+        "disable": "Dezactivează Tailscale",
+        "enabling": "Se activează…",
+        "disabling": "Se dezactivează…",
+        "ip": "IP tailnet",
+        "tunnelCmd": "Comandă tunel",
+        "tunnelCopy": "Copiază comanda de tunel",
+        "tunnelCopied": "Copiat!",
+        "tunnelNoName": "Setează mai întâi un nume pentru a genera comanda de tunel.",
+        "lastSeen": "Ultima vedere Tailscale",
+        "lastError": "Ultima eroare",
+        "never": "Niciodată",
+        "settingsTitle": "Setări Tailscale",
+        "settingsSubtitle": "Configurează cheia de autentificare și rețeaua tailnet folosite pentru înrolarea telefoanelor.",
+        "authKeyLabel": "Cheie de autentificare",
+        "authKeyPlaceholder": "tskey-auth-…",
+        "authKeySet": "configurată",
+        "authKeyUnset": "neconfigurată",
+        "authKeyClearHint": "Lasă gol pentru a păstra cheia existentă; introdu o cheie nouă pentru a o înlocui; bifează 'Șterge cheie' pentru a o elimina.",
+        "authKeyClear": "Șterge cheie",
+        "tailnetLabel": "Nume tailnet",
+        "tailnetPlaceholder": "ex. example.ts.net",
+        "updatedAt": "Ultima actualizare",
+        "keyWarning": "Cheile de autentificare expiră în ≤ 90 de zile. Rotește-le înainte de expirare pentru a nu pierde accesul la dispozitive.",
+        "save": "Salvează setările",
+        "saving": "Se salvează…",
+        "settingsButton": "Setări Tailscale"
+      },
       "detail": {
         "tab": {
           "ota": "Istoric OTA",
-          "logs": "Jurnale dispozitiv"
+          "logs": "Jurnale dispozitiv",
+          "tailscale": "Tailscale"
         },
         "manufacturer": "Producător / model",
         "osVersion": "Versiune Android",

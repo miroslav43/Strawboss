@@ -169,10 +169,14 @@ export {
   useDeployments,
   useCreateDeployment,
   useCancelDeployment,
+  useSetDeviceTailscale,
+  useTailscaleSettings,
+  useUpdateTailscaleSettings,
 } from './use-fleet.js';
 export type {
   DeviceLogFilters,
   DeviceLogEntry,
   DeviceLogResponse,
   DeviceOtaStatusWithVersion,
+  UpdateTailscaleSettingsInput,
 } from './use-fleet.js';

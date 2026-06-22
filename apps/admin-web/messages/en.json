@@ -1379,6 +1379,7 @@
       "groupUnassigned": "Unassigned",
       "pushButton": "Push update",
       "releasesLink": "Releases",
+      "noName": "(no name)",
       "col": {
         "status": "Status",
         "name": "Name / UUID",
@@ -1386,6 +1387,7 @@
         "version": "Version",
         "otaState": "OTA state",
         "lastSeen": "Last seen",
+        "tailscale": "Tailscale",
         "actions": "Actions"
       },
       "actions": {
@@ -1474,10 +1476,44 @@
           "actions": "Actions"
         }
       },
+      "tailscale": {
+        "colHeader": "Tailscale",
+        "online": "Tailscale online",
+        "offline": "Tailscale offline",
+        "pending": "Tailscale pending",
+        "enable": "Enable Tailscale",
+        "disable": "Disable Tailscale",
+        "enabling": "Enabling…",
+        "disabling": "Disabling…",
+        "ip": "Tailnet IP",
+        "tunnelCmd": "Tunnel command",
+        "tunnelCopy": "Copy tunnel command",
+        "tunnelCopied": "Copied!",
+        "tunnelNoName": "Set a nickname first to generate the tunnel command.",
+        "lastSeen": "Tailscale last seen",
+        "lastError": "Last error",
+        "never": "Never",
+        "settingsTitle": "Tailscale Settings",
+        "settingsSubtitle": "Configure the auth key and tailnet used to onboard phones into the tailnet.",
+        "authKeyLabel": "Auth key",
+        "authKeyPlaceholder": "tskey-auth-…",
+        "authKeySet": "configured",
+        "authKeyUnset": "not configured",
+        "authKeyClearHint": "Leave blank to keep the existing key; enter a new key to replace it; tick 'Clear key' to remove it.",
+        "authKeyClear": "Clear key",
+        "tailnetLabel": "Tailnet name",
+        "tailnetPlaceholder": "e.g. example.ts.net",
+        "updatedAt": "Last updated",
+        "keyWarning": "Auth keys expire in ≤ 90 days. Rotate before expiry to avoid losing remote access to all devices.",
+        "save": "Save settings",
+        "saving": "Saving…",
+        "settingsButton": "Tailscale settings"
+      },
       "detail": {
         "tab": {
           "ota": "OTA history",
-          "logs": "Device logs"
+          "logs": "Device logs",
+          "tailscale": "Tailscale"
         },
         "manufacturer": "Manufacturer / model",
         "osVersion": "Android version",

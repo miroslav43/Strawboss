@@ -67,6 +67,28 @@ export interface Device extends Timestamps, SoftDelete {
   lastCheckinAt: string | null;
   /** Last reported idle gate — true if the device was mid-trip at last check-in. */
   lastActiveTrip: boolean;
+  // ── Tailscale (remote access for debugging) ──
+  /** Desired state set by super-admin; the device applies it via MDM on next check-in. */
+  tailscaleDesired: boolean;
+  /** Whether the peer is currently online in the VM's tailnet (set by the host status sync). */
+  tailscaleOnline: boolean;
+  /** The device's 100.x tailnet IP (from `tailscale status`). */
+  tailscaleIp: string | null;
+  /** The sanitized nickname used as the Tailscale hostname. */
+  tailscaleHostname: string | null;
+  tailscaleLastSeen: string | null;
+  /** Best-effort reason the last tailscale command failed (device-reported). */
+  tailscaleLastError: string | null;
+}
+
+/** Singleton global config the super-admin edits (e.g. the Tailscale auth key). */
+export interface AppSettings {
+  /** Tailscale auth key pushed to phones to join the tailnet (write-only in the UI). */
+  tailscaleAuthKey: string | null;
+  /** Whether an auth key is configured (so the UI can show status without exposing it). */
+  tailscaleAuthKeySet: boolean;
+  tailscaleTailnet: string | null;
+  updatedAt: string | null;
 }
 
 /** A device list row enriched with joins the UI needs (org name + latest OTA state). */
@@ -130,6 +152,29 @@ export interface DeviceOtaReport {
   error?: string;
 }
 
+/** A one-shot remote command the backend hands a device on check-in (currently Tailscale
+ * up/down for remote ADB access). The device applies it via the Device-Owner MDM controls
+ * and reports the result in `commandReports[]` on its next check-in. */
+export interface DeviceCommand {
+  /** Idempotency id; the device echoes it back in its report. */
+  id: string;
+  type: 'tailscale';
+  action: 'up' | 'down';
+  /** Present for `up`: what the device pushes into the Tailscale app's managed config. */
+  payload?: {
+    authKey: string;
+    hostname: string;
+    tailnet: string;
+  };
+}
+
+/** Result of applying a `DeviceCommand`, reported on the next check-in. */
+export interface DeviceCommandReport {
+  commandId: string;
+  status: 'success' | 'failure';
+  error?: string;
+}
+
 /** Device → backend. Public endpoint; `deviceToken` proves identity after the first
  * (registration) check-in, which omits it and receives `deviceTokenIssued` once. */
 export interface DeviceCheckinRequest {
@@ -145,6 +190,8 @@ export interface DeviceCheckinRequest {
   isDeviceOwner: boolean;
   activeTrip: boolean;
   otaReports?: DeviceOtaReport[];
+  /** Results of remote commands (e.g. Tailscale up/down) applied since the last check-in. */
+  commandReports?: DeviceCommandReport[];
   lastError?: string;
 }
 
@@ -171,4 +218,6 @@ export interface DeviceCheckinResponse {
   /** Present ONLY on the first (registration) response — the raw HMAC token to persist. */
   deviceTokenIssued?: string;
   pendingDeployment: PendingDeployment | null;
+  /** A remote command to apply now (Tailscale up/down), or null. */
+  pendingCommand: DeviceCommand | null;
 }

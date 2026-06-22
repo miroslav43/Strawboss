@@ -156,16 +156,21 @@ export {
   releaseStatusSchema,
   otaTargetKindSchema,
   deviceOtaReportSchema,
+  deviceCommandReportSchema,
   deviceCheckinSchema,
   createReleaseSchema,
   updateReleaseSchema,
   createDeploymentSchema,
   updateDeviceSchema,
+  setDeviceTailscaleSchema,
+  updateTailscaleSettingsSchema,
   type DeviceCheckinInput,
   type CreateReleaseInput,
   type UpdateReleaseInput,
   type CreateDeploymentInput,
   type UpdateDeviceInput,
+  type SetDeviceTailscaleInput,
+  type UpdateTailscaleSettingsInput,
 } from './schemas/fleet.schema.js';
 
 export {

@@ -20,13 +20,21 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { resolveUploadsRoot } from '../uploads/uploads.service';
 import { signUploadUrl, UPLOADS_URL_PREFIX } from '../uploads/uploads-signing';
-import type { DeviceCheckinResponse, PendingDeployment, OtaState } from '@strawboss/types';
+import type {
+  DeviceCheckinResponse,
+  PendingDeployment,
+  OtaState,
+  DeviceCommand,
+  AppSettings,
+} from '@strawboss/types';
 import type {
   DeviceCheckinInput,
   CreateReleaseInput,
   UpdateReleaseInput,
   CreateDeploymentInput,
   UpdateDeviceInput,
+  SetDeviceTailscaleInput,
+  UpdateTailscaleSettingsInput,
 } from '@strawboss/validation';
 import { FleetPushService } from './fleet-push.service';
 import { QUEUE_OTA_DEPLOY } from '../jobs/queues';
@@ -36,23 +44,29 @@ export const APK_MAX_BYTES = 250 * 1024 * 1024;
 
 const DEVICE_COLS = sql`
   id,
-  device_uuid           AS "deviceUuid",
-  organization_id       AS "organizationId",
+  device_uuid             AS "deviceUuid",
+  organization_id         AS "organizationId",
   name,
-  android_id            AS "androidId",
+  android_id              AS "androidId",
   model,
   manufacturer,
-  os_version            AS "osVersion",
-  app_version           AS "appVersion",
-  version_code          AS "versionCode",
-  push_token            AS "pushToken",
-  is_device_owner       AS "isDeviceOwner",
-  last_seen_at          AS "lastSeenAt",
-  last_checkin_at       AS "lastCheckinAt",
-  last_active_trip      AS "lastActiveTrip",
-  created_at            AS "createdAt",
-  updated_at            AS "updatedAt",
-  deleted_at            AS "deletedAt"
+  os_version              AS "osVersion",
+  app_version             AS "appVersion",
+  version_code            AS "versionCode",
+  push_token              AS "pushToken",
+  is_device_owner         AS "isDeviceOwner",
+  last_seen_at            AS "lastSeenAt",
+  last_checkin_at         AS "lastCheckinAt",
+  last_active_trip        AS "lastActiveTrip",
+  tailscale_desired       AS "tailscaleDesired",
+  tailscale_online        AS "tailscaleOnline",
+  tailscale_ip            AS "tailscaleIp",
+  tailscale_hostname      AS "tailscaleHostname",
+  tailscale_last_seen     AS "tailscaleLastSeen",
+  tailscale_last_error    AS "tailscaleLastError",
+  created_at              AS "createdAt",
+  updated_at              AS "updatedAt",
+  deleted_at              AS "deletedAt"
 `;
 
 const RELEASE_COLS = sql`
@@ -101,6 +115,22 @@ export class FleetService {
   ) {
     this.uploadsRoot = resolveUploadsRoot(configService);
     this.jwtSecret = configService.getOrThrow<string>('SUPABASE_JWT_SECRET');
+  }
+
+  // ─── Tailscale hostname sanitizer ────────────────────────────────────────────
+
+  /**
+   * Convert a device display name into a Tailscale-safe DNS label.
+   * Lowercase, replace runs of non-[a-z0-9-] with '-', strip leading/trailing '-'.
+   * Fallback: "phone-<first 8 chars of device id>".
+   */
+  sanitizeHostname(name: string | null | undefined, deviceId: string): string {
+    if (!name) return `phone-${deviceId.slice(0, 8)}`;
+    const sanitized = name
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return sanitized || `phone-${deviceId.slice(0, 8)}`;
   }
 
   // ─── HMAC helpers ────────────────────────────────────────────────────────────
@@ -220,14 +250,151 @@ export class FleetService {
       }
     }
 
-    // 3. Compute pending deployment
+    // 3. Apply command reports (Tailscale up/down outcomes)
+    if (dto.commandReports && dto.commandReports.length > 0) {
+      await this.applyCommandReports(deviceId, dto.commandReports);
+    }
+
+    // 4. Compute pending deployment
     const pendingDeployment = await this.computePendingDeployment(deviceId, dto.versionCode, orgId);
+
+    // 5. Compute pending Tailscale command
+    const pendingCommand = await this.computePendingCommand(deviceId);
 
     return {
       deviceId,
       assignedOrgId: orgId,
       ...(deviceTokenIssued ? { deviceTokenIssued } : {}),
       pendingDeployment,
+      pendingCommand,
+    };
+  }
+
+  private async applyCommandReports(
+    deviceId: string,
+    reports: { commandId: string; status: 'success' | 'failure'; error?: string }[],
+  ): Promise<void> {
+    const db = this.drizzleProvider.db;
+
+    // Fetch current device tailscale state once for all reports
+    const deviceRows = await db.execute(
+      sql`SELECT tailscale_desired FROM devices WHERE id = ${deviceId}::uuid AND deleted_at IS NULL LIMIT 1`,
+    );
+    const deviceRow = (deviceRows as unknown as { tailscale_desired: boolean }[])[0];
+    if (!deviceRow) return;
+
+    for (const report of reports) {
+      if (report.status === 'success') {
+        // Device successfully applied the desired state — mark it applied
+        await db.execute(
+          sql`UPDATE devices SET
+                tailscale_applied    = tailscale_desired,
+                tailscale_last_error = NULL,
+                updated_at           = now()
+              WHERE id = ${deviceId}::uuid`,
+        );
+        this.winston.log('flow', 'Tailscale command applied by device', {
+          context: 'FleetService',
+          deviceId,
+          commandId: report.commandId,
+          desired: deviceRow.tailscale_desired,
+        });
+      } else {
+        // Failure — record the error (do NOT update tailscale_applied)
+        await db.execute(
+          sql`UPDATE devices SET
+                tailscale_last_error = ${report.error ?? 'unknown error'},
+                updated_at           = now()
+              WHERE id = ${deviceId}::uuid`,
+        );
+        this.winston.warn('Tailscale command failed on device', {
+          context: 'FleetService',
+          deviceId,
+          commandId: report.commandId,
+          error: report.error,
+        });
+      }
+    }
+  }
+
+  private async computePendingCommand(deviceId: string): Promise<DeviceCommand | null> {
+    const db = this.drizzleProvider.db;
+
+    // Read device tailscale state (re-read after applying reports)
+    const deviceRows = await db.execute(
+      sql`SELECT name, tailscale_desired, tailscale_applied
+          FROM devices
+          WHERE id = ${deviceId}::uuid AND deleted_at IS NULL
+          LIMIT 1`,
+    );
+    const device = (
+      deviceRows as unknown as {
+        name: string | null;
+        tailscale_desired: boolean;
+        tailscale_applied: boolean;
+      }[]
+    )[0];
+    if (!device) return null;
+
+    // If desired === applied, nothing to do
+    if (device.tailscale_desired === device.tailscale_applied) return null;
+
+    const action = device.tailscale_desired ? 'up' : 'down';
+
+    if (action === 'down') {
+      // No auth key needed for 'down'
+      return {
+        id: randomUUID(),
+        type: 'tailscale',
+        action: 'down',
+      };
+    }
+
+    // action === 'up' — need the auth key from app_settings
+    const settingsRows = await db.execute(
+      sql`SELECT tailscale_auth_key AS "tailscaleAuthKey", tailscale_tailnet AS "tailscaleTailnet"
+          FROM app_settings
+          WHERE id = true
+          LIMIT 1`,
+    );
+    const settings = (
+      settingsRows as unknown as { tailscaleAuthKey: string | null; tailscaleTailnet: string }[]
+    )[0];
+
+    if (!settings?.tailscaleAuthKey) {
+      // No auth key configured — record error, don't issue command
+      await db.execute(
+        sql`UPDATE devices SET
+              tailscale_last_error = 'no Tailscale auth key configured',
+              updated_at           = now()
+            WHERE id = ${deviceId}::uuid`,
+      );
+      this.winston.warn('Cannot issue Tailscale up command — no auth key configured', {
+        context: 'FleetService',
+        deviceId,
+      });
+      return null;
+    }
+
+    const hostname = this.sanitizeHostname(device.name, deviceId);
+
+    // Eagerly persist the hostname so the host status-sync script can match it
+    await db.execute(
+      sql`UPDATE devices SET
+            tailscale_hostname = ${hostname},
+            updated_at         = now()
+          WHERE id = ${deviceId}::uuid`,
+    );
+
+    return {
+      id: randomUUID(),
+      type: 'tailscale',
+      action: 'up',
+      payload: {
+        authKey: settings.tailscaleAuthKey,
+        hostname,
+        tailnet: settings.tailscaleTailnet ?? 'tail2b4c34.ts.net',
+      },
     };
   }
 
@@ -455,26 +622,32 @@ export class FleetService {
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT
             d.id,
-            d.device_uuid        AS "deviceUuid",
-            d.organization_id    AS "organizationId",
+            d.device_uuid           AS "deviceUuid",
+            d.organization_id       AS "organizationId",
             d.name,
-            d.android_id         AS "androidId",
+            d.android_id            AS "androidId",
             d.model,
             d.manufacturer,
-            d.os_version         AS "osVersion",
-            d.app_version        AS "appVersion",
-            d.version_code       AS "versionCode",
-            d.push_token         AS "pushToken",
-            d.is_device_owner    AS "isDeviceOwner",
-            d.last_seen_at       AS "lastSeenAt",
-            d.last_checkin_at    AS "lastCheckinAt",
-            d.last_active_trip   AS "lastActiveTrip",
-            d.created_at         AS "createdAt",
-            d.updated_at         AS "updatedAt",
-            d.deleted_at         AS "deletedAt",
-            o.name               AS "organizationName",
-            latest.state         AS "latestOtaState",
-            latest.deployment_id AS "latestDeploymentId"
+            d.os_version            AS "osVersion",
+            d.app_version           AS "appVersion",
+            d.version_code          AS "versionCode",
+            d.push_token            AS "pushToken",
+            d.is_device_owner       AS "isDeviceOwner",
+            d.last_seen_at          AS "lastSeenAt",
+            d.last_checkin_at       AS "lastCheckinAt",
+            d.last_active_trip      AS "lastActiveTrip",
+            d.tailscale_desired     AS "tailscaleDesired",
+            d.tailscale_online      AS "tailscaleOnline",
+            d.tailscale_ip          AS "tailscaleIp",
+            d.tailscale_hostname    AS "tailscaleHostname",
+            d.tailscale_last_seen   AS "tailscaleLastSeen",
+            d.tailscale_last_error  AS "tailscaleLastError",
+            d.created_at            AS "createdAt",
+            d.updated_at            AS "updatedAt",
+            d.deleted_at            AS "deletedAt",
+            o.name                  AS "organizationName",
+            latest.state            AS "latestOtaState",
+            latest.deployment_id    AS "latestDeploymentId"
           FROM devices d
           LEFT JOIN organizations o ON o.id = d.organization_id AND o.deleted_at IS NULL
           LEFT JOIN LATERAL (
@@ -898,5 +1071,142 @@ export class FleetService {
     });
 
     return { ok: true };
+  }
+
+  // ─── Super-admin: Tailscale per-device toggle ─────────────────────────────────
+
+  async setDeviceTailscale(id: string, dto: SetDeviceTailscaleInput): Promise<Row> {
+    await this.getDevice(id); // 404 check
+
+    const setClauses: ReturnType<typeof sql>[] = [
+      sql`tailscale_desired = ${dto.desired}`,
+      sql`updated_at = now()`,
+    ];
+
+    // Eagerly set hostname when turning on so the host sync can match immediately
+    if (dto.desired) {
+      // Read the device name to compute hostname
+      const nameRows = await this.drizzleProvider.db.execute(
+        sql`SELECT name FROM devices WHERE id = ${id}::uuid AND deleted_at IS NULL LIMIT 1`,
+      );
+      const deviceName = (nameRows as unknown as { name: string | null }[])[0]?.name ?? null;
+      const hostname = this.sanitizeHostname(deviceName, id);
+      setClauses.push(sql`tailscale_hostname = ${hostname}`);
+    }
+
+    const set = sql.join(setClauses, sql`, `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE devices SET ${set} WHERE id = ${id}::uuid AND deleted_at IS NULL RETURNING ${DEVICE_COLS}`,
+    );
+    const updated = (result as unknown as Row[])[0];
+
+    this.winston.log('flow', 'Tailscale desired state toggled', {
+      context: 'FleetService',
+      deviceId: id,
+      desired: dto.desired,
+    });
+
+    // Best-effort FCM wake so the device checks in quickly
+    const pushToken = updated?.pushToken as string | null | undefined;
+    if (pushToken) {
+      this.fleetPushService.sendOtaCheckinPush([pushToken], `tailscale-${id}`).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  // ─── Super-admin: app_settings (Tailscale global config) ─────────────────────
+
+  private maskSettings(row: {
+    tailscaleAuthKey: string | null;
+    tailscaleTailnet: string | null;
+    updatedAt: string | null;
+  }): AppSettings {
+    return {
+      tailscaleAuthKey: null, // NEVER return the raw key
+      tailscaleAuthKeySet: !!row.tailscaleAuthKey,
+      tailscaleTailnet: row.tailscaleTailnet,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  async getTailscaleSettings(): Promise<AppSettings> {
+    const rows = await this.drizzleProvider.db.execute(
+      sql`SELECT tailscale_auth_key AS "tailscaleAuthKey",
+                 tailscale_tailnet  AS "tailscaleTailnet",
+                 updated_at         AS "updatedAt"
+          FROM app_settings
+          WHERE id = true
+          LIMIT 1`,
+    );
+    const row = (
+      rows as unknown as {
+        tailscaleAuthKey: string | null;
+        tailscaleTailnet: string | null;
+        updatedAt: string | null;
+      }[]
+    )[0];
+
+    if (!row) {
+      // Should not happen (migration seeds the singleton row), but be defensive
+      return {
+        tailscaleAuthKey: null,
+        tailscaleAuthKeySet: false,
+        tailscaleTailnet: 'tail2b4c34.ts.net',
+        updatedAt: null,
+      };
+    }
+
+    return this.maskSettings(row);
+  }
+
+  async updateTailscaleSettings(
+    dto: UpdateTailscaleSettingsInput,
+    updatedBy: string,
+  ): Promise<AppSettings> {
+    const setClauses: ReturnType<typeof sql>[] = [
+      sql`updated_at = now()`,
+      sql`updated_by = ${updatedBy}::uuid`,
+    ];
+
+    if (dto.authKey !== undefined) {
+      // null or omitted = leave unchanged, empty string = clear to NULL, non-empty = set
+      if (dto.authKey === null) {
+        // null means "leave unchanged" per schema doc — skip
+      } else if (dto.authKey === '') {
+        setClauses.push(sql`tailscale_auth_key = NULL`);
+      } else {
+        setClauses.push(sql`tailscale_auth_key = ${dto.authKey}`);
+      }
+    }
+
+    if (dto.tailnet !== undefined && dto.tailnet !== null) {
+      setClauses.push(sql`tailscale_tailnet = ${dto.tailnet}`);
+    }
+
+    const set = sql.join(setClauses, sql`, `);
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE app_settings SET ${set}
+          WHERE id = true
+          RETURNING tailscale_auth_key AS "tailscaleAuthKey",
+                    tailscale_tailnet  AS "tailscaleTailnet",
+                    updated_at         AS "updatedAt"`,
+    );
+    const row = (
+      result as unknown as {
+        tailscaleAuthKey: string | null;
+        tailscaleTailnet: string | null;
+        updatedAt: string | null;
+      }[]
+    )[0];
+
+    this.winston.log('flow', 'Tailscale settings updated', {
+      context: 'FleetService',
+      updatedBy,
+      authKeyChanged: dto.authKey !== undefined,
+      tailnetChanged: dto.tailnet !== undefined,
+    });
+
+    return this.maskSettings(row);
   }
 }

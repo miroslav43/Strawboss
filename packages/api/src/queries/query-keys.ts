@@ -118,6 +118,9 @@ export const queryKeys = {
   deployments: {
     all: ['deployments'] as const,
   },
+  settings: {
+    tailscale: () => ['super-admin', 'settings', 'tailscale'] as const,
+  },
   reports: {
     all: ['reports'] as const,
     farms: (filters?: Record<string, unknown>) => ['reports', 'farms', filters] as const,

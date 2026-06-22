@@ -30,6 +30,8 @@ interface DeviceOwnerNative {
     androidId: string;
   }>;
   installApkSilent(path: string, expectedSha256: string): Promise<boolean>;
+  setTailscaleManaged(authKey: string, hostname: string, tailnet: string): Promise<boolean>;
+  clearTailscaleManaged(): Promise<boolean>;
 }
 
 const native: DeviceOwnerNative | null =
@@ -234,6 +236,48 @@ export async function installApkSilent(
     return await native.installApkSilent(absolutePath, expectedSha256);
   } catch (err) {
     mobileLogger.warn('installApkSilent failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Device-owner MDM: push the official Tailscale app's managed config (App
+ * Restrictions) and set it as the always-on VPN — no user tap required.
+ * Corresponds to a `DeviceCommand { type:'tailscale', action:'up' }`.
+ *
+ * Returns false (and logs) when the native module is absent (iOS / Expo Go) or
+ * the Tailscale app is not installed on the device.
+ */
+export async function setTailscaleManaged(
+  authKey: string,
+  hostname: string,
+  tailnet: string,
+): Promise<boolean> {
+  if (!native?.setTailscaleManaged) return false;
+  try {
+    return await native.setTailscaleManaged(authKey, hostname, tailnet);
+  } catch (err) {
+    mobileLogger.warn('setTailscaleManaged failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Device-owner MDM: clear the Tailscale always-on VPN and push a managed config
+ * that disables it. Corresponds to a `DeviceCommand { type:'tailscale', action:'down' }`.
+ *
+ * Returns false (and logs) when the native module is absent (iOS / Expo Go).
+ */
+export async function clearTailscaleManaged(): Promise<boolean> {
+  if (!native?.clearTailscaleManaged) return false;
+  try {
+    return await native.clearTailscaleManaged();
+  } catch (err) {
+    mobileLogger.warn('clearTailscaleManaged failed', {
       message: err instanceof Error ? err.message : String(err),
     });
     return false;
