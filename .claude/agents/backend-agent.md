@@ -3,7 +3,7 @@ name: backend-agent
 description: Specialist in the NestJS backend -- modules, Drizzle ORM, auth, sync, geofence, BullMQ
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-06-19
+updated: 2026-06-22
 ---
 
 # StrawBoss Backend Agent
@@ -24,7 +24,7 @@ Every feature is a NestJS module in its own directory under `backend/service/src
 - `<feature>.controller.ts` -- HTTP endpoints under `/api/v1/<feature>`
 - `<feature>.service.ts` -- business logic and database queries
 
-Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bale-productions`, `fuel-logs`, `alerts`, `reconciliation`, `parcels`, `machines`, `documents`, `jobs`, `notifications`, `mobile-logs`, `health`, `farms`, `delivery-destinations`, `parcel-daily-status`, `admin-users`, `dashboard`, `profile`, `location`, `audit`, `consumable-logs`, `deposit-inventory` (Plan C), `reports`.
+Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bale-productions`, `fuel-logs`, `alerts`, `reconciliation`, `parcels`, `machines`, `documents`, `jobs`, `notifications`, `mobile-logs`, `health`, `farms`, `delivery-destinations`, `parcel-daily-status`, `admin-users`, `dashboard`, `profile`, `location`, `audit`, `consumable-logs`, `deposit-inventory` (Plan C), `reports`, `fleet` (device registry + OTA updates).
 
 ### Database access
 - Uses Drizzle ORM with `DrizzleProvider` injected into services.
@@ -63,10 +63,11 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - Pull returns deltas based on `sync_version`.
 
 ### BullMQ jobs
-- Queue constants in `jobs/queues.ts`: `alert-evaluation`, `reconciliation`, `cmr-generation`, `sync-cleanup`, `geofence-check`, `truck-idle-check` (Plan C, `QUEUE_TRUCK_IDLE_CHECK`).
+- Queue constants in `jobs/queues.ts`: `alert-evaluation`, `reconciliation`, `cmr-generation`, `sync-cleanup`, `geofence-check`, `truck-idle-check` (Plan C, `QUEUE_TRUCK_IDLE_CHECK`), `ota-deploy` (`QUEUE_OTA_DEPLOY`).
 - `JobSchedulerService` (`jobs/job-scheduler.service.ts`): Seeds repeating jobs on startup via `upsertJobScheduler`.
 - Processors are `@Processor(QUEUE_NAME)` classes in their respective module directories.
 - **CMR generation** is two-stage: job payload includes `{ tripId, stage: 1 | 2 }`. Stage 1 is queued at `depart` (partial PDF), stage 2 at `complete` (final PDF). `CmrProcessor` reads `job.data.stage` to select the rendering path.
+- **OTA deploy** (`ota-deploy` / `OtaDeployProcessor` in `fleet/`): delayed jobs only; added by `FleetService.createDeployment()` when `scheduledAt` is set; payload `{ deploymentId }`. Immediate deployments call `activateDeployment()` synchronously without queuing.
 
 ### Location / Presence (Layer 1)
 `POST /location/report` inserts into `machine_location_events` and also calls `ProfileService.touchLastSeen(operatorId)` best-effort (swallowed in a `.catch()`) — `LocationModule` imports `ProfileModule` for this. Machine-bound devices keep streaming GPS while backgrounded, so this keeps operators "online" (`users.last_seen_at`) even when the explicit `/profile/heartbeat` is paused.
@@ -89,6 +90,14 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - Use `ZodValidationPipe` from `common/pipes/zod-validation.pipe.ts`.
 - Import schemas from `@strawboss/validation`.
 - Pattern: `@Body(new ZodValidationPipe(createFooSchema)) dto: FooCreateDto`
+
+### Fleet module (`src/fleet/`)
+- `FleetController`: single public endpoint `POST /fleet/checkin`. Uses `@Public()` — no JWT required. Device identity is proven via HMAC-SHA256 device token (keyed with `SUPABASE_JWT_SECRET`). First check-in registers the device and returns `deviceTokenIssued`; subsequent calls verify it with `timingSafeEqual`.
+- `FleetAdminController`: all routes under `/super-admin/` restricted to `@Roles(UserRole.super_admin)`. Covers devices (list/get/patch/delete/ota-status/logs), releases (list/upload/patch), and deployments (list/create/cancel).
+- APK upload: `POST /super-admin/releases` is `multipart/form-data`. Global `@fastify/multipart` limit of 3 MB is overridden per-request to 250 MB via `req.file({ limits: { fileSize: 250 * 1024 * 1024 } })`. SHA-256 is computed on ingest; APKs stored under `{UPLOADS_ROOT}/apks/`. Served via HMAC-signed URLs.
+- OTA state machine states: `pending | notified | downloading | downloaded | installing | installed | failed`. Anti-skew: `installed` is only accepted when `device.versionCode >= release.versionCode`; otherwise clamped to `installing`.
+- `FleetPushService`: optional FCM acceleration push. `firebase-admin` is **not** installed. It is imported via `const pkg = 'firebase-admin'; await import(pkg)` — a non-literal dynamic import so TypeScript resolves to `any` and the app boots without the package. Enabled only when `FIREBASE_SERVICE_ACCOUNT` env var is present. Poll is the authoritative delivery trigger.
+- Device log viewer resolves `deviceUuid` from the device record, then reads `logs/mobile/{level}/{date}.log` and filters NDJSON lines by `meta.deviceId === deviceUuid`. Requires `MobileLogsService` to persist `deviceId` in Winston meta (added in this feature).
 
 ## Rules you must follow
 

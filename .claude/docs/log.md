@@ -29,3 +29,13 @@ Actions: `save` (update), `new doc` (created), `delete`, `rename`.
 [2026-06-19] save | `packages-api.md` — createClient gains optional storage/detectSessionInUrl (CreateClientOptions/AuthStorage); backward-compatible (web unchanged)
 [2026-06-19] save | `backend-agent.md` + `mobile-agent.md` — Layer 1/2 presence + auth-persistence knowledge blocks
 [2026-06-19] save | `hot.md` — added presence + auth-persistence to "What's Changing Now"
+[2026-06-22] save | `database.md` — Fleet/OTA tables + 4 enums (migration 00055: devices, app_releases, ota_deployments, device_ota_status); migration range now 00001–00055
+[2026-06-22] save | `packages-types.md` — device entities/enums + check-in protocol interfaces (entities/device.ts)
+[2026-06-22] save | `packages-validation.md` — fleet.schema.ts (checkin/release/deployment/update-device); deviceId on mobileLogIngestSchema
+[2026-06-22] save | `packages-api.md` — use-fleet.ts hooks + devices/releases/deployments query keys; hook files 24→25
+[2026-06-22] save | `backend.md` + `backend-agent.md` — new fleet module (public checkin + super-admin OTA), QUEUE_OTA_DEPLOY, optional firebase-admin push, deviceId in mobile-logs
+[2026-06-22] save | `mobile.md` + `mobile-agent.md` — pre-login device check-in, OTA orchestrator + idle gate, native installApkSilent/getDeviceHardwareInfo, boot-rearm re-report
+[2026-06-22] save | `admin-web.md` + `frontend-agent.md` — super-admin Fleet/Releases/device-detail pages, push/schedule modal, polling (no Realtime)
+[2026-06-22] save | `architecture.md` — Fleet/OTA subsystem (poll model, 8-state machine, deferred-until-idle)
+[2026-06-22] save | `scripts.md` + `infrastructure.md` — keystore guard (verify-keystore.sh, pre-commit, keystore-guard.yml), FIREBASE_SERVICE_ACCOUNT, apks/ storage
+[2026-06-22] save | `hot.md` — added Fleet/OTA + keystore invariant to "What's Changing Now"; migration range 00055

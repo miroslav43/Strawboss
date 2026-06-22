@@ -2,7 +2,7 @@
 type: doc
 title: "Infrastructure"
 created: 2026-04-16
-updated: 2026-05-17
+updated: 2026-06-22
 tags: [doc, devops, infra, docker, nginx, redis]
 status: mature
 related:
@@ -156,6 +156,7 @@ The certbot service auto-renews every 12 hours in a background loop.
 | `ANDROID_HOME` | Android SDK path for mobile builds |
 | `NEXT_DEV_API_PROXY_URL` | Dev proxy target (default: `http://localhost:3001`) |
 | `LOG_ROOT` | Root directory for log files (Docker sets `/app/logs`) |
+| `FIREBASE_SERVICE_ACCOUNT` | JSON service-account key for `firebase-admin`. If absent, the OTA acceleration FCM push is silently disabled; phones still receive updates via the poll-based check-in. Required only if you want FCM to nudge phones to check in sooner after a deployment is activated. |
 
 ## Logging
 
@@ -181,6 +182,42 @@ Daily rotation, 7-day retention (`maxFiles: '7d'`).
 ### Mobile Log Upload
 
 After successful sync, the mobile app uploads today's NDJSON logs to `POST /api/v1/logs/mobile`. Local files are deleted on success. See [sync-protocol.md](sync-protocol.md) for details.
+
+## OTA Signing Keystore Guard
+
+The ~30 Device-Owner phones self-install APKs via Android's PackageInstaller. Android enforces that every new APK is signed by **the same key** as the installed app. Changing `apps/mobile/android/app/debug.keystore` breaks OTA self-update for every fielded phone — each one would need a manual re-sideload of the first APK signed under the new key.
+
+Three layers enforce the pin:
+
+### 1. `scripts/verify-keystore.sh`
+
+Computes the SHA-256 of `apps/mobile/android/app/debug.keystore` and compares it to a hardcoded expected value (`221e0a3106aa4c3ccc154e0a418b55020b3f9ea6e84f92e8749cd9e2f39f5e58`). Exits non-zero with an explanatory message if the digest differs. See [[scripts]] for full details.
+
+### 2. `.githooks/pre-commit`
+
+Two checks run on every commit:
+
+1. **Hard block** — if `git diff --cached --name-only` includes `apps/mobile/android/app/debug.keystore`, the commit is rejected immediately before any hash check.
+2. **Belt-and-suspenders fingerprint check** — calls `sh scripts/verify-keystore.sh` to confirm the on-disk file still matches the pinned digest (guards against unstaged modifications).
+
+The hook is activated automatically for every developer by the root `prepare` npm script (`git config core.hooksPath .githooks`), which runs on `pnpm install`.
+
+### 3. `.github/workflows/keystore-guard.yml`
+
+CI check that runs `sh scripts/verify-keystore.sh` on every push and pull request (all branches). This is the real safety net: it cannot be bypassed by `git commit --no-verify` (which only skips the local hook).
+
+```yaml
+on:
+  push:
+    branches: ['**']
+  pull_request:
+```
+
+### APK Storage
+
+Uploaded APKs are stored under `UPLOADS_ROOT/apks/<uuid>.apk` (the `apk_key` column in `app_releases`). The backend serves them via the existing signed-URL mechanism (`signUploadUrl` / `UPLOADS_URL_PREFIX`). The subdirectory is created automatically on first APK upload (`fsp.mkdir(dir, { recursive: true })`).
+
+The maximum APK upload size is 250 MB (enforced per-request in `FleetAdminController`, overriding the global 3 MB multipart limit). The sha256 is computed server-side during streaming write and stored in `app_releases.sha256`; the mobile client verifies this digest before invoking PackageInstaller.
 
 ### Admin Web Client Logs
 

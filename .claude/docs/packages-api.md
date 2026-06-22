@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/api"
 created: 2026-04-16
-updated: 2026-06-19
+updated: 2026-06-22
 tags: [doc, package, api, tanstack-query, supabase]
 status: mature
 related:
@@ -16,7 +16,7 @@ related:
 
 # @strawboss/api
 
-Shared data layer consumed by both `admin-web` and `mobile`. Provides the `ApiClient` class, Supabase client factory, TanStack Query key factory, and 24 React Query hook files (index counts as one file; includes `useLocationKmByDay` added in Plan C).
+Shared data layer consumed by both `admin-web` and `mobile`. Provides the `ApiClient` class, Supabase client factory, TanStack Query key factory, and 25 React Query hook files (index counts as one file; includes `useLocationKmByDay` added in Plan C, `use-fleet.ts` added in fleet feature).
 
 **Source:** `packages/api/src/`
 
@@ -95,6 +95,9 @@ Centralized TanStack Query key definitions. Every hook references these for cach
 | `baleProductions` | `.all`, `.list(filters?)`, `.byOperator(operatorId)`, `.stats(filters?)` |
 | `farms` | `.all`, `.list(filters?)`, `.detail(id)` |
 | `deliveryDestinations` | `.all`, `.list(filters?)`, `.detail(id)` |
+| `devices` | `.all`, `.list(filters?)`, `.detail(id)`, `.otaStatus(id)`, `.logs(id, filters?)` |
+| `releases` | `.all` |
+| `deployments` | `.all` |
 
 ## React Query Hooks
 
@@ -210,3 +213,38 @@ Mutations auto-invalidate related query keys on success.
 | `useProductionReport(client, filters?)` | `GET /api/v1/dashboard/production` | |
 | `useCostReport(client, filters?)` | `GET /api/v1/dashboard/costs` | |
 | `useAntiFraudReport(client)` | `GET /api/v1/dashboard/anti-fraud` | |
+
+### Fleet (`hooks/use-fleet.ts`)
+
+Super-admin routes under `/api/v1/super-admin/`. All read hooks take `client: ApiClient`; mutations also accept `useQueryClient` internally for cache invalidation.
+
+#### Devices
+
+| Hook | Type | Endpoint | Notes |
+|---|---|---|---|
+| `useDevices(client)` | Query | `GET /api/v1/super-admin/devices` | Returns `FleetDeviceListItem[]`; refetches every 20 s |
+| `useDevice(client, id)` | Query | `GET /api/v1/super-admin/devices/:id` | Returns `Device`; disabled when id is empty |
+| `useUpdateDevice(client)` | Mutation | `PATCH /api/v1/super-admin/devices/:id` | Accepts `UpdateDeviceInput`; sets detail cache on success |
+| `useDeleteDevice(client)` | Mutation | `DELETE /api/v1/super-admin/devices/:id` | Soft-delete |
+| `useDeviceOtaStatus(client, id)` | Query | `GET /api/v1/super-admin/devices/:id/ota-status` | Returns `DeviceOtaStatusWithVersion[]`; refetches every 8 s |
+| `useDeviceLogs(client, id, filters?)` | Query | `GET /api/v1/super-admin/devices/:id/logs` | `filters`: `{ level?, date? }`; returns `DeviceLogResponse` |
+
+Local interfaces in `use-fleet.ts`: `DeviceLogFilters`, `DeviceLogEntry`, `DeviceLogResponse`, `DeviceOtaStatusWithVersion` (extends `DeviceOtaStatus` with `version: string` and `versionCode: number`).
+
+#### Releases
+
+| Hook | Type | Endpoint | Notes |
+|---|---|---|---|
+| `useReleases(client)` | Query | `GET /api/v1/super-admin/releases` | Returns `AppRelease[]` |
+| `useUploadRelease(client)` | Mutation | `POST /api/v1/super-admin/releases` | Accepts `FormData` (multipart APK upload) |
+| `useUpdateRelease(client)` | Mutation | `PATCH /api/v1/super-admin/releases/:id` | Accepts `UpdateReleaseInput` |
+
+#### Deployments
+
+| Hook | Type | Endpoint | Notes |
+|---|---|---|---|
+| `useDeployments(client)` | Query | `GET /api/v1/super-admin/deployments` | Returns `OtaDeployment[]` |
+| `useCreateDeployment(client)` | Mutation | `POST /api/v1/super-admin/deployments` | Accepts `CreateDeploymentInput` |
+| `useCancelDeployment(client)` | Mutation | `POST /api/v1/super-admin/deployments/:id/cancel` | |
+
+See [[packages-types]] for entity shapes and [[packages-validation]] for input schemas.

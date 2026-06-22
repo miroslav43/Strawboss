@@ -2,7 +2,7 @@
 type: doc
 title: "StrawBoss — System Architecture"
 created: 2026-04-16
-updated: 2026-05-17
+updated: 2026-06-22
 tags: [doc, architecture, overview, top-level]
 status: mature
 related:
@@ -260,6 +260,81 @@ See [[mobile]] and [[sync-protocol]].
 Commands auto-discovered from `scripts/*.sh` via `@cmd` annotations.
 
 See [[scripts]] for full command reference.
+
+## Fleet / OTA Self-Update
+
+~30 Device-Owner phones self-install signed APK updates silently via Android's PackageInstaller API. The server cannot initiate connections (NAT / no static IP per device), so the architecture is pure poll-based: phones call `POST /api/v1/fleet/checkin` and the response tells them whether an update is waiting.
+
+### Poll Model
+
+```
+Phone (periodic / on-foreground)
+  │
+  └─ POST /api/v1/fleet/checkin  ──→  NestJS FleetService (no auth required)
+       │  { deviceUuid, deviceToken, versionCode,
+       │    appVersion, model, osVersion, activeTrip,
+       │    otaReports: [{ deploymentId, state, error? }] }
+       │
+       └─ Response: { deviceId, assignedOrgId, pendingDeployment? }
+            pendingDeployment carries: { version, versionCode, apkUrl (signed),
+                                         sha256, sizeBytes, installPolicy }
+```
+
+- First call = registration: server issues an HMAC `deviceToken` (`HMAC-SHA256(deviceUuid, SUPABASE_JWT_SECRET)`). Every subsequent call must present this token.
+- The response's `pendingDeployment` is `null` when the device is already up to date. Non-null means "download + install this APK".
+- FCM (`firebase-admin` + `FIREBASE_SERVICE_ACCOUNT`) is optional acceleration: a push nudges the phone to poll sooner. The poll is the authoritative mechanism — FCM being absent just adds latency.
+
+See [[backend]] for `FleetService` / `FleetAdminController`, [[mobile]] for the client-side OTA flow.
+
+### Per-Device OTA State Machine
+
+Backend records state in `device_ota_status`. The device drives forward transitions and reports them in `otaReports[]` on check-in:
+
+```
+pending → notified → downloading → downloaded → awaiting_idle → installing → installed
+                                                                           → failed
+```
+
+- `pending` → `notified`: set by the server at fan-out time (or lazily on first check-in that matches an active deployment).
+- `downloading` / `downloaded` / `awaiting_idle` / `installing` / `failed`: reported by the device.
+- `installed`: accepted by the server **only when** the device's reported `versionCode` equals the release's `version_code` (anti-skew guard — device re-reports until it boots into the new build).
+- Downgrade guard: if `deviceVersionCode >= releaseVersionCode` the server marks the row `installed` immediately and returns `null` for `pendingDeployment`.
+
+### Super-Admin Endpoints (`@Roles(super_admin)`)
+
+All under `/api/v1/super-admin/`:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /devices` | List all registered devices with latest OTA state |
+| `GET /devices/:id` | Single device |
+| `PATCH /devices/:id` | Assign to org, rename |
+| `DELETE /devices/:id` | Soft-delete |
+| `GET /devices/:id/ota-status` | Per-device deployment history |
+| `GET /devices/:id/logs?level=&date=` | Stream filtered device logs from Winston mobile log tree |
+| `GET /releases` | List APK releases |
+| `POST /releases` | Upload APK (multipart, 250 MB limit); sha256 computed server-side |
+| `PATCH /releases/:id` | Change `status` (draft/published/archived), `mandatory`, `changelog` |
+| `GET /deployments` | List deployments with per-state counts |
+| `POST /deployments` | Create deployment; `scheduledAt` null = immediate, non-null = BullMQ-delayed job |
+| `POST /deployments/:id/cancel` | Cancel |
+
+### New DB Tables (migration `00055_fleet_devices.sql`)
+
+Four tables + four enums added. No `sync_version` — these are server-authoritative (not mobile-synced).
+
+| Table | Purpose |
+|---|---|
+| `devices` | Device registry. `device_uuid` (SecureStore UUID) is the identity key. `device_token_hash` stores the HMAC used to authenticate check-ins. Soft-delete via `deleted_at`. |
+| `app_releases` | Uploaded APK metadata. `version_code UNIQUE` prevents duplicate/collision. APK file lives at `UPLOADS_ROOT/apks/<uuid>.apk`; `sha256` is verified on-device before install. |
+| `ota_deployments` | One release pushed to a device set. `target_kind`: `all` / `org` / `device_set`. `force_now` bypasses the idle gate. Scheduled deployments use a BullMQ delayed job (`QUEUE_OTA_DEPLOY`). |
+| `device_ota_status` | Per-device state-machine instance for one deployment. `UNIQUE(deployment_id, device_id)`. |
+
+Enums: `ota_state`, `ota_deployment_status`, `release_status`, `ota_target_kind`.
+
+RLS is enabled on all four tables but the backend connects as table owner (bypasses RLS). One permissive read policy on `devices` allows org-admins to see their assigned devices via a future direct PostgREST path.
+
+See [[database]] for full schema, [[admin-web]] for the super-admin Fleet pages.
 
 ## Component Documentation Index
 

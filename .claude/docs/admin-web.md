@@ -2,7 +2,7 @@
 type: doc
 title: "Admin Web (apps/admin-web)"
 created: 2026-04-16
-updated: 2026-05-25
+updated: 2026-06-22
 tags: [doc, frontend, layer, nextjs]
 status: mature
 related:
@@ -46,6 +46,113 @@ All routes live under `src/app/`. Two route groups: `(auth)` for login, `(dashbo
 | `/settings` | `(dashboard)/settings/page.tsx` | 100% | Profile editing, password change, locale toggle, notification prefs |
 | `/deposits` | `(dashboard)/deposits/page.tsx` | 100% | Delivery destination management (Plan C — previously under `/delivery-destinations`) |
 | `/command-center` | `(dashboard)/command-center/page.tsx` | 100% | Multi-trip board with `UserPresenceDot` for live operator presence (Plan C) |
+
+### Super-admin area (`src/app/super-admin/(dashboard)/`)
+
+A separate route group with its own layout. Accessible only to users whose JWT `app_metadata.role` equals `super_admin`; any other role is redirected to `/login`. The layout (`layout.tsx`) renders a minimal dark header with two nav links — Organizations and Devices — but no Sidebar or RealtimeProvider.
+
+| Route | File | Description |
+|---|---|---|
+| `/super-admin/organizations` | `organizations/page.tsx` | Organization list with create/edit |
+| `/super-admin/organizations/new` | `organizations/new/page.tsx` | New organization form |
+| `/super-admin/organizations/[id]/users` | `organizations/[id]/users/page.tsx` | Users within an organization |
+| `/super-admin/devices` | `devices/page.tsx` | Fleet device list (see below) |
+| `/super-admin/devices/releases` | `devices/releases/page.tsx` | APK release management (see below) |
+| `/super-admin/devices/[id]` | `devices/[id]/page.tsx` | Device detail with OTA timeline + log viewer (see below) |
+
+---
+
+## Fleet Management (OTA) — Super-admin
+
+All pages live under `src/app/super-admin/(dashboard)/devices/`. They are **super_admin-only** — the layout gate enforces this. Because the `super_admin` role fails the standard devices RLS path, these pages use **TanStack Query polling** instead of Supabase Realtime.
+
+### Fleet device list (`devices/page.tsx`)
+
+Renders all registered mobile devices grouped by organization. The "Unassigned" group (devices with `organizationId = null`) appears first; other groups are keyed by `organizationId` with the `organizationName` as the heading label.
+
+Per-device row columns: online dot, name / `deviceUuid` (monospace), manufacturer + model, `appVersion (versionCode)`, OTA-state badge, last-seen timestamp, edit + delete actions.
+
+**Online threshold:** `lastSeenAt` within 90 seconds → green dot (stricter than the 15-minute threshold used on the main `/map` page).
+
+**OTA state badge (`OtaStateBadge`):** color-coded pill per `OtaState` enum value:
+- `pending`, `notified` → neutral
+- `downloading`, `downloaded` → blue
+- `awaiting_idle`, `installing` → amber
+- `installed` → green
+- `failed` → red
+
+**Modals on this page:**
+- `EditDeviceModal` — rename device and assign/reassign to an organization (`PATCH /api/v1/super-admin/devices/:id`). Uses `useUpdateDevice`.
+- `DeleteDeviceDialog` — confirm-delete with device name shown. Uses `useDeleteDevice`.
+- `PushUpdateModal` — create a new `OtaDeployment`. See Push/Schedule Modal below.
+
+Header actions: link to `/super-admin/devices/releases` (PackageOpen icon) and the "Push Update" button that opens `PushUpdateModal`.
+
+Data hooks: `useDevices(apiClient)` — `refetchInterval: 20_000` ms. Also fetches `useReleases` for the push modal and loads the organization list once via a raw `apiClient.get('/api/v1/organizations')` call (non-critical, failure is swallowed).
+
+### Push / Schedule modal (`PushUpdateModal`)
+
+Inline component in `devices/page.tsx`. Fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| Release | `<select>` | Filtered to `ReleaseStatus.published` only. Mandatory. |
+| Target | radio `OtaTargetKind` | `all` / `org` / `device_set` |
+| Organization | `<select>` (conditional) | Shown when `targetKind === OtaTargetKind.org` |
+| Devices | scrollable checkbox list (conditional) | Shown when `targetKind === OtaTargetKind.device_set` |
+| Schedule | `<input type="datetime-local">` | Optional; converted to ISO string. Empty = immediate. |
+| Force Now | checkbox | Bypasses the device idle gate (installs even mid-trip). Styled with amber warning colors. |
+
+Submit calls `useCreateDeployment(apiClient)` → `POST /api/v1/super-admin/deployments`.
+
+### Releases page (`devices/releases/page.tsx`)
+
+**Upload form (`UploadReleaseForm`):** drag-click APK file picker (`accept=".apk"`), semver `version`, integer `versionCode`, optional `changelog` textarea, `mandatory` checkbox. Submits as `multipart/form-data` via `useUploadRelease(apiClient)` → `POST /api/v1/super-admin/releases`. Clears form on success and shows a 3-second green toast.
+
+**Release list:** table showing version / `versionCode`, `ReleaseStatusBadge`, mandatory flag, file size (converted to MB), changelog snippet (truncated), upload date.
+
+`ReleaseStatusBadge` colors: `draft` = neutral, `published` = green, `archived` = neutral-grey.
+
+Row actions (`ReleaseActions`): `draft` → Publish button (`useUpdateRelease` → `PATCH …/releases/:id`); `published` → Archive button. Only one action visible at a time.
+
+Data hook: `useReleases(apiClient)` — no polling interval (reads are cheap, changes are infrequent).
+
+### Device detail (`devices/[id]/page.tsx`)
+
+Identity card: device name + `deviceUuid` (monospace), online dot + text label (same 90 s threshold), `appVersion (versionCode)` in the top-right corner. Info grid: manufacturer/model, OS version, Android ID (monospace), `isDeviceOwner` (green tick if true), last-seen, last-checkin.
+
+Two tabs: **OTA** and **Logs**.
+
+**OTA tab (`OtaTimeline`):** list of `DeviceOtaStatusWithVersion` entries from `useDeviceOtaStatus(apiClient, id)` — `refetchInterval: 8_000` ms. Each card shows: state badge (with icon — `Clock`, `Download`, `RefreshCw spin`, `CheckCircle2`, `XCircle`), `version (versionCode)`, deployment UUID, retry-attempt badge (shown when `attempt > 1`), inline error block, and per-row timestamps (notified, downloaded, installed, updated).
+
+**Logs tab (`LogViewer`):** calls `useDeviceLogs(apiClient, id, { level?, date? })` — no polling (manual refresh). Filters: level pills (`all / error / warn / info / flow / debug`) and a date picker (`<input type="date">`). Output rendered in a dark (`bg-neutral-950`) monospace scrollable panel (max height 480 px). Each line: timestamp (HH:mm:ss), colored level tag, optional context bracket, message. Level colors: `error`=red, `warn`=amber, `info`=blue, `flow`=purple, `debug`=neutral.
+
+Data hooks used on this page: `useDevice`, `useDeviceOtaStatus`, `useDeviceLogs` (all from `@strawboss/api`).
+
+### i18n
+
+All user-visible strings use the `superAdmin.devices.*` namespace in `messages/en.json` and `messages/ro.json`. Key sub-namespaces: `otaState.*` (one key per `OtaState` value), `releaseStatus.*` (one key per `ReleaseStatus`), `pushModal.*`, `editModal.*`, `deleteDialog.*`, `releases.*`, `detail.*`.
+
+### Types and hooks reference
+
+See [[packages-types]] for `Device`, `FleetDeviceListItem`, `AppRelease`, `OtaDeployment`, `DeviceOtaStatus`, `OtaState`, `OtaTargetKind`, `ReleaseStatus`, `OtaDeploymentStatus`, `DeviceCheckinRequest`, `DeviceCheckinResponse`, `PendingDeployment`.
+
+Fleet hooks live in `packages/api/src/hooks/use-fleet.ts` and are re-exported from `@strawboss/api`:
+
+| Hook | Polling | Endpoint |
+|---|---|---|
+| `useDevices` | 20 s | `GET /api/v1/super-admin/devices` |
+| `useDevice` | none | `GET /api/v1/super-admin/devices/:id` |
+| `useUpdateDevice` | mutation | `PATCH /api/v1/super-admin/devices/:id` |
+| `useDeleteDevice` | mutation | `DELETE /api/v1/super-admin/devices/:id` |
+| `useDeviceOtaStatus` | 8 s | `GET /api/v1/super-admin/devices/:id/ota-status` |
+| `useDeviceLogs` | none | `GET /api/v1/super-admin/devices/:id/logs` |
+| `useReleases` | none | `GET /api/v1/super-admin/releases` |
+| `useUploadRelease` | mutation | `POST /api/v1/super-admin/releases` (multipart) |
+| `useUpdateRelease` | mutation | `PATCH /api/v1/super-admin/releases/:id` |
+| `useDeployments` | none | `GET /api/v1/super-admin/deployments` |
+| `useCreateDeployment` | mutation | `POST /api/v1/super-admin/deployments` |
+| `useCancelDeployment` | mutation | `POST /api/v1/super-admin/deployments/:id/cancel` |
 
 ---
 
