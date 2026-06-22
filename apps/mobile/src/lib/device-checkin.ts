@@ -316,12 +316,12 @@ async function handleTailscaleCommand(command: DeviceCommand): Promise<void> {
       throw new Error(`Unknown tailscale action: ${String(action)}`);
     }
   } catch (err) {
-    // Bug 8: never log the raw error message for tailscale commands — it may
-    // contain the authKey if a native exception echoes the Bundle. Log only
-    // commandId + action for traceability, use a short error code in the report.
-    const errName = err instanceof Error ? err.constructor.name : 'UnknownError';
-    errorMsg = errName; // sanitized: no message/payload that could echo authKey
-    mobileLogger.warn('Fleet: Tailscale command failed', { commandId, action });
+    // Report the real error so the admin can diagnose (e.g. "Tailscale not installed and
+    // no APK provided"). Redact any Tailscale auth key as defense-in-depth, in case a
+    // native exception ever echoes the managed-config payload.
+    const raw = err instanceof Error ? err.message : String(err);
+    errorMsg = raw.replace(/tskey-[A-Za-z0-9_-]+/g, 'tskey-***').slice(0, 300);
+    mobileLogger.warn('Fleet: Tailscale command failed', { commandId, action, error: errorMsg });
   }
 
   const report: DeviceCommandReport = {
