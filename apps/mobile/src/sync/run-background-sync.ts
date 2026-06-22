@@ -89,10 +89,10 @@ export async function runBackgroundSyncCycle(): Promise<void> {
 
   // Generate local notifications for any new today's task assignments.
   // This is the primary notification path when Expo push tokens are unavailable
-  // (dev builds without FCM). INSERT OR IGNORE makes this idempotent.
-  if (result.pulled > 0) {
-    await _notifyNewAssignments(taskAssignmentsRepo, notificationsRepo);
-  }
+  // (dev builds without FCM). INSERT OR IGNORE makes this idempotent — assignments
+  // already notified are skipped, so calling unconditionally covers the case
+  // where today's row was pulled in a previous session and never surfaced.
+  await _notifyNewAssignments(taskAssignmentsRepo, notificationsRepo);
 
   if (result.errors.length > 0) {
     mobileLogger.warn('Background sync finished with errors', {
