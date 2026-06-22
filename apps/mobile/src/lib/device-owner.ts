@@ -23,6 +23,13 @@ interface DeviceOwnerNative {
   presentFullScreenAlert(title: string, body: string, deepLink: string): Promise<boolean>;
   startPresenceService(): Promise<boolean>;
   stopPresenceService(): Promise<boolean>;
+  getDeviceHardwareInfo(): Promise<{
+    model: string;
+    manufacturer: string;
+    osVersion: string;
+    androidId: string;
+  }>;
+  installApkSilent(path: string, expectedSha256: string): Promise<boolean>;
 }
 
 const native: DeviceOwnerNative | null =
@@ -173,6 +180,60 @@ export async function releaseDeviceOwner(): Promise<boolean> {
     return ok;
   } catch (err) {
     mobileLogger.warn('releaseDeviceOwner failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Return a map of hardware identifiers from the native layer.
+ * All fields default to empty strings when the module is absent (iOS / Expo Go).
+ * Safe to call unconditionally — never throws.
+ */
+export async function getDeviceHardwareInfo(): Promise<{
+  model?: string;
+  manufacturer?: string;
+  osVersion?: string;
+  androidId?: string;
+}> {
+  if (!native?.getDeviceHardwareInfo) return {};
+  try {
+    const info = await native.getDeviceHardwareInfo();
+    return {
+      model: info.model || undefined,
+      manufacturer: info.manufacturer || undefined,
+      osVersion: info.osVersion || undefined,
+      androidId: info.androidId || undefined,
+    };
+  } catch (err) {
+    mobileLogger.warn('getDeviceHardwareInfo failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return {};
+  }
+}
+
+/**
+ * Silently install an APK via the Device Owner PackageInstaller API.
+ *
+ * The native side verifies the SHA-256 digest before opening a session — if the
+ * digest mismatches the promise rejects with code SHA_MISMATCH and the install
+ * is aborted. The calling code (OTA orchestrator) must persist any "installing"
+ * state BEFORE awaiting this, because the process is typically killed mid-install
+ * when Android replaces the APK.
+ *
+ * Returns false and logs a warning when the module is absent (iOS / Expo Go).
+ */
+export async function installApkSilent(
+  absolutePath: string,
+  expectedSha256: string,
+): Promise<boolean> {
+  if (!native?.installApkSilent) return false;
+  try {
+    return await native.installApkSilent(absolutePath, expectedSha256);
+  } catch (err) {
+    mobileLogger.warn('installApkSilent failed', {
       message: err instanceof Error ? err.message : String(err),
     });
     return false;

@@ -2,10 +2,7 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import {
-  mobileLogIngestSchema,
-  type MobileLogIngestDto,
-} from '@strawboss/validation';
+import { mobileLogIngestSchema, type MobileLogIngestDto } from '@strawboss/validation';
 import { MobileLogsService } from './mobile-logs.service';
 
 @Controller('logs')
@@ -20,7 +17,7 @@ export class MobileLogsController {
     @Body(new ZodValidationPipe(mobileLogIngestSchema)) body: MobileLogIngestDto,
     @CurrentUser() user: RequestUser,
   ): { ok: true } {
-    this.mobileLogsService.ingest(body.entries, user.id);
+    this.mobileLogsService.ingest(body.entries, user.id, body.deviceId);
     return { ok: true };
   }
 }

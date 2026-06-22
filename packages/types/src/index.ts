@@ -24,6 +24,7 @@ export * from './entities/trip-request.js';
 export * from './entities/parcel-daily-status.js';
 export * from './entities/machine-location-event.js';
 export * from './entities/device-push-token.js';
+export * from './entities/device.js';
 export * from './entities/geofence-event.js';
 export * from './entities/mobile-notification.js';
 

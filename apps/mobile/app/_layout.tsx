@@ -29,6 +29,7 @@ import {
   addNotificationResponseListener,
 } from '@/lib/notifications';
 import { handleIncomingPush } from '@/lib/notification-handler';
+import { runDeviceCheckin } from '@/lib/device-checkin';
 import { NotificationsRepo } from '@/db/notifications-repo';
 import {
   flushPendingLocationReports,
@@ -317,9 +318,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Intercept all incoming pushes → persist to local notifications table
+  // Intercept all incoming pushes → persist to local notifications table.
+  // Also branch on `ota_checkin` push type to trigger an immediate check-in
+  // (best-effort acceleration — the periodic poll is the reliable trigger).
   useEffect(() => {
     const fgSub = addNotificationListener((notification) => {
+      const data = (notification.request.content.data ?? {}) as Record<string, unknown>;
+      if (data?.type === 'ota_checkin') {
+        void runDeviceCheckin();
+      }
       void handleIncomingPush(notification);
     });
     const tapSub = addNotificationResponseListener((response) => {
@@ -328,6 +335,21 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return () => {
       fgSub.remove();
       tapSub.remove();
+    };
+  }, []);
+
+  // Fleet check-in — UNCONDITIONAL (runs before and independently of auth).
+  // Fires on mount and every 60 s so the server always has fresh telemetry and
+  // can push OTA deployments even before an operator logs in. Mirrors the
+  // heartbeat pattern (startHeartbeat / stopHeartbeat) but is not paused on
+  // background because it piggybacks on the device-owner foreground service.
+  useEffect(() => {
+    void runDeviceCheckin();
+    const checkinTimer = setInterval(() => {
+      void runDeviceCheckin();
+    }, 60_000);
+    return () => {
+      clearInterval(checkinTimer);
     };
   }, []);
 

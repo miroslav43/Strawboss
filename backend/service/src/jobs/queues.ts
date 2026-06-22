@@ -5,3 +5,5 @@ export const QUEUE_SYNC_CLEANUP = 'sync-cleanup';
 export const QUEUE_GEOFENCE_CHECK = 'geofence-check';
 // Plan C — periodic scan for trucks idle past the threshold (default 30 min).
 export const QUEUE_TRUCK_IDLE_CHECK = 'truck-idle-check';
+// Fleet OTA — delayed job that activates a scheduled deployment.
+export const QUEUE_OTA_DEPLOY = 'ota-deploy';

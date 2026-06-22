@@ -1366,6 +1366,135 @@
         "done": "Done"
       },
       "orgLoadError": "Could not load organization details. Please try again."
+    },
+    "devices": {
+      "navLabel": "Fleet / Devices",
+      "title": "Fleet Management",
+      "subtitle": "All registered devices, grouped by organization. Auto-refreshes every 20 s.",
+      "loading": "Loading devices…",
+      "empty": "No devices registered yet.",
+      "unnamed": "Unnamed device",
+      "online": "Online",
+      "offline": "Offline",
+      "groupUnassigned": "Unassigned",
+      "pushButton": "Push update",
+      "releasesLink": "Releases",
+      "col": {
+        "status": "Status",
+        "name": "Name / UUID",
+        "model": "Model",
+        "version": "Version",
+        "otaState": "OTA state",
+        "lastSeen": "Last seen",
+        "actions": "Actions"
+      },
+      "actions": {
+        "edit": "Edit / assign",
+        "delete": "Delete device"
+      },
+      "otaState": {
+        "pending": "Pending",
+        "notified": "Notified",
+        "downloading": "Downloading",
+        "downloaded": "Downloaded",
+        "awaiting_idle": "Awaiting idle",
+        "installing": "Installing",
+        "installed": "Installed",
+        "failed": "Failed"
+      },
+      "releaseStatus": {
+        "draft": "Draft",
+        "published": "Published",
+        "archived": "Archived"
+      },
+      "editModal": {
+        "title": "Edit device",
+        "nameLabel": "Display name",
+        "namePlaceholder": "e.g. Truck 01 — Ionescu",
+        "orgLabel": "Assign to organization",
+        "orgUnassigned": "— Unassigned —",
+        "saving": "Saving…"
+      },
+      "deleteDialog": {
+        "title": "Delete this device?",
+        "confirm": "Delete",
+        "deleting": "Deleting…"
+      },
+      "pushModal": {
+        "title": "Push OTA update",
+        "releaseLabel": "Release",
+        "releasePlaceholder": "— Select a release —",
+        "noPublishedReleases": "No published releases. Publish one in the Releases page first.",
+        "targetLabel": "Target",
+        "targetKind": {
+          "all": "All devices",
+          "org": "Organization",
+          "device_set": "Device set"
+        },
+        "orgLabel": "Organization",
+        "orgPlaceholder": "— Select organization —",
+        "devicesLabel": "Select devices",
+        "devicesSelected": "{{count}} selected",
+        "scheduleLabel": "Schedule for (leave empty for immediate)",
+        "scheduleHint": "Leave blank to activate immediately. Time is local — converted to UTC on submit.",
+        "forceNowLabel": "Force install immediately",
+        "forceNowHint": "Bypasses the idle gate — the device will install even if it is mid-trip. Use with caution.",
+        "deploy": "Push update",
+        "deploying": "Pushing…"
+      },
+      "releases": {
+        "title": "App Releases",
+        "subtitle": "Upload signed APKs and manage their lifecycle (draft → published → archived).",
+        "uploadTitle": "Upload new APK",
+        "apkLabel": "APK file",
+        "apkPlaceholder": "Click to select an .apk file",
+        "versionLabel": "Version name",
+        "versionCodeLabel": "Version code",
+        "changelogLabel": "Changelog (optional)",
+        "changelogPlaceholder": "What changed in this release…",
+        "mandatoryLabel": "Mandatory update (devices must install before resuming trips)",
+        "uploadButton": "Upload APK",
+        "uploading": "Uploading…",
+        "uploadSuccess": "Release uploaded successfully.",
+        "listTitle": "All releases",
+        "empty": "No releases yet.",
+        "mandatory": "Mandatory",
+        "optional": "Optional",
+        "publishButton": "Publish",
+        "publishTitle": "Publish this release (makes it available for deployments)",
+        "archiveButton": "Archive",
+        "archiveTitle": "Archive this release (removes it from new deployments)",
+        "col": {
+          "version": "Version",
+          "status": "Status",
+          "mandatory": "Mandatory",
+          "size": "Size",
+          "changelog": "Changelog",
+          "uploaded": "Uploaded",
+          "actions": "Actions"
+        }
+      },
+      "detail": {
+        "tab": {
+          "ota": "OTA history",
+          "logs": "Device logs"
+        },
+        "manufacturer": "Manufacturer / model",
+        "osVersion": "Android version",
+        "androidId": "Android ID",
+        "isDeviceOwner": "Device Owner",
+        "lastSeen": "Last seen",
+        "lastCheckin": "Last check-in",
+        "otaEmpty": "No OTA history for this device yet.",
+        "attempt": "Attempt {{n}}",
+        "notifiedAt": "Notified",
+        "downloadedAt": "Downloaded",
+        "installedAt": "Installed",
+        "updatedAt": "Updated",
+        "logRefresh": "Refresh",
+        "logEmpty": "No log entries for the selected filters.",
+        "logCount": "{{count}} entries"
+      }
     }
   },
   "dashboard": {

@@ -2,6 +2,7 @@ import type { ApiClient } from '@strawboss/api';
 import type { MobileLogEntryDto } from '@strawboss/validation';
 import * as FileSystem from 'expo-file-system/legacy';
 import { flushPending } from '../lib/logger';
+import { ensureDeviceId } from '../lib/device-checkin';
 
 const ROOT = `${FileSystem.documentDirectory ?? ''}strawboss-logs`;
 
@@ -54,8 +55,7 @@ export async function uploadTodayMobileLogs(api: ApiClient): Promise<void> {
           !Array.isArray(o.meta)
             ? (o.meta as Record<string, unknown>)
             : undefined,
-        recordedAt:
-          typeof o.timestamp === 'string' ? o.timestamp : undefined,
+        recordedAt: typeof o.timestamp === 'string' ? o.timestamp : undefined,
       });
     } catch {
       /* skip malformed line */
@@ -64,7 +64,13 @@ export async function uploadTodayMobileLogs(api: ApiClient): Promise<void> {
 
   if (entries.length === 0) return;
 
-  await api.post('/api/v1/logs/mobile', { entries });
+  // Include the stable device UUID so pre-login logs are attributable per device.
+  const { deviceUuid } = await ensureDeviceId().catch(() => ({ deviceUuid: undefined }));
+
+  await api.post('/api/v1/logs/mobile', {
+    entries,
+    ...(deviceUuid ? { deviceId: deviceUuid } : {}),
+  });
 
   const categories = ['all', 'error', 'warn', 'info', 'flow', 'debug'] as const;
   for (const cat of categories) {

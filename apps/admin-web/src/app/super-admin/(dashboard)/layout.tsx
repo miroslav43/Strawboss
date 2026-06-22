@@ -77,6 +77,9 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
           <a href="/super-admin/organizations" className="hover:underline">
             {t('superAdmin.users.breadcrumb.orgs')}
           </a>
+          <a href="/super-admin/devices" className="hover:underline">
+            {t('superAdmin.devices.navLabel')}
+          </a>
         </nav>
         <button
           onClick={handleLogout}

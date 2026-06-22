@@ -1366,6 +1366,135 @@
         "done": "Gata"
       },
       "orgLoadError": "Detaliile organizației nu au putut fi încărcate. Încercați din nou."
+    },
+    "devices": {
+      "navLabel": "Flotă / Dispozitive",
+      "title": "Gestiunea flotei",
+      "subtitle": "Toate dispozitivele înregistrate, grupate pe organizație. Se actualizează automat la 20 s.",
+      "loading": "Se încarcă dispozitivele…",
+      "empty": "Nu există dispozitive înregistrate încă.",
+      "unnamed": "Dispozitiv fără nume",
+      "online": "Online",
+      "offline": "Offline",
+      "groupUnassigned": "Neatribuite",
+      "pushButton": "Trimite actualizare",
+      "releasesLink": "Versiuni",
+      "col": {
+        "status": "Status",
+        "name": "Nume / UUID",
+        "model": "Model",
+        "version": "Versiune",
+        "otaState": "Stare OTA",
+        "lastSeen": "Ultima vedere",
+        "actions": "Acțiuni"
+      },
+      "actions": {
+        "edit": "Editează / atribuie",
+        "delete": "Șterge dispozitiv"
+      },
+      "otaState": {
+        "pending": "În așteptare",
+        "notified": "Notificat",
+        "downloading": "Se descarcă",
+        "downloaded": "Descărcat",
+        "awaiting_idle": "Așteaptă inactivitate",
+        "installing": "Se instalează",
+        "installed": "Instalat",
+        "failed": "Eșuat"
+      },
+      "releaseStatus": {
+        "draft": "Schiță",
+        "published": "Publicat",
+        "archived": "Arhivat"
+      },
+      "editModal": {
+        "title": "Editează dispozitiv",
+        "nameLabel": "Nume afișat",
+        "namePlaceholder": "ex. Camion 01 — Ionescu",
+        "orgLabel": "Atribuie organizației",
+        "orgUnassigned": "— Neatribuit —",
+        "saving": "Se salvează…"
+      },
+      "deleteDialog": {
+        "title": "Ștergi acest dispozitiv?",
+        "confirm": "Șterge",
+        "deleting": "Se șterge…"
+      },
+      "pushModal": {
+        "title": "Trimite actualizare OTA",
+        "releaseLabel": "Versiune",
+        "releasePlaceholder": "— Selectează o versiune —",
+        "noPublishedReleases": "Nicio versiune publicată. Publică mai întâi una pe pagina Versiuni.",
+        "targetLabel": "Țintă",
+        "targetKind": {
+          "all": "Toate dispozitivele",
+          "org": "Organizație",
+          "device_set": "Set de dispozitive"
+        },
+        "orgLabel": "Organizație",
+        "orgPlaceholder": "— Selectează organizația —",
+        "devicesLabel": "Selectează dispozitive",
+        "devicesSelected": "{{count}} selectate",
+        "scheduleLabel": "Programează pentru (lasă gol pentru imediat)",
+        "scheduleHint": "Lasă gol pentru activare imediată. Ora este locală — convertită în UTC la trimitere.",
+        "forceNowLabel": "Forțează instalarea imediat",
+        "forceNowHint": "Ignoră poarta de inactivitate — dispozitivul va instala chiar dacă este în mijlocul unui transport. Folosiți cu precauție.",
+        "deploy": "Trimite actualizare",
+        "deploying": "Se trimite…"
+      },
+      "releases": {
+        "title": "Versiuni aplicație",
+        "subtitle": "Încarcă APK-uri semnate și gestionează ciclul lor de viață (schiță → publicat → arhivat).",
+        "uploadTitle": "Încarcă APK nou",
+        "apkLabel": "Fișier APK",
+        "apkPlaceholder": "Click pentru a selecta un fișier .apk",
+        "versionLabel": "Nume versiune",
+        "versionCodeLabel": "Cod versiune",
+        "changelogLabel": "Jurnal modificări (opțional)",
+        "changelogPlaceholder": "Ce s-a schimbat în această versiune…",
+        "mandatoryLabel": "Actualizare obligatorie (dispozitivele trebuie să instaleze înainte de a relua transporturile)",
+        "uploadButton": "Încarcă APK",
+        "uploading": "Se încarcă…",
+        "uploadSuccess": "Versiunea a fost încărcată cu succes.",
+        "listTitle": "Toate versiunile",
+        "empty": "Nu există versiuni încă.",
+        "mandatory": "Obligatoriu",
+        "optional": "Opțional",
+        "publishButton": "Publică",
+        "publishTitle": "Publică această versiune (o face disponibilă pentru deployment-uri)",
+        "archiveButton": "Arhivează",
+        "archiveTitle": "Arhivează această versiune (o elimină din deployment-urile noi)",
+        "col": {
+          "version": "Versiune",
+          "status": "Status",
+          "mandatory": "Obligatoriu",
+          "size": "Dimensiune",
+          "changelog": "Jurnal",
+          "uploaded": "Încărcat",
+          "actions": "Acțiuni"
+        }
+      },
+      "detail": {
+        "tab": {
+          "ota": "Istoric OTA",
+          "logs": "Jurnale dispozitiv"
+        },
+        "manufacturer": "Producător / model",
+        "osVersion": "Versiune Android",
+        "androidId": "Android ID",
+        "isDeviceOwner": "Device Owner",
+        "lastSeen": "Ultima vedere",
+        "lastCheckin": "Ultimul check-in",
+        "otaEmpty": "Nu există istoric OTA pentru acest dispozitiv.",
+        "attempt": "Încercare {{n}}",
+        "notifiedAt": "Notificat",
+        "downloadedAt": "Descărcat",
+        "installedAt": "Instalat",
+        "updatedAt": "Actualizat",
+        "logRefresh": "Reîncarcă",
+        "logEmpty": "Nu există înregistrări pentru filtrele selectate.",
+        "logCount": "{{count}} înregistrări"
+      }
     }
   },
   "dashboard": {

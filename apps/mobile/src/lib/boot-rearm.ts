@@ -11,17 +11,40 @@
  * Registered at module load via `register-background-tasks.ts` so the headless
  * runtime can resolve the task key before any React screen mounts.
  */
+import * as SecureStore from 'expo-secure-store';
 import { AppRegistry } from 'react-native';
 import { getAuthToken } from './auth';
 import { getPersistedMachineId, startBackgroundLocationTracking } from './location';
 import { registerBackgroundSyncTask } from './background-sync';
 import { runBackgroundSyncCycle } from '../sync/run-background-sync';
+import { runDeviceCheckin, PENDING_INSTALL_DEPLOYMENT_ID_KEY } from './device-checkin';
 import { mobileLogger } from './logger';
 
 /** Must match the task key used by the native BootRearmService. */
 export const BOOT_REARM_TASK_NAME = 'strawboss-boot-rearm';
 
 async function bootRearm(): Promise<void> {
+  // Part 4 — OTA post-restart re-report: if a silent install was in progress
+  // when the process was killed, run a check-in now (pre-auth is fine — the
+  // endpoint is public). The new Constants.expoConfig.android.versionCode will
+  // reflect the installed build and the server confirms `installed` via that
+  // proof. Always runs unconditionally, BEFORE the session guards below.
+  const pendingInstallId = await SecureStore.getItemAsync(PENDING_INSTALL_DEPLOYMENT_ID_KEY).catch(
+    () => null,
+  );
+  if (pendingInstallId) {
+    mobileLogger.flow('Boot re-arm: post-OTA install detected, running check-in', {
+      deploymentId: pendingInstallId,
+    });
+    try {
+      await runDeviceCheckin();
+    } catch {
+      // best-effort — never block the rest of boot-rearm
+    }
+    // Clear the key regardless of outcome; the check-in itself manages the mirror.
+    await SecureStore.deleteItemAsync(PENDING_INSTALL_DEPLOYMENT_ID_KEY).catch(() => {});
+  }
+
   const token = await getAuthToken();
   if (!token) {
     mobileLogger.flow('Boot re-arm: no session — skipping');

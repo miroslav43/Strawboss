@@ -152,6 +152,23 @@ export {
 } from './schemas/mobile-notification.schema.js';
 
 export {
+  otaStateSchema,
+  releaseStatusSchema,
+  otaTargetKindSchema,
+  deviceOtaReportSchema,
+  deviceCheckinSchema,
+  createReleaseSchema,
+  updateReleaseSchema,
+  createDeploymentSchema,
+  updateDeviceSchema,
+  type DeviceCheckinInput,
+  type CreateReleaseInput,
+  type UpdateReleaseInput,
+  type CreateDeploymentInput,
+  type UpdateDeviceInput,
+} from './schemas/fleet.schema.js';
+
+export {
   adminSimulatePushSchema,
   type AdminSimulatePushDto,
 } from './schemas/admin-simulate-push.schema.js';
