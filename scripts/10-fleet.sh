@@ -90,9 +90,14 @@ cmd_fleet__tunnel() {
   fi
 
   info "Connecting adb to ${BOLD}$nickname${NC} at ${BOLD}$ip:5555${NC} ..."
-  if ! "$adb_bin" connect "$ip:5555"; then
+  # `adb connect` exits 0 even on "Connection refused" — must parse its output.
+  local connect_out
+  connect_out=$("$adb_bin" connect "$ip:5555" 2>&1)
+  echo "  $connect_out"
+  if ! printf '%s' "$connect_out" | grep -qiE 'connected to'; then
     error "adb connect failed."
-    echo -e "  ${DIM}ADB-over-TCP must be enabled once on the phone — see: ./strawboss.sh fleet:enable-adb-tcp${NC}"
+    echo -e "  ${DIM}ADB-over-TCP must be enabled ONCE on the phone (USB): ./strawboss.sh fleet:enable-adb-tcp${NC}"
+    echo -e "  ${DIM}(Android won't let any app — even Device Owner — flip adbd to TCP without a one-time USB step on non-rooted devices.)${NC}"
     exit 1
   fi
   success "Connected. Opening shell (Ctrl-D / 'exit' to leave; the tunnel stays until reboot)."
