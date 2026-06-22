@@ -55,19 +55,23 @@ cmd_fleet__tunnel() {
     fi
   fi
 
-  # Escape single quotes for SQL.
-  local esc_name
-  esc_name=$(printf '%s' "$nickname" | sed "s/'/''/g")
+  # Normalize the argument to a Tailscale hostname label ([a-z0-9-]) — the same way the
+  # backend sanitizes nicknames. This ALSO neutralizes any shell/SQL metacharacters, so the
+  # accepted arg can be either the hostname ("combina-man") or a free nickname ("Combina MAN").
+  local host
+  host=$(printf '%s' "$nickname" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | sed 's/^-*//; s/-*$//')
+  if ! printf '%s' "$host" | grep -qE '^[a-z0-9-]+$'; then
+    error "Invalid nickname/hostname (only A-Z, 0-9, space, _-. allowed)."
+    exit 1
+  fi
 
-  # Primary: the tailnet IP the host sync wrote into the DB.
+  # Primary: the tailnet IP the host sync wrote into the DB (keyed by sanitized hostname).
   local ip
   ip=$(psql "$DATABASE_URL" -t -A -c \
-    "SELECT tailscale_ip FROM devices WHERE name = '$esc_name' AND deleted_at IS NULL AND tailscale_ip IS NOT NULL ORDER BY tailscale_last_seen DESC NULLS LAST LIMIT 1" 2>/dev/null | tr -d '[:space:]')
+    "SELECT tailscale_ip FROM devices WHERE tailscale_hostname = '$host' AND deleted_at IS NULL AND tailscale_ip IS NOT NULL ORDER BY tailscale_last_seen DESC NULLS LAST LIMIT 1" 2>/dev/null | tr -d '[:space:]')
 
-  # Fallback: live `tailscale status` matched on the sanitized hostname.
+  # Fallback: live `tailscale status` matched on the hostname.
   if [ -z "$ip" ] && command -v tailscale >/dev/null 2>&1; then
-    local host
-    host=$(printf '%s' "$nickname" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
     ip=$(tailscale status --json 2>/dev/null | node -e '
       let r=""; process.stdin.on("data",d=>r+=d); process.stdin.on("end",()=>{
         let s; try { s = JSON.parse(r); } catch { return; }

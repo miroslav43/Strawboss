@@ -331,7 +331,11 @@ function TailscalePanel({ device }: { device: ReturnType<typeof useDevice>['data
   const { tailscaleDesired, tailscaleOnline, tailscaleIp, tailscaleLastSeen, tailscaleLastError } =
     device;
 
-  const tunnelCmd = device.name ? `./strawboss.sh fleet:tunnel "${device.name}"` : null;
+  // Use the backend-sanitized hostname ([a-z0-9-] only) — NOT the free-form name — so the
+  // copy-paste command can never carry shell metacharacters (no quoting/injection possible).
+  const tunnelCmd = device.tailscaleHostname
+    ? `./strawboss.sh fleet:tunnel ${device.tailscaleHostname}`
+    : null;
 
   // Tailscale dot color
   let dotCls = 'bg-neutral-300'; // off
