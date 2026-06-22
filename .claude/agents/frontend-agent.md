@@ -21,7 +21,7 @@ You are a specialist in the StrawBoss admin-web dashboard at `apps/admin-web/`. 
 ```
 apps/admin-web/src/app/
   (auth)/           -- Login page (unauthenticated)
-  (dashboard)/      -- All authenticated pages
+  (dashboard)/      -- All authenticated pages (admin/dispatcher/etc.)
     layout.tsx      -- Dashboard shell with Sidebar, TopBar, RealtimeProvider
     page.tsx        -- Dashboard home / overview
     accounts/       -- User account management
@@ -37,6 +37,14 @@ apps/admin-web/src/app/
     settings/       -- App settings
     tasks/          -- Daily task planning
     trips/          -- Trip management
+  super-admin/
+    (dashboard)/    -- Super-admin only pages (role gate in layout.tsx)
+      layout.tsx    -- Minimal dark header; enforces super_admin role from JWT app_metadata
+      organizations/        -- Organization CRUD
+      devices/              -- Fleet device list (grouped by org, online dot, OTA-state badge)
+        page.tsx            -- Device list + PushUpdateModal + EditDeviceModal + DeleteDeviceDialog
+        releases/page.tsx   -- APK upload + release list (publish/archive actions)
+        [id]/page.tsx       -- Device detail: identity card, OTA status timeline, log viewer
   api/              -- Next.js API routes (client-log, etc.)
 ```
 
@@ -111,6 +119,11 @@ return <h1>{t('trips.title')}</h1>;
 - Tables: `trips`, `task_assignments`, `alerts`
 - On any postgres change event, it invalidates the matching TanStack Query cache key.
 - No polling needed -- data refreshes automatically.
+
+**Exception — super-admin fleet pages:** The `super_admin` role fails the standard RLS path for device tables, so Supabase Realtime is not used there. The fleet pages use TanStack Query `refetchInterval` polling instead:
+- `useDevices` — every 20 s (device list)
+- `useDeviceOtaStatus` — every 8 s (OTA timeline on the device detail page)
+- Log viewer — manual refresh only (button triggers `refetch()`)
 
 ### API client
 

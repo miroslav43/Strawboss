@@ -155,3 +155,24 @@ export type {
   OperatorDistanceFilters,
   ConnectedHoursFilters,
 } from './use-reports.js';
+
+export {
+  useDevices,
+  useDevice,
+  useUpdateDevice,
+  useDeleteDevice,
+  useDeviceOtaStatus,
+  useDeviceLogs,
+  useReleases,
+  useUploadRelease,
+  useUpdateRelease,
+  useDeployments,
+  useCreateDeployment,
+  useCancelDeployment,
+} from './use-fleet.js';
+export type {
+  DeviceLogFilters,
+  DeviceLogEntry,
+  DeviceLogResponse,
+  DeviceOtaStatusWithVersion,
+} from './use-fleet.js';

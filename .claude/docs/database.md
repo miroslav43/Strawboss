@@ -2,7 +2,7 @@
 type: doc
 title: "Database Schema"
 created: 2026-04-16
-updated: 2026-05-25
+updated: 2026-06-22
 tags: [doc, database, schema, postgres, postgis, rls]
 status: mature
 related:
@@ -14,14 +14,14 @@ related:
 
 # Database Schema
 
-PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00043).
+PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00055).
 
 ## Extensions (00001)
 
 - `uuid-ossp` -- UUID generation (`uuid_generate_v4()`)
 - `postgis` -- Spatial types and functions
 
-## Enums (00001, 00009, 00015, 00017)
+## Enums (00001, 00009, 00015, 00017, 00055)
 
 | Enum | Values |
 |---|---|
@@ -40,6 +40,10 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 | `task_assignment_status` | `available`, `in_progress`, `done` |
 | `harvest_status` | `planned`, `to_harvest`, `harvesting`, `partial_harvested`, `harvested`, `in_loading`, `loaded`, `completed` (extended in 00042) |
 | `crop_type` | `grau`, `orz`, `rapita`, `plante_nutret` (added 00042) |
+| `ota_state` | `pending`, `notified`, `downloading`, `downloaded`, `awaiting_idle`, `installing`, `installed`, `failed` (added 00055) |
+| `ota_deployment_status` | `pending`, `active`, `completed`, `cancelled` (added 00055) |
+| `release_status` | `draft`, `published`, `archived` (added 00055) |
+| `ota_target_kind` | `all`, `org`, `device_set` (added 00055) |
 
 ## Tables
 
@@ -92,6 +96,37 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 **device_push_tokens** (00019): `id`, `user_id` (FK NOT NULL), `machine_id` (FK), `token`, `platform` (default `android`), `is_active`, timestamps. UNIQUE `(user_id, token)`.
 
 **geofence_events** (00019): `id`, `machine_id` (FK NOT NULL), `assignment_id` (FK), `geofence_type`, `geofence_id`, `event_type`, `lat`, `lon`, `created_at`.
+
+### Fleet / OTA Tables (00055)
+
+Migration `00055_fleet_devices.sql`. These tables are **server-authoritative** (not mobile-synced, no `sync_version`). The NestJS backend connects as the table owner and bypasses RLS; RLS is defense-in-depth only for a future direct PostgREST/Realtime path.
+
+**devices**: Registry of every installed app instance. `id` (UUID PK), `device_uuid` (TEXT UNIQUE — SecureStore-persisted identity), `organization_id` (FK organizations, nullable until super-admin assigns it), `name`, `android_id`, `model`, `manufacturer`, `os_version`, `app_version` (versionName), `version_code` (INT — monotonic, for downgrade/skew checks), `push_token` (FCM), `device_token_hash` (NOT NULL — HMAC of device_uuid issued on first registration, verified on every check-in), `is_device_owner` (BOOLEAN, default false), `last_seen_at`, `last_checkin_at`, `last_active_trip` (BOOLEAN, default false — idle-gate flag), timestamps, `deleted_at`.
+
+Indexes: `idx_devices_org` (organization_id WHERE deleted_at IS NULL), `idx_devices_last_seen` (last_seen_at WHERE deleted_at IS NULL).
+
+**app_releases**: An uploaded APK. `id` (UUID PK), `version` (TEXT), `version_code` (INT UNIQUE among non-deleted rows — prevents two releases claiming the same code), `apk_key` (TEXT — storage path under `UPLOADS_ROOT/apks/`), `sha256` (hex digest, verified on-device before install), `size_bytes` (BIGINT), `changelog`, `mandatory` (BOOLEAN, default false), `status` (release_status, default `draft`), `uploaded_by` (FK users), timestamps, `deleted_at`.
+
+Indexes: `uq_app_releases_version_code` (UNIQUE partial on version_code WHERE deleted_at IS NULL), `idx_app_releases_status`.
+
+**ota_deployments**: One release pushed/scheduled to a set of devices. `id` (UUID PK), `release_id` (FK app_releases NOT NULL), `target_kind` (ota_target_kind NOT NULL), `target_org_id` (FK organizations, used when target_kind = `org`), `target_device_ids` (UUID[], used when target_kind = `device_set`), `scheduled_at` (TIMESTAMPTZ nullable — NULL = immediate; a BullMQ-delayed job flips status → active at this time), `force_now` (BOOLEAN, default false — bypasses the device idle gate), `status` (ota_deployment_status, default `pending`), `created_by` (FK users), timestamps. No `deleted_at`.
+
+Index: `idx_ota_deployments_status`.
+
+**device_ota_status**: Per-device state-machine instance for one deployment. `id` (UUID PK), `deployment_id` (FK ota_deployments NOT NULL), `device_id` (FK devices NOT NULL), `state` (ota_state, default `pending`), `error` (TEXT), `attempt` (INT, default 0), `notified_at`, `downloaded_at`, `installed_at`, `created_at`, `updated_at`. UNIQUE `(deployment_id, device_id)`. No `deleted_at`.
+
+State machine: the **device** drives forward transitions (reported on check-in via `DeviceOtaReport`); the backend only sets `pending → notified` and confirms `installed` on versionCode proof.
+
+Indexes: `idx_device_ota_status_device` (device_id, state), `idx_device_ota_status_deployment` (deployment_id, state).
+
+### RLS Posture (00055)
+
+RLS is enabled on all four fleet tables. The backend (table owner via `DATABASE_URL`) bypasses RLS entirely — it is the sole writer.
+
+- **devices**: One permissive SELECT policy `admin_read_devices` — `user_role()::text = 'admin' AND organization_id = user_org_id()`. Org admins can read their own assigned devices; rows with `organization_id IS NULL` are invisible through this path. Super-admin acts via service-role connection.
+- **app_releases**, **ota_deployments**, **device_ota_status**: No permissive policies defined — super-admin/service-role only. Any direct PostgREST access is blocked by default-deny.
+
+**RLS note**: `::text` cast on `user_role()` is required (stale `user_role_old` enum — see migration 00052 and [[database]] gotcha documented in MEMORY.md).
 
 ## Generated Columns
 

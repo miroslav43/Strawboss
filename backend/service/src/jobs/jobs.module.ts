@@ -10,6 +10,7 @@ import {
   QUEUE_SYNC_CLEANUP,
   QUEUE_GEOFENCE_CHECK,
   QUEUE_TRUCK_IDLE_CHECK,
+  QUEUE_OTA_DEPLOY,
 } from './queues';
 
 @Module({
@@ -29,6 +30,7 @@ import {
       { name: QUEUE_SYNC_CLEANUP },
       { name: QUEUE_GEOFENCE_CHECK },
       { name: QUEUE_TRUCK_IDLE_CHECK },
+      { name: QUEUE_OTA_DEPLOY },
     ),
   ],
   providers: [JobSchedulerService],

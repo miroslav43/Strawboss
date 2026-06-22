@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { ApiClient } from '@strawboss/api';
 import { getDatabase } from '../lib/storage';
 import { getAuthToken } from '../lib/auth';
+import { runDeviceCheckin } from '../lib/device-checkin';
 import { todayInRomania } from '../lib/date';
 import { mobileLogger } from '../lib/logger';
 import { broadcastNotificationRefresh } from '../lib/notification-handler';
@@ -31,6 +32,14 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
  * so the bell icon updates even when Expo push tokens are unavailable.
  */
 export async function runBackgroundSyncCycle(): Promise<void> {
+  // Fleet check-in runs BEFORE the auth gate so telemetry + OTA work even when
+  // no operator is logged in (15-min WorkManager cycle is the reliable trigger).
+  try {
+    await runDeviceCheckin();
+  } catch {
+    // Never let a check-in error abort the rest of the sync cycle.
+  }
+
   const token = await getAuthToken();
   if (!token) {
     mobileLogger.debug('Background sync skipped: no session token');

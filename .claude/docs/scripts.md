@@ -2,7 +2,7 @@
 type: doc
 title: "Scripts (strawboss.sh)"
 created: 2026-04-16
-updated: 2026-04-17
+updated: 2026-06-22
 tags: [doc, scripts, tooling, bash]
 status: mature
 related:
@@ -164,3 +164,32 @@ Build targets respect dependency order. For example, `build backend` first build
 | `logs:clean` | Delete all log files |
 
 All log commands use `_logs_today_path(category)` which resolves to `$STRAWBOSS_ROOT/logs/<category>/YYYY-MM-DD.log`.
+
+## Security Scripts
+
+### `scripts/verify-keystore.sh`
+
+Pins the Android OTA signing keystore by SHA-256. Used by the pre-commit hook and CI.
+
+**Why this matters:** The ~30 Device-Owner phones self-install OTA APKs via Android's PackageInstaller. Android requires every new APK to be signed with the **same key** as the installed one. The signing config in `apps/mobile/android/app/build.gradle` points at `apps/mobile/android/app/debug.keystore`. If this file ever changes, every phone already in the field can no longer silently self-update — each needs a manual re-sideload.
+
+**What it does:**
+
+1. Reads `apps/mobile/android/app/debug.keystore`.
+2. Computes SHA-256 (`sha256sum` on Linux, `shasum -a 256` on macOS).
+3. Compares against `EXPECTED="221e0a3106aa4c3ccc154e0a418b55020b3f9ea6e84f92e8749cd9e2f39f5e58"`.
+4. Exits non-zero (with an explanatory message) if the digest differs.
+
+**Rotation procedure (rare):** Update `EXPECTED` in `scripts/verify-keystore.sh`, commit with `--no-verify` (bypasses the local hook), update `keystore-guard.yml` expectations, and plan a manual re-sideload of the full fleet with the first APK signed under the new key.
+
+## Root `prepare` Script
+
+The root `package.json` contains:
+
+```json
+"prepare": "git config core.hooksPath .githooks || true"
+```
+
+This runs automatically after every `pnpm install` and wires the local `.githooks/` directory as the active Git hooks path. The result: the `pre-commit` keystore guard is active for every developer without any manual setup step.
+
+See [[infrastructure]] for the pre-commit hook and CI guard details.

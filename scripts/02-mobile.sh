@@ -84,6 +84,13 @@ cmd_mobile__build__local() {
   fi
   info "Expo env file: ${BOLD}$dotenv_file${NC} (debug → .env.dev, release → .env.production)"
 
+  # Release builds bump version + versionCode BEFORE prebuild so every archived APK has a
+  # strictly higher versionCode (PackageInstaller rejects a same/lower-code OTA self-update).
+  if [ "$variant" = "release" ]; then
+    info "Bumping version + versionCode (release)..."
+    ( cd "$mobile_dir" && node scripts/bump-version.mjs )
+  fi
+
   info "Building shared packages..."
   pnpm --filter @strawboss/types build
   pnpm --filter @strawboss/validation build
@@ -135,6 +142,108 @@ cmd_mobile__build__local() {
     apk_size=$(_stat_size "$apk_file")
     echo -e "  ${DOT}  $(basename "$apk_file")  ${DIM}($(_human_size "$apk_size"))${NC}"
   fi
+  echo ""
+
+  # Release builds: archive the APK under the served uploads dir with a descriptive name
+  # and register it as a published OTA release (keeps only the newest 10).
+  if [ "$variant" = "release" ] && [ -n "$apk_file" ]; then
+    _mobile_register_release "$apk_file"
+  fi
+}
+
+# Archive a freshly-built release APK into <UPLOADS_ROOT>/apks/ with a descriptive name
+# (strawboss-v<version>-vc<code>-<gitshort>.apk), register it in app_releases as `published`,
+# and prune to the newest 10 (soft-delete + delete files, skipping releases still referenced
+# by a pending/active deployment). Best-effort: a missing psql/DATABASE_URL only warns — the
+# APK is still built and can be uploaded manually from the UI.
+_mobile_register_release() {
+  local apk_file="$1"
+  local mobile_dir="$STRAWBOSS_ROOT/apps/mobile"
+
+  if ! command -v psql >/dev/null 2>&1; then
+    warn "psql not found — skipping release registration (APK still built; upload it from the UI)."
+    return 0
+  fi
+  _load_env
+  if [ -z "${DATABASE_URL:-}" ]; then
+    warn "DATABASE_URL not set — skipping release registration (APK still built; upload it from the UI)."
+    return 0
+  fi
+
+  local version version_code
+  version=$(node -p "require('$mobile_dir/app.json').expo.version" 2>/dev/null)
+  version_code=$(node -p "require('$mobile_dir/app.json').expo.android.versionCode" 2>/dev/null)
+  if [ -z "$version" ] || [ -z "$version_code" ]; then
+    error "Could not read version/versionCode from app.json — skipping registration."
+    return 1
+  fi
+
+  local git_short commit_subj
+  git_short=$(git -C "$STRAWBOSS_ROOT" rev-parse --short HEAD 2>/dev/null || echo "nogit")
+  commit_subj=$(git -C "$STRAWBOSS_ROOT" log -1 --pretty=%s 2>/dev/null || echo "")
+
+  local uploads_dir="${UPLOADS_ROOT:-$STRAWBOSS_ROOT/uploads}"
+  mkdir -p "$uploads_dir/apks"
+
+  local fname="strawboss-v${version}-vc${version_code}-${git_short}.apk"
+  local apk_key="apks/$fname"
+  local dest="$uploads_dir/$apk_key"
+  cp -f "$apk_file" "$dest"
+  chmod 644 "$dest" 2>/dev/null || true
+
+  local sha256 size
+  sha256=$(sha256sum "$dest" | awk '{print $1}')
+  size=$(_stat_size "$dest")
+
+  info "Registering release ${BOLD}$version (vc$version_code)${NC} as published..."
+
+  # Insert (idempotent on version_code) + prune to newest 10 in one session. psql `:'var'`
+  # interpolation safely quotes the changelog (which may contain arbitrary commit text).
+  local pruned
+  pruned=$(psql "$DATABASE_URL" -X -A -t -q \
+    -v version="$version" \
+    -v vcode="$version_code" \
+    -v apk_key="$apk_key" \
+    -v sha="$sha256" \
+    -v size="$size" \
+    -v changelog="${git_short} — ${commit_subj}" <<'SQL'
+INSERT INTO app_releases (id, version, version_code, apk_key, sha256, size_bytes, changelog, mandatory, status)
+VALUES (gen_random_uuid(), :'version', :'vcode'::int, :'apk_key', :'sha', :'size'::bigint, :'changelog', false, 'published'::release_status)
+ON CONFLICT (version_code) WHERE deleted_at IS NULL
+DO UPDATE SET apk_key = EXCLUDED.apk_key, sha256 = EXCLUDED.sha256, size_bytes = EXCLUDED.size_bytes,
+             changelog = EXCLUDED.changelog, status = 'published'::release_status, updated_at = now();
+
+WITH ranked AS (
+  SELECT id, apk_key, ROW_NUMBER() OVER (ORDER BY version_code DESC) AS rn
+  FROM app_releases WHERE deleted_at IS NULL
+)
+UPDATE app_releases ar
+SET deleted_at = now(), updated_at = now()
+FROM ranked r
+WHERE ar.id = r.id AND r.rn > 10
+  AND NOT EXISTS (
+    SELECT 1 FROM ota_deployments od
+    WHERE od.release_id = ar.id AND od.status IN ('pending', 'active')
+  )
+RETURNING ar.apk_key;
+SQL
+  )
+
+  if [ -n "$pruned" ]; then
+    local n=0
+    while IFS= read -r key; do
+      [ -z "$key" ] && continue
+      rm -f "$uploads_dir/$key" 2>/dev/null || true
+      n=$((n + 1))
+    done <<EOF
+$pruned
+EOF
+    info "Pruned $n old release file(s) — kept the newest 10."
+  fi
+
+  success "Release archived + registered (published)."
+  echo -e "  ${DOT}  ${BOLD}$fname${NC}"
+  echo -e "  ${DIM}→ apare în UI: Fleet → Releases (sus, instalabil din modalul de push)${NC}"
   echo ""
 }
 

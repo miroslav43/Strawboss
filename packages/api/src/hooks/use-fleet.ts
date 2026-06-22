@@ -1,0 +1,168 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type {
+  Device,
+  FleetDeviceListItem,
+  AppRelease,
+  OtaDeployment,
+  DeviceOtaStatus,
+} from '@strawboss/types';
+import type {
+  UpdateDeviceInput,
+  UpdateReleaseInput,
+  CreateDeploymentInput,
+} from '@strawboss/validation';
+import type { ApiClient } from '../client/api-client.js';
+import { queryKeys } from '../queries/query-keys.js';
+
+// ── Devices ───────────────────────────────────────────────────────────────────
+
+export interface DeviceLogFilters extends Record<string, unknown> {
+  level?: string;
+  date?: string;
+}
+
+export interface DeviceLogEntry {
+  level: string;
+  message: string;
+  context?: string;
+  meta?: Record<string, unknown>;
+  recordedAt?: string;
+  timestamp?: string;
+}
+
+export interface DeviceLogResponse {
+  entries: DeviceLogEntry[];
+}
+
+export interface DeviceOtaStatusWithVersion extends DeviceOtaStatus {
+  version: string;
+  versionCode: number;
+}
+
+/** Fleet device list — refetches every 20 s to stay fresh without Realtime. */
+export function useDevices(client: ApiClient) {
+  return useQuery({
+    queryKey: queryKeys.devices.list(),
+    queryFn: () => client.get<FleetDeviceListItem[]>('/api/v1/super-admin/devices'),
+    refetchInterval: 20_000,
+  });
+}
+
+export function useDevice(client: ApiClient, id: string) {
+  return useQuery({
+    queryKey: queryKeys.devices.detail(id),
+    queryFn: () => client.get<Device>(`/api/v1/super-admin/devices/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useUpdateDevice(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateDeviceInput }) =>
+      client.patch<Device>(`/api/v1/super-admin/devices/${id}`, data),
+    onSuccess: (updated) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
+      void queryClient.setQueryData(queryKeys.devices.detail(updated.id), updated);
+    },
+  });
+}
+
+export function useDeleteDevice(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.delete<{ ok: true }>(`/api/v1/super-admin/devices/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
+    },
+  });
+}
+
+/** Per-device OTA status timeline — refetches every 8 s when a detail view is open. */
+export function useDeviceOtaStatus(client: ApiClient, id: string) {
+  return useQuery({
+    queryKey: queryKeys.devices.otaStatus(id),
+    queryFn: () =>
+      client.get<DeviceOtaStatusWithVersion[]>(`/api/v1/super-admin/devices/${id}/ota-status`),
+    enabled: !!id,
+    refetchInterval: 8_000,
+  });
+}
+
+export function useDeviceLogs(client: ApiClient, id: string, filters: DeviceLogFilters = {}) {
+  return useQuery({
+    queryKey: queryKeys.devices.logs(id, filters),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filters.level) params.set('level', filters.level);
+      if (filters.date) params.set('date', filters.date);
+      const qs = params.toString();
+      return client.get<DeviceLogResponse>(
+        `/api/v1/super-admin/devices/${id}/logs${qs ? `?${qs}` : ''}`,
+      );
+    },
+    enabled: !!id,
+  });
+}
+
+// ── Releases ──────────────────────────────────────────────────────────────────
+
+export function useReleases(client: ApiClient) {
+  return useQuery({
+    queryKey: queryKeys.releases.all,
+    queryFn: () => client.get<AppRelease[]>('/api/v1/super-admin/releases'),
+  });
+}
+
+export function useUploadRelease(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      client.upload<AppRelease>('/api/v1/super-admin/releases', formData),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.releases.all });
+    },
+  });
+}
+
+export function useUpdateRelease(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateReleaseInput }) =>
+      client.patch<AppRelease>(`/api/v1/super-admin/releases/${id}`, data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.releases.all });
+    },
+  });
+}
+
+// ── Deployments ───────────────────────────────────────────────────────────────
+
+export function useDeployments(client: ApiClient) {
+  return useQuery({
+    queryKey: queryKeys.deployments.all,
+    queryFn: () => client.get<OtaDeployment[]>('/api/v1/super-admin/deployments'),
+  });
+}
+
+export function useCreateDeployment(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateDeploymentInput) =>
+      client.post<OtaDeployment>('/api/v1/super-admin/deployments', data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.deployments.all });
+    },
+  });
+}
+
+export function useCancelDeployment(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      client.post<{ ok: true }>(`/api/v1/super-admin/deployments/${id}/cancel`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.deployments.all });
+    },
+  });
+}

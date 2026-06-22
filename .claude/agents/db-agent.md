@@ -49,11 +49,17 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 ... (migrations 00025–00041 added in subsequent feature branches)
 00042_parcel_crop_and_harvest_extended.sql  -- crop_type enum, harvest_status ladder extension (8 values), harvest_status_rank(), trg_prevent_harvest_status_downgrade
 00043_trip_multi_iteration_and_presence.sql -- parent_trip_id/iteration_index on trips, users.last_seen_at, trip_courses view, depot_manager role, truck-idle indexes
+... (migrations 00044–00054 added in subsequent feature branches)
+00055_fleet_devices.sql                    -- Fleet management + OTA: devices, app_releases, ota_deployments, device_ota_status; 4 new enums (ota_state, ota_deployment_status, release_status, ota_target_kind); server-authoritative tables (no sync_version); RLS defense-in-depth only (backend bypasses as table owner)
 ```
 
 ### Key enums (current values)
 
 - `user_role`: `admin`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`, `depot_manager` (added 00043)
+- `ota_state`: `pending`, `notified`, `downloading`, `downloaded`, `awaiting_idle`, `installing`, `installed`, `failed` (added 00055)
+- `ota_deployment_status`: `pending`, `active`, `completed`, `cancelled` (added 00055)
+- `release_status`: `draft`, `published`, `archived` (added 00055)
+- `ota_target_kind`: `all`, `org`, `device_set` (added 00055)
 - `harvest_status`: `planned`, `to_harvest`, `harvesting`, `partial_harvested`, `harvested`, `in_loading`, `loaded`, `completed` (extended 00042; monotonic ladder enforced by `trg_prevent_harvest_status_downgrade`)
 - `crop_type`: `grau`, `orz`, `rapita`, `plante_nutret` (added 00042)
 - `document_status`: `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
@@ -84,19 +90,21 @@ Policy patterns:
 - **Loader operator**: Read assigned tasks/parcels/machines, write bale_loads and trip loading fields.
 - **Driver**: Read assigned trips, write trip workflow fields (departure, arrival, delivery).
 
+**CRITICAL — `::text` cast required in new policies**: `public.user_role()` returns the `user_role_old` enum type (stale — see migration 00052). Comparing it directly against a string literal will silently fail for roles added after the enum was frozen (`dispatcher`, `geofence_maker`, `super_admin`, `depot_manager`). Always cast: `public.user_role()::text = 'admin'`. Migration 00055 demonstrates the correct pattern.
+
 When adding new tables:
 ```sql
 ALTER TABLE new_table ENABLE ROW LEVEL SECURITY;
 
--- Admin full access
+-- Admin full access (note ::text cast — required due to stale user_role_old enum)
 CREATE POLICY admin_all_new_table ON new_table
-  FOR ALL USING (public.user_role() = 'admin')
-  WITH CHECK (public.user_role() = 'admin');
+  FOR ALL USING (public.user_role()::text = 'admin')
+  WITH CHECK (public.user_role()::text = 'admin');
 
 -- Role-specific policies as needed
 CREATE POLICY driver_read_own_new_table ON new_table
   FOR SELECT USING (
-    public.user_role() = 'driver'
+    public.user_role()::text = 'driver'
     AND user_id = public.user_id()
   );
 ```
@@ -139,7 +147,7 @@ The backend checks this table before processing each sync mutation. If the key e
 
 ### Writing new migrations
 
-The next migration should be `supabase/migrations/00044_<descriptive_name>.sql` (current last: 00043).
+The next migration should be `supabase/migrations/00056_<descriptive_name>.sql` (current last: 00055).
 
 Rules:
 1. **Idempotent**: Safe to run multiple times.

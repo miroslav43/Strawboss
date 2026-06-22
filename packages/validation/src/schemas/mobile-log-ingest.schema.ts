@@ -9,6 +9,8 @@ export const mobileLogEntrySchema = z.object({
 });
 
 export const mobileLogIngestSchema = z.object({
+  /** Stable device id (SecureStore UUID) so logs are attributable even pre-login. */
+  deviceId: z.string().min(8).max(128).optional(),
   entries: z.array(mobileLogEntrySchema).min(1).max(200),
 });
 

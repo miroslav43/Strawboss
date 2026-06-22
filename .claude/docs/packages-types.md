@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/types"
 created: 2026-04-16
-updated: 2026-05-25
+updated: 2026-06-22
 tags: [doc, package, types, typescript]
 status: mature
 related:
@@ -167,6 +167,61 @@ Fields: `id`, `tableName`, `recordId`, `operation`, `oldValues`, `newValues`, `c
 - **MachineLastLocation** (same file): aggregated view with `machineCode`, `machineType`, `operatorName`, `assignedUserId`, `assignedUserName`.
 - **DevicePushToken** (`entities/device-push-token.ts`): `id`, `userId`, `machineId`, `token`, `platform`, `isActive`, timestamps.
 - **GeofenceEvent** (`entities/geofence-event.ts`): `id`, `machineId`, `assignmentId`, `geofenceType` (`'parcel' | 'deposit'`), `geofenceId`, `eventType` (`'enter' | 'exit'`), `lat`, `lon`, `createdAt`.
+
+### Device / Fleet (`entities/device.ts`)
+
+Added in the Fleet Management + OTA feature. Exported from `packages/types/src/index.ts` via `export * from './entities/device.js'`.
+
+#### Enums
+
+| Enum | Values |
+|---|---|
+| `OtaState` | `pending`, `notified`, `downloading`, `downloaded`, `awaiting_idle`, `installing`, `installed`, `failed` |
+| `OtaDeploymentStatus` | `pending`, `active`, `completed`, `cancelled` |
+| `ReleaseStatus` | `draft`, `published`, `archived` |
+| `OtaTargetKind` | `all`, `org`, `device_set` |
+
+#### Interfaces
+
+**`Device`** extends `Timestamps`, `SoftDelete`. Canonical registry row for one app install.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `string` (UUID) | |
+| `deviceUuid` | `string` | SecureStore-persisted UUID — the real device identity |
+| `organizationId` | `string \| null` | null until super-admin assigns |
+| `name` | `string \| null` | Super-admin display label |
+| `androidId` | `string \| null` | |
+| `model` | `string \| null` | |
+| `manufacturer` | `string \| null` | |
+| `osVersion` | `string \| null` | |
+| `appVersion` | `string \| null` | versionName, e.g. "1.0.2" |
+| `versionCode` | `number \| null` | expo.android.versionCode — monotonic |
+| `pushToken` | `string \| null` | FCM device token |
+| `isDeviceOwner` | `boolean` | |
+| `lastSeenAt` | `string \| null` | |
+| `lastCheckinAt` | `string \| null` | |
+| `lastActiveTrip` | `boolean` | true if device was mid-trip at last check-in (idle gate) |
+
+**`FleetDeviceListItem`** extends `Device`. List-row enriched with joins: `organizationName: string | null`, `latestOtaState: OtaState | null`, `latestDeploymentId: string | null`.
+
+**`AppRelease`** extends `Timestamps`, `SoftDelete`. `id`, `version`, `versionCode`, `apkKey` (storage path under `UPLOADS_ROOT`), `sha256` (hex digest verified on-device), `sizeBytes`, `changelog: string | null`, `mandatory: boolean`, `status: ReleaseStatus`, `uploadedBy: string | null`.
+
+**`OtaDeployment`** extends `Timestamps` (no SoftDelete). `id`, `releaseId`, `targetKind: OtaTargetKind`, `targetOrgId: string | null`, `targetDeviceIds: string[] | null`, `scheduledAt: string | null` (null = immediate), `forceNow: boolean`, `status: OtaDeploymentStatus`, `createdBy: string | null`.
+
+**`DeviceOtaStatus`** (standalone, no mixins). `id`, `deploymentId`, `deviceId`, `state: OtaState`, `error: string | null`, `attempt: number`, `notifiedAt`, `downloadedAt`, `installedAt`, `updatedAt`.
+
+#### Check-in Protocol Interfaces
+
+**`DeviceOtaReport`**: A device-driven OTA state transition reported on check-in. `deploymentId`, `state: OtaState`, `error?: string`.
+
+**`DeviceCheckinRequest`**: Device → backend (PUBLIC endpoint). `deviceUuid`, `deviceToken?` (omitted on first registration), `appVersion`, `versionCode`, `model?`, `manufacturer?`, `osVersion?`, `androidId?`, `pushToken?`, `isDeviceOwner: boolean`, `activeTrip: boolean`, `otaReports?: DeviceOtaReport[]`, `lastError?`.
+
+**`PendingDeployment`**: The signed APK + install policy returned when an update is pending. `deploymentId`, `releaseId`, `version`, `versionCode`, `apkUrl` (signed time-limited download URL), `sha256`, `sizeBytes`, `installPolicy: { forceNow: boolean; mandatory: boolean }`.
+
+**`DeviceCheckinResponse`**: Backend → device. `deviceId`, `assignedOrgId: string | null`, `deviceTokenIssued?: string` (present ONLY on the first registration response — the raw HMAC token to persist), `pendingDeployment: PendingDeployment | null`.
+
+See [[database]] for the backing SQL enums and [[packages-validation]] for the corresponding Zod schemas.
 
 ## DTOs
 

@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/validation"
 created: 2026-04-16
-updated: 2026-05-25
+updated: 2026-06-22
 tags: [doc, package, validation, zod]
 status: mature
 related:
@@ -123,7 +123,35 @@ Defined in `packages/validation/src/helpers/`:
 ### MobileLogIngest (`schemas/mobile-log-ingest.schema.ts`)
 
 - `mobileLogEntrySchema`: `level` enum `['error','warn','info','flow','debug']`, `message` min 1 max 8000, optional `context` max 200, `meta`, `recordedAt`.
-- `mobileLogIngestSchema`: `entries` array min 1 max 200.
+- `mobileLogIngestSchema`: optional `deviceId` (string min 8 max 128 — SecureStore UUID for pre-login attribution, added in fleet feature); `entries` array min 1 max 200.
+
+### Fleet (`schemas/fleet.schema.ts`)
+
+Enum validators:
+
+- `otaStateSchema`: `z.nativeEnum(OtaState)` — 8 values.
+- `releaseStatusSchema`: `z.nativeEnum(ReleaseStatus)` — `draft`, `published`, `archived`.
+- `otaTargetKindSchema`: `z.nativeEnum(OtaTargetKind)` — `all`, `org`, `device_set`.
+
+**Check-in (PUBLIC endpoint)**
+
+- `deviceOtaReportSchema`: `deploymentId` (UUID), `state` (otaState), optional `error` (max 4000).
+- `deviceCheckinSchema` / `DeviceCheckinInput`: `deviceUuid` (min 8 max 128), optional `deviceToken` (max 256), `appVersion` (min 1 max 64), `versionCode` (int nonneg), optional `model`/`manufacturer`/`osVersion`/`androidId` (max 128/128/64/128), optional `pushToken` (max 512), `isDeviceOwner` (boolean), `activeTrip` (boolean), optional `otaReports` (array max 50), optional `lastError` (max 4000).
+
+**Super-admin: releases**
+
+- `createReleaseSchema` / `CreateReleaseInput`: `version` (min 1 max 64), `versionCode` (coerced int positive), optional `changelog` (max 8000, nullable), optional `mandatory` (coerced boolean).
+- `updateReleaseSchema` / `UpdateReleaseInput`: optional `status` (releaseStatus), optional `mandatory` (boolean), optional `changelog` (max 8000, nullable).
+
+**Super-admin: deployments**
+
+- `createDeploymentSchema` / `CreateDeploymentInput`: `releaseId` (UUID), `targetKind` (otaTargetKind), optional `targetOrgId` (UUID, nullable), optional `targetDeviceIds` (UUID[] min 1 max 5000, nullable), optional `scheduledAt` (ISO 8601 datetime, nullable), optional `forceNow` (boolean). Cross-field refinements: `targetKind = org` requires `targetOrgId`; `targetKind = device_set` requires at least one `targetDeviceIds` entry.
+
+**Super-admin: device assignment / rename**
+
+- `updateDeviceSchema` / `UpdateDeviceInput`: optional `name` (min 1 max 120, nullable), optional `organizationId` (UUID, nullable).
+
+See [[packages-types]] for the corresponding TypeScript interfaces and [[database]] for the backing SQL schema.
 
 ## DTO Schemas
 

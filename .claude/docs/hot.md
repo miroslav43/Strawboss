@@ -2,7 +2,7 @@
 type: meta
 title: "Hot Context — StrawBoss"
 created: 2026-05-25
-updated: 2026-06-19
+updated: 2026-06-22
 tags: [meta, hot, context]
 status: developing
 ---
@@ -25,6 +25,7 @@ Read this first every session. ~500 words covering what's load-bearing right now
 
 ## What's Changing Now
 
+- **Fleet management + OTA self-update (Jun 2026):** ~30 Device-Owner phones self-install APK updates. Super-admin manages a device registry + pushes/schedules OTA from `super-admin/(dashboard)/devices/` ([[admin-web]]); phones poll PUBLIC `POST /api/v1/fleet/checkin` ([[backend]] `fleet` module) and silently install via Device Owner `PackageInstaller`, deferred until idle unless `force_now` ([[mobile]]). Backend confirms `installed` only on versionCode proof. New tables in migration **00055** ([[database]]). ⚠️ **`apps/mobile/android/app/debug.keystore` must NEVER change** — rotating the signing key breaks OTA self-update for every fielded phone (same-signer requirement); it is pinned by SHA-256 and CI-guarded (`scripts/verify-keystore.sh`, `.githooks/pre-commit`, `keystore-guard.yml` — see [[infrastructure]]).
 - **Presence + auth persistence (Jun 2026):** Machine-bound operators now stay **online while backgrounded** — `POST /location/report` touches `users.last_seen_at` via `ProfileService.touchLastSeen` (Layer 1, [[backend]]); non-GPS roles use a native `PresenceService` keep-alive foreground service on device-owner builds (Layer 2, [[mobile]]). Mobile Supabase session now **persists across restarts** via a SecureStore-backed adapter (`apps/mobile/src/lib/secure-store-adapter.ts`, wired through `createClient` in [[packages-api]]); the forced logout on a failed profile fetch was removed — session is lost only on explicit logout.
 - **Recent merge (855fa58):** Integrated Plan B's harvest helper into trip lifecycle — check `packages/domain` for new harvest-related exports and `backend/service/src/trips/` for updated transition logic.
 - **Pending docs work:** `hot.md` (this file), `log.md`, and wikilink cross-references across docs are being set up. `.vault-meta/` and `scripts/` (DragonScale tooling) coming next.
@@ -52,8 +53,10 @@ Read this first every session. ~500 words covering what's load-bearing right now
 |---|---|
 | Trip state machine | `packages/domain/src/trip-machine/` |
 | Sync push/pull | `backend/service/src/sync/` + `apps/mobile/src/sync/` |
-| DB migrations | `supabase/migrations/` (00001–00043) |
+| DB migrations | `supabase/migrations/` (00001–00055) |
 | RLS policies | `supabase/migrations/` — see [[database]] |
+| Fleet / OTA self-update | `backend/service/src/fleet/` + `apps/mobile/src/lib/device-checkin.ts` + `super-admin/(dashboard)/devices/` |
+| OTA signing keystore (pinned) | `apps/mobile/android/app/debug.keystore` — guarded, see [[infrastructure]] |
 | React Query hooks | `packages/api/src/hooks/` (43 files) |
 | Admin pages | `apps/admin-web/src/app/` |
 | Mobile screens | `apps/mobile/src/app/` |

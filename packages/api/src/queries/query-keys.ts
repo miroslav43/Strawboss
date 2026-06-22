@@ -102,6 +102,20 @@ export const queryKeys = {
   orgRequestSettings: {
     all: ['orgRequestSettings'] as const,
   },
+  devices: {
+    all: ['devices'] as const,
+    list: (filters?: Record<string, unknown>) => ['devices', 'list', filters] as const,
+    detail: (id: string) => ['devices', 'detail', id] as const,
+    otaStatus: (id: string) => ['devices', 'otaStatus', id] as const,
+    logs: (id: string, filters?: Record<string, unknown>) =>
+      ['devices', 'logs', id, filters] as const,
+  },
+  releases: {
+    all: ['releases'] as const,
+  },
+  deployments: {
+    all: ['deployments'] as const,
+  },
   reports: {
     all: ['reports'] as const,
     farms: (filters?: Record<string, unknown>) => ['reports', 'farms', filters] as const,

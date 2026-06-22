@@ -2,7 +2,7 @@
 type: doc
 title: "Mobile App (apps/mobile)"
 created: 2026-04-16
-updated: 2026-06-19
+updated: 2026-06-22
 tags: [doc, mobile, layer, expo, react-native, offline-first]
 status: mature
 related:
@@ -25,8 +25,9 @@ Expo SDK 54 + Expo Router. Offline-first: all writes go to local SQLite + sync q
 
 1. **Database init**: `getDatabase()` runs SQLite migrations before rendering any routes
 2. **AuthGate**: checks Supabase session, fetches profile via `GET /api/v1/profile`, routes to role-specific tab group
-3. **Push token registration**: after profile load, calls `registerForPushNotifications()` -> `POST /api/v1/notifications/register-token`
-4. **Log cleanup**: runs `cleanupOldMobileLogFiles()` on mount and on each `AppState` resume
+3. **Fleet check-in**: `runDeviceCheckin()` fires unconditionally on `AuthGate` mount and every 60 s — runs **before** the auth check so OTA and fleet telemetry work pre-login. An `ota_checkin` push notification type also triggers an immediate call.
+4. **Push token registration**: after profile load, calls `registerForPushNotifications()` -> `POST /api/v1/notifications/register-token`
+5. **Log cleanup**: runs `cleanupOldMobileLogFiles()` on mount and on each `AppState` resume
 
 ### Auth & Session Persistence (`src/lib/auth.ts`, `src/lib/secure-store-adapter.ts`)
 
@@ -265,6 +266,104 @@ JS bindings are in `src/lib/device-owner.ts`: `startPresenceService()`, `stopPre
 - `MAP_READY` -- WebView initialized
 
 `serializeCommand()` wraps command as `window.handleCommand(JSON.stringify(cmd))`. `parseEvent()` parses postMessage JSON.
+
+---
+
+## Fleet Management + OTA Self-Update
+
+### Overview
+
+No new npm dependencies were added. The entire feature is built on existing packages (`expo-secure-store`, `expo-file-system/legacy`, `expo-notifications`, `@strawboss/api`, `@strawboss/types`) plus the expanded native `DeviceOwner` module in `plugins/withDeviceOwner.js`.
+
+### Device Identity (`src/lib/device-checkin.ts`)
+
+Each install generates a **stable device UUID** on first run via `ensureDeviceId()`. The value is created with `generateUuid()`, persisted to SecureStore under `strawboss.device_id`, and never regenerated. The server's **HMAC device token** (returned on first check-in) is stored under `strawboss.device_token`. Both keys survive APK updates and cold reboots.
+
+SecureStore key layout:
+
+| Key | Content |
+|---|---|
+| `strawboss.device_id` | Stable device UUID (created once, never changes) |
+| `strawboss.device_token` | HMAC token issued by server on first check-in |
+| `strawboss.ota_mirror` | JSON-serialised `OtaMirror` (current OTA deployment state) |
+| `strawboss.pending_install_deployment_id` | Set just before `installApkSilent()` so post-restart boot-rearm can report `installed` |
+
+### Fleet Check-in (`runDeviceCheckin()`)
+
+`runDeviceCheckin()` in `src/lib/device-checkin.ts` is a **public, pre-login** call — the dedicated `fleetApiClient` sends **no `Authorization` header** (`getToken: async () => null`), so fleet telemetry and OTA delivery work even before an operator logs in.
+
+The function:
+1. Reads/creates the stable `deviceUuid` and any persisted `deviceToken` via `ensureDeviceId()`.
+2. Collects app version (`Constants.expoConfig.version` / `android.versionCode`), hardware info (`getDeviceHardwareInfo()`), raw FCM push token (best-effort), device-owner flag, active-trip flag, and any pending OTA progress reports from the local `OtaMirror`.
+3. POSTs to `POST /api/v1/fleet/checkin` (unauthenticated).
+4. If `response.deviceTokenIssued` is set, persists it to `strawboss.device_token`.
+5. Clears sent OTA reports from the local mirror.
+6. If `response.pendingDeployment` is present, calls `handlePendingDeployment()`.
+
+The function is **fire-and-forget**: errors are logged at `warn` but never thrown.
+
+**Trigger points:**
+
+| Context | Trigger |
+|---|---|
+| Foreground (`_layout.tsx` `AuthGate`) | On mount + every 60 s (`setInterval`) — unconditional, outside the auth check |
+| 15-min WorkManager background cycle (`run-background-sync.ts`) | Called at the **top** of `runBackgroundSyncCycle()` BEFORE the `!token` guard, so OTA works headless |
+| Push notification of type `ota_checkin` | Immediate best-effort acceleration (foreground notification listener in `_layout.tsx`) |
+| Boot / `MY_PACKAGE_REPLACED` (`boot-rearm.ts`) | Called at the top of `bootRearm()` when `strawboss.pending_install_deployment_id` is set (post-OTA re-report, Part 4) |
+
+### OTA Orchestrator (`handlePendingDeployment()`)
+
+When the check-in response includes a `PendingDeployment`, the orchestrator steps through a state machine persisted in `strawboss.ota_mirror` (type `OtaMirror`):
+
+```
+pending / notified
+  → downloading   (expo-file-system downloadAsync to DocumentDirectory)
+  → downloaded
+  → awaiting_idle (if mid-trip and installPolicy.forceNow is false)
+  → installing    (installApkSilent — process typically killed here)
+  → installed     (only reached if process survives, or on next boot-rearm check-in)
+  → failed        (max 3 attempts then gives up)
+```
+
+Key behaviours:
+
+- **Already up-to-date guard**: if `Constants.expoConfig.android.versionCode >= deployment.versionCode`, any mirror for that deployment is flushed as `installed` and cleared immediately.
+- **Download**: `FileSystem.downloadAsync(fullUrl, destUri)` saves to `DocumentDirectory/strawboss-ota-{deploymentId}.apk`. HTTP status other than 200 transitions to `failed`.
+- **SHA-256 verify**: the native `installApkSilent` method computes the digest before opening a `PackageInstaller` session; a mismatch rejects with `SHA_MISMATCH` and no install proceeds.
+- **Idle gate**: `hasActiveTrip()` queries `TripsRepo.listActive()` (local SQLite — offline-safe). If active trips exist and `installPolicy.forceNow` is false, the orchestrator records `awaiting_idle` and returns without installing. The next check-in re-evaluates.
+- **Install**: `PENDING_INSTALL_DEPLOYMENT_ID_KEY` is written to SecureStore **before** calling `installApkSilent()` because the process is killed when Android replaces the APK. `installApkSilent` opens a `PackageInstaller.Session`, streams the APK, fsyncs, and calls `session.commit()`.
+- **Max attempts**: `MAX_INSTALL_ATTEMPTS = 3`. If `mirror.attempt >= 3` and state is `failed`, the orchestrator logs a warning and stops trying.
+- **Reports**: each state transition appends a `DeviceOtaReport` to `mirror.reports`. Reports are batched and sent on the next check-in's `otaReports` field, then cleared from the mirror.
+
+### Post-Restart Re-Report (`src/lib/boot-rearm.ts`)
+
+On `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED`, the headless `bootRearm()` task (Part 4) checks for `strawboss.pending_install_deployment_id` **before** any auth guard. If the key exists, it calls `runDeviceCheckin()` — the new build's `versionCode` in `Constants.expoConfig` serves as proof of successful installation. The key is then deleted regardless of outcome.
+
+### Mobile Log Upload now includes `deviceId`
+
+`uploadTodayMobileLogs()` in `src/sync/mobile-log-upload.ts` calls `ensureDeviceId()` and includes `deviceId: deviceUuid` in the `POST /api/v1/logs/mobile` payload. This makes pre-login device logs attributable per physical device on the server side.
+
+### Native `DeviceOwner` Module additions (`plugins/withDeviceOwner.js`)
+
+Two new `@ReactMethod` entries were added to `DeviceOwnerModule.kt` (generated by the plugin):
+
+| Method | Signature | Description |
+|---|---|---|
+| `getDeviceHardwareInfo` | `(Promise)` → `{ model, manufacturer, osVersion, androidId }` | Returns `Build.MODEL`, `Build.MANUFACTURER`, `Build.VERSION.RELEASE`, and `Settings.Secure.ANDROID_ID`. No dangerous permission required. Always returns a map; fields are empty strings on failure. |
+| `installApkSilent` | `(path: String, expectedSha256: String, Promise)` → `Boolean` | SHA-256 verifies the APK at `path`, opens a `PackageInstaller.Session(MODE_FULL_INSTALL)`, streams the APK, fsyncs, and calls `session.commit()` via a `PendingIntent` targeting `InstallResultReceiver`. Rejects with `SHA_MISMATCH` on digest failure, `FILE_NOT_FOUND` if the file is absent, `DO_INSTALL` on session errors. |
+
+`InstallResultReceiver` (a `BroadcastReceiver`, `android:exported="false"`) is also generated into the manifest and Kotlin sources. It receives `PackageInstaller` session status broadcasts and logs the result. It is best-effort only — the JS promise resolves before the broadcast fires, and the process is typically killed during self-update.
+
+**New manifest entry** added by `withManifest()`:
+- `<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>` — required for `PackageInstaller` session commits on API 26+.
+- `<receiver android:name=".InstallResultReceiver" android:exported="false"/>` — receives silent install result broadcasts.
+
+### JS wrappers in `src/lib/device-owner.ts`
+
+Two new exported functions wrap the native methods:
+
+- `getDeviceHardwareInfo()`: returns `{ model?, manufacturer?, osVersion?, androidId? }`. Returns an empty object when the native module is absent (iOS / Expo Go). Never throws.
+- `installApkSilent(absolutePath, expectedSha256)`: returns `Promise<boolean>`. Returns `false` and logs a warning when the native module is absent. Callers must persist any install state before awaiting.
 
 ---
 

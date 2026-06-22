@@ -9,12 +9,13 @@ import { createMobileIngestLogger } from '../logger/winston-factory';
 export class MobileLogsService {
   private readonly winston = createMobileIngestLogger();
 
-  ingest(entries: MobileLogEntryDto[], userId: string): void {
+  ingest(entries: MobileLogEntryDto[], userId: string, deviceId?: string): void {
     for (const e of entries) {
       const meta = {
         context: e.context ?? 'mobile',
         source: 'mobile',
         userId,
+        ...(deviceId ? { deviceId } : {}),
         recordedAt: e.recordedAt,
         ...(e.meta ?? {}),
       };

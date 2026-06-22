@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+# Protect the Android OTA signing keystore. See scripts/verify-keystore.sh for WHY.
+# Wired via `git config core.hooksPath .githooks` (auto-set by the root `prepare` script).
+
+# 1) Hard-block any staged change to the keystore.
+if git diff --cached --name-only | grep -qx 'apps/mobile/android/app/debug.keystore'; then
+  echo "✗ Refusing to commit a change to apps/mobile/android/app/debug.keystore." >&2
+  echo "  This is the OTA signing key — changing it breaks self-update for every" >&2
+  echo "  Device-Owner phone already in the field (each needs a manual re-sideload)." >&2
+  echo "  If truly intended: update scripts/verify-keystore.sh and commit with --no-verify." >&2
+  exit 1
+fi
+
+# 2) Belt-and-suspenders: verify the on-disk fingerprint still matches the pinned one.
+if [ -f scripts/verify-keystore.sh ]; then
+  sh scripts/verify-keystore.sh >/dev/null || exit 1
+fi
+
+exit 0

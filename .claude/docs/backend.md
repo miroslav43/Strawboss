@@ -2,7 +2,7 @@
 type: doc
 title: "Backend Service (backend/service)"
 created: 2026-04-16
-updated: 2026-06-19
+updated: 2026-06-22
 tags: [doc, backend, layer, nestjs, drizzle, bullmq]
 status: mature
 related:
@@ -25,7 +25,7 @@ Entry point: `backend/service/src/main.ts` -- boots a `NestFastifyApplication`, 
 
 ## Module Structure
 
-The `AppModule` (`src/app.module.ts`) imports 30 feature modules:
+The `AppModule` (`src/app.module.ts`) imports 31 feature modules:
 
 | Module | Path | Purpose |
 |---|---|---|
@@ -58,9 +58,10 @@ The `AppModule` (`src/app.module.ts`) imports 30 feature modules:
 | `DeliveryDestinationsModule` | `src/delivery-destinations/` | Delivery deposit CRUD with geofence boundaries |
 | `NotificationsModule` | `src/notifications/` | Expo push token registration + send + geofence confirm |
 | `GeofenceModule` | `src/geofence/` | ST_Contains polling + enter/exit detection |
-| `MobileLogsModule` | `src/mobile-logs/` | Ingest batched NDJSON log entries from mobile devices |
+| `MobileLogsModule` | `src/mobile-logs/` | Ingest batched NDJSON log entries from mobile devices; persists optional `deviceId` in Winston meta |
 | `DepositInventoryModule` | `src/deposit-inventory/` | Depot list and inventory for `depot_manager` role (Plan C) |
 | `ReportsModule` | `src/reports/` | Extended report queries (KmPerTruck, etc.) |
+| `FleetModule` | `src/fleet/` | Device registry, OTA releases/deployments, FCM acceleration push; see [[backend#Fleet Module (OTA)]] |
 
 Global providers (registered in `AppModule.providers`):
 
@@ -240,6 +241,23 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 ### Profile Heartbeat
 - `POST /profile/heartbeat` -- any authenticated -- updates `users.last_seen_at` to now (mobile calls every 30s, Plan C)
 
+### Fleet — public (`src/fleet/fleet.controller.ts`)
+- `POST /fleet/checkin` -- @Public -- device check-in / registration; see [[backend#Fleet Module (OTA)]]
+
+### Fleet — super-admin (`src/fleet/fleet-admin.controller.ts`)
+- `GET /super-admin/devices` -- @Roles(super_admin) -- list all registered devices with latest OTA state
+- `GET /super-admin/devices/:id` -- @Roles(super_admin) -- single device
+- `PATCH /super-admin/devices/:id` -- @Roles(super_admin) -- rename device or assign to org (`updateDeviceSchema`)
+- `DELETE /super-admin/devices/:id` -- @Roles(super_admin) -- soft delete
+- `GET /super-admin/devices/:id/ota-status` -- @Roles(super_admin) -- full OTA status history for a device (last 200 rows)
+- `GET /super-admin/devices/:id/logs?level=&date=` -- @Roles(super_admin) -- device log viewer; reads mobile Winston log files, filters NDJSON lines by `deviceUuid` (last 1000 matching lines)
+- `GET /super-admin/releases` -- @Roles(super_admin) -- list APK releases (newest first, max 500)
+- `POST /super-admin/releases` -- @Roles(super_admin) -- upload APK (multipart/form-data, up to 250 MB; fields: `version`, `versionCode`, `changelog?`, `mandatory?` + file part `apk`; SHA-256 computed on ingest)
+- `PATCH /super-admin/releases/:id` -- @Roles(super_admin) -- update release metadata (status, mandatory, changelog)
+- `GET /super-admin/deployments` -- @Roles(super_admin) -- list deployments with per-state device counts
+- `POST /super-admin/deployments` -- @Roles(super_admin) -- create deployment (`createDeploymentSchema`); immediate if no `scheduledAt`, otherwise queues a BullMQ delayed job
+- `POST /super-admin/deployments/:id/cancel` -- @Roles(super_admin) -- cancel a deployment
+
 Note: `users.last_seen_at` is also refreshed via `POST /location/report` (Layer 1 presence). Machine-bound operators whose JS heartbeat is paused when backgrounded still stay "online" because their device foreground service continues to stream GPS. The two paths are independent; the GPS path is best-effort and never fails the location report.
 
 ---
@@ -291,6 +309,63 @@ Two-stage generation via BullMQ:
 
 ---
 
+## Fleet Module (OTA) (`src/fleet/`)
+
+Manages the device registry and over-the-air APK updates for the mobile fleet.
+
+### Files
+
+| File | Role |
+|---|---|
+| `fleet.controller.ts` | Public `POST /fleet/checkin` endpoint (`@Public()`, no auth) |
+| `fleet-admin.controller.ts` | All super-admin endpoints under `/super-admin/` (`@Roles(super_admin)`) |
+| `fleet.service.ts` | Business logic: check-in, HMAC verify, OTA state machine, APK upload, deployments |
+| `fleet-push.service.ts` | Optional FCM data-push acceleration (dynamic import of `firebase-admin`) |
+| `ota-deploy.processor.ts` | BullMQ processor for `ota-deploy` queue — activates scheduled deployments |
+
+### Device check-in (`POST /fleet/checkin`)
+
+Called by the mobile app on startup, foreground, and after sync. Uses `deviceCheckinSchema` from `@strawboss/validation`.
+
+- **First call** (unknown `deviceUuid`): registers the device; returns a `deviceTokenIssued` (HMAC token) that the app must store and present on every subsequent call.
+- **Returning device**: must supply `deviceToken`; verified with `timingSafeEqual(HMAC-SHA256(SUPABASE_JWT_SECRET, deviceUuid), token)`.
+- **OTA reports**: the payload may include an `otaReports[]` array reporting the current state of one or more deployments (`downloading | downloaded | installing | installed | failed`). The anti-skew rule prevents false `installed` confirmations: if the device's reported `versionCode` is lower than the release's `versionCode`, the state is clamped to `installing`.
+- **Response**: `{ deviceId, assignedOrgId, deviceTokenIssued?, pendingDeployment? }`. `pendingDeployment` is non-null when there is an active deployment targeting this device that it has not yet installed.
+
+### OTA state machine (`device_ota_status.state`)
+
+States (enum `ota_state`): `pending → notified → downloading → downloaded → installing → installed | failed`
+
+The state row is created with `pending` on deployment activation. It transitions to `notified` the first time the device checks in and receives the pending deployment. The device drives the remaining transitions via `otaReports[]`. `installed` is only accepted when the device's `versionCode >= release.versionCode` (anti-skew guard).
+
+### APK upload
+
+APKs are stored under `{UPLOADS_ROOT}/apks/{uuid}.apk`. SHA-256 is computed on ingest via a streaming pass. The global `@fastify/multipart` 3 MB limit is overridden per-request to 250 MB via `req.file({ limits: { fileSize: 250 * 1024 * 1024 } })`. APK download URLs are served as HMAC-signed URLs via the same `signUploadUrl` mechanism as other uploads.
+
+### Deployment fan-out (`target_kind`)
+
+`all` — every non-deleted device; `org` — devices in a specific `organization_id`; `device_set` — explicit UUID array.
+
+On activation, `device_ota_status` rows are inserted for all matching target devices (devices already at or above the release `versionCode` are immediately marked `installed`). Devices not yet in the table are handled lazily on their next check-in.
+
+### Scheduled deployments (`QUEUE_OTA_DEPLOY`)
+
+When `createDeploymentSchema.scheduledAt` is set, a BullMQ delayed job is added with `delay = scheduledAt - now()` and `jobId = ota-deploy-{deploymentId}`. `OtaDeployProcessor` processes it by calling `FleetService.activateDeployment()`. Negative delay is clamped to 0.
+
+### FCM acceleration push (`fleet-push.service.ts`)
+
+`FleetPushService` sends a data-only FCM push (`type: ota_checkin`) after deployment activation to prompt devices to check in sooner than their normal poll interval. `firebase-admin` is **not** a hard dependency — it is dynamically imported via a non-literal specifier (`const pkg = 'firebase-admin'; await import(pkg)`). If the `FIREBASE_SERVICE_ACCOUNT` env var is absent or the package is unavailable, the service logs once at `info` and becomes a no-op. **Poll is the authoritative delivery mechanism.**
+
+### Mobile log viewer (`GET /super-admin/devices/:id/logs`)
+
+Reads Winston NDJSON log files under `logs/mobile/{level}/{YYYY-MM-DD}.log`, filters lines where `meta.deviceId` or top-level `deviceId` matches the device's `deviceUuid`. Returns the last 1000 matching lines. `date` must match `/^\d{4}-\d{2}-\d{2}$/` (path traversal guard). `level` is allow-listed to `all | error | warn | info | flow | debug | http`.
+
+### `MobileLogsService` change
+
+`MobileLogsService.ingest(entries, userId, deviceId?)` now accepts an optional `deviceId` string and writes it into every Winston meta object. `MobileLogsController` reads `body.deviceId` from the ingest DTO and passes it through. This allows the log viewer above to correlate log lines to a specific registered device.
+
+---
+
 ## Job Scheduler (`src/jobs/job-scheduler.service.ts`)
 
 `JobSchedulerService` implements `OnModuleInit`. On startup, calls `upsertJobScheduler()` for 4 repeating jobs:
@@ -304,6 +379,8 @@ Two-stage generation via BullMQ:
 | `truck-idle-check` | on-demand (queued after `start-loading`) | `TruckIdleProcessor` -- checks if truck has been idle > `STRAWBOSS_TRUCK_IDLE_THRESHOLD_MIN` (default 30 min); sends loader-recall push if so (Plan C) |
 
 The `cmr-generation` queue is on-demand only (triggered by trip completion or manual endpoint).
+
+The `ota-deploy` queue uses **delayed jobs** (not repeating). Each job is added by `FleetService.createDeployment()` when `scheduledAt` is set; `OtaDeployProcessor` processes it by calling `FleetService.activateDeployment()`. Immediate deployments bypass the queue entirely.
 
 ---
 
@@ -343,6 +420,7 @@ Additional from `.env.example`:
 | `CORS_EXTRA_ORIGINS` | Comma-separated extra CORS origins |
 | `LOG_ROOT` | Custom log directory (Docker: `/app/logs`) |
 | `STRAWBOSS_TRUCK_IDLE_THRESHOLD_MIN` | Minutes before truck-idle BullMQ job fires a loader-recall push (default: 30, coerced int > 0) |
+| `FIREBASE_SERVICE_ACCOUNT` | JSON string of a Firebase service account credential (optional); enables FCM acceleration push for OTA deployments via `FleetPushService`; if absent, the service is a no-op and devices fall back to poll |
 | `REDIS_PASSWORD` | Redis password for Docker Compose |
 | `CERTBOT_EMAIL` | Let's Encrypt cert email |
 
