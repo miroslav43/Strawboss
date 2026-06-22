@@ -62,7 +62,15 @@ export function TracksMap({ routes, className }: TracksMapProps) {
       await import('leaflet/dist/leaflet.css');
       if (!isMounted || mapInstanceRef.current) return;
 
-      const map = L.map(mapRef.current!, { zoom: DEFAULT_ZOOM, center: DETA_CENTER });
+      const map = L.map(mapRef.current!, {
+        zoom: DEFAULT_ZOOM,
+        center: DETA_CENTER,
+        minZoom: 5, // nu poate ieși mai mult de ~nivel țară (evită tile-uri goale)
+        maxZoom: 20, // zoom-in scalat dincolo de imaginile native (vezi maxNativeZoom)
+        zoomSnap: 0.5, // se oprește pe jumătăți de nivel — zoom mai fin
+        zoomDelta: 0.5, // +/- și dublu-click urcă/coboară 0.5 nivel
+        wheelPxPerZoomLevel: 120, // scroll de 2× mai lent (default 60)
+      });
       requestAnimationFrame(() => {
         map.invalidateSize();
         map.setView(DETA_CENTER, DEFAULT_ZOOM);
@@ -75,13 +83,14 @@ export function TracksMap({ routes, className }: TracksMapProps) {
       L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         {
-          maxZoom: 19,
+          maxNativeZoom: 18, // ultimul nivel cu imagini reale în zonă
+          maxZoom: 20, // peste 18 Leaflet scalează tile-ul z18 (fără "no map data")
           attribution: 'Tiles &copy; Esri &mdash; Source: Esri, USGS, AEX, GeoEye, Getmapping, IGN',
         },
       ).addTo(map);
       L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-        { pane: 'placeLabels', maxZoom: 19 },
+        { pane: 'placeLabels', maxNativeZoom: 18, maxZoom: 20 },
       ).addTo(map);
 
       if (!isMounted) {
