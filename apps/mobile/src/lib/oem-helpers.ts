@@ -133,6 +133,22 @@ const OEM_AUTOSTART_TARGETS: Record<string, { packageName: string; className: st
     },
   ],
   honor: [
+    // MagicOS 7+ (Honor 70/80/90 series, 2022+) — Honor separated from Huawei, own Phone Manager
+    {
+      packageName: 'com.honor.phonemanager',
+      className: 'com.honor.phonemanager.module.appmanage.ui.StartupAppControlActivity',
+    },
+    {
+      packageName: 'com.honor.appmanager',
+      className: 'com.honor.appmanager.activity.StartupAppControlActivity',
+    },
+    // MagicUI 4–6 / older Honor still using Huawei system manager — App Launch Management
+    // (controls Auto-launch + Secondary launch + Run in background — the critical screen)
+    {
+      packageName: 'com.huawei.systemmanager',
+      className: 'com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity',
+    },
+    // Fallback: Protected apps (prevents kill from "Clean up" button only — less effective)
     {
       packageName: 'com.huawei.systemmanager',
       className: 'com.huawei.systemmanager.optimize.process.ProtectActivity',

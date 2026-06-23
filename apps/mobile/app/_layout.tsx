@@ -425,19 +425,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, profileReady, role]);
 
-  // Device-owner only, Android, mobile roles WITHOUT an assigned machine
-  // (geofence_maker, depot_manager): start a keep-alive foreground service so
-  // the OS doesn't freeze the JS thread when backgrounded — the heartbeat then
-  // keeps the operator "online" with the screen off. Machine roles already get
-  // this from the location foreground service, so we stop the presence one for
-  // them to avoid a redundant notification.
+  // Device-owner only, Android: start a keep-alive foreground service so the OS
+  // doesn't freeze the JS thread when backgrounded — the heartbeat and fleet
+  // checkin then keep running with the screen off.
+  // Machine roles also have the GPS FGS, but on aggressive OEM ROMs (Honor/EMUI)
+  // even that can be killed; the PresenceService acts as belt-and-suspenders.
   useEffect(() => {
     if (!isAuthenticated || !profileReady || !role || Platform.OS !== 'android') return;
     let cancelled = false;
     void (async () => {
       const owner = await isDeviceOwner();
       if (cancelled) return;
-      if (owner && !assignedMachineId) {
+      if (owner) {
         await startPresenceService();
       } else {
         await stopPresenceService();
@@ -447,7 +446,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       cancelled = true;
       void stopPresenceService();
     };
-  }, [isAuthenticated, profileReady, role, assignedMachineId]);
+  }, [isAuthenticated, profileReady, role]);
 
   // Android only: GPS foreground service for users with an assigned machine.
   useEffect(() => {
