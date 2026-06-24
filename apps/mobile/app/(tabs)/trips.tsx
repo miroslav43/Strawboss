@@ -13,16 +13,17 @@ import { useRouter } from 'expo-router';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 
 const STATUS_COLORS: Record<string, string> = {
-  planned:    '#1565C0',
-  loading:    '#B7791F',
-  loaded:     '#0A5C36',
+  planned: '#1565C0',
+  loading: '#B7791F',
+  loaded: '#0A5C36',
   in_transit: '#8D6E63',
-  arrived:    '#2E7D32',
+  arrived: '#2E7D32',
   delivering: '#B7791F',
-  delivered:  '#2E7D32',
-  completed:  '#5D4037',
+  delivered: '#2E7D32',
+  completed: '#5D4037',
 };
 
 export default function TripsScreen() {
@@ -30,6 +31,7 @@ export default function TripsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
+  const { t } = useI18n();
 
   const loadTrips = useCallback(async () => {
     try {
@@ -60,7 +62,7 @@ export default function TripsScreen() {
     <View style={styles.outerContainer}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.headerSection}>
-          <Text style={styles.title}>Curse Active</Text>
+          <Text style={styles.title}>{t('tabs.trips.title')}</Text>
         </View>
       </SafeAreaView>
 
@@ -74,25 +76,23 @@ export default function TripsScreen() {
           data={trips}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.tripCard}
               onPress={() => router.push(`/trip/${item.id}`)}
             >
               <View style={styles.tripHeader}>
-                <Text style={styles.tripNumber}>{item.trip_number ?? 'Fără număr'}</Text>
+                <Text style={styles.tripNumber}>
+                  {item.trip_number ?? t('tabs.trips.noNumber')}
+                </Text>
                 <View
                   style={[
                     styles.statusBadge,
                     { backgroundColor: STATUS_COLORS[item.status] ?? '#5D4037' },
                   ]}
                 >
-                  <Text style={styles.statusText}>
-                    {item.status.replace('_', ' ')}
-                  </Text>
+                  <Text style={styles.statusText}>{item.status.replace('_', ' ')}</Text>
                 </View>
               </View>
               {item.destination_name ? (
@@ -102,11 +102,13 @@ export default function TripsScreen() {
               ) : null}
               <View style={styles.tripMeta}>
                 <Text style={[styles.metaText, styles.metaTextShrink]} numberOfLines={1}>
-                  Baloți: {item.bale_count ?? 0}
+                  {t('tabs.trips.baleCount', { count: item.bale_count ?? 0 })}
                 </Text>
                 {item.departure_at ? (
                   <Text style={[styles.metaText, styles.metaTextShrink]} numberOfLines={1}>
-                    Plecat: {new Date(item.departure_at).toLocaleString('ro-RO')}
+                    {t('tabs.trips.departed', {
+                      time: new Date(item.departure_at).toLocaleString('ro-RO'),
+                    })}
                   </Text>
                 ) : null}
               </View>
@@ -114,10 +116,8 @@ export default function TripsScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.centered}>
-              <Text style={styles.emptyText}>Nicio cursă activă</Text>
-              <Text style={styles.emptySubtext}>
-                Cursele asignate vor apărea aici
-              </Text>
+              <Text style={styles.emptyText}>{t('tabs.trips.emptyTitle')}</Text>
+              <Text style={styles.emptySubtext}>{t('tabs.trips.emptySubtext')}</Text>
             </View>
           }
         />

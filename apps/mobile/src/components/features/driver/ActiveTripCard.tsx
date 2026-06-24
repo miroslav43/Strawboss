@@ -5,6 +5,7 @@ import { BigButton } from '@/components/ui/BigButton';
 import type { LocalTrip } from '@/db/trips-repo';
 import { useDestinationProximity } from '@/hooks/useDestinationProximity';
 import { colors, radii } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 const STATUS_COLORS: Record<string, string> = {
   planned: '#1565C0',
@@ -17,15 +18,15 @@ const STATUS_COLORS: Record<string, string> = {
   completed: '#5D4037',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  planned: 'Planificat',
-  loading: 'Se încarcă',
-  loaded: 'Încărcat',
-  in_transit: 'În drum',
-  arrived: 'Sosit',
-  delivering: 'Se livrează',
-  delivered: 'Livrat',
-  completed: 'Finalizat',
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  planned: 'driver.activeTripCard.status.planned',
+  loading: 'driver.activeTripCard.status.loading',
+  loaded: 'driver.activeTripCard.status.loaded',
+  in_transit: 'driver.activeTripCard.status.inTransit',
+  arrived: 'driver.activeTripCard.status.arrived',
+  delivering: 'driver.activeTripCard.status.delivering',
+  delivered: 'driver.activeTripCard.status.delivered',
+  completed: 'driver.activeTripCard.status.completed',
 };
 
 // FM-12 — trips in these statuses are "active". Ranked so the most advanced /
@@ -66,22 +67,17 @@ export function pickFeaturedTrip(trips: LocalTrip[]): LocalTrip | null {
   });
 }
 
-/** Label for the next actionable button on the active-trip card. */
-export function getActionLabel(status: string): string | null {
-  switch (status) {
-    case 'loaded':
-      return 'Pleacă';
-    case 'in_transit':
-      return 'Marchează sosire';
-    case 'arrived':
-      return 'Începe livrare';
-    case 'delivering':
-      return 'Confirmă livrare';
-    case 'delivered':
-      return 'Finalizează';
-    default:
-      return null;
-  }
+const ACTION_LABEL_KEYS: Record<string, string> = {
+  loaded: 'driver.activeTripCard.action.depart',
+  in_transit: 'driver.activeTripCard.action.markArrival',
+  arrived: 'driver.activeTripCard.action.startDelivery',
+  delivering: 'driver.activeTripCard.action.confirmDelivery',
+  delivered: 'driver.activeTripCard.action.finalize',
+};
+
+/** Key for the next actionable button on the active-trip card. */
+export function getActionLabelKey(status: string): string | null {
+  return ACTION_LABEL_KEYS[status] ?? null;
 }
 
 /** Auto km/m formatting for the distance-to-depot readout. */
@@ -102,9 +98,12 @@ interface ActiveTripCardProps {
  * readout (metres / km, or "În geofence" when the driver is inside).
  */
 export function ActiveTripCard({ trip, onPress }: ActiveTripCardProps) {
-  const actionLabel = getActionLabel(trip.status);
+  const { t } = useI18n();
+  const actionLabelKey = getActionLabelKey(trip.status);
+  const actionLabel = actionLabelKey ? t(actionLabelKey) : null;
   const statusColor = STATUS_COLORS[trip.status] ?? '#5D4037';
-  const statusLabel = STATUS_LABELS[trip.status] ?? trip.status;
+  const statusLabelKey = STATUS_LABEL_KEYS[trip.status];
+  const statusLabel = statusLabelKey ? t(statusLabelKey) : trip.status;
   const proximity = useDestinationProximity(trip.destination_id);
 
   return (
@@ -113,7 +112,7 @@ export function ActiveTripCard({ trip, onPress }: ActiveTripCardProps) {
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
           <MaterialCommunityIcons name="truck-fast" size={16} color={colors.primary} />
-          <Text style={styles.sectionLabel}>Cursa activă</Text>
+          <Text style={styles.sectionLabel}>{t('driver.activeTripCard.sectionLabel')}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
           <Text style={styles.statusBadgeText}>{statusLabel}</Text>
@@ -122,7 +121,9 @@ export function ActiveTripCard({ trip, onPress }: ActiveTripCardProps) {
 
       {/* Trip number + destination + live proximity */}
       <View style={styles.tripInfoRow}>
-        <Text style={styles.tripNumber}>{trip.trip_number ?? 'Cursă'}</Text>
+        <Text style={styles.tripNumber}>
+          {trip.trip_number ?? t('driver.activeTripCard.tripFallbackLabel')}
+        </Text>
         {trip.destination_name ? (
           <View style={styles.destinationRow}>
             <MaterialCommunityIcons name="map-marker-outline" size={14} color="#5D4037" />
@@ -132,7 +133,9 @@ export function ActiveTripCard({ trip, onPress }: ActiveTripCardProps) {
             {proximity.status === 'inside' ? (
               <View style={[styles.proxPill, styles.proxInside]}>
                 <MaterialCommunityIcons name="map-marker-check" size={12} color="#0A5C36" />
-                <Text style={styles.proxInsideText}>În geofence</Text>
+                <Text style={styles.proxInsideText}>
+                  {t('driver.activeTripCard.insideGeofence')}
+                </Text>
               </View>
             ) : proximity.distanceM != null && Number.isFinite(proximity.distanceM) ? (
               <View style={styles.proxPill}>
@@ -152,7 +155,9 @@ export function ActiveTripCard({ trip, onPress }: ActiveTripCardProps) {
       {/* Bale count */}
       <View style={styles.metaRow}>
         <MaterialCommunityIcons name="grain" size={13} color="#8D6E63" />
-        <Text style={styles.metaText}>{trip.bale_count} baloți</Text>
+        <Text style={styles.metaText}>
+          {t('driver.activeTripCard.baleCount').replace('{count}', String(trip.bale_count))}
+        </Text>
       </View>
 
       {/* Trip progress bar */}
@@ -167,7 +172,7 @@ export function ActiveTripCard({ trip, onPress }: ActiveTripCardProps) {
           onPress={() => onPress(trip)}
           activeOpacity={0.8}
         >
-          <Text style={styles.viewButtonText}>Vezi detalii</Text>
+          <Text style={styles.viewButtonText}>{t('driver.activeTripCard.viewDetails')}</Text>
           <MaterialCommunityIcons name="chevron-right" size={16} color={colors.primary} />
         </TouchableOpacity>
       )}

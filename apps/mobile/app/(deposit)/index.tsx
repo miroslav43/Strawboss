@@ -14,6 +14,7 @@ import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge
 import { NotificationBell } from '@/components/shared/NotificationBell';
 import { useDepotInventory, useDepotList } from '@/hooks/useDepotInventory';
 import { useTheme } from '@/lib/theme';
+import { useI18n } from '@/lib/i18n';
 import { fontScale } from '@/utils/responsive';
 import { colors, radii } from '@strawboss/ui-tokens';
 
@@ -26,6 +27,7 @@ import { colors, radii } from '@strawboss/ui-tokens';
  * Query cache + write-through SQLite cache in useDepotInventory).
  */
 export default function DepositInventoryScreen() {
+  const { t } = useI18n();
   const { colors: themeColors } = useTheme();
   const { data: depots } = useDepotList();
   const [selected, setSelected] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export default function DepositInventoryScreen() {
   return (
     <View style={[styles.outer, { backgroundColor: themeColors.primary }]}>
       <ScreenHeader
-        title="Inventar depozit"
+        title={t('deposit.screenTitle')}
         right={
           <View style={styles.headerRight}>
             <ConnectionStatusBadge />
@@ -86,10 +88,8 @@ export default function DepositInventoryScreen() {
         {!depotId ? (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="warehouse" size={48} color={colors.textSecondary} />
-            <Text style={styles.emptyTitle}>Niciun depozit alocat</Text>
-            <Text style={styles.emptySubtitle}>
-              Cere administratorului să asocieze un depozit contului tău.
-            </Text>
+            <Text style={styles.emptyTitle}>{t('deposit.noDepotTitle')}</Text>
+            <Text style={styles.emptySubtitle}>{t('deposit.noDepotSubtitle')}</Text>
           </View>
         ) : query.isLoading && !payload ? (
           <View style={styles.empty}>
@@ -97,10 +97,8 @@ export default function DepositInventoryScreen() {
           </View>
         ) : !payload ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Date indisponibile</Text>
-            <Text style={styles.emptySubtitle}>
-              Conectează-te la internet și trage în jos pentru a sincroniza.
-            </Text>
+            <Text style={styles.emptyTitle}>{t('deposit.dataUnavailableTitle')}</Text>
+            <Text style={styles.emptySubtitle}>{t('deposit.dataUnavailableSubtitle')}</Text>
           </View>
         ) : (
           <>
@@ -112,27 +110,29 @@ export default function DepositInventoryScreen() {
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
                   <Text style={styles.statValue}>{payload.inventory.totalBales}</Text>
-                  <Text style={styles.statLabel}>baloți</Text>
+                  <Text style={styles.statLabel}>{t('deposit.statLabelBales')}</Text>
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.stat}>
                   <Text style={styles.statValue}>
                     {(payload.inventory.totalNetWeightKg / 1000).toFixed(1)}
                   </Text>
-                  <Text style={styles.statLabel}>tone</Text>
+                  <Text style={styles.statLabel}>{t('deposit.statLabelTons')}</Text>
                 </View>
               </View>
               {lastUpdate ? (
                 <Text style={styles.lastUpdate} numberOfLines={1} ellipsizeMode="tail">
-                  Ultima livrare: {lastUpdate}
+                  {t('deposit.lastDelivery', { date: lastUpdate ?? '' })}
                 </Text>
               ) : null}
             </View>
 
             <View style={styles.cardSecondary}>
-              <Text style={styles.sectionTitle}>{payload.incoming.length} curse pe drum</Text>
+              <Text style={styles.sectionTitle}>
+                {t('deposit.incomingTripsCount', { count: payload.incoming.length })}
+              </Text>
               {payload.incoming.length === 0 ? (
-                <Text style={styles.emptyInline}>Nicio cursă incoming.</Text>
+                <Text style={styles.emptyInline}>{t('deposit.noIncomingTripsInline')}</Text>
               ) : (
                 payload.incoming.slice(0, 5).map((trip) => (
                   <View key={trip.tripId} style={styles.tripRow}>
@@ -141,12 +141,12 @@ export default function DepositInventoryScreen() {
                       <Text style={styles.tripNumber}>
                         {trip.tripNumber}
                         {trip.iterationIndex && trip.iterationIndex > 1
-                          ? ` · cursa ${trip.iterationIndex}`
+                          ? ` · ${t('deposit.tripIteration', { index: trip.iterationIndex })}`
                           : ''}
                       </Text>
                       <Text style={styles.tripSub} numberOfLines={1} ellipsizeMode="tail">
                         {trip.truckCode ?? trip.truckPlate ?? '—'} · {trip.driverName ?? '—'} ·{' '}
-                        {trip.baleCount} baloți
+                        {t('deposit.tripBaleCount', { count: trip.baleCount })}
                       </Text>
                     </View>
                   </View>

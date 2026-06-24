@@ -17,9 +17,11 @@ import { useProfile } from '@/hooks/useProfile';
 import { useMyTasks, type MyTask } from '@/hooks/useMyTasks';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 import { useTheme } from '@/lib/theme';
+import { useI18n } from '@/lib/i18n';
 
 export default function BalerHomeScreen() {
   const { colors: themeColors } = useTheme();
+  const { t } = useI18n();
   const { profile, isLoading } = useProfile();
   const { tasks, refetch: refetchTasks } = useMyTasks();
   // Same "Teren activ" card the loader has — GPS presence + distance to field.
@@ -51,7 +53,7 @@ export default function BalerHomeScreen() {
   return (
     <View style={styles.outerContainer}>
       <ScreenHeader
-        title="Balotieră"
+        title={t('baler.home.screenTitle')}
         right={
           <View style={styles.headerRightGroup}>
             <ConnectionStatusBadge />
@@ -62,7 +64,9 @@ export default function BalerHomeScreen() {
         {isLoading ? (
           <ActivityIndicator color="#FFFFFF" style={styles.loader} />
         ) : (
-          <Text style={styles.subtitle}>{profile?.fullName ?? 'Operator'}</Text>
+          <Text style={styles.subtitle}>
+            {profile?.fullName ?? t('baler.home.operatorFallback')}
+          </Text>
         )}
       </ScreenHeader>
 

@@ -14,8 +14,10 @@ import { useSync } from '@/hooks/useSync';
 import { getDatabase } from '@/lib/storage';
 import { SyncQueueRepo, type SyncQueueEntry } from '@/db/sync-queue-repo';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 
 export default function SyncScreen() {
+  const { t } = useI18n();
   const { isConnected } = useNetworkStatus();
   const { syncing, lastSyncAt, pendingCount, errors, triggerSync } = useSync();
   const [failedEntries, setFailedEntries] = useState<SyncQueueEntry[]>([]);
@@ -68,7 +70,7 @@ export default function SyncScreen() {
     <View style={styles.outerContainer}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.headerSection}>
-          <Text style={styles.title}>Sincronizare</Text>
+          <Text style={styles.title}>{t('tabs.sync.title')}</Text>
         </View>
       </SafeAreaView>
 
@@ -79,26 +81,30 @@ export default function SyncScreen() {
       >
         <View style={styles.card}>
           <View style={styles.statusRow}>
-            <Text style={styles.label}>Rețea:</Text>
+            <Text style={styles.label}>{t('tabs.sync.networkLabel')}</Text>
             <View style={styles.statusIndicator}>
               <View
                 style={[styles.dot, { backgroundColor: isConnected ? '#2E7D32' : '#C62828' }]}
               />
-              <Text style={styles.value}>{isConnected ? 'Online' : 'Offline'}</Text>
+              <Text style={styles.value}>
+                {isConnected ? t('tabs.sync.online') : t('tabs.sync.offline')}
+              </Text>
             </View>
           </View>
 
           <View style={styles.statusRow}>
-            <Text style={styles.label}>În coadă (inclusiv erori):</Text>
+            <Text style={styles.label}>{t('tabs.sync.queueLabel')}</Text>
             <Text style={[styles.value, pendingCount > 0 && styles.valuePending]}>
               {pendingCount}
             </Text>
           </View>
 
           <View style={styles.statusRow}>
-            <Text style={styles.label}>Ultima sincronizare:</Text>
+            <Text style={styles.label}>{t('tabs.sync.lastSyncLabel')}</Text>
             <Text style={styles.value} numberOfLines={1}>
-              {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : 'Niciodată'}
+              {lastSyncAt
+                ? new Date(lastSyncAt).toLocaleString('ro-RO')
+                : t('tabs.sync.lastSyncNever')}
             </Text>
           </View>
         </View>
@@ -112,14 +118,14 @@ export default function SyncScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.syncButtonText}>
-              {isConnected ? 'Sincronizează acum' : 'Fără conexiune'}
+              {isConnected ? t('tabs.sync.syncNowButton') : t('tabs.sync.noConnectionButton')}
             </Text>
           )}
         </TouchableOpacity>
 
         {errors.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Erori recente</Text>
+            <Text style={styles.cardTitle}>{t('tabs.sync.recentErrorsTitle')}</Text>
             {errors.map((error, i) => (
               <Text key={i} style={styles.errorText} numberOfLines={2}>
                 {error}
@@ -130,7 +136,9 @@ export default function SyncScreen() {
 
         {failedEntries.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Intrări eșuate ({failedEntries.length})</Text>
+            <Text style={styles.cardTitle}>
+              {t('tabs.sync.failedEntriesTitle', { count: failedEntries.length })}
+            </Text>
             {failedEntries.map((entry) => (
               <View key={entry.id} style={styles.failedEntry}>
                 <View style={styles.failedEntryInfo}>
@@ -138,12 +146,14 @@ export default function SyncScreen() {
                     {entry.entity_type} / {entry.action}
                   </Text>
                   <Text style={styles.failedEntryError} numberOfLines={2}>
-                    {entry.last_error ?? 'Eroare necunoscută'}
+                    {entry.last_error ?? t('tabs.sync.unknownError')}
                   </Text>
-                  <Text style={styles.failedEntryMeta}>Reîncercări: {entry.retry_count}</Text>
+                  <Text style={styles.failedEntryMeta}>
+                    {t('tabs.sync.retryCountLabel', { count: entry.retry_count })}
+                  </Text>
                 </View>
                 <TouchableOpacity style={styles.retryButton} onPress={() => handleRetry(entry.id)}>
-                  <Text style={styles.retryButtonText}>Reîncearcă</Text>
+                  <Text style={styles.retryButtonText}>{t('tabs.sync.retryButton')}</Text>
                 </TouchableOpacity>
               </View>
             ))}

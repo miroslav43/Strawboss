@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useI18n } from '@/lib/i18n';
 import { BigButton } from '@/components/ui/BigButton';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
@@ -20,6 +21,7 @@ import { scale } from '@/utils/responsive';
  */
 export default function DepartureFlowScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
+  const { t } = useI18n();
 
   const [submitting, setSubmitting] = useState(false);
   const [pendingSync, setPendingSync] = useState(false);
@@ -37,11 +39,11 @@ export default function DepartureFlowScreen() {
       // Defensive — should not happen because AuthGate forces specimen capture
       // for drivers before they can reach the trip flow.
       Alert.alert(
-        'Specimen lipsă',
-        'Nu ai încă un specimen de semnătură. Creează unul din profil.',
+        t('departureFlow.alert.specimenMissing.title'),
+        t('departureFlow.alert.specimenMissing.message'),
         [
           {
-            text: 'Mergi la profil',
+            text: t('departureFlow.alert.specimenMissing.action'),
             onPress: () => router.replace('/specimen-capture?mode=redo'),
           },
         ],
@@ -99,8 +101,8 @@ export default function DepartureFlowScreen() {
         err: err instanceof Error ? err.message : String(err),
       });
       Alert.alert(
-        'Eroare',
-        err instanceof Error ? err.message : 'Nu s-a putut porni cursa. Încearcă din nou.',
+        t('departureFlow.alert.error.title'),
+        err instanceof Error ? err.message : t('departureFlow.alert.error.message'),
       );
     } finally {
       setSubmitting(false);
@@ -109,7 +111,7 @@ export default function DepartureFlowScreen() {
 
   return (
     <View style={styles.outer}>
-      <ScreenHeader title="Semnătură șofer" />
+      <ScreenHeader title={t('departureFlow.screenTitle')} />
       <ScrollView
         style={[styles.body, { flex: 1 }]}
         contentContainerStyle={styles.signatureContent}
@@ -119,11 +121,9 @@ export default function DepartureFlowScreen() {
             <PendingTransitionBadge />
           </View>
         )}
-        <Text style={styles.sigHint}>
-          Confirmă plecarea folosind specimenul de semnătură salvat.
-        </Text>
+        <Text style={styles.sigHint}>{t('departureFlow.hint')}</Text>
         <View style={styles.specimenCard}>
-          <Text style={styles.specimenLabel}>Specimen semnătură</Text>
+          <Text style={styles.specimenLabel}>{t('departureFlow.specimenCard.label')}</Text>
           {signatureSpecimenUrl ? (
             <Image
               source={{ uri: resolveApiUrl(signatureSpecimenUrl) }}
@@ -131,22 +131,26 @@ export default function DepartureFlowScreen() {
               resizeMode="contain"
             />
           ) : (
-            <Text style={styles.specimenMissing}>Nu ai încă un specimen.</Text>
+            <Text style={styles.specimenMissing}>{t('departureFlow.specimenCard.missing')}</Text>
           )}
         </View>
         <BigButton
-          title="Semnează cu specimen"
+          title={t('departureFlow.button.signWithSpecimen')}
           onPress={handleSignWithSpecimen}
           disabled={submitting}
         />
         {submitting ? null : (
-          <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
+          <BigButton
+            title={t('departureFlow.button.cancel')}
+            onPress={() => router.back()}
+            variant="outline"
+          />
         )}
       </ScrollView>
       {/* FM-6: countdown overlay — shown after specimen is selected */}
       <ConfirmCountdown
         visible={countdownVisible}
-        actionLabel="Plecare din câmp"
+        actionLabel={t('departureFlow.countdown.actionLabel')}
         countdownSeconds={3}
         onConfirmed={() => void executeDepart()}
         onCancel={handleCountdownCancel}

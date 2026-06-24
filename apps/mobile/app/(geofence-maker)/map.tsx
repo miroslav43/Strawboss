@@ -21,6 +21,7 @@ import { ParcelsRepo } from '@/db/parcels-repo';
 import { DeliveryDestinationsRepo } from '@/db/delivery-destinations-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { generateUuid } from '@/lib/uuid';
+import { useI18n } from '@/lib/i18n';
 
 type DrawMode = 'parcel' | 'deposit' | null;
 
@@ -45,6 +46,7 @@ function toLatLon(raw: unknown): { lat: number; lon: number } | null {
 }
 
 export default function GeofenceMakerMapScreen() {
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const mapRef = useRef<GeofenceEditorViewHandle>(null);
@@ -204,8 +206,8 @@ export default function GeofenceMakerMapScreen() {
       if (status !== 'granted') {
         showModal({
           type: 'warning',
-          title: 'Locație',
-          message: 'Activează permisiunea de locație.',
+          title: t('geofenceMap.locationPermissionTitle'),
+          message: t('geofenceMap.locationPermissionMessage'),
           onConfirm: hideModal,
         });
         return;
@@ -230,8 +232,8 @@ export default function GeofenceMakerMapScreen() {
     } catch {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: 'Nu s-a putut obține locația.',
+        title: t('geofenceMap.locationErrorTitle'),
+        message: t('geofenceMap.locationErrorMessage'),
         onConfirm: hideModal,
       });
     } finally {
@@ -301,16 +303,16 @@ export default function GeofenceMakerMapScreen() {
         setDrawnGeojson(null);
         showModal({
           type: 'success',
-          title: 'Succes',
-          message: 'Câmpul a fost salvat și se va sincroniza la reconectare.',
+          title: t('geofenceMap.successParcelTitle'),
+          message: t('geofenceMap.successParcelMessage'),
           onConfirm: hideModal,
           autoDismiss: true,
         });
       } catch {
         showModal({
           type: 'error',
-          title: 'Eroare',
-          message: 'Nu s-a putut salva câmpul. Încearcă din nou.',
+          title: t('geofenceMap.errorParcelTitle'),
+          message: t('geofenceMap.errorParcelMessage'),
           onConfirm: hideModal,
         });
       } finally {
@@ -372,16 +374,16 @@ export default function GeofenceMakerMapScreen() {
         setDrawnGeojson(null);
         showModal({
           type: 'success',
-          title: 'Succes',
-          message: 'Depozitul a fost salvat și se va sincroniza la reconectare.',
+          title: t('geofenceMap.successDepotTitle'),
+          message: t('geofenceMap.successDepotMessage'),
           onConfirm: hideModal,
           autoDismiss: true,
         });
       } catch {
         showModal({
           type: 'error',
-          title: 'Eroare',
-          message: 'Nu s-a putut salva depozitul. Încearcă din nou.',
+          title: t('geofenceMap.errorDepotTitle'),
+          message: t('geofenceMap.errorDepotMessage'),
           onConfirm: hideModal,
         });
       } finally {
@@ -406,11 +408,11 @@ export default function GeofenceMakerMapScreen() {
 
   const bannerText = drawMode
     ? vertexCount === 0
-      ? 'Centrează pinul pe primul punct și apasă „Adaugă punct"'
+      ? t('geofenceMap.bannerFirstPoint')
       : vertexCount < 3
-        ? `Punct ${vertexCount}/3 — continuă (minim 3 puncte)`
-        : `${vertexCount} puncte — apasă „Finalizează" sau adaugă mai multe`
-    : 'Apasă un buton pentru a adăuga un câmp sau depozit';
+        ? t('geofenceMap.bannerProgress', { count: vertexCount })
+        : t('geofenceMap.bannerEnoughPoints', { count: vertexCount })
+    : t('geofenceMap.bannerIdle');
 
   const bannerColor = drawMode ? '#FEF9C3' : '#ECFDF5';
   const bannerBorder = drawMode ? '#FDE047' : '#A7F3D0';
@@ -435,7 +437,7 @@ export default function GeofenceMakerMapScreen() {
         </Text>
         {drawMode ? (
           <TouchableOpacity onPress={cancelDraw} style={styles.cancelDrawBtn}>
-            <Text style={styles.cancelDrawText}>Anulează</Text>
+            <Text style={styles.cancelDrawText}>{t('geofenceMap.cancelDrawButton')}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -450,7 +452,7 @@ export default function GeofenceMakerMapScreen() {
             onPress={() => startDraw('parcel')}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Adaugă câmp nou"
+            accessibilityLabel={t('geofenceMap.fabNewFieldA11y')}
             disabled={isSaving}
           >
             {isSaving ? (
@@ -458,7 +460,7 @@ export default function GeofenceMakerMapScreen() {
             ) : (
               <MaterialCommunityIcons name="shape-polygon-plus" size={22} color="#fff" />
             )}
-            <Text style={styles.fabLabel}>Câmp nou</Text>
+            <Text style={styles.fabLabel}>{t('geofenceMap.fabNewFieldLabel')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -466,7 +468,7 @@ export default function GeofenceMakerMapScreen() {
             onPress={() => startDraw('deposit')}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Adaugă depozit nou"
+            accessibilityLabel={t('geofenceMap.fabNewDepotA11y')}
             disabled={isSaving}
           >
             {isSaving ? (
@@ -474,7 +476,7 @@ export default function GeofenceMakerMapScreen() {
             ) : (
               <MaterialCommunityIcons name="warehouse" size={22} color="#fff" />
             )}
-            <Text style={styles.fabLabel}>Depozit nou</Text>
+            <Text style={styles.fabLabel}>{t('geofenceMap.fabNewDepotLabel')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -485,7 +487,7 @@ export default function GeofenceMakerMapScreen() {
         onPress={handleLocate}
         activeOpacity={0.85}
         accessibilityRole="button"
-        accessibilityLabel="Recentrare pe locația mea"
+        accessibilityLabel={t('geofenceMap.locateFabA11y')}
         disabled={locating}
       >
         {locating ? (
@@ -504,10 +506,10 @@ export default function GeofenceMakerMapScreen() {
             onPress={addPoint}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Adaugă punct la centrul hărții"
+            accessibilityLabel={t('geofenceMap.addPointA11y')}
           >
             <MaterialCommunityIcons name="plus" size={22} color="#fff" />
-            <Text style={styles.pointFabLabel}>Adaugă punct</Text>
+            <Text style={styles.pointFabLabel}>{t('geofenceMap.addPointButton')}</Text>
           </TouchableOpacity>
 
           {vertexCount > 0 ? (
@@ -516,10 +518,10 @@ export default function GeofenceMakerMapScreen() {
               onPress={removeLastPoint}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel="Șterge ultimul punct"
+              accessibilityLabel={t('geofenceMap.undoPointA11y')}
             >
               <MaterialCommunityIcons name="undo" size={20} color="#713F12" />
-              <Text style={styles.pointFabUndoLabel}>Pas înapoi</Text>
+              <Text style={styles.pointFabUndoLabel}>{t('geofenceMap.undoPointButton')}</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -529,11 +531,11 @@ export default function GeofenceMakerMapScreen() {
               onPress={finishPolygon}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel="Finalizează poligonul"
+              accessibilityLabel={t('geofenceMap.finishPolygonA11y')}
               disabled={isSaving}
             >
               <MaterialCommunityIcons name="check" size={22} color="#fff" />
-              <Text style={styles.pointFabLabel}>Finalizează</Text>
+              <Text style={styles.pointFabLabel}>{t('geofenceMap.finishPolygonButton')}</Text>
             </TouchableOpacity>
           ) : null}
         </View>

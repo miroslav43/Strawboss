@@ -7,6 +7,7 @@ import { useDeliveryDestinations } from '@strawboss/api';
 import { mobileApiClient } from '@/lib/api-client';
 import { boundaryCentroidLonLat } from '@/lib/point-in-geojson';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 
 interface OpenMapsToDepotButtonProps {
   tripId: string;
@@ -27,6 +28,7 @@ export function OpenMapsToDepotButton({
   destinationName,
   destinationAddress,
 }: OpenMapsToDepotButtonProps) {
+  const { t } = useI18n();
   const { data: depots } = useDeliveryDestinations(mobileApiClient);
 
   // Resolve the maps `destination` param: precise centroid when we can, else a
@@ -58,7 +60,10 @@ export function OpenMapsToDepotButton({
     });
     const can = await Linking.canOpenURL(url);
     if (!can) {
-      Alert.alert('Hărți', 'Nu s-a putut deschide aplicația de hărți.');
+      Alert.alert(
+        t('map.parcelSheet.startGoogleMaps'),
+        t('map.mapScreen.error.googleMaps.message'),
+      );
       return;
     }
     await Linking.openURL(url);
@@ -71,7 +76,7 @@ export function OpenMapsToDepotButton({
       activeOpacity={0.8}
       style={[styles.btn, disabled && styles.btnDisabled]}
       accessibilityRole="button"
-      accessibilityLabel="Deschide ruta către depozit în Hărți"
+      accessibilityLabel={t('parcel.detail.navigate')}
     >
       <MaterialCommunityIcons
         name="map-marker-radius"
@@ -79,7 +84,7 @@ export function OpenMapsToDepotButton({
         color={disabled ? '#9aa0a6' : '#FFFFFF'}
       />
       <Text style={[styles.text, disabled && styles.textDisabled]}>
-        {disabled ? 'Depozit fără locație' : 'Navighează către depozit'}
+        {disabled ? t('map.mapScreen.error.noDestinationCoords') : t('parcel.detail.navigate')}
       </Text>
     </TouchableOpacity>
   );

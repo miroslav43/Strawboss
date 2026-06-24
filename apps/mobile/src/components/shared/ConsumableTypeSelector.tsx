@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 type ConsumableType = 'diesel' | 'twine';
 
@@ -12,18 +13,17 @@ interface ConsumableTypeSelectorProps {
 interface CardConfig {
   type: ConsumableType;
   iconName: 'gas-station' | 'content-cut';
-  label: string;
+  labelKey: string;
 }
 
 const CARDS: readonly CardConfig[] = [
-  { type: 'diesel', iconName: 'gas-station', label: 'Motorină' },
-  { type: 'twine', iconName: 'content-cut', label: 'Sfoară' },
+  { type: 'diesel', iconName: 'gas-station', labelKey: 'shared.consumableTypeSelector.diesel' },
+  { type: 'twine', iconName: 'content-cut', labelKey: 'shared.consumableTypeSelector.twine' },
 ] as const;
 
-export function ConsumableTypeSelector({
-  onSelect,
-  selected,
-}: ConsumableTypeSelectorProps) {
+export function ConsumableTypeSelector({ onSelect, selected }: ConsumableTypeSelectorProps) {
+  const { t } = useI18n();
+
   return (
     <View style={styles.container}>
       {CARDS.map((card) => {
@@ -31,10 +31,7 @@ export function ConsumableTypeSelector({
         return (
           <TouchableOpacity
             key={card.type}
-            style={[
-              styles.card,
-              isSelected ? styles.cardSelected : styles.cardUnselected,
-            ]}
+            style={[styles.card, isSelected ? styles.cardSelected : styles.cardUnselected]}
             onPress={() => onSelect(card.type)}
             activeOpacity={0.7}
           >
@@ -43,13 +40,8 @@ export function ConsumableTypeSelector({
               size={40}
               color={isSelected ? colors.primary : colors.neutral}
             />
-            <Text
-              style={[
-                styles.label,
-                isSelected && styles.labelSelected,
-              ]}
-            >
-              {card.label}
+            <Text style={[styles.label, isSelected && styles.labelSelected]}>
+              {t(card.labelKey)}
             </Text>
           </TouchableOpacity>
         );

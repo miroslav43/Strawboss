@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { scale, fontScale } from '@/utils/responsive';
+import { useI18n } from '@/lib/i18n';
 
 type AlertSeverity = 'warning' | 'error';
 
@@ -28,6 +29,7 @@ const SEVERITY_CONFIG: Record<
 
 export function AlertBanner({ message, severity, onDismiss }: AlertBannerProps) {
   const config = SEVERITY_CONFIG[severity];
+  const { t } = useI18n();
 
   return (
     <View
@@ -43,7 +45,11 @@ export function AlertBanner({ message, severity, onDismiss }: AlertBannerProps) 
         name={config.iconName}
         size={18}
         color={config.text}
-        accessibilityLabel={severity === 'warning' ? 'Avertisment' : 'Eroare'}
+        accessibilityLabel={
+          severity === 'warning'
+            ? t('shared.alertBanner.a11yWarning')
+            : t('shared.alertBanner.a11yError')
+        }
       />
       <Text style={[styles.message, { color: config.text }]}>{message}</Text>
       {onDismiss !== undefined && (
@@ -52,7 +58,7 @@ export function AlertBanner({ message, severity, onDismiss }: AlertBannerProps) 
           onPress={onDismiss}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityLabel="Închide alerta"
+          accessibilityLabel={t('shared.alertBanner.dismiss')}
           accessibilityRole="button"
         >
           <MaterialCommunityIcons name="close" size={20} color={config.text} />

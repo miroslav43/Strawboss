@@ -38,23 +38,24 @@ import { ParcelsRepo, type LocalParcel } from '@/db/parcels-repo';
 import { useTheme } from '@/lib/theme';
 import { mobileLogger } from '@/lib/logger';
 import { openExternalNavigation, parseGeoPoint } from '@/lib/routing';
+import { useI18n } from '@/lib/i18n';
 
-const CROP_LABELS: Record<string, string> = {
-  grau: 'Grâu',
-  orz: 'Orz',
-  rapita: 'Rapiță',
-  plante_nutret: 'Plante de nutreț',
+const CROP_LABEL_KEYS: Record<string, string> = {
+  grau: 'parcel.detail.cropLabel.grau',
+  orz: 'parcel.detail.cropLabel.orz',
+  rapita: 'parcel.detail.cropLabel.rapita',
+  plante_nutret: 'parcel.detail.cropLabel.planteNutret',
 };
 
-const HARVEST_LABELS: Record<string, string> = {
-  planned: 'Planificat',
-  to_harvest: 'De recoltat',
-  harvesting: 'În recoltă',
-  partial_harvested: 'Parțial recoltat',
-  harvested: 'Recoltat',
-  in_loading: 'În încărcare',
-  loaded: 'Încărcat',
-  completed: 'Finalizat',
+const HARVEST_LABEL_KEYS: Record<string, string> = {
+  planned: 'parcel.detail.harvestStatus.planned',
+  to_harvest: 'parcel.detail.harvestStatus.toHarvest',
+  harvesting: 'parcel.detail.harvestStatus.harvesting',
+  partial_harvested: 'parcel.detail.harvestStatus.partialHarvested',
+  harvested: 'parcel.detail.harvestStatus.harvested',
+  in_loading: 'parcel.detail.harvestStatus.inLoading',
+  loaded: 'parcel.detail.harvestStatus.loaded',
+  completed: 'parcel.detail.harvestStatus.completed',
 };
 
 const HARVEST_COLORS: Record<string, string> = {
@@ -105,6 +106,7 @@ function formatHa(v: unknown): string {
 
 export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelDetailViewProps) {
   const { colors: themeColors } = useTheme();
+  const { t } = useI18n();
   const [localParcel, setLocalParcel] = useState<LocalParcel | null>(null);
   const [localLoading, setLocalLoading] = useState(true);
 
@@ -217,7 +219,7 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
         parcelId,
         err: err instanceof Error ? err.message : String(err),
       });
-      Alert.alert('Navigație', 'Nu s-a putut deschide aplicația de navigație.');
+      Alert.alert(t('parcel.detail.navigate_alertTitle'), t('parcel.detail.navigate_error'));
     }
   }, [navCoords, parcelId]);
 
@@ -229,7 +231,7 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
   if (localLoading && apiQuery.isLoading) {
     return (
       <View style={styles.outerContainer}>
-        <ScreenHeader title="Parcelă" onBack={handleBack} />
+        <ScreenHeader title={t('parcel.detail.screenTitle')} onBack={handleBack} />
         <View style={[styles.body, styles.centered]}>
           <ActivityIndicator color="#0A5C36" />
         </View>
@@ -241,24 +243,30 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
   if (!merged) {
     return (
       <View style={styles.outerContainer}>
-        <ScreenHeader title="Parcelă" onBack={handleBack} />
+        <ScreenHeader title={t('parcel.detail.screenTitle')} onBack={handleBack} />
         <View style={[styles.body, styles.centered]}>
           <MaterialCommunityIcons name="alert-circle-outline" size={48} color="#5D4037" />
-          <Text style={styles.missingTitle}>Câmpul nu a putut fi încărcat</Text>
-          <Text style={styles.missingSubtitle}>
-            Verifică legătura la internet și încearcă din nou.
-          </Text>
+          <Text style={styles.missingTitle}>{t('parcel.detail.error.cannotLoad.title')}</Text>
+          <Text style={styles.missingSubtitle}>{t('parcel.detail.error.cannotLoad.subtitle')}</Text>
           <View style={{ height: 16 }} />
-          <BigButton title="Înapoi" onPress={handleBack} variant="outline" />
+          <BigButton
+            title={t('parcel.detail.error.cannotLoad.back')}
+            onPress={handleBack}
+            variant="outline"
+          />
         </View>
       </View>
     );
   }
 
   const harvest = merged.harvestStatus ?? 'planned';
-  const harvestLabel = HARVEST_LABELS[harvest] ?? harvest;
+  const harvestLabel = HARVEST_LABEL_KEYS[harvest] ? t(HARVEST_LABEL_KEYS[harvest]) : harvest;
   const harvestColor = HARVEST_COLORS[harvest] ?? '#94A3B8';
-  const cropLabel = merged.cropType ? (CROP_LABELS[merged.cropType] ?? merged.cropType) : null;
+  const cropLabel = merged.cropType
+    ? CROP_LABEL_KEYS[merged.cropType]
+      ? t(CROP_LABEL_KEYS[merged.cropType])
+      : merged.cropType
+    : null;
 
   const hasBaleData = baleQuery.isSuccess;
   const remaining = Number(baleQuery.data?.remaining ?? 0);
@@ -267,7 +275,7 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
 
   return (
     <View style={styles.outerContainer}>
-      <ScreenHeader title="Parcelă" onBack={handleBack} />
+      <ScreenHeader title={t('parcel.detail.screenTitle')} onBack={handleBack} />
       <ScrollView
         style={[styles.body, { backgroundColor: themeColors.background }]}
         contentContainerStyle={styles.content}
@@ -292,7 +300,7 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
             <MaterialCommunityIcons name="package-variant-closed" size={26} color="#0A5C36" />
           </View>
           <View style={styles.rowItemBody}>
-            <Text style={styles.rowItemLabel}>Baloti pe teren</Text>
+            <Text style={styles.rowItemLabel}>{t('parcel.detail.bales.label')}</Text>
             {baleQuery.isLoading ? (
               <ActivityIndicator color="#0A5C36" style={styles.baleLoader} />
             ) : (
@@ -300,10 +308,10 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
             )}
             {hasBaleData ? (
               <Text style={styles.baleSub}>
-                produși {produced} · încărcați {loaded}
+                {t('parcel.detail.bales.sub', { produced, loaded })}
               </Text>
             ) : !baleQuery.isLoading ? (
-              <Text style={styles.rowItemMuted}>indisponibil offline</Text>
+              <Text style={styles.rowItemMuted}>{t('parcel.detail.bales.unavailableOffline')}</Text>
             ) : null}
           </View>
         </View>
@@ -313,9 +321,11 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
           <View style={styles.rowItem}>
             <MaterialCommunityIcons name="grain" size={22} color="#B45309" />
             <View style={styles.rowItemBody}>
-              <Text style={styles.rowItemLabel}>Cultură</Text>
+              <Text style={styles.rowItemLabel}>{t('parcel.detail.crop.label')}</Text>
               <Text style={styles.rowItemValue}>
-                {cropLabel ?? <Text style={styles.rowItemMuted}>nedefinită</Text>}
+                {cropLabel ?? (
+                  <Text style={styles.rowItemMuted}>{t('parcel.detail.crop.undefined')}</Text>
+                )}
               </Text>
             </View>
           </View>
@@ -328,7 +338,9 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
               <View style={styles.rowItem}>
                 <MaterialCommunityIcons name="map-marker" size={22} color="#0A5C36" />
                 <View style={styles.rowItemBody}>
-                  <Text style={styles.rowItemLabel}>Comună</Text>
+                  <Text style={styles.rowItemLabel}>
+                    {t('parcel.detail.location.municipality')}
+                  </Text>
                   <Text style={styles.rowItemValue}>{merged.municipality}</Text>
                 </View>
               </View>
@@ -337,7 +349,7 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
               <View style={[styles.rowItem, styles.rowItemSpaced]}>
                 <MaterialCommunityIcons name="road-variant" size={22} color="#0A5C36" />
                 <View style={styles.rowItemBody}>
-                  <Text style={styles.rowItemLabel}>Adresă</Text>
+                  <Text style={styles.rowItemLabel}>{t('parcel.detail.location.address')}</Text>
                   <Text style={styles.rowItemValue}>{merged.address}</Text>
                 </View>
               </View>
@@ -351,7 +363,7 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
             <View style={styles.rowItem}>
               <MaterialCommunityIcons name="note-text-outline" size={22} color="#5D4037" />
               <View style={styles.rowItemBody}>
-                <Text style={styles.rowItemLabel}>Note</Text>
+                <Text style={styles.rowItemLabel}>{t('parcel.detail.notes.label')}</Text>
                 <Text style={styles.rowItemValue}>{merged.notes}</Text>
               </View>
             </View>
@@ -366,12 +378,12 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
           {navCoords ? (
             <Pressable onPress={handleNavigate} style={styles.navButton}>
               <MaterialCommunityIcons name="navigation-variant" size={20} color="#FFFFFF" />
-              <Text style={styles.navButtonText}>Navighează până acolo</Text>
+              <Text style={styles.navButtonText}>{t('parcel.detail.navigate')}</Text>
             </Pressable>
           ) : null}
           <Pressable onPress={onOpenMap} style={styles.secondaryButton}>
             <MaterialCommunityIcons name="map-search-outline" size={18} color="#0A5C36" />
-            <Text style={styles.secondaryButtonText}>Deschide pe hartă</Text>
+            <Text style={styles.secondaryButtonText}>{t('parcel.detail.openOnMap')}</Text>
           </Pressable>
         </View>
       </ScrollView>

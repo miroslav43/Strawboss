@@ -19,6 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, radii } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { useTodayActivity, type ActivityEntry, type ActivityKind } from '@/hooks/useTodayActivity';
+import { useI18n } from '@/lib/i18n';
 
 // ---- Icon map ---------------------------------------------------------------
 
@@ -40,12 +41,14 @@ const KIND_COLOR: Record<ActivityKind, string> = {
 
 // ---- Sync status badge ------------------------------------------------------
 
-const SYNC_BADGE: Record<ActivityEntry['syncStatus'], { label: string; bg: string; text: string }> =
-  {
-    synced: { label: 'sincronizat', bg: '#E8F5E9', text: '#2E7D32' },
-    pending: { label: 'in asteptare', bg: '#FFF8E1', text: '#B7791F' },
-    failed: { label: 'esuat', bg: '#FFEBEE', text: '#C62828' },
-  };
+const SYNC_BADGE_KEYS: Record<
+  ActivityEntry['syncStatus'],
+  { labelKey: string; bg: string; text: string }
+> = {
+  synced: { labelKey: 'activity.todayCard.syncStatus.synced', bg: '#E8F5E9', text: '#2E7D32' },
+  pending: { labelKey: 'activity.todayCard.syncStatus.pending', bg: '#FFF8E1', text: '#B7791F' },
+  failed: { labelKey: 'activity.todayCard.syncStatus.failed', bg: '#FFEBEE', text: '#C62828' },
+};
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -63,8 +66,8 @@ function formatTime(isoTimestamp: string): string {
 
 // ---- Entry row --------------------------------------------------------------
 
-function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  const badge = SYNC_BADGE[entry.syncStatus];
+function ActivityRow({ entry, t }: { entry: ActivityEntry; t: (key: string) => string }) {
+  const badge = SYNC_BADGE_KEYS[entry.syncStatus];
   const iconColor = KIND_COLOR[entry.kind];
 
   return (
@@ -84,7 +87,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
             {entry.detail}
           </Text>
           <View style={[styles.syncBadge, { backgroundColor: badge.bg }]}>
-            <Text style={[styles.syncBadgeText, { color: badge.text }]}>{badge.label}</Text>
+            <Text style={[styles.syncBadgeText, { color: badge.text }]}>{t(badge.labelKey)}</Text>
           </View>
         </View>
       </View>
@@ -99,6 +102,7 @@ interface TodayActivityCardProps {
 }
 
 export function TodayActivityCard({ operatorId }: TodayActivityCardProps) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const { entries, loading, error, refresh } = useTodayActivity(operatorId);
 
@@ -112,11 +116,15 @@ export function TodayActivityCard({ operatorId }: TodayActivityCardProps) {
         onPress={() => setExpanded((v) => !v)}
         activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel={expanded ? 'Restrânge activitate azi' : 'Extinde activitate azi'}
+        accessibilityLabel={
+          expanded
+            ? t('activity.todayCard.accessibility.collapse')
+            : t('activity.todayCard.accessibility.expand')
+        }
       >
         <View style={styles.headerLeft}>
           <MaterialCommunityIcons name="calendar-today" size={18} color={colors.primary} />
-          <Text style={styles.headerTitle}>Activitatea mea azi</Text>
+          <Text style={styles.headerTitle}>{t('activity.todayCard.headerTitle')}</Text>
           {loading ? (
             <ActivityIndicator size="small" color={colors.primary} style={styles.headerLoader} />
           ) : (
@@ -125,7 +133,13 @@ export function TodayActivityCard({ operatorId }: TodayActivityCardProps) {
             </View>
           )}
           {!loading && pendingCount > 0 ? (
-            <View style={styles.pendingDot} accessibilityLabel={`${pendingCount} nesincronizate`} />
+            <View
+              style={styles.pendingDot}
+              accessibilityLabel={t('activity.todayCard.accessibility.pendingCount').replace(
+                '{count}',
+                String(pendingCount),
+              )}
+            />
           ) : null}
         </View>
         <MaterialCommunityIcons
@@ -142,7 +156,7 @@ export function TodayActivityCard({ operatorId }: TodayActivityCardProps) {
             <View style={styles.errorRow}>
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity onPress={() => void refresh()} activeOpacity={0.8}>
-                <Text style={styles.retryText}>Reincearca</Text>
+                <Text style={styles.retryText}>{t('activity.todayCard.retry')}</Text>
               </TouchableOpacity>
             </View>
           ) : loading ? (
@@ -156,16 +170,14 @@ export function TodayActivityCard({ operatorId }: TodayActivityCardProps) {
                 size={32}
                 color={colors.neutral200}
               />
-              <Text style={styles.emptyText}>Nicio inregistrare azi.</Text>
-              <Text style={styles.emptySubtext}>
-                Producțiile, alimentarile si incarcarile aparaprin dupa ce le salvezi.
-              </Text>
+              <Text style={styles.emptyText}>{t('activity.todayCard.empty.text')}</Text>
+              <Text style={styles.emptySubtext}>{t('activity.todayCard.empty.subtext')}</Text>
             </View>
           ) : (
             <FlatList
               data={entries}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <ActivityRow entry={item} />}
+              renderItem={({ item }) => <ActivityRow entry={item} t={t} />}
               ItemSeparatorComponent={() => <View style={styles.separator} />}
               scrollEnabled={false}
               style={styles.list}

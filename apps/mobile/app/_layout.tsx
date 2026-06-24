@@ -1,6 +1,7 @@
 import '@/lib/register-background-tasks';
 
 import { useEffect, useRef, useState } from 'react';
+import { LocaleProvider } from '@/lib/i18n';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
@@ -272,6 +273,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           assignedMachineId: profile.assignedMachineId ?? null,
           assignedDeliveryDestinationId: profile.assignedDeliveryDestinationId ?? null,
           signatureSpecimenUrl: profile.signatureSpecimenUrl ?? null,
+          locale: ((profile as unknown as Record<string, unknown>).locale as string | null) ?? null,
         });
         if (__DEV__) console.info('[StrawBoss] Profile fetch ok', { ms: Date.now() - t0 });
       })
@@ -676,39 +678,41 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {dbState === 'ready' ? (
-        <AuthGate>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen
-              name="notifications"
-              options={{ presentation: 'card', animation: 'slide_from_right' }}
-            />
-            {/* FM-17: onboarding shown once per role after first login */}
-            <Stack.Screen
-              name="onboarding"
-              options={{ presentation: 'card', animation: 'fade', gestureEnabled: false }}
-            />
-            {/* Signature specimen capture — forced gate for driver/loader_operator at first login */}
-            <Stack.Screen
-              name="specimen-capture"
-              options={{ presentation: 'card', animation: 'fade', gestureEnabled: false }}
-            />
-            {/* FM-14: daily PDF report — accessible from ProfileScreen */}
-            <Stack.Screen
-              name="daily-report"
-              options={{ presentation: 'card', animation: 'slide_from_right' }}
-            />
-            {/* Always-on tracking setup — shown once per login for Android machine users */}
-            <Stack.Screen
-              name="tracking-setup"
-              options={{ presentation: 'card', animation: 'slide_from_right' }}
-            />
-          </Stack>
-        </AuthGate>
-      ) : (
-        <LoadingSplash />
-      )}
-      <StatusBar style="dark" />
+      <LocaleProvider>
+        {dbState === 'ready' ? (
+          <AuthGate>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen
+                name="notifications"
+                options={{ presentation: 'card', animation: 'slide_from_right' }}
+              />
+              {/* FM-17: onboarding shown once per role after first login */}
+              <Stack.Screen
+                name="onboarding"
+                options={{ presentation: 'card', animation: 'fade', gestureEnabled: false }}
+              />
+              {/* Signature specimen capture — forced gate for driver/loader_operator at first login */}
+              <Stack.Screen
+                name="specimen-capture"
+                options={{ presentation: 'card', animation: 'fade', gestureEnabled: false }}
+              />
+              {/* FM-14: daily PDF report — accessible from ProfileScreen */}
+              <Stack.Screen
+                name="daily-report"
+                options={{ presentation: 'card', animation: 'slide_from_right' }}
+              />
+              {/* Always-on tracking setup — shown once per login for Android machine users */}
+              <Stack.Screen
+                name="tracking-setup"
+                options={{ presentation: 'card', animation: 'slide_from_right' }}
+              />
+            </Stack>
+          </AuthGate>
+        ) : (
+          <LoadingSplash />
+        )}
+        <StatusBar style="dark" />
+      </LocaleProvider>
     </QueryClientProvider>
   );
 }

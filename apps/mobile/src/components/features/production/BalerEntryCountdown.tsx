@@ -8,13 +8,7 @@
  */
 
 import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
-
-const CROP_LABELS: Record<string, string> = {
-  grau: 'Grâu',
-  orz: 'Orz',
-  rapita: 'Rapiță',
-  plante_nutret: 'Plante de nutreț',
-};
+import { useI18n } from '@/lib/i18n';
 
 export interface BalerEntryCountdownProps {
   /** Total countdown in ms (default 10 000). */
@@ -43,9 +37,14 @@ export function BalerEntryCountdown({
   onConfirm,
   onCancel,
 }: BalerEntryCountdownProps) {
+  const { t } = useI18n();
   const seconds = Math.max(1, Math.round(timeoutMs / 1000));
-  const cropSuffix = cropType ? ` (${CROP_LABELS[cropType] ?? cropType})` : '';
-  const label = labelOverride ?? `Începi balotarea în ${parcelCode}${cropSuffix}`;
+  const cropKey = cropType ? `production.balerEntry.crop.${cropType}` : null;
+  const cropLabel = cropKey ? t(cropKey) : null;
+  const cropSuffix = cropLabel ? ` (${cropLabel})` : '';
+  const label =
+    labelOverride ??
+    `${t('production.balerEntry.defaultLabel').replace('{parcelCode}', parcelCode)}${cropSuffix}`;
 
   return (
     <ConfirmCountdown

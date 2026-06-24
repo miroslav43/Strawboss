@@ -15,13 +15,8 @@ import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge
 import { NotificationBell } from '@/components/shared/NotificationBell';
 import { useDepotInventory, useDepotList } from '@/hooks/useDepotInventory';
 import { useTheme } from '@/lib/theme';
+import { useI18n } from '@/lib/i18n';
 import { colors, radii } from '@strawboss/ui-tokens';
-
-const STATUS_LABELS: Record<string, string> = {
-  in_transit: 'În drum',
-  arrived: 'Sosit',
-  delivering: 'Se livrează',
-};
 
 const STATUS_COLORS: Record<string, string> = {
   in_transit: '#8D6E63',
@@ -34,7 +29,14 @@ const STATUS_COLORS: Record<string, string> = {
  * Inventar tab but rendered as a full-screen scrollable list.
  */
 export default function DepositTripsScreen() {
+  const { t } = useI18n();
   const { colors: themeColors } = useTheme();
+
+  const STATUS_LABELS: Record<string, string> = {
+    in_transit: t('depositTrips.statusInTransit'),
+    arrived: t('depositTrips.statusArrived'),
+    delivering: t('depositTrips.statusDelivering'),
+  };
   const { data: depots } = useDepotList();
   const depotId = depots?.[0]?.id ?? null;
   const query = useDepotInventory(depotId);
@@ -44,7 +46,7 @@ export default function DepositTripsScreen() {
   return (
     <View style={[styles.outer, { backgroundColor: themeColors.primary }]}>
       <ScreenHeader
-        title="Curse incoming"
+        title={t('depositTrips.screenTitle')}
         right={
           <View style={styles.headerRight}>
             <ConnectionStatusBadge />
@@ -80,10 +82,8 @@ export default function DepositTripsScreen() {
                   size={48}
                   color={colors.textSecondary}
                 />
-                <Text style={styles.emptyTitle}>Nicio cursă incoming</Text>
-                <Text style={styles.emptySubtitle}>
-                  Cursele care vin spre depozit vor apărea aici.
-                </Text>
+                <Text style={styles.emptyTitle}>{t('depositTrips.emptyTitle')}</Text>
+                <Text style={styles.emptySubtitle}>{t('depositTrips.emptySubtitle')}</Text>
               </View>
             }
             renderItem={({ item }) => (
@@ -92,14 +92,16 @@ export default function DepositTripsScreen() {
                   <Text style={styles.tripNumber} numberOfLines={1}>
                     {item.tripNumber}
                     {item.iterationIndex && item.iterationIndex > 1
-                      ? ` · cursa ${item.iterationIndex}`
+                      ? ` · ${t('depositTrips.tripIteration', { index: item.iterationIndex })}`
                       : ''}
                   </Text>
                   <View style={styles.tripHeaderRight}>
                     {item.isInsideGeofence ? (
                       <View style={styles.geofenceBadge}>
                         <MaterialCommunityIcons name="map-marker-check" size={12} color="#FFFFFF" />
-                        <Text style={styles.geofenceBadgeText}>în perimetru</Text>
+                        <Text style={styles.geofenceBadgeText}>
+                          {t('depositTrips.geofenceBadge')}
+                        </Text>
                       </View>
                     ) : null}
                     <View
@@ -130,7 +132,9 @@ export default function DepositTripsScreen() {
                 </View>
                 <View style={styles.tripRow}>
                   <MaterialCommunityIcons name="grain" size={16} color={themeColors.primary} />
-                  <Text style={styles.tripText}>{item.baleCount} baloți</Text>
+                  <Text style={styles.tripText}>
+                    {t('depositTrips.tripBaleCount', { count: item.baleCount })}
+                  </Text>
                 </View>
                 {/* Distance readout */}
                 <View style={styles.tripRow}>
@@ -142,9 +146,9 @@ export default function DepositTripsScreen() {
                   <Text style={[styles.tripText, item.isInsideGeofence && styles.tripTextInside]}>
                     {item.distanceM != null
                       ? item.isInsideGeofence
-                        ? 'În perimetrul depozitului'
-                        : `La ${item.distanceM} m de depozit`
-                      : 'Poziție necunoscută'}
+                        ? t('depositTrips.distanceInsideGeofence')
+                        : t('depositTrips.distanceFromDepot', { distance: item.distanceM })
+                      : t('depositTrips.distanceUnknown')}
                   </Text>
                 </View>
                 {/* Confirm CTA — only when awaiting confirmation and inside geofence */}
@@ -175,7 +179,7 @@ export default function DepositTripsScreen() {
                         !item.isInsideGeofence && styles.confirmButtonTextDisabled,
                       ]}
                     >
-                      Confirmă livrarea
+                      {t('depositTrips.confirmDeliveryButton')}
                     </Text>
                   </TouchableOpacity>
                 ) : null}

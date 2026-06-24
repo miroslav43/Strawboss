@@ -473,6 +473,7 @@ interface EditForm {
   role: UserRole;
   phone: string;
   isActive: boolean;
+  locale: 'en' | 'ro';
 }
 
 function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
@@ -484,6 +485,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     role: user.role,
     phone: user.phone ?? '',
     isActive: user.isActive,
+    locale: (user.locale as 'en' | 'ro') ?? 'ro',
   });
   const [showPin, setShowPin] = useState(false);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
@@ -496,6 +498,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
       fullName: form.fullName || undefined,
       role: form.role,
       phone: form.phone || null,
+      locale: form.locale,
     };
     if (form.username && form.username !== user.username) {
       data.username = form.username;
@@ -618,6 +621,25 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
               className={inputCls}
               placeholder={t('accounts.form.phonePlaceholder')}
             />
+          </FormField>
+
+          <FormField label={t('accounts.form.language')} required>
+            <div className="flex gap-2">
+              {(['ro', 'en'] as const).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, locale: l }))}
+                  className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    form.locale === l
+                      ? 'border-primary bg-primary text-white'
+                      : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'
+                  }`}
+                >
+                  {l === 'ro' ? 'Română' : 'English'}
+                </button>
+              ))}
+            </div>
           </FormField>
 
           <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-3">

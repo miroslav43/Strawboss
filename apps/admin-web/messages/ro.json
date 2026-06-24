@@ -1184,7 +1184,8 @@
       "pinServerGen": "generat de server (4 cifre)",
       "accessSection": "Acces cont",
       "isActiveLabel": "Cont activ",
-      "isActiveHint": "Dacă e dezactivat, utilizatorul nu se mai poate loga. Contul rămâne în listă și se poate reactiva."
+      "isActiveHint": "Dacă e dezactivat, utilizatorul nu se mai poate loga. Contul rămâne în listă și se poate reactiva.",
+      "language": "Limba aplicației mobile"
     },
     "avatar": {
       "uploading": "Se încarcă...",

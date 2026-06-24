@@ -5,6 +5,7 @@ import { colors } from '@strawboss/ui-tokens';
 import type { MyTask } from '@/hooks/useMyTasks';
 import { useTheme } from '@/lib/theme';
 import { scale } from '@/utils/responsive';
+import { useI18n } from '@/lib/i18n';
 
 const STATUS_COLORS: Record<string, string> = {
   available: '#1565C0',
@@ -12,11 +13,7 @@ const STATUS_COLORS: Record<string, string> = {
   done: '#2E7D32',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  available: 'Disponibil',
-  in_progress: 'În lucru',
-  done: 'Finalizat',
-};
+// STATUS_LABELS are now derived from i18n inside the component
 
 /** Priority color for the left border stripe. Undefined = no stripe shown. */
 const PRIORITY_COLORS: Record<string, string | undefined> = {
@@ -45,12 +42,13 @@ interface TaskListProps {
 
 export function TaskList({ tasks, role, onTaskPress }: TaskListProps) {
   const { colors: themeColors } = useTheme();
+  const { t } = useI18n();
 
   if (tasks.length === 0) {
     return (
       <View style={[styles.emptyContainer, { backgroundColor: themeColors.white }]}>
         <Text style={[styles.emptyText, { color: themeColors.neutral400 }]}>
-          Nicio sarcină asignată pentru azi.
+          {t('shared.taskList.noTasks')}
         </Text>
       </View>
     );
@@ -81,14 +79,14 @@ export function TaskList({ tasks, role, onTaskPress }: TaskListProps) {
         task.parcelName ??
         task.destinationCode ??
         task.destinationName ??
-        `Sarcina #${task.sequenceOrder}`
+        t('shared.taskList.fallbackLabel', { order: task.sequenceOrder })
       );
     }
     if (task.parcelName) return task.parcelName;
     if (task.destinationName) return task.destinationName;
     if (task.parcelCode) return task.parcelCode;
     if (task.destinationCode) return task.destinationCode;
-    return `Sarcina #${task.sequenceOrder}`;
+    return t('shared.taskList.fallbackLabel', { order: task.sequenceOrder });
   };
 
   const getSubtitle = (task: MyTask): SubtitleInfo | null => {
@@ -103,7 +101,9 @@ export function TaskList({ tasks, role, onTaskPress }: TaskListProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.sectionTitle, { color: themeColors.primary }]}>Sarcini Azi</Text>
+      <Text style={[styles.sectionTitle, { color: themeColors.primary }]}>
+        {t('shared.taskList.sectionTitle')}
+      </Text>
       <FlatList
         data={tasks}
         keyExtractor={(item) => item.id}
@@ -136,7 +136,11 @@ export function TaskList({ tasks, role, onTaskPress }: TaskListProps) {
                       name="circle"
                       size={10}
                       color={priorityColor}
-                      accessibilityLabel={item.priority === 'urgent' ? 'Urgent' : 'Prioritate mare'}
+                      accessibilityLabel={
+                        item.priority === 'urgent'
+                          ? t('shared.taskList.priorityUrgent')
+                          : t('shared.taskList.priorityHigh')
+                      }
                     />
                   )}
                   <Text style={[styles.taskName, { color: themeColors.black }]} numberOfLines={1}>
@@ -149,7 +153,15 @@ export function TaskList({ tasks, role, onTaskPress }: TaskListProps) {
                     { backgroundColor: STATUS_COLORS[item.status] ?? themeColors.neutral },
                   ]}
                 >
-                  <Text style={styles.badgeText}>{STATUS_LABELS[item.status] ?? item.status}</Text>
+                  <Text style={styles.badgeText}>
+                    {item.status === 'available'
+                      ? t('shared.taskList.statusAvailable')
+                      : item.status === 'in_progress'
+                        ? t('shared.taskList.statusInProgress')
+                        : item.status === 'done'
+                          ? t('shared.taskList.statusDone')
+                          : item.status}
+                  </Text>
                 </View>
               </View>
               {subtitle !== null && (

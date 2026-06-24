@@ -2,14 +2,16 @@ import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { ConsumableFlow } from '@/components/features/consumables/ConsumableFlow';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
+import { useI18n } from '@/lib/i18n';
 
 export default function BalerConsumablesScreen() {
+  const { t } = useI18n();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const userId = useAuthStore((s) => s.userId);
 
   return (
     <View style={styles.outerContainer}>
-      <ScreenHeader title="Consumabile" />
+      <ScreenHeader title={t('baler.consumables.screenTitle')} />
       <View style={styles.body}>
         {!userId ? (
           <View style={styles.centered}>

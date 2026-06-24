@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { View, Text, Animated, StyleSheet, Easing } from 'react-native';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 const STEPS = [
   'planned',
@@ -13,22 +14,12 @@ const STEPS = [
   'completed',
 ] as const;
 
-const STEP_LABELS: Record<string, string> = {
-  planned: 'Planificat',
-  loading: 'Încărcare',
-  loaded: 'Încărcat',
-  in_transit: 'În drum',
-  arrived: 'Sosit',
-  delivering: 'Livrare',
-  delivered: 'Livrat',
-  completed: 'Finalizat',
-};
-
 interface TripProgressProps {
   currentStatus: string;
 }
 
 export function TripProgress({ currentStatus }: TripProgressProps) {
+  const { t } = useI18n();
   const currentIndex = STEPS.indexOf(currentStatus as (typeof STEPS)[number]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -98,7 +89,7 @@ export function TripProgress({ currentStatus }: TripProgressProps) {
                   isFuture && styles.labelFuture,
                 ]}
               >
-                {STEP_LABELS[step] ?? step}
+                {t(`shared.tripProgress.${step === 'in_transit' ? 'inTransit' : step}`)}
               </Text>
             </View>
           );

@@ -26,8 +26,10 @@ import {
 } from '@/components/features/production/HarvestFinishPicker';
 import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 
 export default function ProductionEntryScreen() {
+  const { t } = useI18n();
   const params = useLocalSearchParams<{
     assignmentId?: string;
     parcelCode?: string;
@@ -59,11 +61,11 @@ export default function ProductionEntryScreen() {
   const handleSubmit = useCallback(async () => {
     if (!finish) {
       // Defensive — the button should already be disabled.
-      setError('Alege Parțial sau Total înainte de a trimite.');
+      setError(t('baler.productionEntry.errorNoFinish'));
       return;
     }
     if (!assignmentId) {
-      setError('Lipsește identificatorul sarcinii.');
+      setError(t('baler.productionEntry.errorNoAssignment'));
       return;
     }
     setSaving(true);
@@ -88,7 +90,7 @@ export default function ProductionEntryScreen() {
         assignmentId,
         err: err instanceof Error ? err.message : String(err),
       });
-      setError('Nu s-a putut trimite. Verifică legătura și încearcă din nou.');
+      setError(t('baler.productionEntry.errorSubmitFailed'));
     } finally {
       setSaving(false);
     }
@@ -103,7 +105,11 @@ export default function ProductionEntryScreen() {
   return (
     <View style={styles.outerContainer}>
       <ScreenHeader
-        title={parcelCode ? `Producție — ${parcelCode}` : 'Producție'}
+        title={
+          parcelCode
+            ? t('baler.productionEntry.screenTitleWithCode', { parcelCode })
+            : t('baler.productionEntry.screenTitleFallback')
+        }
         onBack={handleBack}
       />
       <ScrollView
@@ -112,19 +118,23 @@ export default function ProductionEntryScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Câți baloți ai produs?</Text>
+          <Text style={styles.sectionLabel}>{t('baler.productionEntry.baleCountLabel')}</Text>
           <NumericPad value={count} onChange={setCount} maxLength={4} />
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Cum ai finalizat câmpul?</Text>
+          <Text style={styles.sectionLabel}>{t('baler.productionEntry.finishFieldLabel')}</Text>
           <HarvestFinishPicker value={finish} onChange={setFinish} />
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         <BigButton
-          title={saving ? 'Se trimite…' : 'Trimite'}
+          title={
+            saving
+              ? t('baler.productionEntry.submitButtonSaving')
+              : t('baler.productionEntry.submitButton')
+          }
           onPress={handleSubmit}
           disabled={submitDisabled}
           loading={saving}

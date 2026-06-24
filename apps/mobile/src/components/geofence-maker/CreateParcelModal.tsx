@@ -17,6 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Farm } from '@strawboss/types';
 import { FarmEntityType, CropType } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
+import { useI18n } from '@/lib/i18n';
 
 type ModalView = 'form' | 'pick_farm' | 'create_farm' | 'pick_crop';
 
@@ -52,6 +53,7 @@ interface Props {
 export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
 
   // Navigation between views inside one Modal
   const [view, setView] = useState<ModalView>('form');
@@ -106,7 +108,7 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
 
   function handleSave() {
     if (!name.trim()) {
-      setError('Numele câmpului este obligatoriu.');
+      setError(t('geofenceMaker.createParcel.error.nameRequired'));
       return;
     }
     setError('');
@@ -133,11 +135,11 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
 
   const handleCreateFarm = useCallback(async () => {
     if (!newFarmName.trim()) {
-      setCreateFarmError('Numele fermei este obligatoriu.');
+      setCreateFarmError(t('geofenceMaker.createParcel.createFarm.error.nameRequired'));
       return;
     }
     if (!newFarmPhone.trim()) {
-      setCreateFarmError('Numărul de telefon este obligatoriu.');
+      setCreateFarmError(t('geofenceMaker.createParcel.createFarm.error.phoneRequired'));
       return;
     }
     setCreateFarmError('');
@@ -162,7 +164,7 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
       setNewFarmAddress('');
       setView('form');
     } catch {
-      setCreateFarmError('Nu s-a putut crea ferma. Încearcă din nou.');
+      setCreateFarmError(t('geofenceMaker.createParcel.createFarm.error.createFailed'));
     } finally {
       setCreatingFarm(false);
     }
@@ -197,7 +199,7 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
           {view === 'form' && (
             <>
               <View style={styles.titleRow}>
-                <Text style={styles.title}>Câmp nou</Text>
+                <Text style={styles.title}>{t('geofenceMaker.createParcel.title')}</Text>
                 <TouchableOpacity onPress={handleClose} hitSlop={12}>
                   <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
                 </TouchableOpacity>
@@ -211,23 +213,24 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
               >
                 {/* Name */}
                 <Text style={styles.label}>
-                  Nume câmp <Text style={styles.required}>*</Text>
+                  {t('geofenceMaker.createParcel.label.name')}{' '}
+                  <Text style={styles.required}>*</Text>
                 </Text>
                 <TextInput
                   style={styles.input}
                   value={name}
                   onChangeText={setName}
-                  placeholder="ex. Câmp Nord 12"
+                  placeholder={t('geofenceMaker.createParcel.placeholder.name')}
                   placeholderTextColor="#9CA3AF"
                   returnKeyType="next"
                   autoFocus
                 />
 
                 {/* Farm picker field */}
-                <Text style={styles.label}>Fermă</Text>
+                <Text style={styles.label}>{t('geofenceMaker.createParcel.label.farm')}</Text>
                 <TouchableOpacity style={styles.pickerField} onPress={() => setView('pick_farm')}>
                   <Text style={farmId ? styles.pickerValue : styles.pickerPlaceholder}>
-                    {farmId ? farmName : 'Selectează ferma (opțional)'}
+                    {farmId ? farmName : t('geofenceMaker.createParcel.placeholder.farm')}
                   </Text>
                   <View style={styles.pickerRight}>
                     {farmId ? (
@@ -240,10 +243,12 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                 </TouchableOpacity>
 
                 {/* Crop picker field */}
-                <Text style={styles.label}>Cultură</Text>
+                <Text style={styles.label}>{t('geofenceMaker.createParcel.label.crop')}</Text>
                 <TouchableOpacity style={styles.pickerField} onPress={() => setView('pick_crop')}>
                   <Text style={cropType ? styles.pickerValue : styles.pickerPlaceholder}>
-                    {cropType ? CROP_LABELS[cropType] : 'Selectează cultura (opțional)'}
+                    {cropType
+                      ? CROP_LABELS[cropType]
+                      : t('geofenceMaker.createParcel.placeholder.crop')}
                   </Text>
                   <View style={styles.pickerRight}>
                     {cropType ? (
@@ -256,23 +261,25 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                 </TouchableOpacity>
 
                 {/* Municipality */}
-                <Text style={styles.label}>Localitate</Text>
+                <Text style={styles.label}>
+                  {t('geofenceMaker.createParcel.label.municipality')}
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={municipality}
                   onChangeText={setMunicipality}
-                  placeholder="Auto-detectat din locație"
+                  placeholder={t('geofenceMaker.createParcel.placeholder.municipality')}
                   placeholderTextColor="#9CA3AF"
                   returnKeyType="next"
                 />
 
                 {/* Notes */}
-                <Text style={styles.label}>Note</Text>
+                <Text style={styles.label}>{t('geofenceMaker.createParcel.label.notes')}</Text>
                 <TextInput
                   style={[styles.input, styles.inputMultiline]}
                   value={notes}
                   onChangeText={setNotes}
-                  placeholder="Observații suplimentare (opțional)"
+                  placeholder={t('geofenceMaker.createParcel.placeholder.notes')}
                   placeholderTextColor="#9CA3AF"
                   multiline
                   numberOfLines={3}
@@ -288,7 +295,7 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                   onPress={handleClose}
                   disabled={isSaving}
                 >
-                  <Text style={styles.cancelBtnText}>Anulează</Text>
+                  <Text style={styles.cancelBtnText}>{t('geofenceMaker.createParcel.cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
@@ -298,7 +305,7 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                   {isSaving ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={styles.saveBtnText}>Salvează câmpul</Text>
+                    <Text style={styles.saveBtnText}>{t('geofenceMaker.createParcel.save')}</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -315,9 +322,11 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                   hitSlop={8}
                 >
                   <MaterialCommunityIcons name="arrow-left" size={22} color="#0A5C36" />
-                  <Text style={styles.backBtnText}>Înapoi</Text>
+                  <Text style={styles.backBtnText}>
+                    {t('geofenceMaker.createParcel.selectFarm.back')}
+                  </Text>
                 </TouchableOpacity>
-                <Text style={styles.title}>Selectează ferma</Text>
+                <Text style={styles.title}>{t('geofenceMaker.createParcel.selectFarm.title')}</Text>
                 <View style={{ width: 60 }} />
               </View>
 
@@ -327,7 +336,9 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                 showsVerticalScrollIndicator={false}
               >
                 {farms.length === 0 ? (
-                  <Text style={styles.emptyText}>Nicio fermă creată încă.</Text>
+                  <Text style={styles.emptyText}>
+                    {t('geofenceMaker.createParcel.selectFarm.empty')}
+                  </Text>
                 ) : (
                   farms.map((farm) => (
                     <TouchableOpacity
@@ -353,7 +364,9 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                 {/* Add new farm option */}
                 <TouchableOpacity style={styles.addFarmBtn} onPress={() => setView('create_farm')}>
                   <MaterialCommunityIcons name="plus-circle-outline" size={20} color="#0A5C36" />
-                  <Text style={styles.addFarmBtnText}>Adaugă fermă nouă</Text>
+                  <Text style={styles.addFarmBtnText}>
+                    {t('geofenceMaker.createParcel.selectFarm.addNew')}
+                  </Text>
                 </TouchableOpacity>
               </ScrollView>
             </>
@@ -369,9 +382,11 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                   hitSlop={8}
                 >
                   <MaterialCommunityIcons name="arrow-left" size={22} color="#0A5C36" />
-                  <Text style={styles.backBtnText}>Înapoi</Text>
+                  <Text style={styles.backBtnText}>
+                    {t('geofenceMaker.createParcel.selectCrop.back')}
+                  </Text>
                 </TouchableOpacity>
-                <Text style={styles.title}>Selectează cultura</Text>
+                <Text style={styles.title}>{t('geofenceMaker.createParcel.selectCrop.title')}</Text>
                 <View style={{ width: 60 }} />
               </View>
 
@@ -410,9 +425,11 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                   hitSlop={8}
                 >
                   <MaterialCommunityIcons name="arrow-left" size={22} color="#0A5C36" />
-                  <Text style={styles.backBtnText}>Înapoi</Text>
+                  <Text style={styles.backBtnText}>
+                    {t('geofenceMaker.createParcel.createFarm.back')}
+                  </Text>
                 </TouchableOpacity>
-                <Text style={styles.title}>Fermă nouă</Text>
+                <Text style={styles.title}>{t('geofenceMaker.createParcel.createFarm.title')}</Text>
                 <View style={{ width: 60 }} />
               </View>
 
@@ -423,32 +440,36 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                 showsVerticalScrollIndicator={false}
               >
                 <Text style={styles.label}>
-                  Nume fermă <Text style={styles.required}>*</Text>
+                  {t('geofenceMaker.createParcel.createFarm.label.name')}{' '}
+                  <Text style={styles.required}>*</Text>
                 </Text>
                 <TextInput
                   style={styles.input}
                   value={newFarmName}
                   onChangeText={setNewFarmName}
-                  placeholder="ex. Ferma Ionescu"
+                  placeholder={t('geofenceMaker.createParcel.createFarm.placeholder.name')}
                   placeholderTextColor="#9CA3AF"
                   returnKeyType="next"
                   autoFocus
                 />
 
                 <Text style={styles.label}>
-                  Telefon <Text style={styles.required}>*</Text>
+                  {t('geofenceMaker.createParcel.createFarm.label.phone')}{' '}
+                  <Text style={styles.required}>*</Text>
                 </Text>
                 <TextInput
                   style={styles.input}
                   value={newFarmPhone}
                   onChangeText={setNewFarmPhone}
-                  placeholder="ex. 0722 123 456"
+                  placeholder={t('geofenceMaker.createParcel.createFarm.placeholder.phone')}
                   placeholderTextColor="#9CA3AF"
                   keyboardType="phone-pad"
                   returnKeyType="next"
                 />
 
-                <Text style={styles.label}>Tip entitate</Text>
+                <Text style={styles.label}>
+                  {t('geofenceMaker.createParcel.createFarm.label.entityType')}
+                </Text>
                 <View style={styles.segmentRow}>
                   <TouchableOpacity
                     style={[
@@ -471,7 +492,7 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                           styles.segmentTextActive,
                       ]}
                     >
-                      Persoană juridică
+                      {t('geofenceMaker.createParcel.createFarm.entityType.juridica')}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -495,38 +516,44 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                           styles.segmentTextActive,
                       ]}
                     >
-                      Persoană fizică
+                      {t('geofenceMaker.createParcel.createFarm.entityType.fizica')}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.label}>CUI</Text>
+                <Text style={styles.label}>
+                  {t('geofenceMaker.createParcel.createFarm.label.cui')}
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={newFarmCui}
                   onChangeText={setNewFarmCui}
-                  placeholder="ex. RO12345678 (opțional)"
+                  placeholder={t('geofenceMaker.createParcel.createFarm.placeholder.cui')}
                   placeholderTextColor="#9CA3AF"
                   autoCapitalize="characters"
                   returnKeyType="next"
                 />
 
-                <Text style={styles.label}>Cod RO APIA</Text>
+                <Text style={styles.label}>
+                  {t('geofenceMaker.createParcel.createFarm.label.apiaCode')}
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={newFarmApia}
                   onChangeText={setNewFarmApia}
-                  placeholder="Cod APIA al fermei (opțional)"
+                  placeholder={t('geofenceMaker.createParcel.createFarm.placeholder.apiaCode')}
                   placeholderTextColor="#9CA3AF"
                   returnKeyType="next"
                 />
 
-                <Text style={styles.label}>Adresă</Text>
+                <Text style={styles.label}>
+                  {t('geofenceMaker.createParcel.createFarm.label.address')}
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={newFarmAddress}
                   onChangeText={setNewFarmAddress}
-                  placeholder="ex. Deta, Timiș (opțional)"
+                  placeholder={t('geofenceMaker.createParcel.createFarm.placeholder.address')}
                   placeholderTextColor="#9CA3AF"
                   returnKeyType="done"
                 />
@@ -540,7 +567,9 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                   onPress={() => setView('pick_farm')}
                   disabled={creatingFarm}
                 >
-                  <Text style={styles.cancelBtnText}>Renunță</Text>
+                  <Text style={styles.cancelBtnText}>
+                    {t('geofenceMaker.createParcel.createFarm.cancel')}
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.saveBtn, creatingFarm && styles.saveBtnDisabled]}
@@ -550,7 +579,9 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                   {creatingFarm ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={styles.saveBtnText}>Creează ferma</Text>
+                    <Text style={styles.saveBtnText}>
+                      {t('geofenceMaker.createParcel.createFarm.submit')}
+                    </Text>
                   )}
                 </TouchableOpacity>
               </View>

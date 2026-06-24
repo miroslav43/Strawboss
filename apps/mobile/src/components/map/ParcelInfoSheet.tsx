@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { openExternalNavigation } from '@/lib/routing';
+import { useI18n } from '@/lib/i18n';
 
 interface ParcelInfo {
   id: string;
@@ -57,11 +58,11 @@ const TAP_SLOP = 5;
 const TAP_MAX_MS = 200;
 const SPRING_CONFIG = { friction: 10, tension: 80, useNativeDriver: true };
 
-const HARVEST_LABELS: Record<string, string> = {
-  planned: 'Planificat',
-  to_harvest: 'De recoltat',
-  harvesting: 'Se recoltează',
-  harvested: 'Recoltat',
+const HARVEST_STATUS_KEYS: Record<string, string> = {
+  planned: 'map.parcelSheet.harvestStatus.planned',
+  to_harvest: 'map.parcelSheet.harvestStatus.toHarvest',
+  harvesting: 'map.parcelSheet.harvestStatus.harvesting',
+  harvested: 'map.parcelSheet.harvestStatus.harvested',
 };
 
 export function ParcelInfoSheet({
@@ -74,6 +75,7 @@ export function ParcelInfoSheet({
 }: ParcelInfoSheetProps) {
   const hasCoords = parcel.centroidLat != null && parcel.centroidLon != null;
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   // The sheet's full content height, measured once via onLayout. Until measured
   // we keep translateY at 0 so the sheet is fully visible.
@@ -200,8 +202,8 @@ export function ParcelInfoSheet({
     } catch {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: 'Nu s-a putut deschide Google Maps sau navigația.',
+        title: t('map.parcelSheet.error.googleMaps.title'),
+        message: t('map.parcelSheet.error.googleMaps.message'),
         onConfirm: hideModal,
       });
     }
@@ -212,7 +214,9 @@ export function ParcelInfoSheet({
       ? null
       : routeInfo.durationMin > 0
         ? `${routeInfo.distanceKm.toFixed(1)} km · ${Math.round(routeInfo.durationMin)} min`
-        : `${routeInfo.distanceKm.toFixed(1)} km (linie directă)`;
+        : t('map.parcelSheet.routeSummary.straightLine', {
+            distance: routeInfo.distanceKm.toFixed(1),
+          });
 
   const isPeek = mode === 'peek';
 
@@ -246,7 +250,7 @@ export function ParcelInfoSheet({
 
         {routeSummary != null ? (
           <View style={styles.routeSummaryBox}>
-            <Text style={styles.routeSummaryLabel}>Traseu pe hartă</Text>
+            <Text style={styles.routeSummaryLabel}>{t('map.parcelSheet.routeSummaryLabel')}</Text>
             <Text style={styles.routeSummaryValue} numberOfLines={1}>
               {routeSummary}
             </Text>
@@ -262,7 +266,7 @@ export function ParcelInfoSheet({
                 onPress={handleStartGoogleMaps}
                 disabled={!hasCoords}
               >
-                <Text style={styles.navButtonText}>Start în Google Maps</Text>
+                <Text style={styles.navButtonText}>{t('map.parcelSheet.startGoogleMaps')}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -273,7 +277,7 @@ export function ParcelInfoSheet({
                 {isLoadingRoute ? (
                   <ActivityIndicator color="#FFF" size="small" />
                 ) : (
-                  <Text style={styles.navButtonText}>Previzualizează ruta</Text>
+                  <Text style={styles.navButtonText}>{t('map.parcelSheet.previewRoute')}</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -281,30 +285,29 @@ export function ParcelInfoSheet({
         ) : (
           <>
             {!hasCoords ? (
-              <Text style={styles.helperWarning}>
-                Coordonatele destinației nu sunt disponibile pentru această selecție. Nu se poate
-                previzualiza ruta sau deschide navigația.
-              </Text>
+              <Text style={styles.helperWarning}>{t('map.parcelSheet.noCoordsWarning')}</Text>
             ) : null}
 
             <View style={styles.infoRow}>
               {parcel.areaHectares != null && (
                 <View style={styles.infoPill}>
-                  <Text style={styles.infoLabel}>Suprafață</Text>
+                  <Text style={styles.infoLabel}>{t('map.parcelSheet.info.area')}</Text>
                   <Text style={styles.infoValue}>{parcel.areaHectares} ha</Text>
                 </View>
               )}
               {parcel.harvestStatus && (
                 <View style={styles.infoPill}>
-                  <Text style={styles.infoLabel}>Status</Text>
+                  <Text style={styles.infoLabel}>{t('map.parcelSheet.info.status')}</Text>
                   <Text style={styles.infoValue}>
-                    {HARVEST_LABELS[parcel.harvestStatus] ?? parcel.harvestStatus}
+                    {HARVEST_STATUS_KEYS[parcel.harvestStatus]
+                      ? t(HARVEST_STATUS_KEYS[parcel.harvestStatus])
+                      : parcel.harvestStatus}
                   </Text>
                 </View>
               )}
               {parcel.municipality && (
                 <View style={styles.infoPill}>
-                  <Text style={styles.infoLabel}>Localitate</Text>
+                  <Text style={styles.infoLabel}>{t('map.parcelSheet.info.municipality')}</Text>
                   <Text style={styles.infoValue} numberOfLines={1}>
                     {parcel.municipality}
                   </Text>
@@ -320,10 +323,10 @@ export function ParcelInfoSheet({
                     onPress={handleStartGoogleMaps}
                     disabled={!hasCoords}
                   >
-                    <Text style={styles.navButtonText}>Start în Google Maps</Text>
+                    <Text style={styles.navButtonText}>{t('map.parcelSheet.startGoogleMaps')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.extButton} onPress={onDismiss}>
-                    <Text style={styles.extButtonText}>Închide</Text>
+                    <Text style={styles.extButtonText}>{t('map.parcelSheet.close')}</Text>
                   </TouchableOpacity>
                 </>
               ) : (
@@ -339,12 +342,12 @@ export function ParcelInfoSheet({
                     {isLoadingRoute ? (
                       <ActivityIndicator color="#FFF" size="small" />
                     ) : (
-                      <Text style={styles.navButtonText}>Previzualizează ruta</Text>
+                      <Text style={styles.navButtonText}>{t('map.parcelSheet.previewRoute')}</Text>
                     )}
                   </TouchableOpacity>
                   {!hasUserLocation && hasCoords ? (
                     <Text style={styles.helperMuted}>
-                      Activează locația pentru a calcula traseul pe hartă.
+                      {t('map.parcelSheet.enableLocationHint')}
                     </Text>
                   ) : null}
                   <TouchableOpacity
@@ -352,7 +355,7 @@ export function ParcelInfoSheet({
                     onPress={handleStartGoogleMaps}
                     disabled={!hasCoords}
                   >
-                    <Text style={styles.extButtonText}>Start în Google Maps</Text>
+                    <Text style={styles.extButtonText}>{t('map.parcelSheet.startGoogleMaps')}</Text>
                   </TouchableOpacity>
                 </>
               )}

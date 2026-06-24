@@ -13,6 +13,7 @@ import { calculateRoute, haversineKm } from '@/lib/routing';
 import { MapView, type MapViewHandle } from './MapView';
 import { ParcelInfoSheet } from './ParcelInfoSheet';
 import { useCachedParcels } from '@/hooks/useCachedParcels';
+import { useI18n } from '@/lib/i18n';
 import type {
   MapEvent,
   ParcelMapData,
@@ -74,6 +75,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
   const queryClient = useQueryClient();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const { modalProps, showModal, hideModal } = useModal();
+  const { t } = useI18n();
   const mapRef = useRef<MapViewHandle>(null);
   const pendingRecenterRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
@@ -164,8 +166,8 @@ export function MapScreen({ focusId }: MapScreenProps) {
           if (opts.alertOnFailure) {
             showModal({
               type: 'warning',
-              title: 'Locație',
-              message: 'Activează permisiunea de locație pentru a te repoziționa pe hartă.',
+              title: t('map.mapScreen.location.title'),
+              message: t('map.mapScreen.location.permissionMessage'),
               onConfirm: hideModal,
             });
           }
@@ -190,8 +192,8 @@ export function MapScreen({ focusId }: MapScreenProps) {
         if (opts.alertOnFailure) {
           showModal({
             type: 'error',
-            title: 'Eroare',
-            message: 'Nu s-a putut obține locația curentă.',
+            title: t('map.mapScreen.error.locationTitle'),
+            message: t('map.mapScreen.error.locationMessage'),
             onConfirm: hideModal,
           });
         }
@@ -354,8 +356,8 @@ export function MapScreen({ focusId }: MapScreenProps) {
     if (!selectedItem || !userLocation) {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: 'Locația curentă nu este disponibilă.',
+        title: t('map.mapScreen.error.locationTitle'),
+        message: t('map.mapScreen.error.noCurrentLocation'),
         onConfirm: hideModal,
       });
       return;
@@ -363,8 +365,8 @@ export function MapScreen({ focusId }: MapScreenProps) {
     if (selectedItem.centroidLat == null || selectedItem.centroidLon == null) {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: 'Coordonatele destinației nu sunt disponibile.',
+        title: t('map.mapScreen.error.locationTitle'),
+        message: t('map.mapScreen.error.noDestinationCoords'),
         onConfirm: hideModal,
       });
       return;
@@ -404,8 +406,8 @@ export function MapScreen({ focusId }: MapScreenProps) {
       });
       showModal({
         type: 'confirm',
-        title: 'Info',
-        message: 'Ruta detaliată necesită internet. Se afișează linie directă.',
+        title: t('map.mapScreen.routeInfo.title'),
+        message: t('map.mapScreen.routeInfo.offlineMessage'),
         onConfirm: hideModal,
       });
     }
@@ -424,7 +426,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
       {parcelsFromCache && (
         <View style={[styles.offlineBanner, { top: 12 + insets.top }]} pointerEvents="none">
           <MaterialCommunityIcons name="database-off-outline" size={14} color="#5D4037" />
-          <Text style={styles.offlineBannerText}>Parcele din cache local (offline)</Text>
+          <Text style={styles.offlineBannerText}>{t('map.mapScreen.offlineBanner')}</Text>
         </View>
       )}
       {showOverlayControls && (
@@ -432,9 +434,9 @@ export function MapScreen({ focusId }: MapScreenProps) {
           style={[styles.resetFab, { top: 12 + insets.top }]}
           onPress={handleReset}
           accessibilityRole="button"
-          accessibilityLabel="Resetează harta"
+          accessibilityLabel={t('map.mapScreen.resetAccessibilityLabel')}
         >
-          <Text style={styles.resetFabText}>Reset</Text>
+          <Text style={styles.resetFabText}>{t('map.mapScreen.reset')}</Text>
         </TouchableOpacity>
       )}
       {selectedItem && (
@@ -453,7 +455,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
         onPress={() => void fetchAndCenterUser({ alertOnFailure: true, showProgress: true })}
         activeOpacity={0.85}
         accessibilityRole="button"
-        accessibilityLabel="Recentrare pe locația mea"
+        accessibilityLabel={t('map.mapScreen.recenterAccessibilityLabel')}
         disabled={locating}
       >
         {locating ? (

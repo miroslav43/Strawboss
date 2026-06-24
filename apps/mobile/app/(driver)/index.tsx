@@ -22,6 +22,7 @@ import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { colors, radii } from '@strawboss/ui-tokens';
 import { useTheme } from '@/lib/theme';
+import { useI18n } from '@/lib/i18n';
 
 const STATUS_COLORS: Record<string, string> = {
   planned: '#1565C0',
@@ -34,17 +35,6 @@ const STATUS_COLORS: Record<string, string> = {
   completed: '#5D4037',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  planned: 'Planificat',
-  loading: 'Se încarcă',
-  loaded: 'Încărcat',
-  in_transit: 'În drum',
-  arrived: 'Sosit',
-  delivering: 'Se livrează',
-  delivered: 'Livrat',
-  completed: 'Finalizat',
-};
-
 // Task assignment statuses are a separate enum from trip statuses.
 const TASK_STATUS_COLORS: Record<string, string> = {
   available: '#1565C0',
@@ -52,15 +42,10 @@ const TASK_STATUS_COLORS: Record<string, string> = {
   done: '#2E7D32',
 };
 
-const TASK_STATUS_LABELS: Record<string, string> = {
-  available: 'De început',
-  in_progress: 'În lucru',
-  done: 'Finalizat',
-};
-
 // ---- Main screen ------------------------------------------------------------
 
 export default function DriverTripsScreen() {
+  const { t } = useI18n();
   const { colors: themeColors } = useTheme();
   const userId = useAuthStore((s) => s.userId);
   const { tasks, refetch: refetchTasks } = useMyTasks();
@@ -132,7 +117,7 @@ export default function DriverTripsScreen() {
   return (
     <View style={styles.outerContainer}>
       <ScreenHeader
-        title="Cursele Mele"
+        title={t('driver.screenTitle.myTrips')}
         right={
           <View style={styles.headerRightGroup}>
             <ConnectionStatusBadge />
@@ -158,10 +143,10 @@ export default function DriverTripsScreen() {
               <View style={[styles.infoCard, { backgroundColor: themeColors.white }]}>
                 <View style={styles.infoCardHeader}>
                   <MaterialCommunityIcons name="excavator" size={18} color="#0A5C36" />
-                  <Text style={styles.infoCardTitle}>Loadere active</Text>
+                  <Text style={styles.infoCardTitle}>{t('driver.card.activeLoaders')}</Text>
                 </View>
                 {(nearbyLoaders ?? []).length === 0 ? (
-                  <Text style={styles.infoCardEmpty}>Niciun loader în apropiere.</Text>
+                  <Text style={styles.infoCardEmpty}>{t('driver.card.noNearbyLoader')}</Text>
                 ) : (
                   (nearbyLoaders ?? []).map((loader) => (
                     <View key={loader.id} style={styles.loaderRow}>
@@ -191,7 +176,7 @@ export default function DriverTripsScreen() {
                 >
                   <View style={styles.infoCardHeader}>
                     <MaterialCommunityIcons name="clipboard-list" size={18} color="#0A5C36" />
-                    <Text style={styles.infoCardTitle}>Sarcina de azi</Text>
+                    <Text style={styles.infoCardTitle}>{t('driver.card.todayTask')}</Text>
                     {activeTrip && (
                       <MaterialCommunityIcons
                         name="chevron-right"
@@ -223,10 +208,13 @@ export default function DriverTripsScreen() {
                       ]}
                     >
                       <Text style={styles.taskStatusText}>
-                        {TASK_STATUS_LABELS[activeTodayTask.status] ?? activeTodayTask.status}
+                        {t('driver.taskStatusLabel.' + activeTodayTask.status) ||
+                          activeTodayTask.status}
                       </Text>
                     </View>
-                    {!activeTrip && <Text style={styles.taskNoTrip}>Cursa nu a început încă</Text>}
+                    {!activeTrip && (
+                      <Text style={styles.taskNoTrip}>{t('driver.card.tripNotStarted')}</Text>
+                    )}
                   </View>
                 </TouchableOpacity>
               ) : null}
@@ -247,10 +235,12 @@ export default function DriverTripsScreen() {
                   <View style={styles.cardHeaderLeft}>
                     {isFresh && (
                       <View style={styles.newBadge}>
-                        <Text style={styles.newBadgeText}>NOU</Text>
+                        <Text style={styles.newBadgeText}>{t('driver.badge.new')}</Text>
                       </View>
                     )}
-                    <Text style={styles.tripNumber}>{item.trip_number ?? 'Cursă'}</Text>
+                    <Text style={styles.tripNumber}>
+                      {item.trip_number ?? t('driver.trip.fallbackName')}
+                    </Text>
                   </View>
                   <View
                     style={[
@@ -259,7 +249,7 @@ export default function DriverTripsScreen() {
                     ]}
                   >
                     <Text style={styles.badgeText}>
-                      {STATUS_LABELS[item.status] ?? item.status}
+                      {t('driver.statusLabel.' + item.status) || item.status}
                     </Text>
                   </View>
                 </View>
@@ -276,20 +266,27 @@ export default function DriverTripsScreen() {
                 <View style={styles.meta}>
                   <View style={styles.inlineRow}>
                     <MaterialCommunityIcons name="grain" size={13} color="#8D6E63" />
-                    <Text style={styles.metaText}>{item.bale_count} baloți</Text>
+                    <Text style={styles.metaText}>
+                      {item.bale_count} {t('driver.trip.baleCount')}
+                    </Text>
                   </View>
                   {/* @plan-c:iteration-counter @start */}
                   {item.iteration_index && item.iteration_index > 1 ? (
                     <View style={styles.planCIterationBadge}>
-                      <Text style={styles.planCIterationText}>Cursa {item.iteration_index}</Text>
+                      <Text style={styles.planCIterationText}>
+                        {t('driver.trip.iterationLabel').replace(
+                          '{n}',
+                          String(item.iteration_index),
+                        )}
+                      </Text>
                     </View>
                   ) : null}
                   {/* @plan-c:iteration-counter @end */}
                   {item.status === 'arrived' && (
-                    <Text style={styles.deliveryHint}>Apasă pentru livrare</Text>
+                    <Text style={styles.deliveryHint}>{t('driver.hint.tapToDeliver')}</Text>
                   )}
                   {item.status === 'loaded' && (
-                    <Text style={styles.loadedHint}>Apasă pentru plecare</Text>
+                    <Text style={styles.loadedHint}>{t('driver.hint.tapToDepart')}</Text>
                   )}
                   {/* @plan-a:open-maps-button-slot */}
                   <OpenMapsToLoaderButton
@@ -306,8 +303,8 @@ export default function DriverTripsScreen() {
           }}
           ListEmptyComponent={
             <View style={styles.centered}>
-              <Text style={styles.emptyText}>Nicio cursă activă.</Text>
-              <Text style={styles.emptySubtext}>Cursele asignate vor apărea aici.</Text>
+              <Text style={styles.emptyText}>{t('driver.empty.noActiveTrips')}</Text>
+              <Text style={styles.emptySubtext}>{t('driver.empty.assignedTripsHint')}</Text>
             </View>
           }
         />

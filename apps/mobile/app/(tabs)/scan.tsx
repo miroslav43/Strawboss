@@ -7,6 +7,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { scale } from '@/utils/responsive';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 const FRAME_SIZE = Math.min(scale(250), 280);
 
@@ -14,6 +15,7 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const router = useRouter();
+  const { t } = useI18n();
   const { modalProps, showModal, hideModal } = useModal();
 
   const handleBarCodeScanned = ({ data }: { data: string }) => {
@@ -38,8 +40,8 @@ export default function ScanScreen() {
     if (data.length > 0) {
       showModal({
         type: 'confirm',
-        title: 'Scanned',
-        message: `Code: ${data}`,
+        title: t('tabs.scan.scannedTitle'),
+        message: t('tabs.scan.scannedMessage', { data }),
         onConfirm: () => {
           setScanned(false);
           hideModal();
@@ -53,7 +55,7 @@ export default function ScanScreen() {
   if (!permission) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.message}>Requesting camera permission...</Text>
+        <Text style={styles.message}>{t('tabs.scan.requestingPermission')}</Text>
       </SafeAreaView>
     );
   }
@@ -62,9 +64,9 @@ export default function ScanScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.permissionContainer}>
-          <Text style={styles.message}>Camera access is required to scan QR codes</Text>
+          <Text style={styles.message}>{t('tabs.scan.permissionRequired')}</Text>
           <TouchableOpacity style={styles.button} onPress={requestPermission}>
-            <Text style={styles.buttonText}>Grant Permission</Text>
+            <Text style={styles.buttonText}>{t('tabs.scan.grantPermission')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -82,13 +84,13 @@ export default function ScanScreen() {
           />
           <View style={styles.overlay}>
             <View style={[styles.scanFrame, { width: FRAME_SIZE, height: FRAME_SIZE }]} />
-            <Text style={styles.scanText}>Point camera at a StrawBoss QR code</Text>
+            <Text style={styles.scanText}>{t('tabs.scan.instruction')}</Text>
           </View>
         </View>
 
         {scanned && (
           <TouchableOpacity style={styles.rescanButton} onPress={() => setScanned(false)}>
-            <Text style={styles.buttonText}>Scan Again</Text>
+            <Text style={styles.buttonText}>{t('tabs.scan.scanAgain')}</Text>
           </TouchableOpacity>
         )}
       </SafeAreaView>

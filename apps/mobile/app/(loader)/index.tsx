@@ -25,6 +25,7 @@ import { useLoaderRecallPrompt } from '@/hooks/useLoaderRecallPrompt';
 import { colors, radii } from '@strawboss/ui-tokens';
 import type { TruckAtLoader } from '@strawboss/api';
 import { useTheme } from '@/lib/theme';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * Loader home: never asks the operator to pick a field on first load.
@@ -35,6 +36,7 @@ import { useTheme } from '@/lib/theme';
  */
 export default function LoaderHomeScreen() {
   const { colors: themeColors } = useTheme();
+  const { t } = useI18n();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const parcel = useCurrentLoaderParcel();
   const trucks = useTrucksAtLoader({ pollMs: 10_000 });
@@ -79,7 +81,7 @@ export default function LoaderHomeScreen() {
   return (
     <View style={styles.outer}>
       <ScreenHeader
-        title="Camioane"
+        title={t('loader.home.screenTitle')}
         right={
           <View style={styles.headerRight}>
             <ConnectionStatusBadge />
@@ -103,9 +105,9 @@ export default function LoaderHomeScreen() {
             unread loader_recall_prompt push exists. */}
         {recall.prompt ? (
           <View style={recallStyles.card}>
-            <Text style={recallStyles.title}>Camion descărcat</Text>
+            <Text style={recallStyles.title}>{t('loader.home.recallTitle')}</Text>
             <Text style={recallStyles.body}>
-              Camionul {recall.prompt.truckCode} a descărcat cursa. Îl chemi înapoi?
+              {t('loader.home.recallBody', { truckCode: recall.prompt.truckCode })}
             </Text>
             <View style={recallStyles.actions}>
               <TouchableOpacity
@@ -114,7 +116,7 @@ export default function LoaderHomeScreen() {
                 disabled={recall.pending}
               >
                 <Text style={recallStyles.btnPrimaryText}>
-                  {recall.pending ? '...' : 'Cheamă înapoi'}
+                  {recall.pending ? '...' : t('loader.home.recallConfirm')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -122,7 +124,7 @@ export default function LoaderHomeScreen() {
                 onPress={() => void recall.respond(false)}
                 disabled={recall.pending}
               >
-                <Text style={recallStyles.btnSecondaryText}>Nu chema</Text>
+                <Text style={recallStyles.btnSecondaryText}>{t('loader.home.recallDecline')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -131,7 +133,7 @@ export default function LoaderHomeScreen() {
         <ActiveFieldCard parcel={parcel} onOpenParcel={openParcel} />
 
         <View style={styles.trucksHeader}>
-          <Text style={styles.sectionTitle}>Camioane la loader</Text>
+          <Text style={styles.sectionTitle}>{t('loader.home.sectionTrucksAtLoader')}</Text>
           {trucks.isFetching && !trucks.isLoading ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : null}
@@ -140,23 +142,23 @@ export default function LoaderHomeScreen() {
         {!assignedMachineId ? (
           <EmptyCard
             icon="alert-circle-outline"
-            title="Nu ai loader asignat"
-            subtitle="Cere administratorului să-ți aloce un loader."
+            title={t('loader.home.noLoaderAssignedTitle')}
+            subtitle={t('loader.home.noLoaderAssignedSubtitle')}
           />
         ) : trucks.isLoading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loadingText}>Caut camioane...</Text>
+            <Text style={styles.loadingText}>{t('loader.home.searchingTrucks')}</Text>
           </View>
         ) : (trucks.data ?? []).length === 0 ? (
           <EmptyCard
             icon="truck-outline"
-            title="Niciun camion în apropiere"
-            subtitle="Lista se actualizează automat la fiecare 10 secunde. Când un camion se apropie, apare aici."
+            title={t('loader.home.noTrucksNearbyTitle')}
+            subtitle={t('loader.home.noTrucksNearbySubtitle')}
           />
         ) : (
           (trucks.data ?? []).map((truck) => (
-            <TruckCard key={truck.id} truck={truck} onPress={() => goToLoad(truck.id)} />
+            <TruckCard key={truck.id} truck={truck} onPress={() => goToLoad(truck.id)} t={t} />
           ))
         )}
 
@@ -164,7 +166,7 @@ export default function LoaderHomeScreen() {
         {assignedMachineId ? (
           <>
             <View style={styles.trucksHeader}>
-              <Text style={styles.sectionTitle}>Camioane auxiliare</Text>
+              <Text style={styles.sectionTitle}>{t('loader.home.sectionAuxTrucks')}</Text>
               {auxTrips.isFetching && !auxTrips.isLoading ? (
                 <ActivityIndicator size="small" color={colors.primary} />
               ) : null}
@@ -173,17 +175,17 @@ export default function LoaderHomeScreen() {
             {auxTrips.isLoading ? (
               <View style={styles.loadingRow}>
                 <ActivityIndicator color={colors.primary} />
-                <Text style={styles.loadingText}>Caut camioane auxiliare...</Text>
+                <Text style={styles.loadingText}>{t('loader.home.searchingAuxTrucks')}</Text>
               </View>
             ) : (auxTrips.data ?? []).length === 0 ? (
               <EmptyCard
                 icon="truck-plus-outline"
-                title="Niciun camion auxiliar"
-                subtitle="Camioanele auxiliare atribuite de dispecer apar aici, indiferent de distanță."
+                title={t('loader.home.noAuxTrucksTitle')}
+                subtitle={t('loader.home.noAuxTrucksSubtitle')}
               />
             ) : (
               (auxTrips.data ?? []).map((trip) => (
-                <AuxTruckCard key={trip.id} trip={trip} onPress={() => goToAuxLoad(trip)} />
+                <AuxTruckCard key={trip.id} trip={trip} onPress={() => goToAuxLoad(trip)} t={t} />
               ))
             )}
           </>
@@ -197,8 +199,17 @@ export default function LoaderHomeScreen() {
 
 // ─── TruckCard / EmptyCard ────────────────────────────────────────────────────
 
-function TruckCard({ truck, onPress }: { truck: TruckAtLoader; onPress: () => void }) {
-  const label = truck.registrationPlate ?? truck.internalCode ?? 'Camion';
+function TruckCard({
+  truck,
+  onPress,
+  t,
+}: {
+  truck: TruckAtLoader;
+  onPress: () => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const label =
+    truck.registrationPlate ?? truck.internalCode ?? t('loader.home.truckFallbackLabel');
   const distance = truck.distanceM != null ? `${Math.round(truck.distanceM)} m` : '?';
   const isLoaded = truck.loadState === 'loaded';
   return (
@@ -216,7 +227,9 @@ function TruckCard({ truck, onPress }: { truck: TruckAtLoader; onPress: () => vo
               {truck.driverName}
             </Text>
           ) : null}
-          <Text style={styles.truckDistance}>la {distance}</Text>
+          <Text style={styles.truckDistance}>
+            {t('loader.home.truckDistancePrefix', { distance })}
+          </Text>
         </View>
         {/* Loaded / ready-to-load badge, in line with the truck row. */}
         <View style={[styles.loadBadge, isLoaded ? styles.loadBadgeLoaded : styles.loadBadgeEmpty]}>
@@ -232,7 +245,7 @@ function TruckCard({ truck, onPress }: { truck: TruckAtLoader; onPress: () => vo
               isLoaded ? styles.loadBadgeTextLoaded : styles.loadBadgeTextEmpty,
             ]}
           >
-            {isLoaded ? 'Încărcat' : 'Pregătit de încărcare'}
+            {isLoaded ? t('loader.home.badgeLoaded') : t('loader.home.badgeReadyToLoad')}
           </Text>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={28} color={colors.tertiary} />
@@ -259,8 +272,16 @@ function EmptyCard({
   );
 }
 
-function AuxTruckCard({ trip, onPress }: { trip: AuxiliaryTrip; onPress?: () => void }) {
-  const label = trip.truckPlate ?? trip.truckCode ?? 'Camion auxiliar';
+function AuxTruckCard({
+  trip,
+  onPress,
+  t,
+}: {
+  trip: AuxiliaryTrip;
+  onPress?: () => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const label = trip.truckPlate ?? trip.truckCode ?? t('loader.home.auxTruckFallbackLabel');
   const parcelLine = [trip.sourceParcelName, trip.sourceParcelMunicipality]
     .filter(Boolean)
     .join(', ');
@@ -301,10 +322,14 @@ function AuxTruckCard({ trip, onPress }: { trip: AuxiliaryTrip; onPress?: () => 
           {trip.cropType ? (
             <Text style={auxStyles.metaLine} numberOfLines={1} ellipsizeMode="tail">
               {trip.cropType}
-              {trip.baleCount != null ? `  ·  ${trip.baleCount} baloți` : ''}
+              {trip.baleCount != null
+                ? `  ·  ${t('loader.home.baleCountSuffix', { count: trip.baleCount })}`
+                : ''}
             </Text>
           ) : trip.baleCount != null ? (
-            <Text style={auxStyles.metaLine}>{trip.baleCount} baloți</Text>
+            <Text style={auxStyles.metaLine}>
+              {t('loader.home.baleCountSuffix', { count: trip.baleCount })}
+            </Text>
           ) : null}
         </View>
         {!disabled ? (

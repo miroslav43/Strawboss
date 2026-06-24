@@ -5,6 +5,7 @@ import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { getDatabase } from '@/lib/storage';
 import { todayInRomania, addDays, startOfDayRomaniaISO } from '@/lib/date';
+import { useI18n } from '@/lib/i18n';
 
 interface OperatorStatsProps {
   operatorId: string;
@@ -109,6 +110,7 @@ async function loadTodayStats(operatorId: string, role: string): Promise<TodaySt
 }
 
 export function OperatorStats({ operatorId, role }: OperatorStatsProps) {
+  const { t } = useI18n();
   const { data, isLoading, error } = useQuery({
     queryKey: operatorStatsQueryKey(operatorId),
     queryFn: () => loadTodayStats(operatorId, role),
@@ -138,23 +140,35 @@ export function OperatorStats({ operatorId, role }: OperatorStatsProps) {
       {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>
-            {error instanceof Error ? error.message : 'Nu s-au putut încărca statisticile'}
+            {error instanceof Error ? error.message : t('stats.operator.error.loadFailed')}
           </Text>
         </View>
       ) : null}
 
       {stats.totalBalesProduced !== undefined && (
-        <StatCard label="Baloți produși azi" value={stats.totalBalesProduced} unit="buc" />
+        <StatCard
+          label={t('stats.operator.balesProduced')}
+          value={stats.totalBalesProduced}
+          unit="buc"
+        />
       )}
       {stats.totalBalesTransported !== undefined && (
-        <StatCard label="Baloți transportați azi" value={stats.totalBalesTransported} unit="buc" />
+        <StatCard
+          label={t('stats.operator.balesTransported')}
+          value={stats.totalBalesTransported}
+          unit="buc"
+        />
       )}
       {stats.totalBalesLoaded !== undefined && (
-        <StatCard label="Baloți încărcați azi" value={stats.totalBalesLoaded} unit="buc" />
+        <StatCard
+          label={t('stats.operator.balesLoaded')}
+          value={stats.totalBalesLoaded}
+          unit="buc"
+        />
       )}
-      <StatCard label="Motorină azi" value={stats.totalFuelLiters} unit="L" />
+      <StatCard label={t('stats.operator.fuel')} value={stats.totalFuelLiters} unit="L" />
       {stats.totalTwineKg !== undefined && (
-        <StatCard label="Sfoară azi" value={stats.totalTwineKg} unit="kg" />
+        <StatCard label={t('stats.operator.twine')} value={stats.totalTwineKg} unit="kg" />
       )}
     </View>
   );

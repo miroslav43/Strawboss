@@ -1184,7 +1184,8 @@
       "pinServerGen": "server-generated (4 digits)",
       "accessSection": "Account access",
       "isActiveLabel": "Account active",
-      "isActiveHint": "When disabled, the user cannot log in. The account stays in the list and can be reactivated."
+      "isActiveHint": "When disabled, the user cannot log in. The account stays in the list and can be reactivated.",
+      "language": "App language"
     },
     "avatar": {
       "uploading": "Uploading...",

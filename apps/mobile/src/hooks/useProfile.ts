@@ -24,6 +24,8 @@ export function useProfile() {
         assignedMachineId: query.data.assignedMachineId ?? null,
         assignedDeliveryDestinationId: query.data.assignedDeliveryDestinationId ?? null,
         signatureSpecimenUrl: query.data.signatureSpecimenUrl ?? null,
+        locale:
+          ((query.data as unknown as Record<string, unknown>).locale as string | null) ?? null,
       });
     }
   }, [query.data, setProfile]);

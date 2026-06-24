@@ -26,6 +26,7 @@ import { colors } from '@strawboss/ui-tokens';
 import { useAuthStore } from '@/stores/auth-store';
 import { useTodayActivity, type ActivityEntry } from '@/hooks/useTodayActivity';
 import { todayInRomania } from '@/lib/date';
+import { useI18n } from '@/lib/i18n';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -57,17 +58,6 @@ function kindIcon(kind: ActivityEntry['kind']): string {
   }
 }
 
-function syncBadge(status: ActivityEntry['syncStatus']): string {
-  switch (status) {
-    case 'synced':
-      return 'sincronizat ✓';
-    case 'pending':
-      return 'în așteptare';
-    case 'failed':
-      return 'eșuat ✗';
-  }
-}
-
 function syncBadgeColor(status: ActivityEntry['syncStatus']): string {
   switch (status) {
     case 'synced':
@@ -81,7 +71,29 @@ function syncBadgeColor(status: ActivityEntry['syncStatus']): string {
 
 // ── PDF HTML template ──────────────────────────────────────────────────────
 
-function buildHtml(entries: ActivityEntry[], today: string): string {
+function buildHtml(
+  entries: ActivityEntry[],
+  today: string,
+  labels: {
+    title: string;
+    noRecords: string;
+    balesProduced: string;
+    fuelFilled: string;
+    baleLoads: string;
+    consumablesLogged: string;
+    sectionProduction: string;
+    sectionFuel: string;
+    sectionLoads: string;
+    sectionConsumables: string;
+    colTime: string;
+    colQuantity: string;
+    colDetails: string;
+    colSync: string;
+    syncSynced: string;
+    syncPending: string;
+    syncFailed: string;
+  },
+): string {
   const productions = entries.filter((e) => e.kind === 'production');
   const fuels = entries.filter((e) => e.kind === 'fuel');
   const consumables = entries.filter((e) => e.kind === 'consumable');
@@ -97,16 +109,27 @@ function buildHtml(entries: ActivityEntry[], today: string): string {
     return sum + (match ? parseFloat(match[1]) : 0);
   }, 0);
 
+  const syncLabel = (status: ActivityEntry['syncStatus']) => {
+    switch (status) {
+      case 'synced':
+        return labels.syncSynced;
+      case 'pending':
+        return labels.syncPending;
+      case 'failed':
+        return labels.syncFailed;
+    }
+  };
+
   const renderRows = (list: ActivityEntry[]): string =>
     list.length === 0
-      ? '<tr><td colspan="3" style="color:#9E9E9E;font-style:italic;padding:8px 0;">Nicio înregistrare</td></tr>'
+      ? `<tr><td colspan="3" style="color:#9E9E9E;font-style:italic;padding:8px 0;">${labels.noRecords}</td></tr>`
       : list
           .map(
             (e) => `
     <tr>
       <td style="padding:6px 4px;font-size:13px;">${formatDate(e.timestamp)}</td>
       <td style="padding:6px 4px;font-size:13px;">${e.detail}</td>
-      <td style="padding:6px 4px;font-size:12px;color:${syncBadgeColor(e.syncStatus)};">${syncBadge(e.syncStatus)}</td>
+      <td style="padding:6px 4px;font-size:12px;color:${syncBadgeColor(e.syncStatus)};">${syncLabel(e.syncStatus)}</td>
     </tr>`,
           )
           .join('');
@@ -116,7 +139,7 @@ function buildHtml(entries: ActivityEntry[], today: string): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Raport zilnic — ${today}</title>
+  <title>${labels.title} — ${today}</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 24px; color: #212121; }
     h1 { color: #0A5C36; font-size: 22px; margin-bottom: 4px; }
@@ -134,33 +157,33 @@ function buildHtml(entries: ActivityEntry[], today: string): string {
   </style>
 </head>
 <body>
-  <h1>StrawBoss — Raport zilnic</h1>
+  <h1>${labels.title}</h1>
   <p class="subtitle">Data: ${today} &nbsp;·&nbsp; Generat la: ${new Date().toLocaleString('ro-RO')}</p>
 
   <div class="kpi-row">
     <div class="kpi">
       <div class="kpi-value">${totalBales}</div>
-      <div class="kpi-label">Baloți produși</div>
+      <div class="kpi-label">${labels.balesProduced}</div>
     </div>
     <div class="kpi">
       <div class="kpi-value">${totalFuelL.toFixed(1)} L</div>
-      <div class="kpi-label">Combustibil alimentat</div>
+      <div class="kpi-label">${labels.fuelFilled}</div>
     </div>
     <div class="kpi">
       <div class="kpi-value">${loads.length}</div>
-      <div class="kpi-label">Încărcări baloți</div>
+      <div class="kpi-label">${labels.baleLoads}</div>
     </div>
     <div class="kpi">
       <div class="kpi-value">${consumables.length}</div>
-      <div class="kpi-label">Consumabile înregistrate</div>
+      <div class="kpi-label">${labels.consumablesLogged}</div>
     </div>
   </div>
 
   ${
     productions.length > 0
       ? `<div class="section">
-    <div class="section-title">🌾 Producție baloți</div>
-    <table><thead><tr><th>Oră</th><th>Cantitate</th><th>Sync</th></tr></thead>
+    <div class="section-title">🌾 ${labels.sectionProduction}</div>
+    <table><thead><tr><th>${labels.colTime}</th><th>${labels.colQuantity}</th><th>${labels.colSync}</th></tr></thead>
     <tbody>${renderRows(productions)}</tbody></table>
   </div>`
       : ''
@@ -169,8 +192,8 @@ function buildHtml(entries: ActivityEntry[], today: string): string {
   ${
     fuels.length > 0
       ? `<div class="section">
-    <div class="section-title">⛽ Combustibil</div>
-    <table><thead><tr><th>Oră</th><th>Cantitate</th><th>Sync</th></tr></thead>
+    <div class="section-title">⛽ ${labels.sectionFuel}</div>
+    <table><thead><tr><th>${labels.colTime}</th><th>${labels.colQuantity}</th><th>${labels.colSync}</th></tr></thead>
     <tbody>${renderRows(fuels)}</tbody></table>
   </div>`
       : ''
@@ -179,8 +202,8 @@ function buildHtml(entries: ActivityEntry[], today: string): string {
   ${
     loads.length > 0
       ? `<div class="section">
-    <div class="section-title">🚛 Încărcări baloți</div>
-    <table><thead><tr><th>Oră</th><th>Cantitate</th><th>Sync</th></tr></thead>
+    <div class="section-title">🚛 ${labels.sectionLoads}</div>
+    <table><thead><tr><th>${labels.colTime}</th><th>${labels.colQuantity}</th><th>${labels.colSync}</th></tr></thead>
     <tbody>${renderRows(loads)}</tbody></table>
   </div>`
       : ''
@@ -189,8 +212,8 @@ function buildHtml(entries: ActivityEntry[], today: string): string {
   ${
     consumables.length > 0
       ? `<div class="section">
-    <div class="section-title">📦 Consumabile</div>
-    <table><thead><tr><th>Oră</th><th>Detalii</th><th>Sync</th></tr></thead>
+    <div class="section-title">📦 ${labels.sectionConsumables}</div>
+    <table><thead><tr><th>${labels.colTime}</th><th>${labels.colDetails}</th><th>${labels.colSync}</th></tr></thead>
     <tbody>${renderRows(consumables)}</tbody></table>
   </div>`
       : ''
@@ -205,6 +228,7 @@ function buildHtml(entries: ActivityEntry[], today: string): string {
 
 export default function DailyReportScreen() {
   const router = useRouter();
+  const { t } = useI18n();
   const userId = useAuthStore((s) => s.userId);
   const today = todayInRomania();
 
@@ -216,18 +240,47 @@ export default function DailyReportScreen() {
     setExporting(true);
     setExportError(null);
     try {
-      const html = buildHtml(entries, today);
+      const html = buildHtml(entries, today, {
+        title: t('dailyReport.pdf.title'),
+        noRecords: t('dailyReport.pdf.noRecords'),
+        balesProduced: t('dailyReport.pdf.kpi.balesProduced'),
+        fuelFilled: t('dailyReport.pdf.kpi.fuelFilled'),
+        baleLoads: t('dailyReport.pdf.kpi.baleLoads'),
+        consumablesLogged: t('dailyReport.pdf.kpi.consumablesLogged'),
+        sectionProduction: t('dailyReport.pdf.section.production'),
+        sectionFuel: t('dailyReport.pdf.section.fuel'),
+        sectionLoads: t('dailyReport.pdf.section.loads'),
+        sectionConsumables: t('dailyReport.pdf.section.consumables'),
+        colTime: t('dailyReport.pdf.col.time'),
+        colQuantity: t('dailyReport.pdf.col.quantity'),
+        colDetails: t('dailyReport.pdf.col.details'),
+        colSync: t('dailyReport.pdf.col.sync'),
+        syncSynced: t('dailyReport.syncStatus.synced'),
+        syncPending: t('dailyReport.syncStatus.pending'),
+        syncFailed: t('dailyReport.syncStatus.failed'),
+      });
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
-        dialogTitle: `Raport zilnic StrawBoss — ${today}`,
+        dialogTitle: t('dailyReport.shareDialogTitle', { date: today }),
       });
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Nu s-a putut genera PDF-ul.');
+      setExportError(err instanceof Error ? err.message : t('dailyReport.exportErrorFallback'));
     } finally {
       setExporting(false);
     }
-  }, [entries, today]);
+  }, [entries, today, t]);
+
+  const syncBadge = (status: ActivityEntry['syncStatus']): string => {
+    switch (status) {
+      case 'synced':
+        return t('dailyReport.syncStatus.synced');
+      case 'pending':
+        return t('dailyReport.syncStatus.pending');
+      case 'failed':
+        return t('dailyReport.syncStatus.failed');
+    }
+  };
 
   const productions = entries.filter((e) => e.kind === 'production');
   const fuels = entries.filter((e) => e.kind === 'fuel');
@@ -242,12 +295,12 @@ export default function DailyReportScreen() {
           onPress={() => router.back()}
           style={styles.backBtn}
           accessibilityRole="button"
-          accessibilityLabel="Înapoi"
+          accessibilityLabel={t('dailyReport.backAccessibility')}
         >
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.white} />
         </TouchableOpacity>
         <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>Raport zilnic</Text>
+          <Text style={styles.headerTitle}>{t('dailyReport.headerTitle')}</Text>
           <Text style={styles.headerDate}>{today}</Text>
         </View>
       </View>
@@ -256,7 +309,7 @@ export default function DailyReportScreen() {
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Se încarcă activitatea...</Text>
+            <Text style={styles.loadingText}>{t('dailyReport.loadingText')}</Text>
           </View>
         ) : error ? (
           <View style={styles.centered}>
@@ -267,13 +320,13 @@ export default function DailyReportScreen() {
               onPress={() => void refresh()}
               activeOpacity={0.8}
             >
-              <Text style={styles.retryBtnText}>Reîncearcă</Text>
+              <Text style={styles.retryBtnText}>{t('dailyReport.retryButton')}</Text>
             </TouchableOpacity>
           </View>
         ) : entries.length === 0 ? (
           <View style={styles.centered}>
             <MaterialCommunityIcons name="calendar-blank-outline" size={48} color="#BDBDBD" />
-            <Text style={styles.emptyText}>Nicio activitate înregistrată astăzi.</Text>
+            <Text style={styles.emptyText}>{t('dailyReport.emptyText')}</Text>
           </View>
         ) : (
           <>
@@ -282,18 +335,22 @@ export default function DailyReportScreen() {
               <KpiCard
                 icon="barley"
                 value={String(productions.reduce((s, e) => s + parseCount(e.detail), 0))}
-                label="Baloți produși"
+                label={t('dailyReport.kpi.bales')}
               />
               <KpiCard
                 icon="gas-station"
                 value={`${fuels.reduce((s, e) => s + parseCount(e.detail), 0).toFixed(0)} L`}
-                label="Combustibil"
+                label={t('dailyReport.kpi.fuel')}
               />
-              <KpiCard icon="truck" value={String(loads.length)} label="Încărcări" />
+              <KpiCard
+                icon="truck"
+                value={String(loads.length)}
+                label={t('dailyReport.kpi.loads')}
+              />
               <KpiCard
                 icon="package-variant"
                 value={String(consumables.length)}
-                label="Consumabile"
+                label={t('dailyReport.kpi.consumables')}
               />
             </View>
 
@@ -328,14 +385,14 @@ export default function DailyReportScreen() {
           disabled={exporting || entries.length === 0}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Exportă PDF"
+          accessibilityLabel={t('dailyReport.exportButtonAccessibility')}
         >
           {exporting ? (
             <ActivityIndicator color={colors.white} size="small" />
           ) : (
             <>
               <MaterialCommunityIcons name="file-pdf-box" size={22} color={colors.white} />
-              <Text style={styles.exportBtnText}>Exportă PDF</Text>
+              <Text style={styles.exportBtnText}>{t('dailyReport.exportButton')}</Text>
             </>
           )}
         </TouchableOpacity>

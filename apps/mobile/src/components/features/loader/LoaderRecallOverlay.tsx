@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BigButton } from '@/components/ui/BigButton';
 import type { LoaderRecallPromptState } from '@/hooks/useLoaderRecallPrompt';
+import { useI18n } from '@/lib/i18n';
 
 interface LoaderRecallOverlayProps {
   prompt: LoaderRecallPromptState | null;
@@ -23,6 +24,7 @@ interface LoaderRecallOverlayProps {
  * `GeofenceOverlay`. Mirrors the bottom-sheet modal pattern of GeofenceOverlay.
  */
 export function LoaderRecallOverlay({ prompt, pending, onRespond }: LoaderRecallOverlayProps) {
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
 
   if (!prompt) return null;
@@ -34,19 +36,20 @@ export function LoaderRecallOverlay({ prompt, pending, onRespond }: LoaderRecall
 
         <MaterialCommunityIcons name="truck-check" size={48} color="#0A5C36" />
         <Text style={styles.modalTitle}>
-          Camion descărcat{'\n'}
+          {t('loader.recallOverlay.title')}
+          {'\n'}
           <Text style={styles.modalTruckCode}>{prompt.truckCode}</Text>
         </Text>
-        <Text style={styles.modalSubtitle}>Îl chemi înapoi pentru încă o cursă?</Text>
+        <Text style={styles.modalSubtitle}>{t('loader.recallOverlay.question')}</Text>
 
         <View style={styles.modalActions}>
           <BigButton
-            title="Da, cheamă-l înapoi"
+            title={t('loader.recallOverlay.action.yes')}
             onPress={() => onRespond(true)}
             loading={pending}
           />
           <BigButton
-            title="Nu"
+            title={t('loader.recallOverlay.action.no')}
             variant="outline"
             onPress={() => onRespond(false)}
             disabled={pending}

@@ -34,6 +34,7 @@ import { colors, radii } from '@strawboss/ui-tokens';
 import { mobileLogger } from '@/lib/logger';
 import { mobileApiClient } from '@/lib/api-client';
 import type { TripTransitionPayload } from '@/sync/push';
+import { useI18n } from '@/lib/i18n';
 
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -45,6 +46,7 @@ export default function TripDetailScreen() {
   const { data: relatedMachines } = useRelatedMachines();
   // Only the driver runs the trip workflow. Loaders, balers and others reach
   // this screen via a notification and may only watch the trip's progress.
+  const { t } = useI18n();
   const isDriver = useAuthStore((s) => s.role) === 'driver';
   const [trip, setTrip] = useState<LocalTrip | null>(null);
   const [loading, setLoading] = useState(true);
@@ -131,7 +133,10 @@ export default function TripDetailScreen() {
           destinationId,
           err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
         });
-        Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu am putut salva depozitul.');
+        Alert.alert(
+          t('tripDetail.alert.error.title'),
+          err instanceof Error ? err.message : t('tripDetail.alert.error.saveDepot'),
+        );
       } finally {
         setActionLoading(false);
       }
@@ -159,7 +164,10 @@ export default function TripDetailScreen() {
         tripId: trip.id,
         err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
-      Alert.alert('Eroare', err instanceof Error ? err.message : 'Nu am putut marca sosirea.');
+      Alert.alert(
+        t('tripDetail.alert.error.title'),
+        err instanceof Error ? err.message : t('tripDetail.alert.error.arrive'),
+      );
     } finally {
       setActionLoading(false);
     }
@@ -168,11 +176,11 @@ export default function TripDetailScreen() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Cursă" onBack={() => router.back()} />
+        <ScreenHeader title={t('tripDetail.screenTitle.fallback')} onBack={() => router.back()} />
         <View style={styles.body}>
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Se încarcă...</Text>
+            <Text style={styles.loadingText}>{t('tripDetail.loading.text')}</Text>
           </View>
         </View>
       </View>
@@ -182,11 +190,15 @@ export default function TripDetailScreen() {
   if (!trip) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Cursă" onBack={() => router.back()} />
+        <ScreenHeader title={t('tripDetail.screenTitle.fallback')} onBack={() => router.back()} />
         <View style={styles.body}>
           <View style={styles.centered}>
-            <Text style={styles.errorText}>Cursa nu a fost găsită</Text>
-            <BigButton title="Înapoi" variant="outline" onPress={() => router.back()} />
+            <Text style={styles.errorText}>{t('tripDetail.error.notFound')}</Text>
+            <BigButton
+              title={t('tripDetail.button.back')}
+              variant="outline"
+              onPress={() => router.back()}
+            />
           </View>
         </View>
       </View>
@@ -195,7 +207,10 @@ export default function TripDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title={trip.trip_number ?? 'Cursă'} onBack={() => router.back()} />
+      <ScreenHeader
+        title={trip.trip_number ?? t('tripDetail.screenTitle.fallback')}
+        onBack={() => router.back()}
+      />
       <OfflineBanner />
       <View style={styles.body}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -207,7 +222,7 @@ export default function TripDetailScreen() {
           {/* Trip Info */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Detalii cursă</Text>
+              <Text style={styles.cardTitle}>{t('tripDetail.card.tripDetails')}</Text>
               <StatusPill status={trip.status} />
             </View>
             {/* FM-1: Show badge when a local transition is awaiting sync */}
@@ -217,33 +232,43 @@ export default function TripDetailScreen() {
               </View>
             )}
 
-            {trip.trip_number && <InfoRow label="Nr. cursă" value={trip.trip_number} />}
+            {trip.trip_number && (
+              <InfoRow label={t('tripDetail.infoRow.tripNumber')} value={trip.trip_number} />
+            )}
             {myDriverTask?.parcelName ? (
-              <InfoRow label="Parcelă" value={myDriverTask.parcelName} />
+              <InfoRow label={t('tripDetail.infoRow.parcel')} value={myDriverTask.parcelName} />
             ) : null}
             {loaderMachine?.machineCode ? (
-              <InfoRow label="Loader" value={loaderMachine.machineCode} />
+              <InfoRow label={t('tripDetail.infoRow.loader')} value={loaderMachine.machineCode} />
             ) : null}
-            {trip.destination_name && <InfoRow label="Destinație" value={trip.destination_name} />}
-            {trip.destination_address && (
-              <InfoRow label="Adresă" value={trip.destination_address} />
+            {trip.destination_name && (
+              <InfoRow label={t('tripDetail.infoRow.destination')} value={trip.destination_name} />
             )}
-            <InfoRow label="Baloți" value={String(trip.bale_count ?? 0)} />
+            {trip.destination_address && (
+              <InfoRow label={t('tripDetail.infoRow.address')} value={trip.destination_address} />
+            )}
+            <InfoRow label={t('tripDetail.infoRow.bales')} value={String(trip.bale_count ?? 0)} />
             {trip.gross_weight_kg != null && (
-              <InfoRow label="Greutate brută" value={`${trip.gross_weight_kg} kg`} />
+              <InfoRow
+                label={t('tripDetail.infoRow.grossWeight')}
+                value={`${trip.gross_weight_kg} kg`}
+              />
             )}
             {trip.departure_at && (
               <InfoRow
-                label="Plecat la"
+                label={t('tripDetail.infoRow.departedAt')}
                 value={new Date(trip.departure_at).toLocaleString('ro-RO')}
               />
             )}
             {trip.arrival_at && (
-              <InfoRow label="Sosit la" value={new Date(trip.arrival_at).toLocaleString('ro-RO')} />
+              <InfoRow
+                label={t('tripDetail.infoRow.arrivedAt')}
+                value={new Date(trip.arrival_at).toLocaleString('ro-RO')}
+              />
             )}
             {trip.delivered_at && (
               <InfoRow
-                label="Livrat la"
+                label={t('tripDetail.infoRow.deliveredAt')}
                 value={new Date(trip.delivered_at).toLocaleString('ro-RO')}
               />
             )}
@@ -262,12 +287,12 @@ export default function TripDetailScreen() {
           {/* Actions — only the driver runs the trip workflow */}
           {isDriver ? (
             <View style={styles.actionsSection}>
-              <Text style={styles.sectionTitle}>Acțiuni</Text>
+              <Text style={styles.sectionTitle}>{t('tripDetail.actions.sectionTitle')}</Text>
 
               {(trip.status === 'planned' || trip.status === 'loading') && (
                 <View style={styles.waitingCard}>
                   <MaterialCommunityIcons name="timer-sand" size={20} color={colors.neutral} />
-                  <Text style={styles.waitingText}>Așteaptă ca loader-ul să încarce camionul.</Text>
+                  <Text style={styles.waitingText}>{t('tripDetail.actions.waitingForLoader')}</Text>
                 </View>
               )}
 
@@ -275,8 +300,8 @@ export default function TripDetailScreen() {
                 !trip.destination_name &&
                 trip.destination_id == null && (
                   <ActionCard
-                    title="Alege depozit"
-                    subtitle="Selectează destinația înainte de plecare"
+                    title={t('tripDetail.actions.chooseDepot.title')}
+                    subtitle={t('tripDetail.actions.chooseDepot.subtitle')}
                     icon={
                       <MaterialCommunityIcons name="warehouse" size={24} color={colors.primary} />
                     }
@@ -288,8 +313,8 @@ export default function TripDetailScreen() {
               {trip.status === 'loaded' &&
                 (trip.destination_name != null || trip.destination_id != null) && (
                   <ActionCard
-                    title="Plecare"
-                    subtitle="Semnați pentru a pleca"
+                    title={t('tripDetail.actions.depart.title')}
+                    subtitle={t('tripDetail.actions.depart.subtitle')}
                     icon={
                       <MaterialCommunityIcons
                         name="arrow-right-bold"
@@ -309,8 +334,8 @@ export default function TripDetailScreen() {
 
               {trip.status === 'in_transit' && (
                 <ActionCard
-                  title="Sosit la destinație"
-                  subtitle="Confirmați sosirea"
+                  title={t('tripDetail.actions.arrive.title')}
+                  subtitle={t('tripDetail.actions.arrive.subtitle')}
                   icon={
                     <MaterialCommunityIcons name="map-marker" size={24} color={colors.primary} />
                   }
@@ -324,8 +349,8 @@ export default function TripDetailScreen() {
                 trip.status === 'delivering' ||
                 trip.status === 'delivered') && (
                 <ActionCard
-                  title="Livrare"
-                  subtitle="Cântărire, fotografiere și semnătură primitor"
+                  title={t('tripDetail.actions.delivery.title')}
+                  subtitle={t('tripDetail.actions.delivery.subtitle')}
                   icon={
                     <MaterialCommunityIcons
                       name="arrow-down-bold"
@@ -346,7 +371,9 @@ export default function TripDetailScreen() {
               {(trip.status === 'completed' || trip.status === 'cancelled') && (
                 <View style={styles.doneCard}>
                   <Text style={styles.doneText}>
-                    Cursa este {trip.status === 'completed' ? 'finalizată' : 'anulată'}.
+                    {trip.status === 'completed'
+                      ? t('tripDetail.done.completed')
+                      : t('tripDetail.done.cancelled')}
                   </Text>
                 </View>
               )}
@@ -354,9 +381,7 @@ export default function TripDetailScreen() {
           ) : (
             <View style={styles.viewerCard}>
               <MaterialCommunityIcons name="eye-outline" size={20} color={colors.primary} />
-              <Text style={styles.viewerText}>
-                Urmărești starea acestei curse. Acțiunile sunt efectuate de șofer.
-              </Text>
+              <Text style={styles.viewerText}>{t('tripDetail.viewer.text')}</Text>
             </View>
           )}
 
@@ -377,7 +402,7 @@ export default function TripDetailScreen() {
         <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)} />
         <View style={[styles.modalSheet, { paddingBottom: Math.max(24, insets.bottom) }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Alege depozit</Text>
+            <Text style={styles.modalTitle}>{t('tripDetail.modal.chooseDepot.title')}</Text>
             <Pressable onPress={() => setPickerOpen(false)} hitSlop={12}>
               <MaterialCommunityIcons name="close" size={22} color={colors.neutral} />
             </Pressable>
@@ -385,13 +410,15 @@ export default function TripDetailScreen() {
           {destinationsQuery.isLoading ? (
             <ActivityIndicator color={colors.primary} style={{ padding: 24 }} />
           ) : destinationsQuery.error ? (
-            <Text style={styles.modalError}>Nu am putut încărca depozitele.</Text>
+            <Text style={styles.modalError}>{t('tripDetail.modal.error.loadDepots')}</Text>
           ) : (
             <FlatList
               data={(destinationsQuery.data ?? []).filter((d) => d.isActive !== false)}
               keyExtractor={(d) => d.id}
               ItemSeparatorComponent={() => <View style={styles.modalDivider} />}
-              ListEmptyComponent={<Text style={styles.modalEmpty}>Nu există depozite active.</Text>}
+              ListEmptyComponent={
+                <Text style={styles.modalEmpty}>{t('tripDetail.modal.empty.noActiveDepots')}</Text>
+              }
               renderItem={({ item }) => (
                 <Pressable
                   style={styles.modalRow}
@@ -416,7 +443,9 @@ export default function TripDetailScreen() {
                   </View>
                   {item.isDefault ? (
                     <View style={styles.defaultBadge}>
-                      <Text style={styles.defaultBadgeText}>implicit</Text>
+                      <Text style={styles.defaultBadgeText}>
+                        {t('tripDetail.modal.defaultBadge')}
+                      </Text>
                     </View>
                   ) : null}
                 </Pressable>

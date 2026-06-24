@@ -37,6 +37,8 @@ export interface UpdateUserDto {
   username?: string;
   /** Admin can change the 4-digit PIN (also updates Supabase Auth password). */
   pin?: string;
+  /** UI locale preference for this user. */
+  locale?: 'en' | 'ro';
 }
 
 /** Maps each operator role to its compatible machine type. */
@@ -161,7 +163,8 @@ export class AdminUsersService {
       dto.assignedMachineId !== undefined ||
       dto.assignedDeliveryDestinationId !== undefined ||
       dto.username !== undefined ||
-      dto.pin !== undefined;
+      dto.pin !== undefined ||
+      dto.locale !== undefined;
 
     if (!hasChanges) return this.getById(id, orgId);
 
@@ -296,6 +299,7 @@ export class AdminUsersService {
                                 END,
           username            = COALESCE(${dto.username ?? null}, username),
           pin                 = CASE WHEN ${dto.pin !== undefined} THEN ${dto.pin ?? null} ELSE pin END,
+          locale              = COALESCE(${dto.locale ?? null}, locale),
           updated_at          = now()
         WHERE ${lockWhere}
       `);

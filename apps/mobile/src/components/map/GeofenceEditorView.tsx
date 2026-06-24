@@ -4,6 +4,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { GeofenceEditorCommand, GeofenceEditorEvent } from '@/map/map-bridge';
 import { serializeEditorCommand, parseGeofenceEditorEvent } from '@/map/map-bridge';
 import { LEAFLET_GEOFENCE_EDITOR_HTML } from '@/map/leaflet-geofence-editor';
+import { useI18n } from '@/lib/i18n';
 
 export interface GeofenceEditorViewHandle {
   sendCommand(cmd: GeofenceEditorCommand): void;
@@ -20,6 +21,7 @@ export const GeofenceEditorView = forwardRef<GeofenceEditorViewHandle, GeofenceE
     const webViewRef = useRef<WebView>(null);
     const [loading, setLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
+    const { t } = useI18n();
 
     useImperativeHandle(ref, () => ({
       sendCommand(cmd: GeofenceEditorCommand) {
@@ -73,14 +75,14 @@ export const GeofenceEditorView = forwardRef<GeofenceEditorViewHandle, GeofenceE
         {loading && !hasError && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator color="#0A5C36" size="large" />
-            <Text style={styles.loadingText}>Se încarcă harta...</Text>
+            <Text style={styles.loadingText}>{t('map.geofenceEditor.loadingMap')}</Text>
           </View>
         )}
         {hasError && (
           <View style={styles.loadingOverlay}>
-            <Text style={styles.errorText}>Harta nu s-a putut încărca. Reîncearcă.</Text>
+            <Text style={styles.errorText}>{t('map.geofenceEditor.error')}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={handleRetry} activeOpacity={0.8}>
-              <Text style={styles.retryButtonText}>Reîncearcă</Text>
+              <Text style={styles.retryButtonText}>{t('map.geofenceEditor.retry')}</Text>
             </TouchableOpacity>
           </View>
         )}

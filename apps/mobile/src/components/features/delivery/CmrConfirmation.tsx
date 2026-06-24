@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { BigButton } from '../../ui/BigButton';
 import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
+import { useI18n } from '@/lib/i18n';
 
 const PRIMARY = '#0A5C36';
 const BACKGROUND = '#F3DED8';
@@ -53,6 +54,7 @@ export function CmrConfirmation({
   onBack,
   loading,
 }: CmrConfirmationProps) {
+  const { t } = useI18n();
   const signatureDisplay = hasSignature ? '✓' : '✗';
 
   // FM-6: countdown before executing the irreversible CMR confirmation
@@ -73,7 +75,7 @@ export function CmrConfirmation({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Confirmare CMR</Text>
+      <Text style={styles.title}>{t('delivery.cmr.title')}</Text>
 
       <ScrollView
         style={styles.scrollArea}
@@ -81,16 +83,18 @@ export function CmrConfirmation({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.card}>
-          <SummaryRow label="Cursă" value={tripNumber} />
-          <SummaryRow label="Destinație" value={destinationName} />
-          {destinationAddress ? <SummaryRow label="Localitate" value={destinationAddress} /> : null}
-          <SummaryRow label="Baloți" value={String(baleCount)} />
-          <SummaryRow label="Greutate brută" value={`${grossWeightKg} kg`} />
-          <SummaryRow label="Tară" value={`${tareWeightKg} kg`} />
-          <SummaryRow label="Greutate netă" value={`${netWeightKg} kg`} />
-          <SummaryRow label="Primitor" value={receiverName} />
+          <SummaryRow label={t('delivery.cmr.row.trip')} value={tripNumber} />
+          <SummaryRow label={t('delivery.cmr.row.destination')} value={destinationName} />
+          {destinationAddress ? (
+            <SummaryRow label={t('delivery.cmr.row.locality')} value={destinationAddress} />
+          ) : null}
+          <SummaryRow label={t('delivery.cmr.row.bales')} value={String(baleCount)} />
+          <SummaryRow label={t('delivery.cmr.row.grossWeight')} value={`${grossWeightKg} kg`} />
+          <SummaryRow label={t('delivery.cmr.row.tare')} value={`${tareWeightKg} kg`} />
+          <SummaryRow label={t('delivery.cmr.row.netWeight')} value={`${netWeightKg} kg`} />
+          <SummaryRow label={t('delivery.cmr.row.receiver')} value={receiverName} />
           <SummaryRow
-            label="Semnătură"
+            label={t('delivery.cmr.row.signature')}
             value={signatureDisplay}
             valueStyle={hasSignature ? styles.successText : styles.dangerText}
           />
@@ -99,20 +103,22 @@ export function CmrConfirmation({
 
       <View style={styles.actions}>
         <BigButton
-          title="Confirmă livrare"
+          title={t('delivery.cmr.action.confirm')}
           onPress={handleConfirmPress}
           loading={loading}
           disabled={loading}
         />
         <TouchableOpacity onPress={onBack} style={styles.backLink} disabled={loading}>
-          <Text style={[styles.backLinkText, loading && styles.backLinkDisabled]}>Înapoi</Text>
+          <Text style={[styles.backLinkText, loading && styles.backLinkDisabled]}>
+            {t('delivery.cmr.action.back')}
+          </Text>
         </TouchableOpacity>
       </View>
 
       {/* FM-6: countdown overlay for irreversible CMR confirmation */}
       <ConfirmCountdown
         visible={countdownVisible}
-        actionLabel="Confirmare CMR"
+        actionLabel={t('delivery.cmr.countdownActionLabel')}
         countdownSeconds={3}
         onConfirmed={handleCountdownConfirmed}
         onCancel={handleCountdownCancel}

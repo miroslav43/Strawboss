@@ -17,6 +17,7 @@ import type { MobileNotification } from '@/types/notifications';
 import { MobileNotificationSeverity, MobileNotificationType } from '@/types/notifications';
 import { useNotifications } from '@/hooks/useNotifications';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
+import { useI18n } from '@/lib/i18n';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -28,24 +29,29 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-function formatDayHeader(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const yesterday = new Date(now.getTime() - MS_PER_DAY);
-  if (isSameDay(d, now)) return 'Astăzi';
-  if (isSameDay(d, yesterday)) return 'Ieri';
-  return d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
-}
-
 function formatTime(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
 }
 
-function groupByDay(items: MobileNotification[]): { date: string; data: MobileNotification[] }[] {
+function groupByDay(
+  items: MobileNotification[],
+  today: string,
+  yesterday: string,
+): { date: string; data: MobileNotification[] }[] {
+  const now = new Date();
+  const yesterdayDate = new Date(now.getTime() - MS_PER_DAY);
   const map = new Map<string, MobileNotification[]>();
   for (const item of items) {
-    const key = formatDayHeader(item.createdAt);
+    const d = new Date(item.createdAt);
+    let key: string;
+    if (isSameDay(d, now)) {
+      key = today;
+    } else if (isSameDay(d, yesterdayDate)) {
+      key = yesterday;
+    } else {
+      key = d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
+    }
     const arr = map.get(key) ?? [];
     arr.push(item);
     map.set(key, arr);
@@ -141,6 +147,7 @@ function NotificationItem({ item, onPress, onLongPress }: NotificationItemProps)
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { t } = useI18n();
   const { items, unreadCount, markAsRead, markAllAsRead, deleteNotification, refresh } =
     useNotifications();
   const [refreshing, setRefreshing] = useState(false);
@@ -178,9 +185,9 @@ export default function NotificationsScreen() {
     (item: MobileNotification) => {
       showModal({
         type: 'confirm',
-        title: 'Șterge notificarea?',
+        title: t('notifications.deleteConfirmTitle'),
         message: item.title,
-        confirmText: 'Șterge',
+        confirmText: t('notifications.deleteConfirmButton'),
         onConfirm: () => {
           void deleteNotification(item.id);
           hideModal();
@@ -188,14 +195,19 @@ export default function NotificationsScreen() {
         onCancel: hideModal,
       });
     },
-    [deleteNotification, showModal, hideModal],
+    [deleteNotification, showModal, hideModal, t],
   );
 
   const handleMarkAllRead = useCallback(() => {
     void markAllAsRead();
   }, [markAllAsRead]);
 
-  const groups = groupByDay(items);
+  const groups = groupByDay(items, t('notifications.dayToday'), t('notifications.dayYesterday'));
+
+  const unreadLabel =
+    unreadCount === 1
+      ? t('notifications.unreadSingular', { count: unreadCount })
+      : t('notifications.unreadPlural', { count: unreadCount });
 
   const headerRight = (
     <View style={styles.headerRightGroup}>
@@ -203,11 +215,11 @@ export default function NotificationsScreen() {
         <TouchableOpacity
           onPress={handleMarkAllRead}
           accessibilityRole="button"
-          accessibilityLabel="Marchează toate ca citite"
+          accessibilityLabel={t('notifications.markAllAccessibility')}
           style={styles.markAllBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Text style={styles.markAllText}>Marchează tot</Text>
+          <Text style={styles.markAllText}>{t('notifications.markAllButton')}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -215,11 +227,9 @@ export default function NotificationsScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title="Notificări" right={headerRight}>
+      <ScreenHeader title={t('notifications.title')} right={headerRight}>
         <Text style={styles.subtitle}>
-          {unreadCount > 0
-            ? `${unreadCount} ${unreadCount === 1 ? 'notificare necitită' : 'notificări necitite'}`
-            : 'Toate notificările citite'}
+          {unreadCount > 0 ? unreadLabel : t('notifications.allRead')}
         </Text>
       </ScreenHeader>
 
@@ -231,8 +241,8 @@ export default function NotificationsScreen() {
               size={64}
               color={nativeColors.neutral300}
             />
-            <Text style={styles.emptyTitle}>Nu ai notificări</Text>
-            <Text style={styles.emptyBody}>Notificările despre cursele tale vor apărea aici.</Text>
+            <Text style={styles.emptyTitle}>{t('notifications.emptyTitle')}</Text>
+            <Text style={styles.emptyBody}>{t('notifications.emptyBody')}</Text>
           </View>
         </View>
       ) : (

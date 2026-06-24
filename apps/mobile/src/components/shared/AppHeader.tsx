@@ -2,13 +2,15 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { nativeColors } from '@strawboss/ui-tokens/native';
 import { NotificationBell } from './NotificationBell';
+import { useI18n } from '@/lib/i18n';
 
 export function AppHeader() {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <Text style={styles.title}>Strawboss</Text>
+      <Text style={styles.title}>{t('shared.appHeader.title')}</Text>
       <View style={styles.right}>
         <NotificationBell />
       </View>

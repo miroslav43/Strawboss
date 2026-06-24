@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BigButton } from '../ui/BigButton';
 import { scale } from '@/utils/responsive';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface PhotoCaptureProps {
   onCapture: (uri: string) => void;
@@ -13,6 +14,7 @@ interface PhotoCaptureProps {
 
 export function PhotoCapture({ onCapture, label }: PhotoCaptureProps) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const { t } = useI18n();
 
   const takePhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
@@ -33,7 +35,7 @@ export function PhotoCapture({ onCapture, label }: PhotoCaptureProps) {
         <View style={styles.previewContainer}>
           <Image source={{ uri: photoUri }} style={styles.preview} />
           <BigButton
-            title="Refă fotografia"
+            title={t('shared.photoCapture.retake')}
             variant="outline"
             onPress={() => {
               void takePhoto();
@@ -47,12 +49,12 @@ export function PhotoCapture({ onCapture, label }: PhotoCaptureProps) {
               name="camera"
               size={40}
               color={colors.neutral}
-              accessibilityLabel="Nicio fotografie realizată"
+              accessibilityLabel={t('shared.photoCapture.noPhoto')}
             />
-            <Text style={styles.placeholderText}>Nicio fotografie realizată</Text>
+            <Text style={styles.placeholderText}>{t('shared.photoCapture.noPhoto')}</Text>
           </View>
           <BigButton
-            title="Fotografiază"
+            title={t('shared.photoCapture.takePhoto')}
             onPress={() => {
               void takePhoto();
             }}

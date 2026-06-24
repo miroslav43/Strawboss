@@ -60,7 +60,7 @@ export const updateUserSchema = z
     role: adminAssignableRoleSchema,
     phone: z.string().nullable(),
     isActive: z.boolean(),
-    locale: z.string(),
+    locale: z.enum(['en', 'ro']).optional(),
     avatarUrl: z.string().url().nullable(),
     /** Admin can change the username (must be unique). */
     username: z.string().min(3),

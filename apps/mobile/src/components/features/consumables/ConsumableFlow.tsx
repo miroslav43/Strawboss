@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
+import { useI18n } from '@/lib/i18n';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { UndoToast } from '@/components/shared/UndoToast';
@@ -51,6 +52,7 @@ export function ConsumableFlow({
   onComplete,
   lockType,
 }: ConsumableFlowProps) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
   const [step, setStep] = useState<ConsumableStep>(initialStep(lockType));
@@ -129,14 +131,14 @@ export function ConsumableFlow({
       showUndo({
         entityId: id,
         idempotencyKey: `consumable_logs_${id}`,
-        label: `Înregistrat — ${qty} kg sfoară`,
+        label: t('consumables.flow.toast.twine').replace('{qty}', String(qty)),
       });
       onComplete();
     } catch (err) {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: err instanceof Error ? err.message : 'Nu s-a putut salva consumabilul',
+        title: t('consumables.flow.error.title'),
+        message: err instanceof Error ? err.message : t('consumables.flow.error.saveFailed'),
         onConfirm: hideModal,
       });
     } finally {
@@ -183,17 +185,21 @@ export function ConsumableFlow({
     return (
       <View style={styles.outerWrapper}>
         <View style={styles.container}>
-          <Text style={styles.title}>Cantitate sfoară (kg)</Text>
+          <Text style={styles.title}>{t('consumables.flow.twine.title')}</Text>
           <NumericPad value={quantity} onChange={setQuantity} maxLength={6} decimal />
           <View style={styles.actions}>
             <BigButton
-              title="Salvează"
+              title={t('consumables.flow.twine.action.save')}
               onPress={handleSaveTwine}
               loading={saving}
               disabled={!quantity || quantity === '0'}
             />
             {!lockType ? (
-              <BigButton title="Înapoi" variant="outline" onPress={resetToStart} />
+              <BigButton
+                title={t('consumables.flow.twine.action.back')}
+                variant="outline"
+                onPress={resetToStart}
+              />
             ) : null}
           </View>
         </View>
@@ -207,14 +213,14 @@ export function ConsumableFlow({
   return (
     <View style={styles.outerWrapper}>
       <View style={styles.container}>
-        <Text style={styles.title}>Tip Consumabil</Text>
+        <Text style={styles.title}>{t('consumables.flow.typeSelector.title')}</Text>
         <ConsumableTypeSelector
           selected={consumableType}
           onSelect={(type) => setConsumableType(type)}
         />
         <View style={styles.actions}>
           <BigButton
-            title="Continuă"
+            title={t('consumables.flow.typeSelector.action.continue')}
             onPress={() => {
               if (consumableType === 'diesel') setStep('fuel');
               else if (consumableType === 'twine') setStep('twine');

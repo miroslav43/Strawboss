@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useI18n } from '@/lib/i18n';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { useFocusEffect } from 'expo-router';
@@ -57,6 +58,7 @@ const GPS_FIX_TIMEOUT_MS = 12_000;
  * Parcel name is shown in a compact line to confirm auto-detection.
  */
 export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProps) {
+  const { t } = useI18n();
   const { tasks } = useMyTasks();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -82,7 +84,10 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
     if (uniqueIds.size !== 1) return null;
     const first = withParcel[0];
     if (!first?.parcelId) return null;
-    return { id: first.parcelId, name: first.parcelName ?? first.parcelCode ?? 'Câmp asignat' };
+    return {
+      id: first.parcelId,
+      name: first.parcelName ?? first.parcelCode ?? t('production.fieldNumpad.taskParcelFallback'),
+    };
   }, [tasks]);
 
   // Load today's total from local DB
@@ -256,7 +261,7 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setTodayTotal((t) => t + numericCount);
       setCount('');
-      showToast(`Înregistrat — ${numericCount} baloți`);
+      showToast(t('production.fieldNumpad.toast.saved').replace('{count}', String(numericCount)));
     } catch (err) {
       mobileLogger.error('FieldActiveNumpad: save failed', {
         parcelId,
@@ -264,8 +269,8 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
       });
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: err instanceof Error ? err.message : 'Nu s-a putut salva producția',
+        title: t('production.fieldNumpad.error.title'),
+        message: err instanceof Error ? err.message : t('production.fieldNumpad.error.saveFailed'),
         onConfirm: hideModal,
       });
     } finally {
@@ -291,16 +296,16 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
           {parcelName ?? '—'}
         </Text>
         <View style={styles.counterChip}>
-          <Text style={styles.counterLabel}>Azi</Text>
+          <Text style={styles.counterLabel}>{t('production.fieldNumpad.todayLabel')}</Text>
           <Text style={styles.counterValue}>{todayTotal}</Text>
-          <Text style={styles.counterUnit}>bal.</Text>
+          <Text style={styles.counterUnit}>{t('production.fieldNumpad.balesUnit')}</Text>
         </View>
       </View>
 
       {/* Big number display */}
       <View style={styles.display}>
         <Text style={styles.displayNumber}>{count || '0'}</Text>
-        <Text style={styles.displayLabel}>baloți</Text>
+        <Text style={styles.displayLabel}>{t('production.fieldNumpad.displayLabel')}</Text>
       </View>
 
       {/* Numpad */}
@@ -318,9 +323,9 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
                   accessibilityRole="button"
                   accessibilityLabel={
                     key === 'backspace'
-                      ? 'Șterge ultima cifră'
+                      ? t('production.fieldNumpad.accessibility.deleteLastDigit')
                       : key === 'clear'
-                        ? 'Șterge tot'
+                        ? t('production.fieldNumpad.accessibility.clearAll')
                         : key
                   }
                 >
@@ -359,9 +364,13 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
         disabled={!canSave}
         activeOpacity={0.85}
         accessibilityRole="button"
-        accessibilityLabel="Salvează producția"
+        accessibilityLabel={t('production.fieldNumpad.accessibility.saveProduction')}
       >
-        <Text style={styles.saveButtonText}>{saving ? 'Se salvează…' : 'SALVEAZĂ'}</Text>
+        <Text style={styles.saveButtonText}>
+          {saving
+            ? t('production.fieldNumpad.saveButton.saving')
+            : t('production.fieldNumpad.saveButton.label')}
+        </Text>
       </TouchableOpacity>
       <AppModal {...modalProps} />
     </View>

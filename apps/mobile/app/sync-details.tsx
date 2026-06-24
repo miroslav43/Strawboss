@@ -14,36 +14,24 @@ import { colors } from '@strawboss/ui-tokens';
 import { useSyncQueueStatus } from '@/hooks/useSyncQueueStatus';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import type { SyncQueueEntry } from '@/db/sync-queue-repo';
+import { useI18n } from '@/lib/i18n';
 
-/** Human-readable Romanian labels for entity types. */
-const ENTITY_LABELS: Record<string, string> = {
-  trips: 'Cursă',
-  bale_loads: 'Încărcare baloți',
-  bale_productions: 'Producție baloți',
-  fuel_logs: 'Alimentare combustibil',
-  consumable_logs: 'Consumabil',
-  operations: 'Operațiune',
-  task_assignments: 'Sarcină',
+const ENTITY_KEY: Record<string, string> = {
+  trips: 'syncDetails.entityLabel.trips',
+  bale_loads: 'syncDetails.entityLabel.baleLoads',
+  bale_productions: 'syncDetails.entityLabel.baleProductions',
+  fuel_logs: 'syncDetails.entityLabel.fuelLogs',
+  consumable_logs: 'syncDetails.entityLabel.consumableLogs',
+  operations: 'syncDetails.entityLabel.operations',
+  task_assignments: 'syncDetails.entityLabel.taskAssignments',
 };
 
-function entityLabel(entityType: string): string {
-  return ENTITY_LABELS[entityType] ?? entityType;
-}
-
-function actionLabel(action: string): string {
-  switch (action) {
-    case 'create':
-      return 'creare';
-    case 'update':
-      return 'actualizare';
-    case 'delete':
-      return 'ștergere';
-    case 'transition':
-      return 'tranziție';
-    default:
-      return action;
-  }
-}
+const ACTION_KEY: Record<string, string> = {
+  create: 'syncDetails.actionLabel.create',
+  update: 'syncDetails.actionLabel.update',
+  delete: 'syncDetails.actionLabel.delete',
+  transition: 'syncDetails.actionLabel.transition',
+};
 
 function formatDate(iso: string): string {
   try {
@@ -62,19 +50,24 @@ interface EntryCardProps {
   entry: SyncQueueEntry;
   onRetry: (id: number) => void;
   retrying: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }
 
-function EntryCard({ entry, onRetry, retrying }: EntryCardProps) {
+function EntryCard({ entry, onRetry, retrying, t }: EntryCardProps) {
   const isFailed = entry.status === 'failed';
   const statusColor = isFailed ? colors.danger : colors.warning;
-  const statusLabel = isFailed ? 'eșuat' : 'în așteptare';
+  const statusLabel = isFailed ? t('syncDetails.statusFailed') : t('syncDetails.statusPending');
+  const entityKey = ENTITY_KEY[entry.entity_type];
+  const actionKey = ACTION_KEY[entry.action];
+  const entityLabel = entityKey ? t(entityKey) : entry.entity_type;
+  const actionLabel = actionKey ? t(actionKey) : entry.action;
 
   return (
     <View style={styles.entryCard}>
       <View style={styles.entryHeader}>
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
         <Text style={styles.entryTitle} numberOfLines={1}>
-          {entityLabel(entry.entity_type)} — {actionLabel(entry.action)}
+          {entityLabel} — {actionLabel}
         </Text>
         <Text style={styles.statusLabel}>{statusLabel}</Text>
       </View>
@@ -85,7 +78,7 @@ function EntryCard({ entry, onRetry, retrying }: EntryCardProps) {
         </Text>
         {entry.retry_count > 0 && (
           <Text style={styles.metaText} numberOfLines={1}>
-            Reîncercări: {entry.retry_count}
+            {t('syncDetails.retryCount', { count: entry.retry_count })}
           </Text>
         )}
       </View>
@@ -102,12 +95,12 @@ function EntryCard({ entry, onRetry, retrying }: EntryCardProps) {
           onPress={() => onRetry(entry.id)}
           disabled={retrying}
           accessibilityRole="button"
-          accessibilityLabel="Reîncearcă această înregistrare"
+          accessibilityLabel={t('syncDetails.retryEntryAccessibility')}
         >
           {retrying ? (
             <ActivityIndicator size="small" color={colors.white} />
           ) : (
-            <Text style={styles.retryButtonText}>Reîncearcă</Text>
+            <Text style={styles.retryButtonText}>{t('syncDetails.retryEntryButton')}</Text>
           )}
         </TouchableOpacity>
       )}
@@ -117,6 +110,7 @@ function EntryCard({ entry, onRetry, retrying }: EntryCardProps) {
 
 export default function SyncDetailsScreen() {
   const router = useRouter();
+  const { t } = useI18n();
   const { isConnected } = useNetworkStatus();
   const {
     syncing,
@@ -150,9 +144,9 @@ export default function SyncDetailsScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: SyncQueueEntry }) => (
-      <EntryCard entry={item} onRetry={handleRetryEntry} retrying={syncing} />
+      <EntryCard entry={item} onRetry={handleRetryEntry} retrying={syncing} t={t} />
     ),
-    [handleRetryEntry, syncing],
+    [handleRetryEntry, syncing, t],
   );
 
   const keyExtractor = useCallback((item: SyncQueueEntry) => String(item.id), []);
@@ -166,16 +160,16 @@ export default function SyncDetailsScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
             accessibilityRole="button"
-            accessibilityLabel="Înapoi"
+            accessibilityLabel={t('syncDetails.backAccessibility')}
           >
             <MaterialCommunityIcons name="arrow-left" size={24} color={colors.white} />
           </TouchableOpacity>
-          <Text style={styles.title}>Date în așteptare</Text>
+          <Text style={styles.title}>{t('syncDetails.title')}</Text>
           <TouchableOpacity
             onPress={refresh}
             style={styles.refreshButton}
             accessibilityRole="button"
-            accessibilityLabel="Reîmprospătează"
+            accessibilityLabel={t('syncDetails.refreshAccessibility')}
           >
             <MaterialCommunityIcons name="refresh" size={22} color={colors.white} />
           </TouchableOpacity>
@@ -187,7 +181,7 @@ export default function SyncDetailsScreen() {
         {/* Status summary card */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Rețea:</Text>
+            <Text style={styles.summaryLabel}>{t('syncDetails.networkLabel')}</Text>
             <View style={styles.summaryValueRow}>
               <View
                 style={[
@@ -195,12 +189,14 @@ export default function SyncDetailsScreen() {
                   { backgroundColor: isConnected ? colors.success : colors.danger },
                 ]}
               />
-              <Text style={styles.summaryValue}>{isConnected ? 'Online' : 'Offline'}</Text>
+              <Text style={styles.summaryValue}>
+                {isConnected ? t('syncDetails.online') : t('syncDetails.offline')}
+              </Text>
             </View>
           </View>
 
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>În așteptare:</Text>
+            <Text style={styles.summaryLabel}>{t('syncDetails.pendingLabel')}</Text>
             <Text style={[styles.summaryValue, totalUnsent > 0 && styles.valuePending]}>
               {totalUnsent}
             </Text>
@@ -208,15 +204,15 @@ export default function SyncDetailsScreen() {
 
           {failedCount > 0 && (
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Eșuate:</Text>
+              <Text style={styles.summaryLabel}>{t('syncDetails.failedLabel')}</Text>
               <Text style={[styles.summaryValue, styles.valueFailed]}>{failedCount}</Text>
             </View>
           )}
 
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Ultima sincronizare:</Text>
+            <Text style={styles.summaryLabel}>{t('syncDetails.lastSyncLabel')}</Text>
             <Text style={[styles.summaryValue, styles.summaryValueShrink]} numberOfLines={1}>
-              {lastSyncAt ? formatDate(lastSyncAt) : 'Niciodată'}
+              {lastSyncAt ? formatDate(lastSyncAt) : t('syncDetails.lastSyncNever')}
             </Text>
           </View>
         </View>
@@ -229,12 +225,12 @@ export default function SyncDetailsScreen() {
               onPress={handleRetryAll}
               disabled={syncing || !isConnected}
               accessibilityRole="button"
-              accessibilityLabel="Reîncearcă toate înregistrările eșuate"
+              accessibilityLabel={t('syncDetails.retryAllAccessibility')}
             >
               {syncing ? (
                 <ActivityIndicator color={colors.white} size="small" />
               ) : (
-                <Text style={styles.actionButtonText}>Reîncearcă toate</Text>
+                <Text style={styles.actionButtonText}>{t('syncDetails.retryAllButton')}</Text>
               )}
             </TouchableOpacity>
           )}
@@ -248,13 +244,19 @@ export default function SyncDetailsScreen() {
             onPress={handleSyncNow}
             disabled={syncing || !isConnected}
             accessibilityRole="button"
-            accessibilityLabel={isConnected ? 'Sincronizează acum' : 'Fără conexiune'}
+            accessibilityLabel={
+              isConnected
+                ? t('syncDetails.syncNowAccessibility')
+                : t('syncDetails.syncNowNoConnection')
+            }
           >
             {syncing ? (
               <ActivityIndicator color={colors.white} size="small" />
             ) : (
               <Text style={styles.actionButtonText}>
-                {isConnected ? 'Sincronizează acum' : 'Fără conexiune'}
+                {isConnected
+                  ? t('syncDetails.syncNowButton')
+                  : t('syncDetails.syncNowNoConnection')}
               </Text>
             )}
           </TouchableOpacity>
@@ -274,10 +276,8 @@ export default function SyncDetailsScreen() {
                 size={56}
                 color={colors.success}
               />
-              <Text style={styles.emptyTitle}>Totul este sincronizat</Text>
-              <Text style={styles.emptySubtitle}>
-                Nu există înregistrări în așteptare sau eșuate.
-              </Text>
+              <Text style={styles.emptyTitle}>{t('syncDetails.emptyTitle')}</Text>
+              <Text style={styles.emptySubtitle}>{t('syncDetails.emptySubtitle')}</Text>
             </View>
           }
         />

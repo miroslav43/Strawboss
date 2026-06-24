@@ -9,6 +9,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useI18n } from '@/lib/i18n';
 
 export type HarvestFinishValue = 'partial' | 'total';
 
@@ -19,7 +20,7 @@ export interface HarvestFinishPickerProps {
 
 interface OptionConfig {
   value: HarvestFinishValue;
-  label: string;
+  labelKey: string;
   icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
   color: string;
 }
@@ -27,19 +28,20 @@ interface OptionConfig {
 const OPTIONS: OptionConfig[] = [
   {
     value: 'partial',
-    label: 'Parțial finalizată',
+    labelKey: 'production.harvestFinish.partial',
     icon: 'progress-clock',
     color: '#EA580C',
   },
   {
     value: 'total',
-    label: 'Total finalizată',
+    labelKey: 'production.harvestFinish.total',
     icon: 'check-circle',
     color: '#0A5C36',
   },
 ];
 
 export function HarvestFinishPicker({ value, onChange }: HarvestFinishPickerProps) {
+  const { t } = useI18n();
   const handlePick = (next: HarvestFinishValue) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onChange(next);
@@ -55,7 +57,7 @@ export function HarvestFinishPicker({ value, onChange }: HarvestFinishPickerProp
             onPress={() => handlePick(opt.value)}
             accessibilityRole="button"
             accessibilityState={{ selected }}
-            accessibilityLabel={opt.label}
+            accessibilityLabel={t(opt.labelKey)}
             style={[
               styles.option,
               {
@@ -74,7 +76,7 @@ export function HarvestFinishPicker({ value, onChange }: HarvestFinishPickerProp
               numberOfLines={1}
               style={[styles.label, { color: selected ? '#FFFFFF' : opt.color }]}
             >
-              {opt.label}
+              {t(opt.labelKey)}
             </Text>
           </Pressable>
         );

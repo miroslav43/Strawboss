@@ -16,6 +16,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSync } from '@/hooks/useSync';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
 import { mobileApiClient } from '@/lib/api-client';
+import { useI18n } from '@/lib/i18n';
 
 type MachineIconName = 'wrench' | 'grain' | 'truck' | 'map-marker';
 const MACHINE_MDI: Record<string, MachineIconName> = {
@@ -24,13 +25,14 @@ const MACHINE_MDI: Record<string, MachineIconName> = {
   truck: 'truck',
 };
 
-const MACHINE_TYPE_LABEL: Record<string, string> = {
-  loader: 'Încărcător',
-  baler: 'Balotieră',
-  truck: 'Camion',
+const MACHINE_TYPE_KEY: Record<string, string> = {
+  loader: 'tabs.home.machineTypeLoader',
+  baler: 'tabs.home.machineTypeBaler',
+  truck: 'tabs.home.machineTypeTruck',
 };
 
 export default function HomeScreen() {
+  const { t } = useI18n();
   const { isConnected } = useNetworkStatus();
   const { pendingCount, lastSyncAt, triggerSync, syncing } = useSync();
   const [refreshing, setRefreshing] = useState(false);
@@ -70,8 +72,8 @@ export default function HomeScreen() {
     <View style={styles.outerContainer}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.headerSection}>
-          <Text style={styles.title}>StrawBoss</Text>
-          <Text style={styles.subtitle}>Agricultural Logistics</Text>
+          <Text style={styles.title}>{t('tabs.home.title')}</Text>
+          <Text style={styles.subtitle}>{t('tabs.home.subtitle')}</Text>
         </View>
       </SafeAreaView>
 
@@ -82,28 +84,28 @@ export default function HomeScreen() {
       >
         {/* Connection status */}
         <View style={styles.statusCard}>
-          <Text style={styles.cardTitle}>Conexiune</Text>
+          <Text style={styles.cardTitle}>{t('tabs.home.connectionCardTitle')}</Text>
           <View style={styles.statusRow}>
             <View
               style={[styles.statusDot, { backgroundColor: isConnected ? '#2E7D32' : '#C62828' }]}
             />
-            <Text style={styles.statusText}>{isConnected ? 'Online' : 'Offline'}</Text>
+            <Text style={styles.statusText}>
+              {isConnected ? t('tabs.home.online') : t('tabs.home.offline')}
+            </Text>
           </View>
         </View>
 
         {/* Assigned machine + GPS tracking */}
         <View style={styles.statusCard}>
-          <Text style={styles.cardTitle}>Mașina mea</Text>
+          <Text style={styles.cardTitle}>{t('tabs.home.machineCardTitle')}</Text>
 
           {isLoadingMachine ? (
             <ActivityIndicator size="small" color="#0A5C36" />
           ) : !assignedMachineId ? (
             <View style={styles.noMachineBox}>
               <MaterialCommunityIcons name="cancel" size={32} color="#374151" />
-              <Text style={styles.noMachineTitle}>Nicio mașină asignată</Text>
-              <Text style={styles.noMachineSubtitle}>
-                Contactează administratorul pentru a-ți asigna o mașină.
-              </Text>
+              <Text style={styles.noMachineTitle}>{t('tabs.home.noMachineTitle')}</Text>
+              <Text style={styles.noMachineSubtitle}>{t('tabs.home.noMachineSubtitle')}</Text>
             </View>
           ) : machine ? (
             <>
@@ -118,7 +120,7 @@ export default function HomeScreen() {
                     {machine.internalCode}
                   </Text>
                   <Text style={styles.machineDetail} numberOfLines={1} ellipsizeMode="tail">
-                    {MACHINE_TYPE_LABEL[machine.machineType] ?? machine.machineType}
+                    {t(MACHINE_TYPE_KEY[machine.machineType] ?? '') || machine.machineType}
                     {' · '}
                     {machine.make} {machine.model}
                   </Text>
@@ -146,11 +148,11 @@ export default function HomeScreen() {
                   <Text style={styles.trackingStatusText} numberOfLines={2} ellipsizeMode="tail">
                     {Platform.OS === 'android'
                       ? isTracking
-                        ? 'GPS activ (inclusiv în fundal)'
-                        : 'GPS nu rulează — verifică permisiunile „Tot timpul"'
+                        ? t('tabs.home.gpsActiveAndroid')
+                        : t('tabs.home.gpsInactiveAndroid')
                       : isTracking
-                        ? 'GPS activ'
-                        : 'GPS: pornește din setările aplicației (iOS)'}
+                        ? t('tabs.home.gpsActiveIos')
+                        : t('tabs.home.gpsInactiveIos')}
                   </Text>
                 </View>
               </View>
@@ -175,11 +177,11 @@ export default function HomeScreen() {
                     </View>
                     {lastReportedAt ? (
                       <Text style={styles.lastReportedText} numberOfLines={1} ellipsizeMode="tail">
-                        Ultimul ping: {lastReportedAt}
+                        {t('tabs.home.lastPing', { time: lastReportedAt })}
                       </Text>
                     ) : (
                       <Text style={styles.lastReportedText} numberOfLines={1} ellipsizeMode="tail">
-                        Așteptând primul ping…
+                        {t('tabs.home.waitingFirstPing')}
                       </Text>
                     )}
                   </View>
@@ -189,24 +191,24 @@ export default function HomeScreen() {
               {trackingError ? <Text style={styles.errorText}>{trackingError}</Text> : null}
             </>
           ) : (
-            <Text style={styles.errorText}>Nu s-a putut încărca mașina asignată.</Text>
+            <Text style={styles.errorText}>{t('tabs.home.machineLoadError')}</Text>
           )}
         </View>
 
         {/* Sync status */}
         <View style={styles.statusCard}>
-          <Text style={styles.cardTitle}>Sincronizare</Text>
+          <Text style={styles.cardTitle}>{t('tabs.home.syncCardTitle')}</Text>
           <View style={styles.infoRow}>
-            <Text style={styles.label}>În coadă (inclusiv erori):</Text>
+            <Text style={styles.label}>{t('tabs.home.syncQueueLabel')}</Text>
             <Text style={styles.value}>{pendingCount}</Text>
           </View>
           <View style={styles.infoRow}>
-            <Text style={styles.label}>Ultima sincronizare:</Text>
+            <Text style={styles.label}>{t('tabs.home.syncLastSyncLabel')}</Text>
             <Text style={styles.value} numberOfLines={1} ellipsizeMode="tail">
-              {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : 'Niciodată'}
+              {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : t('tabs.home.syncNever')}
             </Text>
           </View>
-          {syncing && <Text style={styles.syncingText}>Se sincronizează...</Text>}
+          {syncing && <Text style={styles.syncingText}>{t('tabs.home.syncing')}</Text>}
         </View>
       </ScrollView>
     </View>

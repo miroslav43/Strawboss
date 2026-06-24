@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useI18n } from '@/lib/i18n';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDeliveryDestinations } from '@strawboss/api';
 import { useModal } from '@/hooks/useModal';
@@ -50,10 +51,10 @@ type Step = 0 | 1 | 2;
 const TOTAL_STEPS = 3;
 const LAST_STEP: Step = 2;
 
-const STEP_TITLES: Record<Step, string> = {
-  0: 'Cântărire',
-  1: 'Semnătură primitor',
-  2: 'Confirmare livrare',
+const STEP_TITLE_KEYS: Record<Step, string> = {
+  0: 'delivery.enhancedFlow.step.weighing',
+  1: 'delivery.enhancedFlow.step.signature',
+  2: 'delivery.enhancedFlow.step.confirmation',
 };
 
 /** Delivery draft — persisted to SQLite so the flow can resume after a crash. */
@@ -110,9 +111,14 @@ export function EnhancedDeliveryFlow({
 
   // Receiver = the depot's contact person. Resolve from the destinations list;
   // fall back to the depot name so `complete` always has a non-empty name.
+  const { t } = useI18n();
   const { data: depots } = useDeliveryDestinations(mobileApiClient);
   const depot = destinationId ? (depots ?? []).find((d) => d.id === destinationId) : undefined;
-  const receiverName = (depot?.contactName?.trim() || destinationName || 'Primitor').trim();
+  const receiverName = (
+    depot?.contactName?.trim() ||
+    destinationName ||
+    t('delivery.enhancedFlow.receiverFallback')
+  ).trim();
   const contactPhone = depot?.contactPhone ?? undefined;
 
   const grossWeightKg = parseFloat(grossWeightValue) || 0;
@@ -267,8 +273,9 @@ export function EnhancedDeliveryFlow({
       });
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: err instanceof Error ? err.message : 'Nu s-a putut confirma livrarea.',
+        title: t('delivery.enhancedFlow.error.title'),
+        message:
+          err instanceof Error ? err.message : t('delivery.enhancedFlow.error.confirmFailed'),
         onConfirm: hideModal,
       });
     } finally {
@@ -297,7 +304,7 @@ export function EnhancedDeliveryFlow({
     const isConfirmed = depotConfirmedBaleCount != null && depotConfirmedBaleCount > 0;
     return (
       <View style={styles.flow}>
-        <ScreenHeader title="Aștepți confirmarea depozitului" onBack={onCancel} />
+        <ScreenHeader title={t('delivery.enhancedFlow.operatorWait.title')} onBack={onCancel} />
         <View style={styles.operatorWaitBody}>
           <MaterialCommunityIcons
             name={isConfirmed ? 'check-circle' : 'clock-outline'}
@@ -306,19 +313,24 @@ export function EnhancedDeliveryFlow({
           />
           <Text style={styles.operatorWaitTitle}>
             {isConfirmed
-              ? 'Livrare confirmată de operator'
-              : 'Livrarea este confirmată de operatorul depozitului'}
+              ? t('delivery.enhancedFlow.operatorWait.confirmedTitle')
+              : t('delivery.enhancedFlow.operatorWait.pendingTitle')}
           </Text>
           <Text style={styles.operatorWaitSubtitle}>
             {isConfirmed
-              ? `Operatorul depozitului a confirmat ${depotConfirmedBaleCount} baloți.`
-              : 'Aștepți confirmarea. Nu trebuie să introduci greutăți sau semnătură — operatorul de la depozit face asta.'}
+              ? t('delivery.enhancedFlow.operatorWait.confirmedSubtitle').replace(
+                  '{count}',
+                  String(depotConfirmedBaleCount),
+                )
+              : t('delivery.enhancedFlow.operatorWait.pendingSubtitle')}
           </Text>
           {isConfirmed ? (
             <View style={styles.operatorConfirmedRow}>
               <MaterialCommunityIcons name="grain" size={20} color={colors.primary} />
               <Text style={styles.operatorConfirmedValue}>{depotConfirmedBaleCount} baloți</Text>
-              <Text style={styles.operatorConfirmedLabel}>confirmați de depozit</Text>
+              <Text style={styles.operatorConfirmedLabel}>
+                {t('delivery.enhancedFlow.operatorWait.confirmedByDepot')}
+              </Text>
             </View>
           ) : null}
         </View>
@@ -388,7 +400,7 @@ export function EnhancedDeliveryFlow({
 
   return (
     <View style={styles.flow}>
-      <ScreenHeader title={STEP_TITLES[currentStep]} onBack={handleHeaderBack} />
+      <ScreenHeader title={t(STEP_TITLE_KEYS[currentStep])} onBack={handleHeaderBack} />
       <StepIndicator totalSteps={TOTAL_STEPS} currentStep={currentStep} />
       <Animated.View style={[styles.body, { transform: [{ translateX: slideAnim }] }]}>
         {renderStep()}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useI18n } from '@/lib/i18n';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { UndoToast } from '@/components/shared/UndoToast';
@@ -50,6 +51,7 @@ const GPS_REFRESH_MS = 45_000;
 const GPS_FIX_TIMEOUT_MS = 12_000;
 
 export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps) {
+  const { t } = useI18n();
   const { tasks } = useMyTasks();
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
@@ -181,33 +183,33 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
     if (parcelSource === 'gps') {
       const acc =
         lastAccuracyM != null && lastAccuracyM > 0 ? ` (~±${Math.round(lastAccuracyM)} m)` : '';
-      return `Detectat din GPS${acc}`;
+      return `${t('production.numpad.parcelSource.gps')}${acc}`;
     }
     if (parcelSource === 'task') {
-      return 'Din planul zilei';
+      return t('production.numpad.parcelSource.task');
     }
     if (gpsStatus === 'loading') {
-      return 'Se detectează locația…';
+      return t('production.numpad.gps.loading');
     }
     if (gpsStatus === 'denied') {
-      return 'GPS refuzat — acordă permisiunea de locație';
+      return t('production.numpad.gps.denied');
     }
     if (gpsStatus === 'unavailable') {
-      return 'GPS indisponibil — încearcă din nou pe teren';
+      return t('production.numpad.gps.unavailable');
     }
     if (gpsStatus === 'ok' && lastLonLat) {
-      return 'În afara terenurilor delimitate — apropie-te de teren';
+      return t('production.numpad.gps.outsideParcels');
     }
-    return 'Se detectează terenul din GPS…';
-  }, [parcelSource, gpsStatus, lastLonLat, lastAccuracyM]);
+    return t('production.numpad.gps.detecting');
+  }, [parcelSource, gpsStatus, lastLonLat, lastAccuracyM, t]);
 
   const bannerMainTitle = useMemo(() => {
     if (parcelName) return parcelName;
     if (gpsStatus === 'ok' && activeParcels && activeParcels.length > 0 && !gpsHit) {
-      return 'Nu ești pe niciun teren delimitat';
+      return t('production.numpad.noParcel');
     }
     return '—';
-  }, [parcelName, gpsStatus, activeParcels, gpsHit]);
+  }, [parcelName, gpsStatus, activeParcels, gpsHit, t]);
 
   const handlePress = useCallback((key: PadKey) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -293,7 +295,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       showUndo({
         entityId: id,
         idempotencyKey: `bale_productions_${id}`,
-        label: `Înregistrat — ${numericCount} baloți`,
+        label: t('production.numpad.toast.saved').replace('{count}', String(numericCount)),
       });
     } catch (err) {
       mobileLogger.error('Baler production: save failed', {
@@ -302,8 +304,8 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       });
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: err instanceof Error ? err.message : 'Nu s-a putut salva producția',
+        title: t('production.numpad.error.title'),
+        message: err instanceof Error ? err.message : t('production.numpad.error.saveFailed'),
         onConfirm: hideModal,
       });
     } finally {
@@ -336,10 +338,12 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
         );
         showModal({
           type: 'warning',
-          title: 'Producție deja înregistrată',
-          message: `Ai înregistrat deja ${totalExisting} baloți pe acest teren azi (acum ${minutesAgo} min). Continui cu o nouă înregistrare?`,
-          confirmText: 'Da, continuă',
-          cancelText: 'Anulează',
+          title: t('production.numpad.duplicateModal.title'),
+          message: t('production.numpad.duplicateModal.message')
+            .replace('{total}', String(totalExisting))
+            .replace('{minutes}', String(minutesAgo)),
+          confirmText: t('production.numpad.duplicateModal.confirm'),
+          cancelText: t('production.numpad.duplicateModal.cancel'),
           onConfirm: () => {
             hideModal();
             void doSave();
@@ -357,16 +361,14 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
   return (
     <View style={styles.container}>
       <View style={styles.parcelSection}>
-        <Text style={styles.parcelLabel}>Teren</Text>
+        <Text style={styles.parcelLabel}>{t('production.numpad.parcelLabel')}</Text>
 
         {parcelsError ? (
-          <Text style={styles.bannerError}>
-            Nu s-au putut încărca parcelele. Verifică conexiunea.
-          </Text>
+          <Text style={styles.bannerError}>{t('production.numpad.parcelsError')}</Text>
         ) : parcelsLoading && (activeParcels === undefined || activeParcels.length === 0) ? (
           <View style={styles.bannerLoading}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.bannerLoadingText}>Încarc parcelele…</Text>
+            <Text style={styles.bannerLoadingText}>{t('production.numpad.loadingParcels')}</Text>
           </View>
         ) : (
           <View style={styles.bannerCard}>
@@ -393,7 +395,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
 
       <View style={styles.display}>
         <Text style={styles.displayNumber}>{count || '0'}</Text>
-        <Text style={styles.displayLabel}>baloți</Text>
+        <Text style={styles.displayLabel}>{t('production.numpad.displayLabel')}</Text>
       </View>
 
       <View style={styles.pad}>
@@ -409,9 +411,9 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
                   activeOpacity={0.6}
                   accessibilityLabel={
                     key === 'backspace'
-                      ? 'Șterge ultima cifră'
+                      ? t('production.numpad.accessibility.deleteLastDigit')
                       : key === 'clear'
-                        ? 'Șterge tot'
+                        ? t('production.numpad.accessibility.clearAll')
                         : key
                   }
                 >
@@ -442,7 +444,9 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
         activeOpacity={0.85}
       >
         <Text style={styles.saveButtonText} numberOfLines={1}>
-          {saving ? 'Se salvează…' : 'SALVEAZĂ PRODUCȚIE'}
+          {saving
+            ? t('production.numpad.saveButton.saving')
+            : t('production.numpad.saveButton.label')}
         </Text>
       </TouchableOpacity>
       <AppModal {...modalProps} />

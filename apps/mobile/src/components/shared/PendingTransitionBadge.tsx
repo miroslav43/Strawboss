@@ -1,16 +1,18 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * FM-1: Discrete badge shown when a trip transition has been applied
  * optimistically but not yet confirmed by the server.
  */
 export function PendingTransitionBadge() {
+  const { t } = useI18n();
   return (
-    <View style={styles.container} accessibilityLabel="Tranziție în așteptare de sincronizare">
+    <View style={styles.container} accessibilityLabel={t('shared.pendingTransitionBadge.a11y')}>
       <MaterialCommunityIcons name="cloud-upload-outline" size={14} color={colors.warning} />
-      <Text style={styles.text}>va fi trimis la reconectare</Text>
+      <Text style={styles.text}>{t('shared.pendingTransitionBadge.label')}</Text>
     </View>
   );
 }

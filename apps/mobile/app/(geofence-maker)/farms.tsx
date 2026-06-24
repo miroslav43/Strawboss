@@ -21,21 +21,11 @@ import { useRouter } from 'expo-router';
 import type { Farm, Parcel } from '@strawboss/types';
 import { FarmEntityType } from '@strawboss/types';
 
-const ENTITY_LABELS: Record<FarmEntityType, string> = {
-  [FarmEntityType.persoana_juridica]: 'Persoană juridică',
-  [FarmEntityType.persoana_fizica]: 'Persoană fizică',
-};
 import { mobileApiClient } from '@/lib/api-client';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { AssignFarmModal } from '@/components/geofence-maker/AssignFarmModal';
+import { useI18n } from '@/lib/i18n';
 import { colors } from '@strawboss/ui-tokens';
-
-const HARVEST_LABELS: Record<string, string> = {
-  planned: 'Planificat',
-  to_harvest: 'De recoltat',
-  harvesting: 'În recoltare',
-  harvested: 'Recoltat',
-};
 
 const HARVEST_COLORS: Record<string, string> = {
   planned: '#6B7280',
@@ -45,9 +35,22 @@ const HARVEST_COLORS: Record<string, string> = {
 };
 
 export default function FarmsScreen() {
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const router = useRouter();
+
+  const ENTITY_LABELS: Record<FarmEntityType, string> = {
+    [FarmEntityType.persoana_juridica]: t('geofenceFarms.entityTypeLegal'),
+    [FarmEntityType.persoana_fizica]: t('geofenceFarms.entityTypeNatural'),
+  };
+
+  const HARVEST_LABELS: Record<string, string> = {
+    planned: t('geofenceFarms.harvestStatusPlanned'),
+    to_harvest: t('geofenceFarms.harvestStatusToHarvest'),
+    harvesting: t('geofenceFarms.harvestStatusHarvesting'),
+    harvested: t('geofenceFarms.harvestStatusHarvested'),
+  };
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
@@ -116,8 +119,8 @@ export default function FarmsScreen() {
     if (!farmName.trim()) {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: 'Numele fermei este obligatoriu.',
+        title: t('geofenceFarms.errorTitle'),
+        message: t('geofenceFarms.errorNameRequired'),
         onConfirm: hideModal,
       });
       return;
@@ -125,8 +128,8 @@ export default function FarmsScreen() {
     if (!farmPhone.trim()) {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: 'Numărul de telefon este obligatoriu.',
+        title: t('geofenceFarms.errorTitle'),
+        message: t('geofenceFarms.errorPhoneRequired'),
         onConfirm: hideModal,
       });
       return;
@@ -152,8 +155,8 @@ export default function FarmsScreen() {
     } catch {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: 'Nu s-a putut crea ferma. Încearcă din nou.',
+        title: t('geofenceFarms.errorTitle'),
+        message: t('geofenceFarms.errorCreateFailed'),
         onConfirm: hideModal,
       });
     } finally {
@@ -166,16 +169,16 @@ export default function FarmsScreen() {
   return (
     <View style={[styles.outer, { backgroundColor: colors.primary }]}>
       <ScreenHeader
-        title="Ferme"
+        title={t('geofenceFarms.screenTitle')}
         right={
           <TouchableOpacity
             style={styles.addBtn}
             onPress={openCreate}
             accessibilityRole="button"
-            accessibilityLabel="Fermă nouă"
+            accessibilityLabel={t('geofenceFarms.addFarmButton')}
           >
             <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-            <Text style={styles.addBtnText}>Fermă nouă</Text>
+            <Text style={styles.addBtnText}>{t('geofenceFarms.addFarmButton')}</Text>
           </TouchableOpacity>
         }
       />
@@ -194,13 +197,13 @@ export default function FarmsScreen() {
         {isLoading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loadingText}>Se încarcă fermele...</Text>
+            <Text style={styles.loadingText}>{t('geofenceFarms.loadingText')}</Text>
           </View>
         ) : farms.length === 0 ? (
           <View style={styles.emptyCard}>
             <MaterialCommunityIcons name="home-group" size={32} color={colors.tertiary} />
-            <Text style={styles.emptyTitle}>Nicio fermă înregistrată</Text>
-            <Text style={styles.emptySub}>Apasă „Fermă nouă" pentru a adăuga prima fermă.</Text>
+            <Text style={styles.emptyTitle}>{t('geofenceFarms.emptyTitle')}</Text>
+            <Text style={styles.emptySub}>{t('geofenceFarms.emptySub')}</Text>
           </View>
         ) : (
           farms.map((farm) => {
@@ -245,7 +248,9 @@ export default function FarmsScreen() {
                         APIA: {farm.apiaCode}
                       </Text>
                     ) : null}
-                    <Text style={styles.farmMeta}>{farmParcels.length} câmpuri</Text>
+                    <Text style={styles.farmMeta}>
+                      {t('geofenceFarms.farmFieldCount', { count: farmParcels.length })}
+                    </Text>
                   </View>
                   <MaterialCommunityIcons
                     name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -257,7 +262,7 @@ export default function FarmsScreen() {
                 {isExpanded && (
                   <View style={styles.parcelList}>
                     {farmParcels.length === 0 ? (
-                      <Text style={styles.noParcelText}>Niciun câmp asignat acestei ferme.</Text>
+                      <Text style={styles.noParcelText}>{t('geofenceFarms.noParcelsForFarm')}</Text>
                     ) : (
                       farmParcels.map((p) => (
                         <ParcelRow key={p.id} parcel={p} onViewOnMap={goToMap} />
@@ -282,8 +287,12 @@ export default function FarmsScreen() {
                 <MaterialCommunityIcons name="help-circle-outline" size={22} color="#D97706" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.farmName, { color: '#D97706' }]}>Fără fermă</Text>
-                <Text style={styles.farmMeta}>{unassignedParcels.length} câmpuri neasignate</Text>
+                <Text style={[styles.farmName, { color: '#D97706' }]}>
+                  {t('geofenceFarms.unassignedFarmName')}
+                </Text>
+                <Text style={styles.farmMeta}>
+                  {t('geofenceFarms.unassignedParcelCount', { count: unassignedParcels.length })}
+                </Text>
               </View>
               <MaterialCommunityIcons
                 name={expandedId === '__unassigned__' ? 'chevron-up' : 'chevron-down'}
@@ -325,7 +334,7 @@ export default function FarmsScreen() {
             ]}
           >
             <View style={styles.modalTitleRow}>
-              <Text style={styles.modalTitle}>Fermă nouă</Text>
+              <Text style={styles.modalTitle}>{t('geofenceFarms.createModalTitle')}</Text>
               <TouchableOpacity onPress={() => setCreateVisible(false)} hitSlop={12}>
                 <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
@@ -337,32 +346,32 @@ export default function FarmsScreen() {
               showsVerticalScrollIndicator={false}
             >
               <Text style={styles.inputLabel}>
-                Nume fermă <Text style={{ color: '#DC2626' }}>*</Text>
+                {t('geofenceFarms.inputLabelFarmName')} <Text style={{ color: '#DC2626' }}>*</Text>
               </Text>
               <TextInput
                 style={styles.input}
                 value={farmName}
                 onChangeText={setFarmName}
-                placeholder="ex. Ferma Dunărea"
+                placeholder={t('geofenceFarms.placeholderFarmName')}
                 placeholderTextColor="#9CA3AF"
                 returnKeyType="next"
                 autoFocus
               />
 
               <Text style={styles.inputLabel}>
-                Telefon <Text style={{ color: '#DC2626' }}>*</Text>
+                {t('geofenceFarms.inputLabelPhone')} <Text style={{ color: '#DC2626' }}>*</Text>
               </Text>
               <TextInput
                 style={styles.input}
                 value={farmPhone}
                 onChangeText={setFarmPhone}
-                placeholder="ex. 0722 123 456"
+                placeholder={t('geofenceFarms.placeholderPhone')}
                 placeholderTextColor="#9CA3AF"
                 keyboardType="phone-pad"
                 returnKeyType="next"
               />
 
-              <Text style={styles.inputLabel}>Tip entitate</Text>
+              <Text style={styles.inputLabel}>{t('geofenceFarms.inputLabelEntityType')}</Text>
               <View style={styles.entitySegmentRow}>
                 <TouchableOpacity
                   style={[
@@ -385,7 +394,7 @@ export default function FarmsScreen() {
                         styles.entitySegmentTextActive,
                     ]}
                   >
-                    Persoană juridică
+                    {t('geofenceFarms.entityTypeLegal')}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -409,38 +418,38 @@ export default function FarmsScreen() {
                         styles.entitySegmentTextActive,
                     ]}
                   >
-                    Persoană fizică
+                    {t('geofenceFarms.entityTypeNatural')}
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.inputLabel}>CUI</Text>
+              <Text style={styles.inputLabel}>{t('geofenceFarms.inputLabelCui')}</Text>
               <TextInput
                 style={styles.input}
                 value={farmCui}
                 onChangeText={setFarmCui}
-                placeholder="ex. RO12345678 (opțional)"
+                placeholder={t('geofenceFarms.placeholderCui')}
                 placeholderTextColor="#9CA3AF"
                 autoCapitalize="characters"
                 returnKeyType="next"
               />
 
-              <Text style={styles.inputLabel}>Cod RO APIA</Text>
+              <Text style={styles.inputLabel}>{t('geofenceFarms.inputLabelApiaCode')}</Text>
               <TextInput
                 style={styles.input}
                 value={farmApia}
                 onChangeText={setFarmApia}
-                placeholder="Cod APIA al fermei (opțional)"
+                placeholder={t('geofenceFarms.placeholderApiaCode')}
                 placeholderTextColor="#9CA3AF"
                 returnKeyType="next"
               />
 
-              <Text style={styles.inputLabel}>Adresă</Text>
+              <Text style={styles.inputLabel}>{t('geofenceFarms.inputLabelAddress')}</Text>
               <TextInput
                 style={styles.input}
                 value={farmAddress}
                 onChangeText={setFarmAddress}
-                placeholder="Adresă (opțional)"
+                placeholder={t('geofenceFarms.placeholderAddress')}
                 placeholderTextColor="#9CA3AF"
                 returnKeyType="done"
                 onSubmitEditing={handleCreate}
@@ -453,7 +462,9 @@ export default function FarmsScreen() {
                 onPress={() => setCreateVisible(false)}
                 disabled={isSaving}
               >
-                <Text style={styles.modalCancelText}>Anulează</Text>
+                <Text style={styles.modalCancelText}>
+                  {t('geofenceFarms.createModalCancelButton')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalSaveBtn, isSaving && styles.modalSaveBtnDisabled]}
@@ -463,7 +474,9 @@ export default function FarmsScreen() {
                 {isSaving ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.modalSaveText}>Creează ferma</Text>
+                  <Text style={styles.modalSaveText}>
+                    {t('geofenceFarms.createModalSaveButton')}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -490,13 +503,20 @@ function ParcelRow({
   onViewOnMap: (parcelId: string) => void;
   onAssign?: (parcelId: string) => void;
 }) {
+  const { t } = useI18n();
+  const HARVEST_LABELS: Record<string, string> = {
+    planned: t('geofenceFarms.harvestStatusPlanned'),
+    to_harvest: t('geofenceFarms.harvestStatusToHarvest'),
+    harvesting: t('geofenceFarms.harvestStatusHarvesting'),
+    harvested: t('geofenceFarms.harvestStatusHarvested'),
+  };
   const hasBoundary = !!parcel.boundary;
   const status = parcel.harvestStatus ?? 'planned';
   const statusColor = HARVEST_COLORS[status] ?? '#6B7280';
   const statusLabel = HARVEST_LABELS[status] ?? status;
   const area = typeof parcel.areaHectares === 'number' ? parcel.areaHectares.toFixed(2) : '–';
   const code = parcel.code ?? '';
-  const name = parcel.name ?? '(fără nume)';
+  const name = parcel.name ?? t('geofenceFarms.parcelNoName');
 
   return (
     <View style={styles.parcelRow}>
@@ -513,7 +533,7 @@ function ParcelRow({
           >
             {statusLabel}
           </Text>
-          <Text style={styles.parcelArea}>{area} ha</Text>
+          <Text style={styles.parcelArea}>{t('geofenceFarms.parcelAreaUnit', { area })}</Text>
           {!hasBoundary && (
             <MaterialCommunityIcons name="map-marker-off" size={14} color="#D1D5DB" />
           )}
@@ -525,7 +545,7 @@ function ParcelRow({
             onPress={() => onViewOnMap(parcel.id)}
             style={styles.iconBtn}
             accessibilityRole="button"
-            accessibilityLabel="Vezi pe hartă"
+            accessibilityLabel={t('geofenceFarms.parcelViewOnMapA11y')}
           >
             <MaterialCommunityIcons name="map-search" size={20} color="#0A5C36" />
           </TouchableOpacity>
@@ -535,7 +555,7 @@ function ParcelRow({
             onPress={() => onAssign(parcel.id)}
             style={styles.iconBtn}
             accessibilityRole="button"
-            accessibilityLabel="Asignează fermă"
+            accessibilityLabel={t('geofenceFarms.parcelAssignFarmA11y')}
           >
             <MaterialCommunityIcons name="home-plus-outline" size={20} color="#D97706" />
           </TouchableOpacity>

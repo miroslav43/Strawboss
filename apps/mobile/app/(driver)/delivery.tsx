@@ -16,8 +16,10 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { ActiveTripCard, pickFeaturedTrip } from '@/components/features/driver/ActiveTripCard';
 import { useSync } from '@/hooks/useSync';
 import { fontScale } from '@/utils/responsive';
+import { useI18n } from '@/lib/i18n';
 
 export default function DriverDeliveryScreen() {
+  const { t } = useI18n();
   const userId = useAuthStore((s) => s.userId);
   const { triggerSync } = useSync();
   const [activeTrip, setActiveTrip] = useState<LocalTrip | null>(null);
@@ -84,7 +86,7 @@ export default function DriverDeliveryScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <ScreenHeader title="Livrare" />
+      <ScreenHeader title={t('driver.screenTitle.delivery')} />
 
       {loading ? (
         <View style={[styles.body, styles.centered]}>
@@ -103,10 +105,8 @@ export default function DriverDeliveryScreen() {
           ) : (
             <View style={styles.empty}>
               <MaterialCommunityIcons name="truck" size={48} color="#8D6E63" />
-              <Text style={styles.emptyText}>Nicio cursă activă.</Text>
-              <Text style={styles.emptySubtext}>
-                Cursa apare aici cât timp este activă, până la livrare.
-              </Text>
+              <Text style={styles.emptyText}>{t('driver.delivery.empty.noActiveTrip')}</Text>
+              <Text style={styles.emptySubtext}>{t('driver.delivery.empty.hint')}</Text>
             </View>
           )}
         </ScrollView>

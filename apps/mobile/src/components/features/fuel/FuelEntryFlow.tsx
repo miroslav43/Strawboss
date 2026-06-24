@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useModal } from '@/hooks/useModal';
+import { useI18n } from '@/lib/i18n';
 import { AppModal } from '@/components/shared/AppModal';
 import { UndoToast } from '@/components/shared/UndoToast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -31,10 +32,10 @@ import { colors } from '@strawboss/ui-tokens';
  */
 type FuelStep = 'liters' | 'station-photo' | 'confirm';
 
-export const FUEL_STEP_TITLES: Record<FuelStep, string> = {
-  liters: 'Litri alimentați',
-  'station-photo': 'Foto stație combustibil',
-  confirm: 'Confirmare alimentare',
+export const FUEL_STEP_TITLE_KEYS: Record<FuelStep, string> = {
+  liters: 'fuel.entryFlow.step.liters',
+  'station-photo': 'fuel.entryFlow.step.stationPhoto',
+  confirm: 'fuel.entryFlow.step.confirm',
 };
 
 const FUEL_STEP_ORDER: FuelStep[] = ['liters', 'station-photo', 'confirm'];
@@ -64,6 +65,7 @@ export function FuelEntryFlow({
   onStepChange,
   onSaved,
 }: FuelEntryFlowProps) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
   const [step, setStep] = useState<FuelStep>('liters');
@@ -85,9 +87,9 @@ export function FuelEntryFlow({
   const goToStep = useCallback(
     (next: FuelStep) => {
       setStep(next);
-      onStepChange?.(FUEL_STEP_TITLES[next]);
+      onStepChange?.(t(FUEL_STEP_TITLE_KEYS[next]));
     },
-    [onStepChange],
+    [onStepChange, t],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -160,7 +162,7 @@ export function FuelEntryFlow({
       const undoRecord: UndoRecord = {
         entityId: id,
         idempotencyKey: `fuel_logs_${id}`,
-        label: `Înregistrat — ${quantityLiters} L combustibil`,
+        label: t('fuel.entryFlow.toast.saved').replace('{liters}', String(quantityLiters)),
       };
 
       if (onSaved) {
@@ -179,8 +181,8 @@ export function FuelEntryFlow({
     } catch (err) {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: err instanceof Error ? err.message : 'Nu s-a putut salva alimentarea',
+        title: t('fuel.entryFlow.error.title'),
+        message: err instanceof Error ? err.message : t('fuel.entryFlow.error.saveFailed'),
         onConfirm: hideModal,
       });
     } finally {
@@ -207,15 +209,19 @@ export function FuelEntryFlow({
       case 'liters':
         return (
           <View style={styles.container}>
-            <Text style={styles.subtitle}>Câți litri ai alimentat?</Text>
+            <Text style={styles.subtitle}>{t('fuel.entryFlow.liters.subtitle')}</Text>
             <NumericPad value={liters} onChange={setLiters} maxLength={6} decimal />
             <View style={styles.actions}>
               <BigButton
-                title="Continuă"
+                title={t('fuel.entryFlow.liters.action.continue')}
                 onPress={() => goToStep('station-photo')}
                 disabled={!liters || liters === '0'}
               />
-              <BigButton title="Anulează" variant="outline" onPress={onCancel} />
+              <BigButton
+                title={t('fuel.entryFlow.liters.action.cancel')}
+                variant="outline"
+                onPress={onCancel}
+              />
             </View>
           </View>
         );
@@ -223,17 +229,22 @@ export function FuelEntryFlow({
       case 'station-photo':
         return (
           <View style={styles.container}>
-            <Text style={styles.subtitle}>
-              Fotografiază stația de combustibil. NU este nevoie de bon fiscal.
-            </Text>
-            <PhotoCapture label="Fotografie stație" onCapture={(uri) => setPhotoUri(uri)} />
+            <Text style={styles.subtitle}>{t('fuel.entryFlow.stationPhoto.subtitle')}</Text>
+            <PhotoCapture
+              label={t('fuel.entryFlow.stationPhoto.captureLabel')}
+              onCapture={(uri) => setPhotoUri(uri)}
+            />
             <View style={styles.actions}>
               <BigButton
-                title="Continuă"
+                title={t('fuel.entryFlow.stationPhoto.action.continue')}
                 onPress={() => goToStep('confirm')}
                 disabled={!photoUri}
               />
-              <BigButton title="Înapoi" variant="outline" onPress={() => goToStep('liters')} />
+              <BigButton
+                title={t('fuel.entryFlow.stationPhoto.action.back')}
+                variant="outline"
+                onPress={() => goToStep('liters')}
+              />
             </View>
           </View>
         );
@@ -243,7 +254,7 @@ export function FuelEntryFlow({
           <View style={styles.container}>
             <View style={styles.summaryCard}>
               <View style={styles.row}>
-                <Text style={styles.label}>Litri</Text>
+                <Text style={styles.label}>{t('fuel.entryFlow.confirm.row.liters')}</Text>
                 <View style={styles.valueRow}>
                   <Text style={styles.valueHighlight}>{liters}</Text>
                   <Text style={styles.unit}>L</Text>
@@ -251,7 +262,7 @@ export function FuelEntryFlow({
               </View>
               <View style={styles.divider} />
               <View style={styles.row}>
-                <Text style={styles.label}>Fotografie</Text>
+                <Text style={styles.label}>{t('fuel.entryFlow.confirm.row.photo')}</Text>
                 {photoUri ? (
                   <Image source={{ uri: photoUri }} style={styles.thumb} />
                 ) : (
@@ -261,9 +272,13 @@ export function FuelEntryFlow({
             </View>
 
             <View style={styles.actions}>
-              <BigButton title="Salvează" onPress={handleConfirm} loading={saving} />
+              <BigButton
+                title={t('fuel.entryFlow.confirm.action.save')}
+                onPress={handleConfirm}
+                loading={saving}
+              />
               <TouchableOpacity onPress={() => goToStep('station-photo')} style={styles.backButton}>
-                <Text style={styles.backText}>Înapoi</Text>
+                <Text style={styles.backText}>{t('fuel.entryFlow.confirm.action.back')}</Text>
               </TouchableOpacity>
             </View>
             <AppModal {...modalProps} />

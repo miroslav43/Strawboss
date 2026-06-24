@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, radii } from '@strawboss/ui-tokens';
 import type { CurrentFieldParcel } from '@/hooks/useCurrentLoaderParcel';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * "Teren activ" card — shared by the loader and baler home screens.
@@ -22,14 +23,16 @@ export function ActiveFieldCard({
   parcel: CurrentFieldParcel;
   onOpenParcel: (parcelId: string) => void;
 }) {
+  const { t } = useI18n();
+
   if (parcel.status === 'loading') {
     return (
       <View style={styles.parcelBanner}>
         <View style={styles.parcelHeader}>
           <MaterialCommunityIcons name="crosshairs-gps" size={20} color={colors.primary} />
-          <Text style={styles.parcelLabel}>Teren activ</Text>
+          <Text style={styles.parcelLabel}>{t('shared.activeFieldCard.sectionLabel')}</Text>
         </View>
-        <Text style={styles.parcelHint}>Se încarcă…</Text>
+        <Text style={styles.parcelHint}>{t('shared.activeFieldCard.loading')}</Text>
       </View>
     );
   }
@@ -42,39 +45,45 @@ export function ActiveFieldCard({
         onPress={() => parcel.parcelId && onOpenParcel(parcel.parcelId)}
         disabled={!parcel.parcelId}
         accessibilityRole="button"
-        accessibilityLabel="Deschide detaliile terenului"
+        accessibilityLabel={t('shared.activeFieldCard.openFieldA11y')}
       >
         <View style={styles.parcelHeader}>
           <MaterialCommunityIcons name="map-marker-radius" size={20} color={colors.primary} />
-          <Text style={styles.parcelLabel}>Teren activ</Text>
+          <Text style={styles.parcelLabel}>{t('shared.activeFieldCard.sectionLabel')}</Text>
         </View>
         <View style={styles.parcelNameRow}>
           <Text style={[styles.parcelName, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
-            {parcel.parcelName ?? parcel.parcelCode ?? 'Teren asignat'}
+            {parcel.parcelName ?? parcel.parcelCode ?? t('shared.activeFieldCard.assignedField')}
           </Text>
           <MaterialCommunityIcons name="chevron-right" size={24} color={colors.tertiary} />
         </View>
         {parcel.presence === 'inside' ? (
           <View style={[styles.presencePill, styles.presenceInside]}>
             <MaterialCommunityIcons name="check-circle" size={16} color="#0A5C36" />
-            <Text style={styles.presenceInsideText}>Ești pe teren</Text>
+            <Text style={styles.presenceInsideText}>
+              {t('shared.activeFieldCard.presenceInside')}
+            </Text>
           </View>
         ) : parcel.presence === 'outside' ? (
           <View style={[styles.presencePill, styles.presenceOutside]}>
             <MaterialCommunityIcons name="navigation-variant" size={16} color="#B7791F" />
             <Text style={styles.presenceOutsideText}>
               {parcel.distanceM != null
-                ? `Mai ai ${parcel.distanceM} m până în teren`
-                : 'Mergi la teren'}
+                ? t('shared.activeFieldCard.presenceOutsideWithDistance', {
+                    distance: parcel.distanceM,
+                  })
+                : t('shared.activeFieldCard.presenceOutside')}
             </Text>
           </View>
         ) : (
           <View style={[styles.presencePill, styles.presenceUnknown]}>
             <MaterialCommunityIcons name="crosshairs-gps" size={16} color={colors.tertiary} />
-            <Text style={styles.presenceUnknownText}>Verific poziția…</Text>
+            <Text style={styles.presenceUnknownText}>
+              {t('shared.activeFieldCard.presenceUnknown')}
+            </Text>
           </View>
         )}
-        <Text style={styles.parcelHint}>apasă pentru detalii</Text>
+        <Text style={styles.parcelHint}>{t('shared.activeFieldCard.tapForDetails')}</Text>
       </TouchableOpacity>
     );
   }
@@ -92,15 +101,13 @@ export function ActiveFieldCard({
         ? 'map-marker-alert'
         : 'map-marker-off';
   const headerLabel =
-    parcel.status === 'multiple_active'
-      ? 'GPS — nu te detectez pe teren'
-      : parcel.status === 'needs_start'
-        ? 'GPS — nu te detectez pe teren'
-        : 'Niciun teren asignat';
+    parcel.status === 'multiple_active' || parcel.status === 'needs_start'
+      ? t('shared.activeFieldCard.gpsNoDetect')
+      : t('shared.activeFieldCard.noFieldAssigned');
   const helpText =
     parcel.status === 'unavailable'
-      ? 'Cere dispecerului să te asigneze pe o parcelă astăzi.'
-      : 'Mergi pe parcela pe care lucrezi și apasă „Reîncearcă GPS". Terenul se detectează automat după locație — nu se poate alege manual.';
+      ? t('shared.activeFieldCard.helpUnavailable')
+      : t('shared.activeFieldCard.helpGpsError');
 
   return (
     <View style={isError ? styles.parcelBannerPrompt : styles.parcelBanner}>
@@ -111,7 +118,9 @@ export function ActiveFieldCard({
       <Text style={styles.parcelHint}>{helpText}</Text>
       {isError && parcel.candidates.length > 0 ? (
         <View style={styles.parcelCandidatesInfo}>
-          <Text style={styles.parcelCandidatesTitle}>Terenurile tale asignate:</Text>
+          <Text style={styles.parcelCandidatesTitle}>
+            {t('shared.activeFieldCard.candidatesTitle')}
+          </Text>
           {parcel.candidates.map((task) => (
             <TouchableOpacity
               key={task.id}
@@ -120,7 +129,10 @@ export function ActiveFieldCard({
               disabled={!task.parcelId}
               onPress={() => task.parcelId && onOpenParcel(task.parcelId)}
               accessibilityRole="button"
-              accessibilityLabel={`Deschide detaliile pentru ${task.parcelName ?? task.parcelCode ?? 'parcelă'}`}
+              accessibilityLabel={t('shared.activeFieldCard.openParcelA11y', {
+                name:
+                  task.parcelName ?? task.parcelCode ?? t('shared.activeFieldCard.parcelFallback'),
+              })}
             >
               <MaterialCommunityIcons name="circle-small" size={18} color={colors.tertiary} />
               <Text
@@ -128,7 +140,7 @@ export function ActiveFieldCard({
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {task.parcelName ?? task.parcelCode ?? 'Parcelă'}
+                {task.parcelName ?? task.parcelCode ?? t('shared.activeFieldCard.parcelFallback')}
               </Text>
               {task.parcelId ? (
                 <MaterialCommunityIcons name="chevron-right" size={18} color={colors.tertiary} />
@@ -140,7 +152,7 @@ export function ActiveFieldCard({
       {isError ? (
         <TouchableOpacity style={styles.refreshGpsBtn} onPress={parcel.refresh}>
           <MaterialCommunityIcons name="crosshairs-gps" size={16} color="#fff" />
-          <Text style={styles.refreshGpsText}>Reîncearcă GPS</Text>
+          <Text style={styles.refreshGpsText}>{t('shared.activeFieldCard.retryGps')}</Text>
         </TouchableOpacity>
       ) : null}
     </View>

@@ -38,14 +38,15 @@ import { AvatarPicker } from '@/components/shared/AvatarPicker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSync } from '@/hooks/useSync';
 import { useTapSequence } from '@/hooks/useTapSequence';
+import { useI18n } from '@/lib/i18n';
 
-const ROLE_LABEL: Record<string, string> = {
-  driver: 'Șofer',
-  loader_operator: 'Operator Încărcător',
-  baler_operator: 'Operator Balotieră',
-  dispatcher: 'Dispecer',
-  admin: 'Administrator',
-  geofence_maker: 'Desenator Geofence',
+const ROLE_KEY: Record<string, string> = {
+  driver: 'profile.role.driver',
+  loader_operator: 'profile.role.loaderOperator',
+  baler_operator: 'profile.role.balerOperator',
+  dispatcher: 'profile.role.dispatcher',
+  admin: 'profile.role.admin',
+  geofence_maker: 'profile.role.geofenceMaker',
 };
 
 type MachineIconName = 'wrench' | 'grain' | 'truck' | 'map-marker';
@@ -57,6 +58,7 @@ const MACHINE_MDI: Record<string, MachineIconName> = {
 
 export function ProfileScreen() {
   const router = useRouter();
+  const { t } = useI18n();
   const { clear } = useAuthStore();
   const { devSyncVisible, revealSync, hideSync } = useDevModeStore();
   const { highContrast, toggleHighContrast } = useThemeStore();
@@ -139,8 +141,8 @@ export function ProfileScreen() {
       revealSync();
       showModal({
         type: 'success',
-        title: 'Sincronizare activată',
-        message: 'Controlul de sincronizare va fi vizibil până la închiderea aplicației.',
+        title: t('profile.devMode.syncActivated.title'),
+        message: t('profile.devMode.syncActivated.message'),
         autoDismiss: true,
         onConfirm: hideModal,
       });
@@ -179,11 +181,10 @@ export function ProfileScreen() {
   const handleReleaseDevice = useCallback(() => {
     showModal({
       type: 'confirm',
-      title: 'Eliberează dispozitivul',
-      message:
-        'Oprește protecția Device Owner: aplicația va putea fi din nou oprită și dezinstalată. Folosește doar la scoaterea din uz a acestui telefon. Continui?',
-      confirmText: 'Eliberează',
-      cancelText: 'Anulează',
+      title: t('profile.modal.releaseDevice.title'),
+      message: t('profile.modal.releaseDevice.message'),
+      confirmText: t('profile.modal.releaseDevice.confirm'),
+      cancelText: t('profile.modal.releaseDevice.cancel'),
       onCancel: hideModal,
       onConfirm: async () => {
         hideModal();
@@ -191,25 +192,26 @@ export function ProfileScreen() {
         setIsOwner(false);
         showModal({
           type: ok ? 'success' : 'error',
-          title: ok ? 'Gata' : 'Eroare',
+          title: ok
+            ? t('profile.modal.releaseDevice.successTitle')
+            : t('profile.modal.releaseDevice.errorTitle'),
           message: ok
-            ? 'Dispozitivul a fost eliberat. Aplicația poate fi acum dezinstalată.'
-            : 'Nu s-a putut elibera dispozitivul.',
+            ? t('profile.modal.releaseDevice.successMessage')
+            : t('profile.modal.releaseDevice.errorMessage'),
           autoDismiss: ok,
           onConfirm: hideModal,
         });
       },
     });
-  }, [showModal, hideModal]);
+  }, [showModal, hideModal, t]);
 
   const handleClearFailedQueue = useCallback(() => {
     showModal({
       type: 'confirm',
-      title: 'Șterge coada eșuată',
-      message:
-        'Înregistrările eșuate vor fi șterse definitiv de pe telefon. Cele deja trimise pe server rămân neschimbate. Continui?',
-      confirmText: 'Șterge',
-      cancelText: 'Anulează',
+      title: t('profile.modal.clearQueue.title'),
+      message: t('profile.modal.clearQueue.message'),
+      confirmText: t('profile.modal.clearQueue.confirm'),
+      cancelText: t('profile.modal.clearQueue.cancel'),
       onCancel: hideModal,
       onConfirm: async () => {
         hideModal();
@@ -217,25 +219,28 @@ export function ProfileScreen() {
           const deleted = await clearFailedQueue();
           showModal({
             type: 'success',
-            title: 'Gata',
+            title: t('profile.modal.clearQueue.successTitle'),
             message:
               deleted > 0
-                ? `S-au șters ${deleted} înregistrări din coadă.`
-                : 'Nu existau înregistrări eșuate.',
+                ? t('profile.modal.clearQueue.successDeleted', { count: deleted })
+                : t('profile.modal.clearQueue.successEmpty'),
             autoDismiss: true,
             onConfirm: hideModal,
           });
         } catch (err) {
           showModal({
             type: 'error',
-            title: 'Eroare',
-            message: err instanceof Error ? err.message : 'Nu s-a putut șterge coada.',
+            title: t('profile.modal.clearQueue.errorTitle'),
+            message:
+              err instanceof Error ? err.message : t('profile.modal.clearQueue.errorDefault'),
             onConfirm: hideModal,
           });
         }
       },
     });
-  }, [clearFailedQueue, showModal, hideModal]);
+  }, [clearFailedQueue, showModal, hideModal, t]);
+
+  const roleLabel = profile ? t(ROLE_KEY[profile.role] ?? '') || profile.role : '';
 
   return (
     <View style={styles.outerContainer}>
@@ -257,13 +262,13 @@ export function ProfileScreen() {
               <Pressable
                 onPress={onRoleBadgeTap}
                 style={styles.roleBadge}
-                accessibilityLabel={ROLE_LABEL[profile.role] ?? profile.role}
+                accessibilityLabel={roleLabel}
               >
-                <Text style={styles.roleText}>{ROLE_LABEL[profile.role] ?? profile.role}</Text>
+                <Text style={styles.roleText}>{roleLabel}</Text>
               </Pressable>
             </>
           ) : (
-            <Text style={styles.errorText}>Nu s-au putut încărca datele profilului</Text>
+            <Text style={styles.errorText}>{t('profile.error.loadProfile')}</Text>
           )}
         </View>
       </SafeAreaView>
@@ -281,38 +286,44 @@ export function ProfileScreen() {
       >
         {devSyncVisible ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Sincronizare</Text>
+            <Text style={styles.cardTitle}>{t('profile.sync.cardTitle')}</Text>
             <View style={styles.syncRow}>
-              <Text style={styles.syncLabel}>Rețea</Text>
-              <Text style={styles.syncValue}>{isConnected ? 'Online' : 'Offline'}</Text>
+              <Text style={styles.syncLabel}>{t('profile.sync.network')}</Text>
+              <Text style={styles.syncValue}>
+                {isConnected ? t('profile.sync.online') : t('profile.sync.offline')}
+              </Text>
             </View>
             <View style={styles.syncRow}>
-              <Text style={styles.syncLabel}>În coadă</Text>
+              <Text style={styles.syncLabel}>{t('profile.sync.inQueue')}</Text>
               <Text style={[styles.syncValue, queueCount > 0 ? styles.syncValueHighlight : null]}>
                 {queueCount}
               </Text>
             </View>
             {failedQueueCount > 0 ? (
               <Text style={styles.syncFailedHint}>
-                Ultimul sync a eșuat pentru {failedQueueCount}{' '}
-                {failedQueueCount === 1 ? 'înregistrare' : 'înregistrări'} — folosește butonul de
-                mai jos.
+                {t('profile.sync.failedHint', {
+                  count: failedQueueCount,
+                  item:
+                    failedQueueCount === 1
+                      ? t('profile.sync.failedHint_record_singular')
+                      : t('profile.sync.failedHint_record_plural'),
+                })}
               </Text>
             ) : null}
             <View style={styles.syncRow}>
-              <Text style={styles.syncLabel}>Ultima sincronizare</Text>
+              <Text style={styles.syncLabel}>{t('profile.sync.lastSync')}</Text>
               <Text style={styles.syncValue}>
                 {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : '—'}
               </Text>
             </View>
-            {syncing ? <Text style={styles.syncHint}>Se sincronizează…</Text> : null}
+            {syncing ? <Text style={styles.syncHint}>{t('profile.sync.syncing')}</Text> : null}
             <TouchableOpacity
               style={styles.syncButton}
               onPress={() => void triggerSync()}
               disabled={!isConnected || syncing}
               activeOpacity={0.85}
             >
-              <Text style={styles.syncButtonText}>Sincronizează acum</Text>
+              <Text style={styles.syncButtonText}>{t('profile.sync.syncNow')}</Text>
             </TouchableOpacity>
             {failedQueueCount > 0 ? (
               <>
@@ -322,7 +333,7 @@ export function ProfileScreen() {
                   disabled={!isConnected || syncing}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.retryButtonText}>Reîncearcă înregistrările eșuate</Text>
+                  <Text style={styles.retryButtonText}>{t('profile.sync.retryFailed')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.clearQueueButton}
@@ -330,7 +341,7 @@ export function ProfileScreen() {
                   disabled={syncing}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.clearQueueButtonText}>Șterge coada eșuată</Text>
+                  <Text style={styles.clearQueueButtonText}>{t('profile.sync.clearQueue')}</Text>
                 </TouchableOpacity>
               </>
             ) : null}
@@ -339,9 +350,9 @@ export function ProfileScreen() {
 
         {profile ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Mașina asignată</Text>
+            <Text style={styles.cardTitle}>{t('profile.machine.cardTitle')}</Text>
             {!assignedMachineId ? (
-              <Text style={styles.noMachine}>Nicio mașină asignată</Text>
+              <Text style={styles.noMachine}>{t('profile.machine.none')}</Text>
             ) : machine ? (
               <View style={styles.machineRow}>
                 <MaterialCommunityIcons
@@ -364,14 +375,14 @@ export function ProfileScreen() {
                 </View>
               </View>
             ) : (
-              <Text style={styles.noMachine}>Nu s-a putut încărca mașina</Text>
+              <Text style={styles.noMachine}>{t('profile.machine.loadError')}</Text>
             )}
           </View>
         ) : null}
 
         {showStats && profile ? (
           <View style={styles.statsSection}>
-            <Text style={styles.sectionTitle}>Starea mea</Text>
+            <Text style={styles.sectionTitle}>{t('profile.stats.sectionTitle')}</Text>
             <OperatorStats operatorId={profile.id} role={profile.role} />
           </View>
         ) : null}
@@ -380,7 +391,7 @@ export function ProfileScreen() {
 
         {profile ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Specimen de semnătură</Text>
+            <Text style={styles.cardTitle}>{t('profile.signature.cardTitle')}</Text>
             <View style={styles.specimenRow}>
               {profile.signatureSpecimenUrl ? (
                 <Image
@@ -390,7 +401,7 @@ export function ProfileScreen() {
                 />
               ) : (
                 <View style={[styles.specimenImage, styles.specimenEmpty]}>
-                  <Text style={styles.specimenEmptyText}>Nu ai încă un specimen.</Text>
+                  <Text style={styles.specimenEmptyText}>{t('profile.signature.noSpecimen')}</Text>
                 </View>
               )}
             </View>
@@ -399,11 +410,13 @@ export function ProfileScreen() {
               activeOpacity={0.85}
               onPress={() => router.push('/specimen-capture?mode=redo')}
               accessibilityRole="button"
-              accessibilityLabel="Schimbă specimenul de semnătură"
+              accessibilityLabel={t('profile.signature.accessibilityLabel')}
             >
               <MaterialCommunityIcons name="signature-freehand" size={18} color={colors.primary} />
               <Text style={styles.specimenButtonText}>
-                {profile.signatureSpecimenUrl ? 'Schimbă specimenul' : 'Creează specimen'}
+                {profile.signatureSpecimenUrl
+                  ? t('profile.signature.changeSpecimen')
+                  : t('profile.signature.createSpecimen')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -416,10 +429,10 @@ export function ProfileScreen() {
             onPress={() => router.push('/daily-report')}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Raport zilnic PDF"
+            accessibilityLabel={t('profile.dailyReport')}
           >
             <MaterialCommunityIcons name="file-pdf-box" size={22} color={colors.primary} />
-            <Text style={styles.actionRowText}>Raport zilnic PDF</Text>
+            <Text style={styles.actionRowText}>{t('profile.dailyReport')}</Text>
             <MaterialCommunityIcons name="chevron-right" size={20} color={colors.neutral} />
           </TouchableOpacity>
         ) : null}
@@ -431,17 +444,17 @@ export function ProfileScreen() {
             onPress={() => router.push('/tracking-setup')}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Configurare urmărire permanentă"
+            accessibilityLabel={t('profile.trackingSetup_accessibilityLabel')}
           >
             <MaterialCommunityIcons name="map-marker-check" size={22} color={colors.primary} />
-            <Text style={styles.actionRowText}>Configurare urmărire</Text>
+            <Text style={styles.actionRowText}>{t('profile.trackingSetup')}</Text>
             <MaterialCommunityIcons name="chevron-right" size={20} color={colors.neutral} />
           </TouchableOpacity>
         ) : null}
 
         {/* FM-8: High-contrast (sunlight) mode toggle */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Afișaj</Text>
+          <Text style={styles.cardTitle}>{t('profile.display.cardTitle')}</Text>
           <View style={styles.preferenceRow}>
             <View style={styles.preferenceTextWrap}>
               <MaterialCommunityIcons
@@ -451,10 +464,10 @@ export function ProfileScreen() {
                 style={styles.preferenceIcon}
               />
               <View style={styles.preferenceLabelWrap}>
-                <Text style={styles.preferenceLabel}>Mod lumină puternică</Text>
-                <Text style={styles.preferenceHint}>
-                  Fundal alb, text negru — mai lizibil în soare
+                <Text style={styles.preferenceLabel}>
+                  {t('profile.display.highContrast.label')}
                 </Text>
+                <Text style={styles.preferenceHint}>{t('profile.display.highContrast.hint')}</Text>
               </View>
             </View>
             <Switch
@@ -462,7 +475,7 @@ export function ProfileScreen() {
               onValueChange={toggleHighContrast}
               trackColor={{ false: colors.neutral200, true: colors.primary }}
               thumbColor={highContrast ? colors.white : colors.neutral100}
-              accessibilityLabel="Activează modul contrast ridicat"
+              accessibilityLabel={t('profile.display.highContrast.accessibilityLabel')}
               accessibilityRole="switch"
             />
           </View>
@@ -471,27 +484,24 @@ export function ProfileScreen() {
         {/* Device Owner decommission — revealed by the hidden dev gesture only */}
         {devSyncVisible && isOwner ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Administrare dispozitiv</Text>
-            <Text style={styles.syncFailedHint}>
-              Telefon gestionat (Device Owner). Eliberarea oprește protecția și permite
-              dezinstalarea aplicației.
-            </Text>
+            <Text style={styles.cardTitle}>{t('profile.deviceAdmin.cardTitle')}</Text>
+            <Text style={styles.syncFailedHint}>{t('profile.deviceAdmin.hint')}</Text>
             <TouchableOpacity
               style={styles.clearQueueButton}
               onPress={handleReleaseDevice}
               activeOpacity={0.85}
             >
-              <Text style={styles.clearQueueButtonText}>Eliberează dispozitivul</Text>
+              <Text style={styles.clearQueueButtonText}>{t('profile.deviceAdmin.release')}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
-          <Text style={styles.logoutText}>Deconectare</Text>
+          <Text style={styles.logoutText}>{t('profile.logout')}</Text>
         </TouchableOpacity>
 
         <Text style={styles.versionText}>
-          Versiunea {appVersion}
+          {t('profile.version', { version: appVersion })}
           {buildNumber != null ? ` (${buildNumber})` : ''}
         </Text>
       </ScrollView>

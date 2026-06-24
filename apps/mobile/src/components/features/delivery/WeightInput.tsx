@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { NumericPad } from '../../ui/NumericPad';
 import { BigButton } from '../../ui/BigButton';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface WeightInputProps {
   /** Loaded-truck (gross) weight, kg, as a string. */
@@ -27,6 +28,7 @@ export function WeightInput({
   onTareChange,
   onConfirm,
 }: WeightInputProps) {
+  const { t } = useI18n();
   const [active, setActive] = useState<ActiveField>('gross');
 
   const gross = parseFloat(grossValue) || 0;
@@ -49,7 +51,7 @@ export function WeightInput({
           activeOpacity={0.8}
           onPress={() => setActive('gross')}
         >
-          <Text style={styles.fieldLabel}>Brut (cântărit)</Text>
+          <Text style={styles.fieldLabel}>{t('delivery.weightInput.grossLabel')}</Text>
           <Text style={styles.fieldValue}>{grossValue || '0'} kg</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -57,26 +59,37 @@ export function WeightInput({
           activeOpacity={0.8}
           onPress={() => setActive('tare')}
         >
-          <Text style={styles.fieldLabel}>Tară (camion gol)</Text>
+          <Text style={styles.fieldLabel}>{t('delivery.weightInput.tareLabel')}</Text>
           <Text style={styles.fieldValue}>{tareValue || '0'} kg</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.netRow}>
-        <Text style={styles.netLabel}>Net</Text>
+        <Text style={styles.netLabel}>{t('delivery.weightInput.netLabel')}</Text>
         <Text style={[styles.netValue, net <= 0 && styles.netInvalid]}>
           {net > 0 ? `${net} kg` : '—'}
         </Text>
       </View>
       {!tareNotOverGross && tareValue.length > 0 ? (
-        <Text style={styles.errorText}>Tara nu poate fi mai mare decât greutatea brută.</Text>
+        <Text style={styles.errorText}>{t('delivery.weightInput.tareOverGrossError')}</Text>
       ) : null}
 
-      <Text style={styles.editingHint}>Editezi: {active === 'gross' ? 'Brut' : 'Tară'}</Text>
+      <Text style={styles.editingHint}>
+        {t('delivery.weightInput.editingHint').replace(
+          '{field}',
+          active === 'gross'
+            ? t('delivery.weightInput.editingHint_gross')
+            : t('delivery.weightInput.editingHint_tare'),
+        )}
+      </Text>
       <NumericPad value={activeValue} onChange={onActiveChange} maxLength={8} decimal />
 
       <View style={styles.buttonContainer}>
-        <BigButton title="Continuă" onPress={onConfirm} disabled={!isValid} />
+        <BigButton
+          title={t('delivery.weightInput.action.continue')}
+          onPress={onConfirm}
+          disabled={!isValid}
+        />
       </View>
     </View>
   );

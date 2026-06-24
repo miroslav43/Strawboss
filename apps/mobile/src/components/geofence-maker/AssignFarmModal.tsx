@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Farm } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
+import { useI18n } from '@/lib/i18n';
 
 interface Props {
   visible: boolean;
@@ -27,6 +28,7 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
   const queryClient = useQueryClient();
   const [savingId, setSavingId] = useState<string | null>(null);
   const { modalProps, showModal, hideModal } = useModal();
+  const { t } = useI18n();
 
   const { data: farms = [], isLoading } = useQuery({
     queryKey: ['farms'],
@@ -46,8 +48,8 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
     } catch {
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message: 'Nu s-a putut asigna ferma. Încearcă din nou.',
+        title: t('geofenceMaker.assignFarm.error.title'),
+        message: t('geofenceMaker.assignFarm.error.message'),
         onConfirm: hideModal,
       });
     } finally {
@@ -69,7 +71,7 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
         ]}
       >
         <View style={styles.titleRow}>
-          <Text style={styles.title}>Asignează fermă</Text>
+          <Text style={styles.title}>{t('geofenceMaker.assignFarm.title')}</Text>
           <TouchableOpacity onPress={onClose} hitSlop={12} disabled={savingId !== null}>
             <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
           </TouchableOpacity>
@@ -78,14 +80,12 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
         {isLoading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color="#0A5C36" />
-            <Text style={styles.loadingText}>Se încarcă fermele...</Text>
+            <Text style={styles.loadingText}>{t('geofenceMaker.assignFarm.loading')}</Text>
           </View>
         ) : (
           <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
             {farms.length === 0 ? (
-              <Text style={styles.emptyText}>
-                Nicio fermă disponibilă. Creează una întâi din tab-ul Ferme.
-              </Text>
+              <Text style={styles.emptyText}>{t('geofenceMaker.assignFarm.empty')}</Text>
             ) : (
               farms.map((farm) => {
                 const isSavingThis = savingId === farm.id;

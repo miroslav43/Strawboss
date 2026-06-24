@@ -8,6 +8,7 @@ interface AuthProfile {
   assignedMachineId: string | null;
   assignedDeliveryDestinationId: string | null;
   signatureSpecimenUrl: string | null;
+  locale: string | null;
 }
 
 interface AuthStore {
@@ -16,6 +17,7 @@ interface AuthStore {
   assignedMachineId: string | null;
   assignedDeliveryDestinationId: string | null;
   signatureSpecimenUrl: string | null;
+  locale: string | null;
   setProfile: (profile: AuthProfile) => void;
   setSignatureSpecimenUrl: (url: string | null) => void;
   clear: () => void;
@@ -46,6 +48,7 @@ interface PersistedAuthState {
   assignedMachineId: string | null;
   assignedDeliveryDestinationId: string | null;
   signatureSpecimenUrl: string | null;
+  locale: string | null;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -56,6 +59,7 @@ export const useAuthStore = create<AuthStore>()(
       assignedMachineId: null,
       assignedDeliveryDestinationId: null,
       signatureSpecimenUrl: null,
+      locale: null,
       setProfile: (profile) =>
         set({
           role: profile.role,
@@ -63,6 +67,7 @@ export const useAuthStore = create<AuthStore>()(
           assignedMachineId: profile.assignedMachineId,
           assignedDeliveryDestinationId: profile.assignedDeliveryDestinationId,
           signatureSpecimenUrl: profile.signatureSpecimenUrl,
+          locale: profile.locale,
         }),
       setSignatureSpecimenUrl: (url) => set({ signatureSpecimenUrl: url }),
       clear: () => {
@@ -72,6 +77,7 @@ export const useAuthStore = create<AuthStore>()(
           assignedMachineId: null,
           assignedDeliveryDestinationId: null,
           signatureSpecimenUrl: null,
+          locale: null,
         });
         // Also wipe the persisted storage entry so the next cold boot does
         // not rehydrate a stale session for a different user.
@@ -88,6 +94,7 @@ export const useAuthStore = create<AuthStore>()(
         assignedMachineId: state.assignedMachineId,
         assignedDeliveryDestinationId: state.assignedDeliveryDestinationId,
         signatureSpecimenUrl: state.signatureSpecimenUrl,
+        locale: state.locale,
       }),
       version: 3,
       // Preserve sessions across the v2→v3 bump that introduced
@@ -102,9 +109,10 @@ export const useAuthStore = create<AuthStore>()(
             assignedMachineId: prev.assignedMachineId ?? null,
             assignedDeliveryDestinationId: null,
             signatureSpecimenUrl: prev.signatureSpecimenUrl ?? null,
+            locale: null,
           };
         }
-        return prev as PersistedAuthState;
+        return { ...prev, locale: prev.locale ?? null } as PersistedAuthState;
       },
     },
   ),

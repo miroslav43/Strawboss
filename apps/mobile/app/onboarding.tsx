@@ -19,6 +19,7 @@ import * as SecureStore from 'expo-secure-store';
 import { colors } from '@strawboss/ui-tokens';
 import { useAuthStore } from '@/stores/auth-store';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -30,8 +31,8 @@ type MCIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 interface OnboardingSlide {
   icon: string;
-  title: string;
-  body: string;
+  titleKey: string;
+  bodyKey: string;
 }
 
 // ── Slide content per role ──────────────────────────────────────────────────
@@ -40,87 +41,87 @@ const SLIDES_BY_ROLE: Record<string, OnboardingSlide[]> = {
   driver: [
     {
       icon: 'clipboard-list-outline',
-      title: 'Task-urile tale',
-      body: 'Pe ecranul principal vei vedea cursele asignate pentru ziua curentă. Cursele active sunt afișate în vârful listei.',
+      titleKey: 'onboarding.driver.slide1.title',
+      bodyKey: 'onboarding.driver.slide1.body',
     },
     {
       icon: 'truck-outline',
-      title: 'Fluxul de cursă',
-      body: 'Fiecare cursă trece prin pași: Plecare → Sosire → Livrare. La plecare, introduci citirea odometrului și semnezi.',
+      titleKey: 'onboarding.driver.slide2.title',
+      bodyKey: 'onboarding.driver.slide2.body',
     },
     {
       icon: 'gas-station-outline',
-      title: 'Alimentare combustibil',
-      body: 'Înregistrează alimentările din tabul „Combustibil". Poți fotografia bonul fiscal — acesta se trimite automat la server.',
+      titleKey: 'onboarding.driver.slide3.title',
+      bodyKey: 'onboarding.driver.slide3.body',
     },
     {
       icon: 'wifi-off',
-      title: 'Funcționează și offline',
-      body: 'Toate înregistrările se salvează local pe telefon și se sincronizează cu serverul când revii la semnal.',
+      titleKey: 'onboarding.driver.slide4.title',
+      bodyKey: 'onboarding.driver.slide4.body',
     },
   ],
 
   loader_operator: [
     {
       icon: 'clipboard-list-outline',
-      title: 'Task-urile zilei',
-      body: 'Pe ecranul principal vei vedea parcelele asignate pentru ziua curentă, în ordinea priorităților.',
+      titleKey: 'onboarding.loader.slide1.title',
+      bodyKey: 'onboarding.loader.slide1.body',
     },
     {
       icon: 'barley',
-      title: 'Încărcare baloți',
-      body: 'Apasă „Încarcă baloți" pe ecranul principal. GPS-ul detectează automat parcela curentă. Introdu numărul de baloți și confirmă.',
+      titleKey: 'onboarding.loader.slide2.title',
+      bodyKey: 'onboarding.loader.slide2.body',
     },
     {
       icon: 'map-marker-radius-outline',
-      title: 'Geofence activ',
-      body: 'Aplicația verifică dacă te aflii în interiorul parcelei asignate. Vei primi o notificare la intrare și la ieșire din câmp.',
+      titleKey: 'onboarding.loader.slide3.title',
+      bodyKey: 'onboarding.loader.slide3.body',
     },
     {
       icon: 'wifi-off',
-      title: 'Funcționează și offline',
-      body: 'Toate înregistrările se salvează local și se sincronizează automat la reconectare. Harta parcelelor e disponibilă și fără internet.',
+      titleKey: 'onboarding.loader.slide4.title',
+      bodyKey: 'onboarding.loader.slide4.body',
     },
   ],
 
   baler_operator: [
     {
       icon: 'clipboard-list-outline',
-      title: 'Task-urile zilei',
-      body: 'Pe ecranul principal vei vedea parcelele pe care trebuie să lucrezi astăzi, sortate după prioritate.',
+      titleKey: 'onboarding.baler.slide1.title',
+      bodyKey: 'onboarding.baler.slide1.body',
     },
     {
       icon: 'barley',
-      title: 'Înregistrare producție',
-      body: 'Folosește tastatura numerică de pe ecranul „Producție" pentru a introduce numărul de baloți. Apasă „Salvează" după fiecare lot.',
+      titleKey: 'onboarding.baler.slide2.title',
+      bodyKey: 'onboarding.baler.slide2.body',
     },
     {
       icon: 'package-variant-closed',
-      title: 'Consumabile',
-      body: 'Înregistrează consumul de sfoară, plasă sau alte consumabile din tabul „Consumabile". Poți fotografia bonul.',
+      titleKey: 'onboarding.baler.slide3.title',
+      bodyKey: 'onboarding.baler.slide3.body',
     },
     {
       icon: 'wifi-off',
-      title: 'Funcționează și offline',
-      body: 'Toate datele se stochează local și se trimit la server automat când există semnal. Nu pierzi nicio înregistrare.',
+      titleKey: 'onboarding.baler.slide4.title',
+      bodyKey: 'onboarding.baler.slide4.body',
     },
   ],
 
   geofence_maker: [
     {
       icon: 'map-outline',
-      title: 'Desenează geofence-uri',
-      body: 'Pe ecranul „Hartă", apasă „Câmp nou" și desenează conturul parcelei atingând punctele pe hartă.',
+      titleKey: 'onboarding.geofence.slide1.title',
+      bodyKey: 'onboarding.geofence.slide1.body',
     },
     {
       icon: 'vector-polygon',
-      title: 'Contur precis',
-      body: 'Urmează marginile câmpului cât mai fidel. Apasă „Finalizează" când conturul e complet. Poți corecta înainte de salvare.',
+      titleKey: 'onboarding.geofence.slide2.title',
+      bodyKey: 'onboarding.geofence.slide2.body',
     },
     {
       icon: 'domain',
-      title: 'Ferme și parcele',
-      body: 'Parcelele sunt organizate pe ferme. Selectează ferma potrivită înainte de a adăuga un geofence nou.',
+      titleKey: 'onboarding.geofence.slide3.title',
+      bodyKey: 'onboarding.geofence.slide3.body',
     },
   ],
 };
@@ -129,13 +130,13 @@ const SLIDES_BY_ROLE: Record<string, OnboardingSlide[]> = {
 const SLIDES_DEFAULT: OnboardingSlide[] = [
   {
     icon: 'view-dashboard-outline',
-    title: 'Bun venit în StrawBoss',
-    body: 'Monitorizează cursele, producia de baloți și flotila de utilaje în timp real.',
+    titleKey: 'onboarding.default.slide1.title',
+    bodyKey: 'onboarding.default.slide1.body',
   },
   {
     icon: 'sync',
-    title: 'Date sincronizate',
-    body: 'Toate datele de pe telefoanele operatorilor se sincronizează automat cu dashboard-ul web.',
+    titleKey: 'onboarding.default.slide2.title',
+    bodyKey: 'onboarding.default.slide2.body',
   },
 ];
 
@@ -173,6 +174,7 @@ export async function hasSeenOnboarding(role: string): Promise<boolean> {
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { t } = useI18n();
   const role = useAuthStore((s) => s.role);
   const slides = getSlidesForRole(role);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -234,9 +236,9 @@ export default function OnboardingScreen() {
           onPress={() => void skip()}
           style={styles.skipBtn}
           accessibilityRole="button"
-          accessibilityLabel="Sari peste tutorial"
+          accessibilityLabel={t('onboarding.skipAccessibility')}
         >
-          <Text style={styles.skipText}>Sari peste</Text>
+          <Text style={styles.skipText}>{t('onboarding.skipButton')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -249,8 +251,8 @@ export default function OnboardingScreen() {
             color={colors.primary}
           />
         </View>
-        <Text style={styles.slideTitle}>{slide.title}</Text>
-        <Text style={styles.slideBody}>{slide.body}</Text>
+        <Text style={styles.slideTitle}>{t(slide.titleKey)}</Text>
+        <Text style={styles.slideBody}>{t(slide.bodyKey)}</Text>
       </ScrollView>
 
       {/* Step dots */}
@@ -270,10 +272,10 @@ export default function OnboardingScreen() {
             style={styles.prevBtn}
             onPress={() => setCurrentIndex((i) => i - 1)}
             accessibilityRole="button"
-            accessibilityLabel="Înapoi"
+            accessibilityLabel={t('onboarding.backButton')}
           >
             <MaterialCommunityIcons name="arrow-left" size={20} color={colors.primary} />
-            <Text style={styles.prevBtnText}>Înapoi</Text>
+            <Text style={styles.prevBtnText}>{t('onboarding.backButton')}</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.prevBtnPlaceholder} />
@@ -284,9 +286,11 @@ export default function OnboardingScreen() {
           onPress={goNext}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel={isLast ? 'Am înțeles' : 'Următorul'}
+          accessibilityLabel={isLast ? t('onboarding.finishButton') : t('onboarding.nextButton')}
         >
-          <Text style={styles.nextBtnText}>{isLast ? 'Am înțeles' : 'Următorul'}</Text>
+          <Text style={styles.nextBtnText}>
+            {isLast ? t('onboarding.finishButton') : t('onboarding.nextButton')}
+          </Text>
           {!isLast && <MaterialCommunityIcons name="arrow-right" size={20} color={colors.white} />}
         </TouchableOpacity>
       </View>

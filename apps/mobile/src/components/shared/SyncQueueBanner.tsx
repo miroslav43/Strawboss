@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 import { useSyncQueueStatus } from '@/hooks/useSyncQueueStatus';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * Unobtrusive sync status banner mounted at the bottom of every role layout.
@@ -17,6 +18,7 @@ import { useSyncQueueStatus } from '@/hooks/useSyncQueueStatus';
 export function SyncQueueBanner() {
   const router = useRouter();
   const { pendingCount, failedCount, syncing, lastSyncAt } = useSyncQueueStatus();
+  const { t } = useI18n();
 
   // Spinner animation
   const spinValue = useRef(new Animated.Value(0)).current;
@@ -87,10 +89,10 @@ export function SyncQueueBanner() {
       <View
         style={[styles.banner, styles.successBanner]}
         accessibilityRole="text"
-        accessibilityLabel="Tot sincronizat"
+        accessibilityLabel={t('shared.syncQueueBanner.allSynced')}
       >
         <MaterialCommunityIcons name="check-circle-outline" size={16} color={colors.white} />
-        <Text style={styles.bannerText}>Tot sincronizat</Text>
+        <Text style={styles.bannerText}>{t('shared.syncQueueBanner.allSynced')}</Text>
       </View>
     );
   }
@@ -99,8 +101,8 @@ export function SyncQueueBanner() {
   if (hasFailures) {
     const label =
       failedCount === 1
-        ? '1 înregistrare nesincronizată — atinge pentru detalii'
-        : `${failedCount} înregistrări nesincronizate — atinge pentru detalii`;
+        ? t('shared.syncQueueBanner.failedSingular')
+        : t('shared.syncQueueBanner.failedPlural', { count: failedCount });
     return (
       <TouchableOpacity
         style={[styles.banner, styles.failedBanner]}
@@ -121,9 +123,9 @@ export function SyncQueueBanner() {
   // Pending / in-progress
   const pendingLabel =
     pendingCount === 1
-      ? '1 înregistrare în așteptare'
-      : `${pendingCount} înregistrări în așteptare`;
-  const label = syncing ? `${pendingLabel} · sincronizez…` : `${pendingLabel}`;
+      ? t('shared.syncQueueBanner.pendingSingular')
+      : t('shared.syncQueueBanner.pendingPlural', { count: pendingCount });
+  const label = syncing ? `${pendingLabel} · ${t('shared.syncQueueBanner.syncing')}` : pendingLabel;
 
   return (
     <TouchableOpacity
@@ -131,7 +133,7 @@ export function SyncQueueBanner() {
       onPress={handlePress}
       activeOpacity={0.8}
       accessibilityRole="button"
-      accessibilityLabel={`${label}. Atinge pentru detalii.`}
+      accessibilityLabel={`${label}. ${t('shared.syncQueueBanner.tapForDetails')}`}
     >
       {syncing ? (
         <Animated.View style={{ transform: [{ rotate: spin }] }}>

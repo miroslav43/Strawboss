@@ -2,16 +2,15 @@ import { useEffect, useRef } from 'react';
 import { View, Text, Animated, StyleSheet, Easing } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface SyncStatusIndicatorProps {
   syncing: boolean;
   pendingCount: number;
 }
 
-export function SyncStatusIndicator({
-  syncing,
-  pendingCount,
-}: SyncStatusIndicatorProps) {
+export function SyncStatusIndicator({ syncing, pendingCount }: SyncStatusIndicatorProps) {
+  const { t } = useI18n();
   const spinValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -40,7 +39,7 @@ export function SyncStatusIndicator({
     return (
       <Animated.View
         style={{ transform: [{ rotate: spin }] }}
-        accessibilityLabel="Sincronizare în curs"
+        accessibilityLabel={t('shared.syncStatusIndicator.syncing')}
       >
         <MaterialCommunityIcons name="sync" size={20} color={colors.neutral} />
       </Animated.View>
@@ -49,7 +48,10 @@ export function SyncStatusIndicator({
 
   if (pendingCount > 0) {
     return (
-      <View style={styles.container} accessibilityLabel={`${pendingCount} operații în coadă sync`}>
+      <View
+        style={styles.container}
+        accessibilityLabel={t('shared.syncStatusIndicator.pendingA11y', { count: pendingCount })}
+      >
         <MaterialCommunityIcons name="arrow-up" size={20} color={colors.neutral} />
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{pendingCount}</Text>
@@ -63,7 +65,7 @@ export function SyncStatusIndicator({
       name="check-circle-outline"
       size={20}
       color={colors.success}
-      accessibilityLabel="Sincronizat"
+      accessibilityLabel={t('shared.syncStatusIndicator.synced')}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useI18n } from '@/lib/i18n';
 import {
   View,
   Text,
@@ -87,6 +88,7 @@ async function resolveLogin(login: string, signal?: AbortSignal): Promise<Resolv
 }
 
 export default function LoginScreen() {
+  const { t } = useI18n();
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -95,7 +97,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!login.trim() || !password.trim()) {
-      setError('Username/email si parola sunt obligatorii');
+      setError(t('auth.errorRequired'));
       return;
     }
 
@@ -115,9 +117,7 @@ export default function LoginScreen() {
         resolved = await resolveLogin(trimmedLogin, ac.signal);
       } catch (e) {
         if (e instanceof Error && e.name === 'AbortError') {
-          setError(
-            'Nu ajung la serverul API (timeout). Verifică că backend-ul rulează, că telefonul e pe același Wi‑Fi ca Mac-ul, și că EXPO_PUBLIC_API_URL folosește IP-ul corect (ex. același prefix ca în Metro).',
-          );
+          setError(t('auth.errorTimeout'));
           return;
         }
         throw e;
@@ -144,7 +144,7 @@ export default function LoginScreen() {
         setError(authError.message);
       }
     } catch {
-      setError('A aparut o eroare neasteptata');
+      setError(t('auth.errorUnexpected'));
     } finally {
       clearTimeout(resolveTimer);
       setLoading(false);
@@ -165,7 +165,7 @@ export default function LoginScreen() {
         <View style={styles.card}>
           <TextInput
             style={styles.input}
-            placeholder="Username sau Email"
+            placeholder={t('auth.usernamePlaceholder')}
             placeholderTextColor="#9CA3AF"
             value={login}
             onChangeText={setLogin}
@@ -178,7 +178,7 @@ export default function LoginScreen() {
           <View style={styles.passwordContainer}>
             <TextInput
               style={styles.passwordInput}
-              placeholder="PIN sau parola"
+              placeholder={t('auth.passwordPlaceholder')}
               placeholderTextColor="#9CA3AF"
               value={password}
               onChangeText={setPassword}
@@ -190,7 +190,7 @@ export default function LoginScreen() {
               style={styles.eyeButton}
               onPress={() => setShowPassword((v) => !v)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel={showPassword ? 'Ascunde parola' : 'Arată parola'}
+              accessibilityLabel={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
             >
               <MaterialCommunityIcons
                 name={showPassword ? 'eye' : 'eye-off'}
@@ -212,7 +212,7 @@ export default function LoginScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Autentificare</Text>
+              <Text style={styles.buttonText}>{t('auth.loginButton')}</Text>
             )}
           </TouchableOpacity>
         </View>

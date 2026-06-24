@@ -7,9 +7,11 @@ import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { EnhancedDeliveryFlow } from '@/components/features/delivery/EnhancedDeliveryFlow';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 
 export default function DriverDeliveryFlowScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
+  const { t } = useI18n();
   const [trip, setTrip] = useState<LocalTrip | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -51,11 +53,11 @@ export default function DriverDeliveryFlowScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
-          <Text style={styles.errorText}>Cursa nu a fost găsită.</Text>
+          <Text style={styles.errorText}>{t('deliveryFlow.error.tripNotFound')}</Text>
           <View style={styles.backButtonContainer}>
             <BigButton
               variant="outline"
-              title="Înapoi la curse"
+              title={t('deliveryFlow.button.backToTrips')}
               onPress={() => router.replace('/(driver)')}
             />
           </View>
@@ -70,7 +72,7 @@ export default function DriverDeliveryFlowScreen() {
     <View style={styles.container}>
       <EnhancedDeliveryFlow
         tripId={tripId}
-        tripNumber={trip.trip_number ?? 'Cursă'}
+        tripNumber={trip.trip_number ?? t('deliveryFlow.trip.fallbackName')}
         baleCount={trip.bale_count}
         destinationId={trip.destination_id}
         destinationName={trip.destination_name ?? '—'}

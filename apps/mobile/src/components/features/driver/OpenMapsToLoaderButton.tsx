@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@strawboss/ui-tokens';
 import { useNearbyLoaders } from '@/hooks/useNearbyLoaders';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 
 interface OpenMapsToLoaderButtonProps {
   /** The trip this button is rendered on — used for log correlation. */
@@ -26,6 +27,7 @@ interface OpenMapsToLoaderButtonProps {
  * `useNearbyLoaders` hook which is already polled on the driver home.
  */
 export function OpenMapsToLoaderButton({ tripId, loaderMachineId }: OpenMapsToLoaderButtonProps) {
+  const { t } = useI18n();
   const { data: loaders } = useNearbyLoaders();
 
   const closest = useMemo(() => {
@@ -56,7 +58,10 @@ export function OpenMapsToLoaderButton({ tripId, loaderMachineId }: OpenMapsToLo
     });
     const can = await Linking.canOpenURL(url);
     if (!can) {
-      Alert.alert('Hărți', 'Nu s-a putut deschide aplicația de hărți.');
+      Alert.alert(
+        t('map.parcelSheet.startGoogleMaps'),
+        t('map.mapScreen.error.googleMaps.message'),
+      );
       return;
     }
     await Linking.openURL(url);
@@ -69,7 +74,9 @@ export function OpenMapsToLoaderButton({ tripId, loaderMachineId }: OpenMapsToLo
       activeOpacity={0.7}
       style={[styles.btn, disabled && styles.btnDisabled]}
       accessibilityRole="button"
-      accessibilityLabel={disabled ? 'Niciun loader detectat' : 'Deschide rută în Hărți'}
+      accessibilityLabel={
+        disabled ? t('loader.home.noTrucksNearbyTitle') : t('map.parcelSheet.startGoogleMaps')
+      }
     >
       <MaterialCommunityIcons
         name="map-marker-distance"
@@ -77,7 +84,7 @@ export function OpenMapsToLoaderButton({ tripId, loaderMachineId }: OpenMapsToLo
         color={disabled ? '#9aa0a6' : colors.primary}
       />
       <Text style={[styles.text, disabled && styles.textDisabled]}>
-        {disabled ? 'Loader necunoscut' : 'Deschide în Hărți'}
+        {disabled ? t('loader.home.truckFallbackLabel') : t('map.parcelSheet.startGoogleMaps')}
       </Text>
     </TouchableOpacity>
   );

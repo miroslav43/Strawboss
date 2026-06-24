@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import type { TripLoadedAlert } from '@/hooks/useTripLoadedAlert';
+import { useI18n } from '@/lib/i18n';
 
 interface Props {
   alert: TripLoadedAlert | null;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function TripLoadedOverlay({ alert, onDismiss }: Props) {
+  const { t } = useI18n();
   const slideAnim = useRef(new Animated.Value(400)).current;
 
   const visible = alert !== null;
@@ -59,9 +61,11 @@ export function TripLoadedOverlay({ alert, onDismiss }: Props) {
         <View style={styles.headerRow}>
           <MaterialCommunityIcons name="truck-check" size={36} color="#0A5C36" />
           <View style={styles.headerText}>
-            <Text style={styles.title}>Camion Încărcat!</Text>
+            <Text style={styles.title}>{t('driver.tripLoadedOverlay.title')}</Text>
             {alert.tripNumber ? (
-              <Text style={styles.subtitle}>Cursa {alert.tripNumber}</Text>
+              <Text style={styles.subtitle}>
+                {t('driver.tripLoadedOverlay.subtitle').replace('{tripNumber}', alert.tripNumber)}
+              </Text>
             ) : null}
           </View>
         </View>
@@ -70,7 +74,12 @@ export function TripLoadedOverlay({ alert, onDismiss }: Props) {
         {alert.baleCount > 0 && (
           <View style={styles.infoRow}>
             <MaterialCommunityIcons name="grain" size={18} color="#8D6E63" />
-            <Text style={styles.infoText}>{alert.baleCount} baloți încărcați</Text>
+            <Text style={styles.infoText}>
+              {t('driver.tripLoadedOverlay.balesLoaded').replace(
+                '{count}',
+                String(alert.baleCount),
+              )}
+            </Text>
           </View>
         )}
 
@@ -86,7 +95,7 @@ export function TripLoadedOverlay({ alert, onDismiss }: Props) {
           <View style={styles.infoRow}>
             <MaterialCommunityIcons name="alert" size={18} color="#B7791F" />
             <Text style={[styles.infoText, styles.warnText]}>
-              Destinație nesetată — selectează din detalii
+              {t('driver.tripLoadedOverlay.noDestination')}
             </Text>
           </View>
         )}
@@ -104,12 +113,16 @@ export function TripLoadedOverlay({ alert, onDismiss }: Props) {
               color="#FFF"
             />
             <Text style={styles.primaryBtnText}>
-              {hasDestination ? 'Pornește cursa' : 'Alege destinație'}
+              {hasDestination
+                ? t('driver.tripLoadedOverlay.action.startTrip')
+                : t('driver.tripLoadedOverlay.action.chooseDestination')}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.secondaryBtn} onPress={onDismiss} activeOpacity={0.8}>
-            <Text style={styles.secondaryBtnText}>Mai târziu</Text>
+            <Text style={styles.secondaryBtnText}>
+              {t('driver.tripLoadedOverlay.action.later')}
+            </Text>
           </TouchableOpacity>
         </View>
       </Animated.View>

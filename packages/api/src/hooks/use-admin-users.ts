@@ -23,6 +23,8 @@ export interface UpdateUserPayload {
   username?: string;
   /** Admin can edit the 4-digit PIN (also updates Supabase Auth password). */
   pin?: string;
+  /** UI locale preference for this user. */
+  locale?: 'en' | 'ro';
 }
 
 export interface UseAdminUsersOptions {

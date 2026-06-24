@@ -9,8 +9,10 @@
 import { useCallback } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ParcelDetailView } from '@/components/features/parcel/ParcelDetailView';
+import { useI18n } from '@/lib/i18n';
 
 export default function BalerParcelDetailScreen() {
+  const { t } = useI18n();
   const { parcelId } = useLocalSearchParams<{ parcelId: string }>();
 
   const handleOpenMap = useCallback(() => {
@@ -25,7 +27,10 @@ export default function BalerParcelDetailScreen() {
     <ParcelDetailView
       parcelId={parcelId ?? ''}
       onOpenMap={handleOpenMap}
-      primaryAction={{ label: 'Înregistrează producție', onPress: handleGoToProduction }}
+      primaryAction={{
+        label: t('baler.parcelDetail.primaryActionLabel'),
+        onPress: handleGoToProduction,
+      }}
     />
   );
 }

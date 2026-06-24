@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
 import { colors } from '@strawboss/ui-tokens';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useI18n } from '@/lib/i18n';
 
 interface ConnectionStatusBadgeProps {
   style?: ViewStyle;
@@ -8,14 +9,21 @@ interface ConnectionStatusBadgeProps {
 
 export function ConnectionStatusBadge({ style }: ConnectionStatusBadgeProps) {
   const { isConnected } = useNetworkStatus();
-  const label = isConnected ? 'Online' : 'Offline';
+  const { t } = useI18n();
+  const label = isConnected
+    ? t('shared.connectionStatusBadge.online')
+    : t('shared.connectionStatusBadge.offline');
   const dotColor = isConnected ? colors.primary300 : '#FF8A80';
 
   return (
     <View
       style={[styles.pill, style]}
       accessibilityRole="text"
-      accessibilityLabel={isConnected ? 'Conectat la internet' : 'Fără conexiune'}
+      accessibilityLabel={
+        isConnected
+          ? t('shared.connectionStatusBadge.a11yConnected')
+          : t('shared.connectionStatusBadge.a11yDisconnected')
+      }
     >
       <View style={[styles.dot, { backgroundColor: dotColor }]} />
       <Text style={styles.label}>{label}</Text>

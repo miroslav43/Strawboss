@@ -3,6 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SignatureCapture } from '../../shared/SignatureCapture';
 import { BigButton } from '../../ui/BigButton';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface SignatureStepProps {
   /** Receiver = the depot's contact person (pre-filled, read-only). */
@@ -23,30 +24,31 @@ export function SignatureStep({
   onSign,
   onComplete,
 }: SignatureStepProps) {
+  const { t } = useI18n();
   const ready = receiverSignature !== null;
 
   return (
     <View style={styles.container}>
       <View style={styles.field}>
-        <Text style={styles.label}>Primitor (persoană de contact depozit)</Text>
+        <Text style={styles.label}>{t('delivery.signatureStep.receiverLabel')}</Text>
         <View style={styles.nameBox}>
           <MaterialCommunityIcons name="account" size={18} color={colors.primary} />
           <Text style={styles.nameText}>{receiverName || '—'}</Text>
         </View>
       </View>
 
-      <SignatureCapture label="Semnătura primitorului" onSave={onSign} />
+      <SignatureCapture label={t('delivery.signatureStep.signatureCapture')} onSave={onSign} />
 
       {receiverSignature !== null ? (
         <View style={styles.signedRow}>
           <MaterialCommunityIcons name="check-circle" size={18} color={colors.success} />
-          <Text style={styles.signedText}>Semnătură capturată</Text>
+          <Text style={styles.signedText}>{t('delivery.signatureStep.signedConfirmation')}</Text>
         </View>
       ) : (
-        <Text style={styles.hint}>Semnați în chenar, apoi apăsați „Confirm”.</Text>
+        <Text style={styles.hint}>{t('delivery.signatureStep.hint')}</Text>
       )}
 
-      <BigButton title="Continuă" onPress={onComplete} disabled={!ready} />
+      <BigButton title={t('delivery.signatureStep.action.continue')} onPress={onComplete} disabled={!ready} />
     </View>
   );
 }

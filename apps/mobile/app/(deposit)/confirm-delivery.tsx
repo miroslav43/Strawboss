@@ -10,6 +10,7 @@ import {
   Animated,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useI18n } from '@/lib/i18n';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -45,6 +46,7 @@ import type { TripTransitionPayload } from '@/sync/push';
  */
 
 export default function ConfirmDeliveryScreen() {
+  const { t } = useI18n();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
 
   // Resolve depot context the same way index.tsx and trips.tsx do.
@@ -109,26 +111,35 @@ export default function ConfirmDeliveryScreen() {
     if (!isInsideGeofence) {
       showModal({
         type: 'warning',
-        title: 'Nu ești în perimetrul depozitului',
+        title: t('confirmDelivery.modalGeofenceTitle'),
         message:
           distanceM != null
-            ? `Trebuie să fii în raza de confirmare. Ești la ${distanceM} m de depozit.`
-            : 'Nu se poate determina poziția camionului față de depozit.',
-        confirmText: 'Am înțeles',
+            ? t('confirmDelivery.modalGeofenceMessageWithDistance', { distance: distanceM })
+            : t('confirmDelivery.modalGeofenceMessageNoPosition'),
+        confirmText: t('confirmDelivery.modalGeofenceConfirm'),
         onConfirm: hideModal,
       });
       return;
     }
     if (!baleCountValid) {
-      Alert.alert('Date incomplete', 'Introduceți numărul de baloți.');
+      Alert.alert(
+        t('confirmDelivery.alertIncompleteBalesTitle'),
+        t('confirmDelivery.alertIncompleteBalesMessage'),
+      );
       return;
     }
     if (!weightsValid) {
-      Alert.alert('Date incomplete', 'Introduceți greutatea brută și tara corect.');
+      Alert.alert(
+        t('confirmDelivery.alertIncompleteWeightsTitle'),
+        t('confirmDelivery.alertIncompleteWeightsMessage'),
+      );
       return;
     }
     if (!signatureReady) {
-      Alert.alert('Semnătură lipsă', 'Semnați înainte de a confirma livrarea.');
+      Alert.alert(
+        t('confirmDelivery.alertMissingSignatureTitle'),
+        t('confirmDelivery.alertMissingSignatureMessage'),
+      );
       return;
     }
 
@@ -228,9 +239,8 @@ export default function ConfirmDeliveryScreen() {
       });
       showModal({
         type: 'error',
-        title: 'Eroare',
-        message:
-          err instanceof Error ? err.message : 'Nu s-a putut confirma livrarea. Încearcă din nou.',
+        title: t('confirmDelivery.errorTitle'),
+        message: err instanceof Error ? err.message : t('confirmDelivery.errorMessage'),
         onConfirm: hideModal,
       });
     } finally {
@@ -267,15 +277,17 @@ export default function ConfirmDeliveryScreen() {
     }).start();
     return (
       <View style={styles.outer}>
-        <ScreenHeader title="Livrare confirmată" />
+        <ScreenHeader title={t('confirmDelivery.successScreenTitle')} />
         <View style={[styles.body, styles.centered]}>
           <Animated.View style={{ transform: [{ scale: successScale }] }}>
             <MaterialCommunityIcons name="check-circle" size={72} color={colors.primary} />
           </Animated.View>
-          <Text style={styles.successText}>Livrare confirmată!</Text>
+          <Text style={styles.successText}>{t('confirmDelivery.successMessage')}</Text>
           <Text style={styles.successSubtext}>
-            {baleCount} baloți înregistrați pentru{' '}
-            {truck?.truckCode ?? truck?.truckPlate ?? 'camion'}.
+            {t('confirmDelivery.successSubtext', {
+              count: baleCount,
+              truck: truck?.truckCode ?? truck?.truckPlate ?? 'camion',
+            })}
           </Text>
         </View>
       </View>
@@ -285,13 +297,14 @@ export default function ConfirmDeliveryScreen() {
   if (showSignatureCapture) {
     return (
       <View style={styles.outer}>
-        <ScreenHeader title="Semnătură operator" onBack={() => setShowSignatureCapture(false)} />
+        <ScreenHeader
+          title={t('confirmDelivery.signatureScreenTitle')}
+          onBack={() => setShowSignatureCapture(false)}
+        />
         <ScrollView style={styles.body} contentContainerStyle={styles.content}>
-          <Text style={styles.sigHint}>
-            Semnați ca operator de depozit pentru a confirma primirea camionului.
-          </Text>
+          <Text style={styles.sigHint}>{t('confirmDelivery.signatureHint')}</Text>
           <SignatureCapture
-            label="Semnătură operator depozit"
+            label={t('confirmDelivery.signatureCaptureLabel')}
             onSave={(sig) => {
               setSignature(sig);
               setShowSignatureCapture(false);
@@ -299,7 +312,7 @@ export default function ConfirmDeliveryScreen() {
           />
           {!saving ? (
             <BigButton
-              title="Renunță"
+              title={t('confirmDelivery.cancelSignatureButton')}
               variant="outline"
               onPress={() => setShowSignatureCapture(false)}
             />
@@ -313,14 +326,19 @@ export default function ConfirmDeliveryScreen() {
   if (!truck && !inventoryQuery.isLoading) {
     return (
       <View style={styles.outer}>
-        <ScreenHeader title="Confirmă livrarea" onBack={() => router.back()} />
+        <ScreenHeader
+          title={t('confirmDelivery.notFoundScreenTitle')}
+          onBack={() => router.back()}
+        />
         <View style={[styles.body, styles.centered]}>
           <MaterialCommunityIcons name="truck-alert" size={48} color={colors.textSecondary} />
-          <Text style={styles.emptyTitle}>Cursa nu a fost găsită</Text>
-          <Text style={styles.emptySubtitle}>
-            Cursa poate fi deja confirmată sau nu este îndreptată spre depozitul tău.
-          </Text>
-          <BigButton title="Înapoi" variant="outline" onPress={() => router.back()} />
+          <Text style={styles.emptyTitle}>{t('confirmDelivery.notFoundTitle')}</Text>
+          <Text style={styles.emptySubtitle}>{t('confirmDelivery.notFoundSubtitle')}</Text>
+          <BigButton
+            title={t('confirmDelivery.backButton')}
+            variant="outline"
+            onPress={() => router.back()}
+          />
         </View>
       </View>
     );
@@ -330,7 +348,7 @@ export default function ConfirmDeliveryScreen() {
 
   return (
     <View style={styles.outer}>
-      <ScreenHeader title="Confirmă livrarea">
+      <ScreenHeader title={t('confirmDelivery.mainScreenTitle')}>
         <View style={styles.headerMeta}>
           <MaterialCommunityIcons name="truck" size={14} color="rgba(255,255,255,0.85)" />
           <Text style={styles.headerMetaText}>{truckLabel}</Text>
@@ -353,18 +371,18 @@ export default function ConfirmDeliveryScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.geofenceLabel, !isInsideGeofence && styles.geofenceLabelOutside]}>
               {isInsideGeofence
-                ? 'Camionul este in perimetrul depozitului'
+                ? t('confirmDelivery.geofenceInsideLabel')
                 : distanceM != null
-                  ? `La ${distanceM} m de depozit`
-                  : 'Poziție necunoscuta'}
+                  ? t('confirmDelivery.geofenceDistanceLabel', { distance: distanceM })
+                  : t('confirmDelivery.geofenceUnknownPosition')}
             </Text>
             {isInsideGeofence ? (
-              <Text style={styles.geofenceInside}>In perimetru</Text>
+              <Text style={styles.geofenceInside}>{t('confirmDelivery.geofenceInPerimeter')}</Text>
             ) : (
               <Text style={styles.geofenceOutside}>
                 {distanceM != null
-                  ? 'Asteapta ca camionul sa intre in raza de confirmare.'
-                  : 'Nu exista date recente de locatie.'}
+                  ? t('confirmDelivery.geofenceWaiting')
+                  : t('confirmDelivery.geofenceNoRecentLocation')}
               </Text>
             )}
           </View>
@@ -386,13 +404,15 @@ export default function ConfirmDeliveryScreen() {
             </View>
             <View style={styles.infoRow}>
               <MaterialCommunityIcons name="grain" size={16} color={colors.primary} />
-              <Text style={styles.infoText}>{truck.baleCount} baloti incarcati</Text>
+              <Text style={styles.infoText}>
+                {t('confirmDelivery.truckBalesLoaded', { count: truck.baleCount })}
+              </Text>
             </View>
           </View>
         ) : null}
 
         {/* Bale count input */}
-        <Text style={styles.fieldLabel}>Numar baloti confirmati</Text>
+        <Text style={styles.fieldLabel}>{t('confirmDelivery.fieldLabelBaleCount')}</Text>
         <NumericPad value={baleCountStr} onChange={setBaleCountStr} decimal={false} />
 
         {/* Weight inputs — principal depot only */}
@@ -400,9 +420,9 @@ export default function ConfirmDeliveryScreen() {
           <View style={styles.weightSection}>
             <View style={styles.scaleBrokenRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.scaleBrokenLabel}>Cantarul nu merge</Text>
+                <Text style={styles.scaleBrokenLabel}>{t('confirmDelivery.scaleBrokenLabel')}</Text>
                 <Text style={styles.scaleBrokenSub}>
-                  Activati daca balanta este defecta — se inregistreaza numai numarul de baloti.
+                  {t('confirmDelivery.scaleBrokenSubtitle')}
                 </Text>
               </View>
               <Switch
@@ -415,7 +435,7 @@ export default function ConfirmDeliveryScreen() {
 
             {!scaleBroken ? (
               <>
-                <Text style={styles.fieldLabel}>Greutati (kg)</Text>
+                <Text style={styles.fieldLabel}>{t('confirmDelivery.fieldLabelWeights')}</Text>
                 <View style={styles.weightsRow}>
                   <TouchableOpacity
                     style={[
@@ -425,7 +445,9 @@ export default function ConfirmDeliveryScreen() {
                     activeOpacity={0.8}
                     onPress={() => setActiveWeightField('gross')}
                   >
-                    <Text style={styles.weightFieldLabel}>Brut (cantarit)</Text>
+                    <Text style={styles.weightFieldLabel}>
+                      {t('confirmDelivery.weightFieldGross')}
+                    </Text>
                     <Text style={styles.weightFieldValue}>{grossWeightStr || '0'} kg</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -436,23 +458,28 @@ export default function ConfirmDeliveryScreen() {
                     activeOpacity={0.8}
                     onPress={() => setActiveWeightField('tare')}
                   >
-                    <Text style={styles.weightFieldLabel}>Tara (camion gol)</Text>
+                    <Text style={styles.weightFieldLabel}>
+                      {t('confirmDelivery.weightFieldTare')}
+                    </Text>
                     <Text style={styles.weightFieldValue}>{tareWeightStr || '0'} kg</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={styles.netRow}>
-                  <Text style={styles.netLabel}>Net</Text>
+                  <Text style={styles.netLabel}>{t('confirmDelivery.netLabel')}</Text>
                   <Text style={[styles.netValue, netWeightKg <= 0 && styles.netValueInvalid]}>
                     {netWeightKg > 0 ? `${netWeightKg} kg` : '—'}
                   </Text>
                 </View>
                 {tareWeightKg > grossWeightKg && tareWeightStr.length > 0 ? (
-                  <Text style={styles.errorText}>
-                    Tara nu poate fi mai mare decat greutatea bruta.
-                  </Text>
+                  <Text style={styles.errorText}>{t('confirmDelivery.tareExceedsGrossError')}</Text>
                 ) : null}
                 <Text style={styles.editingHint}>
-                  Editezi: {activeWeightField === 'gross' ? 'Brut' : 'Tara'}
+                  {t('confirmDelivery.editingHint', {
+                    field:
+                      activeWeightField === 'gross'
+                        ? t('confirmDelivery.editingFieldGross')
+                        : t('confirmDelivery.editingFieldTare'),
+                  })}
                 </Text>
                 <NumericPad
                   value={activeWeightField === 'gross' ? grossWeightStr : tareWeightStr}
@@ -465,7 +492,7 @@ export default function ConfirmDeliveryScreen() {
               <View style={styles.scaleBrokenNotice}>
                 <MaterialCommunityIcons name="scale-off" size={20} color="#C62828" />
                 <Text style={styles.scaleBrokenNoticeText}>
-                  Greutatile nu vor fi inregistrate (cantar defect).
+                  {t('confirmDelivery.scaleBrokenNotice')}
                 </Text>
               </View>
             )}
@@ -474,18 +501,18 @@ export default function ConfirmDeliveryScreen() {
 
         {/* Signature section */}
         <View style={styles.signatureSection}>
-          <Text style={styles.fieldLabel}>Semnatura operator</Text>
+          <Text style={styles.fieldLabel}>{t('confirmDelivery.fieldLabelSignature')}</Text>
           {signature ? (
             <View style={styles.signedRow}>
               <MaterialCommunityIcons name="check-circle" size={18} color={colors.primary} />
-              <Text style={styles.signedText}>Semnatura capturata</Text>
+              <Text style={styles.signedText}>{t('confirmDelivery.signatureCaptured')}</Text>
               <TouchableOpacity onPress={() => setShowSignatureCapture(true)}>
-                <Text style={styles.resignLink}>Resemneaza</Text>
+                <Text style={styles.resignLink}>{t('confirmDelivery.resignLink')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <BigButton
-              title="Adauga semnatura"
+              title={t('confirmDelivery.addSignatureButton')}
               variant="outline"
               onPress={() => setShowSignatureCapture(true)}
             />
@@ -496,18 +523,24 @@ export default function ConfirmDeliveryScreen() {
         {!isInsideGeofence ? (
           <Text style={styles.gateHint}>
             {distanceM != null
-              ? `Confirmarea este dezactivata — camionul este la ${distanceM} m de depozit.`
-              : 'Confirmarea este dezactivata — pozitia camionului este necunoscuta.'}
+              ? t('confirmDelivery.gateHintWithDistance', { distance: distanceM })
+              : t('confirmDelivery.gateHintNoPosition')}
           </Text>
         ) : null}
 
         {/* Submit */}
         <BigButton
-          title={saving ? 'Se salveaza...' : 'Confirma livrarea'}
+          title={
+            saving ? t('confirmDelivery.submitButtonSaving') : t('confirmDelivery.submitButton')
+          }
           onPress={() => void handleSubmit()}
           disabled={!canSubmit}
         />
-        <BigButton title="Anuleaza" variant="outline" onPress={() => router.back()} />
+        <BigButton
+          title={t('confirmDelivery.cancelButton')}
+          variant="outline"
+          onPress={() => router.back()}
+        />
       </ScrollView>
 
       <AppModal {...modalProps} />

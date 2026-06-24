@@ -2,15 +2,17 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { FuelEntryFlow } from '@/components/features/fuel/FuelEntryFlow';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
+import { useI18n } from '@/lib/i18n';
 
 export default function LoaderConsumablesScreen() {
+  const { t } = useI18n();
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
 
   return (
     <View style={styles.outerContainer}>
-      <ScreenHeader title="Motorină">
-        <Text style={styles.subtitle}>Înregistrează alimentare combustibil</Text>
+      <ScreenHeader title={t('loader.consumables.screenTitle')}>
+        <Text style={styles.subtitle}>{t('loader.consumables.subtitle')}</Text>
       </ScreenHeader>
       <View style={styles.body}>
         {!userId ? (

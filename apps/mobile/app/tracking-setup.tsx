@@ -36,6 +36,7 @@ import {
   openFullScreenIntentSettings,
 } from '@/lib/oem-helpers';
 import { isDeviceOwner, canUseFullScreenIntent } from '@/lib/device-owner';
+import { useI18n } from '@/lib/i18n';
 
 type MCIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -84,6 +85,7 @@ function roleHome(role: string | null): string {
 
 export default function TrackingSetupScreen() {
   const router = useRouter();
+  const { t } = useI18n();
   const role = useAuthStore((s) => s.role);
 
   const [bgGranted, setBgGranted] = useState(false);
@@ -173,39 +175,43 @@ export default function TrackingSetupScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <MaterialCommunityIcons name="map-marker-check" size={64} color={colors.primary} />
-          <Text style={styles.title}>Urmărire permanentă</Text>
-          <Text style={styles.subtitle}>
-            Pentru ca poziția să fie transmisă mereu — chiar cu ecranul stins sau aplicația în
-            fundal — activează cei {stepCount} pași de mai jos. Se fac o singură dată pe acest
-            telefon.
-          </Text>
+          <Text style={styles.title}>{t('trackingSetup.title')}</Text>
+          <Text style={styles.subtitle}>{t('trackingSetup.subtitle', { stepCount })}</Text>
         </View>
 
         <SetupStep
           icon="crosshairs-gps"
-          title="Locație „Permite mereu”"
-          body="Acordă permisiunea de locație în fundal (alege „Permite tot timpul / Allow all the time”)."
+          title={t('trackingSetup.step1.title')}
+          body={t('trackingSetup.step1.body')}
           done={bgGranted}
-          actionLabel={bgGranted ? 'Acordat' : 'Acordă'}
+          actionLabel={
+            bgGranted
+              ? t('trackingSetup.step1.actionGranted')
+              : t('trackingSetup.step1.actionGrant')
+          }
           onPress={onGrantLocation}
         />
 
         <SetupStep
           icon="battery-heart-variant"
-          title="Fără optimizarea bateriei"
-          body="Scoate aplicația din optimizarea bateriei, ca sistemul să nu o oprească în fundal."
+          title={t('trackingSetup.step2.title')}
+          body={t('trackingSetup.step2.body')}
           done={batteryExempt}
-          actionLabel={batteryExempt ? 'Scutit' : 'Dezactivează'}
+          actionLabel={
+            batteryExempt
+              ? t('trackingSetup.step2.actionExempt')
+              : t('trackingSetup.step2.actionDisable')
+          }
           onPress={onBattery}
         />
 
         {showAutostart && (
           <SetupStep
             icon="restart"
-            title="Pornire automată (autostart)"
-            body="Activează „Autostart / Pornire automată” pentru StrawBoss în setările producătorului, ca să repornească după restart."
+            title={t('trackingSetup.step3.title')}
+            body={t('trackingSetup.step3.body')}
             done={false}
-            actionLabel="Deschide"
+            actionLabel={t('trackingSetup.step3.action')}
             onPress={onAutostart}
           />
         )}
@@ -213,10 +219,14 @@ export default function TrackingSetupScreen() {
         {showFsi && (
           <SetupStep
             icon="bell-ring"
-            title="Alerte ecran complet"
-            body="Permite afișarea alertelor peste ecranul blocat, ca să vezi imediat intrarea/ieșirea din câmp."
+            title={t('trackingSetup.step4.title')}
+            body={t('trackingSetup.step4.body')}
             done={fsiGranted}
-            actionLabel={fsiGranted ? 'Acordat' : 'Deschide'}
+            actionLabel={
+              fsiGranted
+                ? t('trackingSetup.step4.actionGranted')
+                : t('trackingSetup.step4.actionOpen')
+            }
             onPress={onFsi}
           />
         )}
@@ -226,7 +236,7 @@ export default function TrackingSetupScreen() {
           onPress={() => void finish()}
           activeOpacity={0.85}
         >
-          <Text style={styles.finishBtnText}>Gata, continuă</Text>
+          <Text style={styles.finishBtnText}>{t('trackingSetup.finishButton')}</Text>
           <MaterialCommunityIcons name="arrow-right" size={20} color={colors.white} />
         </TouchableOpacity>
       </ScrollView>

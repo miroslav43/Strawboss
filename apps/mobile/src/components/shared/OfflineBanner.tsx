@@ -2,9 +2,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 export function OfflineBanner() {
   const { isConnected } = useNetworkStatus();
+  const { t } = useI18n();
 
   if (isConnected) return null;
 
@@ -14,9 +16,9 @@ export function OfflineBanner() {
         name="wifi-off"
         size={18}
         color={colors.white}
-        accessibilityLabel="Fără conexiune"
+        accessibilityLabel={t('shared.offlineBanner.noConnection')}
       />
-      <Text style={styles.text}>Offline — modificările se vor sincroniza când ești conectat</Text>
+      <Text style={styles.text}>{t('shared.offlineBanner.message')}</Text>
     </View>
   );
 }

@@ -18,6 +18,7 @@ import { fontScale, scale } from '@/utils/responsive';
 import { mobileApiClient } from '@/lib/api-client';
 import { uploadAvatar } from '@/lib/avatarUpload';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useI18n } from '@/lib/i18n';
 
 interface AvatarPickerProps {
   /** Relative URL from `users.avatar_url` (we resolve to absolute internally). */
@@ -41,6 +42,7 @@ export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerPr
   const [uploading, setUploading] = useState(false);
   const { isConnected } = useNetworkStatus();
   const { modalProps, showModal, hideModal } = useModal();
+  const { t } = useI18n();
 
   const resolvedUrl = mobileApiClient.resolveAssetUrl(avatarUrl);
   const initial = fullName?.trim().charAt(0)?.toUpperCase() || '?';
@@ -54,11 +56,11 @@ export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerPr
     if (perm.status !== 'granted') {
       showModal({
         type: 'warning',
-        title: 'Permisiune necesară',
+        title: t('shared.avatarPicker.permission.title'),
         message:
           source === 'camera'
-            ? 'Pentru a face o poză trebuie să permiți accesul la cameră.'
-            : 'Pentru a alege o poză trebuie să permiți accesul la galerie.',
+            ? t('shared.avatarPicker.permission.camera')
+            : t('shared.avatarPicker.permission.gallery'),
         onConfirm: hideModal,
       });
       return;
@@ -87,8 +89,8 @@ export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerPr
       onUploaded?.(user);
     } catch (err) {
       Alert.alert(
-        'Upload eșuat',
-        err instanceof Error ? err.message : 'Nu s-a putut încărca poza. Încearcă din nou.',
+        t('shared.avatarPicker.upload.failedTitle'),
+        err instanceof Error ? err.message : t('shared.avatarPicker.upload.failedDefault'),
       );
     } finally {
       setUploading(false);
@@ -98,16 +100,22 @@ export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerPr
   const handlePress = () => {
     if (uploading) return;
     if (!isConnected) {
-      Alert.alert('Ești offline', 'Conectează-te la internet pentru a schimba poza de profil.');
+      Alert.alert(t('shared.avatarPicker.offline.title'), t('shared.avatarPicker.offline.message'));
       return;
     }
     Alert.alert(
-      'Poză de profil',
-      'Alege o sursă',
+      t('shared.avatarPicker.sheet.title'),
+      t('shared.avatarPicker.sheet.subtitle'),
       [
-        { text: 'Fă o fotografie', onPress: () => void pickFromSource('camera') },
-        { text: 'Alege din galerie', onPress: () => void pickFromSource('library') },
-        { text: 'Anulează', style: 'cancel' },
+        {
+          text: t('shared.avatarPicker.sheet.takePhoto'),
+          onPress: () => void pickFromSource('camera'),
+        },
+        {
+          text: t('shared.avatarPicker.sheet.chooseFromGallery'),
+          onPress: () => void pickFromSource('library'),
+        },
+        { text: t('shared.avatarPicker.sheet.cancel'), style: 'cancel' },
       ],
       { cancelable: true },
     );
@@ -118,7 +126,7 @@ export function AvatarPicker({ avatarUrl, fullName, onUploaded }: AvatarPickerPr
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={handlePress}
-        accessibilityLabel="Schimbă poza de profil"
+        accessibilityLabel={t('shared.avatarPicker.accessibilityLabel')}
         accessibilityRole="button"
         style={styles.wrapper}
       >

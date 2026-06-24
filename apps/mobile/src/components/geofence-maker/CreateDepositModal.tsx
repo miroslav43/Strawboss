@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useI18n } from '@/lib/i18n';
 
 interface Props {
   visible: boolean;
@@ -31,18 +32,24 @@ interface Props {
 
 export function CreateDepositModal({ visible, onSave, onClose, isSaving }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
-  const [code, setCode]               = useState('');
-  const [name, setName]               = useState('');
-  const [address, setAddress]         = useState('');
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [isDefault, setIsDefault]     = useState(false);
-  const [error, setError]             = useState('');
+  const [isDefault, setIsDefault] = useState(false);
+  const [error, setError] = useState('');
 
   function reset() {
-    setCode(''); setName(''); setAddress(''); setContactName('');
-    setContactPhone(''); setIsDefault(false); setError('');
+    setCode('');
+    setName('');
+    setAddress('');
+    setContactName('');
+    setContactPhone('');
+    setIsDefault(false);
+    setError('');
   }
 
   function handleClose() {
@@ -51,23 +58,49 @@ export function CreateDepositModal({ visible, onSave, onClose, isSaving }: Props
   }
 
   function handleSave() {
-    if (!code.trim()) { setError('Codul depozitului este obligatoriu.'); return; }
-    if (!name.trim()) { setError('Numele depozitului este obligatoriu.'); return; }
-    if (!address.trim()) { setError('Adresa depozitului este obligatorie.'); return; }
+    if (!code.trim()) {
+      setError(t('geofenceMaker.createDeposit.error.codeRequired'));
+      return;
+    }
+    if (!name.trim()) {
+      setError(t('geofenceMaker.createDeposit.error.nameRequired'));
+      return;
+    }
+    if (!address.trim()) {
+      setError(t('geofenceMaker.createDeposit.error.addressRequired'));
+      return;
+    }
     setError('');
-    onSave({ code: code.trim(), name: name.trim(), address: address.trim(), contactName: contactName.trim(), contactPhone: contactPhone.trim(), isDefault });
+    onSave({
+      code: code.trim(),
+      name: name.trim(),
+      address: address.trim(),
+      contactName: contactName.trim(),
+      contactPhone: contactPhone.trim(),
+      isDefault,
+    });
     reset();
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={handleClose}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 }]}>
+        <View
+          style={[
+            styles.container,
+            { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 },
+          ]}
+        >
           <View style={styles.titleRow}>
-            <Text style={styles.title}>Depozit nou</Text>
+            <Text style={styles.title}>{t('geofenceMaker.createDeposit.title')}</Text>
             <TouchableOpacity onPress={handleClose} hitSlop={12}>
               <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
             </TouchableOpacity>
@@ -80,57 +113,64 @@ export function CreateDepositModal({ visible, onSave, onClose, isSaving }: Props
             showsVerticalScrollIndicator={false}
           >
             {/* Code */}
-            <Text style={styles.label}>Cod depozit <Text style={styles.required}>*</Text></Text>
+            <Text style={styles.label}>
+              {t('geofenceMaker.createDeposit.label.code')} <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={code}
               onChangeText={setCode}
-              placeholder="ex. DEP-01"
+              placeholder={t('geofenceMaker.createDeposit.placeholder.code')}
               placeholderTextColor="#9CA3AF"
               autoCapitalize="characters"
               returnKeyType="next"
             />
 
             {/* Name */}
-            <Text style={styles.label}>Nume depozit <Text style={styles.required}>*</Text></Text>
+            <Text style={styles.label}>
+              {t('geofenceMaker.createDeposit.label.name')} <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={name}
               onChangeText={setName}
-              placeholder="ex. Depozit Central"
+              placeholder={t('geofenceMaker.createDeposit.placeholder.name')}
               placeholderTextColor="#9CA3AF"
               returnKeyType="next"
             />
 
             {/* Address */}
-            <Text style={styles.label}>Adresă <Text style={styles.required}>*</Text></Text>
+            <Text style={styles.label}>
+              {t('geofenceMaker.createDeposit.label.address')}{' '}
+              <Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={address}
               onChangeText={setAddress}
-              placeholder="Strada, orașul, județul"
+              placeholder={t('geofenceMaker.createDeposit.placeholder.address')}
               placeholderTextColor="#9CA3AF"
               returnKeyType="next"
             />
 
             {/* Contact name */}
-            <Text style={styles.label}>Persoană de contact</Text>
+            <Text style={styles.label}>{t('geofenceMaker.createDeposit.label.contactName')}</Text>
             <TextInput
               style={styles.input}
               value={contactName}
               onChangeText={setContactName}
-              placeholder="Nume și prenume (opțional)"
+              placeholder={t('geofenceMaker.createDeposit.placeholder.contactName')}
               placeholderTextColor="#9CA3AF"
               returnKeyType="next"
             />
 
             {/* Contact phone */}
-            <Text style={styles.label}>Telefon contact</Text>
+            <Text style={styles.label}>{t('geofenceMaker.createDeposit.label.contactPhone')}</Text>
             <TextInput
               style={styles.input}
               value={contactPhone}
               onChangeText={setContactPhone}
-              placeholder="ex. 0722 123 456 (opțional)"
+              placeholder={t('geofenceMaker.createDeposit.placeholder.contactPhone')}
               placeholderTextColor="#9CA3AF"
               keyboardType="phone-pad"
               returnKeyType="done"
@@ -139,8 +179,10 @@ export function CreateDepositModal({ visible, onSave, onClose, isSaving }: Props
             {/* isDefault */}
             <View style={styles.switchRow}>
               <View style={styles.switchLabel}>
-                <Text style={styles.label}>Depozit implicit</Text>
-                <Text style={styles.switchHint}>Depozitul selectat automat pentru livrări</Text>
+                <Text style={styles.label}>{t('geofenceMaker.createDeposit.label.isDefault')}</Text>
+                <Text style={styles.switchHint}>
+                  {t('geofenceMaker.createDeposit.hint.isDefault')}
+                </Text>
               </View>
               <Switch
                 value={isDefault}
@@ -155,7 +197,7 @@ export function CreateDepositModal({ visible, onSave, onClose, isSaving }: Props
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.cancelBtn} onPress={handleClose} disabled={isSaving}>
-              <Text style={styles.cancelBtnText}>Anulează</Text>
+              <Text style={styles.cancelBtnText}>{t('geofenceMaker.createDeposit.cancel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
@@ -165,7 +207,7 @@ export function CreateDepositModal({ visible, onSave, onClose, isSaving }: Props
               {isSaving ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.saveBtnText}>Salvează depozitul</Text>
+                <Text style={styles.saveBtnText}>{t('geofenceMaker.createDeposit.save')}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -177,30 +219,53 @@ export function CreateDepositModal({ visible, onSave, onClose, isSaving }: Props
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 20 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
   title: { fontSize: 20, fontWeight: '700', color: '#0A5C36' },
   form: { gap: 4, paddingBottom: 12 },
   label: { fontSize: 13, fontWeight: '600', color: '#374151', marginTop: 12, marginBottom: 4 },
   required: { color: '#DC2626' },
   input: {
-    borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 15, color: '#111827', backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#FAFAFA',
   },
   switchRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: 12, paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingVertical: 4,
   },
   switchLabel: { flex: 1, marginRight: 16 },
   switchHint: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
   errorText: { color: '#DC2626', fontSize: 13, marginTop: 8 },
   actions: { flexDirection: 'row', gap: 12, paddingTop: 12 },
   cancelBtn: {
-    flex: 1, paddingVertical: 14, borderRadius: 10,
-    borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center',
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
   },
   cancelBtnText: { fontSize: 15, fontWeight: '600', color: '#374151' },
-  saveBtn: { flex: 2, paddingVertical: 14, borderRadius: 10, backgroundColor: '#1565C0', alignItems: 'center' },
+  saveBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: '#1565C0',
+    alignItems: 'center',
+  },
   saveBtnDisabled: { backgroundColor: '#9CA3AF' },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { FuelEntryFlow, FUEL_STEP_TITLES } from '@/components/features/fuel/FuelEntryFlow';
+import { FuelEntryFlow, FUEL_STEP_TITLE_KEYS } from '@/components/features/fuel/FuelEntryFlow';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
+import { useI18n } from '@/lib/i18n';
 
 export default function DriverFuelScreen() {
+  const { t } = useI18n();
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
-  const [stepTitle, setStepTitle] = useState(FUEL_STEP_TITLES.liters);
+  const [stepTitle, setStepTitle] = useState(() => t(FUEL_STEP_TITLE_KEYS.liters));
 
   return (
     <View style={styles.outerContainer}>
@@ -24,7 +26,7 @@ export default function DriverFuelScreen() {
             onStepChange={setStepTitle}
             onComplete={() => {
               // Stay on tab — reset to first step title
-              setStepTitle(FUEL_STEP_TITLES.liters);
+              setStepTitle(t(FUEL_STEP_TITLE_KEYS.liters));
             }}
             onCancel={() => {
               // No-op on tab screen

@@ -33,6 +33,7 @@ import { mobileLogger } from '@/lib/logger';
 import { generateUuid } from '@/lib/uuid';
 import { colors } from '@strawboss/ui-tokens';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
+import { useI18n } from '@/lib/i18n';
 
 const GPS_TIMEOUT_MS = 15_000;
 // Mirrors DEFAULT_MAX_BALES_PER_TRUCK in @strawboss/domain. Inlined (not
@@ -98,6 +99,7 @@ export default function LoadBalesScreen() {
         const raw = Array.isArray(parcelIdParam) ? parcelIdParam[0] : parcelIdParam;
         return raw && raw.length > 0 ? raw : null;
       })();
+  const { t } = useI18n();
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
@@ -183,11 +185,11 @@ export default function LoadBalesScreen() {
   // Bounce back if we don't have what we need (truck or resolved parcel).
   useEffect(() => {
     if (!truckId) {
-      Alert.alert('Eroare', 'Niciun camion identificat.', [
-        { text: 'OK', onPress: () => router.back() },
+      Alert.alert(t('loader.loadBales.errorNoTruck'), t('loader.loadBales.errorNoTruckMessage'), [
+        { text: t('loader.loadBales.errorNoTruckOk'), onPress: () => router.back() },
       ]);
     }
-  }, [truckId]);
+  }, [truckId, t]);
 
   useEffect(() => {
     // Auxiliary trips have their parcel pre-resolved from the route param — the
@@ -200,9 +202,9 @@ export default function LoadBalesScreen() {
     ) {
       // Surface the parcel prompt on home — this screen requires a resolved parcel.
       Alert.alert(
-        'Teren neconfirmat',
-        'Confirmă terenul activ în ecranul principal înainte de a încărca.',
-        [{ text: 'Înapoi', onPress: () => router.back() }],
+        t('loader.loadBales.parcelUnconfirmedTitle'),
+        t('loader.loadBales.parcelUnconfirmedMessage'),
+        [{ text: t('loader.loadBales.parcelUnconfirmedBack'), onPress: () => router.back() }],
       );
     }
   }, [isAuxiliary, parcel.status]);
@@ -247,20 +249,22 @@ export default function LoadBalesScreen() {
         // GPS proves the loader is too far from the field.
         showModal({
           type: 'warning',
-          title: 'Nu ești în câmp',
-          message: `Trebuie să fii pe terenul ${snapshotParcelName ?? 'selectat'} ca să încarci. Ești la ${parcel.distanceM} m de câmp — apropie-te și încearcă din nou.`,
-          confirmText: 'Am înțeles',
+          title: t('loader.loadBales.modalNotInFieldTitle'),
+          message: t('loader.loadBales.modalNotInFieldMessage', {
+            parcelName: snapshotParcelName ?? 'selectat',
+            distance: parcel.distanceM ?? 0,
+          }),
+          confirmText: t('loader.loadBales.modalUnderstood'),
           onConfirm: hideModal,
         });
       } else if (parcel.gpsState === 'unavailable') {
         // GPS denied / timed out / field has no boundary — can't confirm position.
         showModal({
           type: 'warning',
-          title: 'Poziție neconfirmată',
-          message:
-            'Nu putem confirma că ești pe teren (GPS indisponibil sau locația oprită). Activează locația și încearcă din nou.',
-          confirmText: 'Reîncearcă GPS',
-          cancelText: 'Anulează',
+          title: t('loader.loadBales.modalPositionUnconfirmedTitle'),
+          message: t('loader.loadBales.modalPositionUnconfirmedMessage'),
+          confirmText: t('loader.loadBales.modalRetryGps'),
+          cancelText: t('loader.loadBales.modalCancel'),
           onConfirm: () => {
             hideModal();
             parcel.refresh();
@@ -271,9 +275,9 @@ export default function LoadBalesScreen() {
         // Still acquiring a fix — ask the operator to wait.
         showModal({
           type: 'warning',
-          title: 'Se determină poziția',
-          message: 'Așteaptă semnalul GPS ca să confirmăm că ești pe teren, apoi încearcă din nou.',
-          confirmText: 'Am înțeles',
+          title: t('loader.loadBales.modalDeterminingPositionTitle'),
+          message: t('loader.loadBales.modalDeterminingPositionMessage'),
+          confirmText: t('loader.loadBales.modalUnderstood'),
           onConfirm: hideModal,
         });
       }
@@ -294,10 +298,13 @@ export default function LoadBalesScreen() {
         );
         showModal({
           type: 'warning',
-          title: 'Încărcare recentă detectată',
-          message: `Ai înregistrat deja ${totalBales} baloți pe acest camion și teren acum ${minutesAgo} min. Continui cu o nouă înregistrare?`,
-          confirmText: 'Da, continuă',
-          cancelText: 'Anulează',
+          title: t('loader.loadBales.modalDuplicateLoadTitle'),
+          message: t('loader.loadBales.modalDuplicateLoadMessage', {
+            totalBales,
+            minutesAgo,
+          }),
+          confirmText: t('loader.loadBales.modalContinue'),
+          cancelText: t('loader.loadBales.modalCancel'),
           onConfirm: () => {
             hideModal();
             setShowSignature(true);
@@ -325,10 +332,9 @@ export default function LoadBalesScreen() {
         if (remaining <= 0) {
           showModal({
             type: 'warning',
-            title: 'Parcelă încărcată complet',
-            message:
-              'Pe acest teren toți baloții au fost deja încărcați. Alege alt teren sau anunță dispecerul.',
-            confirmText: 'Am înțeles',
+            title: t('loader.loadBales.modalParcelFullyLoadedTitle'),
+            message: t('loader.loadBales.modalParcelFullyLoadedMessage'),
+            confirmText: t('loader.loadBales.modalUnderstood'),
             onConfirm: hideModal,
           });
           return;
@@ -336,9 +342,9 @@ export default function LoadBalesScreen() {
         if (baleCount > remaining) {
           showModal({
             type: 'warning',
-            title: 'Cantitate prea mare pentru parcelă',
-            message: `Pe parcelă au mai rămas doar ${remaining} baloți disponibili. Reduceți cantitatea sau alegeți alt teren.`,
-            confirmText: 'Am înțeles',
+            title: t('loader.loadBales.modalParcelCountExceedsTitle'),
+            message: t('loader.loadBales.modalParcelCountExceedsMessage', { remaining }),
+            confirmText: t('loader.loadBales.modalUnderstood'),
             onConfirm: hideModal,
           });
           return;
@@ -346,9 +352,11 @@ export default function LoadBalesScreen() {
         if (baleCount > fullTruckCount) {
           showModal({
             type: 'warning',
-            title: 'Capacitate camion depășită',
-            message: `Camionul poate transporta maxim ${fullTruckCount} baloți.`,
-            confirmText: 'Am înțeles',
+            title: t('loader.loadBales.modalTruckCapacityTitle'),
+            message: t('loader.loadBales.modalTruckCapacityMessage', {
+              maxBales: fullTruckCount,
+            }),
+            confirmText: t('loader.loadBales.modalUnderstood'),
             onConfirm: hideModal,
           });
           return;
@@ -475,31 +483,36 @@ export default function LoadBalesScreen() {
           };
           if (body.error === 'bale_count_exceeds_remaining') {
             Alert.alert(
-              'Cantitate prea mare pentru parcelă',
-              body.message ?? `Pe parcelă au mai rămas ${body.remaining ?? 0} baloți disponibili.`,
+              t('loader.loadBales.alertParcelCountExceedsTitle'),
+              body.message ??
+                t('loader.loadBales.alertParcelCountExceedsFallback', {
+                  remaining: body.remaining ?? 0,
+                }),
             );
             return;
           }
           if (body.error === 'parcel_fully_loaded') {
             Alert.alert(
-              'Parcelă încărcată complet',
-              body.message ?? 'Pe acest teren toți baloții au fost deja încărcați.',
+              t('loader.loadBales.alertParcelFullyLoadedTitle'),
+              body.message ?? t('loader.loadBales.alertParcelFullyLoadedFallback'),
             );
             return;
           }
           if (body.error === 'bale_count_exceeds_truck_capacity') {
             Alert.alert(
-              'Capacitate camion depășită',
+              t('loader.loadBales.alertTruckCapacityTitle'),
               body.message ??
-                `Camionul are capacitatea maximă ${body.truckCap ?? fullTruckCount} baloți.`,
+                t('loader.loadBales.alertTruckCapacityFallback', {
+                  truckCap: body.truckCap ?? fullTruckCount,
+                }),
             );
             return;
           }
         }
 
         Alert.alert(
-          'Eroare',
-          err instanceof Error ? err.message : 'Nu s-a putut înregistra încărcarea.',
+          t('loader.loadBales.alertErrorTitle'),
+          err instanceof Error ? err.message : t('loader.loadBales.alertErrorFallbackMessage'),
         );
       } finally {
         setSaving(false);
@@ -527,8 +540,8 @@ export default function LoadBalesScreen() {
   const truckLabel = truck
     ? (truck.registrationPlate ?? truck.internalCode)
     : truckId
-      ? '...'
-      : 'Camion necunoscut';
+      ? t('loader.loadBales.truckFallbackLoading')
+      : t('loader.loadBales.truckFallbackUnknown');
 
   if (saved) {
     Animated.spring(successScale, {
@@ -539,13 +552,13 @@ export default function LoadBalesScreen() {
     }).start();
     return (
       <View style={styles.outerContainer}>
-        <ScreenHeader title="Camion plin" />
+        <ScreenHeader title={t('loader.loadBales.successScreenTitle')} />
         <View style={[styles.body, styles.centered]}>
           <Animated.View style={{ transform: [{ scale: successScale }] }}>
             <MaterialCommunityIcons name="check-circle" size={72} color={colors.primary} />
           </Animated.View>
-          <Text style={styles.successText}>Înregistrat!</Text>
-          <Text style={styles.successSubtext}>Cursa a fost generată pentru șofer.</Text>
+          <Text style={styles.successText}>{t('loader.loadBales.successText')}</Text>
+          <Text style={styles.successSubtext}>{t('loader.loadBales.successSubtext')}</Text>
         </View>
       </View>
     );
@@ -554,17 +567,17 @@ export default function LoadBalesScreen() {
   if (showSignature) {
     return (
       <View style={styles.outerContainer}>
-        <ScreenHeader title="Semnătură operator" />
+        <ScreenHeader title={t('loader.loadBales.signatureScreenTitle')} />
         <ScrollView style={[styles.body, { flex: 1 }]} contentContainerStyle={styles.sigContent}>
           <View style={styles.sigHeader}>
             <MaterialCommunityIcons name="pen" size={20} color={colors.primary} />
-            <Text style={styles.sigTitle}>Semnează încărcarea</Text>
+            <Text style={styles.sigTitle}>{t('loader.loadBales.signatureTitle')}</Text>
           </View>
           <Text style={styles.sigHint}>
-            Confirmă că ai încărcat {baleCount} baloți în camionul {truckLabel}.
+            {t('loader.loadBales.signatureHint', { baleCount, truckLabel: truckLabel ?? '' })}
           </Text>
           <View style={styles.specimenCard}>
-            <Text style={styles.specimenLabel}>Specimen semnătură</Text>
+            <Text style={styles.specimenLabel}>{t('loader.loadBales.specimenLabel')}</Text>
             {signatureSpecimenUrl ? (
               <Image
                 source={{ uri: resolveApiUrl(signatureSpecimenUrl) }}
@@ -572,19 +585,19 @@ export default function LoadBalesScreen() {
                 resizeMode="contain"
               />
             ) : (
-              <Text style={styles.specimenMissing}>Nu ai încă un specimen.</Text>
+              <Text style={styles.specimenMissing}>{t('loader.loadBales.specimenMissing')}</Text>
             )}
           </View>
           <BigButton
-            title="Semnează cu specimen"
+            title={t('loader.loadBales.signWithSpecimenButton')}
             onPress={() => {
               if (!signatureSpecimenUrl) {
                 Alert.alert(
-                  'Specimen lipsă',
-                  'Nu ai încă un specimen de semnătură. Creează unul din profil.',
+                  t('loader.loadBales.specimenMissingAlertTitle'),
+                  t('loader.loadBales.specimenMissingAlertMessage'),
                   [
                     {
-                      text: 'Creează specimen',
+                      text: t('loader.loadBales.specimenMissingAlertAction'),
                       onPress: () => router.replace('/specimen-capture?mode=redo'),
                     },
                   ],
@@ -596,7 +609,11 @@ export default function LoadBalesScreen() {
             disabled={saving}
           />
           {saving ? null : (
-            <BigButton title="Renunță" onPress={() => setShowSignature(false)} variant="outline" />
+            <BigButton
+              title={t('loader.loadBales.giveUpButton')}
+              onPress={() => setShowSignature(false)}
+              variant="outline"
+            />
           )}
         </ScrollView>
       </View>
@@ -608,7 +625,7 @@ export default function LoadBalesScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <ScreenHeader title="Camion plin">
+      <ScreenHeader title={t('loader.loadBales.screenTitle')}>
         <View style={styles.headerMeta}>
           <MaterialCommunityIcons name="truck" size={14} color="rgba(255,255,255,0.85)" />
           <Text style={styles.headerMetaText}>{truckLabel}</Text>
@@ -627,10 +644,10 @@ export default function LoadBalesScreen() {
           />
           <Text style={styles.headerMetaText}>
             {gpsStatus === 'ok'
-              ? 'GPS activ'
+              ? t('loader.loadBales.gpsActive')
               : gpsStatus === 'loading'
-                ? 'Localizare...'
-                : 'Fără GPS'}
+                ? t('loader.loadBales.gpsLocating')
+                : t('loader.loadBales.gpsNone')}
           </Text>
         </View>
       </ScreenHeader>
@@ -643,33 +660,41 @@ export default function LoadBalesScreen() {
             color={parcelReady ? colors.primary : '#B7791F'}
           />
           <View style={{ flex: 1 }}>
-            <Text style={styles.parcelLabel}>Teren</Text>
+            <Text style={styles.parcelLabel}>{t('loader.loadBales.parcelCardLabel')}</Text>
             <Text style={styles.parcelName} numberOfLines={1} ellipsizeMode="tail">
               {snapshotParcelName
                 ? snapshotParcelName
                 : parcel.status === 'loading'
-                  ? 'Se identifică...'
-                  : 'Neconfirmat — confirmă pe ecranul principal'}
+                  ? t('loader.loadBales.parcelIdentifying')
+                  : t('loader.loadBales.parcelUnconfirmedFallback')}
             </Text>
             {parcelReady ? (
               parcel.presence === 'inside' ? (
-                <Text style={styles.presenceInside}>● Ești în câmp</Text>
+                <Text style={styles.presenceInside}>{t('loader.loadBales.presenceInside')}</Text>
               ) : awayFromField ? (
                 <Text style={styles.presenceOutside}>
-                  ● La {parcel.distanceM} m de câmp — apropie-te ca să încarci
+                  {t('loader.loadBales.presenceAwayFromField', {
+                    distance: parcel.distanceM ?? 0,
+                  })}
                 </Text>
               ) : parcel.presence === 'outside' ? (
-                <Text style={styles.presenceNear}>● Aproape de câmp ({parcel.distanceM} m)</Text>
+                <Text style={styles.presenceNear}>
+                  {t('loader.loadBales.presenceNear', { distance: parcel.distanceM ?? 0 })}
+                </Text>
               ) : parcel.gpsState === 'unavailable' ? (
-                <Text style={styles.presenceOutside}>● GPS indisponibil — activează locația</Text>
+                <Text style={styles.presenceOutside}>
+                  {t('loader.loadBales.presenceGpsUnavailable')}
+                </Text>
               ) : (
-                <Text style={styles.presenceUnknown}>Se verifică poziția…</Text>
+                <Text style={styles.presenceUnknown}>
+                  {t('loader.loadBales.presenceVerifying')}
+                </Text>
               )
             ) : null}
           </View>
         </View>
 
-        <Text style={styles.fieldLabel}>Număr baloți încărcați</Text>
+        <Text style={styles.fieldLabel}>{t('loader.loadBales.baleCountFieldLabel')}</Text>
 
         <TouchableOpacity
           style={styles.fullTruckButton}
@@ -678,14 +703,14 @@ export default function LoadBalesScreen() {
         >
           <MaterialCommunityIcons name="truck-fast" size={20} color={colors.primary} />
           <Text style={styles.fullTruckText} numberOfLines={1} ellipsizeMode="tail">
-            Camion plin ({fullTruckCount} baloți)
+            {t('loader.loadBales.fullTruckButton', { count: fullTruckCount })}
           </Text>
         </TouchableOpacity>
 
         <NumericPad value={baleCountStr} onChange={setBaleCountStr} decimal={false} />
 
         <BigButton
-          title="Înregistrează"
+          title={t('loader.loadBales.registerButton')}
           onPress={() => void handleRegisterPress()}
           // Auxiliary loads bypass the in-field geofence gate (the external truck
           // arrives wherever) — but still require a known parcel.
@@ -694,20 +719,24 @@ export default function LoadBalesScreen() {
         {!isAuxiliary && parcelReady && !inField ? (
           <Text style={styles.gateHint}>
             {awayFromField
-              ? `Trebuie să fii în câmp ca să încarci (${parcel.distanceM} m de teren).`
+              ? t('loader.loadBales.gateHintAwayFromField', { distance: parcel.distanceM ?? 0 })
               : parcel.gpsState === 'unavailable'
-                ? 'Nu putem confirma poziția — activează GPS-ul ca să încarci.'
-                : 'Se așteaptă semnalul GPS ca să confirmăm că ești pe teren…'}
+                ? t('loader.loadBales.gateHintGpsUnavailable')
+                : t('loader.loadBales.gateHintWaitingGps')}
           </Text>
         ) : null}
         {isAuxiliary && !parcelReady ? (
           <Text style={styles.gateHint}>
             {parcel.gpsState === 'unavailable'
-              ? 'Activează GPS-ul sau confirmă terenul în ecranul principal ca să încarci.'
-              : 'Se determină terenul din locația ta…'}
+              ? t('loader.loadBales.gateHintAuxGpsUnavailable')
+              : t('loader.loadBales.gateHintAuxDeterminingField')}
           </Text>
         ) : null}
-        <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
+        <BigButton
+          title={t('loader.loadBales.cancelButton')}
+          onPress={() => router.back()}
+          variant="outline"
+        />
       </ScrollView>
       <AppModal {...modalProps} />
     </View>

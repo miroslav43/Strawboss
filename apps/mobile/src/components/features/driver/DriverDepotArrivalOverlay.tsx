@@ -4,6 +4,7 @@ import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
 import { useDriverDepotArrival } from '@/hooks/useDriverDepotArrival';
 import { useTripTransition } from '@/hooks/useTripTransition';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * Client-side fallback for the depot-arrival countdown (mounted in the driver
@@ -16,6 +17,7 @@ import { mobileLogger } from '@/lib/logger';
  * two paths never stack into a double countdown.
  */
 export function DriverDepotArrivalOverlay({ suppressed }: { suppressed: boolean }) {
+  const { t } = useI18n();
   const arrival = useDriverDepotArrival();
   const { enqueueTransition } = useTripTransition();
   // GPS presence is level-triggered; once the driver confirms or cancels for a
@@ -56,9 +58,9 @@ export function DriverDepotArrivalOverlay({ suppressed }: { suppressed: boolean 
   return (
     <ConfirmCountdown
       visible={active}
-      actionLabel="Sosire la depozit"
+      actionLabel={t('driver.depotArrivalOverlay.actionLabel')}
       countdownSeconds={10}
-      confirmLabel="Confirmă acum"
+      confirmLabel={t('driver.depotArrivalOverlay.confirmLabel')}
       onConfirmed={handleConfirmed}
       onCancel={handleCancel}
     />

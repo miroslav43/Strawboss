@@ -20,6 +20,7 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { getDatabase } from '@/lib/storage';
 import { BaleLoadsRepo } from '@/db/bale-loads-repo';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface MyLoad {
   id: string;
@@ -76,24 +77,30 @@ function formatLoadedAt(raw: string | null | undefined): string {
   return `${hh}:${mm}`;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  planned: 'Planificat',
-  loading: 'Se încarcă',
-  loaded: 'Încărcat',
-  in_transit: 'În drum',
-  completed: 'Finalizat',
-};
-
 const STATUS_COLORS: Record<string, string> = {
   planned: '#1565C0',
   loading: '#B7791F',
   loaded: '#2E7D32',
 };
 
-function TripCard({ trip }: { trip: TripToLoad }) {
-  const label = trip.truckPlate ?? trip.truckCode ?? 'Camion necunoscut';
+function TripCard({
+  trip,
+  t,
+}: {
+  trip: TripToLoad;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const label = trip.truckPlate ?? trip.truckCode ?? t('loader.bales.truckFallbackLabel');
   const parcelLabel = trip.sourceParcelName ?? trip.sourceParcelCode ?? null;
   const statusColor = STATUS_COLORS[trip.status] ?? '#5D4037';
+
+  const STATUS_LABELS: Record<string, string> = {
+    planned: t('loader.bales.statusPlanned'),
+    loading: t('loader.bales.statusLoading'),
+    loaded: t('loader.bales.statusLoaded'),
+    in_transit: t('loader.bales.statusInTransit'),
+    completed: t('loader.bales.statusCompleted'),
+  };
   const statusLabel = STATUS_LABELS[trip.status] ?? trip.status;
 
   return (
@@ -132,18 +139,19 @@ function TripCard({ trip }: { trip: TripToLoad }) {
       <View style={styles.tripDetailRow}>
         <MaterialCommunityIcons name="grain" size={13} color={colors.neutral400} />
         <Text style={styles.tripDetail} numberOfLines={1}>
-          {trip.baleCount} baloți încărcați
+          {t('loader.bales.tripBaleCountLoaded', { count: trip.baleCount })}
         </Text>
       </View>
 
       <View style={styles.tripCta}>
-        <Text style={styles.tripCtaText}>Apasă pentru a înregistra încărcare →</Text>
+        <Text style={styles.tripCtaText}>{t('loader.bales.tripCtaText')}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
 export default function LoaderBalesScreen() {
+  const { t } = useI18n();
   const userId = useAuthStore((s) => s.userId);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -194,7 +202,7 @@ export default function LoaderBalesScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <ScreenHeader title="Încărcări" />
+      <ScreenHeader title={t('loader.bales.screenTitle')} />
 
       <ScrollView
         style={styles.body}
@@ -215,26 +223,24 @@ export default function LoaderBalesScreen() {
         ) : null}
 
         {/* ── Camioane de încărcat ── */}
-        <Text style={styles.sectionTitle}>Camioane de încărcat azi</Text>
+        <Text style={styles.sectionTitle}>{t('loader.bales.sectionTrucksToLoad')}</Text>
         {tripsQuery.isLoading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loadingText}>Se încarcă cursele...</Text>
+            <Text style={styles.loadingText}>{t('loader.bales.loadingTrips')}</Text>
           </View>
         ) : trips.length === 0 ? (
           <View style={styles.emptyTrips}>
-            <Text style={styles.emptyText}>Nicio cursă planificată azi.</Text>
-            <Text style={styles.emptySubtext}>
-              Administratorul nu a planificat curse sau nu ești asignat ca operator loader.
-            </Text>
+            <Text style={styles.emptyText}>{t('loader.bales.noTripsPlanned')}</Text>
+            <Text style={styles.emptySubtext}>{t('loader.bales.noTripsSubtext')}</Text>
           </View>
         ) : (
-          trips.map((trip) => <TripCard key={trip.id} trip={trip} />)
+          trips.map((trip) => <TripCard key={trip.id} trip={trip} t={t} />)
         )}
 
         {/* ── Încărcări înregistrate ── */}
         <Text style={[styles.sectionTitle, styles.sectionTitleSecond]}>
-          Încărcări înregistrate azi
+          {t('loader.bales.sectionLoadsToday')}
         </Text>
         {loadsLoading ? (
           <View style={styles.loadingRow}>
@@ -242,17 +248,17 @@ export default function LoaderBalesScreen() {
           </View>
         ) : myLoads.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Nicio încărcare înregistrată azi.</Text>
+            <Text style={styles.emptyText}>{t('loader.bales.noLoadsToday')}</Text>
           </View>
         ) : (
           myLoads.map((load) => (
             <View key={load.id} style={styles.card}>
               <View style={styles.cardRow}>
-                <Text style={styles.cardLabel}>Baloți</Text>
+                <Text style={styles.cardLabel}>{t('loader.bales.cardLabelBales')}</Text>
                 <Text style={styles.cardValue}>{load.baleCount}</Text>
               </View>
               <View style={styles.cardRow}>
-                <Text style={styles.cardLabel}>Ora</Text>
+                <Text style={styles.cardLabel}>{t('loader.bales.cardLabelTime')}</Text>
                 <Text style={styles.cardSubtext}>{formatLoadedAt(load.loadedAt)}</Text>
               </View>
               {load.notes ? (

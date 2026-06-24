@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { mobileLogger } from '@/lib/logger';
 import { fontScale } from '@/utils/responsive';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * Signature specimen capture screen.
@@ -25,6 +26,7 @@ import { colors } from '@strawboss/ui-tokens';
 export default function SpecimenCaptureScreen() {
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const isRedo = mode === 'redo';
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const setSignatureSpecimenUrl = useAuthStore((s) => s.setSignatureSpecimenUrl);
 
@@ -58,39 +60,43 @@ export default function SpecimenCaptureScreen() {
           err: err instanceof Error ? err.message : String(err),
         });
         Alert.alert(
-          'Eroare',
-          err instanceof Error
-            ? err.message
-            : 'Specimenul nu a putut fi salvat. Verifică conexiunea și încearcă din nou.',
+          t('specimenCapture.errorTitle'),
+          err instanceof Error ? err.message : t('specimenCapture.errorFallback'),
         );
       } finally {
         setSubmitting(false);
       }
     },
-    [isRedo, queryClient, setSignatureSpecimenUrl, submitting],
+    [isRedo, queryClient, setSignatureSpecimenUrl, submitting, t],
   );
 
   return (
     <View style={styles.outer}>
-      <ScreenHeader title={isRedo ? 'Schimbă specimenul' : 'Specimen de semnătură'} />
+      <ScreenHeader
+        title={isRedo ? t('specimenCapture.headerTitleRedo') : t('specimenCapture.headerTitleNew')}
+      />
       <View style={styles.body}>
         <View style={styles.intro}>
           <MaterialCommunityIcons name="signature-freehand" size={28} color={colors.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>
-              {isRedo ? 'Redesenează semnătura ta' : 'Creează semnătura ta'}
+              {isRedo ? t('specimenCapture.titleRedo') : t('specimenCapture.titleNew')}
             </Text>
-            <Text style={styles.hint}>
-              Specimenul se va folosi pe toate cursele (plecare șofer, încărcare operator).
-              Asigură-te că este lizibil.
-            </Text>
+            <Text style={styles.hint}>{t('specimenCapture.hint')}</Text>
           </View>
         </View>
 
-        <SignatureCapture label="Semnătura ta" onSave={(sig) => void handleConfirm(sig)} />
+        <SignatureCapture
+          label={t('specimenCapture.signatureLabel')}
+          onSave={(sig) => void handleConfirm(sig)}
+        />
 
         {isRedo && !submitting ? (
-          <BigButton title="Anulează" onPress={() => router.back()} variant="outline" />
+          <BigButton
+            title={t('specimenCapture.cancelButton')}
+            onPress={() => router.back()}
+            variant="outline"
+          />
         ) : null}
       </View>
     </View>

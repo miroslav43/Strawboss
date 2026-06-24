@@ -1,0 +1,1580 @@
+export const ro = {
+  common: {
+    save: 'Salvează',
+    cancel: 'Anulează',
+    loading: 'Se încarcă…',
+    error: 'A apărut o eroare',
+    retry: 'Reîncearcă',
+    back: 'Înapoi',
+    confirm: 'Confirmă',
+    yes: 'Da',
+    no: 'Nu',
+    ok: 'OK',
+    none: '—',
+    close: 'Închide',
+    active: 'Activ',
+    inactive: 'Inactiv',
+    add: 'Adaugă',
+    edit: 'Editează',
+    delete: 'Șterge',
+    search: 'Caută',
+  },
+
+  app: {
+    dbError: 'Baza de date nu a putut fi inițializată.',
+    dbRetry: 'Reîncearcă',
+    profileErrorTitle: 'Eroare de conectare',
+    profileErrorMessage:
+      'Nu s-a putut încărca profilul. Verificați conexiunea și încercați din nou.',
+  },
+
+  auth: {
+    brandTitle: 'StrawBoss',
+    brandSubtitle: 'Agricultural Logistics',
+    usernamePlaceholder: 'Username sau Email',
+    passwordPlaceholder: 'PIN sau parola',
+    showPassword: 'Arată parola',
+    hidePassword: 'Ascunde parola',
+    loginButton: 'Autentificare',
+    errorRequired: 'Username/email si parola sunt obligatorii',
+    errorUnexpected: 'A aparut o eroare neasteptata',
+    errorUserNotFound:
+      'User inexistent pe serverul la care e conectată aplicația. Dacă îl vezi în admin pe site, pune în .env.dev același EXPO_PUBLIC_API_URL ca domeniul admin (sau date de test în backend-ul local).',
+    errorApiInvalidResponse: 'Răspuns API invalid (fără email).',
+    errorMissingApiUrl:
+      'Lipsește EXPO_PUBLIC_API_URL. Completează apps/mobile/.env.dev și repornește Metro.',
+    errorLoopback:
+      'Nu merge conexiunea la {{origin}}. Pe telefon (USB): rulează „adb reverse tcp:3001 tcp:3001\", apoi pornește backend-ul pe Mac la portul 3001. Eroare rețea: {{errMsg}}',
+    errorCannotContactApi:
+      'Nu pot contacta API la {{origin}}. Verifică Wi‑Fi/firewall și că backend-ul ascultă pe 0.0.0.0 (nu doar localhost). {{errMsg}}',
+    errorApiResolve: 'Eroare API la rezolvare user ({{status}}).',
+    errorTimeout:
+      'Nu ajung la serverul API (timeout). Verifică că backend-ul rulează, că telefonul e pe același Wi‑Fi ca Mac-ul, și că EXPO_PUBLIC_API_URL folosește IP-ul corect (ex. același prefix ca în Metro).',
+  },
+
+  notifications: {
+    title: 'Notificări',
+    unreadSingular: '{{count}} notificare necitită',
+    unreadPlural: '{{count}} notificări necitite',
+    allRead: 'Toate notificările citite',
+    markAllButton: 'Marchează tot',
+    markAllAccessibility: 'Marchează toate ca citite',
+    emptyTitle: 'Nu ai notificări',
+    emptyBody: 'Notificările despre cursele tale vor apărea aici.',
+    deleteConfirmTitle: 'Șterge notificarea?',
+    deleteConfirmButton: 'Șterge',
+    dayToday: 'Astăzi',
+    dayYesterday: 'Ieri',
+  },
+
+  onboarding: {
+    skipButton: 'Sari peste',
+    skipAccessibility: 'Sari peste tutorial',
+    backButton: 'Înapoi',
+    nextButton: 'Următorul',
+    finishButton: 'Am înțeles',
+    driver: {
+      slide1: {
+        title: 'Task-urile tale',
+        body: 'Pe ecranul principal vei vedea cursele asignate pentru ziua curentă. Cursele active sunt afișate în vârful listei.',
+      },
+      slide2: {
+        title: 'Fluxul de cursă',
+        body: 'Fiecare cursă trece prin pași: Plecare → Sosire → Livrare. La plecare, introduci citirea odometrului și semnezi.',
+      },
+      slide3: {
+        title: 'Alimentare combustibil',
+        body: 'Înregistrează alimentările din tabul „Combustibil\". Poți fotografia bonul fiscal — acesta se trimite automat la server.',
+      },
+      slide4: {
+        title: 'Funcționează și offline',
+        body: 'Toate înregistrările se salvează local pe telefon și se sincronizează cu serverul când revii la semnal.',
+      },
+    },
+    loader: {
+      slide1: {
+        title: 'Task-urile zilei',
+        body: 'Pe ecranul principal vei vedea parcelele asignate pentru ziua curentă, în ordinea priorităților.',
+      },
+      slide2: {
+        title: 'Încărcare baloți',
+        body: 'Apasă „Încarcă baloți\" pe ecranul principal. GPS-ul detectează automat parcela curentă. Introdu numărul de baloți și confirmă.',
+      },
+      slide3: {
+        title: 'Geofence activ',
+        body: 'Aplicația verifică dacă te aflii în interiorul parcelei asignate. Vei primi o notificare la intrare și la ieșire din câmp.',
+      },
+      slide4: {
+        title: 'Funcționează și offline',
+        body: 'Toate înregistrările se salvează local și se sincronizează automat la reconectare. Harta parcelelor e disponibilă și fără internet.',
+      },
+    },
+    baler: {
+      slide1: {
+        title: 'Task-urile zilei',
+        body: 'Pe ecranul principal vei vedea parcelele pe care trebuie să lucrezi astăzi, sortate după prioritate.',
+      },
+      slide2: {
+        title: 'Înregistrare producție',
+        body: 'Folosește tastatura numerică de pe ecranul „Producție\" pentru a introduce numărul de baloți. Apasă „Salvează\" după fiecare lot.',
+      },
+      slide3: {
+        title: 'Consumabile',
+        body: 'Înregistrează consumul de sfoară, plasă sau alte consumabile din tabul „Consumabile\". Poți fotografia bonul.',
+      },
+      slide4: {
+        title: 'Funcționează și offline',
+        body: 'Toate datele se stochează local și se trimit la server automat când există semnal. Nu pierzi nicio înregistrare.',
+      },
+    },
+    geofence: {
+      slide1: {
+        title: 'Desenează geofence-uri',
+        body: 'Pe ecranul „Hartă\", apasă „Câmp nou\" și desenează conturul parcelei atingând punctele pe hartă.',
+      },
+      slide2: {
+        title: 'Contur precis',
+        body: 'Urmează marginile câmpului cât mai fidel. Apasă „Finalizează\" când conturul e complet. Poți corecta înainte de salvare.',
+      },
+      slide3: {
+        title: 'Ferme și parcele',
+        body: 'Parcelele sunt organizate pe ferme. Selectează ferma potrivită înainte de a adăuga un geofence nou.',
+      },
+    },
+    default: {
+      slide1: {
+        title: 'Bun venit în StrawBoss',
+        body: 'Monitorizează cursele, producia de baloți și flotila de utilaje în timp real.',
+      },
+      slide2: {
+        title: 'Date sincronizate',
+        body: 'Toate datele de pe telefoanele operatorilor se sincronizează automat cu dashboard-ul web.',
+      },
+    },
+  },
+
+  trackingSetup: {
+    title: 'Urmărire permanentă',
+    subtitle:
+      'Pentru ca poziția să fie transmisă mereu — chiar cu ecranul stins sau aplicația în fundal — activează cei {{stepCount}} pași de mai jos. Se fac o singură dată pe acest telefon.',
+    step1: {
+      title: 'Locație „Permite mereu\"',
+      body: 'Acordă permisiunea de locație în fundal (alege „Permite tot timpul / Allow all the time\").',
+      actionGranted: 'Acordat',
+      actionGrant: 'Acordă',
+    },
+    step2: {
+      title: 'Fără optimizarea bateriei',
+      body: 'Scoate aplicația din optimizarea bateriei, ca sistemul să nu o oprească în fundal.',
+      actionExempt: 'Scutit',
+      actionDisable: 'Dezactivează',
+    },
+    step3: {
+      title: 'Pornire automată (autostart)',
+      body: 'Activează „Autostart / Pornire automată\" pentru StrawBoss în setările producătorului, ca să repornească după restart.',
+      action: 'Deschide',
+    },
+    step4: {
+      title: 'Alerte ecran complet',
+      body: 'Permite afișarea alertelor peste ecranul blocat, ca să vezi imediat intrarea/ieșirea din câmp.',
+      actionGranted: 'Acordat',
+      actionOpen: 'Deschide',
+    },
+    finishButton: 'Gata, continuă',
+  },
+
+  dailyReport: {
+    headerTitle: 'Raport zilnic',
+    backAccessibility: 'Înapoi',
+    loadingText: 'Se încarcă activitatea...',
+    emptyText: 'Nicio activitate înregistrată astăzi.',
+    retryButton: 'Reîncearcă',
+    exportButton: 'Exportă PDF',
+    exportButtonAccessibility: 'Exportă PDF',
+    exportErrorFallback: 'Nu s-a putut genera PDF-ul.',
+    kpi: {
+      bales: 'Baloți produși',
+      fuel: 'Combustibil',
+      loads: 'Încărcări',
+      consumables: 'Consumabile',
+    },
+    syncStatus: {
+      synced: 'sincronizat ✓',
+      pending: 'în așteptare',
+      failed: 'eșuat ✗',
+    },
+    pdf: {
+      title: 'StrawBoss — Raport zilnic',
+      noRecords: 'Nicio înregistrare',
+      kpi: {
+        balesProduced: 'Baloți produși',
+        fuelFilled: 'Combustibil alimentat',
+        baleLoads: 'Încărcări baloți',
+        consumablesLogged: 'Consumabile înregistrate',
+      },
+      section: {
+        production: 'Producție baloți',
+        fuel: 'Combustibil',
+        loads: 'Încărcări baloți',
+        consumables: 'Consumabile',
+      },
+      col: {
+        time: 'Oră',
+        quantity: 'Cantitate',
+        details: 'Detalii',
+        sync: 'Sync',
+      },
+    },
+    shareDialogTitle: 'Raport zilnic StrawBoss — {{date}}',
+  },
+
+  syncDetails: {
+    title: 'Date în așteptare',
+    refreshAccessibility: 'Reîmprospătează',
+    backAccessibility: 'Înapoi',
+    networkLabel: 'Rețea:',
+    online: 'Online',
+    offline: 'Offline',
+    pendingLabel: 'În așteptare:',
+    failedLabel: 'Eșuate:',
+    lastSyncLabel: 'Ultima sincronizare:',
+    lastSyncNever: 'Niciodată',
+    retryAllButton: 'Reîncearcă toate',
+    retryAllAccessibility: 'Reîncearcă toate înregistrările eșuate',
+    syncNowButton: 'Sincronizează acum',
+    syncNowNoConnection: 'Fără conexiune',
+    syncNowAccessibility: 'Sincronizează acum',
+    retryEntryButton: 'Reîncearcă',
+    retryEntryAccessibility: 'Reîncearcă această înregistrare',
+    statusPending: 'în așteptare',
+    statusFailed: 'eșuat',
+    retryCount: 'Reîncercări: {{count}}',
+    emptyTitle: 'Totul este sincronizat',
+    emptySubtitle: 'Nu există înregistrări în așteptare sau eșuate.',
+    entityLabel: {
+      trips: 'Cursă',
+      baleLoads: 'Încărcare baloți',
+      baleProductions: 'Producție baloți',
+      fuelLogs: 'Alimentare combustibil',
+      consumableLogs: 'Consumabil',
+      operations: 'Operațiune',
+      taskAssignments: 'Sarcină',
+    },
+    actionLabel: {
+      create: 'creare',
+      update: 'actualizare',
+      delete: 'ștergere',
+      transition: 'tranziție',
+    },
+  },
+
+  specimenCapture: {
+    headerTitleNew: 'Specimen de semnătură',
+    headerTitleRedo: 'Schimbă specimenul',
+    titleNew: 'Creează semnătura ta',
+    titleRedo: 'Redesenează semnătura ta',
+    hint: 'Specimenul se va folosi pe toate cursele (plecare șofer, încărcare operator). Asigură-te că este lizibil.',
+    signatureLabel: 'Semnătura ta',
+    cancelButton: 'Anulează',
+    errorTitle: 'Eroare',
+    errorFallback: 'Specimenul nu a putut fi salvat. Verifică conexiunea și încearcă din nou.',
+  },
+
+  tabs: {
+    home: {
+      title: 'StrawBoss',
+      subtitle: 'Agricultural Logistics',
+      connectionCardTitle: 'Conexiune',
+      online: 'Online',
+      offline: 'Offline',
+      machineCardTitle: 'Mașina mea',
+      noMachineTitle: 'Nicio mașină asignată',
+      noMachineSubtitle: 'Contactează administratorul pentru a-ți asigna o mașină.',
+      machineTypeLoader: 'Încărcător',
+      machineTypeBaler: 'Balotieră',
+      machineTypeTruck: 'Camion',
+      gpsActiveAndroid: 'GPS activ (inclusiv în fundal)',
+      gpsInactiveAndroid: 'GPS nu rulează — verifică permisiunile „Tot timpul\"',
+      gpsActiveIos: 'GPS activ',
+      gpsInactiveIos: 'GPS: pornește din setările aplicației (iOS)',
+      lastPing: 'Ultimul ping: {{time}}',
+      waitingFirstPing: 'Așteptând primul ping…',
+      machineLoadError: 'Nu s-a putut încărca mașina asignată.',
+      syncCardTitle: 'Sincronizare',
+      syncQueueLabel: 'În coadă (inclusiv erori):',
+      syncLastSyncLabel: 'Ultima sincronizare:',
+      syncNever: 'Niciodată',
+      syncing: 'Se sincronizează...',
+    },
+    scan: {
+      requestingPermission: 'Requesting camera permission...',
+      permissionRequired: 'Camera access is required to scan QR codes',
+      grantPermission: 'Grant Permission',
+      instruction: 'Point camera at a StrawBoss QR code',
+      scanAgain: 'Scan Again',
+      scannedTitle: 'Scanned',
+      scannedMessage: 'Code: {{data}}',
+    },
+    sync: {
+      title: 'Sincronizare',
+      networkLabel: 'Rețea:',
+      online: 'Online',
+      offline: 'Offline',
+      queueLabel: 'În coadă (inclusiv erori):',
+      lastSyncLabel: 'Ultima sincronizare:',
+      lastSyncNever: 'Niciodată',
+      syncNowButton: 'Sincronizează acum',
+      noConnectionButton: 'Fără conexiune',
+      recentErrorsTitle: 'Erori recente',
+      failedEntriesTitle: 'Intrări eșuate ({{count}})',
+      unknownError: 'Eroare necunoscută',
+      retryCountLabel: 'Reîncercări: {{count}}',
+      retryButton: 'Reîncearcă',
+    },
+    trips: {
+      title: 'Curse Active',
+      noNumber: 'Fără număr',
+      baleCount: 'Baloți: {{count}}',
+      departed: 'Plecat: {{time}}',
+      emptyTitle: 'Nicio cursă activă',
+      emptySubtext: 'Cursele asignate vor apărea aici',
+    },
+  },
+
+  driver: {
+    screenTitle: {
+      myTrips: 'Cursele Mele',
+      delivery: 'Livrare',
+    },
+    statusLabel: {
+      planned: 'Planificat',
+      loading: 'Se încarcă',
+      loaded: 'Încărcat',
+      inTransit: 'În drum',
+      arrived: 'Sosit',
+      delivering: 'Se livrează',
+      delivered: 'Livrat',
+      completed: 'Finalizat',
+    },
+    taskStatusLabel: {
+      available: 'De început',
+      inProgress: 'În lucru',
+      done: 'Finalizat',
+    },
+    card: {
+      activeLoaders: 'Loadere active',
+      noNearbyLoader: 'Niciun loader în apropiere.',
+      todayTask: 'Sarcina de azi',
+      tripNotStarted: 'Cursa nu a început încă',
+    },
+    badge: {
+      new: 'NOU',
+    },
+    trip: {
+      fallbackName: 'Cursă',
+      baleCount: 'baloți',
+      iterationLabel: 'Cursa {n}',
+    },
+    hint: {
+      tapToDeliver: 'Apasă pentru livrare',
+      tapToDepart: 'Apasă pentru plecare',
+    },
+    empty: {
+      noActiveTrips: 'Nicio cursă activă.',
+      assignedTripsHint: 'Cursele asignate vor apărea aici.',
+    },
+    delivery: {
+      empty: {
+        noActiveTrip: 'Nicio cursă activă.',
+        hint: 'Cursa apare aici cât timp este activă, până la livrare.',
+      },
+    },
+    activeTripCard: {
+      sectionLabel: 'Cursa activă',
+      status: {
+        planned: 'Planificat',
+        loading: 'Se încarcă',
+        loaded: 'Încărcat',
+        inTransit: 'În drum',
+        arrived: 'Sosit',
+        delivering: 'Se livrează',
+        delivered: 'Livrat',
+        completed: 'Finalizat',
+      },
+      action: {
+        depart: 'Pleacă',
+        markArrival: 'Marchează sosire',
+        startDelivery: 'Începe livrare',
+        confirmDelivery: 'Confirmă livrare',
+        finalize: 'Finalizează',
+      },
+      tripFallbackLabel: 'Cursă',
+      baleCount: '{count} baloți',
+      insideGeofence: 'În geofence',
+      viewDetails: 'Vezi detalii',
+    },
+    depotArrivalOverlay: {
+      actionLabel: 'Sosire la depozit',
+      confirmLabel: 'Confirmă acum',
+    },
+    tripLoadedOverlay: {
+      title: 'Camion Încărcat!',
+      subtitle: 'Cursa {tripNumber}',
+      balesLoaded: '{count} baloți încărcați',
+      noDestination: 'Destinație nesetată — selectează din detalii',
+      action: {
+        startTrip: 'Pornește cursa',
+        chooseDestination: 'Alege destinație',
+        later: 'Mai târziu',
+      },
+    },
+  },
+
+  deliveryFlow: {
+    error: {
+      tripNotFound: 'Cursa nu a fost găsită.',
+    },
+    button: {
+      backToTrips: 'Înapoi la curse',
+    },
+    trip: {
+      fallbackName: 'Cursă',
+    },
+  },
+
+  departureFlow: {
+    screenTitle: 'Semnătură șofer',
+    hint: 'Confirmă plecarea folosind specimenul de semnătură salvat.',
+    specimenCard: {
+      label: 'Specimen semnătură',
+      missing: 'Nu ai încă un specimen.',
+    },
+    button: {
+      signWithSpecimen: 'Semnează cu specimen',
+      cancel: 'Anulează',
+    },
+    countdown: {
+      actionLabel: 'Plecare din câmp',
+    },
+    alert: {
+      specimenMissing: {
+        title: 'Specimen lipsă',
+        message: 'Nu ai încă un specimen de semnătură. Creează unul din profil.',
+        action: 'Mergi la profil',
+      },
+      error: {
+        title: 'Eroare',
+        message: 'Nu s-a putut porni cursa. Încearcă din nou.',
+      },
+    },
+  },
+
+  tripDetail: {
+    screenTitle: {
+      fallback: 'Cursă',
+    },
+    loading: {
+      text: 'Se încarcă...',
+    },
+    error: {
+      notFound: 'Cursa nu a fost găsită',
+    },
+    button: {
+      back: 'Înapoi',
+    },
+    card: {
+      tripDetails: 'Detalii cursă',
+    },
+    infoRow: {
+      tripNumber: 'Nr. cursă',
+      parcel: 'Parcelă',
+      loader: 'Loader',
+      destination: 'Destinație',
+      address: 'Adresă',
+      bales: 'Baloți',
+      grossWeight: 'Greutate brută',
+      departedAt: 'Plecat la',
+      arrivedAt: 'Sosit la',
+      deliveredAt: 'Livrat la',
+    },
+    actions: {
+      sectionTitle: 'Acțiuni',
+      waitingForLoader: 'Așteaptă ca loader-ul să încarce camionul.',
+      chooseDepot: {
+        title: 'Alege depozit',
+        subtitle: 'Selectează destinația înainte de plecare',
+      },
+      depart: {
+        title: 'Plecare',
+        subtitle: 'Semnați pentru a pleca',
+      },
+      arrive: {
+        title: 'Sosit la destinație',
+        subtitle: 'Confirmați sosirea',
+      },
+      delivery: {
+        title: 'Livrare',
+        subtitle: 'Cântărire, fotografiere și semnătură primitor',
+      },
+    },
+    done: {
+      completed: 'Cursa este finalizată.',
+      cancelled: 'Cursa este anulată.',
+    },
+    viewer: {
+      text: 'Urmărești starea acestei curse. Acțiunile sunt efectuate de șofer.',
+    },
+    modal: {
+      chooseDepot: {
+        title: 'Alege depozit',
+      },
+      error: {
+        loadDepots: 'Nu am putut încărca depozitele.',
+      },
+      empty: {
+        noActiveDepots: 'Nu există depozite active.',
+      },
+      defaultBadge: 'implicit',
+    },
+    alert: {
+      error: {
+        saveDepot: 'Nu am putut salva depozitul.',
+        arrive: 'Nu am putut marca sosirea.',
+        title: 'Eroare',
+      },
+    },
+  },
+
+  loader: {
+    home: {
+      screenTitle: 'Camioane',
+      recallTitle: 'Camion descărcat',
+      recallBody: 'Camionul {truckCode} a descărcat cursa. Îl chemi înapoi?',
+      recallConfirm: 'Cheamă înapoi',
+      recallDecline: 'Nu chema',
+      sectionTrucksAtLoader: 'Camioane la loader',
+      noLoaderAssignedTitle: 'Nu ai loader asignat',
+      noLoaderAssignedSubtitle: 'Cere administratorului să-ți aloce un loader.',
+      searchingTrucks: 'Caut camioane...',
+      noTrucksNearbyTitle: 'Niciun camion în apropiere',
+      noTrucksNearbySubtitle:
+        'Lista se actualizează automat la fiecare 10 secunde. Când un camion se apropie, apare aici.',
+      sectionAuxTrucks: 'Camioane auxiliare',
+      searchingAuxTrucks: 'Caut camioane auxiliare...',
+      noAuxTrucksTitle: 'Niciun camion auxiliar',
+      noAuxTrucksSubtitle:
+        'Camioanele auxiliare atribuite de dispecer apar aici, indiferent de distanță.',
+      truckFallbackLabel: 'Camion',
+      truckDistancePrefix: 'la {distance}',
+      badgeLoaded: 'Încărcat',
+      badgeReadyToLoad: 'Pregătit de încărcare',
+      auxTruckFallbackLabel: 'Camion auxiliar',
+      baleCountSuffix: '{count} baloți',
+    },
+    bales: {
+      screenTitle: 'Încărcări',
+      statusPlanned: 'Planificat',
+      statusLoading: 'Se încarcă',
+      statusLoaded: 'Încărcat',
+      statusInTransit: 'În drum',
+      statusCompleted: 'Finalizat',
+      truckFallbackLabel: 'Camion necunoscut',
+      tripBaleCountLoaded: '{count} baloți încărcați',
+      tripCtaText: 'Apasă pentru a înregistra încărcare →',
+      sectionTrucksToLoad: 'Camioane de încărcat azi',
+      loadingTrips: 'Se încarcă cursele...',
+      noTripsPlanned: 'Nicio cursă planificată azi.',
+      noTripsSubtext:
+        'Administratorul nu a planificat curse sau nu ești asignat ca operator loader.',
+      sectionLoadsToday: 'Încărcări înregistrate azi',
+      noLoadsToday: 'Nicio încărcare înregistrată azi.',
+      cardLabelBales: 'Baloți',
+      cardLabelTime: 'Ora',
+    },
+    consumables: {
+      screenTitle: 'Motorină',
+      subtitle: 'Înregistrează alimentare combustibil',
+    },
+    loadBales: {
+      screenTitle: 'Camion plin',
+      errorNoTruck: 'Eroare',
+      errorNoTruckMessage: 'Niciun camion identificat.',
+      errorNoTruckOk: 'OK',
+      parcelUnconfirmedTitle: 'Teren neconfirmat',
+      parcelUnconfirmedMessage: 'Confirmă terenul activ în ecranul principal înainte de a încărca.',
+      parcelUnconfirmedBack: 'Înapoi',
+      gpsActive: 'GPS activ',
+      gpsLocating: 'Localizare...',
+      gpsNone: 'Fără GPS',
+      parcelCardLabel: 'Teren',
+      parcelIdentifying: 'Se identifică...',
+      parcelUnconfirmedFallback: 'Neconfirmat — confirmă pe ecranul principal',
+      presenceInside: '● Ești în câmp',
+      presenceAwayFromField: '● La {distance} m de câmp — apropie-te ca să încarci',
+      presenceNear: '● Aproape de câmp ({distance} m)',
+      presenceGpsUnavailable: '● GPS indisponibil — activează locația',
+      presenceVerifying: 'Se verifică poziția…',
+      baleCountFieldLabel: 'Număr baloți încărcați',
+      fullTruckButton: 'Camion plin ({count} baloți)',
+      registerButton: 'Înregistrează',
+      cancelButton: 'Anulează',
+      gateHintAwayFromField: 'Trebuie să fii în câmp ca să încarci ({distance} m de teren).',
+      gateHintGpsUnavailable: 'Nu putem confirma poziția — activează GPS-ul ca să încarci.',
+      gateHintWaitingGps: 'Se așteaptă semnalul GPS ca să confirmăm că ești pe teren…',
+      gateHintAuxGpsUnavailable:
+        'Activează GPS-ul sau confirmă terenul în ecranul principal ca să încarci.',
+      gateHintAuxDeterminingField: 'Se determină terenul din locația ta…',
+      modalNotInFieldTitle: 'Nu ești în câmp',
+      modalNotInFieldMessage:
+        'Trebuie să fii pe terenul {parcelName} ca să încarci. Ești la {distance} m de câmp — apropie-te și încearcă din nou.',
+      modalPositionUnconfirmedTitle: 'Poziție neconfirmată',
+      modalPositionUnconfirmedMessage:
+        'Nu putem confirma că ești pe teren (GPS indisponibil sau locația oprită). Activează locația și încearcă din nou.',
+      modalRetryGps: 'Reîncearcă GPS',
+      modalDeterminingPositionTitle: 'Se determină poziția',
+      modalDeterminingPositionMessage:
+        'Așteaptă semnalul GPS ca să confirmăm că ești pe teren, apoi încearcă din nou.',
+      modalUnderstood: 'Am înțeles',
+      modalDuplicateLoadTitle: 'Încărcare recentă detectată',
+      modalDuplicateLoadMessage:
+        'Ai înregistrat deja {totalBales} baloți pe acest camion și teren acum {minutesAgo} min. Continui cu o nouă înregistrare?',
+      modalContinue: 'Da, continuă',
+      modalParcelFullyLoadedTitle: 'Parcelă încărcată complet',
+      modalParcelFullyLoadedMessage:
+        'Pe acest teren toți baloții au fost deja încărcați. Alege alt teren sau anunță dispecerul.',
+      modalParcelCountExceedsTitle: 'Cantitate prea mare pentru parcelă',
+      modalParcelCountExceedsMessage:
+        'Pe parcelă au mai rămas doar {remaining} baloți disponibili. Reduceți cantitatea sau alegeți alt teren.',
+      modalTruckCapacityTitle: 'Capacitate camion depășită',
+      modalTruckCapacityMessage: 'Camionul poate transporta maxim {maxBales} baloți.',
+      successScreenTitle: 'Camion plin',
+      successText: 'Înregistrat!',
+      successSubtext: 'Cursa a fost generată pentru șofer.',
+      signatureScreenTitle: 'Semnătură operator',
+      signatureTitle: 'Semnează încărcarea',
+      signatureHint: 'Confirmă că ai încărcat {baleCount} baloți în camionul {truckLabel}.',
+      specimenLabel: 'Specimen semnătură',
+      specimenMissing: 'Nu ai încă un specimen.',
+      signWithSpecimenButton: 'Semnează cu specimen',
+      specimenMissingAlertTitle: 'Specimen lipsă',
+      specimenMissingAlertMessage: 'Nu ai încă un specimen de semnătură. Creează unul din profil.',
+      specimenMissingAlertAction: 'Creează specimen',
+      giveUpButton: 'Renunță',
+      truckFallbackLoading: '...',
+      truckFallbackUnknown: 'Camion necunoscut',
+      alertErrorTitle: 'Eroare',
+      alertErrorFallbackMessage: 'Nu s-a putut înregistra încărcarea.',
+      alertParcelCountExceedsTitle: 'Cantitate prea mare pentru parcelă',
+      alertParcelCountExceedsFallback: 'Pe parcelă au mai rămas {remaining} baloți disponibili.',
+      alertParcelFullyLoadedTitle: 'Parcelă încărcată complet',
+      alertParcelFullyLoadedFallback: 'Pe acest teren toți baloții au fost deja încărcați.',
+      alertTruckCapacityTitle: 'Capacitate camion depășită',
+      alertTruckCapacityFallback: 'Camionul are capacitatea maximă {truckCap} baloți.',
+      modalCancel: 'Anulează',
+    },
+    recallOverlay: {
+      title: 'Camion descărcat',
+      question: 'Îl chemi înapoi pentru încă o cursă?',
+      action: {
+        yes: 'Da, cheamă-l înapoi',
+        no: 'Nu',
+      },
+    },
+  },
+
+  baler: {
+    home: {
+      screenTitle: 'Balotieră',
+      operatorFallback: 'Operator',
+    },
+    consumables: {
+      screenTitle: 'Consumabile',
+    },
+    production: {
+      screenTitle: 'Producție',
+      subtitle: 'Introdu numărul de baloți',
+      fieldActiveToggleLabel: 'Câmp activ',
+      fieldActiveToggleAccessibility: 'Activează modul Câmp activ',
+      fieldActiveBadge: 'Câmp activ',
+      exitButton: 'Ieși',
+      exitButtonAccessibility: 'Ieși din modul Câmp activ',
+    },
+    parcelDetail: {
+      primaryActionLabel: 'Înregistrează producție',
+    },
+    productionEntry: {
+      screenTitleWithCode: 'Producție — {{parcelCode}}',
+      screenTitleFallback: 'Producție',
+      baleCountLabel: 'Câți baloți ai produs?',
+      finishFieldLabel: 'Cum ai finalizat câmpul?',
+      submitButton: 'Trimite',
+      submitButtonSaving: 'Se trimite…',
+      errorNoFinish: 'Alege Parțial sau Total înainte de a trimite.',
+      errorNoAssignment: 'Lipsește identificatorul sarcinii.',
+      errorSubmitFailed: 'Nu s-a putut trimite. Verifică legătura și încearcă din nou.',
+    },
+  },
+
+  deposit: {
+    screenTitle: 'Inventar depozit',
+    noDepotTitle: 'Niciun depozit alocat',
+    noDepotSubtitle: 'Cere administratorului să asocieze un depozit contului tău.',
+    dataUnavailableTitle: 'Date indisponibile',
+    dataUnavailableSubtitle: 'Conectează-te la internet și trage în jos pentru a sincroniza.',
+    statLabelBales: 'baloți',
+    statLabelTons: 'tone',
+    lastDelivery: 'Ultima livrare: {date}',
+    incomingTripsCount: '{count} curse pe drum',
+    noIncomingTripsInline: 'Nicio cursă incoming.',
+    tripIteration: 'cursa {index}',
+    tripBaleCount: '{count} baloți',
+  },
+
+  confirmDelivery: {
+    successScreenTitle: 'Livrare confirmată',
+    successMessage: 'Livrare confirmată!',
+    successSubtext: '{count} baloți înregistrați pentru {truck}.',
+    signatureScreenTitle: 'Semnătură operator',
+    signatureHint: 'Semnați ca operator de depozit pentru a confirma primirea camionului.',
+    signatureCaptureLabel: 'Semnătură operator depozit',
+    cancelSignatureButton: 'Renunță',
+    notFoundScreenTitle: 'Confirmă livrarea',
+    notFoundTitle: 'Cursa nu a fost găsită',
+    notFoundSubtitle: 'Cursa poate fi deja confirmată sau nu este îndreptată spre depozitul tău.',
+    backButton: 'Înapoi',
+    mainScreenTitle: 'Confirmă livrarea',
+    geofenceInsideLabel: 'Camionul este in perimetrul depozitului',
+    geofenceDistanceLabel: 'La {distance} m de depozit',
+    geofenceUnknownPosition: 'Poziție necunoscuta',
+    geofenceInPerimeter: 'In perimetru',
+    geofenceWaiting: 'Asteapta ca camionul sa intre in raza de confirmare.',
+    geofenceNoRecentLocation: 'Nu exista date recente de locatie.',
+    truckBalesLoaded: '{count} baloti incarcati',
+    fieldLabelBaleCount: 'Numar baloti confirmati',
+    scaleBrokenLabel: 'Cantarul nu merge',
+    scaleBrokenSubtitle:
+      'Activati daca balanta este defecta — se inregistreaza numai numarul de baloti.',
+    fieldLabelWeights: 'Greutati (kg)',
+    weightFieldGross: 'Brut (cantarit)',
+    weightFieldTare: 'Tara (camion gol)',
+    netLabel: 'Net',
+    tareExceedsGrossError: 'Tara nu poate fi mai mare decat greutatea bruta.',
+    editingHint: 'Editezi: {field}',
+    editingFieldGross: 'Brut',
+    editingFieldTare: 'Tara',
+    scaleBrokenNotice: 'Greutatile nu vor fi inregistrate (cantar defect).',
+    fieldLabelSignature: 'Semnatura operator',
+    signatureCaptured: 'Semnatura capturata',
+    resignLink: 'Resemneaza',
+    addSignatureButton: 'Adauga semnatura',
+    gateHintWithDistance:
+      'Confirmarea este dezactivata — camionul este la {distance} m de depozit.',
+    gateHintNoPosition: 'Confirmarea este dezactivata — pozitia camionului este necunoscuta.',
+    submitButtonSaving: 'Se salveaza...',
+    submitButton: 'Confirma livrarea',
+    cancelButton: 'Anuleaza',
+    modalGeofenceTitle: 'Nu ești în perimetrul depozitului',
+    modalGeofenceMessageWithDistance:
+      'Trebuie să fii în raza de confirmare. Ești la {distance} m de depozit.',
+    modalGeofenceMessageNoPosition: 'Nu se poate determina poziția camionului față de depozit.',
+    modalGeofenceConfirm: 'Am înțeles',
+    alertIncompleteBalesTitle: 'Date incomplete',
+    alertIncompleteBalesMessage: 'Introduceți numărul de baloți.',
+    alertIncompleteWeightsTitle: 'Date incomplete',
+    alertIncompleteWeightsMessage: 'Introduceți greutatea brută și tara corect.',
+    alertMissingSignatureTitle: 'Semnătură lipsă',
+    alertMissingSignatureMessage: 'Semnați înainte de a confirma livrarea.',
+    errorTitle: 'Eroare',
+    errorMessage: 'Nu s-a putut confirma livrarea. Încearcă din nou.',
+  },
+
+  depositTrips: {
+    screenTitle: 'Curse incoming',
+    statusInTransit: 'În drum',
+    statusArrived: 'Sosit',
+    statusDelivering: 'Se livrează',
+    emptyTitle: 'Nicio cursă incoming',
+    emptySubtitle: 'Cursele care vin spre depozit vor apărea aici.',
+    tripIteration: 'cursa {index}',
+    geofenceBadge: 'în perimetru',
+    tripBaleCount: '{count} baloți',
+    distanceInsideGeofence: 'În perimetrul depozitului',
+    distanceFromDepot: 'La {distance} m de depozit',
+    distanceUnknown: 'Poziție necunoscută',
+    confirmDeliveryButton: 'Confirmă livrarea',
+  },
+
+  geofenceFarms: {
+    screenTitle: 'Ferme',
+    addFarmButton: 'Fermă nouă',
+    loadingText: 'Se încarcă fermele...',
+    emptyTitle: 'Nicio fermă înregistrată',
+    emptySub: 'Apasă \"Fermă nouă\" pentru a adăuga prima fermă.',
+    entityTypeLegal: 'Persoană juridică',
+    entityTypeNatural: 'Persoană fizică',
+    farmFieldCount: '{count} câmpuri',
+    noParcelsForFarm: 'Niciun câmp asignat acestei ferme.',
+    unassignedFarmName: 'Fără fermă',
+    unassignedParcelCount: '{count} câmpuri neasignate',
+    harvestStatusPlanned: 'Planificat',
+    harvestStatusToHarvest: 'De recoltat',
+    harvestStatusHarvesting: 'În recoltare',
+    harvestStatusHarvested: 'Recoltat',
+    parcelNoName: '(fără nume)',
+    parcelAreaUnit: '{area} ha',
+    parcelViewOnMapA11y: 'Vezi pe hartă',
+    parcelAssignFarmA11y: 'Asignează fermă',
+    createModalTitle: 'Fermă nouă',
+    inputLabelFarmName: 'Nume fermă',
+    placeholderFarmName: 'ex. Ferma Dunărea',
+    inputLabelPhone: 'Telefon',
+    placeholderPhone: 'ex. 0722 123 456',
+    inputLabelEntityType: 'Tip entitate',
+    inputLabelCui: 'CUI',
+    placeholderCui: 'ex. RO12345678 (opțional)',
+    inputLabelApiaCode: 'Cod RO APIA',
+    placeholderApiaCode: 'Cod APIA al fermei (opțional)',
+    inputLabelAddress: 'Adresă',
+    placeholderAddress: 'Adresă (opțional)',
+    createModalCancelButton: 'Anulează',
+    createModalSaveButton: 'Creează ferma',
+    errorTitle: 'Eroare',
+    errorNameRequired: 'Numele fermei este obligatoriu.',
+    errorPhoneRequired: 'Numărul de telefon este obligatoriu.',
+    errorCreateFailed: 'Nu s-a putut crea ferma. Încearcă din nou.',
+  },
+
+  geofenceMap: {
+    bannerIdle: 'Apasă un buton pentru a adăuga un câmp sau depozit',
+    bannerFirstPoint: 'Centrează pinul pe primul punct și apasă \"Adaugă punct\"',
+    bannerProgress: 'Punct {count}/3 — continuă (minim 3 puncte)',
+    bannerEnoughPoints: '{count} puncte — apasă \"Finalizează\" sau adaugă mai multe',
+    cancelDrawButton: 'Anulează',
+    fabNewFieldLabel: 'Câmp nou',
+    fabNewFieldA11y: 'Adaugă câmp nou',
+    fabNewDepotLabel: 'Depozit nou',
+    fabNewDepotA11y: 'Adaugă depozit nou',
+    locateFabA11y: 'Recentrare pe locația mea',
+    addPointButton: 'Adaugă punct',
+    addPointA11y: 'Adaugă punct la centrul hărții',
+    undoPointButton: 'Pas înapoi',
+    undoPointA11y: 'Șterge ultimul punct',
+    finishPolygonButton: 'Finalizează',
+    finishPolygonA11y: 'Finalizează poligonul',
+    successParcelTitle: 'Succes',
+    successParcelMessage: 'Câmpul a fost salvat și se va sincroniza la reconectare.',
+    errorParcelTitle: 'Eroare',
+    errorParcelMessage: 'Nu s-a putut salva câmpul. Încearcă din nou.',
+    successDepotTitle: 'Succes',
+    successDepotMessage: 'Depozitul a fost salvat și se va sincroniza la reconectare.',
+    errorDepotTitle: 'Eroare',
+    errorDepotMessage: 'Nu s-a putut salva depozitul. Încearcă din nou.',
+    locationPermissionTitle: 'Locație',
+    locationPermissionMessage: 'Activează permisiunea de locație.',
+    locationErrorTitle: 'Eroare',
+    locationErrorMessage: 'Nu s-a putut obține locația.',
+  },
+
+  shared: {
+    offlineBanner: {
+      noConnection: 'Fără conexiune',
+      message: 'Offline — modificările se vor sincroniza când ești conectat',
+    },
+    syncQueueBanner: {
+      allSynced: 'Tot sincronizat',
+      failedSingular: '1 înregistrare nesincronizată — atinge pentru detalii',
+      failedPlural: '{{count}} înregistrări nesincronizate — atinge pentru detalii',
+      pendingSingular: '1 înregistrare în așteptare',
+      pendingPlural: '{{count}} înregistrări în așteptare',
+      syncing: 'sincronizez…',
+      tapForDetails: 'Atinge pentru detalii.',
+    },
+    connectionStatusBadge: {
+      online: 'Online',
+      offline: 'Offline',
+      a11yConnected: 'Conectat la internet',
+      a11yDisconnected: 'Fără conexiune',
+    },
+    alertBanner: {
+      a11yWarning: 'Avertisment',
+      a11yError: 'Eroare',
+      dismiss: 'Închide alerta',
+    },
+    confirmCountdown: {
+      executesIn: 'se execută în',
+      cancel: 'Anulează',
+      cancelA11y: 'Anulează acțiunea',
+    },
+    problemReportModal: {
+      title: 'Raportează problemă',
+      placeholder: 'Descrie problema tehnică...',
+      validationEmpty: 'Te rugăm să descrii problema.',
+      alertTitle: 'Problemă tehnică',
+      errorMessage: 'A apărut o eroare. Încearcă din nou.',
+      submit: 'Trimite',
+      cancel: 'Anulează',
+      successMessage: 'Problema a fost raportată cu succes!',
+    },
+    taskList: {
+      noTasks: 'Nicio sarcină asignată pentru azi.',
+      sectionTitle: 'Sarcini Azi',
+      statusAvailable: 'Disponibil',
+      statusInProgress: 'În lucru',
+      statusDone: 'Finalizat',
+      priorityUrgent: 'Urgent',
+      priorityHigh: 'Prioritate mare',
+      fallbackLabel: 'Sarcina #{{order}}',
+    },
+    tripProgress: {
+      planned: 'Planificat',
+      loading: 'Încărcare',
+      loaded: 'Încărcat',
+      inTransit: 'În drum',
+      arrived: 'Sosit',
+      delivering: 'Livrare',
+      delivered: 'Livrat',
+      completed: 'Finalizat',
+    },
+    undoToast: {
+      undoButton: 'Anulează',
+      a11yUndo: 'Anulează înregistrarea',
+    },
+    activeFieldCard: {
+      sectionLabel: 'Teren activ',
+      loading: 'Se încarcă…',
+      openFieldA11y: 'Deschide detaliile terenului',
+      assignedField: 'Teren asignat',
+      presenceInside: 'Ești pe teren',
+      presenceOutsideWithDistance: 'Mai ai {{distance}} m până în teren',
+      presenceOutside: 'Mergi la teren',
+      presenceUnknown: 'Verific poziția…',
+      tapForDetails: 'apasă pentru detalii',
+      gpsNoDetect: 'GPS — nu te detectez pe teren',
+      noFieldAssigned: 'Niciun teren asignat',
+      helpUnavailable: 'Cere dispecerului să te asigneze pe o parcelă astăzi.',
+      helpGpsError:
+        'Mergi pe parcela pe care lucrezi și apasă \"Reîncearcă GPS\". Terenul se detectează automat după locație — nu se poate alege manual.',
+      candidatesTitle: 'Terenurile tale asignate:',
+      openParcelA11y: 'Deschide detaliile pentru {{name}}',
+      parcelFallback: 'Parcelă',
+      retryGps: 'Reîncearcă GPS',
+    },
+    pendingTransitionBadge: {
+      a11y: 'Tranziție în așteptare de sincronizare',
+      label: 'va fi trimis la reconectare',
+    },
+    syncStatusIndicator: {
+      syncing: 'Sincronizare în curs',
+      pendingA11y: '{{count}} operații în coadă sync',
+      synced: 'Sincronizat',
+    },
+    appHeader: {
+      title: 'Strawboss',
+    },
+    qrScanner: {
+      defaultInstruction: 'Scan QR code',
+    },
+    photoCapture: {
+      retake: 'Refă fotografia',
+      noPhoto: 'Nicio fotografie realizată',
+      takePhoto: 'Fotografiază',
+    },
+    avatarPicker: {
+      permission: {
+        title: 'Permisiune necesară',
+        camera: 'Pentru a face o poză trebuie să permiți accesul la cameră.',
+        gallery: 'Pentru a alege o poză trebuie să permiți accesul la galerie.',
+      },
+      upload: {
+        failedTitle: 'Upload eșuat',
+        failedDefault: 'Nu s-a putut încărca poza. Încearcă din nou.',
+      },
+      offline: {
+        title: 'Ești offline',
+        message: 'Conectează-te la internet pentru a schimba poza de profil.',
+      },
+      sheet: {
+        title: 'Poză de profil',
+        subtitle: 'Alege o sursă',
+        takePhoto: 'Fă o fotografie',
+        chooseFromGallery: 'Alege din galerie',
+        cancel: 'Anulează',
+      },
+      accessibilityLabel: 'Schimbă poza de profil',
+    },
+    consumableTypeSelector: {
+      diesel: 'Motorină',
+      twine: 'Sfoară',
+    },
+  },
+
+  delivery: {
+    cmr: {
+      title: 'Confirmare CMR',
+      row: {
+        trip: 'Cursă',
+        destination: 'Destinație',
+        locality: 'Localitate',
+        bales: 'Baloți',
+        grossWeight: 'Greutate brută',
+        tare: 'Tară',
+        netWeight: 'Greutate netă',
+        receiver: 'Primitor',
+        signature: 'Semnătură',
+      },
+      action: {
+        confirm: 'Confirmă livrare',
+        back: 'Înapoi',
+      },
+      countdownActionLabel: 'Confirmare CMR',
+    },
+    enhancedFlow: {
+      step: {
+        weighing: 'Cântărire',
+        signature: 'Semnătură primitor',
+        confirmation: 'Confirmare livrare',
+      },
+      receiverFallback: 'Primitor',
+      operatorWait: {
+        title: 'Aștepți confirmarea depozitului',
+        confirmedTitle: 'Livrare confirmată de operator',
+        pendingTitle: 'Livrarea este confirmată de operatorul depozitului',
+        confirmedSubtitle: 'Operatorul depozitului a confirmat {count} baloți.',
+        pendingSubtitle:
+          'Aștepți confirmarea. Nu trebuie să introduci greutăți sau semnătură — operatorul de la depozit face asta.',
+        confirmedByDepot: 'confirmați de depozit',
+      },
+      error: {
+        title: 'Eroare',
+        confirmFailed: 'Nu s-a putut confirma livrarea.',
+      },
+    },
+    signatureStep: {
+      receiverLabel: 'Primitor (persoană de contact depozit)',
+      signatureCapture: 'Semnătura primitorului',
+      signedConfirmation: 'Semnătură capturată',
+      hint: 'Semnați în chenar, apoi apăsați „Confirm\".',
+      action: {
+        continue: 'Continuă',
+      },
+    },
+    weightInput: {
+      grossLabel: 'Brut (cântărit)',
+      tareLabel: 'Tară (camion gol)',
+      netLabel: 'Net',
+      tareOverGrossError: 'Tara nu poate fi mai mare decât greutatea brută.',
+      editingHint: 'Editezi: {field}',
+      editingHint_gross: 'Brut',
+      editingHint_tare: 'Tară',
+      action: {
+        continue: 'Continuă',
+      },
+    },
+  },
+
+  production: {
+    balerEntry: {
+      crop: {
+        grau: 'Grâu',
+        orz: 'Orz',
+        rapita: 'Rapiță',
+        planteNutret: 'Plante de nutreț',
+      },
+      defaultLabel: 'Începi balotarea în {parcelCode}',
+    },
+    fieldNumpad: {
+      todayLabel: 'Azi',
+      balesUnit: 'bal.',
+      displayLabel: 'baloți',
+      taskParcelFallback: 'Câmp asignat',
+      accessibility: {
+        deleteLastDigit: 'Șterge ultima cifră',
+        clearAll: 'Șterge tot',
+        saveProduction: 'Salvează producția',
+      },
+      toast: {
+        saved: 'Înregistrat — {count} baloți',
+      },
+      saveButton: {
+        saving: 'Se salvează…',
+        label: 'SALVEAZĂ',
+      },
+      error: {
+        title: 'Eroare',
+        saveFailed: 'Nu s-a putut salva producția',
+      },
+    },
+    harvestFinish: {
+      partial: 'Parțial finalizată',
+      total: 'Total finalizată',
+    },
+    numpad: {
+      parcelLabel: 'Teren',
+      displayLabel: 'baloți',
+      parcelSource: {
+        gps: 'Detectat din GPS',
+        task: 'Din planul zilei',
+      },
+      gps: {
+        loading: 'Se detectează locația…',
+        denied: 'GPS refuzat — acordă permisiunea de locație',
+        unavailable: 'GPS indisponibil — încearcă din nou pe teren',
+        outsideParcels: 'În afara terenurilor delimitate — apropie-te de teren',
+        detecting: 'Se detectează terenul din GPS…',
+      },
+      noParcel: 'Nu ești pe niciun teren delimitat',
+      loadingParcels: 'Încarc parcelele…',
+      parcelsError: 'Nu s-au putut încărca parcelele. Verifică conexiunea.',
+      accessibility: {
+        deleteLastDigit: 'Șterge ultima cifră',
+        clearAll: 'Șterge tot',
+      },
+      duplicateModal: {
+        title: 'Producție deja înregistrată',
+        message:
+          'Ai înregistrat deja {total} baloți pe acest teren azi (acum {minutes} min). Continui cu o nouă înregistrare?',
+        confirm: 'Da, continuă',
+        cancel: 'Anulează',
+      },
+      saveButton: {
+        saving: 'Se salvează…',
+        label: 'SALVEAZĂ PRODUCȚIE',
+      },
+      toast: {
+        saved: 'Înregistrat — {count} baloți',
+      },
+      error: {
+        title: 'Eroare',
+        saveFailed: 'Nu s-a putut salva producția',
+      },
+    },
+  },
+
+  stats: {
+    operator: {
+      balesProduced: 'Baloți produși azi',
+      balesTransported: 'Baloți transportați azi',
+      balesLoaded: 'Baloți încărcați azi',
+      fuel: 'Motorină azi',
+      twine: 'Sfoară azi',
+      error: {
+        loadFailed: 'Nu s-au putut încărca statisticile',
+      },
+    },
+  },
+
+  activity: {
+    todayCard: {
+      headerTitle: 'Activitatea mea azi',
+      accessibility: {
+        expand: 'Extinde activitate azi',
+        collapse: 'Restrânge activitate azi',
+        pendingCount: '{count} nesincronizate',
+      },
+      syncStatus: {
+        synced: 'sincronizat',
+        pending: 'in asteptare',
+        failed: 'esuat',
+      },
+      empty: {
+        text: 'Nicio inregistrare azi.',
+        subtext: 'Producțiile, alimentarile si incarcarile aparaprin dupa ce le salvezi.',
+      },
+      retry: 'Reincearca',
+    },
+  },
+
+  consumables: {
+    flow: {
+      twine: {
+        title: 'Cantitate sfoară (kg)',
+        action: {
+          save: 'Salvează',
+          back: 'Înapoi',
+        },
+      },
+      typeSelector: {
+        title: 'Tip Consumabil',
+        action: {
+          continue: 'Continuă',
+        },
+      },
+      toast: {
+        twine: 'Înregistrat — {qty} kg sfoară',
+      },
+      error: {
+        title: 'Eroare',
+        saveFailed: 'Nu s-a putut salva consumabilul',
+      },
+    },
+  },
+
+  fuel: {
+    entryFlow: {
+      step: {
+        liters: 'Litri alimentați',
+        stationPhoto: 'Foto stație combustibil',
+        confirm: 'Confirmare alimentare',
+      },
+      liters: {
+        subtitle: 'Câți litri ai alimentat?',
+        action: {
+          continue: 'Continuă',
+          cancel: 'Anulează',
+        },
+      },
+      stationPhoto: {
+        subtitle: 'Fotografiază stația de combustibil. NU este nevoie de bon fiscal.',
+        captureLabel: 'Fotografie stație',
+        action: {
+          continue: 'Continuă',
+          back: 'Înapoi',
+        },
+      },
+      confirm: {
+        row: {
+          liters: 'Litri',
+          photo: 'Fotografie',
+        },
+        action: {
+          save: 'Salvează',
+          back: 'Înapoi',
+        },
+      },
+      toast: {
+        saved: 'Înregistrat — {liters} L combustibil',
+      },
+      error: {
+        title: 'Eroare',
+        saveFailed: 'Nu s-a putut salva alimentarea',
+      },
+    },
+  },
+
+  profile: {
+    role: {
+      driver: 'Șofer',
+      loaderOperator: 'Operator Încărcător',
+      balerOperator: 'Operator Balotieră',
+      dispatcher: 'Dispecer',
+      admin: 'Administrator',
+      geofenceMaker: 'Desenator Geofence',
+    },
+    devMode: {
+      syncActivated: {
+        title: 'Sincronizare activată',
+        message: 'Controlul de sincronizare va fi vizibil până la închiderea aplicației.',
+      },
+    },
+    error: {
+      loadProfile: 'Nu s-au putut încărca datele profilului',
+    },
+    sync: {
+      cardTitle: 'Sincronizare',
+      network: 'Rețea',
+      online: 'Online',
+      offline: 'Offline',
+      inQueue: 'În coadă',
+      failedHint: 'Ultimul sync a eșuat pentru {count} {item} — folosește butonul de mai jos.',
+      failedHint_record_singular: 'înregistrare',
+      failedHint_record_plural: 'înregistrări',
+      lastSync: 'Ultima sincronizare',
+      syncing: 'Se sincronizează…',
+      syncNow: 'Sincronizează acum',
+      retryFailed: 'Reîncearcă înregistrările eșuate',
+      clearQueue: 'Șterge coada eșuată',
+    },
+    machine: {
+      cardTitle: 'Mașina asignată',
+      none: 'Nicio mașină asignată',
+      loadError: 'Nu s-a putut încărca mașina',
+    },
+    stats: {
+      sectionTitle: 'Starea mea',
+    },
+    signature: {
+      cardTitle: 'Specimen de semnătură',
+      noSpecimen: 'Nu ai încă un specimen.',
+      changeSpecimen: 'Schimbă specimenul',
+      createSpecimen: 'Creează specimen',
+      accessibilityLabel: 'Schimbă specimenul de semnătură',
+    },
+    dailyReport: 'Raport zilnic PDF',
+    trackingSetup: 'Configurare urmărire',
+    trackingSetup_accessibilityLabel: 'Configurare urmărire permanentă',
+    display: {
+      cardTitle: 'Afișaj',
+      highContrast: {
+        label: 'Mod lumină puternică',
+        hint: 'Fundal alb, text negru — mai lizibil în soare',
+        accessibilityLabel: 'Activează modul contrast ridicat',
+      },
+    },
+    deviceAdmin: {
+      cardTitle: 'Administrare dispozitiv',
+      hint: 'Telefon gestionat (Device Owner). Eliberarea oprește protecția și permite dezinstalarea aplicației.',
+      release: 'Eliberează dispozitivul',
+    },
+    logout: 'Deconectare',
+    version: 'Versiunea {version}',
+    modal: {
+      releaseDevice: {
+        title: 'Eliberează dispozitivul',
+        message:
+          'Oprește protecția Device Owner: aplicația va putea fi din nou oprită și dezinstalată. Folosește doar la scoaterea din uz a acestui telefon. Continui?',
+        confirm: 'Eliberează',
+        cancel: 'Anulează',
+        successTitle: 'Gata',
+        successMessage: 'Dispozitivul a fost eliberat. Aplicația poate fi acum dezinstalată.',
+        errorTitle: 'Eroare',
+        errorMessage: 'Nu s-a putut elibera dispozitivul.',
+      },
+      clearQueue: {
+        title: 'Șterge coada eșuată',
+        message:
+          'Înregistrările eșuate vor fi șterse definitiv de pe telefon. Cele deja trimise pe server rămân neschimbate. Continui?',
+        confirm: 'Șterge',
+        cancel: 'Anulează',
+        successTitle: 'Gata',
+        successDeleted: 'S-au șters {count} înregistrări din coadă.',
+        successEmpty: 'Nu existau înregistrări eșuate.',
+        errorTitle: 'Eroare',
+        errorDefault: 'Nu s-a putut șterge coada.',
+      },
+    },
+  },
+
+  geofenceMaker: {
+    assignFarm: {
+      title: 'Asignează fermă',
+      loading: 'Se încarcă fermele...',
+      empty: 'Nicio fermă disponibilă. Creează una întâi din tab-ul Ferme.',
+      error: {
+        title: 'Eroare',
+        message: 'Nu s-a putut asigna ferma. Încearcă din nou.',
+      },
+    },
+    createDeposit: {
+      title: 'Depozit nou',
+      label: {
+        code: 'Cod depozit',
+        name: 'Nume depozit',
+        address: 'Adresă',
+        contactName: 'Persoană de contact',
+        contactPhone: 'Telefon contact',
+        isDefault: 'Depozit implicit',
+      },
+      placeholder: {
+        code: 'ex. DEP-01',
+        name: 'ex. Depozit Central',
+        address: 'Strada, orașul, județul',
+        contactName: 'Nume și prenume (opțional)',
+        contactPhone: 'ex. 0722 123 456 (opțional)',
+      },
+      hint: {
+        isDefault: 'Depozitul selectat automat pentru livrări',
+      },
+      error: {
+        codeRequired: 'Codul depozitului este obligatoriu.',
+        nameRequired: 'Numele depozitului este obligatoriu.',
+        addressRequired: 'Adresa depozitului este obligatorie.',
+      },
+      cancel: 'Anulează',
+      save: 'Salvează depozitul',
+    },
+    createParcel: {
+      title: 'Câmp nou',
+      label: {
+        name: 'Nume câmp',
+        farm: 'Fermă',
+        crop: 'Cultură',
+        municipality: 'Localitate',
+        notes: 'Note',
+      },
+      placeholder: {
+        name: 'ex. Câmp Nord 12',
+        farm: 'Selectează ferma (opțional)',
+        crop: 'Selectează cultura (opțional)',
+        municipality: 'Auto-detectat din locație',
+        notes: 'Observații suplimentare (opțional)',
+      },
+      error: {
+        nameRequired: 'Numele câmpului este obligatoriu.',
+      },
+      cancel: 'Anulează',
+      save: 'Salvează câmpul',
+      selectFarm: {
+        title: 'Selectează ferma',
+        back: 'Înapoi',
+        empty: 'Nicio fermă creată încă.',
+        addNew: 'Adaugă fermă nouă',
+      },
+      selectCrop: {
+        title: 'Selectează cultura',
+        back: 'Înapoi',
+      },
+      cropLabel: {
+        grau: 'Grâu',
+        orz: 'Orz',
+        rapita: 'Rapiță',
+        planteNutret: 'Plante de nutreț',
+        altele: 'Altele',
+      },
+      createFarm: {
+        title: 'Fermă nouă',
+        back: 'Înapoi',
+        label: {
+          name: 'Nume fermă',
+          phone: 'Telefon',
+          entityType: 'Tip entitate',
+          cui: 'CUI',
+          apiaCode: 'Cod RO APIA',
+          address: 'Adresă',
+        },
+        placeholder: {
+          name: 'ex. Ferma Ionescu',
+          phone: 'ex. 0722 123 456',
+          cui: 'ex. RO12345678 (opțional)',
+          apiaCode: 'Cod APIA al fermei (opțional)',
+          address: 'ex. Deta, Timiș (opțional)',
+        },
+        entityType: {
+          juridica: 'Persoană juridică',
+          fizica: 'Persoană fizică',
+        },
+        error: {
+          nameRequired: 'Numele fermei este obligatoriu.',
+          phoneRequired: 'Numărul de telefon este obligatoriu.',
+          createFailed: 'Nu s-a putut crea ferma. Încearcă din nou.',
+        },
+        cancel: 'Renunță',
+        submit: 'Creează ferma',
+      },
+    },
+    geofenceAssign: {
+      title: 'Atribuie zona desenată',
+      toggle: {
+        parcel: 'Teren',
+        deposit: 'Depozit',
+      },
+      hint: {
+        selectParcel: 'Selectează terenul:',
+        selectDeposit: 'Selectează depozitul:',
+      },
+      empty: {
+        parcel: 'Niciun teren disponibil.',
+        deposit: 'Niciun depozit disponibil.',
+      },
+      cancel: 'Anulează',
+      save: 'Salvează',
+    },
+  },
+
+  map: {
+    geofenceEditor: {
+      loadingMap: 'Se încarcă harta...',
+      error: 'Harta nu s-a putut încărca. Reîncearcă.',
+      retry: 'Reîncearcă',
+    },
+    parcelSheet: {
+      harvestStatus: {
+        planned: 'Planificat',
+        toHarvest: 'De recoltat',
+        harvesting: 'Se recoltează',
+        harvested: 'Recoltat',
+      },
+      routeSummaryLabel: 'Traseu pe hartă',
+      routeSummary: {
+        straightLine: '{distance} km (linie directă)',
+      },
+      startGoogleMaps: 'Start în Google Maps',
+      previewRoute: 'Previzualizează ruta',
+      close: 'Închide',
+      noCoordsWarning:
+        'Coordonatele destinației nu sunt disponibile pentru această selecție. Nu se poate previzualiza ruta sau deschide navigația.',
+      info: {
+        area: 'Suprafață',
+        status: 'Status',
+        municipality: 'Localitate',
+      },
+      enableLocationHint: 'Activează locația pentru a calcula traseul pe hartă.',
+      error: {
+        googleMaps: {
+          title: 'Eroare',
+          message: 'Nu s-a putut deschide Google Maps sau navigația.',
+        },
+      },
+    },
+    mapScreen: {
+      offlineBanner: 'Parcele din cache local (offline)',
+      reset: 'Reset',
+      resetAccessibilityLabel: 'Resetează harta',
+      recenterAccessibilityLabel: 'Recentrare pe locația mea',
+      location: {
+        title: 'Locație',
+        permissionMessage: 'Activează permisiunea de locație pentru a te repoziționa pe hartă.',
+      },
+      error: {
+        locationTitle: 'Eroare',
+        locationMessage: 'Nu s-a putut obține locația curentă.',
+        noCurrentLocation: 'Locația curentă nu este disponibilă.',
+        noDestinationCoords: 'Coordonatele destinației nu sunt disponibile.',
+      },
+      routeInfo: {
+        title: 'Info',
+        offlineMessage: 'Ruta detaliată necesită internet. Se afișează linie directă.',
+      },
+    },
+  },
+
+  parcel: {
+    detail: {
+      screenTitle: 'Parcelă',
+      error: {
+        cannotLoad: {
+          title: 'Câmpul nu a putut fi încărcat',
+          subtitle: 'Verifică legătura la internet și încearcă din nou.',
+          back: 'Înapoi',
+        },
+      },
+      bales: {
+        label: 'Baloti pe teren',
+        sub: 'produși {produced} · încărcați {loaded}',
+        unavailableOffline: 'indisponibil offline',
+      },
+      crop: {
+        label: 'Cultură',
+        undefined: 'nedefinită',
+      },
+      cropLabel: {
+        grau: 'Grâu',
+        orz: 'Orz',
+        rapita: 'Rapiță',
+        planteNutret: 'Plante de nutreț',
+      },
+      harvestStatus: {
+        planned: 'Planificat',
+        toHarvest: 'De recoltat',
+        harvesting: 'În recoltă',
+        partialHarvested: 'Parțial recoltat',
+        harvested: 'Recoltat',
+        inLoading: 'În încărcare',
+        loaded: 'Încărcat',
+        completed: 'Finalizat',
+      },
+      location: {
+        municipality: 'Comună',
+        address: 'Adresă',
+      },
+      notes: {
+        label: 'Note',
+      },
+      navigate: 'Navighează până acolo',
+      openOnMap: 'Deschide pe hartă',
+      navigate_error: 'Nu s-a putut deschide aplicația de navigație.',
+      navigate_alertTitle: 'Navigație',
+    },
+  },
+} as const;
+
+export type TranslationKeys = typeof ro;

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -11,6 +12,7 @@ interface QRScannerProps {
 export function QRScanner({ onScan, instruction }: QRScannerProps) {
   const [scanned, setScanned] = useState(false);
   const lastScanTime = useRef<number>(0);
+  const { t } = useI18n();
 
   return (
     <View style={styles.container}>
@@ -32,7 +34,7 @@ export function QRScanner({ onScan, instruction }: QRScannerProps) {
       <View style={styles.overlay}>
         <View style={styles.scanFrame} />
         <Text style={styles.instruction}>
-          {instruction ?? 'Scan QR code'}
+          {instruction ?? t('shared.qrScanner.defaultInstruction')}
         </Text>
       </View>
     </View>

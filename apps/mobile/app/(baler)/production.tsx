@@ -17,8 +17,10 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useFieldActiveStore } from '@/stores/field-active-store';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 export default function BalerProductionScreen() {
+  const { t } = useI18n();
   const userId = useAuthStore((s) => s.userId);
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const { fieldActive, enableFieldActive, disableFieldActive } = useFieldActiveStore();
@@ -44,17 +46,19 @@ export default function BalerProductionScreen() {
         <View style={[styles.fieldActiveHeader, { paddingTop: insets.top + 12 }]}>
           <View style={styles.fieldActiveBadge}>
             <MaterialCommunityIcons name="weather-sunny" size={16} color={colors.warning} />
-            <Text style={styles.fieldActiveBadgeText}>Câmp activ</Text>
+            <Text style={styles.fieldActiveBadgeText}>
+              {t('baler.production.fieldActiveBadge')}
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.exitButton}
             onPress={disableFieldActive}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="Ieși din modul Câmp activ"
+            accessibilityLabel={t('baler.production.exitButtonAccessibility')}
           >
             <MaterialCommunityIcons name="close" size={20} color={colors.white} />
-            <Text style={styles.exitButtonText}>Ieși</Text>
+            <Text style={styles.exitButtonText}>{t('baler.production.exitButton')}</Text>
           </TouchableOpacity>
         </View>
         {!userId ? (
@@ -72,18 +76,20 @@ export default function BalerProductionScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <ScreenHeader title="Producție">
+      <ScreenHeader title={t('baler.production.screenTitle')}>
         <View style={styles.headerRow}>
-          <Text style={styles.subtitle}>Introdu numărul de baloți</Text>
+          <Text style={styles.subtitle}>{t('baler.production.subtitle')}</Text>
           <TouchableOpacity
             style={styles.fieldActiveToggle}
             onPress={enableFieldActive}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="Activează modul Câmp activ"
+            accessibilityLabel={t('baler.production.fieldActiveToggleAccessibility')}
           >
             <MaterialCommunityIcons name="weather-sunny" size={14} color={colors.warning} />
-            <Text style={styles.fieldActiveToggleText}>Câmp activ</Text>
+            <Text style={styles.fieldActiveToggleText}>
+              {t('baler.production.fieldActiveToggleLabel')}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScreenHeader>

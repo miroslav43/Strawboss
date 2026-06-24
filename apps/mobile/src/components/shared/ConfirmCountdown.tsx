@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { fontScale } from '@/utils/responsive';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface ConfirmCountdownProps {
   /** Whether the overlay is visible. */
@@ -60,6 +61,7 @@ export function ConfirmCountdown({
   onCancel,
   confirmLabel,
 }: ConfirmCountdownProps) {
+  const { t } = useI18n();
   const [remaining, setRemaining] = useState(countdownSeconds);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -166,7 +168,7 @@ export function ConfirmCountdown({
           </View>
 
           <Text style={styles.actionTitle}>{actionLabel}</Text>
-          <Text style={styles.countdownLabel}>se execută în</Text>
+          <Text style={styles.countdownLabel}>{t('shared.confirmCountdown.executesIn')}</Text>
 
           <Animated.Text style={[styles.countdownDigit, { transform: [{ scale: scaleAnim }] }]}>
             {remaining}
@@ -190,10 +192,10 @@ export function ConfirmCountdown({
             onPress={handleCancel}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Anulează acțiunea"
+            accessibilityLabel={t('shared.confirmCountdown.cancelA11y')}
           >
             <MaterialCommunityIcons name="close-circle" size={20} color={colors.white} />
-            <Text style={styles.cancelText}>Anulează</Text>
+            <Text style={styles.cancelText}>{t('shared.confirmCountdown.cancel')}</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>

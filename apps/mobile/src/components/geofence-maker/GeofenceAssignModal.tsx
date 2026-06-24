@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Parcel } from '@strawboss/types';
+import { useI18n } from '@/lib/i18n';
 
 interface DeliveryDestination {
   id: string;
@@ -26,14 +27,23 @@ interface Props {
   isSaving: boolean;
 }
 
-export function GeofenceAssignModal({ visible, parcels, deposits, onSave, onClose, isSaving }: Props) {
+export function GeofenceAssignModal({
+  visible,
+  parcels,
+  deposits,
+  onSave,
+  onClose,
+  isSaving,
+}: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
   const [entityType, setEntityType] = useState<'parcel' | 'deposit'>('parcel');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const items = entityType === 'parcel'
-    ? parcels.map((p) => ({ id: p.id, label: p.name ?? p.code, sub: p.code }))
-    : deposits.map((d) => ({ id: d.id, label: d.name, sub: d.code }));
+  const items =
+    entityType === 'parcel'
+      ? parcels.map((p) => ({ id: p.id, label: p.name ?? p.code, sub: p.code }))
+      : deposits.map((d) => ({ id: d.id, label: d.name, sub: d.code }));
 
   function handleTypeToggle(type: 'parcel' | 'deposit') {
     setEntityType(type);
@@ -46,9 +56,19 @@ export function GeofenceAssignModal({ visible, parcels, deposits, onSave, onClos
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-        <Text style={styles.header}>Atribuie zona desenată</Text>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View
+        style={[
+          styles.container,
+          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 },
+        ]}
+      >
+        <Text style={styles.header}>{t('geofenceMaker.geofenceAssign.title')}</Text>
 
         {/* Type toggle */}
         <View style={styles.toggleRow}>
@@ -56,22 +76,28 @@ export function GeofenceAssignModal({ visible, parcels, deposits, onSave, onClos
             style={[styles.toggleBtn, entityType === 'parcel' && styles.toggleBtnActive]}
             onPress={() => handleTypeToggle('parcel')}
           >
-            <Text style={[styles.toggleBtnText, entityType === 'parcel' && styles.toggleBtnTextActive]}>
-              Teren
+            <Text
+              style={[styles.toggleBtnText, entityType === 'parcel' && styles.toggleBtnTextActive]}
+            >
+              {t('geofenceMaker.geofenceAssign.toggle.parcel')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleBtn, entityType === 'deposit' && styles.toggleBtnActive]}
             onPress={() => handleTypeToggle('deposit')}
           >
-            <Text style={[styles.toggleBtnText, entityType === 'deposit' && styles.toggleBtnTextActive]}>
-              Depozit
+            <Text
+              style={[styles.toggleBtnText, entityType === 'deposit' && styles.toggleBtnTextActive]}
+            >
+              {t('geofenceMaker.geofenceAssign.toggle.deposit')}
             </Text>
           </TouchableOpacity>
         </View>
 
         <Text style={styles.listHint}>
-          {entityType === 'parcel' ? 'Selectează terenul:' : 'Selectează depozitul:'}
+          {entityType === 'parcel'
+            ? t('geofenceMaker.geofenceAssign.hint.selectParcel')
+            : t('geofenceMaker.geofenceAssign.hint.selectDeposit')}
         </Text>
 
         {/* Entity list */}
@@ -91,16 +117,16 @@ export function GeofenceAssignModal({ visible, parcels, deposits, onSave, onClos
                 </View>
                 <View style={styles.listItemText}>
                   <Text style={styles.listItemLabel}>{item.label}</Text>
-                  {item.sub !== item.label && (
-                    <Text style={styles.listItemSub}>{item.sub}</Text>
-                  )}
+                  {item.sub !== item.label && <Text style={styles.listItemSub}>{item.sub}</Text>}
                 </View>
               </View>
             </TouchableOpacity>
           )}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
-              {entityType === 'parcel' ? 'Niciun teren disponibil.' : 'Niciun depozit disponibil.'}
+              {entityType === 'parcel'
+                ? t('geofenceMaker.geofenceAssign.empty.parcel')
+                : t('geofenceMaker.geofenceAssign.empty.deposit')}
             </Text>
           }
         />
@@ -108,7 +134,7 @@ export function GeofenceAssignModal({ visible, parcels, deposits, onSave, onClos
         {/* Action buttons */}
         <View style={styles.actions}>
           <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={isSaving}>
-            <Text style={styles.cancelBtnText}>Anulează</Text>
+            <Text style={styles.cancelBtnText}>{t('geofenceMaker.geofenceAssign.cancel')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.saveBtn, (!selectedId || isSaving) && styles.saveBtnDisabled]}
@@ -118,7 +144,7 @@ export function GeofenceAssignModal({ visible, parcels, deposits, onSave, onClos
             {isSaving ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.saveBtnText}>Salvează</Text>
+              <Text style={styles.saveBtnText}>{t('geofenceMaker.geofenceAssign.save')}</Text>
             )}
           </TouchableOpacity>
         </View>

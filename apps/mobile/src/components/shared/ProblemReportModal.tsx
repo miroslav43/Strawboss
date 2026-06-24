@@ -13,6 +13,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 import { BigButton } from '@/components/ui/BigButton';
 import { mobileApiClient } from '@/lib/api-client';
+import { useI18n } from '@/lib/i18n';
 
 interface ProblemReportModalProps {
   visible: boolean;
@@ -34,18 +35,15 @@ async function postAlert(payload: AlertPayload): Promise<void> {
   await mobileApiClient.post('/api/v1/alerts', payload);
 }
 
-export function ProblemReportModal({
-  visible,
-  onClose,
-  machineId,
-}: ProblemReportModalProps) {
+export function ProblemReportModal({ visible, onClose, machineId }: ProblemReportModalProps) {
+  const { t } = useI18n();
   const [description, setDescription] = useState('');
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (description.trim().length === 0) {
-      setErrorMessage('Te rugăm să descrii problema.');
+      setErrorMessage(t('shared.problemReportModal.validationEmpty'));
       return;
     }
 
@@ -55,7 +53,7 @@ export function ProblemReportModal({
     const payload: AlertPayload = {
       category: 'maintenance',
       severity: 'medium',
-      title: 'Problemă tehnică',
+      title: t('shared.problemReportModal.alertTitle'),
       description: description.trim(),
       ...(machineId !== undefined ? { machineId } : {}),
     };
@@ -70,7 +68,7 @@ export function ProblemReportModal({
       }, 1500);
     } catch {
       setSubmitState('error');
-      setErrorMessage('A apărut o eroare. Încearcă din nou.');
+      setErrorMessage(t('shared.problemReportModal.errorMessage'));
     }
   };
 
@@ -85,12 +83,7 @@ export function ProblemReportModal({
   const isSuccess = submitState === 'success';
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={handleCancel}
-    >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCancel}>
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -101,20 +94,20 @@ export function ProblemReportModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.title}>Raportează problemă</Text>
+            <Text style={styles.title}>{t('shared.problemReportModal.title')}</Text>
 
             {isSuccess ? (
               <View style={styles.successContainer}>
                 <MaterialCommunityIcons name="check-circle" size={48} color={colors.success} />
                 <Text style={styles.successText}>
-                  Problema a fost raportată cu succes!
+                  {t('shared.problemReportModal.successMessage')}
                 </Text>
               </View>
             ) : (
               <>
                 <TextInput
                   style={styles.textInput}
-                  placeholder="Descrie problema tehnică..."
+                  placeholder={t('shared.problemReportModal.placeholder')}
                   placeholderTextColor={colors.neutral400}
                   multiline
                   numberOfLines={4}
@@ -124,19 +117,17 @@ export function ProblemReportModal({
                   editable={!isLoading}
                 />
 
-                {errorMessage !== null && (
-                  <Text style={styles.errorText}>{errorMessage}</Text>
-                )}
+                {errorMessage !== null && <Text style={styles.errorText}>{errorMessage}</Text>}
 
                 <View style={styles.buttonStack}>
                   <BigButton
-                    title="Trimite"
+                    title={t('shared.problemReportModal.submit')}
                     onPress={handleSubmit}
                     loading={isLoading}
                     disabled={isLoading || isSuccess}
                   />
                   <BigButton
-                    title="Anulează"
+                    title={t('shared.problemReportModal.cancel')}
                     onPress={handleCancel}
                     variant="outline"
                     disabled={isLoading}

@@ -2,6 +2,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { PhotoCapture } from '../../shared/PhotoCapture';
 import { BigButton } from '../../ui/BigButton';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface WeightTicketPhotoProps {
   onCapture: (uri: string) => void;
@@ -10,13 +11,18 @@ interface WeightTicketPhotoProps {
 }
 
 export function WeightTicketPhoto({ onCapture, onSkip }: WeightTicketPhotoProps) {
+  const { t } = useI18n();
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Bon de cântar</Text>
-      <Text style={styles.subtitle}>Fotografiază bonul de cântar (opțional)</Text>
-      <PhotoCapture onCapture={onCapture} label="Bon de cântar" />
+      <Text style={styles.title}>{t('fuel.entryFlow.stationPhoto.captureLabel')}</Text>
+      <Text style={styles.subtitle}>{t('fuel.entryFlow.stationPhoto.subtitle')}</Text>
+      <PhotoCapture onCapture={onCapture} label={t('fuel.entryFlow.stationPhoto.captureLabel')} />
       <View style={styles.skip}>
-        <BigButton title="Continuă fără poză" variant="outline" onPress={onSkip} />
+        <BigButton
+          title={t('delivery.weightInput.action.continue')}
+          variant="outline"
+          onPress={onSkip}
+        />
       </View>
     </View>
   );
