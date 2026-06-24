@@ -548,7 +548,10 @@ export default function RequestPortalPage() {
                       onChange={(e) => patch({ cropType: e.target.value })}
                     >
                       <option value="">{t('portal.cropTypePlaceholder')}</option>
-                      {portal.allowedCropTypes.map((c) => (
+                      {(portal.allowedCropTypes.length > 0
+                        ? portal.allowedCropTypes
+                        : Object.values(CropType)
+                      ).map((c) => (
                         <option key={c} value={c}>
                           {t(`settings.organization.crop.${c}`)}
                         </option>
