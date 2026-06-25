@@ -222,13 +222,14 @@ export class ParcelsService {
     const result = await this.drizzleProvider.db.transaction(async (tx) => {
       // Get-or-create the per-org virtual "manual transfer" truck. It is
       // auxiliary (excluded from fleet/driver flows) and inactive, so it never
-      // shows up in machine pickers. internal_code is globally UNIQUE → scope by
-      // org. The no-op UPDATE on conflict lets us RETURNING the existing id.
+      // shows up in machine pickers. The unique constraint is composite
+      // (internal_code, organization_id) — see migration 00036 — so ON CONFLICT
+      // must name both columns. The no-op UPDATE lets us RETURNING the existing id.
       const machineCode = `TRANSFER-MANUAL-${orgId}`;
       const machineRows = (await tx.execute(sql`
         INSERT INTO machines (organization_id, machine_type, internal_code, make, is_active, is_auxiliary)
         VALUES (${orgId}::uuid, 'truck'::machine_type, ${machineCode}, 'Transfer manual', false, true)
-        ON CONFLICT (internal_code) DO UPDATE SET internal_code = EXCLUDED.internal_code
+        ON CONFLICT (internal_code, organization_id) DO UPDATE SET internal_code = EXCLUDED.internal_code
         RETURNING id
       `)) as unknown as Array<{ id: string }>;
       const truckId = machineRows[0].id;
