@@ -37,6 +37,33 @@ const USER_EDITABLE_FIELDS: ReadonlySet<string> = new Set([
  */
 const LWW_BY_TIMESTAMP_FIELDS: ReadonlySet<string> = new Set(['notes']);
 
+/** Coerce a value to a finite number, or null if it isn't numeric. */
+function asFiniteNumber(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Numeric-aware equality. The API serializes Postgres NUMERIC columns as STRINGS
+ * (e.g. "50.00") while the matching local SQLite REAL columns read back as NUMBERS
+ * (50). A raw JSON.stringify compare therefore treated equal values (50 vs "50.00")
+ * as a perpetual conflict — spamming a "server overwrote your value" notification on
+ * EVERY sync. Compare numerically when both sides are numeric; else structurally.
+ */
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  const na = asFiniteNumber(a);
+  const nb = asFiniteNumber(b);
+  if (na !== null && nb !== null) return na === nb;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 /**
  * Resolve a field-level conflict between local and server values.
  *
@@ -74,7 +101,7 @@ export function resolveConflict(
       conflict.field === 'bale_count' &&
       conflict.localValue != null &&
       conflict.serverValue != null &&
-      conflict.localValue !== conflict.serverValue;
+      !valuesEqual(conflict.localValue, conflict.serverValue);
     return { winner: 'server', diverged };
   }
 
@@ -93,7 +120,7 @@ export function resolveConflict(
     USER_EDITABLE_FIELDS.has(conflict.field) &&
     conflict.localValue != null &&
     conflict.serverValue != null &&
-    JSON.stringify(conflict.localValue) !== JSON.stringify(conflict.serverValue);
+    !valuesEqual(conflict.localValue, conflict.serverValue);
 
   return { winner: 'server', diverged };
 }
@@ -129,8 +156,9 @@ export function mergeRecords(
   for (const [field, serverValue] of Object.entries(serverRecord)) {
     const localValue = localRecord[field];
 
-    // If values are the same, no conflict
-    if (JSON.stringify(localValue) === JSON.stringify(serverValue)) {
+    // If values are equal (numeric-aware — the API sends NUMERIC as strings while
+    // the local SQLite column stores a REAL number), there is no conflict.
+    if (valuesEqual(localValue, serverValue)) {
       continue;
     }
 

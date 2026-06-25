@@ -36,6 +36,8 @@ export enum MobileNotificationType {
   trip_next_iteration = 'trip_next_iteration',
   truck_idle = 'truck_idle',
   parcel_load_mismatch = 'parcel_load_mismatch',
+  // FM-3 — server overwrote a user-entered field during sync conflict resolution.
+  field_overwritten = 'field_overwritten',
 }
 
 export enum MobileNotificationSeverity {

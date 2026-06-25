@@ -30,6 +30,13 @@ const MAX_PENDING_WAKES = 20;
 
 const WAKE_DEEPLINK = 'strawboss://';
 
+// Global cooldown: cap the disruptive OS screen-wake to at most one per this window
+// across ALL geofences, so a driver working at a field edge with several active
+// geofences isn't woken once per geofence per GPS batch. Persisted to disk because
+// presentGeofenceWake runs in the headless background GPS task.
+const LAST_WAKE_FILE = `${doc}strawboss-last-wake.json`;
+const GLOBAL_WAKE_COOLDOWN_MS = 45_000;
+
 /**
  * Minimal, side-effect-free alert seed that is safe to enqueue from a client
  * detection (a banner — never an auto-confirming overlay). The authoritative
@@ -75,6 +82,26 @@ async function writePendingWakes(wakes: PendingWake[]): Promise<void> {
   }
 }
 
+async function readLastWakeAt(): Promise<number> {
+  try {
+    const info = await FileSystem.getInfoAsync(LAST_WAKE_FILE);
+    if (!info.exists) return 0;
+    const raw = await FileSystem.readAsStringAsync(LAST_WAKE_FILE);
+    const n = Number(JSON.parse(raw));
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function writeLastWakeAt(ts: number): Promise<void> {
+  try {
+    await FileSystem.writeAsStringAsync(LAST_WAKE_FILE, JSON.stringify(ts));
+  } catch {
+    /* non-critical */
+  }
+}
+
 /**
  * Persist the wake, then foreground the app over everything (device owner) or
  * fire a full-screen-intent notification (fallback).
@@ -92,6 +119,17 @@ export async function presentGeofenceWake(event: Omit<PendingWake, 'at'>): Promi
   }
 
   mobileLogger.flow('Geofence wake fired', { kind: wake.kind, dedupeKey: wake.dedupeKey });
+
+  // The pending wake above is already queued (so the in-app overlay still shows on
+  // foreground); throttle only the disruptive OS-level interruption below.
+  const lastWakeAt = await readLastWakeAt();
+  if (Date.now() - lastWakeAt < GLOBAL_WAKE_COOLDOWN_MS) {
+    mobileLogger.flow('Geofence wake OS-present suppressed (global cooldown)', {
+      dedupeKey: wake.dedupeKey,
+    });
+    return;
+  }
+  await writeLastWakeAt(Date.now());
 
   if (await isDeviceOwner()) {
     const ok = await launchAlertActivityOverEverything(WAKE_DEEPLINK);

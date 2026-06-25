@@ -119,16 +119,19 @@ export class TruckIdleProcessor extends WorkerHost {
       // Skip when the truck has an active task assignment (driver moving).
       if (Number(r.active_tasks) > 0) continue;
 
-      // Dedup: skip if an unacknowledged truck_idle alert exists for this
-      // truck within the last 60 min.
+      // Dedup per idle EPISODE (the truck's last completed trip), NOT on a time
+      // window or on acknowledgement. The 5-min scan previously re-created the
+      // alert every 60 min while the truck stayed idle (and again right after an
+      // admin acknowledged it), re-pushing to every admin/dispatcher hourly. Keying
+      // on `completedAt` notifies exactly once per idle episode; a genuinely new
+      // episode (truck completes another trip) carries a new completedAt.
       const existing = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM alerts
          WHERE machine_id = ${r.truck_id}::uuid
            AND organization_id IS NOT DISTINCT FROM ${r.organization_id}::uuid
            AND category = 'system'::alert_category
-           AND is_acknowledged = false
-           AND created_at > NOW() - INTERVAL '60 minutes'
            AND data->>'kind' = 'truck_idle'
+           AND data->>'completedAt' = ${r.completed_at}
          LIMIT 1
       `)) as unknown as { id: string }[];
       if (existing[0]) continue;
