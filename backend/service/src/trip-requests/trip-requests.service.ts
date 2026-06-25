@@ -6,7 +6,7 @@ import {
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
@@ -73,6 +73,14 @@ interface OrgPortalRow {
   name: string;
   request_access_code: string | null;
   allowed_crop_types: string[] | null;
+}
+
+/** Constant-time PIN comparison — matches the codebase's timingSafeEqual standard. */
+function pinEquals(a: string, b: string): boolean {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
 }
 
 @Injectable()
@@ -321,7 +329,7 @@ export class TripRequestsService {
     pin: string,
   ): Promise<{ ok: true }> {
     const row = await this.beneficiariesService.findBySlugPublic(orgSlug, beneficiarySlug);
-    if (!row || row.beneficiary.dailyPin !== pin) {
+    if (!row || !pinEquals(row.beneficiary.dailyPin, pin)) {
       throw new UnauthorizedException('Invalid PIN');
     }
     return { ok: true };
@@ -331,13 +339,21 @@ export class TripRequestsService {
     orgSlug: string,
     beneficiarySlug: string,
     dto: CreateBeneficiaryRequestInput,
-  ): Promise<TripRequest> {
+  ): Promise<{ ok: true }> {
     const row = await this.beneficiariesService.findBySlugPublic(orgSlug, beneficiarySlug);
-    if (!row || row.beneficiary.dailyPin !== dto.pin) {
+    if (!row || !pinEquals(row.beneficiary.dailyPin, dto.pin)) {
       throw new UnauthorizedException('Invalid PIN');
     }
     const { pin, ...fields } = dto;
-    const result = await this.drizzleProvider.db.execute(
+
+    // Enforce the org's accepted crop types (parity with submitPublicRequest).
+    const allowed = row.org.allowedCropTypes ?? [];
+    if (fields.cropType && allowed.length && !allowed.includes(fields.cropType)) {
+      throw new BadRequestException('Recoltă neacceptată.');
+    }
+
+    const coords = fields.destinationCoords ?? null;
+    const inserted = (await this.drizzleProvider.db.execute(
       sql`INSERT INTO trip_requests (
             organization_id, status,
             requester_name, requester_phone, requester_email,
@@ -345,7 +361,7 @@ export class TripRequestsService {
             truck_registration_plate, truck_capacity_tons,
             trailer_registration_plate, transporter_name, transporter_cui, transporter_address,
             driver_name, driver_phone, driver_email,
-            crop_type, needed_date, tons_requested, destination_address, notes,
+            crop_type, needed_date, tons_requested, destination_address, destination_coords, notes,
             beneficiary_id
           ) VALUES (
             ${row.org.id}::uuid, 'pending',
@@ -354,12 +370,58 @@ export class TripRequestsService {
             ${fields.truckRegistrationPlate}, ${fields.truckCapacityTons ?? null},
             ${fields.trailerRegistrationPlate ?? null}, ${fields.transporterName ?? null}, ${fields.transporterCui ?? null}, ${fields.transporterAddress ?? null},
             ${fields.driverName}, ${fields.driverPhone}, ${fields.driverEmail ?? null},
-            ${fields.cropType ? sql`${fields.cropType}::crop_type` : sql`NULL`}, ${fields.neededDate ?? null}::date, ${fields.tonsRequested ?? null}, ${fields.destinationAddress ?? null}, ${fields.notes ?? null},
+            ${fields.cropType ? sql`${fields.cropType}::crop_type` : sql`NULL`}, ${fields.neededDate ?? null}::date, ${fields.tonsRequested ?? null}, ${fields.destinationAddress ?? null},
+            ${coords ? sql`ST_SetSRID(ST_MakePoint(${coords.lon}, ${coords.lat}), 4326)` : sql`NULL`},
+            ${fields.notes ?? null},
             ${row.beneficiary.id}::uuid
           )
-          RETURNING ${TR_COLS}`,
-    );
-    const created = (result as unknown as TripRequest[])[0];
+          RETURNING id`,
+    )) as unknown as { id: string }[];
+    const requestId = inserted[0]?.id;
+
+    // In-app alert for admins/dispatchers (parity with submitPublicRequest).
+    await this.alertsService.create(row.org.id, {
+      category: 'system',
+      severity: 'medium',
+      title: 'Cerere nouă de transport',
+      description: `${fields.requesterName} (${row.beneficiary.companyName}) a trimis o cerere de transport prin portalul de beneficiar.`,
+    });
+
+    // Email each org admin (stubbed). Best-effort.
+    try {
+      const admins = (await this.drizzleProvider.db.execute(
+        sql`SELECT email FROM users
+            WHERE organization_id = ${row.org.id}::uuid
+              AND role = 'admin'::user_role
+              AND deleted_at IS NULL
+              AND email IS NOT NULL`,
+      )) as unknown as { email: string }[];
+      const tpl = messageTemplates[MessageKind.new_request_admin]({
+        companyName: row.beneficiary.companyName,
+        requesterName: fields.requesterName,
+        requesterPhone: fields.requesterPhone,
+        cropType: fields.cropType ?? null,
+        neededDate: fields.neededDate ?? null,
+        tonsRequested: fields.tonsRequested ?? null,
+        destinationAddress: fields.destinationAddress ?? null,
+      });
+      for (const a of admins) {
+        await this.messaging.sendEmail({
+          to: a.email,
+          subject: tpl.subject,
+          body: tpl.body,
+          kind: MessageKind.new_request_admin,
+          metadata: { requestId, beneficiaryId: row.beneficiary.id },
+        });
+      }
+    } catch (err) {
+      this.winston.warn('submitBeneficiaryRequest: admin notify failed', {
+        context: 'TripRequestsService',
+        requestId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
+
     this.winston.log(
       'flow',
       `Beneficiary request submitted: beneficiary=${row.beneficiary.id} org=${row.org.id}`,
@@ -367,10 +429,10 @@ export class TripRequestsService {
         context: 'TripRequestsService',
         beneficiaryId: row.beneficiary.id,
         orgId: row.org.id,
-        tripRequestId: created.id,
+        tripRequestId: requestId,
       },
     );
-    return created;
+    return { ok: true };
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────

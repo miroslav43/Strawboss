@@ -1805,11 +1805,12 @@
     "regenError": "Could not regenerate PIN. Try again."
   },
   "beneficiaryPortal": {
-    "pinStep1Title": "Welcome",
+    "pinStep1Title": "Welcome, {name}",
     "pinStep1Hint": "Enter your 4-digit PIN to continue.",
     "pinContinue": "Continue",
     "pinInvalid": "Incorrect PIN. Please try again.",
     "pinError": "Could not verify PIN. Try again.",
+    "loadError": "Could not load this page. Check the link and try again.",
     "pinVerifying": "Verifying…",
     "step2Title": "Request a pickup",
     "step2Subtitle": "Fill in the form below and submit your request.",

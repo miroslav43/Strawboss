@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ConflictException } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
@@ -49,6 +49,8 @@ interface OrgJoinRow {
   org_name: string;
   org_allowed_crop_types: string[] | null;
 }
+
+const PG_UNIQUE_VIOLATION = '23505';
 
 function generatePin(): string {
   return randomInt(0, 10000).toString().padStart(4, '0');
@@ -146,16 +148,24 @@ export class BeneficiariesService {
 
   async create(orgId: string, dto: CreateBeneficiaryDto): Promise<Beneficiary> {
     const pin = generatePin();
-    const rows = await this.drizzleProvider.db.execute(
-      sql`INSERT INTO beneficiaries (
-            organization_id, slug, display_name, company_name,
-            company_address, company_cui, daily_pin, pin_generated_at
-          ) VALUES (
-            ${orgId}::uuid, ${dto.slug}, ${dto.displayName}, ${dto.companyName},
-            ${dto.companyAddress ?? null}, ${dto.companyCui ?? null}, ${pin}, now()
-          )
-          RETURNING ${BEN_COLS}`,
-    );
+    let rows: unknown;
+    try {
+      rows = await this.drizzleProvider.db.execute(
+        sql`INSERT INTO beneficiaries (
+              organization_id, slug, display_name, company_name,
+              company_address, company_cui, daily_pin, pin_generated_at
+            ) VALUES (
+              ${orgId}::uuid, ${dto.slug}, ${dto.displayName}, ${dto.companyName},
+              ${dto.companyAddress ?? null}, ${dto.companyCui ?? null}, ${pin}, now()
+            )
+            RETURNING ${BEN_COLS}`,
+      );
+    } catch (err) {
+      if ((err as { code?: string })?.code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException('Slug-ul este deja folosit în această organizație.');
+      }
+      throw err;
+    }
     const list = rows as unknown as Beneficiary[];
     this.winston.log('flow', `Beneficiary created: ${dto.slug}`, {
       context: 'BeneficiariesService',
@@ -175,27 +185,39 @@ export class BeneficiariesService {
     if ('companyCui' in dto) setClauses.push(sql`company_cui = ${dto.companyCui ?? null}`);
 
     const setFragment = sql.join(setClauses, sql`, `);
-    const rows = await this.drizzleProvider.db.execute(
-      sql`UPDATE beneficiaries
-          SET ${setFragment}
-          WHERE id = ${id}::uuid
-            AND organization_id = ${orgId}::uuid
-            AND deleted_at IS NULL
-          RETURNING ${BEN_COLS}`,
-    );
+    let rows: unknown;
+    try {
+      rows = await this.drizzleProvider.db.execute(
+        sql`UPDATE beneficiaries
+            SET ${setFragment}
+            WHERE id = ${id}::uuid
+              AND organization_id = ${orgId}::uuid
+              AND deleted_at IS NULL
+            RETURNING ${BEN_COLS}`,
+      );
+    } catch (err) {
+      if ((err as { code?: string })?.code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException('Slug-ul este deja folosit în această organizație.');
+      }
+      throw err;
+    }
     const list = rows as unknown as Beneficiary[];
     if (!list.length) throw new NotFoundException(`Beneficiary ${id} not found`);
     return list[0];
   }
 
   async softDelete(id: string, orgId: string): Promise<void> {
-    await this.drizzleProvider.db.execute(
+    const rows = await this.drizzleProvider.db.execute(
       sql`UPDATE beneficiaries
           SET deleted_at = now(), updated_at = now()
           WHERE id = ${id}::uuid
             AND organization_id = ${orgId}::uuid
-            AND deleted_at IS NULL`,
+            AND deleted_at IS NULL
+          RETURNING id`,
     );
+    if (!(rows as unknown as { id: string }[]).length) {
+      throw new NotFoundException(`Beneficiary ${id} not found`);
+    }
     this.winston.log('flow', `Beneficiary soft-deleted: ${id}`, {
       context: 'BeneficiariesService',
       id,
@@ -244,7 +266,9 @@ export class BeneficiariesService {
               pin_generated_at = now(),
               updated_at       = now()
           FROM (VALUES ${valuesClause}) AS v(id, pin)
-          WHERE beneficiaries.id = v.id`,
+          WHERE beneficiaries.id = v.id
+            AND beneficiaries.deleted_at IS NULL
+            AND beneficiaries.is_active = TRUE`,
     );
 
     this.winston.log('flow', `Bulk PIN regen: ${updates.length} beneficiaries updated`, {

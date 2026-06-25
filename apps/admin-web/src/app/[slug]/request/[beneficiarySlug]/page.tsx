@@ -264,14 +264,22 @@ export default function BeneficiaryPortalPage() {
 
   // Load beneficiary public info on mount
   useEffect(() => {
+    const controller = new AbortController();
     setInfoLoading(true);
-    fetch(apiV1Url(`/public/portal/${orgSlug}/beneficiary/${beneficiarySlug}`))
+    fetch(apiV1Url(`/public/portal/${orgSlug}/beneficiary/${beneficiarySlug}`), {
+      signal: controller.signal,
+    })
       .then(async (res) => {
         if (!res.ok) throw new Error('load failed');
         setInfo((await res.json()) as PublicBeneficiaryInfo);
       })
-      .catch(() => setInfoError(true))
-      .finally(() => setInfoLoading(false));
+      .catch(() => {
+        if (!controller.signal.aborted) setInfoError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setInfoLoading(false);
+      });
+    return () => controller.abort();
   }, [orgSlug, beneficiarySlug]);
 
   // PIN digit input helpers
@@ -318,7 +326,9 @@ export default function BeneficiaryPortalPage() {
       );
       if (!res.ok) {
         setPinError(
-          res.status === 403 ? t('beneficiaryPortal.pinInvalid') : t('beneficiaryPortal.pinError'),
+          res.status === 401 || res.status === 403
+            ? t('beneficiaryPortal.pinInvalid')
+            : t('beneficiaryPortal.pinError'),
         );
         return;
       }
@@ -406,7 +416,7 @@ export default function BeneficiaryPortalPage() {
 
           {!infoLoading && infoError && (
             <div className="rounded-3xl border border-stone-200 bg-white p-8 text-center shadow-sm">
-              <p className="text-sm text-rose-600">{t('beneficiaryPortal.pinError')}</p>
+              <p className="text-sm text-rose-600">{t('beneficiaryPortal.loadError')}</p>
             </div>
           )}
 

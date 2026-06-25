@@ -1805,11 +1805,12 @@
     "regenError": "Nu s-a putut regenera PIN-ul. Încearcă din nou."
   },
   "beneficiaryPortal": {
-    "pinStep1Title": "Bun venit",
+    "pinStep1Title": "Bun venit, {name}",
     "pinStep1Hint": "Introdu PIN-ul de 4 cifre pentru a continua.",
     "pinContinue": "Continuă",
     "pinInvalid": "PIN incorect. Încearcă din nou.",
     "pinError": "Nu s-a putut verifica PIN-ul. Încearcă din nou.",
+    "loadError": "Pagina nu a putut fi încărcată. Verifică linkul și încearcă din nou.",
     "pinVerifying": "Se verifică…",
     "step2Title": "Solicită o cursă",
     "step2Subtitle": "Completează formularul și trimite solicitarea.",

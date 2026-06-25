@@ -38,6 +38,7 @@ ALTER TABLE trip_requests
 ALTER TABLE beneficiaries ENABLE ROW LEVEL SECURITY;
 
 -- Read: admin, dispatcher, super_admin of the same org
+DROP POLICY IF EXISTS "beneficiaries_org_read" ON beneficiaries;
 CREATE POLICY "beneficiaries_org_read" ON beneficiaries
   FOR SELECT
   USING (
@@ -46,10 +47,17 @@ CREATE POLICY "beneficiaries_org_read" ON beneficiaries
           IN ('admin', 'dispatcher', 'super_admin')
   );
 
--- Write (insert/update/delete): admin, super_admin of the same org
+-- Write (insert/update/delete): admin, super_admin of the same org.
+-- WITH CHECK mirrors USING so new/updated rows are constrained to the caller's org too.
+DROP POLICY IF EXISTS "beneficiaries_org_write" ON beneficiaries;
 CREATE POLICY "beneficiaries_org_write" ON beneficiaries
   FOR ALL
   USING (
+    organization_id = (SELECT organization_id FROM users WHERE id = auth.uid()::uuid)
+    AND (SELECT role::text FROM users WHERE id = auth.uid()::uuid)
+          IN ('admin', 'super_admin')
+  )
+  WITH CHECK (
     organization_id = (SELECT organization_id FROM users WHERE id = auth.uid()::uuid)
     AND (SELECT role::text FROM users WHERE id = auth.uid()::uuid)
           IN ('admin', 'super_admin')

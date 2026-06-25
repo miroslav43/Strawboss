@@ -17,6 +17,7 @@ import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { cn } from '@/lib/utils';
+import { LoggingErrorBoundary } from '@/components/shared/LoggingErrorBoundary';
 
 // ── Shared UI atoms ────────────────────────────────────────────────────────
 
@@ -319,15 +320,22 @@ function RegenPinButton({ beneficiaryId }: { beneficiaryId: string }) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleRegen}
-      title={t('beneficiaries.regenPin')}
-      disabled={regen.isPending}
-      className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
-    >
-      <RefreshCw className={cn('h-3.5 w-3.5', regen.isPending && 'animate-spin')} />
-    </button>
+    <span className="inline-flex items-center gap-1">
+      <button
+        type="button"
+        onClick={handleRegen}
+        title={t('beneficiaries.regenPin')}
+        disabled={regen.isPending}
+        className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
+      >
+        <RefreshCw className={cn('h-3.5 w-3.5', regen.isPending && 'animate-spin')} />
+      </button>
+      {regen.isError && (
+        <span title={t('beneficiaries.regenError')} className="text-red-500">
+          <XCircle className="h-3.5 w-3.5" />
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -337,6 +345,9 @@ export default function BeneficiariesPage() {
   const { t } = useI18n();
   const params = useParams<{ slug: string }>();
   const orgSlug = params.slug;
+  const portalBase =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ??
+    (typeof window !== 'undefined' ? window.location.origin : 'https://nortiauno.com');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Beneficiary | null>(null);
@@ -361,113 +372,117 @@ export default function BeneficiariesPage() {
   }, []);
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title={t('beneficiaries.title')}
-        actions={
-          <button
-            type="button"
-            onClick={openAdd}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
-          >
-            <Building2 className="h-4 w-4" />
-            {t('beneficiaries.addButton')}
-          </button>
-        }
-      />
+    <LoggingErrorBoundary>
+      <div className="space-y-5">
+        <PageHeader
+          title={t('beneficiaries.title')}
+          actions={
+            <button
+              type="button"
+              onClick={openAdd}
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+            >
+              <Building2 className="h-4 w-4" />
+              {t('beneficiaries.addButton')}
+            </button>
+          }
+        />
 
-      <p className="text-sm text-neutral-500">{t('beneficiaries.subtitle')}</p>
+        <p className="text-sm text-neutral-500">{t('beneficiaries.subtitle')}</p>
 
-      {/* Loading / error */}
-      {isLoading && (
-        <div className="flex items-center gap-2 py-12 text-sm text-neutral-400">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {t('common.loading')}
-        </div>
-      )}
-      {isError && <div className="py-8 text-center text-sm text-red-500">{t('common.error')}</div>}
+        {/* Loading / error */}
+        {isLoading && (
+          <div className="flex items-center gap-2 py-12 text-sm text-neutral-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('common.loading')}
+          </div>
+        )}
+        {isError && (
+          <div className="py-8 text-center text-sm text-red-500">{t('common.error')}</div>
+        )}
 
-      {/* Empty state */}
-      {!isLoading && !isError && beneficiaries.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-neutral-200 py-16 text-neutral-400">
-          <Building2 className="mb-2 h-8 w-8" />
-          <p className="text-sm font-medium text-neutral-600">{t('beneficiaries.emptyTitle')}</p>
-          <p className="mt-1 text-xs">{t('beneficiaries.emptyBody')}</p>
-        </div>
-      )}
+        {/* Empty state */}
+        {!isLoading && !isError && beneficiaries.length === 0 && (
+          <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-neutral-200 py-16 text-neutral-400">
+            <Building2 className="mb-2 h-8 w-8" />
+            <p className="text-sm font-medium text-neutral-600">{t('beneficiaries.emptyTitle')}</p>
+            <p className="mt-1 text-xs">{t('beneficiaries.emptyBody')}</p>
+          </div>
+        )}
 
-      {/* Table */}
-      {!isLoading && !isError && beneficiaries.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">
-                <th className="px-4 py-3">{t('beneficiaries.colName')}</th>
-                <th className="px-4 py-3">{t('beneficiaries.colCompany')}</th>
-                <th className="px-4 py-3">{t('beneficiaries.colCui')}</th>
-                <th className="px-4 py-3">{t('beneficiaries.colSlug')}</th>
-                <th className="px-4 py-3">{t('beneficiaries.colPin')}</th>
-                <th className="px-4 py-3">{t('beneficiaries.colLink')}</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {beneficiaries.map((b) => {
-                const portalUrl = `https://nortiauno.com/${orgSlug}/request/${b.slug}`;
-                return (
-                  <tr key={b.id} className="border-b border-neutral-100 hover:bg-neutral-50">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-neutral-800">{b.displayName}</p>
-                    </td>
-                    <td className="px-4 py-3 text-neutral-600">{b.companyName}</td>
-                    <td className="px-4 py-3 text-neutral-500">
-                      {b.companyCui ?? <span className="text-neutral-300">&mdash;</span>}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-neutral-500">{b.slug}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-base font-bold tracking-[0.25em] text-primary">
-                          {b.dailyPin}
-                        </span>
-                        <RegenPinButton beneficiaryId={b.id} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <CopyLinkButton url={portalUrl} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(b)}
-                          title={t('common.edit')}
-                          className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 hover:bg-neutral-100"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(b)}
-                          title={t('common.delete')}
-                          className="rounded-lg border border-red-100 p-1.5 text-red-400 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+        {/* Table */}
+        {!isLoading && !isError && beneficiaries.length > 0 && (
+          <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">
+                  <th className="px-4 py-3">{t('beneficiaries.colName')}</th>
+                  <th className="px-4 py-3">{t('beneficiaries.colCompany')}</th>
+                  <th className="px-4 py-3">{t('beneficiaries.colCui')}</th>
+                  <th className="px-4 py-3">{t('beneficiaries.colSlug')}</th>
+                  <th className="px-4 py-3">{t('beneficiaries.colPin')}</th>
+                  <th className="px-4 py-3">{t('beneficiaries.colLink')}</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {beneficiaries.map((b) => {
+                  const portalUrl = `${portalBase}/${orgSlug}/request/${b.slug}`;
+                  return (
+                    <tr key={b.id} className="border-b border-neutral-100 hover:bg-neutral-50">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-neutral-800">{b.displayName}</p>
+                      </td>
+                      <td className="px-4 py-3 text-neutral-600">{b.companyName}</td>
+                      <td className="px-4 py-3 text-neutral-500">
+                        {b.companyCui ?? <span className="text-neutral-300">&mdash;</span>}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-neutral-500">{b.slug}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-base font-bold tracking-[0.25em] text-primary">
+                            {b.dailyPin}
+                          </span>
+                          <RegenPinButton beneficiaryId={b.id} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <CopyLinkButton url={portalUrl} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(b)}
+                            title={t('common.edit')}
+                            className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 hover:bg-neutral-100"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(b)}
+                            title={t('common.delete')}
+                            className="rounded-lg border border-red-100 p-1.5 text-red-400 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      {/* Modals */}
-      {modalOpen && <BeneficiaryModal editing={editTarget} onClose={closeModal} />}
-      {deleteTarget && (
-        <DeleteModal beneficiary={deleteTarget} onClose={() => setDeleteTarget(null)} />
-      )}
-    </div>
+        {/* Modals */}
+        {modalOpen && <BeneficiaryModal editing={editTarget} onClose={closeModal} />}
+        {deleteTarget && (
+          <DeleteModal beneficiary={deleteTarget} onClose={() => setDeleteTarget(null)} />
+        )}
+      </div>
+    </LoggingErrorBoundary>
   );
 }
