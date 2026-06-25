@@ -25,7 +25,19 @@ class PresenceService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     startAsForeground()
+    // Drive presence from a NATIVE exact alarm, not a JS setInterval: on HONOR /
+    // MagicOS (and other aggressive OEM ROMs) the React Native JS runtime is paused
+    // when the app is backgrounded (screen off), so setInterval heartbeats and
+    // TaskManager callbacks stop firing even though this FGS and the CPU stay alive.
+    // The alarm dispatches a headless JS check-in (fleet last_seen + Tailscale + OTA
+    // + heartbeat) on a fresh context that survives the pause. Idempotent.
+    PresenceAlarm.schedule(this)
     return START_STICKY
+  }
+
+  override fun onDestroy() {
+    PresenceAlarm.cancel(this)
+    super.onDestroy()
   }
 
   private fun startAsForeground() {
@@ -89,6 +101,7 @@ class PresenceService : Service() {
     }
 
     fun stop(ctx: Context) {
+      try { PresenceAlarm.cancel(ctx) } catch (t: Throwable) {}
       try { ctx.stopService(Intent(ctx, PresenceService::class.java)) } catch (t: Throwable) {}
     }
   }

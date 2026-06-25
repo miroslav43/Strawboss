@@ -18,6 +18,7 @@ import { getPersistedMachineId, startBackgroundLocationTracking } from './locati
 import { registerBackgroundSyncTask } from './background-sync';
 import { runBackgroundSyncCycle } from '../sync/run-background-sync';
 import { runDeviceCheckin, PENDING_INSTALL_DEPLOYMENT_ID_KEY } from './device-checkin';
+import { isDeviceOwner, startPresenceService } from './device-owner';
 import { mobileLogger } from './logger';
 
 /** Must match the task key used by the native BootRearmService. */
@@ -50,6 +51,22 @@ async function bootRearm(): Promise<void> {
     mobileLogger.flow('Boot re-arm: no session — skipping');
     return;
   }
+
+  // Device-owner: re-arm the keep-alive PresenceService, which schedules the
+  // native presence-checkin alarm. This runs regardless of whether a machine is
+  // assigned, so geofence_maker / depot_manager phones also stay online after a
+  // reboot without anyone opening the app. Best-effort — never block the rest.
+  try {
+    if (await isDeviceOwner()) {
+      await startPresenceService();
+      mobileLogger.flow('Boot re-arm: presence service re-armed');
+    }
+  } catch (err) {
+    mobileLogger.warn('Boot re-arm: startPresenceService failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const machineId = await getPersistedMachineId();
   if (!machineId) {
     mobileLogger.flow('Boot re-arm: no persisted machine id — skipping');

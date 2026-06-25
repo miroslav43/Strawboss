@@ -12,9 +12,19 @@ import { mobileApiClient } from './api-client';
  */
 let timer: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Fire a single presence heartbeat. Exposed so the native-alarm-driven headless
+ * checkin task ({@link ../lib/presence-checkin-task}) can keep `last_seen_at`
+ * fresh with the screen off, on OEM ROMs that pause the JS `setInterval` timer
+ * when the app is backgrounded. Throws on failure so callers can decide.
+ */
+export async function sendHeartbeatOnce(): Promise<void> {
+  await mobileApiClient.post('/api/v1/profile/heartbeat', {});
+}
+
 async function ping() {
   try {
-    await mobileApiClient.post('/api/v1/profile/heartbeat', {});
+    await sendHeartbeatOnce();
   } catch {
     // Network/auth errors are non-fatal — the next tick or the user's
     // re-login will eventually update last_seen_at. Suppress to avoid
