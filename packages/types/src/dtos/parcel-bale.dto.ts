@@ -7,6 +7,8 @@ export interface OverrideBalesDto {
   produced?: number;
   loaded?: number;
   reason?: string;
+  /** Baler machine that produced the bales (attributed to the `produced` delta). */
+  balerId?: string;
 }
 
 /**

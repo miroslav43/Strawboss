@@ -11,6 +11,7 @@ export const overrideBalesSchema = z
     produced: z.number().int().min(0).optional(),
     loaded: z.number().int().min(0).optional(),
     reason: z.string().max(2000).optional(),
+    balerId: uuidSchema.optional(),
   })
   .refine((d) => d.produced !== undefined || d.loaded !== undefined, {
     message: 'At least one of produced or loaded must be provided',

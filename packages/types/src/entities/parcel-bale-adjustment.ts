@@ -17,6 +17,8 @@ export interface ParcelBaleAdjustment extends Timestamps, SoftDelete {
   delta: number;
   reason: string | null;
   createdBy: string | null;
+  /** Baler machine credited with producing these bales (only for kind='produced'). */
+  balerId: string | null;
   syncVersion: number;
 }
 

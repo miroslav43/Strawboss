@@ -83,7 +83,7 @@ export class ParcelsController {
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(overrideBalesSchema))
-    dto: { produced?: number; loaded?: number; reason?: string },
+    dto: { produced?: number; loaded?: number; reason?: string; balerId?: string },
   ) {
     return this.parcelsService.overrideBales(id, dto, user.id, user.organizationId);
   }

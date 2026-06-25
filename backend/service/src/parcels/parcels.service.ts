@@ -121,7 +121,7 @@ export class ParcelsService {
    */
   async overrideBales(
     id: string,
-    dto: { produced?: number; loaded?: number; reason?: string },
+    dto: { produced?: number; loaded?: number; reason?: string; balerId?: string },
     callerId: string,
     orgId: string | null,
   ) {
@@ -131,6 +131,20 @@ export class ParcelsService {
       );
     }
     await this.findById(id, orgId);
+
+    // Optional producer attribution: the baler MUST be a baler-type machine in this org.
+    const balerId = dto.balerId ?? null;
+    if (balerId) {
+      const balerRows = (await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines
+        WHERE id = ${balerId}::uuid AND organization_id = ${orgId}::uuid
+          AND machine_type = 'baler'::machine_type AND deleted_at IS NULL
+        LIMIT 1
+      `)) as unknown as Array<{ id: string }>;
+      if (!balerRows.length) {
+        throw new BadRequestException('Balotiera selectată nu există în organizație.');
+      }
+    }
 
     const current = await this.getBaleAvailability(id, orgId);
     const reason = dto.reason ?? null;
@@ -146,9 +160,11 @@ export class ParcelsService {
     }
 
     for (const a of applied) {
+      // The baler only credits produced bales; loaded adjustments keep baler_id NULL.
+      const adjBaler = a.kind === 'produced' ? balerId : null;
       await this.drizzleProvider.db.execute(sql`
-        INSERT INTO parcel_bale_adjustments (organization_id, parcel_id, kind, delta, reason, created_by)
-        VALUES (${orgId}::uuid, ${id}::uuid, ${a.kind}, ${a.delta}, ${reason}, ${callerId}::uuid)
+        INSERT INTO parcel_bale_adjustments (organization_id, parcel_id, kind, delta, reason, created_by, baler_id)
+        VALUES (${orgId}::uuid, ${id}::uuid, ${a.kind}, ${a.delta}, ${reason}, ${callerId}::uuid, ${adjBaler}::uuid)
       `);
     }
 
@@ -158,6 +174,7 @@ export class ParcelsService {
       parcelId: id,
       targetProduced: dto.produced ?? null,
       targetLoaded: dto.loaded ?? null,
+      balerId,
       applied,
       callerId,
     });
