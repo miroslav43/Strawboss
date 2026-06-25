@@ -223,16 +223,6 @@ async function clearCommandReports(): Promise<void> {
 // Tailscale applied-state mirror
 // ---------------------------------------------------------------------------
 
-async function readTailscaleAppliedState(): Promise<'up' | 'down' | null> {
-  try {
-    const raw = await SecureStore.getItemAsync(TAILSCALE_APPLIED_STATE_KEY);
-    if (raw === 'up' || raw === 'down') return raw;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 async function writeTailscaleAppliedState(state: 'up' | 'down'): Promise<void> {
   try {
     await SecureStore.setItemAsync(TAILSCALE_APPLIED_STATE_KEY, state);
@@ -323,79 +313,70 @@ async function handleTailscaleCommand(command: DeviceCommand): Promise<void> {
   let errorMsg: string | undefined;
 
   try {
-    const alreadyApplied = await readTailscaleAppliedState();
-
+    // Do NOT short-circuit on a cached applied-state ("already up/down"). The native
+    // calls (setApplicationRestrictions / setAlwaysOnVpnPackage / setApplicationHidden
+    // / clear) are idempotent, and skipping them on a cached 'up' made the admin
+    // "Reapply Tailscale" recovery a no-op: the phone reported success WITHOUT
+    // re-running the config, so a device stuck in a bad state (e.g. left hidden by an
+    // older buggy build) could never be repaired remotely — it needed a manual
+    // down→up. Always apply so a single reapply heals the device.
     if (action === 'up') {
       if (!payload?.authKey || !payload?.hostname || !payload?.tailnet) {
         throw new Error('tailscale:up command missing payload fields');
       }
 
-      if (alreadyApplied === 'up') {
-        mobileLogger.flow('Fleet: Tailscale already up — reporting success without native call', {
-          commandId,
-        });
-        success = true;
-      } else {
-        // Zero-touch auto-install: if Tailscale isn't installed yet, install it
-        // silently first (Device Owner) before attempting to configure it.
-        const tailscaleInstalled = await isPackageInstalled('com.tailscale.ipn');
-        if (!tailscaleInstalled) {
-          const apkRef = payload.tailscaleApk;
-          if (!apkRef) {
-            throw new Error('Tailscale not installed and no APK provided');
-          }
-          mobileLogger.flow('Fleet: Tailscale not installed — downloading APK', { commandId });
-          // Use a per-command filename to avoid collisions (Bug 7).
-          const tsApkUri = `${FileSystem.documentDirectory ?? ''}tailscale-install-${commandId}.apk`;
-          const fullUrl = `${API_URL}${apkRef.url}`;
-          const downloadResult = await FileSystem.downloadAsync(fullUrl, tsApkUri);
-          if (downloadResult.status !== 200) {
-            // Clean up partial download before throwing.
-            await FileSystem.deleteAsync(tsApkUri, { idempotent: true });
-            throw new Error(`Tailscale APK download failed with status ${downloadResult.status}`);
-          }
-          mobileLogger.flow('Fleet: Tailscale APK downloaded — installing', { commandId });
-          try {
-            const installed = await installApkSilent(
-              downloadResult.uri,
-              apkRef.sha256,
-              'com.tailscale.ipn',
-            );
-            if (!installed) {
-              throw new Error('Tailscale APK install failed');
-            }
-          } finally {
-            // Always clean up the APK temp file (success and failure paths).
-            await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
-          }
-          mobileLogger.flow('Fleet: Tailscale APK installed', { commandId });
+      // Zero-touch auto-install: if Tailscale isn't installed yet, install it
+      // silently first (Device Owner) before attempting to configure it.
+      const tailscaleInstalled = await isPackageInstalled('com.tailscale.ipn');
+      if (!tailscaleInstalled) {
+        const apkRef = payload.tailscaleApk;
+        if (!apkRef) {
+          throw new Error('Tailscale not installed and no APK provided');
         }
-
-        const ok = await setTailscaleManaged(payload.authKey, payload.hostname, payload.tailnet);
-        if (!ok) {
-          throw new Error(
-            'setTailscaleManaged returned false (module absent or Tailscale not installed)',
+        mobileLogger.flow('Fleet: Tailscale not installed — downloading APK', { commandId });
+        // Use a per-command filename to avoid collisions (Bug 7).
+        const tsApkUri = `${FileSystem.documentDirectory ?? ''}tailscale-install-${commandId}.apk`;
+        const fullUrl = `${API_URL}${apkRef.url}`;
+        const downloadResult = await FileSystem.downloadAsync(fullUrl, tsApkUri);
+        if (downloadResult.status !== 200) {
+          // Clean up partial download before throwing.
+          await FileSystem.deleteAsync(tsApkUri, { idempotent: true });
+          throw new Error(`Tailscale APK download failed with status ${downloadResult.status}`);
+        }
+        mobileLogger.flow('Fleet: Tailscale APK downloaded — installing', { commandId });
+        try {
+          const installed = await installApkSilent(
+            downloadResult.uri,
+            apkRef.sha256,
+            'com.tailscale.ipn',
           );
+          if (!installed) {
+            throw new Error('Tailscale APK install failed');
+          }
+        } finally {
+          // Always clean up the APK temp file (success and failure paths).
+          await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
         }
-        await writeTailscaleAppliedState('up');
-        mobileLogger.flow('Fleet: Tailscale up applied', { commandId });
-        success = true;
+        mobileLogger.flow('Fleet: Tailscale APK installed', { commandId });
       }
+
+      const ok = await setTailscaleManaged(payload.authKey, payload.hostname, payload.tailnet);
+      if (!ok) {
+        throw new Error(
+          'setTailscaleManaged returned false (module absent or Tailscale not installed)',
+        );
+      }
+      await writeTailscaleAppliedState('up');
+      mobileLogger.flow('Fleet: Tailscale up applied', { commandId });
+      success = true;
     } else if (action === 'down') {
-      if (alreadyApplied === 'down') {
-        mobileLogger.flow('Fleet: Tailscale already down — reporting success without native call', {
-          commandId,
-        });
-        success = true;
-      } else {
-        const ok = await clearTailscaleManaged();
-        if (!ok) {
-          throw new Error('clearTailscaleManaged returned false (module absent)');
-        }
-        await writeTailscaleAppliedState('down');
-        mobileLogger.flow('Fleet: Tailscale down applied', { commandId });
-        success = true;
+      const ok = await clearTailscaleManaged();
+      if (!ok) {
+        throw new Error('clearTailscaleManaged returned false (module absent)');
       }
+      await writeTailscaleAppliedState('down');
+      mobileLogger.flow('Fleet: Tailscale down applied', { commandId });
+      success = true;
     } else {
       throw new Error(`Unknown tailscale action: ${String(action)}`);
     }
