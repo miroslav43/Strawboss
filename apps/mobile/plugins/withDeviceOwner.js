@@ -467,15 +467,16 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
       val admin = DeviceOwnerPolicies.admin(ctx)
       dpm.setAlwaysOnVpnPackage(admin, "com.tailscale.ipn", false)
       Log.i("StrawbossTS", "Tailscale managed config applied, always-on VPN set")
-      // Hide Tailscale from the launcher/app drawer so operators don't see or open it.
-      // The always-on VPN is enforced by the system framework and keeps running while the
-      // app is hidden. Best-effort: a hide failure must NOT fail the command (Tailscale is
-      // already connected; hiding is cosmetic).
+      // MUST keep Tailscale UN-hidden. setApplicationHidden(true) does NOT just hide the
+      // launcher icon — it disables the package (enabled=0, process killed), so the
+      // always-on VPN framework can never START it: Tailscale gets configured but never
+      // connects, never joins the tailnet, and the fleet dot stays "pending" forever.
+      // We therefore explicitly UN-hide here, which also auto-recovers any phone left
+      // hidden by an earlier buggy build. Best-effort: a failure must not fail the command.
       try {
-        dpm.setApplicationHidden(admin, "com.tailscale.ipn", true)
-        Log.i("StrawbossTS", "Tailscale hidden from launcher")
+        dpm.setApplicationHidden(admin, "com.tailscale.ipn", false)
       } catch (h: Throwable) {
-        Log.w("StrawbossTS", "setApplicationHidden(true) failed: " + (h.message ?: h.toString()))
+        Log.w("StrawbossTS", "setApplicationHidden(false) failed: " + (h.message ?: h.toString()))
       }
       promise.resolve(true)
     } catch (t: Throwable) {
