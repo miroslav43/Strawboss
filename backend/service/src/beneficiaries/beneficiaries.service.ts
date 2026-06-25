@@ -1,4 +1,5 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { randomInt } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
@@ -50,9 +51,7 @@ interface OrgJoinRow {
 }
 
 function generatePin(): string {
-  return Math.floor(Math.random() * 10000)
-    .toString()
-    .padStart(4, '0');
+  return randomInt(0, 10000).toString().padStart(4, '0');
 }
 
 @Injectable()
@@ -225,20 +224,32 @@ export class BeneficiariesService {
   }
 
   async regenAllPins(): Promise<number> {
-    // Use PostgreSQL random() so each beneficiary gets a distinct 4-digit PIN.
-    const rows = await this.drizzleProvider.db.execute(
+    const idRows = await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM beneficiaries WHERE deleted_at IS NULL AND is_active = TRUE`,
+    );
+    const beneficiaries = idRows as unknown as { id: string }[];
+    if (!beneficiaries.length) return 0;
+
+    // Generate a CSPRNG PIN per beneficiary in Node, then bulk-update via VALUES.
+    const updates = beneficiaries.map((b) => ({
+      id: b.id,
+      pin: randomInt(0, 10000).toString().padStart(4, '0'),
+    }));
+    const valuesList = updates.map((u) => sql`(${u.id}::uuid, ${u.pin})`);
+    const valuesClause = sql.join(valuesList, sql`, `);
+
+    await this.drizzleProvider.db.execute(
       sql`UPDATE beneficiaries
-          SET daily_pin        = lpad((floor(random() * 10000))::int::text, 4, '0'),
+          SET daily_pin        = v.pin,
               pin_generated_at = now(),
               updated_at       = now()
-          WHERE deleted_at IS NULL
-            AND is_active = TRUE
-          RETURNING id`,
+          FROM (VALUES ${valuesClause}) AS v(id, pin)
+          WHERE beneficiaries.id = v.id`,
     );
-    const count = (rows as unknown as { id: string }[]).length;
-    this.winston.log('flow', `Bulk PIN regen: ${count} beneficiaries updated`, {
+
+    this.winston.log('flow', `Bulk PIN regen: ${updates.length} beneficiaries updated`, {
       context: 'BeneficiariesService',
     });
-    return count;
+    return updates.length;
   }
 }
