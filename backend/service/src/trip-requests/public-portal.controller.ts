@@ -8,8 +8,11 @@ import {
   createTripRequestSchema,
   signTripSchema,
   portalCodeSchema,
+  verifyBeneficiaryPinSchema,
+  createBeneficiaryRequestSchema,
 } from '@strawboss/validation';
 import type { CreateTripRequestDto } from '@strawboss/types';
+import type { CreateBeneficiaryRequestInput } from '@strawboss/validation';
 
 // The portal code travels in the request BODY (never the URL/query) so it does
 // not leak into access logs, proxies, or browser history.
@@ -62,5 +65,33 @@ export class PublicPortalController {
     @Body(new ZodValidationPipe(signTripSchema)) dto: { signature: string },
   ) {
     return this.tripsService.signByPublicToken(token, dto.signature);
+  }
+
+  // ── Beneficiary portal ─────────────────────────────────────────────────────
+
+  @Get('portal/:slug/beneficiary/:beneficiarySlug')
+  @Public()
+  beneficiaryInfo(@Param('slug') slug: string, @Param('beneficiarySlug') beneficiarySlug: string) {
+    return this.service.getBeneficiaryInfo(slug, beneficiarySlug);
+  }
+
+  @Post('portal/:slug/beneficiary/:beneficiarySlug/verify')
+  @Public()
+  verifyBeneficiaryPin(
+    @Param('slug') slug: string,
+    @Param('beneficiarySlug') beneficiarySlug: string,
+    @Body(new ZodValidationPipe(verifyBeneficiaryPinSchema)) dto: { pin: string },
+  ) {
+    return this.service.verifyBeneficiaryPin(slug, beneficiarySlug, dto.pin);
+  }
+
+  @Post('portal/:slug/beneficiary/:beneficiarySlug/requests')
+  @Public()
+  submitBeneficiaryRequest(
+    @Param('slug') slug: string,
+    @Param('beneficiarySlug') beneficiarySlug: string,
+    @Body(new ZodValidationPipe(createBeneficiaryRequestSchema)) dto: CreateBeneficiaryRequestInput,
+  ) {
+    return this.service.submitBeneficiaryRequest(slug, beneficiarySlug, dto);
   }
 }

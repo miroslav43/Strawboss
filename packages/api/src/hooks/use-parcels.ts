@@ -4,6 +4,9 @@ import type {
   PaginatedResponse,
   ParcelImportRequest,
   ParcelImportResult,
+  ParcelBaleAvailability,
+  OverrideBalesDto,
+  TransferToDepotDto,
 } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
@@ -74,6 +77,51 @@ export function useDeleteParcel(client: ApiClient) {
     // so the sidebar cache stays consistent with the DB.
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.all });
+    },
+  });
+}
+
+/**
+ * Live `{ produced, loaded, remaining }` bale tally for a parcel — operator
+ * records plus any admin manual adjustments. Drives the override/transfer modal.
+ */
+export function useParcelBaleAvailability(client: ApiClient, id: string) {
+  return useQuery({
+    queryKey: queryKeys.parcels.baleAvailability(id),
+    queryFn: () => client.get<ParcelBaleAvailability>(`/api/v1/parcels/${id}/bale-availability`),
+    enabled: !!id,
+  });
+}
+
+/** Admin manual override of a parcel's produced/loaded counts (admin only). */
+export function useOverrideParcelBales(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: OverrideBalesDto }) =>
+      client.post<ParcelBaleAvailability>(`/api/v1/parcels/${id}/override-bales`, data),
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.baleAvailability(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.all });
+    },
+  });
+}
+
+/**
+ * Transfer a parcel's produced bales straight into a depot (admin only). The
+ * server creates a virtual completed trip, so trips / bale-loads / depot
+ * inventory caches are all invalidated alongside the parcel tally.
+ */
+export function useTransferParcelToDepot(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: TransferToDepotDto }) =>
+      client.post<ParcelBaleAvailability>(`/api/v1/parcels/${id}/transfer-to-depot`, data),
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.baleAvailability(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.baleLoads.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.depotInventory.all });
     },
   });
 }

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@strawboss/ui-tokens';
 import type { UndoToastState } from '@/hooks/useUndoableSave';
+import { useI18n } from '@/lib/i18n';
 
 interface UndoToastProps {
   state: UndoToastState;
@@ -25,6 +26,7 @@ export function UndoToast({ state, bottomOffset = 96 }: UndoToastProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const prevVisible = useRef(false);
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   useEffect(() => {
     if (state.visible && !prevVisible.current) {
@@ -64,9 +66,11 @@ export function UndoToast({ state, bottomOffset = 96 }: UndoToastProps) {
         disabled={!state.canUndo}
         activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel="Anulează înregistrarea"
+        accessibilityLabel={t('shared.undoToast.a11yUndo')}
       >
-        <Text style={[styles.undoText, !state.canUndo && styles.undoTextDisabled]}>Anulează</Text>
+        <Text style={[styles.undoText, !state.canUndo && styles.undoTextDisabled]}>
+          {t('shared.undoToast.undoButton')}
+        </Text>
       </TouchableOpacity>
     </Animated.View>
   );

@@ -36,6 +36,36 @@ export const createTripRequestSchema = z.object({
 });
 export type CreateTripRequestInput = z.infer<typeof createTripRequestSchema>;
 
+/** Beneficiary portal submission — replaces truck make/model with transporter fields. */
+export const createBeneficiaryRequestSchema = z.object({
+  // who is requesting (contact person)
+  requesterName: z.string().min(1).max(120),
+  requesterPhone: z.string().min(4).max(40),
+  requesterEmail: z.string().email().max(160).nullable().optional(),
+  // their truck
+  truckRegistrationPlate: z.string().min(1).max(40),
+  trailerRegistrationPlate: z.string().max(40).nullable().optional(),
+  truckCapacityTons: z.number().positive().max(1000).nullable().optional(),
+  // transporter company
+  transporterName: z.string().max(200).nullable().optional(),
+  transporterCui: z.string().max(20).nullable().optional(),
+  transporterAddress: z.string().max(300).nullable().optional(),
+  // their driver (no app account)
+  driverName: z.string().min(1).max(120),
+  driverPhone: z.string().min(4).max(40),
+  driverEmail: z.string().email().max(160).nullable().optional(),
+  // the ask
+  cropType: cropTypeSchema,
+  neededDate: isoDateSchema,
+  tonsRequested: z.number().positive().max(100000).nullable().optional(),
+  destinationAddress: z.string().min(1).max(300).nullable().optional(),
+  destinationCoords: geoPointSchema.nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  // PIN re-verified server-side on submit
+  pin: z.string().regex(/^\d{4}$/),
+});
+export type CreateBeneficiaryRequestInput = z.infer<typeof createBeneficiaryRequestSchema>;
+
 /** Body for the portal code-verification endpoint. */
 export const verifyPortalCodeSchema = z.object({
   code: portalCodeSchema,

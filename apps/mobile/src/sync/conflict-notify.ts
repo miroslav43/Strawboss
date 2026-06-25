@@ -1,20 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { mobileLogger } from '../lib/logger';
+import { tStatic } from '@/lib/i18n';
 import type { DivergentField } from './conflict';
-
-/**
- * FM-3: Human-readable labels for divergent fields shown in notifications.
- */
-const FIELD_LABELS: Record<string, string> = {
-  bale_count: 'Contor baloți',
-  parcel_id: 'Parcelă',
-  notes: 'Note',
-  gross_weight_kg: 'Greutate brută (kg)',
-  tare_weight_kg: 'Greutate tară (kg)',
-  quantity: 'Cantitate',
-  quantity_liters: 'Litri',
-  avg_bale_weight_kg: 'Greutate medie baloți (kg)',
-};
 
 /**
  * FM-3: Emit a local (device-only) notification for each field where the
@@ -31,8 +18,12 @@ export async function notifyDivergentFields(
   if (divergentFields.length === 0) return;
 
   for (const { field, localValue, serverValue } of divergentFields) {
-    const label = FIELD_LABELS[field] ?? field;
-    const body = `${label} a fost actualizat de pe server: ${String(localValue)} → ${String(serverValue)}`;
+    const label = tStatic(`notifications.push.fieldLabel.${field}`, {}) || field;
+    const body = tStatic('notifications.push.fieldUpdated', {
+      label,
+      local: String(localValue),
+      server: String(serverValue),
+    });
 
     mobileLogger.flow('conflict-notify: server overwrote local field', {
       table,
@@ -45,7 +36,7 @@ export async function notifyDivergentFields(
     try {
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Date actualizate de pe server',
+          title: tStatic('notifications.push.conflictTitle'),
           body,
           data: { table, recordId, field },
         },

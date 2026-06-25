@@ -40,6 +40,12 @@ export interface TripRequest extends Timestamps, SoftDelete {
   destinationLocality: string | null;
   destinationCoords: GeoPoint | null;
   notes: string | null;
+  // transporter fields (beneficiary portal)
+  beneficiaryId: string | null;
+  trailerRegistrationPlate: string | null;
+  transporterCui: string | null;
+  transporterName: string | null;
+  transporterAddress: string | null;
   // linkage, filled on confirm
   machineId: string | null;
   tripId: string | null;

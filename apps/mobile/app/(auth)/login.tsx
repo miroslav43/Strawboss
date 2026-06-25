@@ -159,7 +159,7 @@ export default function LoginScreen() {
       >
         <View style={styles.brandHeader}>
           <Text style={styles.brandTitle}>StrawBoss</Text>
-          <Text style={styles.brandSubtitle}>Agricultural Logistics</Text>
+          <Text style={styles.brandSubtitle}>{t('auth.brandSubtitle')}</Text>
         </View>
 
         <View style={styles.card}>

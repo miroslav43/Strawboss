@@ -8,6 +8,7 @@ export const queryKeys = {
     all: ['parcels'] as const,
     list: (filters?: Record<string, unknown>) => ['parcels', 'list', filters] as const,
     detail: (id: string) => ['parcels', 'detail', id] as const,
+    baleAvailability: (id: string) => ['parcels', 'bale-availability', id] as const,
   },
   machines: {
     all: ['machines'] as const,
@@ -103,6 +104,11 @@ export const queryKeys = {
   },
   orgRequestSettings: {
     all: ['orgRequestSettings'] as const,
+  },
+  beneficiaries: {
+    all: ['beneficiaries'] as const,
+    list: () => ['beneficiaries', 'list'] as const,
+    detail: (id: string) => ['beneficiaries', 'detail', id] as const,
   },
   devices: {
     all: ['devices'] as const,

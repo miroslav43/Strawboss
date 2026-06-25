@@ -27,6 +27,9 @@ export {
   useUpdateParcelBoundary,
   useImportParcels,
   useDeleteParcel,
+  useParcelBaleAvailability,
+  useOverrideParcelBales,
+  useTransferParcelToDepot,
 } from './use-parcels.js';
 
 export { useMachines, useMachine, useCreateMachine, useUpdateMachine } from './use-machines.js';
@@ -155,6 +158,14 @@ export type {
   OperatorDistanceFilters,
   ConnectedHoursFilters,
 } from './use-reports.js';
+
+export {
+  useBeneficiaries,
+  useCreateBeneficiary,
+  useUpdateBeneficiary,
+  useDeleteBeneficiary,
+  useRegenBeneficiaryPin,
+} from './use-beneficiaries.js';
 
 export {
   useDevices,

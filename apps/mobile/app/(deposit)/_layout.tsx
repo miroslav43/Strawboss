@@ -9,6 +9,7 @@ import {
   tabBarActiveTintColor,
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * Plan C — depot_manager tab group. Three tabs: Inventar (today's
@@ -18,6 +19,8 @@ import {
  */
 export default function DepositTabLayout() {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
+
   return (
     <SafeAreaProvider>
       <View style={{ flex: 1 }}>
@@ -33,8 +36,8 @@ export default function DepositTabLayout() {
           <Tabs.Screen
             name="index"
             options={{
-              title: 'Inventar',
-              tabBarAccessibilityLabel: 'Inventar depozit',
+              title: t('tabs.label.inventory'),
+              tabBarAccessibilityLabel: t('tabs.label.inventory'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="warehouse" focused={focused} color={color} size={size} />
               ),
@@ -43,8 +46,8 @@ export default function DepositTabLayout() {
           <Tabs.Screen
             name="trips"
             options={{
-              title: 'Curse',
-              tabBarAccessibilityLabel: 'Curse incoming',
+              title: t('tabs.label.incomingTrips'),
+              tabBarAccessibilityLabel: t('tabs.label.incomingTrips'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="truck-fast" focused={focused} color={color} size={size} />
               ),
@@ -53,8 +56,8 @@ export default function DepositTabLayout() {
           <Tabs.Screen
             name="profile"
             options={{
-              title: 'Profil',
-              tabBarAccessibilityLabel: 'Profil',
+              title: t('tabs.label.profile'),
+              tabBarAccessibilityLabel: t('tabs.label.profile'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="account-circle" focused={focused} color={color} size={size} />
               ),

@@ -13,6 +13,7 @@ import {
   tabBarActiveTintColor,
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
+import { useI18n } from '@/lib/i18n';
 
 export default function LoaderTabLayout() {
   const {
@@ -29,6 +30,7 @@ export default function LoaderTabLayout() {
     pending: recallPending,
   } = useLoaderRecallPrompt();
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   return (
     <SafeAreaProvider>
@@ -45,8 +47,8 @@ export default function LoaderTabLayout() {
           <Tabs.Screen
             name="index"
             options={{
-              title: 'Camioane',
-              tabBarAccessibilityLabel: 'Scanează camion',
+              title: t('tabs.label.trucks'),
+              tabBarAccessibilityLabel: t('tabs.label.trucks'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="qrcode-scan" focused={focused} color={color} size={size} />
               ),
@@ -55,8 +57,8 @@ export default function LoaderTabLayout() {
           <Tabs.Screen
             name="bales"
             options={{
-              title: 'Încărcări',
-              tabBarAccessibilityLabel: 'Încărcări',
+              title: t('tabs.label.loads'),
+              tabBarAccessibilityLabel: t('tabs.label.loads'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon
                   name="package-variant-closed"
@@ -70,8 +72,8 @@ export default function LoaderTabLayout() {
           <Tabs.Screen
             name="map"
             options={{
-              title: 'Hartă',
-              tabBarAccessibilityLabel: 'Hartă',
+              title: t('tabs.label.map'),
+              tabBarAccessibilityLabel: t('tabs.label.map'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="map" focused={focused} color={color} size={size} />
               ),
@@ -80,8 +82,8 @@ export default function LoaderTabLayout() {
           <Tabs.Screen
             name="consumables"
             options={{
-              title: 'Motorină',
-              tabBarAccessibilityLabel: 'Motorină',
+              title: t('tabs.label.diesel'),
+              tabBarAccessibilityLabel: t('tabs.label.diesel'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="gas-station" focused={focused} color={color} size={size} />
               ),
@@ -90,8 +92,8 @@ export default function LoaderTabLayout() {
           <Tabs.Screen
             name="profile"
             options={{
-              title: 'Profil',
-              tabBarAccessibilityLabel: 'Profilul meu',
+              title: t('tabs.label.profile'),
+              tabBarAccessibilityLabel: t('tabs.label.profile'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="account" focused={focused} color={color} size={size} />
               ),

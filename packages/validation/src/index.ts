@@ -33,6 +33,8 @@ export {
   importParcelsSchema,
 } from './schemas/parcel.schema.js';
 
+export { overrideBalesSchema, transferToDepotSchema } from './schemas/parcel-bale.schema.js';
+
 export {
   machineTypeSchema,
   fuelTypeSchema,
@@ -101,6 +103,7 @@ export {
 export {
   portalCodeSchema,
   createTripRequestSchema,
+  createBeneficiaryRequestSchema,
   verifyPortalCodeSchema,
   signTripSchema,
   updateOrgRequestSettingsSchema,
@@ -109,10 +112,22 @@ export {
 } from './schemas/trip-request.schema.js';
 export type {
   CreateTripRequestInput,
+  CreateBeneficiaryRequestInput,
   VerifyPortalCodeInput,
   SignTripInput,
   UpdateOrgRequestSettingsInput,
 } from './schemas/trip-request.schema.js';
+
+export {
+  createBeneficiarySchema,
+  updateBeneficiarySchema,
+  verifyBeneficiaryPinSchema,
+} from './schemas/beneficiary.schema.js';
+export type {
+  CreateBeneficiaryInput,
+  UpdateBeneficiaryInput,
+  VerifyBeneficiaryPinInput,
+} from './schemas/beneficiary.schema.js';
 
 // DTO schemas
 export { tripCreateDtoSchema } from './dtos/trip-create.schema.js';

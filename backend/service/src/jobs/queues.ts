@@ -7,3 +7,5 @@ export const QUEUE_GEOFENCE_CHECK = 'geofence-check';
 export const QUEUE_TRUCK_IDLE_CHECK = 'truck-idle-check';
 // Fleet OTA — delayed job that activates a scheduled deployment.
 export const QUEUE_OTA_DEPLOY = 'ota-deploy';
+// Daily PIN regeneration for beneficiary records (02:00 Europe/Bucharest).
+export const QUEUE_PIN_REGEN = 'pin-regen';

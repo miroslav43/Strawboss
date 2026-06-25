@@ -2,7 +2,7 @@
   "expo": {
     "name": "StrawBoss",
     "slug": "strawboss",
-    "version": "1.0.5",
+    "version": "1.0.7",
     "orientation": "portrait",
     "scheme": "strawboss",
     "icon": "./assets/icon.png",
@@ -52,7 +52,7 @@
     ],
     "android": {
       "package": "com.strawboss.mobile",
-      "versionCode": 9,
+      "versionCode": 11,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

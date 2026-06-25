@@ -9,6 +9,7 @@ import {
   QUEUE_RECONCILIATION,
   QUEUE_SYNC_CLEANUP,
   QUEUE_TRUCK_IDLE_CHECK,
+  QUEUE_PIN_REGEN,
 } from './queues';
 
 /**
@@ -23,6 +24,7 @@ export class JobSchedulerService implements OnModuleInit {
     @InjectQueue(QUEUE_RECONCILIATION) private readonly reconciliationQueue: Queue,
     @InjectQueue(QUEUE_SYNC_CLEANUP) private readonly syncCleanupQueue: Queue,
     @InjectQueue(QUEUE_TRUCK_IDLE_CHECK) private readonly truckIdleQueue: Queue,
+    @InjectQueue(QUEUE_PIN_REGEN) private readonly pinRegenQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -66,8 +68,15 @@ export class JobSchedulerService implements OnModuleInit {
       { name: 'check', data: {} },
     );
 
+    // Regenerate all beneficiary daily PINs at 02:00 Europe/Bucharest.
+    await this.pinRegenQueue.upsertJobScheduler(
+      'pin-regen-daily',
+      { pattern: '0 2 * * *', tz: 'Europe/Bucharest' },
+      { name: 'regen-all', data: {} },
+    );
+
     this.winston.info(
-      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m)',
+      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m), pin-regen (daily 02:00)',
       {
         context: 'JobSchedulerService',
       },

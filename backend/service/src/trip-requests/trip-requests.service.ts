@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -11,10 +12,18 @@ import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { AlertsService } from '../alerts/alerts.service';
+import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates } from '../messaging/message-templates';
 import { MessageKind, RequestStatus } from '@strawboss/types';
-import type { TripRequest, PortalInfo, CreateTripRequestDto } from '@strawboss/types';
+import type {
+  TripRequest,
+  PortalInfo,
+  CreateTripRequestDto,
+  PublicBeneficiaryInfo,
+  CropType,
+} from '@strawboss/types';
+import type { CreateBeneficiaryRequestInput } from '@strawboss/validation';
 
 /** All trip_requests columns aliased to camelCase; coords → {lat,lon}. */
 const TR_COLS = sql`
@@ -49,6 +58,11 @@ const TR_COLS = sql`
   confirmed_at             AS "confirmedAt",
   cancelled_at             AS "cancelledAt",
   cancellation_reason      AS "cancellationReason",
+  beneficiary_id               AS "beneficiaryId",
+  trailer_registration_plate   AS "trailerRegistrationPlate",
+  transporter_cui              AS "transporterCui",
+  transporter_name             AS "transporterName",
+  transporter_address          AS "transporterAddress",
   created_at               AS "createdAt",
   updated_at               AS "updatedAt",
   deleted_at               AS "deletedAt"
@@ -66,6 +80,7 @@ export class TripRequestsService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly alertsService: AlertsService,
+    private readonly beneficiariesService: BeneficiariesService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
@@ -280,6 +295,82 @@ export class TripRequestsService {
       slug,
     });
     return { ok: true };
+  }
+
+  // ── Beneficiary portal (public, PIN-gated) ────────────────────────────────
+
+  async getBeneficiaryInfo(
+    orgSlug: string,
+    beneficiarySlug: string,
+  ): Promise<PublicBeneficiaryInfo> {
+    const row = await this.beneficiariesService.findBySlugPublic(orgSlug, beneficiarySlug);
+    if (!row) throw new NotFoundException('Beneficiary not found');
+    return {
+      displayName: row.beneficiary.displayName,
+      companyName: row.beneficiary.companyName,
+      companyAddress: row.beneficiary.companyAddress,
+      companyCui: row.beneficiary.companyCui,
+      organizationName: row.org.name,
+      allowedCropTypes: row.org.allowedCropTypes as CropType[],
+    };
+  }
+
+  async verifyBeneficiaryPin(
+    orgSlug: string,
+    beneficiarySlug: string,
+    pin: string,
+  ): Promise<{ ok: true }> {
+    const row = await this.beneficiariesService.findBySlugPublic(orgSlug, beneficiarySlug);
+    if (!row || row.beneficiary.dailyPin !== pin) {
+      throw new UnauthorizedException('Invalid PIN');
+    }
+    return { ok: true };
+  }
+
+  async submitBeneficiaryRequest(
+    orgSlug: string,
+    beneficiarySlug: string,
+    dto: CreateBeneficiaryRequestInput,
+  ): Promise<TripRequest> {
+    const row = await this.beneficiariesService.findBySlugPublic(orgSlug, beneficiarySlug);
+    if (!row || row.beneficiary.dailyPin !== dto.pin) {
+      throw new UnauthorizedException('Invalid PIN');
+    }
+    const { pin, ...fields } = dto;
+    const result = await this.drizzleProvider.db.execute(
+      sql`INSERT INTO trip_requests (
+            organization_id, status,
+            requester_name, requester_phone, requester_email,
+            company_name, company_address, company_cui,
+            truck_registration_plate, truck_capacity_tons,
+            trailer_registration_plate, transporter_name, transporter_cui, transporter_address,
+            driver_name, driver_phone, driver_email,
+            crop_type, needed_date, tons_requested, destination_address, notes,
+            beneficiary_id
+          ) VALUES (
+            ${row.org.id}::uuid, 'pending',
+            ${fields.requesterName}, ${fields.requesterPhone}, ${fields.requesterEmail ?? null},
+            ${row.beneficiary.companyName}, ${row.beneficiary.companyAddress ?? null}, ${row.beneficiary.companyCui ?? null},
+            ${fields.truckRegistrationPlate}, ${fields.truckCapacityTons ?? null},
+            ${fields.trailerRegistrationPlate ?? null}, ${fields.transporterName ?? null}, ${fields.transporterCui ?? null}, ${fields.transporterAddress ?? null},
+            ${fields.driverName}, ${fields.driverPhone}, ${fields.driverEmail ?? null},
+            ${fields.cropType ? sql`${fields.cropType}::crop_type` : sql`NULL`}, ${fields.neededDate ?? null}::date, ${fields.tonsRequested ?? null}, ${fields.destinationAddress ?? null}, ${fields.notes ?? null},
+            ${row.beneficiary.id}::uuid
+          )
+          RETURNING ${TR_COLS}`,
+    );
+    const created = (result as unknown as TripRequest[])[0];
+    this.winston.log(
+      'flow',
+      `Beneficiary request submitted: beneficiary=${row.beneficiary.id} org=${row.org.id}`,
+      {
+        context: 'TripRequestsService',
+        beneficiaryId: row.beneficiary.id,
+        orgId: row.org.id,
+        tripRequestId: created.id,
+      },
+    );
+    return created;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────

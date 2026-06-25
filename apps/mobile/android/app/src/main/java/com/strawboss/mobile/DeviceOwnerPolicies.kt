@@ -3,8 +3,11 @@ package com.strawboss.mobile
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
 import android.os.UserManager
+import android.provider.Settings
 import android.util.Log
 
 /**
@@ -77,6 +80,22 @@ object DeviceOwnerPolicies {
     try {
       dpm.addUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
     } catch (t: Throwable) { Log.w(TAG, "DISALLOW_SAFE_BOOT failed", t) }
+
+    // 6. Battery-optimization exemption — request silently via ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.
+    //    On stock AOSP this normally shows a one-tap dialog, but many OEM ROMs (Honor/EMUI/MIUI)
+    //    auto-approve it when the caller is a Device Owner.  Calling from applyAll() means it fires
+    //    at first launch and on every upgrade, so a re-provisioned phone never loses the exemption.
+    //    Best-effort: a failure never blocks the rest of policy application.
+    try {
+      val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+      if (!pm.isIgnoringBatteryOptimizations(PKG)) {
+        val exemptIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+          data = android.net.Uri.parse("package:$PKG")
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(exemptIntent)
+      }
+    } catch (t: Throwable) { Log.w(TAG, "battery exemption request failed", t) }
 
     Log.i(TAG, "Device owner policies applied")
     // NOTE: background-activity-start is automatically allowed for a device owner —

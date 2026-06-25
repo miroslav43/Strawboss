@@ -16,7 +16,13 @@ import { ParcelsService } from './parcels.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { createParcelSchema, updateParcelSchema, importParcelsSchema } from '@strawboss/validation';
+import {
+  createParcelSchema,
+  updateParcelSchema,
+  importParcelsSchema,
+  overrideBalesSchema,
+  transferToDepotSchema,
+} from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
 
@@ -69,6 +75,28 @@ export class ParcelsController {
     dto: { farmId?: string | null; parcels: Array<Record<string, unknown>> },
   ) {
     return this.parcelsService.importMany(user.organizationId, dto);
+  }
+
+  @Post(':id/override-bales')
+  @Roles('admin' as UserRole)
+  overrideBales(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(overrideBalesSchema))
+    dto: { produced?: number; loaded?: number; reason?: string },
+  ) {
+    return this.parcelsService.overrideBales(id, dto, user.id, user.organizationId);
+  }
+
+  @Post(':id/transfer-to-depot')
+  @Roles('admin' as UserRole)
+  transferToDepot(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(transferToDepotSchema))
+    dto: { destinationId: string; baleCount: number },
+  ) {
+    return this.parcelsService.transferToDepot(id, dto, user.id, user.organizationId);
   }
 
   @Patch(':id')

@@ -43,6 +43,7 @@ import { DepositInventoryModule } from './deposit-inventory/deposit-inventory.mo
 import { MessagingModule } from './messaging/messaging.module';
 import { TripRequestsModule } from './trip-requests/trip-requests.module';
 import { FleetModule } from './fleet/fleet.module';
+import { BeneficiariesModule } from './beneficiaries/beneficiaries.module';
 
 // Dev-only mock simulator endpoints — gated behind NODE_ENV so production
 // stays clean. STRAWBOSS_ENABLE_DEV=1 forces them on (e.g. for staging
@@ -91,6 +92,7 @@ const devModules =
     UploadsModule,
     TripRequestsModule,
     FleetModule,
+    BeneficiariesModule,
     ...devModules,
   ],
   providers: [

@@ -5,10 +5,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { Logger as WinstonLogger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { todayInRomania } from '../common/date';
 import { HarvestStatus } from '@strawboss/types';
 import type { ParcelImportResult } from '@strawboss/types';
 
@@ -94,15 +96,191 @@ export class ParcelsService {
     // Ownership check — throws NotFoundException if parcel doesn't exist or belongs to another org
     await this.findById(id, orgId);
 
+    // "produced"/"loaded" are the operator-recorded aggregates PLUS any signed
+    // manual admin corrections (parcel_bale_adjustments) — the override path
+    // appends deltas there rather than touching operator rows (00055).
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
-        COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = ${id} AND deleted_at IS NULL), 0) AS "produced",
-        COALESCE((SELECT SUM(bale_count) FROM bale_loads WHERE parcel_id = ${id} AND deleted_at IS NULL), 0) AS "loaded"
+        COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = ${id} AND deleted_at IS NULL), 0)
+          + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = ${id} AND kind = 'produced' AND deleted_at IS NULL), 0) AS "produced",
+        COALESCE((SELECT SUM(bale_count) FROM bale_loads WHERE parcel_id = ${id} AND deleted_at IS NULL), 0)
+          + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = ${id} AND kind = 'loaded' AND deleted_at IS NULL), 0) AS "loaded"
     `);
     const rows = result as unknown as Array<{ produced: number; loaded: number }>;
     const { produced, loaded } = rows[0];
     const remaining = Number(produced) - Number(loaded);
     return { produced: Number(produced), loaded: Number(loaded), remaining };
+  }
+
+  /**
+   * Admin manual override of a parcel's bale tallies. Because produced/loaded
+   * are computed aggregates (and bale_count carries CHECK > 0, so a plain insert
+   * can't lower them), each target is reached by appending a SIGNED adjustment
+   * (delta = target − current). Operator-recorded rows are never mutated. Returns
+   * the recomputed availability.
+   */
+  async overrideBales(
+    id: string,
+    dto: { produced?: number; loaded?: number; reason?: string },
+    callerId: string,
+    orgId: string | null,
+  ) {
+    if (orgId === null) {
+      throw new BadRequestException(
+        'A super_admin must act within an organization to override bale counts.',
+      );
+    }
+    await this.findById(id, orgId);
+
+    const current = await this.getBaleAvailability(id, orgId);
+    const reason = dto.reason ?? null;
+
+    const applied: Array<{ kind: 'produced' | 'loaded'; delta: number }> = [];
+    if (dto.produced !== undefined) {
+      const delta = Math.trunc(dto.produced) - current.produced;
+      if (delta !== 0) applied.push({ kind: 'produced', delta });
+    }
+    if (dto.loaded !== undefined) {
+      const delta = Math.trunc(dto.loaded) - current.loaded;
+      if (delta !== 0) applied.push({ kind: 'loaded', delta });
+    }
+
+    for (const a of applied) {
+      await this.drizzleProvider.db.execute(sql`
+        INSERT INTO parcel_bale_adjustments (organization_id, parcel_id, kind, delta, reason, created_by)
+        VALUES (${orgId}::uuid, ${id}::uuid, ${a.kind}, ${a.delta}, ${reason}, ${callerId}::uuid)
+      `);
+    }
+
+    this.winston.info('parcels.bales.override', {
+      context: 'ParcelsService',
+      kind: 'flow',
+      parcelId: id,
+      targetProduced: dto.produced ?? null,
+      targetLoaded: dto.loaded ?? null,
+      applied,
+      callerId,
+    });
+
+    return this.getBaleAvailability(id, orgId);
+  }
+
+  /**
+   * Transfer a parcel's produced bales directly into a depot. Reuses the
+   * auxiliary-truck mechanism (00054): a per-org virtual machine + a trip
+   * collapsed straight to `completed` with destination_coords = the depot's
+   * coords, so the bales count as loaded off the field (a bale_load row) AND
+   * show up in the depot's inventory (deposit-inventory's 50 m spatial join over
+   * completed trips). Capped at the parcel's remaining produced bales. Returns
+   * the recomputed availability.
+   */
+  async transferToDepot(
+    id: string,
+    dto: { destinationId: string; baleCount: number },
+    callerId: string,
+    orgId: string | null,
+  ) {
+    if (orgId === null) {
+      throw new BadRequestException(
+        'A super_admin must act within an organization to transfer bales.',
+      );
+    }
+    await this.findById(id, orgId);
+
+    // Validate the depot belongs to the caller's org and grab its location/name.
+    const depotRows = (await this.drizzleProvider.db.execute(sql`
+      SELECT id, name, address, ST_AsGeoJSON(coords)::json AS coords
+        FROM delivery_destinations
+       WHERE id = ${dto.destinationId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL
+       LIMIT 1
+    `)) as unknown as Array<{
+      id: string;
+      name: string | null;
+      address: string | null;
+      coords: unknown;
+    }>;
+    if (!depotRows.length) {
+      throw new NotFoundException(`Depot ${dto.destinationId} not found`);
+    }
+    const depot = depotRows[0];
+
+    // Never transfer more than what is actually left in the field.
+    const availability = await this.getBaleAvailability(id, orgId);
+    const count = Math.trunc(dto.baleCount);
+    if (count <= 0) {
+      throw new BadRequestException('Numărul de baloți de transferat trebuie să fie pozitiv.');
+    }
+    if (count > availability.remaining) {
+      throw new BadRequestException(
+        `Nu poți transfera ${count} baloți — în câmp au rămas ${availability.remaining}.`,
+      );
+    }
+
+    const baleLoadId = randomUUID();
+    const coordsJson = depot.coords ? JSON.stringify(depot.coords) : null;
+
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      // Get-or-create the per-org virtual "manual transfer" truck. It is
+      // auxiliary (excluded from fleet/driver flows) and inactive, so it never
+      // shows up in machine pickers. internal_code is globally UNIQUE → scope by
+      // org. The no-op UPDATE on conflict lets us RETURNING the existing id.
+      const machineCode = `TRANSFER-MANUAL-${orgId}`;
+      const machineRows = (await tx.execute(sql`
+        INSERT INTO machines (organization_id, machine_type, internal_code, make, is_active, is_auxiliary)
+        VALUES (${orgId}::uuid, 'truck'::machine_type, ${machineCode}, 'Transfer manual', false, true)
+        ON CONFLICT (internal_code) DO UPDATE SET internal_code = EXCLUDED.internal_code
+        RETURNING id
+      `)) as unknown as Array<{ id: string }>;
+      const truckId = machineRows[0].id;
+
+      // generateTripNumber takes a transaction-scoped advisory lock — must run
+      // inside this tx (held until commit).
+      const tripNumber = await this.generateTripNumber(orgId, tx);
+
+      const tripRows = (await tx.execute(sql`
+        INSERT INTO trips (
+          organization_id, trip_number, status, is_auxiliary,
+          source_parcel_id, truck_id, driver_id,
+          destination_id, destination_name, destination_address, destination_coords,
+          bale_count,
+          loading_started_at, loading_completed_at, departure_at, arrival_at,
+          delivered_at, completed_at
+        ) VALUES (
+          ${orgId}::uuid, ${tripNumber}, 'completed'::trip_status, true,
+          ${id}::uuid, ${truckId}::uuid, NULL,
+          ${dto.destinationId}::uuid, ${depot.name}, ${depot.address},
+          ${coordsJson ? sql`ST_GeomFromGeoJSON(${coordsJson})` : sql`NULL`},
+          ${count},
+          NOW(), NOW(), NOW(), NOW(), NOW(), NOW()
+        ) RETURNING id
+      `)) as unknown as Array<{ id: string }>;
+      const tripId = tripRows[0].id;
+
+      // The bale_load is what makes these bales count as "loaded" off the parcel.
+      await tx.execute(sql`
+        INSERT INTO bale_loads (
+          organization_id, id, trip_id, parcel_id, loader_id, operator_id,
+          bale_count, loaded_at, notes
+        ) VALUES (
+          ${orgId}::uuid, ${baleLoadId}::uuid, ${tripId}::uuid, ${id}::uuid, NULL, ${callerId}::uuid,
+          ${count}, NOW(), 'Transfer manual din câmp'
+        )
+      `);
+
+      return { tripId };
+    });
+
+    this.winston.info('parcels.bales.transferToDepot', {
+      context: 'ParcelsService',
+      kind: 'flow',
+      parcelId: id,
+      destinationId: dto.destinationId,
+      baleCount: count,
+      tripId: result.tripId,
+      callerId,
+    });
+
+    return this.getBaleAvailability(id, orgId);
   }
 
   async findById(id: string, orgId: string | null) {
@@ -653,6 +831,36 @@ export class ParcelsService {
     });
 
     return { updated: true, fromStatus: from, toStatus: target };
+  }
+
+  /**
+   * Mint the next per-org/day trip_number. Replicates TripsService's generator
+   * (the transfer-to-depot path needs it without depending on the trips module).
+   * Takes a transaction-scoped advisory lock so concurrent callers can't emit a
+   * duplicate — the lock is held until the caller's tx commits, so this MUST run
+   * inside a transaction.
+   */
+  private async generateTripNumber(
+    orgId: string | null,
+    executor: Pick<DrizzleProvider['db'], 'execute'>,
+  ): Promise<string> {
+    const dateStr = todayInRomania().replace(/-/g, '');
+    const prefix = `TR-${dateStr}-`;
+    await executor.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${prefix + (orgId ?? '')}))`);
+    const conditions: ReturnType<typeof sql>[] = [sql`trip_number LIKE ${prefix + '%'}`];
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    } else {
+      conditions.push(sql`organization_id IS NULL`);
+    }
+    const where = sql.join(conditions, sql` AND `);
+    const result = await executor.execute(
+      sql`SELECT COUNT(*)::int as count FROM trips WHERE ${where}`,
+    );
+    const rows = result as unknown as { count: number }[];
+    const count = (rows[0]?.count ?? 0) + 1;
+    const seq = String(count).padStart(3, '0');
+    return `${prefix}${seq}`;
   }
 
   async softDelete(id: string, orgId: string | null) {

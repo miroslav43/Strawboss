@@ -11,6 +11,7 @@ import {
   QUEUE_GEOFENCE_CHECK,
   QUEUE_TRUCK_IDLE_CHECK,
   QUEUE_OTA_DEPLOY,
+  QUEUE_PIN_REGEN,
 } from './queues';
 
 @Module({
@@ -31,6 +32,7 @@ import {
       { name: QUEUE_GEOFENCE_CHECK },
       { name: QUEUE_TRUCK_IDLE_CHECK },
       { name: QUEUE_OTA_DEPLOY },
+      { name: QUEUE_PIN_REGEN },
     ),
   ],
   providers: [JobSchedulerService],

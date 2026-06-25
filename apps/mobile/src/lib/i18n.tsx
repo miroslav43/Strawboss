@@ -3,6 +3,8 @@ import { ro } from '@/i18n/ro';
 import { en } from '@/i18n/en';
 import { useAuthStore } from '@/stores/auth-store';
 
+export { ro, en };
+
 export type Locale = 'ro' | 'en';
 
 const catalogs: Record<Locale, Record<string, unknown>> = {
@@ -70,4 +72,20 @@ export function useI18n(): I18nContextValue {
 
 export function useI18nOptional(): I18nContextValue | null {
   return useContext(I18nContext);
+}
+
+/**
+ * Translate outside of React context (background tasks, pre-provider screens).
+ * Reads locale directly from the Zustand auth store.
+ */
+export function tStatic(key: string, params?: Record<string, string | number>): string {
+  const storeLocale = useAuthStore.getState().locale;
+  const locale = normalizeLocale(storeLocale);
+  let raw = getByPath(catalogs[locale], key);
+  if (typeof raw !== 'string') raw = getByPath(catalogs.ro, key);
+  if (typeof raw !== 'string') {
+    if (__DEV__) console.warn('[i18n] Missing key (static):', key);
+    return key;
+  }
+  return interpolate(raw, params);
 }

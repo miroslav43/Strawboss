@@ -11,11 +11,13 @@ import {
   tabBarActiveTintColor,
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
+import { useI18n } from '@/lib/i18n';
 
 export default function BalerTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone, confirmParcelEntry, cancelParcelEntry } =
     useGeofenceNotifications();
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   return (
     <SafeAreaProvider>
@@ -32,8 +34,8 @@ export default function BalerTabLayout() {
           <Tabs.Screen
             name="index"
             options={{
-              title: 'Acasă',
-              tabBarAccessibilityLabel: 'Acasă',
+              title: t('tabs.label.home'),
+              tabBarAccessibilityLabel: t('tabs.label.home'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="home" focused={focused} color={color} size={size} />
               ),
@@ -42,8 +44,8 @@ export default function BalerTabLayout() {
           <Tabs.Screen
             name="production"
             options={{
-              title: 'Producție',
-              tabBarAccessibilityLabel: 'Înregistrează producție',
+              title: t('tabs.label.production'),
+              tabBarAccessibilityLabel: t('tabs.label.production'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="counter" focused={focused} color={color} size={size} />
               ),
@@ -52,8 +54,8 @@ export default function BalerTabLayout() {
           <Tabs.Screen
             name="map"
             options={{
-              title: 'Hartă',
-              tabBarAccessibilityLabel: 'Hartă',
+              title: t('tabs.label.map'),
+              tabBarAccessibilityLabel: t('tabs.label.map'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="map" focused={focused} color={color} size={size} />
               ),
@@ -62,8 +64,8 @@ export default function BalerTabLayout() {
           <Tabs.Screen
             name="consumables"
             options={{
-              title: 'Consumabile',
-              tabBarAccessibilityLabel: 'Consumabile',
+              title: t('tabs.label.consumables'),
+              tabBarAccessibilityLabel: t('tabs.label.consumables'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon
                   name="package-variant-closed"
@@ -77,8 +79,8 @@ export default function BalerTabLayout() {
           <Tabs.Screen
             name="profile"
             options={{
-              title: 'Profil',
-              tabBarAccessibilityLabel: 'Profilul meu',
+              title: t('tabs.label.profile'),
+              tabBarAccessibilityLabel: t('tabs.label.profile'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="account" focused={focused} color={color} size={size} />
               ),

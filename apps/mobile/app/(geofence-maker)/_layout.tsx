@@ -9,9 +9,11 @@ import {
   tabBarActiveTintColor,
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
+import { useI18n } from '@/lib/i18n';
 
 export default function GeofenceMakerTabLayout() {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   return (
     <SafeAreaProvider>
@@ -29,8 +31,8 @@ export default function GeofenceMakerTabLayout() {
           <Tabs.Screen
             name="map"
             options={{
-              title: 'Hartă',
-              tabBarAccessibilityLabel: 'Hartă geofence',
+              title: t('tabs.label.map'),
+              tabBarAccessibilityLabel: t('tabs.label.map'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="map-marker-plus" focused={focused} color={color} size={size} />
               ),
@@ -39,8 +41,8 @@ export default function GeofenceMakerTabLayout() {
           <Tabs.Screen
             name="farms"
             options={{
-              title: 'Ferme',
-              tabBarAccessibilityLabel: 'Ferme și câmpuri',
+              title: t('tabs.label.farms'),
+              tabBarAccessibilityLabel: t('tabs.label.farms'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="home-group" focused={focused} color={color} size={size} />
               ),
@@ -49,8 +51,8 @@ export default function GeofenceMakerTabLayout() {
           <Tabs.Screen
             name="profile"
             options={{
-              title: 'Profil',
-              tabBarAccessibilityLabel: 'Profilul meu',
+              title: t('tabs.label.profile'),
+              tabBarAccessibilityLabel: t('tabs.label.profile'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="account" focused={focused} color={color} size={size} />
               ),

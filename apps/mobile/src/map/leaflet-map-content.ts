@@ -193,6 +193,15 @@ setTimeout(function() {
     }
   }
 
+  function destPinIcon() {
+    return L.divIcon({
+      html: '<div style="background:#1565C0;color:#fff;font-size:13px;font-weight:700;width:30px;height:30px;border-radius:6px;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4)">D</div>',
+      className: '',
+      iconSize: [30, 30],
+      iconAnchor: [15, 15]
+    });
+  }
+
   function setDestinations(destinations) {
     destinationsLayer.clearLayers();
 
@@ -211,19 +220,18 @@ setTimeout(function() {
           layer.bindTooltip(d.name, { sticky: true, className: 'route-info' });
         }
         layer.addTo(destinationsLayer);
-      } else if (d.lat != null && d.lon != null) {
-        var marker = L.circleMarker([d.lat, d.lon], {
-          radius: 8, color: '#1565C0', fillColor: '#1565C0', fillOpacity: 0.5, weight: 2
-        });
-        marker.on('click', function() {
+      }
+      if (d.lat != null && d.lon != null) {
+        var pin = L.marker([d.lat, d.lon], { icon: destPinIcon() });
+        pin.on('click', function() {
           sendEvent({
             type: 'DESTINATION_TAPPED',
             destinationId: d.id,
             destinationName: d.name || d.code || ''
           });
         });
-        if (d.name) marker.bindTooltip(d.name, { className: 'route-info' });
-        marker.addTo(destinationsLayer);
+        if (d.name) pin.bindTooltip(d.name, { className: 'route-info' });
+        pin.addTo(destinationsLayer);
       }
     });
   }

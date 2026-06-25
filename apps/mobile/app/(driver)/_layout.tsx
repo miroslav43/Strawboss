@@ -14,12 +14,14 @@ import {
   tabBarActiveTintColor,
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
+import { useI18n } from '@/lib/i18n';
 
 export default function DriverTabLayout() {
   const { activeAlert, dismissAlert, confirmParcelDone, confirmParcelEntry, cancelParcelEntry } =
     useGeofenceNotifications();
   const { activeAlert: tripAlert, dismiss: dismissTripAlert, onDeparted } = useTripLoadedAlert();
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   return (
     <SafeAreaProvider>
@@ -36,8 +38,8 @@ export default function DriverTabLayout() {
           <Tabs.Screen
             name="index"
             options={{
-              title: 'Cursele Mele',
-              tabBarAccessibilityLabel: 'Cursele mele',
+              title: t('tabs.label.myTrips'),
+              tabBarAccessibilityLabel: t('tabs.label.myTrips'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="truck" focused={focused} color={color} size={size} />
               ),
@@ -46,8 +48,8 @@ export default function DriverTabLayout() {
           <Tabs.Screen
             name="delivery"
             options={{
-              title: 'Livrare',
-              tabBarAccessibilityLabel: 'Livrare',
+              title: t('tabs.label.delivery'),
+              tabBarAccessibilityLabel: t('tabs.label.delivery'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="clipboard-list" focused={focused} color={color} size={size} />
               ),
@@ -56,8 +58,8 @@ export default function DriverTabLayout() {
           <Tabs.Screen
             name="map"
             options={{
-              title: 'Hartă',
-              tabBarAccessibilityLabel: 'Hartă',
+              title: t('tabs.label.map'),
+              tabBarAccessibilityLabel: t('tabs.label.map'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="map" focused={focused} color={color} size={size} />
               ),
@@ -66,8 +68,8 @@ export default function DriverTabLayout() {
           <Tabs.Screen
             name="fuel"
             options={{
-              title: 'Combustibil',
-              tabBarAccessibilityLabel: 'Combustibil',
+              title: t('tabs.label.fuel'),
+              tabBarAccessibilityLabel: t('tabs.label.fuel'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="gas-station" focused={focused} color={color} size={size} />
               ),
@@ -76,8 +78,8 @@ export default function DriverTabLayout() {
           <Tabs.Screen
             name="profile"
             options={{
-              title: 'Profil',
-              tabBarAccessibilityLabel: 'Profilul meu',
+              title: t('tabs.label.profile'),
+              tabBarAccessibilityLabel: t('tabs.label.profile'),
               tabBarIcon: ({ color, size, focused }) => (
                 <TabBarIcon name="account" focused={focused} color={color} size={size} />
               ),

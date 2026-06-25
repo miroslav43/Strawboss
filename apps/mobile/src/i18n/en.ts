@@ -52,6 +52,24 @@ export const en = {
   },
 
   notifications: {
+    push: {
+      taskAssigned: {
+        title: 'New task for today',
+        body: 'You have received a new task. Open the app for details.',
+      },
+      conflictTitle: 'Data updated from server',
+      fieldUpdated: '{{label}} was updated from server: {{local}} → {{server}}',
+      fieldLabel: {
+        bale_count: 'Bale count',
+        parcel_id: 'Parcel',
+        notes: 'Notes',
+        gross_weight_kg: 'Gross weight (kg)',
+        tare_weight_kg: 'Tare weight (kg)',
+        quantity: 'Quantity',
+        quantity_liters: 'Liters',
+        avg_bale_weight_kg: 'Average bale weight (kg)',
+      },
+    },
     title: 'Notifications',
     unreadSingular: '{{count}} unread notification',
     unreadPlural: '{{count}} unread notifications',
@@ -280,6 +298,24 @@ export const en = {
   },
 
   tabs: {
+    label: {
+      home: 'Home',
+      production: 'Production',
+      map: 'Map',
+      consumables: 'Consumables',
+      profile: 'Profile',
+      myTrips: 'My Trips',
+      delivery: 'Delivery',
+      fuel: 'Fuel',
+      trucks: 'Trucks',
+      loads: 'Loads',
+      diesel: 'Diesel',
+      farms: 'Farms',
+      inventory: 'Inventory',
+      incomingTrips: 'Trips',
+      scan: 'Scan',
+      sync: 'Sync',
+    },
     home: {
       title: 'StrawBoss',
       subtitle: 'Agricultural Logistics',

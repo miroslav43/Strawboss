@@ -1,7 +1,7 @@
 import '@/lib/register-background-tasks';
 
 import { useEffect, useRef, useState } from 'react';
-import { LocaleProvider } from '@/lib/i18n';
+import { LocaleProvider, tStatic, useI18n } from '@/lib/i18n';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
@@ -101,9 +101,9 @@ function DbErrorScreen({ onRetry }: { onRetry: () => void }) {
         accessible={false}
       />
       <Text style={splash.title}>StrawBoss</Text>
-      <Text style={splash.errorMessage}>Baza de date nu a putut fi inițializată.</Text>
+      <Text style={splash.errorMessage}>{tStatic('app.dbError')}</Text>
       <TouchableOpacity style={splash.retryButton} onPress={onRetry} activeOpacity={0.8}>
-        <Text style={splash.retryButtonText}>Reîncearcă</Text>
+        <Text style={splash.retryButtonText}>{tStatic('app.dbRetry')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -168,6 +168,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // Always-on tracking setup: shown once per login for Android machine users.
   const trackingSetupCheckedRef = useRef(false);
   const { modalProps, showModal, hideModal } = useModal();
+  const { t } = useI18n();
 
   // Subscribe to hydration completion once (runs at most once per mount).
   useEffect(() => {
@@ -286,8 +287,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         // session persists until they explicitly log out.
         showModal({
           type: 'error',
-          title: 'Eroare de conectare',
-          message: 'Nu s-a putut încărca profilul. Verificați conexiunea și încercați din nou.',
+          title: t('app.profileErrorTitle'),
+          message: t('app.profileErrorMessage'),
           onConfirm: () => {
             hideModal();
             setProfileRetry((n) => n + 1);

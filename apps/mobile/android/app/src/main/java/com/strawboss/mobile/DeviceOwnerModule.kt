@@ -7,8 +7,11 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.graphics.Color
+import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -249,6 +252,122 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
       promise.resolve(true)
     } catch (t: Throwable) {
       promise.reject("TS_CLEAR_MANAGED", t.message ?: t.toString())
+    }
+  }
+
+  /**
+   * Reboot the device via DevicePolicyManager (Device Owner, API 27+).
+   * Resolves true immediately before the OS kills the process.
+   * Rejects with SDK_TOO_LOW on API < 27, or DO_REBOOT on any other failure.
+   */
+  @ReactMethod
+  fun deviceReboot(promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) {
+      promise.reject("SDK_TOO_LOW", "deviceReboot requires API 27+")
+      return
+    }
+    try {
+      val dpm = DeviceOwnerPolicies.dpm(ctx)
+      val admin = DeviceOwnerPolicies.admin(ctx)
+      promise.resolve(true)
+      dpm.reboot(admin)
+    } catch (t: Throwable) {
+      promise.reject("DO_REBOOT", t.message ?: t.toString())
+    }
+  }
+
+  /**
+   * Gather a diagnostic snapshot of the device: battery, charging, device-owner
+   * status, Tailscale install, installed package count, and granted runtime
+   * permissions. Each piece is independently guarded so one failure doesn't kill
+   * the whole call.
+   */
+  @ReactMethod
+  fun getDeviceState(promise: Promise) {
+    try {
+      val map = Arguments.createMap()
+
+      // Battery percentage
+      try {
+        val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        if (pct >= 0) map.putInt("batteryPct", pct) else map.putNull("batteryPct")
+      } catch (t: Throwable) { map.putNull("batteryPct") }
+
+      // Charging status
+      try {
+        val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+          map.putBoolean("isCharging", bm.isCharging)
+        } else {
+          val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+          val intent = ctx.registerReceiver(null, filter)
+          val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+          map.putBoolean("isCharging",
+            status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL)
+        }
+      } catch (t: Throwable) { map.putNull("isCharging") }
+
+      // Device owner
+      try {
+        map.putBoolean("isDeviceOwner", DeviceOwnerPolicies.isDeviceOwner(ctx))
+      } catch (t: Throwable) { map.putBoolean("isDeviceOwner", false) }
+
+      // Tailscale installed
+      try {
+        if (Build.VERSION.SDK_INT >= 33) {
+          ctx.packageManager.getPackageInfo("com.tailscale.ipn",
+            android.content.pm.PackageManager.PackageInfoFlags.of(0L))
+        } else {
+          @Suppress("DEPRECATION")
+          ctx.packageManager.getPackageInfo("com.tailscale.ipn", 0)
+        }
+        map.putBoolean("tailscaleInstalled", true)
+      } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+        map.putBoolean("tailscaleInstalled", false)
+      } catch (t: Throwable) { map.putBoolean("tailscaleInstalled", false) }
+
+      // Installed package count
+      try {
+        val count = ctx.packageManager.getInstalledApplications(0).size
+        map.putInt("installedPackageCount", count)
+      } catch (t: Throwable) { map.putNull("installedPackageCount") }
+
+      // App version
+      try {
+        map.putString("appVersion", Build.VERSION.RELEASE)
+      } catch (t: Throwable) { map.putNull("appVersion") }
+
+      // Granted runtime permissions for this app
+      try {
+        val pm = ctx.packageManager
+        val pkgInfo: PackageInfo = if (Build.VERSION.SDK_INT >= 33) {
+          pm.getPackageInfo(ctx.packageName,
+            android.content.pm.PackageManager.PackageInfoFlags.of(
+              android.content.pm.PackageManager.GET_PERMISSIONS.toLong()))
+        } else {
+          @Suppress("DEPRECATION")
+          pm.getPackageInfo(ctx.packageName,
+            android.content.pm.PackageManager.GET_PERMISSIONS)
+        }
+        val grantedArr = Arguments.createArray()
+        val perms = pkgInfo.requestedPermissions ?: emptyArray()
+        val flags = pkgInfo.requestedPermissionsFlags ?: IntArray(0)
+        for (i in perms.indices) {
+          if (i < flags.size &&
+              (flags[i] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0) {
+            grantedArr.pushString(perms[i])
+          }
+        }
+        map.putArray("grantedPermissions", grantedArr)
+      } catch (t: Throwable) {
+        map.putArray("grantedPermissions", Arguments.createArray())
+      }
+
+      promise.resolve(map)
+    } catch (t: Throwable) {
+      promise.reject("DO_DEVICE_STATE", t.message ?: t.toString())
     }
   }
 

@@ -17,6 +17,7 @@ import {
   XCircle,
   Layers,
   Search,
+  Boxes,
 } from 'lucide-react';
 import {
   useParcels,
@@ -33,6 +34,7 @@ import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
+import { BaleOverrideModal } from '@/components/features/parcels/BaleOverrideModal';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -483,6 +485,7 @@ export default function ParcelsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editParcel, setEditParcel] = useState<Parcel | null>(null);
   const [deleteParcel, setDeleteParcel] = useState<Parcel | null>(null);
+  const [baleParcel, setBaleParcel] = useState<Parcel | null>(null);
 
   const handleSort = useCallback((key: ParcelSortKey) => {
     setTableSort((s) =>
@@ -814,6 +817,14 @@ export default function ParcelsPage() {
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
+                          onClick={() => setBaleParcel(p)}
+                          className="rounded-lg p-1.5 text-neutral-400 hover:bg-amber-50 hover:text-amber-600 transition-colors"
+                          title={t('parcels.baleOverride.title')}
+                          aria-label={t('parcels.baleOverride.title')}
+                        >
+                          <Boxes className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => setDeleteParcel(p)}
                           className="rounded-lg p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-500 transition-colors"
                           title={t('common.delete')}
@@ -837,6 +848,7 @@ export default function ParcelsPage() {
         <ParcelFormModal parcel={editParcel} farms={farms} onClose={() => setEditParcel(null)} />
       )}
       {deleteParcel && <DeleteDialog parcel={deleteParcel} onClose={() => setDeleteParcel(null)} />}
+      {baleParcel && <BaleOverrideModal parcel={baleParcel} onClose={() => setBaleParcel(null)} />}
     </div>
   );
 }

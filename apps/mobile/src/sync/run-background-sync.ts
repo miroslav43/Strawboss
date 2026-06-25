@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { ApiClient } from '@strawboss/api';
+import { tStatic } from '@/lib/i18n';
 import { getDatabase } from '../lib/storage';
 import { getAuthToken } from '../lib/auth';
 import { runDeviceCheckin } from '../lib/device-checkin';
@@ -127,8 +128,8 @@ async function _notifyNewAssignments(
       id: notifId,
       category: MobileNotificationCategory.task,
       type: MobileNotificationType.assignment_created,
-      title: 'Sarcină nouă pentru azi',
-      body: 'Ai primit o sarcină nouă. Deschide aplicația pentru detalii.',
+      title: tStatic('notifications.push.taskAssigned.title'),
+      body: tStatic('notifications.push.taskAssigned.body'),
       dataJson: JSON.stringify({
         type: 'assignment_created',
         assignmentId: assignment.id,
@@ -150,8 +151,8 @@ async function _notifyNewAssignments(
       await Notifications.scheduleNotificationAsync({
         identifier: notifId,
         content: {
-          title: 'Sarcină nouă pentru azi',
-          body: 'Ai primit o sarcină nouă. Deschide aplicația pentru detalii.',
+          title: tStatic('notifications.push.taskAssigned.title'),
+          body: tStatic('notifications.push.taskAssigned.body'),
           data: {
             type: 'assignment_created',
             assignmentId: assignment.id,
