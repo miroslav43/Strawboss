@@ -34,4 +34,7 @@ export interface CreateBeneficiaryDto {
   companyCui?: string | null;
 }
 
-export type UpdateBeneficiaryDto = Partial<CreateBeneficiaryDto>;
+export type UpdateBeneficiaryDto = Partial<CreateBeneficiaryDto> & {
+  /** Activate / deactivate the beneficiary's public request portal. */
+  isActive?: boolean;
+};

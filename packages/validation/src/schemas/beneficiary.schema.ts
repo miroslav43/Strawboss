@@ -13,7 +13,9 @@ export const createBeneficiarySchema = z.object({
 });
 export type CreateBeneficiaryInput = z.infer<typeof createBeneficiarySchema>;
 
-export const updateBeneficiarySchema = createBeneficiarySchema.partial();
+export const updateBeneficiarySchema = createBeneficiarySchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
 export type UpdateBeneficiaryInput = z.infer<typeof updateBeneficiarySchema>;
 
 /** Body for the beneficiary PIN verification endpoint. */

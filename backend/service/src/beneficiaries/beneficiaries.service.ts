@@ -183,6 +183,21 @@ export class BeneficiariesService {
     if ('companyAddress' in dto)
       setClauses.push(sql`company_address = ${dto.companyAddress ?? null}`);
     if ('companyCui' in dto) setClauses.push(sql`company_cui = ${dto.companyCui ?? null}`);
+    if (dto.isActive !== undefined) {
+      if (dto.isActive) {
+        // Reactivating (was inactive) → refresh the PIN so it's immediately valid,
+        // since the rotation cron skips inactive beneficiaries and it may be stale.
+        // The CASE reads the pre-UPDATE is_active, so an already-active row is untouched.
+        const fresh = generatePin();
+        setClauses.push(
+          sql`daily_pin = CASE WHEN is_active = FALSE THEN ${fresh} ELSE daily_pin END`,
+        );
+        setClauses.push(
+          sql`pin_generated_at = CASE WHEN is_active = FALSE THEN now() ELSE pin_generated_at END`,
+        );
+      }
+      setClauses.push(sql`is_active = ${dto.isActive}`);
+    }
 
     const setFragment = sql.join(setClauses, sql`, `);
     let rows: unknown;

@@ -1802,7 +1802,9 @@
     "deleteButton": "Șterge",
     "saveError": "Nu s-a putut salva. Încearcă din nou.",
     "deleteError": "Nu s-a putut șterge. Încearcă din nou.",
-    "regenError": "Nu s-a putut regenera PIN-ul. Încearcă din nou."
+    "regenError": "Nu s-a putut regenera PIN-ul. Încearcă din nou.",
+    "activate": "Activează beneficiarul",
+    "deactivate": "Dezactivează beneficiarul"
   },
   "beneficiaryPortal": {
     "pinStep1Title": "Bun venit, {name}",
@@ -1811,6 +1813,8 @@
     "pinInvalid": "PIN incorect. Încearcă din nou.",
     "pinError": "Nu s-a putut verifica PIN-ul. Încearcă din nou.",
     "loadError": "Pagina nu a putut fi încărcată. Verifică linkul și încearcă din nou.",
+    "pinExpired": "Acest PIN a expirat. Contactează expeditorul pentru unul nou.",
+    "pinThrottled": "Prea multe încercări. Încearcă din nou mai târziu.",
     "pinVerifying": "Se verifică…",
     "step2Title": "Solicită o cursă",
     "step2Subtitle": "Completează formularul și trimite solicitarea.",

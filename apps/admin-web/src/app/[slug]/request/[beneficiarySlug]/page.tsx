@@ -326,9 +326,13 @@ export default function BeneficiaryPortalPage() {
       );
       if (!res.ok) {
         setPinError(
-          res.status === 401 || res.status === 403
-            ? t('beneficiaryPortal.pinInvalid')
-            : t('beneficiaryPortal.pinError'),
+          res.status === 429
+            ? t('beneficiaryPortal.pinThrottled')
+            : res.status === 410
+              ? t('beneficiaryPortal.pinExpired')
+              : res.status === 401 || res.status === 403
+                ? t('beneficiaryPortal.pinInvalid')
+                : t('beneficiaryPortal.pinError'),
         );
         return;
       }
@@ -379,7 +383,15 @@ export default function BeneficiaryPortalPage() {
         },
       );
       if (!res.ok) {
-        setSubmitError(t('beneficiaryPortal.submitError'));
+        setSubmitError(
+          res.status === 429
+            ? t('beneficiaryPortal.pinThrottled')
+            : res.status === 410
+              ? t('beneficiaryPortal.pinExpired')
+              : res.status === 401
+                ? t('beneficiaryPortal.pinInvalid')
+                : t('beneficiaryPortal.submitError'),
+        );
         return;
       }
       setStep('success');

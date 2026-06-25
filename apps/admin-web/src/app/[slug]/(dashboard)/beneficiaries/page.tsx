@@ -3,7 +3,18 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useMemo, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { Building2, RefreshCw, Copy, Check, Pencil, Trash2, XCircle, Loader2 } from 'lucide-react';
+import {
+  Building2,
+  RefreshCw,
+  Copy,
+  Check,
+  Pencil,
+  Trash2,
+  XCircle,
+  Loader2,
+  Power,
+  PowerOff,
+} from 'lucide-react';
 import {
   useBeneficiaries,
   useCreateBeneficiary,
@@ -339,6 +350,39 @@ function RegenPinButton({ beneficiaryId }: { beneficiaryId: string }) {
   );
 }
 
+// ── Active toggle ──────────────────────────────────────────────────────────
+
+function ActiveToggle({ beneficiary }: { beneficiary: Beneficiary }) {
+  const { t } = useI18n();
+  const update = useUpdateBeneficiary(apiClient);
+
+  function handleToggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    update.mutate({ id: beneficiary.id, data: { isActive: !beneficiary.isActive } });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleToggle}
+      title={beneficiary.isActive ? t('beneficiaries.deactivate') : t('beneficiaries.activate')}
+      disabled={update.isPending}
+      className={cn(
+        'rounded-lg border p-1.5 disabled:opacity-50',
+        beneficiary.isActive
+          ? 'border-green-200 text-green-600 hover:bg-green-50'
+          : 'border-neutral-200 text-neutral-400 hover:bg-neutral-100',
+      )}
+    >
+      {beneficiary.isActive ? (
+        <Power className="h-3.5 w-3.5" />
+      ) : (
+        <PowerOff className="h-3.5 w-3.5" />
+      )}
+    </button>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function BeneficiariesPage() {
@@ -429,7 +473,13 @@ export default function BeneficiariesPage() {
                 {beneficiaries.map((b) => {
                   const portalUrl = `${portalBase}/${orgSlug}/request/${b.slug}`;
                   return (
-                    <tr key={b.id} className="border-b border-neutral-100 hover:bg-neutral-50">
+                    <tr
+                      key={b.id}
+                      className={cn(
+                        'border-b border-neutral-100 hover:bg-neutral-50',
+                        !b.isActive && 'opacity-50',
+                      )}
+                    >
                       <td className="px-4 py-3">
                         <p className="font-medium text-neutral-800">{b.displayName}</p>
                       </td>
@@ -451,6 +501,7 @@ export default function BeneficiariesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
+                          <ActiveToggle beneficiary={b} />
                           <button
                             type="button"
                             onClick={() => openEdit(b)}

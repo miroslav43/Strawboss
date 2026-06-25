@@ -1802,7 +1802,9 @@
     "deleteButton": "Delete",
     "saveError": "Could not save. Try again.",
     "deleteError": "Could not delete. Try again.",
-    "regenError": "Could not regenerate PIN. Try again."
+    "regenError": "Could not regenerate PIN. Try again.",
+    "activate": "Activate beneficiary",
+    "deactivate": "Deactivate beneficiary"
   },
   "beneficiaryPortal": {
     "pinStep1Title": "Welcome, {name}",
@@ -1811,6 +1813,8 @@
     "pinInvalid": "Incorrect PIN. Please try again.",
     "pinError": "Could not verify PIN. Try again.",
     "loadError": "Could not load this page. Check the link and try again.",
+    "pinExpired": "This PIN has expired. Please contact the sender for a new one.",
+    "pinThrottled": "Too many attempts. Please try again later.",
     "pinVerifying": "Verifying…",
     "step2Title": "Request a pickup",
     "step2Subtitle": "Fill in the form below and submit your request.",

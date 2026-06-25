@@ -5,6 +5,8 @@ import {
   ForbiddenException,
   BadRequestException,
   UnauthorizedException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -13,6 +15,7 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { AlertsService } from '../alerts/alerts.service';
 import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
+import { PinThrottleService } from './pin-throttle.service';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates } from '../messaging/message-templates';
 import { MessageKind, RequestStatus } from '@strawboss/types';
@@ -83,12 +86,16 @@ function pinEquals(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
+/** A daily PIN is rejected once it is older than this (cron rotates it at 02:00). */
+const PIN_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
 @Injectable()
 export class TripRequestsService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly alertsService: AlertsService,
     private readonly beneficiariesService: BeneficiariesService,
+    private readonly pinThrottle: PinThrottleService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
@@ -330,8 +337,11 @@ export class TripRequestsService {
   ): Promise<{ ok: true }> {
     const row = await this.beneficiariesService.findBySlugPublic(orgSlug, beneficiarySlug);
     if (!row || !pinEquals(row.beneficiary.dailyPin, pin)) {
+      await this.pinThrottle.recordFailure(orgSlug, beneficiarySlug);
       throw new UnauthorizedException('Invalid PIN');
     }
+    await this.pinThrottle.recordSuccess(orgSlug, beneficiarySlug);
+    this.assertPinFresh(row.beneficiary.pinGeneratedAt);
     return { ok: true };
   }
 
@@ -342,8 +352,11 @@ export class TripRequestsService {
   ): Promise<{ ok: true }> {
     const row = await this.beneficiariesService.findBySlugPublic(orgSlug, beneficiarySlug);
     if (!row || !pinEquals(row.beneficiary.dailyPin, dto.pin)) {
+      await this.pinThrottle.recordFailure(orgSlug, beneficiarySlug);
       throw new UnauthorizedException('Invalid PIN');
     }
+    await this.pinThrottle.recordSuccess(orgSlug, beneficiarySlug);
+    this.assertPinFresh(row.beneficiary.pinGeneratedAt);
     const { pin, ...fields } = dto;
 
     // Enforce the org's accepted crop types (parity with submitPublicRequest).
@@ -436,6 +449,14 @@ export class TripRequestsService {
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
+
+  /** Rejects a stale daily PIN (e.g. if the 02:00 rotation cron stopped running). */
+  private assertPinFresh(pinGeneratedAt: string): void {
+    const age = Date.now() - new Date(pinGeneratedAt).getTime();
+    if (!Number.isFinite(age) || age > PIN_MAX_AGE_MS) {
+      throw new HttpException('PIN expired', HttpStatus.GONE);
+    }
+  }
 
   private async resolveOrgBySlug(slug: string): Promise<OrgPortalRow> {
     const rows = (await this.drizzleProvider.db.execute(

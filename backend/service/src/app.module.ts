@@ -5,6 +5,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { UploadUrlSigningInterceptor } from './common/interceptors/upload-url-signing.interceptor';
 import { ConfigModule } from './config/config.module';
+import { RedisModule } from './redis/redis.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/auth.guard';
@@ -58,6 +59,7 @@ const devModules =
     AppLoggerModule,
     HealthModule,
     ConfigModule,
+    RedisModule,
     DatabaseModule,
     MessagingModule,
     OrganizationsModule,

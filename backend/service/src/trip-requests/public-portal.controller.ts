@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { TripRequestsService } from './trip-requests.service';
 import { TripsService } from '../trips/trips.service';
+import { PinThrottleGuard } from './pin-throttle.guard';
 import { Public } from '../auth';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
@@ -77,6 +78,7 @@ export class PublicPortalController {
 
   @Post('portal/:slug/beneficiary/:beneficiarySlug/verify')
   @Public()
+  @UseGuards(PinThrottleGuard)
   verifyBeneficiaryPin(
     @Param('slug') slug: string,
     @Param('beneficiarySlug') beneficiarySlug: string,
@@ -87,6 +89,7 @@ export class PublicPortalController {
 
   @Post('portal/:slug/beneficiary/:beneficiarySlug/requests')
   @Public()
+  @UseGuards(PinThrottleGuard)
   submitBeneficiaryRequest(
     @Param('slug') slug: string,
     @Param('beneficiarySlug') beneficiarySlug: string,
