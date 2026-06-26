@@ -4,6 +4,7 @@ import { tStatic } from '@/lib/i18n';
 import { getDatabase } from '../lib/storage';
 import { getAuthToken } from '../lib/auth';
 import { runDeviceCheckin } from '../lib/device-checkin';
+import { markSyncResult } from '../lib/health-state';
 import { todayInRomania } from '../lib/date';
 import { mobileLogger } from '../lib/logger';
 import { broadcastNotificationRefresh } from '../lib/notification-handler';
@@ -94,6 +95,11 @@ export async function runBackgroundSyncCycle(): Promise<void> {
   // already notified are skipped, so calling unconditionally covers the case
   // where today's row was pulled in a previous session and never surfaced.
   await _notifyNewAssignments(taskAssignmentsRepo, notificationsRepo);
+
+  // Record sync freshness + last error for the self-health report.
+  void markSyncResult(
+    result.errors.length > 0 ? JSON.stringify(result.errors).slice(0, 300) : null,
+  );
 
   if (result.errors.length > 0) {
     mobileLogger.warn('Background sync finished with errors', {

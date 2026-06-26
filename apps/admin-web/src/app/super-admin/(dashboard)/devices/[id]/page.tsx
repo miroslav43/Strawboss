@@ -20,12 +20,6 @@ import {
   PackageOpen,
   Network,
   Radio,
-  BatteryCharging,
-  Battery,
-  ShieldCheck,
-  Package,
-  Tag,
-  Lock,
 } from 'lucide-react';
 import {
   useDevice,
@@ -43,6 +37,7 @@ import type {
   RemoteCommandStatus,
   RemoteCommandType,
   DeviceRemoteCommandRecord,
+  DeviceHealthReport,
 } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -665,6 +660,279 @@ function ConfirmInline({
   );
 }
 
+// ── Device health panel (rich report_state self-diagnostic) ─────────────────────
+
+type HealthTone = 'ok' | 'warn' | 'bad' | 'idle';
+
+function HealthDot({ tone }: { tone: HealthTone }) {
+  const c =
+    tone === 'ok'
+      ? 'bg-green-500'
+      : tone === 'warn'
+        ? 'bg-amber-500'
+        : tone === 'bad'
+          ? 'bg-red-500'
+          : 'bg-neutral-300';
+  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${c}`} />;
+}
+
+function HRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: React.ReactNode;
+  tone?: HealthTone;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1.5">
+      <span className="flex items-center gap-2 text-xs text-neutral-500">
+        {tone && <HealthDot tone={tone} />}
+        {label}
+      </span>
+      <span className="text-right font-mono text-xs text-neutral-800">
+        {value ?? <span className="text-neutral-300">—</span>}
+      </span>
+    </div>
+  );
+}
+
+function HSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+        {title}
+      </p>
+      <div className="divide-y divide-neutral-100">{children}</div>
+    </div>
+  );
+}
+
+function ageMin(iso: string | null): number | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  return Number.isFinite(ms) ? ms / 60_000 : null;
+}
+function rel(iso: string | null): string {
+  const m = ageMin(iso);
+  if (m == null) return '—';
+  if (m < 1) return '<1m ago';
+  if (m < 60) return `${Math.floor(m)}m ago`;
+  if (m < 1440) return `${Math.floor(m / 60)}h ago`;
+  return `${Math.floor(m / 1440)}d ago`;
+}
+function freshness(iso: string | null, warnMin: number, badMin: number): HealthTone {
+  const m = ageMin(iso);
+  if (m == null) return 'bad';
+  if (m > badMin) return 'bad';
+  if (m > warnMin) return 'warn';
+  return 'ok';
+}
+const yn = (b: boolean | null): string => (b == null ? '—' : b ? 'yes' : 'no');
+const boolTone = (b: boolean | null, good = true): HealthTone =>
+  b == null ? 'idle' : b === good ? 'ok' : 'bad';
+
+function DeviceHealthPanel({
+  state,
+  stateAt,
+}: {
+  state: DeviceHealthReport | null;
+  stateAt: string | null;
+}) {
+  if (!state) {
+    return (
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          Device health
+        </h3>
+        <p className="text-sm text-neutral-400">
+          No snapshot yet — press “Refresh state”. The device reports on its next check-in.
+        </p>
+      </div>
+    );
+  }
+  const s = state;
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          Device health
+        </h3>
+        <span className="text-xs text-neutral-400">
+          {stateAt ? `reported ${rel(stateAt)}` : ''}
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <HSection title="Session & policy">
+          <HRow
+            label="Logged in"
+            value={`${yn(s.isAuthenticated)}${s.role ? ` (${s.role})` : ''}`}
+            tone={boolTone(s.isAuthenticated)}
+          />
+          <HRow
+            label="Session expires"
+            value={s.sessionExpiresAt ? rel(s.sessionExpiresAt) : '—'}
+          />
+          <HRow label="Device owner" value={yn(s.isDeviceOwner)} tone={boolTone(s.isDeviceOwner)} />
+          <HRow
+            label="Battery-opt ignored"
+            value={yn(s.batteryOptIgnored)}
+            tone={boolTone(s.batteryOptIgnored)}
+          />
+          <HRow label="Standby bucket" value={s.standbyBucketLabel ?? '—'} />
+        </HSection>
+
+        <HSection title="Presence (keep-alive)">
+          <HRow
+            label="Presence service"
+            value={yn(s.presenceServiceRunning)}
+            tone={boolTone(s.presenceServiceRunning)}
+          />
+          <HRow
+            label="Alarm scheduled"
+            value={yn(s.presenceAlarmScheduled)}
+            tone={boolTone(s.presenceAlarmScheduled)}
+          />
+          <HRow
+            label="Alarm last fired"
+            value={rel(s.presenceAlarmLastFireAt)}
+            tone={freshness(s.presenceAlarmLastFireAt, 2, 4)}
+          />
+          <HRow
+            label="Alarm next fire"
+            value={s.presenceAlarmNextFireAt ? rel(s.presenceAlarmNextFireAt) : '—'}
+          />
+          <HRow label="BG tracking" value={yn(s.backgroundTrackingActive)} />
+        </HSection>
+
+        <HSection title="Check-in & sync">
+          <HRow
+            label="Last check-in"
+            value={rel(s.lastCheckinAt)}
+            tone={freshness(s.lastCheckinAt, 2, 5)}
+          />
+          <HRow
+            label="Last heartbeat"
+            value={rel(s.lastHeartbeatAt)}
+            tone={freshness(s.lastHeartbeatAt, 2, 5)}
+          />
+          <HRow label="Last sync" value={rel(s.lastSyncAt)} tone={freshness(s.lastSyncAt, 5, 30)} />
+          <HRow
+            label="Sync error"
+            value={s.lastSyncError ?? 'none'}
+            tone={s.lastSyncError ? 'warn' : 'ok'}
+          />
+          <HRow
+            label="Sync queue"
+            value={s.syncQueueDepth ?? '—'}
+            tone={s.syncQueueDepth != null && s.syncQueueDepth > 50 ? 'warn' : undefined}
+          />
+          <HRow
+            label="Pending GPS reports"
+            value={s.pendingLocationReports ?? '—'}
+            tone={
+              s.pendingLocationReports != null && s.pendingLocationReports > 100
+                ? 'warn'
+                : undefined
+            }
+          />
+        </HSection>
+
+        <HSection title="Location">
+          <HRow
+            label="Assigned machine"
+            value={s.assignedMachineId ? `${s.assignedMachineId.slice(0, 8)}…` : 'none'}
+          />
+          <HRow label="Last GPS report" value={rel(s.lastLocationReportAt)} />
+          <HRow
+            label="FG / BG perm"
+            value={`${s.fgLocationPermission ?? '—'} / ${s.bgLocationPermission ?? '—'}`}
+          />
+          <HRow
+            label="Speed / profile"
+            value={`${s.lastSpeedKmh != null ? `${Math.round(s.lastSpeedKmh)}km/h` : '—'} / ${
+              s.lastProfile ?? '—'
+            }`}
+          />
+        </HSection>
+
+        <HSection title="Tailscale">
+          <HRow
+            label="Installed"
+            value={yn(s.tailscaleInstalled)}
+            tone={boolTone(s.tailscaleInstalled)}
+          />
+          <HRow label="Applied state" value={s.tailscaleAppliedState ?? '—'} />
+          <HRow
+            label="Hidden (bug if yes)"
+            value={yn(s.tailscaleHidden)}
+            tone={boolTone(s.tailscaleHidden, false)}
+          />
+          <HRow
+            label="Always-on VPN"
+            value={s.alwaysOnVpnPackage ? 'set' : 'none'}
+            tone={s.alwaysOnVpnPackage ? 'ok' : 'idle'}
+          />
+        </HSection>
+
+        <HSection title="OTA & system">
+          <HRow
+            label="App version"
+            value={s.appVersion ? `${s.appVersion} (${s.versionCode ?? '?'})` : '—'}
+          />
+          <HRow
+            label="OTA mirror"
+            value={
+              s.otaMirrorState
+                ? `${s.otaMirrorState}${s.otaMirrorAttempt ? ` (try ${s.otaMirrorAttempt})` : ''}`
+                : 'idle'
+            }
+            tone={s.otaMirrorState === 'failed' ? 'bad' : undefined}
+          />
+          <HRow
+            label="Online / net"
+            value={`${yn(s.online)} / ${s.networkType ?? '—'}`}
+            tone={boolTone(s.online)}
+          />
+          <HRow
+            label="Battery"
+            value={`${s.batteryPct != null ? `${s.batteryPct}%` : '—'}${s.isCharging ? ' ⚡' : ''}`}
+            tone={s.batteryPct != null && s.batteryPct < 15 && !s.isCharging ? 'warn' : undefined}
+          />
+          <HRow
+            label="Free storage"
+            value={s.freeStorageBytes != null ? `${Math.round(s.freeStorageBytes / 1e6)} MB` : '—'}
+          />
+          <HRow label="Push token" value={yn(s.pushTokenPresent)} />
+        </HSection>
+      </div>
+
+      {s.gatherErrors.length > 0 && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+            Probe errors ({s.gatherErrors.length})
+          </p>
+          <ul className="mt-1 space-y-0.5 font-mono text-xs text-amber-800">
+            {s.gatherErrors.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs text-neutral-400 hover:text-neutral-600">
+          Raw JSON
+        </summary>
+        <pre className="mt-2 overflow-x-auto rounded-lg bg-neutral-900 p-3 text-[11px] leading-relaxed text-neutral-100">
+          {JSON.stringify(s, null, 2)}
+        </pre>
+      </details>
+    </div>
+  );
+}
+
 type ConfirmKind = 'reboot' | 'reinstall' | null;
 
 function RemotePanel({ device }: { device: ReturnType<typeof useDevice>['data'] }) {
@@ -730,16 +998,6 @@ function RemotePanel({ device }: { device: ReturnType<typeof useDevice>['data'] 
   const isBusy = sendCommand.isPending || reapplyTs.isPending;
 
   const { lastState, lastStateAt } = device;
-
-  const relativeTime = (iso: string) => {
-    const diffMs = Date.now() - new Date(iso).getTime();
-    const diffMin = Math.floor(diffMs / 60_000);
-    if (diffMin < 1) return '< 1 min ago';
-    if (diffMin < 60) return `${diffMin} min ago`;
-    const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `${diffH} h ago`;
-    return `${Math.floor(diffH / 24)} d ago`;
-  };
 
   return (
     <div className="space-y-6">
@@ -852,131 +1110,8 @@ function RemotePanel({ device }: { device: ReturnType<typeof useDevice>['data'] 
         </div>
       </div>
 
-      {/* ── Device state snapshot ── */}
-      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-            {t('superAdmin.devices.remote.stateTitle')}
-          </h3>
-          {lastStateAt && (
-            <span className="text-xs text-neutral-400">
-              {t('superAdmin.devices.remote.stateAt')}: {relativeTime(lastStateAt)}
-            </span>
-          )}
-        </div>
-
-        {!lastState ? (
-          <p className="text-sm text-neutral-400">
-            {t('superAdmin.devices.remote.stateNoSnapshot')}
-          </p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {/* Battery */}
-            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
-              {lastState.isCharging ? (
-                <BatteryCharging className="h-4 w-4 shrink-0 text-green-600" />
-              ) : (
-                <Battery className="h-4 w-4 shrink-0 text-neutral-500" />
-              )}
-              <div>
-                <p className="text-xs text-neutral-400">
-                  {t('superAdmin.devices.remote.stateBattery')}
-                </p>
-                <p className="text-sm font-medium text-neutral-800">
-                  {lastState.batteryPct != null ? `${lastState.batteryPct}%` : '—'}
-                  {lastState.isCharging && (
-                    <span className="ml-2 text-xs text-green-600">
-                      {t('superAdmin.devices.remote.stateCharging')}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-
-            {/* Device Owner */}
-            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
-              <ShieldCheck
-                className={`h-4 w-4 shrink-0 ${lastState.isDeviceOwner ? 'text-green-600' : 'text-neutral-400'}`}
-              />
-              <div>
-                <p className="text-xs text-neutral-400">
-                  {t('superAdmin.devices.remote.stateDeviceOwner')}
-                </p>
-                <p className="text-sm font-medium text-neutral-800">
-                  {lastState.isDeviceOwner ? t('common.yes') : t('common.no')}
-                </p>
-              </div>
-            </div>
-
-            {/* Tailscale installed */}
-            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
-              <Network
-                className={`h-4 w-4 shrink-0 ${lastState.tailscaleInstalled ? 'text-teal-600' : 'text-neutral-400'}`}
-              />
-              <div>
-                <p className="text-xs text-neutral-400">
-                  {t('superAdmin.devices.remote.stateTailscaleInstalled')}
-                </p>
-                <p className="text-sm font-medium text-neutral-800">
-                  {lastState.tailscaleInstalled ? t('common.yes') : t('common.no')}
-                </p>
-              </div>
-            </div>
-
-            {/* Package count */}
-            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
-              <Package className="h-4 w-4 shrink-0 text-neutral-500" />
-              <div>
-                <p className="text-xs text-neutral-400">
-                  {t('superAdmin.devices.remote.statePackageCount')}
-                </p>
-                <p className="text-sm font-medium text-neutral-800">
-                  {lastState.installedPackageCount ?? '—'}
-                </p>
-              </div>
-            </div>
-
-            {/* App version */}
-            <div className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
-              <Tag className="h-4 w-4 shrink-0 text-neutral-500" />
-              <div>
-                <p className="text-xs text-neutral-400">
-                  {t('superAdmin.devices.remote.stateAppVersion')}
-                </p>
-                <p className="text-sm font-medium text-neutral-800">
-                  {lastState.appVersion ?? '—'}
-                </p>
-              </div>
-            </div>
-
-            {/* Granted permissions */}
-            <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3 sm:col-span-2">
-              <div className="mb-2 flex items-center gap-2">
-                <Lock className="h-4 w-4 shrink-0 text-neutral-500" />
-                <p className="text-xs text-neutral-400">
-                  {t('superAdmin.devices.remote.statePermissions')}
-                </p>
-              </div>
-              {lastState.grantedPermissions.length === 0 ? (
-                <p className="text-sm text-neutral-400">
-                  {t('superAdmin.devices.remote.statePermissionsNone')}
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {lastState.grantedPermissions.map((perm) => (
-                    <span
-                      key={perm}
-                      className="rounded-full bg-neutral-200 px-2 py-0.5 font-mono text-xs text-neutral-700"
-                    >
-                      {perm.replace('android.permission.', '')}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* ── Device health snapshot ── */}
+      <DeviceHealthPanel state={lastState} stateAt={lastStateAt} />
 
       {/* ── Command history ── */}
       <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">

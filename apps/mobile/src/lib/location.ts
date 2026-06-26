@@ -601,3 +601,29 @@ export async function isBackgroundLocationTrackingActive(): Promise<boolean> {
     return false;
   }
 }
+
+/** Location/tracking subsystem snapshot for the self-health report (never throws). */
+export async function getLocationHealthSnapshot(): Promise<{
+  assignedMachineId: string | null;
+  backgroundTrackingActive: boolean;
+  lastLocationReportAt: string | null;
+  lastSpeedKmh: number | null;
+  lastProfile: string | null;
+  pendingLocationReports: number;
+}> {
+  const safe = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch {
+      return fallback;
+    }
+  };
+  return {
+    assignedMachineId: await safe(() => readMachineIdFromDisk(), null),
+    backgroundTrackingActive: await isBackgroundLocationTrackingActive(),
+    lastLocationReportAt: await readLastLocationSuccessIso(),
+    lastSpeedKmh: await safe(() => readLastSpeedKmh(), null),
+    lastProfile: await safe(() => readLastProfile(), null),
+    pendingLocationReports: await safe(async () => (await readPendingReports()).length, 0),
+  };
+}

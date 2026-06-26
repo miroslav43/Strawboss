@@ -35,6 +35,7 @@ interface DeviceOwnerNative {
   clearTailscaleManaged(): Promise<boolean>;
   deviceReboot(): Promise<boolean>;
   getDeviceState(): Promise<Record<string, unknown>>;
+  getNativeHealthExtras(): Promise<Record<string, unknown>>;
 }
 
 const native: DeviceOwnerNative | null =
@@ -351,6 +352,23 @@ export async function getDeviceState(): Promise<Record<string, unknown>> {
     return await native.getDeviceState();
   } catch (err) {
     mobileLogger.warn('getDeviceState failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return {};
+  }
+}
+
+/**
+ * Native-only diagnostics for the self-health report (PresenceService running,
+ * alarm fire times, battery-opt exemption, standby bucket, Tailscale hidden /
+ * always-on VPN, free storage). Empty object when the module is absent.
+ */
+export async function getNativeHealthExtras(): Promise<Record<string, unknown>> {
+  if (!native?.getNativeHealthExtras) return {};
+  try {
+    return await native.getNativeHealthExtras();
+  } catch (err) {
+    mobileLogger.warn('getNativeHealthExtras failed', {
       message: err instanceof Error ? err.message : String(err),
     });
     return {};

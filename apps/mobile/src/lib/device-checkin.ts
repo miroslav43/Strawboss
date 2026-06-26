@@ -45,6 +45,7 @@ import { uploadTodayMobileLogs } from '../sync/mobile-log-upload';
 import { mobileApiClient } from './api-client';
 import { getDatabase } from './storage';
 import { TripsRepo } from '../db/trips-repo';
+import { markCheckinSuccess } from './health-state';
 import { mobileLogger } from './logger';
 
 // ---------------------------------------------------------------------------
@@ -418,9 +419,20 @@ async function handleRemoteCommand(cmd: DeviceRemoteCommand): Promise<void> {
   try {
     switch (cmd.type) {
       case 'report_state': {
-        const state = await getDeviceState();
-        // The native side returns the OS version; report the real APP version instead.
-        result = { ...state, appVersion: Constants.expoConfig?.version ?? null };
+        // Lazy import to avoid a static import cycle (health-report → location →
+        // run-background-sync → device-checkin). Returns a comprehensive
+        // DeviceHealthReport; falls back to the legacy device-state snapshot.
+        try {
+          const { gatherHealthReport } = await import('./health-report');
+          result = (await gatherHealthReport()) as unknown as Record<string, unknown>;
+        } catch (err) {
+          const state = await getDeviceState();
+          result = {
+            ...state,
+            appVersion: Constants.expoConfig?.version ?? null,
+            healthReportError: err instanceof Error ? err.message : String(err),
+          };
+        }
         success = true;
         mobileLogger.flow('Fleet: report_state command executed', { commandId });
         break;
@@ -792,6 +804,9 @@ export function runDeviceCheckin(): Promise<void> {
         '/api/v1/fleet/checkin',
         body,
       );
+
+      // Record check-in freshness for the self-health report.
+      void markCheckinSuccess();
 
       // Persist a newly issued device token
       if (response.deviceTokenIssued) {

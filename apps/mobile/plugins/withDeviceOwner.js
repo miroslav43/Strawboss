@@ -263,9 +263,13 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
+import android.app.ActivityManager
+import android.app.usage.UsageStatsManager
 import android.graphics.Color
 import android.os.BatteryManager
 import android.os.Build
+import android.os.PowerManager
+import android.os.StatFs
 import android.provider.Settings
 import android.util.Log
 import com.facebook.react.bridge.Arguments
@@ -319,6 +323,73 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
   fun stopPresenceService(promise: Promise) {
     try { PresenceService.stop(ctx); promise.resolve(true) }
     catch (t: Throwable) { promise.reject("DO_PRESENCE_STOP", t) }
+  }
+
+  /**
+   * Native-only diagnostics for the self-health report (read by JS gatherHealthReport).
+   * Each probe is independently guarded; a failure leaves that field null, never throws.
+   */
+  @ReactMethod
+  fun getNativeHealthExtras(promise: Promise) {
+    val map = Arguments.createMap()
+
+    // PresenceService running? On O+ getRunningServices returns only our own services.
+    try {
+      val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+      @Suppress("DEPRECATION")
+      val running = am.getRunningServices(Int.MAX_VALUE).any {
+        it.service.className == PresenceService::class.java.name
+      }
+      map.putBoolean("presenceServiceRunning", running)
+    } catch (t: Throwable) { map.putNull("presenceServiceRunning") }
+
+    // Presence alarm next/last fire timestamps (epoch ms; written by PresenceAlarm).
+    try {
+      val p = ctx.getSharedPreferences(PresenceAlarm.PREFS, Context.MODE_PRIVATE)
+      val next = p.getLong(PresenceAlarm.KEY_NEXT_FIRE, 0L)
+      val last = p.getLong(PresenceAlarm.KEY_LAST_FIRE, 0L)
+      if (next > 0L) map.putDouble("presenceAlarmNextFireAt", next.toDouble())
+      else map.putNull("presenceAlarmNextFireAt")
+      if (last > 0L) map.putDouble("presenceAlarmLastFireAt", last.toDouble())
+      else map.putNull("presenceAlarmLastFireAt")
+    } catch (t: Throwable) {
+      map.putNull("presenceAlarmNextFireAt"); map.putNull("presenceAlarmLastFireAt")
+    }
+
+    // Battery-optimization exemption.
+    try {
+      val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
+      map.putBoolean("batteryOptIgnored", pm.isIgnoringBatteryOptimizations(ctx.packageName))
+    } catch (t: Throwable) { map.putNull("batteryOptIgnored") }
+
+    // App standby bucket (API 28+).
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        map.putInt("standbyBucket", usm.appStandbyBucket)
+      } else map.putNull("standbyBucket")
+    } catch (t: Throwable) { map.putNull("standbyBucket") }
+
+    // Tailscale hidden + always-on VPN package (device-owner policy state).
+    try {
+      val dpm = DeviceOwnerPolicies.dpm(ctx)
+      val admin = DeviceOwnerPolicies.admin(ctx)
+      if (DeviceOwnerPolicies.isDeviceOwner(ctx)) {
+        map.putBoolean("tailscaleHidden", dpm.isApplicationHidden(admin, "com.tailscale.ipn"))
+        val aov = dpm.getAlwaysOnVpnPackage(admin)
+        if (aov != null) map.putString("alwaysOnVpnPackage", aov) else map.putNull("alwaysOnVpnPackage")
+      } else {
+        map.putNull("tailscaleHidden"); map.putNull("alwaysOnVpnPackage")
+      }
+    } catch (t: Throwable) { map.putNull("tailscaleHidden"); map.putNull("alwaysOnVpnPackage") }
+
+    // Free internal storage.
+    try {
+      val stat = StatFs(ctx.filesDir.absolutePath)
+      map.putDouble("freeStorageBytes", (stat.availableBlocksLong * stat.blockSizeLong).toDouble())
+    } catch (t: Throwable) { map.putNull("freeStorageBytes") }
+
+    promise.resolve(map)
   }
 
   /**
@@ -894,6 +965,9 @@ import com.facebook.react.HeadlessJsTaskService
  */
 class PresenceAlarmReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
+    // Record that the tick actually fired — the health report reads this to prove
+    // the 60s presence alarm is alive (vs scheduled-but-never-firing).
+    PresenceAlarm.recordFire(context)
     try {
       // Hold the CPU until the headless service is up (per RN HeadlessJsTaskService).
       HeadlessJsTaskService.acquireWakeLockNow(context)
@@ -919,6 +993,19 @@ class PresenceAlarmReceiver : BroadcastReceiver() {
 object PresenceAlarm {
   private const val INTERVAL_MS = 60_000L
   private const val REQUEST_CODE = 778899
+  const val PREFS = "strawboss_presence"
+  const val KEY_NEXT_FIRE = "presence_alarm_next_fire"
+  const val KEY_LAST_FIRE = "presence_alarm_last_fire"
+
+  private fun prefs(context: Context) =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+  /** Stamp the moment the alarm actually fired (read by the health report). */
+  fun recordFire(context: Context) {
+    try {
+      prefs(context).edit().putLong(KEY_LAST_FIRE, System.currentTimeMillis()).apply()
+    } catch (t: Throwable) { /* best-effort */ }
+  }
 
   private fun pendingIntent(context: Context): PendingIntent {
     val i = Intent(context, PresenceAlarmReceiver::class.java)
@@ -934,6 +1021,9 @@ object PresenceAlarm {
       val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
       val triggerAt = System.currentTimeMillis() + INTERVAL_MS
       val pi = pendingIntent(context)
+      try {
+        prefs(context).edit().putLong(KEY_NEXT_FIRE, triggerAt).apply()
+      } catch (t: Throwable) { /* best-effort */ }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         try {
           am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)

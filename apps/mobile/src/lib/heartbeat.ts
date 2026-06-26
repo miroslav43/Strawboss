@@ -1,4 +1,5 @@
 import { mobileApiClient } from './api-client';
+import { markHeartbeatSuccess } from './health-state';
 
 /**
  * Plan C — mobile presence heartbeat.
@@ -20,6 +21,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
  */
 export async function sendHeartbeatOnce(): Promise<void> {
   await mobileApiClient.post('/api/v1/profile/heartbeat', {});
+  void markHeartbeatSuccess();
 }
 
 async function ping() {

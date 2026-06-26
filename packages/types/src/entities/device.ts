@@ -79,8 +79,8 @@ export interface Device extends Timestamps, SoftDelete {
   tailscaleLastSeen: string | null;
   /** Best-effort reason the last tailscale command failed (device-reported). */
   tailscaleLastError: string | null;
-  /** Latest device-reported state snapshot (from a `report_state` remote command). */
-  lastState: DeviceState | null;
+  /** Latest device-reported health snapshot (from a `report_state` remote command). */
+  lastState: DeviceHealthReport | null;
   lastStateAt: string | null;
 }
 
@@ -234,6 +234,95 @@ export interface DeviceRemoteCommandRecord extends Timestamps {
   sentAt: string | null;
   completedAt: string | null;
   createdBy: string | null;
+}
+
+/**
+ * Comprehensive device self-diagnostic, returned as the `result` of a
+ * `report_state` remote command. Every field is best-effort: a probe that throws
+ * is recorded in `gatherErrors` and its field left null/absent rather than
+ * failing the whole report. Used by the super-admin "Device Health" panel to
+ * diagnose why a phone is offline / not behaving, without needing adb.
+ */
+export interface DeviceHealthReport {
+  /** ISO timestamp the report was generated on-device (compare vs server to detect clock skew). */
+  reportAt: string;
+  /** Process uptime in ms (low value ⇒ app recently (re)started/crashed). */
+  appUptimeMs: number | null;
+
+  // ── Version ──
+  appVersion: string | null;
+  versionCode: number | null;
+  buildProfile: 'release' | 'debug' | null;
+
+  // ── Auth / session ──
+  isAuthenticated: boolean;
+  userId: string | null;
+  role: string | null;
+  /** Access-token expiry (ISO); past ⇒ session expired, requests will 401. */
+  sessionExpiresAt: string | null;
+
+  // ── Device owner / OS power policy ──
+  isDeviceOwner: boolean;
+  /** PowerManager.isIgnoringBatteryOptimizations — false ⇒ Doze can throttle us. */
+  batteryOptIgnored: boolean | null;
+  /** UsageStatsManager standby bucket (10=rare … 45=restricted; lower=worse). */
+  standbyBucket: number | null;
+  standbyBucketLabel: string | null;
+
+  // ── Presence keep-alive (the alarm → headless check-in) ──
+  presenceServiceRunning: boolean | null;
+  presenceAlarmScheduled: boolean | null;
+  /** Epoch ms the alarm is next set to fire. */
+  presenceAlarmNextFireAt: string | null;
+  /** Epoch ms the alarm last actually fired (proves the 60s tick is alive). */
+  presenceAlarmLastFireAt: string | null;
+  backgroundTrackingActive: boolean | null;
+
+  // ── Check-in / sync freshness ──
+  lastCheckinAt: string | null;
+  lastHeartbeatAt: string | null;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  syncQueueDepth: number | null;
+  pendingLocationReports: number | null;
+
+  // ── Location / tracking ──
+  assignedMachineId: string | null;
+  lastLocationReportAt: string | null;
+  fgLocationPermission: string | null;
+  bgLocationPermission: string | null;
+  lastSpeedKmh: number | null;
+  lastProfile: string | null;
+
+  // ── Tailscale ──
+  tailscaleInstalled: boolean | null;
+  tailscaleAppliedState: 'up' | 'down' | null;
+  /** DPM isApplicationHidden(com.tailscale.ipn) — true ⇒ VPN can't run (the hide bug). */
+  tailscaleHidden: boolean | null;
+  alwaysOnVpnPackage: string | null;
+
+  // ── OTA ──
+  otaMirrorState: string | null;
+  otaMirrorDeploymentId: string | null;
+  otaMirrorAttempt: number | null;
+
+  // ── Connectivity / system ──
+  online: boolean | null;
+  networkType: string | null;
+  batteryPct: number | null;
+  isCharging: boolean | null;
+  freeStorageBytes: number | null;
+  model: string | null;
+  manufacturer: string | null;
+  osVersion: string | null;
+  androidId: string | null;
+
+  // ── Notifications ──
+  pushTokenPresent: boolean;
+  notificationPermission: string | null;
+
+  /** Names of sub-probes that threw while gathering (for debugging the diagnostic itself). */
+  gatherErrors: string[];
 }
 
 /** Device → backend. Public endpoint; `deviceToken` proves identity after the first
