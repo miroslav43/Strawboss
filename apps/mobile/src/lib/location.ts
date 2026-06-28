@@ -7,7 +7,7 @@ import { AppState, Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
-import { ApiClient } from '@strawboss/api';
+import { ApiClient, ApiError } from '@strawboss/api';
 import type { LocationReportDto } from '@strawboss/types';
 import { getAuthToken } from './auth';
 import { mobileLogger } from './logger';
@@ -203,6 +203,26 @@ async function postLocationReport(report: LocationReportDto): Promise<void> {
   await locationApiClient.post<void>('/api/v1/location/report', report);
 }
 
+/**
+ * A location report rejected with a permanent client error (4xx, excluding
+ * auth/throttle) will fail identically on every retry — so re-queueing it just
+ * re-floods the server. This is the "Machine not found in your organization"
+ * 400 storm: a stale/cross-org `machineId` posted ~11×/s for hours because the
+ * outbox kept re-flushing it. Drop such reports and surface the misconfig;
+ * keep retrying only genuinely transient failures (offline/network, 5xx, 401
+ * after refresh, 408, 429) so a real position is never lost.
+ */
+function isPermanentReportError(err: unknown): err is ApiError {
+  return (
+    err instanceof ApiError &&
+    err.status >= 400 &&
+    err.status < 500 &&
+    err.status !== 401 &&
+    err.status !== 408 &&
+    err.status !== 429
+  );
+}
+
 /** Retry outbox after failed background POSTs (e.g. offline / 401). */
 export async function flushPendingLocationReports(): Promise<void> {
   const pending = await readPendingReports();
@@ -213,7 +233,15 @@ export async function flushPendingLocationReports(): Promise<void> {
     try {
       await postLocationReport(report);
       await writeLastSuccessTimestamp();
-    } catch {
+    } catch (err) {
+      if (isPermanentReportError(err)) {
+        mobileLogger.warn('Location report dropped from outbox (permanent 4xx)', {
+          status: err.status,
+          machineId: report.machineId,
+          message: err.message,
+        });
+        continue; // drop — re-queueing a permanent failure just re-floods the server
+      }
       remaining.push(report);
     }
   }
@@ -232,6 +260,14 @@ export async function postCurrentLocationNow(machineId: string): Promise<void> {
     await postLocationReport(report);
     await writeLastSuccessTimestamp();
   } catch (err) {
+    if (isPermanentReportError(err)) {
+      mobileLogger.warn('Location report dropped (foreground ping, permanent 4xx)', {
+        status: err.status,
+        machineId,
+        message: err.message,
+      });
+      return;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     mobileLogger.warn('Location report failed (foreground ping), queued for retry', {
       machineId,
@@ -346,6 +382,14 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
         speedKmh,
       });
     } catch (err) {
+      if (isPermanentReportError(err)) {
+        mobileLogger.warn('Location report dropped (background, permanent 4xx)', {
+          status: err.status,
+          machineId,
+          message: err.message,
+        });
+        continue; // drop — re-queueing a permanent failure just re-floods the server
+      }
       const msg = err instanceof Error ? err.message : String(err);
       mobileLogger.warn('Location report failed (background), queued for retry', {
         machineId,
