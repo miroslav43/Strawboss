@@ -270,10 +270,36 @@ export interface DeviceHealthReport {
   standbyBucketLabel: string | null;
   /**
    * OEM proprietary power-management packages found on this ROM (Honor/Huawei
-   * "PowerGenie" lineage) and whether the device owner has hidden each. Empty
-   * array = none present (so the freeze, if any, is some other mechanism).
+   * "PowerGenie" lineage) and whether the device owner has hidden/disabled each.
+   * Empty array = none present (so the freeze, if any, is some other mechanism).
    */
-  oemPowerPackages: { pkg: string; hidden: boolean | null }[] | null;
+  oemPowerPackages: { pkg: string; hidden: boolean | null; enabled: boolean | null }[] | null;
+  /**
+   * Why the app process was recently killed (newest first) — the OEM-freeze smoking
+   * gun. `reasonLabel` e.g. 'user_requested'/'other' (force-stop, e.g. PowerGenie),
+   * 'freezer', 'low_memory', 'crash', 'anr'. `importance` is the importance at death.
+   */
+  recentExitReasons:
+    | {
+        reason: number;
+        reasonLabel: string;
+        timestamp: string | null;
+        importance: number;
+        description: string | null;
+      }[]
+    | null;
+  /** PowerManager.isPowerSaveMode — battery saver active. */
+  powerSaveMode: boolean | null;
+  /** PowerManager.isDeviceIdleMode — device in Doze at report time. */
+  deviceIdleMode: boolean | null;
+  /** AlarmManager.canScheduleExactAlarms — false ⇒ the 60s presence alarm can't fire. */
+  canScheduleExactAlarms: boolean | null;
+  /** Our own process importance (125=foreground-service, 400=cached ⇒ about to be reaped). */
+  processImportance: number | null;
+  /** Class names of our foreground services currently alive (PresenceService, location FGS). */
+  runningForegroundServices: string[] | null;
+  /** SystemClock.elapsedRealtime ms — compare with appUptimeMs to tell a reboot from a restart. */
+  systemUptimeMs: number | null;
 
   // ── Presence keep-alive (the alarm → headless check-in) ──
   presenceServiceRunning: boolean | null;

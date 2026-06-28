@@ -63,6 +63,48 @@ function standbyBucketLabel(b: number | null): string | null {
   }
 }
 
+/** Android ApplicationExitInfo.reason codes → human label. */
+function exitReasonLabel(r: number): string {
+  switch (r) {
+    case 0:
+      return 'unknown';
+    case 1:
+      return 'exit_self';
+    case 2:
+      return 'signaled';
+    case 3:
+      return 'low_memory';
+    case 4:
+      return 'crash';
+    case 5:
+      return 'crash_native';
+    case 6:
+      return 'anr';
+    case 7:
+      return 'init_failure';
+    case 8:
+      return 'permission_change';
+    case 9:
+      return 'excessive_resource';
+    case 10:
+      return 'user_requested';
+    case 11:
+      return 'user_stopped';
+    case 12:
+      return 'dependency_died';
+    case 13:
+      return 'other';
+    case 14:
+      return 'freezer';
+    case 15:
+      return 'package_state_change';
+    case 16:
+      return 'package_updated';
+    default:
+      return `reason_${r}`;
+  }
+}
+
 export async function gatherHealthReport(): Promise<DeviceHealthReport> {
   const gatherErrors: string[] = [];
   async function run<T>(name: string, fn: () => Promise<T>, fallback: T): Promise<T> {
@@ -214,6 +256,30 @@ export async function gatherHealthReport(): Promise<DeviceHealthReport> {
     oemPowerPackages: Array.isArray(nx.oemPowerPackages)
       ? (nx.oemPowerPackages as DeviceHealthReport['oemPowerPackages'])
       : null,
+    recentExitReasons: Array.isArray(nx.recentExitReasons)
+      ? (
+          nx.recentExitReasons as {
+            reason: number;
+            timestamp: number;
+            importance: number;
+            description: string | null;
+          }[]
+        ).map((r) => ({
+          reason: r.reason,
+          reasonLabel: exitReasonLabel(r.reason),
+          timestamp: epochToIso(r.timestamp),
+          importance: r.importance,
+          description: r.description ?? null,
+        }))
+      : null,
+    powerSaveMode: boolOrNull(nx.powerSaveMode),
+    deviceIdleMode: boolOrNull(nx.deviceIdleMode),
+    canScheduleExactAlarms: boolOrNull(nx.canScheduleExactAlarms),
+    processImportance: numOrNull(nx.processImportance),
+    runningForegroundServices: Array.isArray(nx.runningForegroundServices)
+      ? (nx.runningForegroundServices as string[])
+      : null,
+    systemUptimeMs: numOrNull(nx.systemUptimeMs),
 
     presenceServiceRunning: boolOrNull(nx.presenceServiceRunning),
     presenceAlarmScheduled: hasAlarmKey ? nx.presenceAlarmNextFireAt != null : null,

@@ -733,6 +733,28 @@ const yn = (b: boolean | null): string => (b == null ? '—' : b ? 'yes' : 'no')
 const boolTone = (b: boolean | null, good = true): HealthTone =>
   b == null ? 'idle' : b === good ? 'ok' : 'bad';
 
+/** RunningAppProcessInfo.importance → label (lower = more important; >230 ⇒ demoted). */
+function importanceLabel(n: number | null): string {
+  if (n == null) return '—';
+  const m: Record<number, string> = {
+    100: 'foreground',
+    125: 'foreground_service',
+    200: 'visible',
+    230: 'perceptible',
+    300: 'service',
+    400: 'cached',
+  };
+  return m[n] ?? `imp ${n}`;
+}
+
+/** ms → compact duration (e.g. 92m, 3h7m). */
+function durMs(ms: number | null): string {
+  if (ms == null) return '—';
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}h${min % 60}m`;
+}
+
 function DeviceHealthPanel({
   state,
   stateAt,
@@ -910,6 +932,71 @@ function DeviceHealthPanel({
           />
           <HRow label="Push token" value={yn(s.pushTokenPresent)} />
         </HSection>
+
+        <HSection title="Power & process">
+          <HRow
+            label="Power-save mode"
+            value={yn(s.powerSaveMode)}
+            tone={boolTone(s.powerSaveMode, false)}
+          />
+          <HRow label="Doze (idle) now" value={yn(s.deviceIdleMode)} />
+          <HRow
+            label="Exact alarms allowed"
+            value={yn(s.canScheduleExactAlarms)}
+            tone={boolTone(s.canScheduleExactAlarms)}
+          />
+          <HRow
+            label="Process importance"
+            value={importanceLabel(s.processImportance)}
+            tone={s.processImportance != null && s.processImportance > 230 ? 'warn' : undefined}
+          />
+          <HRow
+            label="FG services alive"
+            value={
+              Array.isArray(s.runningForegroundServices)
+                ? String(s.runningForegroundServices.length)
+                : '—'
+            }
+          />
+          <HRow
+            label="Uptime (sys / app)"
+            value={`${durMs(s.systemUptimeMs)} / ${durMs(s.appUptimeMs)}`}
+          />
+        </HSection>
+
+        {Array.isArray(s.oemPowerPackages) && s.oemPowerPackages.length > 0 && (
+          <HSection title="OEM power packages">
+            {s.oemPowerPackages.map((p) => (
+              <HRow
+                key={p.pkg}
+                label={p.pkg.replace(/^com\./, '')}
+                value={p.hidden ? 'hidden' : p.enabled === false ? 'disabled' : 'ACTIVE'}
+                tone={p.hidden || p.enabled === false ? 'ok' : 'bad'}
+              />
+            ))}
+          </HSection>
+        )}
+
+        {Array.isArray(s.recentExitReasons) && s.recentExitReasons.length > 0 && (
+          <HSection title="Recent process deaths">
+            {s.recentExitReasons.map((r, i) => (
+              <HRow
+                key={i}
+                label={r.timestamp ? rel(r.timestamp) : `#${i}`}
+                value={r.reasonLabel}
+                tone={
+                  r.reasonLabel === 'user_requested' ||
+                  r.reasonLabel === 'other' ||
+                  r.reasonLabel === 'freezer'
+                    ? 'bad'
+                    : r.reasonLabel === 'crash' || r.reasonLabel === 'anr'
+                      ? 'warn'
+                      : undefined
+                }
+              />
+            ))}
+          </HSection>
+        )}
       </div>
 
       {gatherErrors.length > 0 && (

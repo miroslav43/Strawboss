@@ -426,16 +426,22 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
     } catch (t: Throwable) { map.putNull("freeStorageBytes") }
 
     // OEM power-management packages present on this ROM + whether device-owner has
-    // hidden them. Confirms remotely which killer (PowerGenie/hwaps/…) lives on
-    // these phones and that the disarm took — no adb needed.
+    // hidden/disabled each. Confirms remotely which killer (PowerGenie/hwaps/…)
+    // lives on these phones and that the disarm took — no adb needed. Broad match
+    // so a renamed MagicOS component still surfaces (we only auto-hide the narrow
+    // OEM_KILLER_PATTERNS; this list is wider, for visibility only).
     try {
       val dpm = DeviceOwnerPolicies.dpm(ctx)
       val admin = DeviceOwnerPolicies.admin(ctx)
       val isOwner = DeviceOwnerPolicies.isDeviceOwner(ctx)
+      val pmgr = ctx.packageManager
       val arr = Arguments.createArray()
-      val patterns = listOf("powergenie", "hwaps", "hwpfw", "hwpowergenie", "powermonitor")
+      val patterns = listOf(
+        "powergenie", "hwaps", "hwpfw", "hwpowergenie", "powermonitor",
+        "iaware", "freezer", "appfreeze", "smartpower", "hnframe"
+      )
       @Suppress("DEPRECATION")
-      for (info in ctx.packageManager.getInstalledPackages(0)) {
+      for (info in pmgr.getInstalledPackages(0)) {
         val lower = info.packageName.lowercase()
         if (patterns.any { lower.contains(it) }) {
           val entry = Arguments.createMap()
@@ -444,11 +450,79 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
             try { entry.putBoolean("hidden", dpm.isApplicationHidden(admin, info.packageName)) }
             catch (t: Throwable) { entry.putNull("hidden") }
           } else entry.putNull("hidden")
+          try {
+            // 0=DEFAULT,1=ENABLED count as enabled; 2/3/4 are DISABLED variants.
+            val es = pmgr.getApplicationEnabledSetting(info.packageName)
+            entry.putBoolean("enabled", es == 0 || es == 1)
+          } catch (t: Throwable) { entry.putNull("enabled") }
           arr.pushMap(entry)
         }
       }
       map.putArray("oemPowerPackages", arr)
     } catch (t: Throwable) { map.putNull("oemPowerPackages") }
+
+    // Why the app process was last killed — the smoking gun for OEM freeze/force-stop.
+    // reason: 10=USER_REQUESTED (force-stop, e.g. PowerGenie), 13=OTHER, 14=FREEZER,
+    // 3=LOW_MEMORY, 6=ANR, 4=CRASH, 5=CRASH_NATIVE. Historical, so even a fresh
+    // process carries the record of how it died last time. (API 30+.)
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val arr2 = Arguments.createArray()
+        for (r in am.getHistoricalProcessExitReasons(ctx.packageName, 0, 6)) {
+          val e = Arguments.createMap()
+          e.putInt("reason", r.reason)
+          e.putDouble("timestamp", r.timestamp.toDouble())
+          e.putInt("importance", r.importance)
+          val d = r.description
+          if (d != null) e.putString("description", d) else e.putNull("description")
+          arr2.pushMap(e)
+        }
+        map.putArray("recentExitReasons", arr2)
+      } else map.putNull("recentExitReasons")
+    } catch (t: Throwable) { map.putNull("recentExitReasons") }
+
+    // Live power / Doze state + exact-alarm capability (a revoked exact-alarm
+    // permission silently kills the 60s presence tick).
+    try {
+      val pmw = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
+      map.putBoolean("powerSaveMode", pmw.isPowerSaveMode)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) map.putBoolean("deviceIdleMode", pmw.isDeviceIdleMode)
+      else map.putNull("deviceIdleMode")
+    } catch (t: Throwable) { map.putNull("powerSaveMode"); map.putNull("deviceIdleMode") }
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val alm = ctx.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        map.putBoolean("canScheduleExactAlarms", alm.canScheduleExactAlarms())
+      } else map.putBoolean("canScheduleExactAlarms", true)
+    } catch (t: Throwable) { map.putNull("canScheduleExactAlarms") }
+
+    // Our own process importance (125=FGS, 400=cached ⇒ about to be reaped) + the
+    // foreground services actually alive, and system uptime (vs appUptimeMs) to
+    // tell a reboot from an app-only restart.
+    try {
+      val amp = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+      val myPid = android.os.Process.myPid()
+      var imp = -1
+      @Suppress("DEPRECATION")
+      val procs = amp.runningAppProcesses
+      if (procs != null) {
+        for (p in procs) { if (p.pid == myPid) { imp = p.importance; break } }
+      }
+      if (imp >= 0) map.putInt("processImportance", imp) else map.putNull("processImportance")
+    } catch (t: Throwable) { map.putNull("processImportance") }
+    try {
+      val ams = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+      val svc = Arguments.createArray()
+      @Suppress("DEPRECATION")
+      for (s in ams.getRunningServices(Int.MAX_VALUE)) {
+        if (s.foreground) svc.pushString(s.service.className)
+      }
+      map.putArray("runningForegroundServices", svc)
+    } catch (t: Throwable) { map.putNull("runningForegroundServices") }
+    try {
+      map.putDouble("systemUptimeMs", android.os.SystemClock.elapsedRealtime().toDouble())
+    } catch (t: Throwable) { map.putNull("systemUptimeMs") }
 
     promise.resolve(map)
   }
