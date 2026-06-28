@@ -268,6 +268,12 @@ export interface DeviceHealthReport {
   /** UsageStatsManager standby bucket (10=rare … 45=restricted; lower=worse). */
   standbyBucket: number | null;
   standbyBucketLabel: string | null;
+  /**
+   * OEM proprietary power-management packages found on this ROM (Honor/Huawei
+   * "PowerGenie" lineage) and whether the device owner has hidden each. Empty
+   * array = none present (so the freeze, if any, is some other mechanism).
+   */
+  oemPowerPackages: { pkg: string; hidden: boolean | null }[] | null;
 
   // ── Presence keep-alive (the alarm → headless check-in) ──
   presenceServiceRunning: boolean | null;

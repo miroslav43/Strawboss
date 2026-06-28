@@ -211,6 +211,9 @@ export async function gatherHealthReport(): Promise<DeviceHealthReport> {
     batteryOptIgnored: boolOrNull(nx.batteryOptIgnored),
     standbyBucket,
     standbyBucketLabel: standbyBucketLabel(standbyBucket),
+    oemPowerPackages: Array.isArray(nx.oemPowerPackages)
+      ? (nx.oemPowerPackages as DeviceHealthReport['oemPowerPackages'])
+      : null,
 
     presenceServiceRunning: boolOrNull(nx.presenceServiceRunning),
     presenceAlarmScheduled: hasAlarmKey ? nx.presenceAlarmNextFireAt != null : null,

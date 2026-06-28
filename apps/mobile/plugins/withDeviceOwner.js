@@ -87,6 +87,13 @@ object DeviceOwnerPolicies {
   private const val TAG = "StrawbossDO"
   const val PKG = "${PACKAGE}"
 
+  // OEM proprietary background-killer packages (Honor/Huawei "PowerGenie" lineage).
+  // They force-stop background apps IGNORING the battery-opt exemption and the
+  // EXEMPT standby bucket, so they are the last thing taking our device-owner
+  // phones offline on MagicOS. Matched by substring (names vary across
+  // EMUI/MagicOS/hihonor builds) and hidden as device owner; reversible via release().
+  val OEM_KILLER_PATTERNS = listOf("powergenie", "hwaps", "hwpfw")
+
   /**
    * Every dangerous permission StrawBoss declares that we auto-grant. Sensor-
    * grouped permissions (location/camera) are grantable by a DEVICE owner only;
@@ -165,6 +172,24 @@ object DeviceOwnerPolicies {
       }
     } catch (t: Throwable) { Log.w(TAG, "battery exemption request failed", t) }
 
+    // 7. Disarm OEM proprietary background killers (PowerGenie et al.) — the only
+    //    thing still freezing us once battery-opt + standby are already exempt. As
+    //    a device owner we can see every installed package and hide system apps;
+    //    hiding (not uninstalling) is reversible via release(). Best-effort.
+    try {
+      @Suppress("DEPRECATION")
+      val installed = context.packageManager.getInstalledPackages(0)
+      for (info in installed) {
+        val lower = info.packageName.lowercase()
+        if (OEM_KILLER_PATTERNS.any { lower.contains(it) }) {
+          try {
+            dpm.setApplicationHidden(admin, info.packageName, true)
+            Log.w(TAG, "Disarmed OEM background-killer: " + info.packageName)
+          } catch (t: Throwable) { Log.w(TAG, "hide killer failed: " + info.packageName, t) }
+        }
+      }
+    } catch (t: Throwable) { Log.w(TAG, "OEM killer scan failed", t) }
+
     Log.i(TAG, "Device owner policies applied")
     // NOTE: background-activity-start is automatically allowed for a device owner —
     // GeofenceAlertActivity can be started from the background GPS task with no
@@ -184,6 +209,17 @@ object DeviceOwnerPolicies {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       try { dpm.setUserControlDisabledPackages(admin, emptyList()) } catch (t: Throwable) {}
     }
+    // Un-hide any OEM killer packages we disarmed in applyAll, so a decommissioned
+    // phone returns to stock power management.
+    try {
+      @Suppress("DEPRECATION")
+      for (info in context.packageManager.getInstalledPackages(0)) {
+        val lower = info.packageName.lowercase()
+        if (OEM_KILLER_PATTERNS.any { lower.contains(it) }) {
+          try { dpm.setApplicationHidden(admin, info.packageName, false) } catch (t: Throwable) {}
+        }
+      }
+    } catch (t: Throwable) {}
     try { dpm.clearUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT) } catch (t: Throwable) {}
     try {
       dpm.setPermissionPolicy(admin, DevicePolicyManager.PERMISSION_POLICY_PROMPT)
@@ -388,6 +424,31 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
       val stat = StatFs(ctx.filesDir.absolutePath)
       map.putDouble("freeStorageBytes", (stat.availableBlocksLong * stat.blockSizeLong).toDouble())
     } catch (t: Throwable) { map.putNull("freeStorageBytes") }
+
+    // OEM power-management packages present on this ROM + whether device-owner has
+    // hidden them. Confirms remotely which killer (PowerGenie/hwaps/…) lives on
+    // these phones and that the disarm took — no adb needed.
+    try {
+      val dpm = DeviceOwnerPolicies.dpm(ctx)
+      val admin = DeviceOwnerPolicies.admin(ctx)
+      val isOwner = DeviceOwnerPolicies.isDeviceOwner(ctx)
+      val arr = Arguments.createArray()
+      val patterns = listOf("powergenie", "hwaps", "hwpfw", "hwpowergenie", "powermonitor")
+      @Suppress("DEPRECATION")
+      for (info in ctx.packageManager.getInstalledPackages(0)) {
+        val lower = info.packageName.lowercase()
+        if (patterns.any { lower.contains(it) }) {
+          val entry = Arguments.createMap()
+          entry.putString("pkg", info.packageName)
+          if (isOwner) {
+            try { entry.putBoolean("hidden", dpm.isApplicationHidden(admin, info.packageName)) }
+            catch (t: Throwable) { entry.putNull("hidden") }
+          } else entry.putNull("hidden")
+          arr.pushMap(entry)
+        }
+      }
+      map.putArray("oemPowerPackages", arr)
+    } catch (t: Throwable) { map.putNull("oemPowerPackages") }
 
     promise.resolve(map)
   }
