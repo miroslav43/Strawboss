@@ -13,6 +13,7 @@ import { getAuthToken } from './auth';
 import { mobileLogger } from './logger';
 import { runBackgroundSyncCycle } from '../sync/run-background-sync';
 import { maybeRaiseGeofenceWake } from './geofence-wake';
+import { runDeviceCheckin } from './device-checkin';
 
 export type { LocationSubscription } from 'expo-location';
 
@@ -375,6 +376,39 @@ async function maybePiggybackSync(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Device check-in piggybacked on the location foreground service
+// ---------------------------------------------------------------------------
+// Presence/online normally rides a native AlarmManager tick, but aggressive OEM
+// ROMs (Samsung One UI, HONOR) THROTTLE that exact-while-idle alarm in Doze to
+// ~once per 9 min even for a battery-opt-exempt Device Owner — so the device dot
+// flaps offline with the screen off. Empirically (Galaxy S25 soak), the location
+// foreground service is the ONE background path One UI keeps alive: GPS posted
+// every ~20 s for 10 min screen-off while the alarm was frozen 8.5 min. So we run
+// the FULL fleet check-in (device last_seen + Tailscale/OTA/remote-command
+// delivery) from here too, throttled to ~55 s. Fire-and-forget + re-entrancy
+// guarded so it can never delay or break GPS posting.
+let checkinInFlight = false;
+let lastCheckinAtMs = 0;
+const PIGGYBACK_CHECKIN_MIN_INTERVAL_MS = 55_000;
+
+async function maybePresenceCheckin(): Promise<void> {
+  if (checkinInFlight) return;
+  const now = Date.now();
+  if (now - lastCheckinAtMs < PIGGYBACK_CHECKIN_MIN_INTERVAL_MS) return;
+  checkinInFlight = true;
+  lastCheckinAtMs = now;
+  try {
+    await runDeviceCheckin();
+  } catch (err) {
+    mobileLogger.warn('Piggyback checkin failed (isolated)', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    checkinInFlight = false;
+  }
+}
+
 TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
   const { data, error } = taskBody;
   if (error) {
@@ -389,9 +423,14 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
 
   await flushPendingLocationReports();
 
+  // Presence/online rides the location foreground service here (the Doze-proof
+  // path on Samsung/HONOR) — placed BEFORE the no-machine early-return so the
+  // device keeps checking in even in keep-alive mode. Throttled + fire-and-forget.
+  void maybePresenceCheckin();
+
   const machineId = await readMachineIdFromDisk();
   if (!machineId) {
-    mobileLogger.debug('Location task: no machine id on disk, skipping batch');
+    mobileLogger.debug('Location task: no machine id on disk, presence-only tick');
     return;
   }
 
