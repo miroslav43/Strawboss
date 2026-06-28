@@ -1,56 +1,16 @@
+# StrawBoss shared edge: nginx (the reverse proxy for ALL domains on this VM) + certbot.
+#
+# The StrawBoss APP TIER (backend ×2, admin ×1, redis) runs as a Docker SWARM
+# stack — see docker-stack.yml and `./strawboss.sh prod`. nginx reaches those
+# Swarm services over the external, attachable overlay `strawboss-net`, and stays
+# on the shared `strawboss_default` bridge to reach the other apps on this VM
+# (budget, scoala-ai) by container name. Do NOT add backend/admin/redis back here.
+#
+# NOTE: the running nginx is attached to `strawboss-net` live (docker network
+# connect). A `docker compose up -d nginx` will recreate it to match this file —
+# a brief blip for all domains — so only do that intentionally.
+
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    # No external port binding — nginx proxies to this container via internal network.
-    expose:
-      - "3001"
-    volumes:
-      - ./logs:/app/logs
-      - ./uploads:/app/uploads
-    environment:
-      - PORT=3001
-      - LOG_ROOT=/app/logs
-      - UPLOADS_ROOT=/app/uploads
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379
-    depends_on:
-      - redis
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/api/v1/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    restart: unless-stopped
-
-  admin:
-    build:
-      context: .
-      dockerfile: Dockerfile.admin
-      args:
-        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://nortiauno.com}
-    # No external port binding — nginx proxies to this container via internal network.
-    expose:
-      - "3000"
-    volumes:
-      - ./logs:/app/logs
-    environment:
-      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://nortiauno.com}
-      - BACKEND_URL=http://backend:3001
-      - LOG_ROOT=/app/logs
-    depends_on:
-      - backend
-    restart: unless-stopped
-
   nginx:
     image: nginx:alpine
     # infomeditatii.ro — proxy către uvicorn pe host (systemd infomeditatii.service :8000)
@@ -67,9 +27,9 @@ services:
       - /srv/apps/Service Proof:/srv/apps/Service Proof:ro
       - /srv/apps/StayTravel:/srv/apps/StayTravel:ro
     entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
-    depends_on:
-      - backend
-      - admin
+    networks:
+      - default        # strawboss_default — shared bridge (foreign apps reachable by name)
+      - strawboss-net  # Swarm overlay — reach the StrawBoss app-tier service VIPs
     restart: unless-stopped
 
   certbot:
@@ -86,16 +46,13 @@ services:
         done"
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
-    expose:
-      - "6379"
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
+networks:
+  # Created out-of-band by `./strawboss.sh prod` (docker network create --driver
+  # overlay --attachable strawboss-net). Declared external so compose attaches
+  # nginx to it without trying to manage its lifecycle.
+  strawboss-net:
+    external: true
 
 volumes:
-  redis-data:
   letsencrypt:
   certbot-webroot:

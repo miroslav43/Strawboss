@@ -69,33 +69,21 @@ cmd_dev() {
   pnpm --filter @strawboss/backend --filter @strawboss/admin-web dev
 }
 
-# @cmd prod "Build Docker images + start production"
+# @cmd prod "Build + rolling-deploy production (Swarm app tier + shared nginx)"
 cmd_prod() {
-  header "Starting Production"
+  header "Starting Production (Docker Swarm)"
   require_cmd docker
-  require_cmd pnpm
 
-  _load_env
-  _validate_prod_env
+  # Health-gated rolling deploy of the app tier (backend ×2, admin, redis).
+  # cmd_stack__deploy handles: load/validate env, ensure swarm + overlay + nginx
+  # attachment, volume perms, build tagged images, and `docker stack deploy`.
+  cmd_stack__deploy
 
-  info "Installing dependencies (frozen lockfile)..."
-  pnpm install --frozen-lockfile
-  success "Dependencies installed."
-
-  _build_packages
-
-  info "Building Docker images..."
-  docker compose build \
-    --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-    --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
-    --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
-  success "Docker images built."
-
-  _ensure_docker_volume_perms
-
-  info "Starting all services..."
-  docker compose up -d
-  success "Services started."
+  # Ensure the shared edge (nginx + certbot) is running. No-op if already up and
+  # matching docker-compose.yml; recreates ONLY on an intentional config change
+  # (which briefly blips ALL domains on this VM — so avoid casual recreation).
+  info "Ensuring shared nginx + certbot are up..."
+  docker compose -f "$STRAWBOSS_ROOT/docker-compose.yml" up -d nginx certbot
 
   if ! _certs_exist; then
     warn "No Let's Encrypt cert found — running ssl:init..."
@@ -106,9 +94,10 @@ cmd_prod() {
 
   echo ""
   success "Production is live at ${BOLD}https://nortiauno.com${NC}"
+  info "Verify rollout: ${BOLD}./strawboss.sh stack:status${NC}"
 }
 
-# @cmd stop "Stop all dev processes and Docker services"
+# @cmd stop "Stop dev processes + the production app-tier Swarm stack"
 cmd_stop() {
   header "Stopping StrawBoss"
 
@@ -117,8 +106,14 @@ cmd_stop() {
   success "Dev processes stopped."
 
   if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
-    info "Stopping Docker services..."
-    docker compose down 2>/dev/null
-    success "Docker services stopped."
+    # Remove the production app tier (Swarm). The shared nginx + certbot and the
+    # OTHER apps on this VM are deliberately left running — do not `compose down`
+    # nginx here, it serves every domain on the box. To take the edge down too,
+    # run `docker compose down` explicitly (affects all sites).
+    if docker stack ls --format '{{.Name}}' 2>/dev/null | grep -q '^strawboss-app$'; then
+      info "Removing Swarm app-tier stack (shared nginx/certbot stay up)..."
+      docker stack rm strawboss-app 2>/dev/null || true
+      success "Production app tier stopped."
+    fi
   fi
 }
