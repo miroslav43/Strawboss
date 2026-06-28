@@ -27,6 +27,11 @@ import { AppRegistry } from 'react-native';
 import { getAuthToken } from './auth';
 import { runDeviceCheckin } from './device-checkin';
 import { sendHeartbeatOnce } from './heartbeat';
+import {
+  getPersistedMachineId,
+  postCurrentLocationNow,
+  flushPendingLocationReports,
+} from './location';
 import { mobileLogger } from './logger';
 
 /** Must match the task name used by the native PresenceCheckinService. */
@@ -43,13 +48,45 @@ async function presenceCheckin(): Promise<void> {
     });
   }
 
+  // Operator session token — gates every authenticated call below.
+  let token: string | null = null;
+  try {
+    token = await getAuthToken();
+  } catch {
+    token = null;
+  }
+
   // 2. Operator presence (users.last_seen_at) — only when an operator is logged
   //    in. Best-effort: a failure here never affects the fleet check-in above.
-  try {
-    const token = await getAuthToken();
-    if (token) await sendHeartbeatOnce();
-  } catch {
-    /* best-effort — next alarm tick retries */
+  if (token) {
+    try {
+      await sendHeartbeatOnce();
+    } catch {
+      /* best-effort — next alarm tick retries */
+    }
+  }
+
+  // 3. GPS continuity from THIS freeze-proof context. The OEM freeze that pauses JS
+  //    timers (HONOR/MagicOS PowerGenie/iAware — both persistent system apps a Device
+  //    Owner cannot hide/suspend/stop) ALSO pauses the Expo location foreground
+  //    service, so without this the device stays "online" (presence rides the native
+  //    alarm) but its GPS gaps until the next thaw. The alarm dispatches us on a fresh
+  //    context, so posting a current fix + draining the outbox here keeps the position
+  //    flowing to the dispatcher with the screen off / app frozen. Best-effort and
+  //    idempotent (server dedups via the ON CONFLICT unique key), so it can never
+  //    affect presence above.
+  if (token) {
+    try {
+      const machineId = await getPersistedMachineId();
+      if (machineId) {
+        await postCurrentLocationNow(machineId);
+        await flushPendingLocationReports();
+      }
+    } catch (err) {
+      mobileLogger.warn('Presence checkin task: GPS continuity failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 
