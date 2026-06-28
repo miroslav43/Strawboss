@@ -17,6 +17,8 @@ export interface LocalParcel {
   harvest_status: string | null;
   /** T9.1 — crop label (grau / orz / rapita / plante_nutret). */
   crop_type: string | null;
+  /** Denormalized owning-farm name (server migration 00065). */
+  farm_name: string | null;
   /** JSON-serialised GeoJSON Point `{ type, coordinates }` or `{ lat, lon }` */
   centroid_json: string | null;
   /** JSON-serialised GeoJSON boundary (Polygon / MultiPolygon) */
@@ -31,8 +33,8 @@ export class ParcelsRepo {
     await this.db.runAsync(
       `INSERT INTO parcels (
         id, name, code, area_hectares, municipality,
-        harvest_status, crop_type, centroid_json, geometry, cached_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        harvest_status, crop_type, farm_name, centroid_json, geometry, cached_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name           = excluded.name,
         code           = excluded.code,
@@ -40,6 +42,7 @@ export class ParcelsRepo {
         municipality   = excluded.municipality,
         harvest_status = excluded.harvest_status,
         crop_type      = excluded.crop_type,
+        farm_name      = excluded.farm_name,
         centroid_json  = excluded.centroid_json,
         geometry       = excluded.geometry,
         cached_at      = excluded.cached_at`,
@@ -51,6 +54,7 @@ export class ParcelsRepo {
         data.municipality,
         data.harvest_status,
         data.crop_type,
+        data.farm_name,
         data.centroid_json,
         data.geometry,
         data.cached_at,

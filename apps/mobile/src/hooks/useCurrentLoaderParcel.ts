@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import * as Location from 'expo-location';
 import { useAuthStore } from '@/stores/auth-store';
 import { useActiveParcels, findParcelAtLocation, type ActiveParcel } from './useActiveParcels';
+import { useCachedParcels } from './useCachedParcels';
 import { useMyTasks, type MyTask } from './useMyTasks';
 import { distanceToBoundaryMeters } from '@/lib/point-in-geojson';
 import { mobileLogger } from '@/lib/logger';
@@ -30,6 +31,12 @@ export interface CurrentLoaderParcel {
   parcelName: string | null;
   /** T9.3 — code identifier; used as the display name when name is null. */
   parcelCode: string | null;
+  /** Locality (server `municipality`) of the resolved field, when known. */
+  municipality: string | null;
+  /** Crop label (grau / orz / rapita / plante_nutret / altele) when set. */
+  cropType: string | null;
+  /** Owning-farm name (denormalized, offline-capable) when known. */
+  farmName: string | null;
   /** How the parcel was resolved. */
   source: 'in_progress_task' | 'gps' | null;
   /** Whether the operator's GPS is strictly inside the resolved field boundary. */
@@ -104,6 +111,10 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const { tasks, isLoading: tasksLoading } = useMyTasks();
   const { data: activeParcels, isLoading: parcelsLoading } = useActiveParcels();
+  // Metadata source for the card (farm / locality / crop). Offline-first: tries
+  // the API, falls back to the local SQLite cache — so the field card keeps its
+  // context even with no signal. Kept separate from the GPS source above.
+  const { parcels: cachedParcels } = useCachedParcels();
 
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<
@@ -193,12 +204,28 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   const gpsState: ParcelGpsState =
     gpsStatus === 'ready' ? 'ready' : gpsStatus === 'unavailable' ? 'unavailable' : 'locating';
 
+  // Pull farm / locality / crop for a resolved parcel from the cached-parcels
+  // list (offline-capable). Returns nulls until the cache is populated.
+  const enrich = (
+    parcelId: string | null,
+  ): { municipality: string | null; cropType: string | null; farmName: string | null } => {
+    const p = parcelId ? cachedParcels.find((x) => x.id === parcelId) : undefined;
+    return {
+      municipality: p?.municipality ?? null,
+      cropType: p?.cropType ?? null,
+      farmName: p?.farmName ?? null,
+    };
+  };
+
   if (tasksLoading || parcelsLoading) {
     return {
       status: 'loading',
       parcelId: null,
       parcelName: null,
       parcelCode: null,
+      municipality: null,
+      cropType: null,
+      farmName: null,
       source: null,
       presence: 'unknown',
       distanceM: null,
@@ -234,6 +261,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       // Unnamed terrains fall back to the code so the card is never blank.
       parcelName: t.parcelName ?? t.parcelCode,
       parcelCode: t.parcelCode,
+      ...enrich(t.parcelId),
       source: 'in_progress_task',
       presence,
       distanceM,
@@ -265,6 +293,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
         parcelId: hit.id,
         parcelName: hit.name,
         parcelCode: hit.code,
+        ...enrich(hit.id),
         source: 'gps',
         presence,
         distanceM,
@@ -282,6 +311,9 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       parcelId: null,
       parcelName: null,
       parcelCode: null,
+      municipality: null,
+      cropType: null,
+      farmName: null,
       source: null,
       presence: 'unknown',
       distanceM: null,
@@ -300,6 +332,9 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     parcelId: null,
     parcelName: null,
     parcelCode: null,
+    municipality: null,
+    cropType: null,
+    farmName: null,
     source: null,
     presence: 'unknown',
     distanceM: null,

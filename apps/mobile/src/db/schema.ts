@@ -178,6 +178,7 @@ export const TABLES = {
     municipality TEXT,
     harvest_status TEXT,
     crop_type TEXT,
+    farm_name TEXT,
     centroid_json TEXT,
     geometry TEXT,
     cached_at TEXT NOT NULL DEFAULT (datetime('now'))

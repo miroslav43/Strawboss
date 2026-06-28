@@ -88,6 +88,13 @@ export interface Parcel extends Timestamps, SoftDelete {
   municipality: string;
   farmtrackGeofenceId: string | null;
   farmId: string | null;
+  /**
+   * Denormalized name of the owning farm (DB column `farm_name`, kept current by
+   * a trigger — see migration 00065). Read-only/derived: not part of create/update
+   * payloads. Lets the mobile "Teren activ" card show the farm offline without
+   * syncing the farms table.
+   */
+  farmName: string | null;
   notes: string | null;
   /** @deprecated T9.2 — server still returns true; not surfaced in UI. */
   isActive: boolean;

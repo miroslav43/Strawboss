@@ -519,6 +519,7 @@ export class SyncManager {
         municipality: typeof d['municipality'] === 'string' ? d['municipality'] : null,
         harvest_status: typeof d['harvest_status'] === 'string' ? d['harvest_status'] : null,
         crop_type: typeof d['crop_type'] === 'string' ? d['crop_type'] : null,
+        farm_name: typeof d['farm_name'] === 'string' ? d['farm_name'] : null,
         centroid_json:
           centroid !== null && centroid !== undefined ? JSON.stringify(centroid) : null,
         geometry:

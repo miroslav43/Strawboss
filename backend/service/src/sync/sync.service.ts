@@ -362,6 +362,9 @@ const PULL_COLUMNS: Record<string, string[]> = {
     'municipality',
     'harvest_status',
     'crop_type',
+    // Denormalized owning-farm name (00065) — lets the mobile field card show the
+    // farm offline. A farm rename re-stamps the parcel's sync_version so it pulls.
+    'farm_name',
     'created_at',
     'updated_at',
     'sync_version',

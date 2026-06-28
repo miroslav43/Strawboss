@@ -20,6 +20,10 @@ export interface CachedParcel {
   areaHectares: number | null;
   municipality: string | null;
   harvestStatus: string | null;
+  /** T9.1 crop label (grau / orz / rapita / plante_nutret / altele) or null. */
+  cropType: string | null;
+  /** Denormalized owning-farm name (server 00065) or null. */
+  farmName: string | null;
   boundary: unknown | null;
   centroid: unknown | null;
 }
@@ -35,6 +39,8 @@ function apiParcelToCached(p: Parcel): CachedParcel {
     areaHectares: p.areaHectares ?? null,
     municipality: p.municipality ?? null,
     harvestStatus: p.harvestStatus ?? null,
+    cropType: p.cropType ?? null,
+    farmName: p.farmName ?? null,
     boundary: p.boundary ?? null,
     centroid: p.centroid ?? null,
   };
@@ -64,6 +70,8 @@ function localParcelToCached(p: LocalParcel): CachedParcel {
     areaHectares: p.area_hectares,
     municipality: p.municipality,
     harvestStatus: p.harvest_status,
+    cropType: p.crop_type,
+    farmName: p.farm_name,
     boundary,
     centroid,
   };
@@ -85,6 +93,8 @@ async function persistParcelsToCache(parcels: Parcel[]): Promise<void> {
         harvest_status: p.harvestStatus ?? null,
         // T9.1 — crop_type is nullable on storage; pass through if present.
         crop_type: p.cropType ?? null,
+        // 00065 — denormalized farm name for the offline field card.
+        farm_name: p.farmName ?? null,
         centroid_json: p.centroid ? JSON.stringify(p.centroid) : null,
         geometry: p.boundary ? JSON.stringify(p.boundary) : null,
         cached_at: now,

@@ -4,6 +4,15 @@ import { colors, radii } from '@strawboss/ui-tokens';
 import type { CurrentFieldParcel } from '@/hooks/useCurrentLoaderParcel';
 import { useI18n } from '@/lib/i18n';
 
+/** crop_type enum value → i18n key (reuses the parcel-detail crop labels). */
+const CROP_LABEL_KEYS: Record<string, string> = {
+  grau: 'parcel.detail.cropLabel.grau',
+  orz: 'parcel.detail.cropLabel.orz',
+  rapita: 'parcel.detail.cropLabel.rapita',
+  plante_nutret: 'parcel.detail.cropLabel.planteNutret',
+  altele: 'parcel.detail.cropLabel.altele',
+};
+
 /**
  * "Teren activ" card — shared by the loader and baler home screens.
  *
@@ -38,6 +47,16 @@ export function ActiveFieldCard({
   }
 
   if (parcel.status === 'resolved') {
+    // T9.3 — code is the canonical field identifier; name only as a last resort.
+    const title =
+      parcel.parcelCode ?? parcel.parcelName ?? t('shared.activeFieldCard.assignedField');
+    const cropLabel = parcel.cropType
+      ? CROP_LABEL_KEYS[parcel.cropType]
+        ? t(CROP_LABEL_KEYS[parcel.cropType])
+        : parcel.cropType
+      : null;
+    const hasMeta = !!(parcel.farmName || parcel.municipality || cropLabel);
+
     return (
       <TouchableOpacity
         style={styles.parcelBanner}
@@ -53,10 +72,43 @@ export function ActiveFieldCard({
         </View>
         <View style={styles.parcelNameRow}>
           <Text style={[styles.parcelName, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
-            {parcel.parcelName ?? parcel.parcelCode ?? t('shared.activeFieldCard.assignedField')}
+            {title}
           </Text>
           <MaterialCommunityIcons name="chevron-right" size={24} color={colors.tertiary} />
         </View>
+
+        {/* Farm · locality · crop — each rendered only when present. */}
+        {hasMeta ? (
+          <View style={styles.metaBlock}>
+            {parcel.farmName ? (
+              <View style={styles.metaRow}>
+                <MaterialCommunityIcons name="barn" size={15} color={colors.tertiary} />
+                <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
+                  {parcel.farmName}
+                </Text>
+              </View>
+            ) : null}
+            {parcel.municipality ? (
+              <View style={styles.metaRow}>
+                <MaterialCommunityIcons
+                  name="map-marker-outline"
+                  size={15}
+                  color={colors.tertiary}
+                />
+                <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
+                  {parcel.municipality}
+                </Text>
+              </View>
+            ) : null}
+            {cropLabel ? (
+              <View style={styles.cropChip}>
+                <MaterialCommunityIcons name="sprout" size={13} color="#3F6212" />
+                <Text style={styles.cropChipText}>{cropLabel}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         {parcel.presence === 'inside' ? (
           <View style={[styles.presencePill, styles.presenceInside]}>
             <MaterialCommunityIcons name="check-circle" size={16} color="#0A5C36" />
@@ -191,6 +243,23 @@ const styles = StyleSheet.create({
   parcelName: { fontSize: 20, fontWeight: '700', color: '#0A5C36', marginTop: 2 },
   parcelNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   parcelHint: { fontSize: 13, color: colors.textSecondary },
+
+  // Farm / locality / crop meta block under the code title.
+  metaBlock: { marginTop: 4, gap: 3 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText: { flex: 1, fontSize: 14, color: colors.textSecondary },
+  cropChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: '#ECFCCB',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    marginTop: 2,
+  },
+  cropChipText: { fontSize: 12, fontWeight: '700', color: '#3F6212' },
 
   presencePill: {
     flexDirection: 'row',

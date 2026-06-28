@@ -283,6 +283,9 @@ export default function GeofenceMakerMapScreen() {
           municipality: data.municipality || null,
           harvest_status: null,
           crop_type: data.cropType,
+          // Authoritative farm_name is computed server-side (trigger 00065) from
+          // farm_id and arrives on the next pull; null until then.
+          farm_name: null,
           centroid_json: null,
           geometry: boundaryStr,
           cached_at: new Date().toISOString(),
