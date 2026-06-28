@@ -36,11 +36,14 @@ services:
       - /srv/apps/Strawboss/logs:/app/logs
       - /srv/apps/Strawboss/uploads:/app/uploads
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3001/api/v1/health']
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3001/api/v1/health']
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      # 40s margin for cold starts under deploy/reboot contention (the backend
+      # normally binds in a few seconds; a success during start_period marks it
+      # healthy immediately, so the extra margin costs nothing in the happy path).
+      start_period: 40s
     stop_grace_period: 30s
     networks:
       - strawboss-net
@@ -77,11 +80,18 @@ services:
     volumes:
       - /srv/apps/Strawboss/logs:/app/logs
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:3000/healthz']
+      # 127.0.0.1 (not localhost): the admin image's busybox wget can resolve
+      # `localhost` to ::1 (IPv6) first, but Next binds IPv4 0.0.0.0 only → a
+      # localhost check can spuriously get "connection refused". Pin to IPv4.
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/healthz']
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 15s
+      retries: 6
+      # 40s margin for cold starts under contention. The slow-bind root cause is
+      # fixed in next.config.ts (experimental.preloadEntriesOnStart: false), so
+      # the server now binds in ~1s; a success during start_period flips it
+      # healthy immediately, so this margin costs nothing in the happy path.
+      start_period: 40s
     stop_grace_period: 15s
     networks:
       - strawboss-net

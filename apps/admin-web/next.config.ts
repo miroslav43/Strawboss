@@ -183,6 +183,17 @@ const nextConfig: NextConfig = {
   // the same hoisted `node_modules` graph as local `next build` (avoids missing or
   // duplicate package copies that only show up in the image).
   outputFileTracingRoot: monorepoRoot,
+  // Next 16 standalone preloads ALL route entries on server start
+  // (experimental.preloadEntriesOnStart, default true). That preload is
+  // CPU-heavy and, under container/orchestration CPU contention, delays the
+  // moment the HTTP server actually binds by tens of seconds — despite the
+  // misleading "Ready in 0ms" banner — which tripped the Docker Swarm
+  // healthcheck into a crash-loop. Disable it so the server binds in ~1s and
+  // loads routes lazily on first request (fine for an internal admin dashboard);
+  // startup becomes fast and deterministic for health-gated rolling deploys.
+  experimental: {
+    preloadEntriesOnStart: false,
+  },
   transpilePackages: [
     '@strawboss/types',
     '@strawboss/api',
