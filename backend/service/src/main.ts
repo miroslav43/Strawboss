@@ -95,6 +95,24 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
     credentials: true,
   });
+  // Graceful shutdown: drain in-flight HTTP requests and let BullMQ workers
+  // finish their active jobs before exit. Required for zero-downtime Swarm
+  // rolling updates — on SIGTERM the outgoing replica must close cleanly instead
+  // of dropping requests. enableShutdownHooks() is also what fires Nest's
+  // onModuleDestroy lifecycle (which closes the BullMQ workers), so it must be
+  // enabled for the SIGTERM/SIGINT path below to actually drain jobs.
+  app.enableShutdownHooks();
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.get(WINSTON_MODULE_NEST_PROVIDER).log(`Received ${signal}, shutting down gracefully…`);
+    await app.close();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+
   const port = process.env.PORT ?? 3001;
   await app.listen(port, '0.0.0.0');
   app.get(WINSTON_MODULE_NEST_PROVIDER).log(`StrawBoss backend listening on ${port}`);

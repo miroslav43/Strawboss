@@ -89,7 +89,30 @@ export class TripsService implements OnModuleInit {
    * auto-upsert errored out. Idempotent: only rows with trip_id IS NULL.
    */
   async onModuleInit(): Promise<void> {
+    // Guard this boot backfill with a global advisory lock: when both API
+    // replicas cold-start at once (VM reboot / first stack deploy), only ONE may
+    // run the scan. Otherwise two replicas can materialize the SAME truck task
+    // into two duplicate trips — the INSERT path (autoUpsertFromTruckTask)
+    // re-checks nothing atomically. The lock is session-scoped, so it must be
+    // acquired AND released on one pinned connection (postgres.js pools by
+    // default); we reserve a dedicated connection for the lock's lifetime.
+    const lock = await this.drizzleProvider.client.reserve().catch((err) => {
+      this.winston.error('Auto-trip backfill: could not reserve boot-lock connection', {
+        context: 'TripsService',
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+      return null;
+    });
+    if (!lock) return;
+
+    let acquired = false;
     try {
+      const lockRows = (await lock`
+        SELECT pg_try_advisory_lock(hashtext('strawboss:trip-backfill')) AS locked
+      `) as unknown as { locked: boolean }[];
+      if (!lockRows[0]?.locked) return; // another replica owns the backfill this boot
+      acquired = true;
+
       const rows = (await this.drizzleProvider.db.execute(
         sql`SELECT ta.id
             FROM task_assignments ta
@@ -124,6 +147,15 @@ export class TripsService implements OnModuleInit {
         context: 'TripsService',
         err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
+    } finally {
+      if (acquired) {
+        try {
+          await lock`SELECT pg_advisory_unlock(hashtext('strawboss:trip-backfill'))`;
+        } catch {
+          // best-effort: the lock auto-frees when the reserved connection closes
+        }
+      }
+      lock.release();
     }
   }
 
