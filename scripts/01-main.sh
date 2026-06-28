@@ -79,11 +79,15 @@ cmd_prod() {
   # attachment, volume perms, build tagged images, and `docker stack deploy`.
   cmd_stack__deploy
 
-  # Ensure the shared edge (nginx + certbot) is running. No-op if already up and
-  # matching docker-compose.yml; recreates ONLY on an intentional config change
-  # (which briefly blips ALL domains on this VM — so avoid casual recreation).
-  info "Ensuring shared nginx + certbot are up..."
-  docker compose -f "$STRAWBOSS_ROOT/docker-compose.yml" up -d nginx certbot
+  # Only (re)create the shared edge if it's NOT already running. Recreating a live
+  # nginx briefly blips EVERY domain on this VM, and a normal deploy must never do
+  # that — _ensure_swarm already re-attached the running nginx to the overlay.
+  if ! docker ps --format '{{.Names}}' | grep -q '^strawboss-nginx-1$'; then
+    info "Shared nginx not running — bringing up nginx + certbot..."
+    docker compose -f "$STRAWBOSS_ROOT/docker-compose.yml" up -d nginx certbot
+  else
+    info "Shared nginx already running — left untouched."
+  fi
 
   if ! _certs_exist; then
     warn "No Let's Encrypt cert found — running ssl:init..."
