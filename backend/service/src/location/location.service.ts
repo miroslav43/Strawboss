@@ -47,10 +47,36 @@ export class LocationService {
       throw new BadRequestException('Invalid coordinates');
     }
 
+    // Attribute the ping to the operator's CURRENT assigned machine rather than
+    // the machineId the client sent. The mobile app caches its machineId on disk
+    // and the background/watchdog/boot-rearm paths read that cache as gospel;
+    // after a reassignment (often while the app is backgrounded/frozen, so the
+    // React effect that would refresh the cache never runs) the cached machine is
+    // stale and later deleted or moved org → an endless "Machine not found" 400
+    // storm. The request is authenticated, so the server already knows the
+    // operator's real machine — trust it. Fall back to the client's machineId
+    // only when the operator has no assignment (legacy behaviour).
+    const assignedRows = (await this.drizzleProvider.db.execute(sql`
+      SELECT assigned_machine_id AS "assignedMachineId"
+      FROM users
+      WHERE id = ${operatorId}::uuid AND deleted_at IS NULL
+      LIMIT 1
+    `)) as unknown as { assignedMachineId: string | null }[];
+    const assignedMachineId = assignedRows[0]?.assignedMachineId ?? null;
+    const machineId = assignedMachineId ?? dto.machineId;
+
+    if (assignedMachineId && dto.machineId !== assignedMachineId) {
+      // Surface the stale client cache without failing the report.
+      this.logger.debug(
+        `Location machineId mismatch for operator ${operatorId}: client sent ` +
+          `${dto.machineId}, attributing to assigned ${assignedMachineId}`,
+      );
+    }
+
     if (orgId !== null) {
       const machineCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines
-        WHERE id = ${dto.machineId}::uuid
+        WHERE id = ${machineId}::uuid
           AND organization_id = ${orgId}::uuid
           AND deleted_at IS NULL
         LIMIT 1
@@ -64,7 +90,7 @@ export class LocationService {
       INSERT INTO machine_location_events
         (machine_id, operator_id, lat, lon, accuracy_m, heading_deg, speed_ms, recorded_at)
       VALUES (
-        ${dto.machineId}::uuid,
+        ${machineId}::uuid,
         ${operatorId}::uuid,
         ${dto.lat},
         ${dto.lon},
