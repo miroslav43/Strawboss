@@ -15,6 +15,14 @@
 -- Idempotent: the dedup keeps the lowest id per (operator_id, recorded_at); the
 -- unique index uses IF NOT EXISTS. Safe to re-run.
 
+-- 0. Block concurrent INSERTs for the (brief) dedup+index build. Without this the
+--    live ingest keeps adding fresh duplicates of the very key we just cleaned
+--    (a still-replaying phone re-posts the same recorded_at), so the unique index
+--    build races and fails. SHARE ROW EXCLUSIVE conflicts with INSERT's ROW
+--    EXCLUSIVE but still allows SELECT (presence/map reads keep working). Released
+--    on COMMIT — the runner wraps this file in --single-transaction.
+LOCK TABLE machine_location_events IN SHARE ROW EXCLUSIVE MODE;
+
 -- 1. Collapse existing duplicates (keep the earliest-created row per key).
 DELETE FROM machine_location_events
 WHERE id IN (
