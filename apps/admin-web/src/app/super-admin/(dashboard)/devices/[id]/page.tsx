@@ -753,6 +753,10 @@ function DeviceHealthPanel({
     );
   }
   const s = state;
+  // `state` comes from untyped JSONB (devices.last_state). Devices that last
+  // reported under the OLD thin DeviceState shape have no `gatherErrors` key,
+  // so guard it — reading `.length` on undefined would crash the whole page.
+  const gatherErrors = Array.isArray(s.gatherErrors) ? s.gatherErrors : [];
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
@@ -908,13 +912,13 @@ function DeviceHealthPanel({
         </HSection>
       </div>
 
-      {s.gatherErrors.length > 0 && (
+      {gatherErrors.length > 0 && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">
-            Probe errors ({s.gatherErrors.length})
+            Probe errors ({gatherErrors.length})
           </p>
           <ul className="mt-1 space-y-0.5 font-mono text-xs text-amber-800">
-            {s.gatherErrors.map((e, i) => (
+            {gatherErrors.map((e, i) => (
               <li key={i}>{e}</li>
             ))}
           </ul>
