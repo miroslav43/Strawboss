@@ -2,7 +2,7 @@
 type: meta
 title: "Hot Context — StrawBoss"
 created: 2026-05-25
-updated: 2026-06-22
+updated: 2026-06-28
 tags: [meta, hot, context]
 status: developing
 ---
@@ -25,6 +25,7 @@ Read this first every session. ~500 words covering what's load-bearing right now
 
 ## What's Changing Now
 
+- **Production on Docker Swarm (Jun 2026):** the app tier (`strawboss-backend` ×2, `strawboss-admin` ×1, `redis` ×1) now runs as a Swarm stack **`strawboss-app`** (`docker-stack.yml`) on the attachable overlay **`strawboss-net`**; **nginx + certbot stay on Docker Compose** (`docker-compose.yml`, those two only) as the shared reverse proxy for every domain on the VM, bridged to the overlay so it reaches the Swarm service VIPs. Deploys via `./strawboss.sh prod` are **health-gated rolling updates** (`order: start-first` + `failure_action: rollback`) → **zero downtime** (proven: 260/260 + 130/130 HTTP 200) plus 2-replica API redundancy. New CLI: `stack:status` / `stack:logs` / `stack:rollback` / `scale` ([[scripts]]); `stop` removes the stack but leaves the shared nginx. Backend made multi-replica-safe — graceful shutdown, boot advisory-lock backfill, capped PG pool ([[backend]]); admin needs `experimental.preloadEntriesOnStart:false` + `HOSTNAME=0.0.0.0` + a `/healthz` route ([[admin-web]]). **Single-node only** — `logs/`+`uploads/` are host-local bind mounts. Details + gotchas in [[infrastructure]].
 - **Fleet management + OTA self-update (Jun 2026):** ~30 Device-Owner phones self-install APK updates. Super-admin manages a device registry + pushes/schedules OTA from `super-admin/(dashboard)/devices/` ([[admin-web]]); phones poll PUBLIC `POST /api/v1/fleet/checkin` ([[backend]] `fleet` module) and silently install via Device Owner `PackageInstaller`, deferred until idle unless `force_now` ([[mobile]]). Backend confirms `installed` only on versionCode proof. New tables in migration **00055** ([[database]]). ⚠️ **`apps/mobile/android/app/debug.keystore` must NEVER change** — rotating the signing key breaks OTA self-update for every fielded phone (same-signer requirement); it is pinned by SHA-256 and CI-guarded (`scripts/verify-keystore.sh`, `.githooks/pre-commit`, `keystore-guard.yml` — see [[infrastructure]]).
 - **Fleet Tailscale remote access (Jun 2026):** super-admin toggles Tailscale per phone for remote `adb` debugging — the Device-Owner app configures the official Tailscale app via MDM (and silently auto-installs it from a hosted APK if missing), joining tailnet `tail2b4c34.ts.net`. Red/green dot fed by a HOST-side `./strawboss.sh fleet:tailscale-sync` (systemd timer — the container can't reach the tailnet). Per-device **ephemeral** keys minted via a Tailscale OAuth client (no shared-key broadcast); auth key/OAuth live in the DB `app_settings` (never in repo). Nickname (`devices.name`) shown first + used as the Tailscale hostname. `./strawboss.sh fleet:tunnel <hostname>` opens adb over the tailnet (ADB-TCP needs a one-time per-phone enable). Migrations **00056/00057** ([[database]], [[backend]], [[mobile]], [[scripts]], [[infrastructure]]).
 - **Local release builds auto-register (Jun 2026):** `./strawboss.sh mobile-build-local release` bumps version, names the APK `strawboss-v<ver>-vc<code>-<gitshort>.apk`, archives it under `uploads/apks/`, registers it in `app_releases` as published (psql), and prunes to the newest 10 — so it shows in the super-admin Releases list, sorted newest-first ([[scripts]], [[admin-web]]).
@@ -45,6 +46,8 @@ Read this first every session. ~500 words covering what's load-bearing right now
 ./strawboss.sh dev          # Start local dev (ports 3000 admin, 3001 API)
 ./strawboss.sh build packages  # Rebuild all shared packages
 ./strawboss.sh db:migrate   # Apply pending migrations
+./strawboss.sh prod         # Build + zero-downtime rolling deploy (Swarm app tier)
+./strawboss.sh stack:status # Production app-tier health (replicas + tasks)
 ./strawboss.sh logs:flow    # Watch business-event log
 ./strawboss.sh status       # Full dashboard
 ```

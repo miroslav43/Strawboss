@@ -2,7 +2,7 @@
 type: doc
 title: "Infrastructure"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-06-28
 tags: [doc, devops, infra, docker, nginx, redis, fleet, tailscale]
 status: mature
 related:
@@ -13,34 +13,60 @@ related:
 
 # Infrastructure
 
-Production deployment uses Docker Compose with nginx reverse proxy, Let's Encrypt SSL, and Redis for BullMQ. Logs are written via Winston (backend/admin) and NDJSON (mobile uploads).
+Production deployment splits into two tiers: the **app tier** (backend ×2, admin ×1, Redis) runs as a Docker Swarm stack (`docker-stack.yml`, stack name `strawboss-app`) on the attachable overlay network `strawboss-net`; the **edge tier** (nginx, certbot) stays on Docker Compose (`docker-compose.yml`). nginx is the shared reverse proxy for all ~7 domains on the VM. Logs are written via Winston (backend/admin) and NDJSON (mobile uploads).
 
-## Docker Services (`docker-compose.yml`)
+## App Tier — Docker Swarm (`docker-stack.yml`, stack `strawboss-app`)
 
-Five services, three named volumes:
+Three services on external attachable overlay network `strawboss-net`. Deployed via:
+
+```bash
+IMAGE_TAG=<git-sha> docker stack deploy -c docker-stack.yml --resolve-image never strawboss-app
+```
+
+`./strawboss.sh prod` handles this automatically (see [[scripts]]). Images tagged with git short-sha; no registry — `--resolve-image never` uses locally built images.
+
+| Service | Image | Replicas | Purpose |
+|---|---|---|---|
+| `strawboss-backend` | `strawboss-backend:${IMAGE_TAG}` | 2 | NestJS API (port 3001 internal) |
+| `strawboss-admin` | `strawboss-admin:${IMAGE_TAG}` | 1 | Next.js admin (port 3000 internal) |
+| `redis` | `redis:7-alpine` | 1 | BullMQ job queues (port 6379 internal) |
+
+Service names are deliberately prefixed `strawboss-` to prevent the nginx alias-collision problem with foreign-app containers on the shared bridge (see [[architecture]]).
+
+### Swarm Volumes
+
+- `redis-data` (named Docker volume) — Redis persistence
+- `/srv/apps/Strawboss/logs:/app/logs` (absolute host bind mount) — Winston log files; both backend replicas write here
+- `/srv/apps/Strawboss/uploads:/app/uploads` (absolute host bind mount) — uploaded files (backend only)
+
+**Single-node constraint**: `logs` and `uploads` are host-local bind mounts, so both backend replicas stay on the single Swarm node. Multi-node scale requires shared/object storage for uploads first.
+
+### Rolling Deploy (health-gated)
+
+All services use `update_config: order: start-first, parallelism: 1, monitor: 30s, failure_action: rollback`. The new task must pass its healthcheck within the `monitor` window before the old task stops; on failure the stack auto-rolls back. Verified: 260/260 HTTP 200 during a forced rolling redeploy; 130/130 during a killed-task failover.
+
+### Swarm Init (one-time)
+
+```bash
+docker swarm init --advertise-addr 127.0.0.1
+docker network create --driver overlay --attachable strawboss-net
+```
+
+## Edge Tier — Docker Compose (`docker-compose.yml`)
+
+Two services only — nginx and certbot. Do NOT add backend/admin/redis back here.
 
 | Service | Image | Ports | Purpose |
 |---|---|---|---|
-| `backend` | `Dockerfile.backend` | 3001 (internal) | NestJS API server |
-| `admin` | `Dockerfile.admin` | 3000 (internal) | Next.js admin dashboard |
-| `nginx` | `nginx:alpine` | 80, 443 (public) | TLS termination + reverse proxy |
-| `certbot` | `certbot/certbot` | -- | Auto-renews cert every 12h |
-| `redis` | `redis:7-alpine` | 6379 (internal) | BullMQ job queues |
+| `nginx` | `nginx:alpine` | 80, 443 (public) | TLS termination + reverse proxy for all VM domains |
+| `certbot` | `certbot/certbot` | — | Auto-renews certs every 12h |
 
-### Volumes
+nginx is attached to **both** `strawboss_default` (bridge — reaches foreign-app containers by name) **and** `strawboss-net` (overlay — reaches Swarm service VIPs). Recreating the nginx container (`docker compose up -d nginx`) causes a brief blip across all domains — do this intentionally.
 
-- `redis-data` -- Redis persistence
-- `letsencrypt` -- SSL certificates (shared between nginx and certbot)
-- `certbot-webroot` -- ACME HTTP-01 challenge files
-- `./logs:/app/logs` -- Bind mount for Winston log files (backend + admin)
+### Edge Volumes
 
-### Service Dependencies
-
-```
-nginx -> backend -> redis
-      -> admin   -> backend
-certbot (standalone, shares volumes with nginx)
-```
+- `letsencrypt` — SSL certificates (shared between nginx and certbot)
+- `certbot-webroot` — ACME HTTP-01 challenge files
 
 ## Backend Dockerfile (`Dockerfile.backend`)
 
@@ -50,7 +76,7 @@ Multi-stage build (node:22-alpine):
 2. **builder**: Copy source, build packages in order: `types -> validation -> domain -> backend`.
 3. **runner**: Production image. Copies `.pnpm` virtual store + package dist/node_modules. Creates non-root `appuser`. Runs `node dist/main.js`.
 
-Health check: `wget --spider -q http://localhost:3001/api/v1/health` (interval 10s, 5 retries, 20s start period).
+Health check: `wget --spider -q http://127.0.0.1:3001/api/v1/health` (interval 10s, 5 retries, 40s start period). Uses `127.0.0.1` not `localhost` — busybox wget may resolve `localhost` to `::1` (IPv6) first while NestJS binds IPv4 only.
 
 ## Admin Dockerfile (`Dockerfile.admin`)
 
@@ -58,7 +84,7 @@ Multi-stage build (node:22-alpine):
 
 1. **deps**: Copy package.json files for types, validation, api, ui-tokens, admin-web. `pnpm install --frozen-lockfile`.
 2. **builder**: Build packages in order: `types -> validation -> ui-tokens -> api -> admin-web`. `NEXT_PUBLIC_*` vars passed as build args (baked into client bundle).
-3. **runner**: Uses Next.js standalone output. Copies `.next/standalone`, `.next/static`, `public`. Runs `node apps/admin-web/server.js`.
+3. **runner**: Uses Next.js standalone output. Copies `.next/standalone`, `.next/static`, `public`. Runs `node apps/admin-web/server.js`. Requires `HOSTNAME=0.0.0.0` at runtime — Swarm sets `HOSTNAME` to the container name by default; Next.js standalone would bind only that IP, causing healthchecks on `127.0.0.1` to fail. `experimental.preloadEntriesOnStart: false` in `next.config.ts` prevents slow binds under task-start contention.
 
 ### Build Args
 
@@ -96,10 +122,11 @@ TLS configuration:
 Security headers: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`.
 
 Routing:
-- `/api/*` -> `http://backend:3001` (NestJS). 60s read timeout. Sets `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`.
-- `/*` -> `http://admin:3000` (Next.js). Supports WebSocket upgrade (`Upgrade: $http_upgrade`).
+- `= /api/client-log` -> `strawboss-admin:3000` (admin Next.js handles browser client-log batching).
+- `/api/*` -> `strawboss-backend:3001` (NestJS Swarm VIP). 60s read timeout. Sets `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`.
+- `/*` -> `strawboss-admin:3000` (Next.js Swarm VIP). Supports WebSocket upgrade (`Upgrade: $http_upgrade`).
 
-Uses Docker embedded DNS resolver (`127.0.0.11 valid=10s`) to handle container IP changes after recreations.
+Uses Docker embedded DNS resolver (`127.0.0.11 valid=10s ipv6=off`) for Swarm VIP DNS resolution and to handle container IP changes.
 
 ### Nginx Entrypoint (`nginx/docker-entrypoint.sh`)
 

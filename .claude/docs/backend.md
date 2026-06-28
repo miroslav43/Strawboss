@@ -2,7 +2,7 @@
 type: doc
 title: "Backend Service (backend/service)"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-06-28
 tags: [doc, backend, layer, nestjs, drizzle, bullmq]
 status: mature
 related:
@@ -19,7 +19,7 @@ related:
 
 NestJS 11 + Fastify 5 REST API. All routes under `/api/v1/`. Database access via Drizzle ORM + postgres.js. Background jobs via BullMQ + Redis.
 
-Entry point: `backend/service/src/main.ts` -- boots a `NestFastifyApplication`, sets global prefix `api/v1`, configures CORS, listens on `PORT` (default 3001).
+Entry point: `backend/service/src/main.ts` -- boots a `NestFastifyApplication`, sets global prefix `api/v1`, configures CORS, listens on `PORT` (default 3001). Enables graceful shutdown via `app.enableShutdownHooks()` + `process.on('SIGTERM'/'SIGINT')` → `await app.close()`, which drains in-flight HTTP requests and fires `onModuleDestroy` on all modules (closes BullMQ workers). Required for zero-downtime Swarm rolling deploys; pairs with `stop_grace_period` in `docker-stack.yml`.
 
 ---
 
@@ -32,7 +32,7 @@ The `AppModule` (`src/app.module.ts`) imports 31 feature modules:
 | `AppLoggerModule` | `src/logger/logger.module.ts` | Winston factory with daily-rotate-file transports (`logs/web/{all,error,warn,info,flow,http,debug}/`) |
 | `HealthModule` | `src/health/` | Public liveness endpoint |
 | `ConfigModule` | `src/config/config.module.ts` | `@nestjs/config` with Zod env validation (`src/config/env.validation.ts`) |
-| `DatabaseModule` | `src/database/database.module.ts` | `DrizzleProvider` -- singleton postgres.js + Drizzle ORM connection |
+| `DatabaseModule` | `src/database/database.module.ts` | `DrizzleProvider` -- singleton postgres.js + Drizzle ORM connection. `public client` exposes the raw postgres.js instance for reserved-connection work (e.g. advisory locks). Pool capped: `max: 8, idle_timeout: 20, connect_timeout: 10` for 2 Swarm replicas on the Supabase session-mode pooler (~16 steady, ~24 peak during rolling deploy). |
 | `AuthModule` | `src/auth/auth.module.ts` | Global module exporting `AuthGuard` and `RolesGuard` |
 | `ParcelsModule` | `src/parcels/` | CRUD for parcels (fields/plots) |
 | `MachinesModule` | `src/machines/` | CRUD for trucks, balers, loaders |
@@ -433,6 +433,55 @@ Returns the `key` string or `null` on any error (network or non-2xx). The caller
 The `cmr-generation` queue is on-demand only (triggered by trip completion or manual endpoint).
 
 The `ota-deploy` queue uses **delayed jobs** (not repeating). Each job is added by `FleetService.createDeployment()` when `scheduledAt` is set; `OtaDeployProcessor` processes it by calling `FleetService.activateDeployment()`. Immediate deployments bypass the queue entirely.
+
+---
+
+## Swarm / Multi-Replica Safety
+
+The backend runs as **2 Swarm replicas** (`backend` service in `docker-stack.yml`). The following mechanisms keep it correct under concurrent replicas and zero-downtime rolling deploys.
+
+### Graceful shutdown (`main.ts`)
+
+`app.enableShutdownHooks()` is enabled. Signal handlers for `SIGTERM` and `SIGINT` call `await app.close()`, which:
+
+1. Stops accepting new HTTP requests (Fastify closes its listener).
+2. Drains in-flight HTTP requests.
+3. Fires `onModuleDestroy` on every module — closes BullMQ workers so active jobs finish before the process exits.
+
+Paired with `stop_grace_period` in `docker-stack.yml`. The outgoing replica on a rolling deploy shuts down cleanly instead of dropping requests.
+
+### Database connection pool (`drizzle.provider.ts`)
+
+`DATABASE_URL` points at the **Supabase session-mode pooler** (one upstream server connection held per client connection). The pool is capped per replica:
+
+- `max: 8` connections per replica
+- `idle_timeout: 20` s
+- `connect_timeout: 10` s
+
+With 2 replicas: ~16 steady connections, ~24 peak during a rolling deploy (old + new replica both live). Stays within the pooler budget.
+
+`DrizzleProvider.client` (the raw `ReturnType<typeof postgres>`) is also exposed publicly so modules that need a session-scoped pinned connection can call `.reserve()` on it directly.
+
+### Boot backfill advisory lock (`trips.service.ts` `onModuleInit`)
+
+The truck-task backfill that runs on every boot is guarded by a PostgreSQL advisory lock to prevent duplicate trip materialization when both replicas cold-start simultaneously:
+
+1. Reserves a pinned connection via `drizzleProvider.client.reserve()`.
+2. Calls `pg_try_advisory_lock(hashtext('strawboss:trip-backfill'))` on that connection.
+3. If the lock is not acquired (another replica holds it), returns immediately — the other replica owns the backfill this boot.
+4. Releases with `pg_advisory_unlock(...)` in `finally`, then calls `.release()` on the connection.
+
+The lock is session-scoped and self-releases if the process dies. Does not fire on normal one-at-a-time rolling deploys (the old replica finishes before the new one boots).
+
+### Already multi-instance-safe
+
+| Mechanism | Why it is safe |
+|---|---|
+| BullMQ repeatable jobs | Seeded with stable scheduler IDs via `upsertJobScheduler()` — one job per interval across all replicas |
+| BullMQ processors | Competing-consumer workers — only one replica processes each job |
+| Redis-backed PIN throttle | Shared Redis state — rate limit is global, not per-replica |
+| `sync_idempotency` table | Postgres-level dedup — duplicate sync pushes from mobile are idempotent |
+| No in-memory pub/sub | No WebSocket or socket.io state — each request is stateless |
 
 ---
 

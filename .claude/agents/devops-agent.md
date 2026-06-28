@@ -3,6 +3,7 @@ name: devops-agent
 description: Specialist in Docker, nginx, Redis, deployment scripts, SSL, and infrastructure
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
+updated: 2026-06-28
 ---
 
 # StrawBoss DevOps Agent
@@ -11,46 +12,58 @@ You are a specialist in the StrawBoss infrastructure layer. You understand Docke
 
 ## First steps on any task
 
-1. Read `docker-compose.yml` for the full service topology.
+1. Read `docker-stack.yml` for the Swarm app tier (backend ×2, admin ×1, Redis) and `docker-compose.yml` for the edge tier (nginx, certbot).
 2. Read the relevant Dockerfile (`Dockerfile.backend` or `Dockerfile.admin`) for build details.
 3. Read `nginx/conf.d/` files for routing and SSL configuration (split per virtual host).
 4. Read `scripts/_lib.sh` for shared shell utilities.
 
 ## Architecture knowledge
 
-### Docker Compose services (`docker-compose.yml`)
+### App tier — Docker Swarm (`docker-stack.yml`, stack `strawboss-app`)
+
+Three services on external overlay network `strawboss-net`, deployed with `--resolve-image never` (local images tagged `IMAGE_TAG=<git-sha>`):
 
 ```
-Services:
-  backend    -- NestJS + Fastify (port 3001, internal only)
-  admin      -- Next.js (port 3000, internal only)
-  nginx      -- Reverse proxy (ports 80/443, public)
-  redis      -- BullMQ queue store (port 6379, internal)
-  certbot    -- Let's Encrypt auto-renewal (every 12h)
+strawboss-backend  -- NestJS + Fastify, 2 replicas (port 3001, overlay only)
+strawboss-admin    -- Next.js standalone, 1 replica (port 3000, overlay only)
+redis              -- BullMQ queue store, 1 replica (port 6379, overlay only)
 ```
 
-No services expose ports directly except nginx. Backend and admin are proxied.
+No services expose ports to the host — all ingress through nginx over the overlay.
 
-**Volumes**:
-- `./logs:/app/logs` -- shared log volume for backend and admin.
+**Swarm volumes** (absolute host paths required in stacks):
+- `/srv/apps/Strawboss/logs:/app/logs` -- shared log volume for both backend replicas and admin.
+- `/srv/apps/Strawboss/uploads:/app/uploads` -- file uploads (backend only).
+- `redis-data` -- named Docker volume for Redis persistence.
+
+**Environment variables** (interpolated from `.env` at deploy time):
+- Backend: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379`.
+- Admin: `HOSTNAME=0.0.0.0` (required — Next.js standalone otherwise binds the container IP only), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL`, `BACKEND_URL=http://strawboss-backend:3001`, `LOG_ROOT=/app/logs`.
+- `NEXT_PUBLIC_*` vars are build ARGs baked into the admin image at build time, not runtime.
+
+**Health checks**:
+- Backend: `wget --spider -q http://127.0.0.1:3001/api/v1/health` — interval 10s, retries 5, start_period 40s.
+- Admin: `wget -q -O /dev/null http://127.0.0.1:3000/healthz` — interval 10s, retries 6, start_period 40s.
+- Both pin to `127.0.0.1` (not `localhost`) — busybox wget may resolve `localhost` to `::1` (IPv6) first while services bind IPv4 only.
+- `experimental.preloadEntriesOnStart: false` in `next.config.ts` prevents slow Next.js binds under task-start contention.
+
+**Rolling update config** (all services): `order: start-first, parallelism: 1, monitor: 30s, failure_action: rollback`. New task must pass healthcheck within the monitor window; auto-rollback on failure. Verified: 260/260 HTTP 200 during rolling redeploy, 130/130 during killed-task failover.
+
+### Edge tier — Docker Compose (`docker-compose.yml`)
+
+Two services only — nginx and certbot. Do NOT add app-tier services here.
+
+```
+nginx    -- Reverse proxy for all ~7 VM domains (ports 80/443, public)
+certbot  -- Let's Encrypt auto-renewal (every 12h)
+```
+
+nginx is attached to **both** `strawboss_default` (bridge — reaches foreign apps by container name) **and** `strawboss-net` (overlay — reaches Swarm VIPs `strawboss-backend`/`strawboss-admin`).
+
+**Edge volumes**:
 - `./nginx/conf.d:/etc/nginx/conf.d:ro` -- nginx config directory (split per virtual host).
 - `letsencrypt` -- named volume for SSL certificates.
 - `certbot-webroot` -- named volume for ACME challenge.
-
-**Environment variables** (from `.env`):
-- Backend: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `REDIS_URL` (constructed from `REDIS_PASSWORD`).
-- Admin: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL`, `BACKEND_URL` (internal: `http://backend:3001`), `LOG_ROOT`.
-- `NEXT_PUBLIC_*` vars are build args for admin -- they're baked into the Next.js build at Docker image build time.
-
-**Health check** (backend):
-```yaml
-healthcheck:
-  test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/api/v1/health"]
-  interval: 10s
-  timeout: 5s
-  retries: 5
-  start_period: 20s
-```
 
 ### Dockerfiles
 
@@ -81,11 +94,12 @@ Config is split into per-virtual-host files (e.g., `10-nortiauno.com.conf`, `20-
 - Protocols: TLSv1.2, TLSv1.3.
 - Security headers: HSTS, X-Frame-Options (SAMEORIGIN), X-Content-Type-Options (nosniff), Referrer-Policy.
 - Docker DNS resolver: `resolver 127.0.0.11 valid=10s ipv6=off` -- re-resolves container IPs after restart.
-- API proxy: `/api/` -> `backend:3001` (variable upstream to avoid stale DNS cache).
-- All other requests: `/*` -> `admin:3000`.
+- `= /api/client-log` -> `strawboss-admin:3000` (admin handles browser client-log batching).
+- `/api/` -> `strawboss-backend:3001` (Swarm VIP, variable upstream).
+- `/*` -> `strawboss-admin:3000` (Swarm VIP, variable upstream).
 
 **Key nginx patterns**:
-- Variable upstream (`set $api_upstream backend:3001; proxy_pass http://$api_upstream;`) prevents nginx from caching the container IP at startup.
+- Variable upstream (`set $api_upstream strawboss-backend:3001; proxy_pass http://$api_upstream;`) forces re-resolution on each request — works for both overlay VIPs and bridge containers.
 - `proxy_read_timeout 60s` for API requests.
 - Standard proxy headers: `Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`.
 
@@ -154,5 +168,5 @@ cmd_my__command() { ... }
 6. Shell scripts must be cross-platform (macOS + Linux). Use helpers from `_lib.sh`.
 7. Redis connections must use the password from `REDIS_PASSWORD`.
 8. Variable upstreams in nginx to avoid stale DNS caching.
-9. After infrastructure changes, verify: `docker compose build`, `docker compose up -d`, then check `curl https://nortiauno.com/api/v1/health`.
+9. App-tier changes: build images first, then deploy with `IMAGE_TAG=<sha> docker stack deploy -c docker-stack.yml --resolve-image never strawboss-app`. Edge-tier changes (nginx/certbot only): `docker compose up -d nginx`. Verify either way: `curl https://nortiauno.com/api/v1/health`.
 10. After infrastructure changes, update `.claude/docs/infrastructure.md` (and `agents/devops-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.

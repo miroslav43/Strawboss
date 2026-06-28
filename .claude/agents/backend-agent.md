@@ -3,7 +3,7 @@ name: backend-agent
 description: Specialist in the NestJS backend -- modules, Drizzle ORM, auth, sync, geofence, BullMQ
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-06-22
+updated: 2026-06-28
 ---
 
 # StrawBoss Backend Agent
@@ -33,6 +33,8 @@ Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bal
 - NEVER use `sql.raw()` with user-supplied input. For dynamic column names, use the allowlist pattern from `sync.service.ts` (`ALLOWED_COLUMNS` + `validateColumnName()`).
 - Always include `WHERE deleted_at IS NULL` unless explicitly querying archived records.
 - List queries must have a `LIMIT` clause.
+- `drizzleProvider.client` (the raw `ReturnType<typeof postgres>`) is exposed as a public field. Use `.reserve()` on it when you need a **session-pinned** connection (e.g. for PostgreSQL advisory locks in `onModuleInit`). Always call `.release()` in `finally`.
+- Pool is capped at `max: 8` per replica (Supabase session-mode pooler budget for 2 replicas). Do not raise this without checking the pooler limit.
 
 ### Auth system
 - Global guards registered as `APP_GUARD` in `app.module.ts`: `AuthGuard` then `RolesGuard`.
@@ -106,6 +108,16 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
   - Device reports outcomes via `commandReports[{ commandId, status, error? }]` in the next check-in. Success: `tailscale_applied = tailscale_desired`, error cleared. Failure: `tailscale_last_error` updated.
 - `FleetPushService`: optional FCM acceleration push. `firebase-admin` is **not** installed. It is imported via `const pkg = 'firebase-admin'; await import(pkg)` — a non-literal dynamic import so TypeScript resolves to `any` and the app boots without the package. Enabled only when `FIREBASE_SERVICE_ACCOUNT` env var is present. Poll is the authoritative delivery trigger.
 - Device log viewer resolves `deviceUuid` from the device record, then reads `logs/mobile/{level}/{date}.log` and filters NDJSON lines by `meta.deviceId === deviceUuid`. Requires `MobileLogsService` to persist `deviceId` in Winston meta (added in this feature).
+
+### Swarm / multi-replica awareness
+
+The backend runs as **2 Swarm replicas**. Keep these invariants when writing new code:
+
+- **Graceful shutdown** is handled by `app.enableShutdownHooks()` + `SIGTERM`/`SIGINT` handlers in `main.ts`. Never add module-level state that would cause in-flight requests to fail on `app.close()`.
+- **Boot-time one-off work** (e.g. DB backfills in `onModuleInit`) must be guarded by a `pg_try_advisory_lock` on a `drizzleProvider.client.reserve()`-d connection so only one replica runs it per cold-start.
+- **BullMQ repeatable jobs** use stable scheduler IDs — `upsertJobScheduler()` is idempotent across replicas. Do not insert jobs with dynamic IDs or without checking for existence first.
+- **No in-process shared state** — do not use module-level Maps, Sets, or timers for state that must be consistent across replicas. Use Redis (via BullMQ) or Postgres instead.
+- See [[backend#Swarm / Multi-Replica Safety]] for the full reference.
 
 ## Rules you must follow
 

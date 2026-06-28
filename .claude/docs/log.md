@@ -2,7 +2,7 @@
 type: meta
 title: "Doc Change Log"
 created: 2026-05-25
-updated: 2026-05-25
+updated: 2026-06-28
 tags: [meta, log, changelog]
 status: developing
 ---
@@ -48,3 +48,8 @@ Actions: `save` (update), `new doc` (created), `delete`, `rename`.
 [2026-06-22] save | `admin-web.md` + `frontend-agent.md` — tailscale dot/toggle/settings (OAuth+APK upload), nickname-first, injection-safe tunnel cmd, APK filename
 [2026-06-22] save | `infrastructure.md` + `architecture.md` — Tailscale fleet remote access (tailnet, systemd timer, adb host req, ephemeral keys, app_settings secrets)
 [2026-06-22] save | `hot.md` — added Fleet Tailscale remote + release auto-register to "What's Changing Now"; migration range 00057
+[2026-06-28] save | `infrastructure.md` + `devops-agent.md` — Docker Swarm app tier (`strawboss-app` stack, overlay `strawboss-net`, health-gated rolling deploys, hybrid Compose nginx); 127.0.0.1 healthchecks, HOSTNAME=0.0.0.0, single-node bind-mount constraint
+[2026-06-28] save | `scripts.md` — `prod` rewritten for Swarm (stack:deploy); new `stack:status`/`stack:logs`/`stack:rollback`/`stack:rm`/`scale`; `stop` = stack rm (leaves shared nginx); `_ensure_swarm`/`_build_prod_images` helpers
+[2026-06-28] save | `backend.md` + `backend-agent.md` — graceful shutdown (enableShutdownHooks + SIGTERM→close), boot advisory-lock backfill on a reserved connection, capped PG pool (max 8) for 2 replicas; multi-replica safety section
+[2026-06-28] save | `admin-web.md` + `frontend-agent.md` — `/healthz` route + `experimental.preloadEntriesOnStart:false` + `HOSTNAME=0.0.0.0` for the Swarm healthcheck/fast bind
+[2026-06-28] save | `hot.md` — added "Production on Docker Swarm" to What's Changing Now + prod/stack:status quick commands

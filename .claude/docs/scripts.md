@@ -2,7 +2,7 @@
 type: doc
 title: "Scripts (strawboss.sh)"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-06-28
 tags: [doc, scripts, tooling, bash, fleet, tailscale]
 status: mature
 related:
@@ -96,8 +96,8 @@ cmd_my__command() {
 |---|---|
 | `setup` | Install deps, copy .env, apply DB migrations, build packages |
 | `dev` | Free ports, start Redis, build packages, run backend + admin-web dev |
-| `prod` | Validate env, install deps, build packages + Docker images, start services, issue SSL if needed |
-| `stop` | Kill dev processes on ports, stop Docker services |
+| `prod` | Build + rolling-deploy the Swarm app tier (`stack:deploy`); start shared nginx/certbot only if not already running; issue SSL if needed |
+| `stop` | Kill dev processes on ports; remove the Swarm app-tier stack (`strawboss-app`); shared nginx/certbot and other VM apps stay running |
 
 ### Mobile (`scripts/02-mobile.sh`)
 
@@ -203,7 +203,26 @@ Build targets respect dependency order. For example, `build backend` first build
 | `docker:up [svc...]` | Start Docker services (optional specific services) |
 | `docker:down [svc...]` | Stop Docker services |
 | `docker:logs [svc...]` | Tail Docker service logs |
+| `docker:fix-volume-perms` | Fix `logs/` + `uploads/` ownership for Docker (appuser UID 100) |
 | `ssl:init` | Issue Let's Encrypt cert for nortiauno.com via HTTP-01 challenge |
+
+#### Swarm — app-tier production (`scripts/06-docker.sh`)
+
+The production app tier (backend ×2, admin ×1, redis ×1) runs as a Swarm stack named `strawboss-app` on a single-node Swarm. This enables health-gated rolling deploys with zero downtime. The shared nginx + certbot remain on Compose (`docker-compose.yml`) and are NOT part of the stack. See [[infrastructure]] for `docker-stack.yml` and the overlay network setup.
+
+| Command | Description |
+|---|---|
+| `stack:deploy` | Build tagged images via `docker build -f Dockerfile.{backend,admin}` then `docker stack deploy -c docker-stack.yml --resolve-image never strawboss-app`; health-gated rolling update with auto-rollback |
+| `stack:status` | Show Swarm services and running tasks for the app tier |
+| `stack:logs [svc]` | Tail a Swarm service log; `svc` is `strawboss-backend` (default), `strawboss-admin`, or `redis` |
+| `stack:rollback [backend\|admin]` | `docker service rollback` the named service to its previous image (default: `backend`) |
+| `stack:rm` | Remove the app-tier stack; nginx/certbot and other VM apps stay running |
+| `scale <backend\|admin> <n>` | `docker service scale` the named service to `n` replicas |
+
+**Internal helpers** (called by `stack:deploy` / `prod`; not invoked directly):
+
+- `_ensure_swarm` — idempotent: initializes single-node Swarm if needed, creates the attachable overlay network `strawboss-net`, and attaches the running nginx container to it so nginx can reach the Swarm service VIPs. Safe to run on every deploy.
+- `_build_prod_images` — builds `strawboss-backend` and `strawboss-admin` images tagged with the current git short-SHA and `:latest`. The Dockerfiles are self-contained (workspace install + build happen inside the image); no host-side `pnpm install` or `_build_packages` call is needed for production builds.
 
 ### Logs (`scripts/07-logs.sh`)
 

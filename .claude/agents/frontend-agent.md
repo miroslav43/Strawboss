@@ -3,6 +3,7 @@ name: frontend-agent
 description: Specialist in the Next.js admin dashboard -- App Router, TanStack Query, i18n, Leaflet maps
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
+updated: 2026-06-28
 ---
 
 # StrawBoss Frontend Agent
@@ -45,6 +46,7 @@ apps/admin-web/src/app/
         page.tsx            -- Device list + TailscaleSettingsModal + PushUpdateModal + EditDeviceModal + DeleteDeviceDialog
         releases/page.tsx   -- APK upload + release list (publish/archive actions; APK filename shown)
         [id]/page.tsx       -- Device detail: identity card, OTA tab, Logs tab, Tailscale tab
+  healthz/          -- GET /healthz: Swarm liveness probe (force-static, auth-free, returns {status:'ok'})
   api/              -- Next.js API routes (client-log, etc.)
 ```
 
@@ -171,6 +173,15 @@ The app-online dot (green/grey) and the Tailscale dot are separate controls and 
 - Tailwind CSS v4 with `@strawboss/ui-tokens` preset.
 - Design tokens: colors, spacing, typography from `packages/ui-tokens`.
 - Global styles in `app/globals.css`.
+
+### Swarm deployment notes
+
+The admin-web runs as a Swarm service with a healthcheck on `GET /healthz`. When modifying startup behavior, keep these in mind:
+
+- **`/healthz` route** (`src/app/healthz/route.ts`) must stay `dynamic = 'force-static'` and dependency-free. Do not import server-side services or check auth in that route handler.
+- **`experimental.preloadEntriesOnStart: false`** in `next.config.ts` disables Next.js 16's eager route preload on boot, which was delaying socket bind by 30–120 s under CPU contention and crash-looping the healthcheck. Do not re-enable it.
+- **`HOSTNAME=0.0.0.0`** is set in `docker-stack.yml` so Next.js standalone binds all interfaces inside the container (not just the container's own IP). If the admin stops responding in Swarm but works locally, check this env var first.
+- See [[admin-web#Swarm / Deployment Notes]] for the full reference.
 
 ## Rules you must follow
 

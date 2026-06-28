@@ -2,7 +2,7 @@
 type: doc
 title: "Admin Web (apps/admin-web)"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-06-28
 tags: [doc, frontend, layer, nextjs]
 status: mature
 related:
@@ -12,6 +12,7 @@ related:
   - "[[backend]]"
 ---
 
+<!-- updated 2026-06-28: /healthz Swarm probe, preloadEntriesOnStart disabled, HOSTNAME=0.0.0.0 deploy note -->
 <!-- updated 2026-06-22: Fleet — Tailscale controls, nickname-first display, APK filename column -->
 
 # Admin Web (`apps/admin-web`)
@@ -48,6 +49,12 @@ All routes live under `src/app/`. Two route groups: `(auth)` for login, `(dashbo
 | `/settings` | `(dashboard)/settings/page.tsx` | 100% | Profile editing, password change, locale toggle, notification prefs |
 | `/deposits` | `(dashboard)/deposits/page.tsx` | 100% | Delivery destination management (Plan C — previously under `/delivery-destinations`) |
 | `/command-center` | `(dashboard)/command-center/page.tsx` | 100% | Multi-trip board with `UserPresenceDot` for live operator presence (Plan C) |
+
+### Infrastructure routes
+
+| Route | File | Description |
+|---|---|---|
+| `GET /healthz` | `src/app/healthz/route.ts` | Swarm liveness probe. `dynamic = 'force-static'`; returns `{ status: 'ok' }` with HTTP 200. Auth-free and dependency-free — answers from cache without invoking the React renderer. Used by `docker-stack.yml` `healthcheck`. |
 
 ### Super-admin area (`src/app/super-admin/(dashboard)/`)
 
@@ -380,6 +387,27 @@ Subscribes a per-component channel to a specific table and invalidates the given
 - `normalize()` (`src/lib/normalize-api-list.ts`) -- normalizes API list responses (handles both array and `{ data: [] }` formats)
 - `clientLogger` (`src/lib/client-logger.ts`) -- batches browser logs to `POST /api/client-log`
 - Client log route (`src/app/api/client-log/route.ts`) -- Next.js API route that writes client logs to the server-side Winston logger
+
+---
+
+## Swarm / Deployment Notes
+
+### `/healthz` liveness probe (`src/app/healthz/route.ts`)
+
+A dependency-free `GET /healthz` → `200 { status: 'ok' }` route used by the Docker Swarm healthcheck on the `admin-web` service. It is:
+
+- **`dynamic = 'force-static'`** — the standalone server answers from the build-time cache without invoking the React renderer or any data fetch, so it returns immediately even when the app is still warming up.
+- **Auth-free and public** — no Supabase session is checked.
+
+### `next.config.ts` — `experimental.preloadEntriesOnStart: false`
+
+Next.js 16 standalone mode preloads all route entries on server start by default (`preloadEntriesOnStart: true`). That preload is CPU-heavy and, under container/orchestration CPU contention, can delay the moment the HTTP socket actually binds by 30–120 s — despite the misleading "Ready in 0ms" banner — causing the Swarm healthcheck to fail and crash-loop the container.
+
+Setting `experimental.preloadEntriesOnStart: false` makes the server bind in ~1 s and load routes lazily on first request. This is the correct behavior for a health-gated rolling deploy on an internal admin dashboard.
+
+### `HOSTNAME=0.0.0.0` (docker-stack.yml)
+
+The `admin-web` Swarm service sets `HOSTNAME=0.0.0.0` in its environment. Next.js standalone uses `HOSTNAME` to decide which interface to bind; without it, Next.js binds only the container's own IP, which is not reachable from the overlay network's load-balancer. Setting it to `0.0.0.0` ensures the server listens on all interfaces inside the container.
 
 ---
 

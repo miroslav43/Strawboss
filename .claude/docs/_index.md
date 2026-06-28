@@ -2,7 +2,7 @@
 type: meta
 title: "StrawBoss Docs Index"
 created: 2026-05-25
-updated: 2026-05-25
+updated: 2026-06-28
 tags: [meta, index]
 status: mature
 ---
