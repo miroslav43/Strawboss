@@ -41,6 +41,7 @@ import type {
   CreateRemoteCommandInput,
 } from '@strawboss/validation';
 import { FleetPushService } from './fleet-push.service';
+import { ProfileService } from '../profile/profile.service';
 import { QUEUE_OTA_DEPLOY } from '../jobs/queues';
 
 /** Max APK size: 250 MB */
@@ -70,6 +71,7 @@ const DEVICE_COLS = sql`
   tailscale_last_error    AS "tailscaleLastError",
   last_state              AS "lastState",
   last_state_at           AS "lastStateAt",
+  last_user_id            AS "lastUserId",
   created_at              AS "createdAt",
   updated_at              AS "updatedAt",
   deleted_at              AS "deletedAt"
@@ -116,6 +118,7 @@ export class FleetService {
     private readonly drizzleProvider: DrizzleProvider,
     private readonly configService: ConfigService,
     private readonly fleetPushService: FleetPushService,
+    private readonly profileService: ProfileService,
     @InjectQueue(QUEUE_OTA_DEPLOY) private readonly otaDeployQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {
@@ -203,14 +206,14 @@ export class FleetService {
         sql`INSERT INTO devices (
               device_uuid, device_token_hash,
               app_version, version_code, model, manufacturer, os_version, android_id,
-              push_token, is_device_owner, last_active_trip,
+              push_token, is_device_owner, last_active_trip, last_user_id,
               last_seen_at, last_checkin_at
             ) VALUES (
               ${dto.deviceUuid}, ${tokenHash},
               ${dto.appVersion}, ${dto.versionCode},
               ${dto.model ?? null}, ${dto.manufacturer ?? null},
               ${dto.osVersion ?? null}, ${dto.androidId ?? null},
-              ${dto.pushToken ?? null}, ${dto.isDeviceOwner}, ${dto.activeTrip},
+              ${dto.pushToken ?? null}, ${dto.isDeviceOwner}, ${dto.activeTrip}, ${dto.userId ?? null}::uuid,
               now(), now()
             ) RETURNING id, organization_id`,
       );
@@ -249,11 +252,26 @@ export class FleetService {
               push_token        = COALESCE(${dto.pushToken ?? null}, push_token),
               is_device_owner   = ${dto.isDeviceOwner},
               last_active_trip  = ${dto.activeTrip},
+              last_user_id      = ${dto.userId ?? null}::uuid,
               last_seen_at      = now(),
               last_checkin_at   = now(),
               updated_at        = now()
             WHERE id = ${deviceId}::uuid`,
       );
+    }
+
+    // Operator presence on the STABLE signal: a public check-in (driven by the
+    // native 60s alarm) is the most reliable liveness we have — far steadier than
+    // the JS heartbeat that pauses on background. Touch the operator's last_seen so
+    // the Accounts/Tasks dots ride this signal. Best-effort: never fail a check-in.
+    if (dto.userId) {
+      void this.profileService.touchLastSeen(dto.userId).catch((err) => {
+        this.winston.warn('touchLastSeen from fleet check-in failed', {
+          context: 'FleetService',
+          userId: dto.userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     }
 
     // On first registration, return immediately with no pending work.
@@ -1111,10 +1129,16 @@ export class FleetService {
             d.updated_at            AS "updatedAt",
             d.deleted_at            AS "deletedAt",
             o.name                  AS "organizationName",
+            d.last_user_id          AS "lastUserId",
+            lu.full_name            AS "lastUserName",
+            lu.role                 AS "lastUserRole",
+            luo.name                AS "lastUserOrgName",
             latest.state            AS "latestOtaState",
             latest.deployment_id    AS "latestDeploymentId"
           FROM devices d
           LEFT JOIN organizations o ON o.id = d.organization_id AND o.deleted_at IS NULL
+          LEFT JOIN users lu ON lu.id = d.last_user_id AND lu.deleted_at IS NULL
+          LEFT JOIN organizations luo ON luo.id = lu.organization_id AND luo.deleted_at IS NULL
           LEFT JOIN LATERAL (
             SELECT dos.state, dos.deployment_id
             FROM device_ota_status dos

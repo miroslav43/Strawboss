@@ -82,6 +82,8 @@ export interface Device extends Timestamps, SoftDelete {
   /** Latest device-reported health snapshot (from a `report_state` remote command). */
   lastState: DeviceHealthReport | null;
   lastStateAt: string | null;
+  /** Operator logged into the device at the last check-in (self-reported); null when logged out. */
+  lastUserId: string | null;
 }
 
 /** A device-reported diagnostic snapshot (gathered by the `report_state` remote command). */
@@ -115,6 +117,10 @@ export interface FleetDeviceListItem extends Device {
   organizationName: string | null;
   latestOtaState: OtaState | null;
   latestDeploymentId: string | null;
+  /** The logged-in operator (joined from last_user_id) — for telling fleet phones apart. */
+  lastUserName: string | null;
+  lastUserRole: string | null;
+  lastUserOrgName: string | null;
 }
 
 /** An uploaded APK. */
@@ -377,6 +383,8 @@ export interface DeviceCheckinRequest {
   /** Results of one-shot remote-debug commands (reboot/fetch_logs/reinstall_apk/report_state). */
   remoteCommandReports?: DeviceRemoteCommandReport[];
   lastError?: string;
+  /** Operator currently logged in (from the Supabase session) — drives presence + fleet display. */
+  userId?: string | null;
 }
 
 /** The signed APK + install policy handed to a device that has pending work. */

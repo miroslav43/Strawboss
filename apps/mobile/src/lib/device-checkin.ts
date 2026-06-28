@@ -45,6 +45,7 @@ import { uploadTodayMobileLogs } from '../sync/mobile-log-upload';
 import { mobileApiClient } from './api-client';
 import { getDatabase } from './storage';
 import { TripsRepo } from '../db/trips-repo';
+import { getSupabaseClient } from './auth';
 import { markCheckinSuccess } from './health-state';
 import { mobileLogger } from './logger';
 
@@ -781,6 +782,18 @@ export function runDeviceCheckin(): Promise<void> {
       // Accumulate pending remote-debug command reports
       const remoteCommandReports = await readRemoteCommandReports();
 
+      // Logged-in operator — sent so the backend can show who's on each phone AND
+      // keep the operator's presence fresh via this stable (native-alarm) check-in.
+      // Read from the SecureStore-backed Supabase session, NOT the Zustand store, so
+      // there is no hydration race in the headless task; null when logged out.
+      let userId: string | null = null;
+      try {
+        const { data: sessionData } = await getSupabaseClient().auth.getSession();
+        userId = sessionData.session?.user?.id ?? null;
+      } catch {
+        userId = null;
+      }
+
       const body: DeviceCheckinRequest = {
         deviceUuid,
         ...(deviceToken ? { deviceToken } : {}),
@@ -796,6 +809,7 @@ export function runDeviceCheckin(): Promise<void> {
         ...(otaReports.length > 0 ? { otaReports } : {}),
         ...(commandReports.length > 0 ? { commandReports } : {}),
         ...(remoteCommandReports.length > 0 ? { remoteCommandReports } : {}),
+        ...(userId ? { userId } : {}),
       };
 
       mobileLogger.flow('Fleet: check-in start', { deviceUuid, appVersion, versionCode });

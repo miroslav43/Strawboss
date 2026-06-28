@@ -72,20 +72,28 @@ function FormField({
 
 function DeviceNickname({ device }: { device: FleetDeviceListItem }) {
   const { t } = useI18n();
-  if (device.name) {
-    return (
-      <div>
-        <p className="font-semibold text-neutral-900">{device.name}</p>
-        {device.organizationName && (
-          <p className="text-xs text-neutral-400">{device.organizationName}</p>
-        )}
-        <p className="font-mono text-xs text-neutral-300">{device.deviceUuid.slice(0, 8)}…</p>
-      </div>
-    );
-  }
+  // The operator logged in at the last check-in (self-reported), shown prominently
+  // so the near-identical fleet phones can be told apart. Append the user's org only
+  // when it differs from the device's assigned org (avoids redundant repetition).
+  const userLine = device.lastUserName
+    ? [
+        device.lastUserName,
+        device.lastUserRole ? device.lastUserRole.replace(/_/g, ' ') : null,
+        device.lastUserOrgName && device.lastUserOrgName !== device.organizationName
+          ? device.lastUserOrgName
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null;
   return (
     <div>
-      <p className="text-sm text-neutral-400 italic">{t('superAdmin.devices.noName')}</p>
+      {device.name ? (
+        <p className="font-semibold text-neutral-900">{device.name}</p>
+      ) : (
+        <p className="text-sm text-neutral-400 italic">{t('superAdmin.devices.noName')}</p>
+      )}
+      {userLine && <p className="text-xs font-medium text-teal-700">👤 {userLine}</p>}
       {device.organizationName && (
         <p className="text-xs text-neutral-400">{device.organizationName}</p>
       )}

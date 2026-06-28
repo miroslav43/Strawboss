@@ -64,6 +64,8 @@ export const deviceCheckinSchema = z.object({
   commandReports: z.array(deviceCommandReportSchema).max(50).optional(),
   remoteCommandReports: z.array(deviceRemoteCommandReportSchema).max(50).optional(),
   lastError: z.string().max(4000).optional(),
+  /** Operator currently logged into the device — drives stable presence + fleet display. */
+  userId: z.string().uuid().nullable().optional(),
 });
 export type DeviceCheckinInput = z.infer<typeof deviceCheckinSchema>;
 
