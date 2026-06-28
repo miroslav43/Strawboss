@@ -970,8 +970,16 @@ function DeviceHealthPanel({
               <HRow
                 key={p.pkg}
                 label={p.pkg.replace(/^com\./, '')}
-                value={p.hidden ? 'hidden' : p.enabled === false ? 'disabled' : 'ACTIVE'}
-                tone={p.hidden || p.enabled === false ? 'ok' : 'bad'}
+                value={
+                  p.hidden
+                    ? 'hidden'
+                    : p.suspended
+                      ? 'suspended'
+                      : p.enabled === false
+                        ? 'disabled'
+                        : 'ACTIVE'
+                }
+                tone={p.hidden || p.suspended || p.enabled === false ? 'ok' : 'bad'}
               />
             ))}
           </HSection>

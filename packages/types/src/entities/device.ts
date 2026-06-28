@@ -279,7 +279,9 @@ export interface DeviceHealthReport {
    * "PowerGenie" lineage) and whether the device owner has hidden/disabled each.
    * Empty array = none present (so the freeze, if any, is some other mechanism).
    */
-  oemPowerPackages: { pkg: string; hidden: boolean | null; enabled: boolean | null }[] | null;
+  oemPowerPackages:
+    | { pkg: string; hidden: boolean | null; suspended: boolean | null; enabled: boolean | null }[]
+    | null;
   /**
    * Why the app process was recently killed (newest first) — the OEM-freeze smoking
    * gun. `reasonLabel` e.g. 'user_requested'/'other' (force-stop, e.g. PowerGenie),

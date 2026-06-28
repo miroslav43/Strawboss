@@ -173,19 +173,36 @@ object DeviceOwnerPolicies {
     } catch (t: Throwable) { Log.w(TAG, "battery exemption request failed", t) }
 
     // 7. Disarm OEM proprietary background killers (PowerGenie et al.) — the only
-    //    thing still freezing us once battery-opt + standby are already exempt. As
-    //    a device owner we can see every installed package and hide system apps;
-    //    hiding (not uninstalling) is reversible via release(). Best-effort.
+    //    thing still freezing us once battery-opt + standby are already exempt.
+    //    Lever 1 = hide; on MagicOS this SILENTLY fails for com.hihonor.powergenie
+    //    (it stays visible — the OEM protects it from a device owner), so we VERIFY
+    //    with isApplicationHidden and fall back to Lever 2 = suspend, a different
+    //    mechanism that can take where hide is blocked. Both reversible via
+    //    release(). Best-effort.
     try {
       @Suppress("DEPRECATION")
       val installed = context.packageManager.getInstalledPackages(0)
       for (info in installed) {
         val lower = info.packageName.lowercase()
         if (OEM_KILLER_PATTERNS.any { lower.contains(it) }) {
+          val pkgName = info.packageName
+          var disarmed = false
+          // Lever 1: hide, then VERIFY (the setter's own result is unreliable across
+          // OEM builds — read back the actual hidden state).
           try {
-            dpm.setApplicationHidden(admin, info.packageName, true)
-            Log.w(TAG, "Disarmed OEM background-killer: " + info.packageName)
-          } catch (t: Throwable) { Log.w(TAG, "hide killer failed: " + info.packageName, t) }
+            dpm.setApplicationHidden(admin, pkgName, true)
+            disarmed = dpm.isApplicationHidden(admin, pkgName)
+          } catch (t: Throwable) { Log.w(TAG, "hide killer failed: " + pkgName, t) }
+          // Lever 2: suspend if hide didn't take (API 28+). setPackagesSuspended
+          // returns the packages it could NOT suspend — empty array means success.
+          if (!disarmed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+              val failed = dpm.setPackagesSuspended(admin, arrayOf(pkgName), true)
+              disarmed = failed.isEmpty()
+              Log.w(TAG, "suspend killer " + pkgName + " ok=" + disarmed)
+            } catch (t: Throwable) { Log.w(TAG, "suspend killer failed: " + pkgName, t) }
+          }
+          Log.w(TAG, "OEM background-killer " + pkgName + " disarmed=" + disarmed)
         }
       }
     } catch (t: Throwable) { Log.w(TAG, "OEM killer scan failed", t) }
@@ -217,6 +234,9 @@ object DeviceOwnerPolicies {
         val lower = info.packageName.lowercase()
         if (OEM_KILLER_PATTERNS.any { lower.contains(it) }) {
           try { dpm.setApplicationHidden(admin, info.packageName, false) } catch (t: Throwable) {}
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try { dpm.setPackagesSuspended(admin, arrayOf(info.packageName), false) } catch (t: Throwable) {}
+          }
         }
       }
     } catch (t: Throwable) {}
@@ -449,7 +469,13 @@ class DeviceOwnerModule(private val ctx: ReactApplicationContext) :
           if (isOwner) {
             try { entry.putBoolean("hidden", dpm.isApplicationHidden(admin, info.packageName)) }
             catch (t: Throwable) { entry.putNull("hidden") }
-          } else entry.putNull("hidden")
+            // suspended (API 28+) — the second disarm lever; tells us whether
+            // setPackagesSuspended actually took where hiding was blocked.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+              try { entry.putBoolean("suspended", dpm.isPackageSuspended(admin, info.packageName)) }
+              catch (t: Throwable) { entry.putNull("suspended") }
+            } else entry.putNull("suspended")
+          } else { entry.putNull("hidden"); entry.putNull("suspended") }
           try {
             // 0=DEFAULT,1=ENABLED count as enabled; 2/3/4 are DISABLED variants.
             val es = pmgr.getApplicationEnabledSetting(info.packageName)

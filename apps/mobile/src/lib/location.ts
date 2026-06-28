@@ -29,6 +29,14 @@ const LAST_SUCCESS_FILE = `${doc}strawboss-location-last-success.txt`;
 const MAX_PENDING_REPORTS = 400;
 const PENDING_REPORTS_WARN_THRESHOLD = Math.floor(MAX_PENDING_REPORTS * 0.9);
 
+// A queued GPS fix older than this is operationally useless — the dispatcher wants
+// the CURRENT position, not where a frozen phone was half an hour ago. Critically,
+// on OEM ROMs that freeze the foreground service mid-flush (HONOR/MagicOS
+// PowerGenie), replaying a large stale backlog forever is exactly what pins a
+// phone's position in the past (one device re-inserted ~18k duplicate pings/day, all
+// stamped with a single 2-minute-old window). Drop anything older before flushing.
+const MAX_REPORT_AGE_MS = 30 * 60_000; // 30 min
+
 // ---------------------------------------------------------------------------
 // FM-15 — Adaptive GPS tracking
 // ---------------------------------------------------------------------------
@@ -166,8 +174,13 @@ async function readPendingReports(): Promise<LocationReportDto[]> {
   }
 }
 
-async function writePendingReports(reports: LocationReportDto[]): Promise<void> {
-  if (reports.length >= PENDING_REPORTS_WARN_THRESHOLD) {
+async function writePendingReports(
+  reports: LocationReportDto[],
+  warnNearCapacity = false,
+): Promise<void> {
+  // Only warn when the queue is GROWING (an append) — not on every incremental
+  // writeback while we drain it, which would spam the same warning ~40×.
+  if (warnNearCapacity && reports.length >= PENDING_REPORTS_WARN_THRESHOLD) {
     mobileLogger.flow('Location pending queue near capacity — possible connectivity issue', {
       pendingCount: reports.length,
       maxAllowed: MAX_PENDING_REPORTS,
@@ -180,7 +193,7 @@ async function writePendingReports(reports: LocationReportDto[]): Promise<void> 
 async function appendPendingReport(report: LocationReportDto): Promise<void> {
   const cur = await readPendingReports();
   cur.push(report);
-  await writePendingReports(cur);
+  await writePendingReports(cur, true);
 }
 
 async function writeLastSuccessTimestamp(): Promise<void> {
@@ -223,29 +236,58 @@ function isPermanentReportError(err: unknown): err is ApiError {
   );
 }
 
-/** Retry outbox after failed background POSTs (e.g. offline / 401). */
+/**
+ * Retry outbox after failed background POSTs (e.g. offline / 401).
+ *
+ * Crash-safe and age-bounded by design, because this runs inside a foreground
+ * service that OEM ROMs (HONOR/MagicOS PowerGenie) freeze without warning:
+ *   1. Stale reports are dropped up front and the trim is persisted immediately,
+ *      so even if we're frozen before posting anything the zombie backlog is gone.
+ *   2. We persist progress after EACH report. A freeze mid-loop therefore resumes
+ *      where it left off instead of replaying the whole queue — the old "post all,
+ *      then write back once" shape never reached the writeback under a freeze, so
+ *      it re-posted the same backlog every wake (thousands of dup pings/day).
+ */
 export async function flushPendingLocationReports(): Promise<void> {
-  const pending = await readPendingReports();
+  let pending = await readPendingReports();
   if (pending.length === 0) return;
 
-  const remaining: LocationReportDto[] = [];
-  for (const report of pending) {
+  // 1. Drop stale reports, then persist the trim before doing any network work.
+  const cutoff = Date.now() - MAX_REPORT_AGE_MS;
+  const fresh = pending.filter((r) => {
+    const t = Date.parse(r.recordedAt);
+    return Number.isFinite(t) && t >= cutoff;
+  });
+  if (fresh.length !== pending.length) {
+    mobileLogger.flow('Dropped stale location reports from outbox', {
+      dropped: pending.length - fresh.length,
+      kept: fresh.length,
+    });
+    await writePendingReports(fresh);
+  }
+  pending = fresh;
+
+  // 2. Flush incrementally, persisting after each report so a freeze can't replay.
+  while (pending.length > 0) {
+    const report = pending[0];
     try {
       await postLocationReport(report);
       await writeLastSuccessTimestamp();
     } catch (err) {
-      if (isPermanentReportError(err)) {
-        mobileLogger.warn('Location report dropped from outbox (permanent 4xx)', {
-          status: err.status,
-          machineId: report.machineId,
-          message: err.message,
-        });
-        continue; // drop — re-queueing a permanent failure just re-floods the server
+      if (!isPermanentReportError(err)) {
+        // Transient (offline / 5xx / 401-408-429): stop and keep the rest queued.
+        break;
       }
-      remaining.push(report);
+      mobileLogger.warn('Location report dropped from outbox (permanent 4xx)', {
+        status: err.status,
+        machineId: report.machineId,
+        message: err.message,
+      });
+      // Permanent 4xx — fall through to drop it from the queue.
     }
+    pending = pending.slice(1);
+    await writePendingReports(pending);
   }
-  await writePendingReports(remaining);
 }
 
 /**

@@ -25,6 +25,14 @@ export class LocationService {
   private lastGeofenceNudgeMs = 0;
   private static readonly GEOFENCE_NUDGE_THROTTLE_MS = 15_000;
 
+  /**
+   * Throttle for the "dropping cross-org/stale location report" warning. A single
+   * misconfigured phone re-posts a doomed report many times per second, so we log
+   * the drop at most once per window to keep it diagnosable without flooding.
+   */
+  private lastDropLogMs = 0;
+  private static readonly DROP_LOG_THROTTLE_MS = 60_000;
+
   private readonly logger = new Logger(LocationService.name);
 
   constructor(
@@ -82,7 +90,22 @@ export class LocationService {
         LIMIT 1
       `)) as unknown as { id: string }[];
       if (machineCheck.length === 0) {
-        throw new BadRequestException('Machine not found in your organization');
+        // Stale/cross-org machine id: the operator has no in-org machine to
+        // attribute this ping to. Returning 400 here just makes the mobile outbox
+        // re-queue and re-post the same doomed report forever — one misconfigured
+        // phone generated >180k such 400s in a single day. Drop it silently (204)
+        // and surface the misconfig at most once per minute so it stays
+        // diagnosable without flooding the logs.
+        const nowMs = Date.now();
+        if (nowMs - this.lastDropLogMs > LocationService.DROP_LOG_THROTTLE_MS) {
+          this.lastDropLogMs = nowMs;
+          this.logger.warn(
+            `Dropping location report: machine ${machineId} not in org ${orgId} for ` +
+              `operator ${operatorId} (client sent ${dto.machineId}, assigned ` +
+              `${assignedMachineId ?? 'none'}) — likely a stale cross-org cached machine id`,
+          );
+        }
+        return;
       }
     }
 
@@ -99,6 +122,7 @@ export class LocationService {
         ${dto.speedMs ?? null},
         ${dto.recordedAt}::timestamptz
       )
+      ON CONFLICT DO NOTHING
     `);
 
     // Presence: a backgrounded operator (screen off) pauses the JS heartbeat,
@@ -161,6 +185,55 @@ export class LocationService {
     `);
 
     return result as unknown as MachineLastLocation[];
+  }
+
+  /**
+   * Return the last known position of ONE machine, but only if it reported GPS
+   * within the last `windowMinutes`. Org-scoped. Used by the driver trip screen
+   * to navigate to the trip's loader when it is "live"; returns null when the
+   * machine has no recent fix so the caller can fall back to the loading field.
+   */
+  async getMachineLastLocation(
+    machineId: string,
+    windowMinutes: number,
+    orgId: string | null,
+  ): Promise<MachineLastLocation | null> {
+    if (!Number.isInteger(windowMinutes) || windowMinutes < 1 || windowMinutes > 60) {
+      throw new BadRequestException('windowMinutes must be an integer between 1 and 60');
+    }
+
+    const whereConditions: ReturnType<typeof sql>[] = [
+      sql`mle.machine_id = ${machineId}::uuid`,
+      sql`mle.recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'`,
+    ];
+    if (orgId !== null) whereConditions.push(sql`m.organization_id = ${orgId}::uuid`);
+    const where = sql.join(whereConditions, sql` AND `);
+
+    const result = (await this.drizzleProvider.db.execute(sql`
+      SELECT DISTINCT ON (mle.machine_id)
+        mle.machine_id                                        AS "machineId",
+        m.machine_type                                        AS "machineType",
+        COALESCE(m.internal_code, m.registration_plate)      AS "machineCode",
+        mle.operator_id                                       AS "operatorId",
+        u.full_name                                           AS "operatorName",
+        au.id                                                 AS "assignedUserId",
+        au.full_name                                          AS "assignedUserName",
+        mle.lat::float          AS lat,
+        mle.lon::float          AS lon,
+        mle.accuracy_m::float   AS "accuracyM",
+        mle.heading_deg::float  AS "headingDeg",
+        mle.speed_ms::float     AS "speedMs",
+        mle.recorded_at  AS "recordedAt"
+      FROM machine_location_events mle
+      LEFT JOIN machines m  ON m.id = mle.machine_id
+      LEFT JOIN users    u  ON u.id = mle.operator_id
+      LEFT JOIN users    au ON au.assigned_machine_id = mle.machine_id
+                            AND au.deleted_at IS NULL
+      WHERE ${where}
+      ORDER BY mle.machine_id, mle.recorded_at DESC
+    `)) as unknown as MachineLastLocation[];
+
+    return result[0] ?? null;
   }
 
   /**
