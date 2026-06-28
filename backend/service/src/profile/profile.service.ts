@@ -118,6 +118,22 @@ export class ProfileService {
     }
   }
 
+  /**
+   * Bind a device to the operator currently logged into it — the secure source
+   * for the super-admin fleet "connected user" display. Called from the
+   * AUTHENTICATED heartbeat, so `userId` is the guard-verified JWT subject and
+   * therefore unspoofable (unlike a value sent on the public check-in). The
+   * device is identified by its own SecureStore UUID; a caller can only ever bind
+   * a device to *their own* verified id, so the worst case is cosmetic.
+   */
+  async bindDeviceToUser(deviceUuid: string, userId: string): Promise<void> {
+    await this.drizzleProvider.db.execute(sql`
+      UPDATE devices
+         SET last_user_id = ${userId}::uuid, updated_at = NOW()
+       WHERE device_uuid = ${deviceUuid} AND deleted_at IS NULL
+    `);
+  }
+
   async updateProfile(
     userId: string,
     dto: {

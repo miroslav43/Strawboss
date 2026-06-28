@@ -1,5 +1,6 @@
 import { mobileApiClient } from './api-client';
 import { markHeartbeatSuccess } from './health-state';
+import { getDeviceUuid } from './device-checkin';
 
 /**
  * Plan C — mobile presence heartbeat.
@@ -20,7 +21,10 @@ let timer: ReturnType<typeof setInterval> | null = null;
  * when the app is backgrounded. Throws on failure so callers can decide.
  */
 export async function sendHeartbeatOnce(): Promise<void> {
-  await mobileApiClient.post('/api/v1/profile/heartbeat', {});
+  // Send our deviceUuid so the (authenticated) backend can bind this device to the
+  // verified operator — the secure source for "who's logged into this phone".
+  const deviceUuid = await getDeviceUuid();
+  await mobileApiClient.post('/api/v1/profile/heartbeat', deviceUuid ? { deviceUuid } : {});
   void markHeartbeatSuccess();
 }
 

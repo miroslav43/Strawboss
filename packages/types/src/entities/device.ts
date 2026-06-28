@@ -383,8 +383,6 @@ export interface DeviceCheckinRequest {
   /** Results of one-shot remote-debug commands (reboot/fetch_logs/reinstall_apk/report_state). */
   remoteCommandReports?: DeviceRemoteCommandReport[];
   lastError?: string;
-  /** Operator currently logged in (from the Supabase session) — drives presence + fleet display. */
-  userId?: string | null;
 }
 
 /** The signed APK + install policy handed to a device that has pending work. */

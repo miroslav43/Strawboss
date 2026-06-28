@@ -41,7 +41,6 @@ import type {
   CreateRemoteCommandInput,
 } from '@strawboss/validation';
 import { FleetPushService } from './fleet-push.service';
-import { ProfileService } from '../profile/profile.service';
 import { QUEUE_OTA_DEPLOY } from '../jobs/queues';
 
 /** Max APK size: 250 MB */
@@ -118,7 +117,6 @@ export class FleetService {
     private readonly drizzleProvider: DrizzleProvider,
     private readonly configService: ConfigService,
     private readonly fleetPushService: FleetPushService,
-    private readonly profileService: ProfileService,
     @InjectQueue(QUEUE_OTA_DEPLOY) private readonly otaDeployQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {
@@ -206,14 +204,14 @@ export class FleetService {
         sql`INSERT INTO devices (
               device_uuid, device_token_hash,
               app_version, version_code, model, manufacturer, os_version, android_id,
-              push_token, is_device_owner, last_active_trip, last_user_id,
+              push_token, is_device_owner, last_active_trip,
               last_seen_at, last_checkin_at
             ) VALUES (
               ${dto.deviceUuid}, ${tokenHash},
               ${dto.appVersion}, ${dto.versionCode},
               ${dto.model ?? null}, ${dto.manufacturer ?? null},
               ${dto.osVersion ?? null}, ${dto.androidId ?? null},
-              ${dto.pushToken ?? null}, ${dto.isDeviceOwner}, ${dto.activeTrip}, ${dto.userId ?? null}::uuid,
+              ${dto.pushToken ?? null}, ${dto.isDeviceOwner}, ${dto.activeTrip},
               now(), now()
             ) RETURNING id, organization_id`,
       );
@@ -252,26 +250,11 @@ export class FleetService {
               push_token        = COALESCE(${dto.pushToken ?? null}, push_token),
               is_device_owner   = ${dto.isDeviceOwner},
               last_active_trip  = ${dto.activeTrip},
-              last_user_id      = ${dto.userId ?? null}::uuid,
               last_seen_at      = now(),
               last_checkin_at   = now(),
               updated_at        = now()
             WHERE id = ${deviceId}::uuid`,
       );
-    }
-
-    // Operator presence on the STABLE signal: a public check-in (driven by the
-    // native 60s alarm) is the most reliable liveness we have — far steadier than
-    // the JS heartbeat that pauses on background. Touch the operator's last_seen so
-    // the Accounts/Tasks dots ride this signal. Best-effort: never fail a check-in.
-    if (dto.userId) {
-      void this.profileService.touchLastSeen(dto.userId).catch((err) => {
-        this.winston.warn('touchLastSeen from fleet check-in failed', {
-          context: 'FleetService',
-          userId: dto.userId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
     }
 
     // On first registration, return immediately with no pending work.

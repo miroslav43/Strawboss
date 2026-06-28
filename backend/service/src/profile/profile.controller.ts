@@ -49,8 +49,16 @@ export class ProfileController {
    * Body is empty; auth is enforced by the global guard.
    */
   @Post('heartbeat')
-  async heartbeat(@CurrentUser() currentUser: RequestUser) {
+  async heartbeat(
+    @CurrentUser() currentUser: RequestUser,
+    @Body() body: { deviceUuid?: string } = {},
+  ) {
     await this.profileService.touchLastSeen(currentUser.id);
+    // Bind this device to the verified operator (secure "connected user" source).
+    // currentUser.id comes from the JWT (guard-verified), so it cannot be spoofed.
+    if (typeof body?.deviceUuid === 'string' && body.deviceUuid.length > 0) {
+      await this.profileService.bindDeviceToUser(body.deviceUuid, currentUser.id);
+    }
     return { ok: true };
   }
 
