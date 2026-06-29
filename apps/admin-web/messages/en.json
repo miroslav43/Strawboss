@@ -679,6 +679,7 @@
     "availableMachines": "Available ({{count}})",
     "assignedMachines": "Assigned",
     "addParcel": "Add parcel",
+    "alreadyOnParcel": "already {{count}}",
     "removeParcel": "Remove",
     "unassignMachine": "Remove machine from plan (back to available)",
     "reorderHint": "Drag to reorder",

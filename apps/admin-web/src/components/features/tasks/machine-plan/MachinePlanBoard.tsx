@@ -49,12 +49,18 @@ interface Assignment {
 
 function ParcelPicker({
   parcels,
-  assignedParcelIds,
+  excludeParcelIds,
+  assignedCountByParcel,
+  color,
   onSelect,
   onClose,
 }: {
   parcels: Parcel[];
-  assignedParcelIds: Set<string>;
+  /** Parcels to hide entirely — already on THIS machine (can't add the same parcel twice). */
+  excludeParcelIds: Set<string>;
+  /** How many other machines of this type already work each parcel (for the "already N" badge). */
+  assignedCountByParcel: Map<string, number>;
+  color: string;
   onSelect: (parcelId: string) => void;
   onClose: () => void;
 }) {
@@ -65,12 +71,12 @@ function ParcelPicker({
     const q = search.trim().toLowerCase();
     return parcels.filter((p) => {
       if (!p.isActive) return false;
-      if (assignedParcelIds.has(p.id)) return false;
+      if (excludeParcelIds.has(p.id)) return false;
       if (q && ![p.name, p.code, p.municipality].some((v) => v?.toLowerCase().includes(q)))
         return false;
       return true;
     });
-  }, [parcels, assignedParcelIds, search]);
+  }, [parcels, excludeParcelIds, search]);
 
   return (
     <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-neutral-200 bg-white shadow-xl">
@@ -92,20 +98,29 @@ function ParcelPicker({
         {filtered.length === 0 ? (
           <li className="px-3 py-2 text-xs text-neutral-400">{t('tasks.noParcelResults')}</li>
         ) : (
-          filtered.map((p) => (
-            <li key={p.id}>
-              <button
-                onClick={() => {
-                  onSelect(p.id);
-                  onClose();
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-50"
-              >
-                <span className="font-mono text-xs text-neutral-500">{p.code}</span>
-                <span className="truncate text-neutral-700">{p.name || '—'}</span>
-              </button>
-            </li>
-          ))
+          filtered.map((p) => {
+            const assignedCount = assignedCountByParcel.get(p.id) ?? 0;
+            return (
+              <li key={p.id}>
+                <button
+                  onClick={() => {
+                    onSelect(p.id);
+                    onClose();
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-50"
+                >
+                  <span className="font-mono text-xs text-neutral-500">{p.code}</span>
+                  <span className="truncate text-neutral-700">{p.name || '—'}</span>
+                  {assignedCount > 0 && (
+                    <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600">
+                      <span className={cn('h-1.5 w-1.5 rounded-full', `bg-${color}-500`)} />
+                      {t('tasks.alreadyOnParcel', { count: assignedCount })}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })
         )}
       </ul>
     </div>
@@ -367,7 +382,7 @@ function AssignedMachineCard({
   operator,
   assignments,
   parcels,
-  allAssignedParcelIds,
+  assignedCountByParcel,
   onAddParcel,
   onRemoveAssignment,
   onReorderParcels,
@@ -378,7 +393,7 @@ function AssignedMachineCard({
   operator: { name: string; lastSeenAt: string | null } | null;
   assignments: Assignment[];
   parcels: Parcel[];
-  allAssignedParcelIds: Set<string>;
+  assignedCountByParcel: Map<string, number>;
   onAddParcel: (machineId: string, parcelId: string) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onReorderParcels: (fromIndex: number, toIndex: number) => void;
@@ -400,12 +415,11 @@ function AssignedMachineCard({
     [assignments],
   );
 
+  // Map picker may select a parcel already worked by ANOTHER machine (co-assignment).
+  // Only hide parcels already on THIS machine.
   const eligibleParcelsForMap = useMemo(
-    () =>
-      parcels.filter(
-        (p) => p.isActive && !allAssignedParcelIds.has(p.id) && !machineParcelIds.has(p.id),
-      ),
-    [parcels, allAssignedParcelIds, machineParcelIds],
+    () => parcels.filter((p) => p.isActive && !machineParcelIds.has(p.id)),
+    [parcels, machineParcelIds],
   );
 
   return (
@@ -477,7 +491,9 @@ function AssignedMachineCard({
         {showPicker && (
           <ParcelPicker
             parcels={parcels}
-            assignedParcelIds={new Set([...allAssignedParcelIds, ...machineParcelIds])}
+            excludeParcelIds={machineParcelIds}
+            assignedCountByParcel={assignedCountByParcel}
+            color={color}
             onSelect={(parcelId) => onAddParcel(machine.id, parcelId)}
             onClose={() => setShowPicker(false)}
           />
@@ -571,11 +587,22 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
     return map;
   }, [assignments]);
 
-  // All parcel IDs already assigned to any machine for this type on this date
-  const allAssignedParcelIds = useMemo(
-    () => new Set(assignments.map((a) => a.parcelId).filter(Boolean) as string[]),
-    [assignments],
-  );
+  // How many DISTINCT machines of this type already work each parcel today.
+  // Drives the "already N" badge in the parcel picker. Counting distinct machines
+  // (not assignment rows) so a machine listing a parcel once isn't over-counted.
+  const assignedCountByParcel = useMemo(() => {
+    const machinesByParcel = new Map<string, Set<string>>();
+    for (const a of assignments) {
+      if (!a.parcelId) continue;
+      let machineSet = machinesByParcel.get(a.parcelId);
+      if (!machineSet) {
+        machineSet = new Set();
+        machinesByParcel.set(a.parcelId, machineSet);
+      }
+      machineSet.add(a.machineId);
+    }
+    return new Map([...machinesByParcel].map(([parcelId, set]) => [parcelId, set.size]));
+  }, [assignments]);
 
   // Assigned machines with details
   const assignedMachines = useMemo(() => {
@@ -812,7 +839,7 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
                 operator={operatorByMachineId.get(m.id) ?? null}
                 assignments={assignmentsByMachine.get(m.id) ?? []}
                 parcels={parcels}
-                allAssignedParcelIds={allAssignedParcelIds}
+                assignedCountByParcel={assignedCountByParcel}
                 onAddParcel={handleAddParcel}
                 onRemoveAssignment={handleRemoveAssignment}
                 onReorderParcels={(from, to) => handleReorderParcels(m.id, from, to)}

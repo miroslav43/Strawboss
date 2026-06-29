@@ -679,6 +679,7 @@
     "availableMachines": "Disponibile ({{count}})",
     "assignedMachines": "Alocate",
     "addParcel": "Adaugă câmp",
+    "alreadyOnParcel": "deja {{count}}",
     "removeParcel": "Elimină",
     "unassignMachine": "Scoate utilajul din plan (înapoi la disponibile)",
     "reorderHint": "Trage pentru reordonare",
