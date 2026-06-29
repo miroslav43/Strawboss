@@ -19,6 +19,9 @@ import com.facebook.react.HeadlessJsTaskService
  */
 class PresenceAlarmReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
+    // Record that the tick actually fired — the health report reads this to prove
+    // the 60s presence alarm is alive (vs scheduled-but-never-firing).
+    PresenceAlarm.recordFire(context)
     try {
       // Hold the CPU until the headless service is up (per RN HeadlessJsTaskService).
       HeadlessJsTaskService.acquireWakeLockNow(context)
@@ -44,6 +47,19 @@ class PresenceAlarmReceiver : BroadcastReceiver() {
 object PresenceAlarm {
   private const val INTERVAL_MS = 60_000L
   private const val REQUEST_CODE = 778899
+  const val PREFS = "strawboss_presence"
+  const val KEY_NEXT_FIRE = "presence_alarm_next_fire"
+  const val KEY_LAST_FIRE = "presence_alarm_last_fire"
+
+  private fun prefs(context: Context) =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+  /** Stamp the moment the alarm actually fired (read by the health report). */
+  fun recordFire(context: Context) {
+    try {
+      prefs(context).edit().putLong(KEY_LAST_FIRE, System.currentTimeMillis()).apply()
+    } catch (t: Throwable) { /* best-effort */ }
+  }
 
   private fun pendingIntent(context: Context): PendingIntent {
     val i = Intent(context, PresenceAlarmReceiver::class.java)
@@ -59,6 +75,9 @@ object PresenceAlarm {
       val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
       val triggerAt = System.currentTimeMillis() + INTERVAL_MS
       val pi = pendingIntent(context)
+      try {
+        prefs(context).edit().putLong(KEY_NEXT_FIRE, triggerAt).apply()
+      } catch (t: Throwable) { /* best-effort */ }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         try {
           am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)

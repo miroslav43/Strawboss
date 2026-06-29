@@ -2,7 +2,7 @@
   "expo": {
     "name": "StrawBoss",
     "slug": "strawboss",
-    "version": "1.0.13",
+    "version": "1.0.28",
     "orientation": "portrait",
     "scheme": "strawboss",
     "icon": "./assets/icon.png",
@@ -11,7 +11,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#F3DED8"
     },
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "plugins": [
       "expo-router",
       [
@@ -49,7 +52,7 @@
     ],
     "android": {
       "package": "com.strawboss.mobile",
-      "versionCode": 17,
+      "versionCode": 32,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -77,7 +80,11 @@
     "ios": {
       "bundleIdentifier": "com.strawboss.mobile",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch", "location", "processing"],
+        "UIBackgroundModes": [
+          "fetch",
+          "location",
+          "processing"
+        ],
         "NSLocationWhenInUseUsageDescription": "StrawBoss uses your location to report your position to the farm manager.",
         "NSLocationAlwaysUsageDescription": "StrawBoss uses background location to track your position while working in the field.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "StrawBoss uses your location to track field operations."
