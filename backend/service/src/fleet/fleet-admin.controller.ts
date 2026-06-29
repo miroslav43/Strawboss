@@ -58,6 +58,13 @@ export class FleetAdminController {
     return this.fleetService.getDevice(id);
   }
 
+  /** GET /api/v1/super-admin/devices/:id/uptime?days=3 — online/offline timeline */
+  @Get('devices/:id/uptime')
+  getDeviceUptime(@Param('id') id: string, @Query('days') daysRaw?: string) {
+    const days = daysRaw ? Number(daysRaw) : 3;
+    return this.fleetService.getDeviceUptime(id, Number.isFinite(days) ? days : 3);
+  }
+
   /** PATCH /api/v1/super-admin/devices/:id */
   @Patch('devices/:id')
   updateDevice(

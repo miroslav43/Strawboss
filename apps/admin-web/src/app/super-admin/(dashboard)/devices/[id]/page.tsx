@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import {
   useDevice,
+  useDeviceUptime,
   useDeviceOtaStatus,
   useDeviceLogs,
   useSetDeviceTailscale,
@@ -38,6 +39,7 @@ import type {
   RemoteCommandType,
   DeviceRemoteCommandRecord,
   DeviceHealthReport,
+  DeviceUptimeResponse,
 } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -1238,7 +1240,147 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-type Tab = 'ota' | 'logs' | 'tailscale' | 'remote';
+// ── Uptime (online vs offline) ──────────────────────────────────────────────
+
+function fmtUptimeDur(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h >= 24) return `${Math.floor(h / 24)}d ${h % 24}h`;
+  return `${h}h ${m}m`;
+}
+
+function UptimeChart({ data }: { data: DeviceUptimeResponse }) {
+  const fromMs = new Date(data.from).getTime();
+  const toMs = new Date(data.to).getTime();
+  const span = Math.max(1, toMs - fromMs);
+
+  // Local-midnight day boundaries inside the window.
+  const ticks: { left: number; label: string }[] = [];
+  const cur = new Date(fromMs);
+  cur.setHours(24, 0, 0, 0);
+  while (cur.getTime() < toMs) {
+    ticks.push({
+      left: ((cur.getTime() - fromMs) / span) * 100,
+      label: cur.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    });
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const pctColor =
+    data.onlinePct >= 95
+      ? 'text-emerald-600'
+      : data.onlinePct >= 80
+        ? 'text-amber-600'
+        : 'text-red-600';
+
+  return (
+    <div>
+      <div className="mb-4 flex items-baseline gap-3">
+        <span className={`text-3xl font-bold tabular-nums ${pctColor}`}>{data.onlinePct}%</span>
+        <span className="text-sm text-neutral-500">
+          online · {fmtUptimeDur(data.onlineSeconds)} up / {fmtUptimeDur(data.offlineSeconds)} down
+          <span className="text-neutral-400"> (last {data.days}d)</span>
+        </span>
+      </div>
+
+      <div className="relative h-8 w-full overflow-hidden rounded-md bg-neutral-200">
+        {data.intervals.map((iv, i) => {
+          const s = new Date(iv.start).getTime();
+          const e = new Date(iv.end).getTime();
+          return (
+            <div
+              key={i}
+              className="absolute top-0 h-full bg-emerald-500"
+              style={{
+                left: `${((s - fromMs) / span) * 100}%`,
+                width: `${Math.max(((e - s) / span) * 100, 0.15)}%`,
+              }}
+              title={`${new Date(iv.start).toLocaleString()} → ${new Date(iv.end).toLocaleString()}`}
+            />
+          );
+        })}
+        {ticks.map((tk, i) => (
+          <div
+            key={`tick-${i}`}
+            className="absolute top-0 h-full w-px bg-white/70"
+            style={{ left: `${tk.left}%` }}
+          />
+        ))}
+      </div>
+
+      <div className="relative mt-1 h-4 w-full text-[10px] text-neutral-400">
+        <span className="absolute left-0">
+          {new Date(fromMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+        </span>
+        {ticks.map((tk, i) => (
+          <span
+            key={`lbl-${i}`}
+            className="absolute -translate-x-1/2"
+            style={{ left: `${tk.left}%` }}
+          >
+            {tk.label}
+          </span>
+        ))}
+        <span className="absolute right-0">now</span>
+      </div>
+
+      <div className="mt-3 flex items-center gap-4 text-xs text-neutral-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Online
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-neutral-200" /> Offline
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function UptimePanel({ deviceId }: { deviceId: string }) {
+  const [days, setDays] = useState(3);
+  const { data, isLoading } = useDeviceUptime(apiClient, deviceId, { days });
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          Online vs offline
+        </h3>
+        <div className="flex gap-0.5 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+          {[1, 3, 7, 14].map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setDays(d)}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                days === d
+                  ? 'bg-white text-neutral-900 shadow-sm'
+                  : 'text-neutral-500 hover:text-neutral-700'
+              }`}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center justify-center py-12 text-neutral-400">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      )}
+      {data && !data.hasOperator && (
+        <p className="py-8 text-center text-sm text-neutral-400">
+          No operator bound to this device yet — no session history to chart. Uptime appears once an
+          operator logs in.
+        </p>
+      )}
+      {data && data.hasOperator && <UptimeChart data={data} />}
+    </div>
+  );
+}
+
+type Tab = 'ota' | 'logs' | 'tailscale' | 'remote' | 'uptime';
 
 export default function DeviceDetailPage() {
   const { t } = useI18n();
@@ -1427,7 +1569,7 @@ export default function DeviceDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 rounded-xl border border-neutral-200 bg-neutral-100 p-1">
-        {(['ota', 'logs', 'tailscale', 'remote'] as Tab[]).map((tab) => (
+        {(['ota', 'logs', 'tailscale', 'remote', 'uptime'] as Tab[]).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -1448,6 +1590,7 @@ export default function DeviceDetailPage() {
       {activeTab === 'logs' && <LogViewer deviceId={id} />}
       {activeTab === 'tailscale' && <TailscalePanel device={device} />}
       {activeTab === 'remote' && <RemotePanel device={device} />}
+      {activeTab === 'uptime' && <UptimePanel deviceId={id} />}
     </div>
   );
 }

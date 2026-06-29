@@ -8,6 +8,7 @@ import type {
   AppSettings,
   DeviceRemoteCommandRecord,
   RemoteCommandType,
+  DeviceUptimeResponse,
 } from '@strawboss/types';
 import type {
   UpdateDeviceInput,
@@ -56,6 +57,21 @@ export function useDevice(client: ApiClient, id: string) {
     queryKey: queryKeys.devices.detail(id),
     queryFn: () => client.get<Device>(`/api/v1/super-admin/devices/${id}`),
     enabled: !!id,
+  });
+}
+
+/** Online/offline timeline + uptime % for a device over the last `days` (default 3). */
+export function useDeviceUptime(
+  client: ApiClient,
+  id: string,
+  options?: { days?: number; enabled?: boolean },
+) {
+  const days = options?.days ?? 3;
+  return useQuery({
+    queryKey: queryKeys.devices.uptime(id, days),
+    queryFn: () =>
+      client.get<DeviceUptimeResponse>(`/api/v1/super-admin/devices/${id}/uptime?days=${days}`),
+    enabled: (options?.enabled ?? true) && !!id,
   });
 }
 

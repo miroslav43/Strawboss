@@ -29,6 +29,7 @@ import type {
   OtaState,
   DeviceCommand,
   AppSettings,
+  DeviceUptimeResponse,
 } from '@strawboss/types';
 import type {
   DeviceCheckinInput,
@@ -1143,6 +1144,86 @@ export class FleetService {
     const rows = result as unknown as Row[];
     if (!rows.length) throw new NotFoundException(`Device ${id} not found`);
     return rows[0];
+  }
+
+  /**
+   * Online-vs-offline timeline for a device over the last `days`. "Online" =
+   * the bound operator's connected sessions (`user_sessions`, rolled by the
+   * heartbeat/location-report on every report; a >2 min gap opens a new session),
+   * so the sessions ARE the online intervals and the gaps are offline. Returns the
+   * merged online intervals clipped to the window plus the online %.
+   */
+  async getDeviceUptime(id: string, days: number): Promise<DeviceUptimeResponse> {
+    const win = Number.isFinite(days) ? Math.max(1, Math.min(30, Math.round(days))) : 3;
+    const to = new Date();
+    const from = new Date(to.getTime() - win * 86_400_000);
+    const fromIso = from.toISOString();
+    const toIso = to.toISOString();
+    const totalSeconds = Math.round((to.getTime() - from.getTime()) / 1000);
+
+    const devRows = (await this.drizzleProvider.db.execute(sql`
+      SELECT last_user_id AS "lastUserId"
+      FROM devices WHERE id = ${id}::uuid AND deleted_at IS NULL LIMIT 1
+    `)) as unknown as { lastUserId: string | null }[];
+    if (!devRows.length) throw new NotFoundException(`Device ${id} not found`);
+    const userId = devRows[0].lastUserId;
+
+    const base: DeviceUptimeResponse = {
+      deviceId: id,
+      days: win,
+      from: fromIso,
+      to: toIso,
+      hasOperator: !!userId,
+      onlineSeconds: 0,
+      offlineSeconds: totalSeconds,
+      onlinePct: 0,
+      intervals: [],
+    };
+    if (!userId) return base;
+
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      SELECT
+        GREATEST(started_at, ${fromIso}::timestamptz)             AS "start",
+        LEAST(COALESCE(ended_at, NOW()), ${toIso}::timestamptz)   AS "end"
+      FROM user_sessions
+      WHERE user_id = ${userId}::uuid
+        AND COALESCE(ended_at, NOW()) >= ${fromIso}::timestamptz
+        AND started_at <= ${toIso}::timestamptz
+      ORDER BY started_at ASC
+      LIMIT 20000
+    `)) as unknown as { start: string; end: string }[];
+
+    // Merge overlapping/adjacent intervals (sessions shouldn't overlap, but be
+    // defensive) into the online timeline.
+    const merged: { start: string; end: string }[] = [];
+    for (const r of rows) {
+      const s = new Date(r.start).getTime();
+      const e = new Date(r.end).getTime();
+      if (!(e > s)) continue;
+      const last = merged[merged.length - 1];
+      if (last && s <= new Date(last.end).getTime()) {
+        if (e > new Date(last.end).getTime()) last.end = new Date(e).toISOString();
+      } else {
+        merged.push({ start: new Date(s).toISOString(), end: new Date(e).toISOString() });
+      }
+    }
+
+    let onlineMs = 0;
+    for (const m of merged) {
+      onlineMs += new Date(m.end).getTime() - new Date(m.start).getTime();
+    }
+    const onlineSeconds = Math.round(onlineMs / 1000);
+    const offlineSeconds = Math.max(0, totalSeconds - onlineSeconds);
+    const onlinePct = totalSeconds > 0 ? Math.round((onlineSeconds / totalSeconds) * 1000) / 10 : 0;
+
+    return {
+      ...base,
+      hasOperator: true,
+      onlineSeconds,
+      offlineSeconds,
+      onlinePct,
+      intervals: merged,
+    };
   }
 
   async updateDevice(id: string, dto: UpdateDeviceInput) {

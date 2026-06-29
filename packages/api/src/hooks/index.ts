@@ -170,6 +170,7 @@ export {
 export {
   useDevices,
   useDevice,
+  useDeviceUptime,
   useUpdateDevice,
   useDeleteDevice,
   useDeviceOtaStatus,

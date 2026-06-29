@@ -118,6 +118,7 @@ export const queryKeys = {
     logs: (id: string, filters?: Record<string, unknown>) =>
       ['devices', 'logs', id, filters] as const,
     commands: (id: string) => ['devices', 'commands', id] as const,
+    uptime: (id: string, days: number) => ['devices', 'uptime', id, days] as const,
   },
   releases: {
     all: ['releases'] as const,

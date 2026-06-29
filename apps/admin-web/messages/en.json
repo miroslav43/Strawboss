@@ -1566,7 +1566,8 @@
           "ota": "OTA history",
           "logs": "Device logs",
           "tailscale": "Tailscale",
-          "remote": "Remote"
+          "remote": "Remote",
+          "uptime": "Uptime"
         },
         "manufacturer": "Manufacturer / model",
         "osVersion": "Android version",

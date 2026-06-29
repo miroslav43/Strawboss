@@ -1566,7 +1566,8 @@
           "ota": "Istoric OTA",
           "logs": "Jurnale dispozitiv",
           "tailscale": "Tailscale",
-          "remote": "Telecomandă"
+          "remote": "Telecomandă",
+          "uptime": "Disponibilitate"
         },
         "manufacturer": "Producător / model",
         "osVersion": "Versiune Android",

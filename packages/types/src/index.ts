@@ -38,3 +38,4 @@ export * from './dtos/dashboard.dto.js';
 export * from './dtos/reports.dto.js';
 export * from './dtos/location-report.dto.js';
 export * from './dtos/route-history.dto.js';
+export * from './dtos/device-uptime.dto.js';
