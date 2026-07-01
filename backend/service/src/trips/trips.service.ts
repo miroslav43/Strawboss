@@ -959,6 +959,22 @@ export class TripsService implements OnModuleInit {
         );
       }
 
+      // Retire the one-time auxiliary truck now that its trip is completed:
+      // soft-delete it so it drops out of the fleet/trucks list (machines.list()
+      // filters deleted_at IS NULL), while staying fully readable for CMR and trip
+      // history — those read the machine by truck_id WITHOUT a deleted_at filter
+      // (cmr.service.ts, and the trip-detail LEFT JOIN machines).
+      const auxTruckId = updated[0].truck_id;
+      if (auxTruckId) {
+        await tx.execute(
+          sql`UPDATE machines
+              SET deleted_at = NOW(), updated_at = NOW()
+              WHERE id = ${auxTruckId as string}::uuid
+                AND is_auxiliary = true
+                AND deleted_at IS NULL`,
+        );
+      }
+
       const payload: RegisterLoadResult = {
         trip: updated[0],
         baleLoadId: dto.idempotencyKey,
