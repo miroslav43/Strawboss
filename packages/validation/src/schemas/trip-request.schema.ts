@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { geoPointSchema } from '../helpers/geo.js';
 import { isoDateSchema } from '../helpers/iso-date.js';
+import { uuidSchema } from '../helpers/uuid.js';
 import { cropTypeSchema } from './parcel.schema.js';
 
 /** 4-digit portal access code. */
@@ -56,11 +57,18 @@ export const createBeneficiaryRequestSchema = z.object({
   driverEmail: z.string().email().max(160).nullable().optional(),
   // the ask
   cropType: cropTypeSchema,
-  neededDate: isoDateSchema,
+  // Optional in the portal UI (no `required` on the date input) — accept null so an
+  // empty date doesn't fail with an opaque 400. The insert already coalesces to NULL.
+  neededDate: isoDateSchema.nullable().optional(),
   tonsRequested: z.number().positive().max(100000).nullable().optional(),
   destinationAddress: z.string().min(1).max(300).nullable().optional(),
   destinationCoords: geoPointSchema.nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
+  // Optional traceability: which saved beneficiary records this request was
+  // built from (the flat fields above are still the source of truth on insert).
+  contactId: uuidSchema.nullable().optional(),
+  truckId: uuidSchema.nullable().optional(),
+  driverId: uuidSchema.nullable().optional(),
   // PIN re-verified server-side on submit
   pin: z.string().regex(/^\d{4}$/),
 });

@@ -129,6 +129,24 @@ export type {
   VerifyBeneficiaryPinInput,
 } from './schemas/beneficiary.schema.js';
 
+export {
+  portalPinSchema,
+  createBeneficiaryContactSchema,
+  updateBeneficiaryContactSchema,
+  createBeneficiaryTruckSchema,
+  updateBeneficiaryTruckSchema,
+  createBeneficiaryDriverSchema,
+  updateBeneficiaryDriverSchema,
+} from './schemas/beneficiary-records.schema.js';
+export type {
+  CreateBeneficiaryContactInput,
+  UpdateBeneficiaryContactInput,
+  CreateBeneficiaryTruckInput,
+  UpdateBeneficiaryTruckInput,
+  CreateBeneficiaryDriverInput,
+  UpdateBeneficiaryDriverInput,
+} from './schemas/beneficiary-records.schema.js';
+
 // DTO schemas
 export { tripCreateDtoSchema } from './dtos/trip-create.schema.js';
 

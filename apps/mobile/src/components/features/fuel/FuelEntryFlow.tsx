@@ -100,6 +100,22 @@ export function FuelEntryFlow({
       mobileLogger.warn('FuelEntryFlow: invalid quantity', { liters });
       return;
     }
+    // Defense in depth: the server column fuel_logs.machine_id is NOT NULL, so a
+    // row saved without a machine is accepted locally but rejected on push
+    // (Postgres 23502) and then retries forever, silently. Block the save here
+    // with a clear message instead of queueing a doomed row. The driver screen
+    // resolves the machine from the active trip's truck when no permanent
+    // machine is assigned; if it is still null, the operator genuinely has none.
+    if (!machineId) {
+      mobileLogger.warn('FuelEntryFlow: no machine assigned, refusing to save', { operatorId });
+      showModal({
+        type: 'error',
+        title: t('fuel.entryFlow.error.title'),
+        message: t('fuel.entryFlow.error.noMachine'),
+        onConfirm: hideModal,
+      });
+      return;
+    }
     setSaving(true);
     try {
       const db = await getDatabase();

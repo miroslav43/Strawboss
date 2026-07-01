@@ -3,12 +3,16 @@ import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { FuelEntryFlow, FUEL_STEP_TITLE_KEYS } from '@/components/features/fuel/FuelEntryFlow';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useAuthStore } from '@/stores/auth-store';
+import { useDriverTruckId } from '@/hooks/useDriverTruckId';
 import { useI18n } from '@/lib/i18n';
 
 export default function DriverFuelScreen() {
   const { t } = useI18n();
   const userId = useAuthStore((s) => s.userId);
-  const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  // Permanent truck (users.assigned_machine_id) with a fallback to the active
+  // trip's truck — fuel_logs.machine_id is NOT NULL server-side, so a null here
+  // would make the push fail forever. FuelEntryFlow blocks the save if it stays null.
+  const truckId = useDriverTruckId();
   const [stepTitle, setStepTitle] = useState(() => t(FUEL_STEP_TITLE_KEYS.liters));
 
   return (
@@ -21,7 +25,7 @@ export default function DriverFuelScreen() {
           </View>
         ) : (
           <FuelEntryFlow
-            machineId={assignedMachineId}
+            machineId={truckId}
             operatorId={userId}
             onStepChange={setStepTitle}
             onComplete={() => {

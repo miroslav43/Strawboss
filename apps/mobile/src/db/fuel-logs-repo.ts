@@ -107,6 +107,19 @@ export class FuelLogsRepo {
     );
   }
 
+  /**
+   * Backfill the machine on a row that was saved before a machine was known
+   * (e.g. a driver whose truck assignment was missing). The server column
+   * fuel_logs.machine_id is NOT NULL, so this is the recovery path for rows
+   * stuck in the sync queue — see SyncManager.backfillMissingMachineIds.
+   */
+  async updateMachineId(id: string, machineId: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE fuel_logs SET machine_id = ?, updated_at = datetime('now') WHERE id = ?`,
+      [machineId, id] as SQLiteBindValue[],
+    );
+  }
+
   async findById(id: string): Promise<LocalFuelLog | null> {
     const result = await this.db.getFirstAsync<LocalFuelLog>(
       `SELECT * FROM fuel_logs WHERE id = ?`,

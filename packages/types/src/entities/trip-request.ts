@@ -46,6 +46,10 @@ export interface TripRequest extends Timestamps, SoftDelete {
   transporterCui: string | null;
   transporterName: string | null;
   transporterAddress: string | null;
+  // traceability: which saved beneficiary records this request was built from
+  contactId: string | null;
+  truckId: string | null;
+  driverId: string | null;
   // linkage, filled on confirm
   machineId: string | null;
   tripId: string | null;

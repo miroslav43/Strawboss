@@ -30,6 +30,7 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import { BigButton } from '@/components/ui/BigButton';
 import { ActionCard } from '@/components/ui/ActionCard';
 import { OpenMapsToDepotButton } from '@/components/features/driver/OpenMapsToDepotButton';
+import { NavigateToLoaderButton } from '@/components/features/driver/NavigateToLoaderButton';
 import { colors, radii } from '@strawboss/ui-tokens';
 import { mobileLogger } from '@/lib/logger';
 import { mobileApiClient } from '@/lib/api-client';
@@ -281,6 +282,15 @@ export default function TripDetailScreen() {
               destinationId={trip.destination_id}
               destinationName={trip.destination_name}
               destinationAddress={trip.destination_address}
+            />
+          )}
+
+          {/* Navigate to the loader: live loader GPS (last 30 min) else loading field */}
+          {(trip.loader_id || trip.source_parcel_id) && (
+            <NavigateToLoaderButton
+              tripId={trip.id}
+              loaderMachineId={trip.loader_id}
+              sourceParcelId={trip.source_parcel_id}
             />
           )}
 

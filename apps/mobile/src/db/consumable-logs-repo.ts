@@ -99,6 +99,19 @@ export class ConsumableLogsRepo {
     );
   }
 
+  /**
+   * Backfill the machine on a row that was saved before a machine was known.
+   * consumable_logs.machine_id is NOT NULL server-side, so this is the recovery
+   * path for rows stuck in the sync queue — see
+   * SyncManager.backfillMissingMachineIds.
+   */
+  async updateMachineId(id: string, machineId: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE consumable_logs SET machine_id = ?, updated_at = datetime('now') WHERE id = ?`,
+      [machineId, id] as SQLiteBindValue[],
+    );
+  }
+
   async findById(id: string): Promise<LocalConsumableLog | null> {
     const result = await this.db.getFirstAsync<LocalConsumableLog>(
       `SELECT * FROM consumable_logs WHERE id = ?`,

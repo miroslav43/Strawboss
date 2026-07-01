@@ -620,6 +620,66 @@ export async function getCurrentPosition(machineId: string): Promise<LocationRep
   }
 }
 
+/**
+ * Best-effort position for the alarm-driven headless path on OEM ROMs that FREEZE
+ * the app between native-alarm ticks (HONOR/MagicOS PowerGenie). A High-accuracy
+ * `getCurrentPositionAsync` needs a GPS lock that can take 5–30 s — long enough for
+ * the OEM to re-freeze the app before it returns, so nothing lands (verified on a
+ * HONOR NLA-LX1: presence/check-in flowed every ~20 s screen-off but GPS never did).
+ * Strategy that lands a fresh-ish fix inside the short alarm window instead:
+ *   1) last-known (instant, ≤10 min old) — guarantees SOMETHING lands even if the
+ *      app is re-frozen immediately after;
+ *   2) a Balanced (fused cell/wifi) fix with a hard 10 s timeout — fast (~1–3 s),
+ *      works indoors, and replaces the last-known when it arrives.
+ * Accuracy is coarser (~100 m) than the foreground 20 s GPS FGS, but a fresh coarse
+ * position every 60 s beats no position at all while the phone is frozen.
+ */
+export async function getBestEffortPosition(machineId: string): Promise<LocationReportDto | null> {
+  const { status } = await Location.getForegroundPermissionsAsync();
+  if (status !== Location.PermissionStatus.GRANTED) return null;
+
+  let report: LocationReportDto | null = null;
+  try {
+    const last = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 });
+    if (last) report = coordsToReport(machineId, last);
+  } catch {
+    /* ignore — fall through to the fresh fix */
+  }
+  try {
+    const fresh = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
+    ]);
+    if (fresh) report = coordsToReport(machineId, fresh);
+  } catch {
+    /* ignore — keep the last-known fallback if we got one */
+  }
+  return report;
+}
+
+/**
+ * Post a best-effort position (the HONOR alarm path), queueing on transient failure.
+ * Mirror of {@link postCurrentLocationNow} but using {@link getBestEffortPosition}.
+ */
+export async function postBestEffortLocationNow(machineId: string): Promise<void> {
+  const report = await getBestEffortPosition(machineId);
+  if (!report) return;
+  try {
+    await postLocationReport(report);
+    await writeLastSuccessTimestamp();
+  } catch (err) {
+    if (isPermanentReportError(err)) {
+      mobileLogger.warn('Best-effort location dropped (permanent 4xx)', {
+        status: err.status,
+        machineId,
+        message: err.message,
+      });
+      return;
+    }
+    await appendPendingReport(report);
+  }
+}
+
 export async function startLocationWatcher(
   machineId: string,
   onLocation: (report: LocationReportDto) => void,

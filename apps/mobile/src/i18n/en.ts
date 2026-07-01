@@ -517,6 +517,11 @@ export const en = {
     button: {
       back: 'Back',
     },
+    navigate: {
+      toLoaderLive: 'Navigate to loader',
+      toField: 'Navigate to field',
+      unavailable: 'Loader location unavailable',
+    },
     card: {
       tripDetails: 'Trip Details',
     },
@@ -1281,6 +1286,8 @@ export const en = {
       error: {
         title: 'Error',
         saveFailed: 'Could not save the fueling',
+        noMachine:
+          'No machine is assigned to you, so this fueling cannot be recorded. Ask the dispatcher to assign your machine, then try again.',
       },
     },
   },

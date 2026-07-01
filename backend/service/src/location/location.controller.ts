@@ -123,4 +123,26 @@ export class LocationController {
       user.organizationId,
     );
   }
+
+  /**
+   * GET /api/v1/location/machine/:machineId/last
+   * Driver/admin-only: last known position of one machine if it reported GPS
+   * within `windowMinutes` (default 30), scoped to the caller's organization.
+   * Returns the position or null. Used by the driver trip screen to navigate to
+   * the trip's loader when "live", falling back to the loading field otherwise.
+   */
+  @Get('machine/:machineId/last')
+  @Roles(UserRole.admin, UserRole.driver)
+  getMachineLastLocation(
+    @Param('machineId') machineId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('windowMinutes') windowMinutesRaw?: string,
+  ) {
+    const w = windowMinutesRaw ? Number(windowMinutesRaw) : undefined;
+    return this.locationService.getMachineLastLocation(
+      machineId,
+      Number.isFinite(w) ? (w as number) : 30,
+      user.organizationId,
+    );
+  }
 }

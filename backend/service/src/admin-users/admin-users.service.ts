@@ -255,18 +255,40 @@ export class AdminUsersService {
         }
       }
 
-      // Invariant: depot assignment and machine assignment are mutually exclusive
-      // and role-bound. On any role transition, force the column that no longer
-      // applies to null so the row never lands in an inconsistent state — e.g. a
-      // former loader_operator must not keep a stale machine after becoming a
-      // depot_manager, and vice-versa.
-      if (dto.role !== undefined) {
-        if (dto.role === 'depot_manager') {
-          dto.assignedMachineId = null;
-        } else {
-          dto.assignedDeliveryDestinationId = null;
+      // Invariant: a user's machine/depot assignment must stay compatible with
+      // their role. On a role *transition*, drop the link that no longer fits.
+      //
+      // We compare the machine TYPE implied by the old vs new role rather than
+      // blindly nulling assignedMachineId whenever `role` is present. The admin
+      // "Edit user" modal ALWAYS sends `role` (even on a name/phone/PIN edit)
+      // and never sends assignedMachineId, so the old "null on any role-bearing
+      // payload" behaviour silently un-assigned the machine of every
+      // driver/loader/baler on each profile edit. A null machine then breaks
+      // fuel/consumable sync from the device, because fuel_logs.machine_id and
+      // consumable_logs.machine_id are NOT NULL server-side — the push is
+      // rejected (Postgres 23502) and the queue entry retries forever.
+      //
+      // A caller that explicitly sets assignedMachineId (the dedicated
+      // machine-assign modal) is left untouched here; it is validated above.
+      if (dto.role !== undefined && dto.assignedMachineId === undefined) {
+        const oldMachineType = ROLE_MACHINE_TYPE[existing.role];
+        const newMachineType = ROLE_MACHINE_TYPE[dto.role];
+        // Clear only when the role no longer supports the SAME machine type
+        // (e.g. loader_operator → driver, or driver → dispatcher/depot_manager).
+        // A same-type edit — including a no-op role re-send — keeps the machine.
+        if (oldMachineType !== newMachineType) {
           dto.assignedMachineId = null;
         }
+      }
+      // A depot link only applies to depot_manager. Drop a stale depot on any
+      // transition away from that role, unless the caller is explicitly setting
+      // it (validated above).
+      if (
+        dto.role !== undefined &&
+        dto.role !== 'depot_manager' &&
+        dto.assignedDeliveryDestinationId === undefined
+      ) {
+        dto.assignedDeliveryDestinationId = null;
       }
 
       // Check username uniqueness before update.

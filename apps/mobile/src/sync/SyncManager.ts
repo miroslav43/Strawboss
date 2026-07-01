@@ -16,6 +16,7 @@ import { mergeRecords } from './conflict';
 import { notifyDivergentFields } from './conflict-notify';
 import { uploadTodayMobileLogs } from './mobile-log-upload';
 import { uploadReceipt } from '../lib/receiptUpload';
+import { useAuthStore } from '../stores/auth-store';
 
 export interface SyncResult {
   pushed: number;
@@ -85,6 +86,19 @@ export class SyncManager {
       // uploadPendingReceipts runs BEFORE push() so it cannot race with
       // push()'s in_flight marking (M20 — syncInProgress guards concurrent
       // external calls; the sequential order guards within one cycle).
+      // Recover rows that were saved before a machine was known. fuel_logs /
+      // consumable_logs carry a NOT NULL machine_id server-side, so a row with
+      // a null machine is rejected on push (Postgres 23502) and retries forever.
+      // Backfill the operator's current machine into the payload before push so
+      // the stuck row finally lands. Runs BEFORE uploadPendingReceipts so a
+      // repaired (now-pending) row also gets its receipt uploaded this cycle.
+      // Non-fatal — a row we still can't resolve is left for a later cycle.
+      await this.backfillMissingMachineIds().catch((err) => {
+        mobileLogger.error('Pre-push machine_id backfill pass failed', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+
       await this.uploadPendingReceipts().catch((err) => {
         mobileLogger.error('Pre-push receipt upload pass failed', {
           message: err instanceof Error ? err.message : String(err),
@@ -603,6 +617,89 @@ export class SyncManager {
           message: err instanceof Error ? err.message : String(err),
         });
       }
+    }
+  }
+
+  /**
+   * Recover sync-queue rows for fuel_logs / consumable_logs that were saved
+   * with a null machine_id (e.g. a driver whose truck assignment had been
+   * wiped). The server columns are NOT NULL, so these rows fail every push with
+   * Postgres 23502 and never reach the server. Here we fill the machine from the
+   * current operator's assignment (a driver with no permanent machine falls back
+   * to their active trip's truck) and patch BOTH the queue payload and the local
+   * row, so the next push succeeds.
+   *
+   * Safety: only the current operator's own rows are touched, so a previous
+   * user's fueling on a shared device is never attributed to the wrong machine.
+   * Runs pre-push, after uploadPendingReceipts, guarded by syncInProgress.
+   */
+  private async backfillMissingMachineIds(): Promise<void> {
+    const { userId, assignedMachineId } = useAuthStore.getState();
+    if (!userId) return;
+
+    // Resolve the active-trip truck lazily and once — only drivers without a
+    // permanent machine need it, and only for fuel_logs.
+    let truckResolved = false;
+    let activeTruckId: string | null = null;
+    const resolveTruck = async (): Promise<string | null> => {
+      if (truckResolved) return activeTruckId;
+      truckResolved = true;
+      try {
+        const active = await this.tripsRepo.listActive();
+        const withTruck = active.filter((t) => t.truck_id);
+        const preferred =
+          withTruck.find((t) => t.status === 'in_transit' || t.status === 'loaded') ?? withTruck[0];
+        activeTruckId = preferred?.truck_id ?? null;
+      } catch {
+        activeTruckId = null;
+      }
+      return activeTruckId;
+    };
+
+    // Candidates include FAILED rows — the stuck ones. dequeue() returns only
+    // `pending`, but a null machine_id fails the first push, so the rows we must
+    // repair are sitting in `failed` with a back-off timer and are never
+    // dequeued again. getMachineBackfillCandidates() returns pending + failed.
+    const candidates = await this.syncQueueRepo.getMachineBackfillCandidates();
+    if (candidates.length === 0) return;
+
+    for (const entry of candidates) {
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(entry.payload) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+
+      // Already has a machine — nothing to repair.
+      if (typeof payload['machine_id'] === 'string' && payload['machine_id']) continue;
+      // Only repair the current operator's own rows.
+      if (payload['operator_id'] !== userId) continue;
+
+      let machineId: string | null = assignedMachineId ?? null;
+      if (!machineId && entry.entity_type === 'fuel_logs') {
+        // A consumable (baler) belongs to its assigned machine, never a truck —
+        // the truck fallback applies to driver fuel only.
+        machineId = await resolveTruck();
+      }
+      if (!machineId) continue; // still unknown — leave for a later cycle
+
+      payload['machine_id'] = machineId;
+      // repairAndRequeue clears the failed state + back-off so push() (next, in
+      // the same cycle) picks the row up immediately.
+      await this.syncQueueRepo.repairAndRequeue(entry.id, payload);
+
+      if (entry.entity_type === 'fuel_logs' && this.fuelLogsRepo) {
+        await this.fuelLogsRepo.updateMachineId(entry.entity_id, machineId);
+      } else if (entry.entity_type === 'consumable_logs' && this.consumableLogsRepo) {
+        await this.consumableLogsRepo.updateMachineId(entry.entity_id, machineId);
+      }
+
+      mobileLogger.flow('Sync: backfilled missing machine_id on stuck row', {
+        table: entry.entity_type,
+        id: entry.entity_id,
+        machineId,
+      });
     }
   }
 

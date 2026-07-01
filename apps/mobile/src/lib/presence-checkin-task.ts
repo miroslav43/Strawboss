@@ -29,7 +29,7 @@ import { runDeviceCheckin } from './device-checkin';
 import { sendHeartbeatOnce } from './heartbeat';
 import {
   getPersistedMachineId,
-  postCurrentLocationNow,
+  postBestEffortLocationNow,
   flushPendingLocationReports,
 } from './location';
 import { mobileLogger } from './logger';
@@ -79,7 +79,10 @@ async function presenceCheckin(): Promise<void> {
     try {
       const machineId = await getPersistedMachineId();
       if (machineId) {
-        await postCurrentLocationNow(machineId);
+        // Best-effort fast fix (last-known + Balanced) — a slow High-accuracy lock
+        // gets frozen out by PowerGenie before it returns on HONOR. See
+        // getBestEffortPosition().
+        await postBestEffortLocationNow(machineId);
         await flushPendingLocationReports();
       }
     } catch (err) {

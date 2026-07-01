@@ -518,6 +518,11 @@ export const ro = {
     button: {
       back: 'Înapoi',
     },
+    navigate: {
+      toLoaderLive: 'Navighează la loader',
+      toField: 'Navighează la teren',
+      unavailable: 'Locație loader indisponibilă',
+    },
     card: {
       tripDetails: 'Detalii cursă',
     },
@@ -1283,6 +1288,8 @@ export const ro = {
       error: {
         title: 'Eroare',
         saveFailed: 'Nu s-a putut salva alimentarea',
+        noMachine:
+          'Nu ai nicio mașină asignată, deci alimentarea nu poate fi înregistrată. Cere dispecerului să îți asigneze mașina, apoi încearcă din nou.',
       },
     },
   },

@@ -205,6 +205,39 @@ export class SyncQueueRepo {
     );
   }
 
+  /**
+   * Candidate rows for the machine_id recovery pass: every pending OR failed
+   * fuel_logs / consumable_logs entry, regardless of back-off. The stuck rows we
+   * need to repair are `failed` (a null machine_id fails the very first push, so
+   * dequeue — which only returns `pending` — never sees them again). The caller
+   * parses each payload to decide which actually lack a machine.
+   */
+  async getMachineBackfillCandidates(): Promise<SyncQueueEntry[]> {
+    return this.db.getAllAsync<SyncQueueEntry>(
+      `SELECT * FROM sync_queue
+       WHERE entity_type IN ('fuel_logs', 'consumable_logs')
+         AND status IN ('pending', 'failed')
+       ORDER BY created_at ASC, id ASC`,
+    );
+  }
+
+  /**
+   * Replace the payload AND clear the failure / back-off state so the entry is
+   * retried on the very next push. Used by the machine_id backfill: a row that
+   * was permanently failing (null machine_id → Postgres 23502) becomes
+   * immediately retriable once a machine is filled in. Mirrors the reset that
+   * enqueueOrUpdate applies on re-save.
+   */
+  async repairAndRequeue(id: number, payload: unknown): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE sync_queue
+       SET payload = ?, status = 'pending', last_error = NULL,
+           retry_count = 0, next_retry_at = NULL, updated_at = datetime('now')
+       WHERE id = ?`,
+      [JSON.stringify(payload), id],
+    );
+  }
+
   async resetInFlight(): Promise<void> {
     await this.db.runAsync(
       `UPDATE sync_queue SET status = 'pending', updated_at = datetime('now') WHERE status = 'in_flight'`,

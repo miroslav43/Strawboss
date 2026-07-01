@@ -22,7 +22,7 @@ const BEN_COLS = sql`
   deleted_at       AS "deletedAt"
 `;
 
-interface OrgBeneficiaryRow {
+export interface OrgBeneficiaryRow {
   beneficiary: Beneficiary;
   org: {
     id: string;

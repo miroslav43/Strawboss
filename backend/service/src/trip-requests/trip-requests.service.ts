@@ -66,6 +66,9 @@ const TR_COLS = sql`
   transporter_cui              AS "transporterCui",
   transporter_name             AS "transporterName",
   transporter_address          AS "transporterAddress",
+  contact_id                   AS "contactId",
+  truck_id                     AS "truckId",
+  driver_id                    AS "driverId",
   created_at               AS "createdAt",
   updated_at               AS "updatedAt",
   deleted_at               AS "deletedAt"
@@ -79,7 +82,7 @@ interface OrgPortalRow {
 }
 
 /** Constant-time PIN comparison — matches the codebase's timingSafeEqual standard. */
-function pinEquals(a: string, b: string): boolean {
+export function pinEquals(a: string, b: string): boolean {
   const ba = Buffer.from(String(a));
   const bb = Buffer.from(String(b));
   if (ba.length !== bb.length) return false;
@@ -87,7 +90,7 @@ function pinEquals(a: string, b: string): boolean {
 }
 
 /** A daily PIN is rejected once it is older than this (cron rotates it at 02:00). */
-const PIN_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+export const PIN_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
 @Injectable()
 export class TripRequestsService {
@@ -340,8 +343,10 @@ export class TripRequestsService {
       await this.pinThrottle.recordFailure(orgSlug, beneficiarySlug);
       throw new UnauthorizedException('Invalid PIN');
     }
-    await this.pinThrottle.recordSuccess(orgSlug, beneficiarySlug);
     this.assertPinFresh(row.beneficiary.pinGeneratedAt);
+    // Clear the counter only after the freshness check, so a correct-but-stale PIN
+    // can't be used to reset the brute-force lockout.
+    await this.pinThrottle.recordSuccess(orgSlug, beneficiarySlug);
     return { ok: true };
   }
 
@@ -355,15 +360,22 @@ export class TripRequestsService {
       await this.pinThrottle.recordFailure(orgSlug, beneficiarySlug);
       throw new UnauthorizedException('Invalid PIN');
     }
-    await this.pinThrottle.recordSuccess(orgSlug, beneficiarySlug);
     this.assertPinFresh(row.beneficiary.pinGeneratedAt);
-    const { pin, ...fields } = dto;
+    // Clear the counter only after the freshness check (see verifyBeneficiaryPin).
+    await this.pinThrottle.recordSuccess(orgSlug, beneficiarySlug);
+    const { pin: _pin, ...fields } = dto;
 
     // Enforce the org's accepted crop types (parity with submitPublicRequest).
     const allowed = row.org.allowedCropTypes ?? [];
     if (fields.cropType && allowed.length && !allowed.includes(fields.cropType)) {
       throw new BadRequestException('Recoltă neacceptată.');
     }
+
+    // Defense-in-depth: any selected saved-record ids must belong to THIS
+    // beneficiary (the composite FK only enforces same-org). This both prevents a
+    // crafted body from mislabeling a request with a sibling's record, and stops a
+    // bad id from reaching the FK as an unhandled 23503 → 500.
+    await this.assertOwnedRecords(row.org.id, row.beneficiary.id, fields);
 
     const coords = fields.destinationCoords ?? null;
     const inserted = (await this.drizzleProvider.db.execute(
@@ -375,7 +387,8 @@ export class TripRequestsService {
             trailer_registration_plate, transporter_name, transporter_cui, transporter_address,
             driver_name, driver_phone, driver_email,
             crop_type, needed_date, tons_requested, destination_address, destination_coords, notes,
-            beneficiary_id
+            beneficiary_id,
+            contact_id, truck_id, driver_id
           ) VALUES (
             ${row.org.id}::uuid, 'pending',
             ${fields.requesterName}, ${fields.requesterPhone}, ${fields.requesterEmail ?? null},
@@ -386,7 +399,8 @@ export class TripRequestsService {
             ${fields.cropType ? sql`${fields.cropType}::crop_type` : sql`NULL`}, ${fields.neededDate ?? null}::date, ${fields.tonsRequested ?? null}, ${fields.destinationAddress ?? null},
             ${coords ? sql`ST_SetSRID(ST_MakePoint(${coords.lon}, ${coords.lat}), 4326)` : sql`NULL`},
             ${fields.notes ?? null},
-            ${row.beneficiary.id}::uuid
+            ${row.beneficiary.id}::uuid,
+            ${fields.contactId ?? null}::uuid, ${fields.truckId ?? null}::uuid, ${fields.driverId ?? null}::uuid
           )
           RETURNING id`,
     )) as unknown as { id: string }[];
@@ -455,6 +469,35 @@ export class TripRequestsService {
     const age = Date.now() - new Date(pinGeneratedAt).getTime();
     if (!Number.isFinite(age) || age > PIN_MAX_AGE_MS) {
       throw new HttpException('PIN expired', HttpStatus.GONE);
+    }
+  }
+
+  /**
+   * Verifies any non-null saved-record id on a beneficiary submission actually
+   * belongs to this (org, beneficiary). Table names are hardcoded constants.
+   * Note: no `deleted_at IS NULL` filter — the flat fields are the source of truth
+   * and the FK targets the PK, so a concurrently soft-deleted record still resolves.
+   */
+  private async assertOwnedRecords(
+    orgId: string,
+    beneficiaryId: string,
+    fields: { contactId?: string | null; truckId?: string | null; driverId?: string | null },
+  ): Promise<void> {
+    const checks: Array<{ table: string; id: string }> = [];
+    if (fields.contactId) checks.push({ table: 'beneficiary_contacts', id: fields.contactId });
+    if (fields.truckId) checks.push({ table: 'beneficiary_trucks', id: fields.truckId });
+    if (fields.driverId) checks.push({ table: 'beneficiary_drivers', id: fields.driverId });
+    for (const c of checks) {
+      const rows = (await this.drizzleProvider.db.execute(
+        sql`SELECT 1 FROM ${sql.raw(c.table)}
+            WHERE id = ${c.id}::uuid
+              AND organization_id = ${orgId}::uuid
+              AND beneficiary_id = ${beneficiaryId}::uuid
+            LIMIT 1`,
+      )) as unknown as unknown[];
+      if (!rows.length) {
+        throw new BadRequestException('Înregistrare salvată invalidă.');
+      }
     }
   }
 

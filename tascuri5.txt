@@ -1,0 +1,18 @@
+truck & driver -> transporter truck and driver, scoatem make model, adaugam trailer plate, si adaugam CUI Firma, nume firma transporter, si adresa firmeri transportatoare,  
+
+in loc de who is requesting, Buyer Company/ Beneficiary.
+
+La beneficier 
+
+sa fie pe requester, un nou slug cu beneficiar 
+
+
+sa scrie Coperativa Agricola productie Uivar.  pe request. Request a load for your truck, a bale load for you your truck
+
+
+pin generat random in fiecare zi alt pin. 
+
+
+adauga la map  sub ferme sa fie si depozitele adaugate. 
+
+sa fei required, si sa fie 40000 kg la transporter capacity 

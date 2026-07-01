@@ -13,11 +13,20 @@ import {
   Truck,
   PackageCheck,
   Building2,
+  Pencil,
 } from 'lucide-react';
 import { CropType } from '@strawboss/types';
-import type { PublicBeneficiaryInfo } from '@strawboss/types';
+import type {
+  PublicBeneficiaryInfo,
+  BeneficiaryContact,
+  BeneficiaryTruck,
+  BeneficiaryDriver,
+} from '@strawboss/types';
 import { useI18n, normalizeUiLocale, type Locale } from '@/lib/i18n';
 import { apiV1Url } from '@/lib/api';
+import { BeneficiarySavedSelect } from './BeneficiarySavedSelect';
+import { BeneficiaryRecordModal, type RecordKind } from './BeneficiaryRecordModal';
+import { BeneficiaryRecordDeleteDialog } from './BeneficiaryRecordDeleteDialog';
 
 const TRACTOR = '/brand/strawboss-tractor.svg';
 
@@ -71,19 +80,9 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 
 // ── Form state ─────────────────────────────────────────────────────────────
 
+// Only the pickup details are typed on every request; contact / truck / driver
+// now come from the selected saved records.
 type FormState = {
-  requesterName: string;
-  requesterPhone: string;
-  requesterEmail: string;
-  truckRegistrationPlate: string;
-  trailerRegistrationPlate: string;
-  truckCapacityTons: string;
-  transporterName: string;
-  transporterCui: string;
-  transporterAddress: string;
-  driverName: string;
-  driverPhone: string;
-  driverEmail: string;
   cropType: string;
   neededDate: string;
   tonsRequested: string;
@@ -92,18 +91,6 @@ type FormState = {
 };
 
 const BLANK: FormState = {
-  requesterName: '',
-  requesterPhone: '',
-  requesterEmail: '',
-  truckRegistrationPlate: '',
-  trailerRegistrationPlate: '',
-  truckCapacityTons: '',
-  transporterName: '',
-  transporterCui: '',
-  transporterAddress: '',
-  driverName: '',
-  driverPhone: '',
-  driverEmail: '',
   cropType: '',
   neededDate: '',
   tonsRequested: '',
@@ -220,6 +207,38 @@ function ReadOnlyChip({ value }: { value: string | null | undefined }) {
   );
 }
 
+/** Labelled, read-only display of a field from a selected saved record. */
+function LockedField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number | null | undefined;
+}) {
+  return (
+    <div className="block">
+      <span className="mb-1.5 block text-[13px] font-medium text-stone-600">{label}</span>
+      <ReadOnlyChip
+        value={value === null || value === undefined || value === '' ? null : String(value)}
+      />
+    </div>
+  );
+}
+
+function EditSelectedButton({ onClick }: { onClick: () => void }) {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:text-primary-700"
+    >
+      <Pencil className="h-3.5 w-3.5" />
+      {t('beneficiaryPortal.saved.editSelected')}
+    </button>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────
 
 type Step = 'pin' | 'form' | 'success';
@@ -245,6 +264,27 @@ export default function BeneficiaryPortalPage() {
   const [form, setForm] = useState<FormState>(BLANK);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Saved per-beneficiary records (loaded once the PIN is verified)
+  const [contacts, setContacts] = useState<BeneficiaryContact[]>([]);
+  const [trucks, setTrucks] = useState<BeneficiaryTruck[]>([]);
+  const [drivers, setDrivers] = useState<BeneficiaryDriver[]>([]);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [contactsError, setContactsError] = useState(false);
+  const [trucksError, setTrucksError] = useState(false);
+  const [driversError, setDriversError] = useState(false);
+  const [selContactId, setSelContactId] = useState<string | null>(null);
+  const [selTruckId, setSelTruckId] = useState<string | null>(null);
+  const [selDriverId, setSelDriverId] = useState<string | null>(null);
+  const [recordModal, setRecordModal] = useState<{
+    kind: RecordKind;
+    record?: BeneficiaryContact | BeneficiaryTruck | BeneficiaryDriver;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    kind: RecordKind;
+    id: string;
+    label: string;
+  } | null>(null);
 
   // Current step
   const [step, setStep] = useState<Step>('pin');
@@ -337,11 +377,112 @@ export default function BeneficiaryPortalPage() {
         return;
       }
       setStep('form');
+      void loadSavedLists();
     } catch {
       setPinError(t('beneficiaryPortal.pinError'));
     } finally {
       setPinVerifying(false);
     }
+  }
+
+  // ── Saved-record loaders (PIN-gated; pin travels in the body) ──────────────
+  async function fetchSavedList(kindPath: string): Promise<unknown> {
+    const res = await fetch(
+      apiV1Url(`/public/portal/${orgSlug}/beneficiary/${beneficiarySlug}/${kindPath}/list`),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      },
+    );
+    if (!res.ok) throw new Error(String(res.status));
+    return res.json();
+  }
+
+  async function loadSavedLists() {
+    setSavedLoading(true);
+    setContactsError(false);
+    setTrucksError(false);
+    setDriversError(false);
+    const [c, tr, d] = await Promise.allSettled([
+      fetchSavedList('contacts'),
+      fetchSavedList('trucks'),
+      fetchSavedList('drivers'),
+    ]);
+    if (c.status === 'fulfilled') setContacts(c.value as BeneficiaryContact[]);
+    else setContactsError(true);
+    if (tr.status === 'fulfilled') setTrucks(tr.value as BeneficiaryTruck[]);
+    else setTrucksError(true);
+    if (d.status === 'fulfilled') setDrivers(d.value as BeneficiaryDriver[]);
+    else setDriversError(true);
+    setSavedLoading(false);
+  }
+
+  async function reloadContacts() {
+    setContactsError(false);
+    try {
+      setContacts((await fetchSavedList('contacts')) as BeneficiaryContact[]);
+    } catch {
+      setContactsError(true);
+    }
+  }
+  async function reloadTrucks() {
+    setTrucksError(false);
+    try {
+      setTrucks((await fetchSavedList('trucks')) as BeneficiaryTruck[]);
+    } catch {
+      setTrucksError(true);
+    }
+  }
+  async function reloadDrivers() {
+    setDriversError(false);
+    try {
+      setDrivers((await fetchSavedList('drivers')) as BeneficiaryDriver[]);
+    } catch {
+      setDriversError(true);
+    }
+  }
+
+  function upsertById<T extends { id: string }>(list: T[], rec: T): T[] {
+    return list.some((x) => x.id === rec.id)
+      ? list.map((x) => (x.id === rec.id ? rec : x))
+      : [rec, ...list];
+  }
+
+  // After create/edit: upsert into the list; auto-select only when newly created.
+  function handleSaved(rec: BeneficiaryContact | BeneficiaryTruck | BeneficiaryDriver) {
+    if (!recordModal) return;
+    const isNew = !recordModal.record;
+    if (recordModal.kind === 'contact') {
+      const r = rec as BeneficiaryContact;
+      setContacts((prev) => upsertById(prev, r));
+      if (isNew) setSelContactId(r.id);
+    } else if (recordModal.kind === 'truck') {
+      const r = rec as BeneficiaryTruck;
+      setTrucks((prev) => upsertById(prev, r));
+      if (isNew) setSelTruckId(r.id);
+    } else {
+      const r = rec as BeneficiaryDriver;
+      setDrivers((prev) => upsertById(prev, r));
+      if (isNew) setSelDriverId(r.id);
+    }
+    setRecordModal(null);
+  }
+
+  // After delete: drop from the list and clear the selection if it pointed there.
+  function handleDeleted(id: string) {
+    if (!deleteTarget) return;
+    if (deleteTarget.kind === 'contact') {
+      setContacts((prev) => prev.filter((x) => x.id !== id));
+      setSelContactId((cur) => (cur === id ? null : cur));
+    } else if (deleteTarget.kind === 'truck') {
+      setTrucks((prev) => prev.filter((x) => x.id !== id));
+      setSelTruckId((cur) => (cur === id ? null : cur));
+    } else {
+      setDrivers((prev) => prev.filter((x) => x.id !== id));
+      setSelDriverId((cur) => (cur === id ? null : cur));
+    }
+    setDeleteTarget(null);
   }
 
   async function submitRequest(e: React.FormEvent) {
@@ -352,24 +493,43 @@ export default function BeneficiaryPortalPage() {
     const trim = (s: string) => (s.trim() === '' ? null : s.trim());
     const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s));
 
+    const contact = contacts.find((c) => c.id === selContactId);
+    const truck = trucks.find((tk) => tk.id === selTruckId);
+    const driver = drivers.find((d) => d.id === selDriverId);
+    if (!contact || !truck || !driver) {
+      setSubmitError(t('beneficiaryPortal.saved.selectAllError'));
+      setSubmitting(false);
+      return;
+    }
+    // requesterPhone / driverPhone are required (min 4) by the submit schema; the
+    // save modal enforces this, but guard against a record with a missing phone.
+    if (!contact.phone?.trim() || !driver.phone?.trim()) {
+      setSubmitError(t('beneficiaryPortal.saved.phoneRequired'));
+      setSubmitting(false);
+      return;
+    }
+
     const payload = {
-      requesterName: form.requesterName.trim(),
-      requesterPhone: form.requesterPhone.trim(),
-      requesterEmail: trim(form.requesterEmail),
-      truckRegistrationPlate: form.truckRegistrationPlate.trim(),
-      trailerRegistrationPlate: trim(form.trailerRegistrationPlate),
-      truckCapacityTons: numOrNull(form.truckCapacityTons),
-      transporterName: trim(form.transporterName),
-      transporterCui: trim(form.transporterCui),
-      transporterAddress: trim(form.transporterAddress),
-      driverName: form.driverName.trim(),
-      driverPhone: form.driverPhone.trim(),
-      driverEmail: trim(form.driverEmail),
+      requesterName: contact.name,
+      requesterPhone: contact.phone ?? '',
+      requesterEmail: contact.email,
+      truckRegistrationPlate: truck.truckRegistrationPlate,
+      trailerRegistrationPlate: truck.trailerRegistrationPlate,
+      truckCapacityTons: truck.capacityTons,
+      transporterName: truck.transporterName,
+      transporterCui: truck.transporterCui,
+      transporterAddress: truck.transporterAddress,
+      driverName: driver.name,
+      driverPhone: driver.phone ?? '',
+      driverEmail: driver.email,
       cropType: form.cropType || null,
       neededDate: trim(form.neededDate),
       tonsRequested: numOrNull(form.tonsRequested),
       destinationAddress: trim(form.destinationAddress),
       notes: trim(form.notes),
+      contactId: contact.id,
+      truckId: truck.id,
+      driverId: driver.id,
       pin,
     };
 
@@ -404,6 +564,10 @@ export default function BeneficiaryPortalPage() {
 
   const allowedCrops =
     info && info.allowedCropTypes.length > 0 ? info.allowedCropTypes : Object.values(CropType);
+
+  const selectedContact = contacts.find((c) => c.id === selContactId) ?? null;
+  const selectedTruck = trucks.find((tk) => tk.id === selTruckId) ?? null;
+  const selectedDriver = drivers.find((d) => d.id === selDriverId) ?? null;
 
   return (
     <div className="min-h-screen bg-cream text-bark lg:grid lg:grid-cols-[minmax(0,38%)_minmax(0,1fr)]">
@@ -540,122 +704,158 @@ export default function BeneficiaryPortalPage() {
                 </p>
               </section>
 
-              {/* Contact person */}
+              {/* Contact person — pick a saved one or add new */}
               <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
                 <SectionHeader
                   icon={<UserRound className="h-4 w-4" />}
                   label={t('beneficiaryPortal.sectionRequester')}
                 />
-                <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <Field label={t('beneficiaryPortal.requesterName')} required>
-                    <input
-                      className={inputCls}
-                      required
-                      value={form.requesterName}
-                      onChange={(e) => patch({ requesterName: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('beneficiaryPortal.requesterPhone')} required>
-                    <input
-                      className={inputCls}
-                      required
-                      value={form.requesterPhone}
-                      onChange={(e) => patch({ requesterPhone: e.target.value })}
-                    />
-                  </Field>
-                  <div className="sm:col-span-2">
-                    <Field label={t('beneficiaryPortal.requesterEmail')} optional>
-                      <input
-                        type="email"
-                        className={inputCls}
-                        value={form.requesterEmail}
-                        onChange={(e) => patch({ requesterEmail: e.target.value })}
+                <BeneficiarySavedSelect
+                  placeholder={t('beneficiaryPortal.saved.selectContact')}
+                  items={contacts}
+                  selectedId={selContactId}
+                  loading={savedLoading}
+                  error={contactsError}
+                  getPrimary={(c) => c.name}
+                  getSecondary={(c) => c.phone ?? c.email}
+                  getSearchText={(c) => `${c.name} ${c.phone ?? ''} ${c.email ?? ''}`}
+                  onSelect={setSelContactId}
+                  onAdd={() => setRecordModal({ kind: 'contact' })}
+                  onEdit={(c) => setRecordModal({ kind: 'contact', record: c })}
+                  onDelete={(c) => setDeleteTarget({ kind: 'contact', id: c.id, label: c.name })}
+                  onRetry={() => void reloadContacts()}
+                />
+                {selectedContact && (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                      <LockedField
+                        label={t('beneficiaryPortal.requesterName')}
+                        value={selectedContact.name}
                       />
-                    </Field>
+                      <LockedField
+                        label={t('beneficiaryPortal.requesterPhone')}
+                        value={selectedContact.phone}
+                      />
+                      <div className="sm:col-span-2">
+                        <LockedField
+                          label={t('beneficiaryPortal.requesterEmail')}
+                          value={selectedContact.email}
+                        />
+                      </div>
+                    </div>
+                    <EditSelectedButton
+                      onClick={() => setRecordModal({ kind: 'contact', record: selectedContact })}
+                    />
                   </div>
-                </div>
+                )}
               </section>
 
-              {/* Transporter, Truck and Driver */}
+              {/* Truck + Transporter — pick a saved one or add new */}
               <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
                 <SectionHeader
                   icon={<Truck className="h-4 w-4" />}
                   label={t('beneficiaryPortal.sectionTruck')}
                 />
-                <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <Field label={t('beneficiaryPortal.truckRegistrationPlate')} required>
-                    <input
-                      className={inputCls}
-                      required
-                      value={form.truckRegistrationPlate}
-                      onChange={(e) => patch({ truckRegistrationPlate: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('beneficiaryPortal.trailerRegistrationPlate')} optional>
-                    <input
-                      className={inputCls}
-                      value={form.trailerRegistrationPlate}
-                      onChange={(e) => patch({ trailerRegistrationPlate: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('beneficiaryPortal.truckCapacityTons')} optional>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      className={inputCls}
-                      value={form.truckCapacityTons}
-                      onChange={(e) => patch({ truckCapacityTons: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('beneficiaryPortal.transporterName')} optional>
-                    <input
-                      className={inputCls}
-                      value={form.transporterName}
-                      onChange={(e) => patch({ transporterName: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('beneficiaryPortal.transporterCui')} optional>
-                    <input
-                      className={inputCls}
-                      value={form.transporterCui}
-                      onChange={(e) => patch({ transporterCui: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('beneficiaryPortal.transporterAddress')} optional>
-                    <input
-                      className={inputCls}
-                      value={form.transporterAddress}
-                      onChange={(e) => patch({ transporterAddress: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('beneficiaryPortal.driverName')} required>
-                    <input
-                      className={inputCls}
-                      required
-                      value={form.driverName}
-                      onChange={(e) => patch({ driverName: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('beneficiaryPortal.driverPhone')} required>
-                    <input
-                      className={inputCls}
-                      required
-                      value={form.driverPhone}
-                      onChange={(e) => patch({ driverPhone: e.target.value })}
-                    />
-                  </Field>
-                  <div className="sm:col-span-2">
-                    <Field label={t('beneficiaryPortal.driverEmail')} optional>
-                      <input
-                        type="email"
-                        className={inputCls}
-                        value={form.driverEmail}
-                        onChange={(e) => patch({ driverEmail: e.target.value })}
+                <BeneficiarySavedSelect
+                  placeholder={t('beneficiaryPortal.saved.selectTruck')}
+                  items={trucks}
+                  selectedId={selTruckId}
+                  loading={savedLoading}
+                  error={trucksError}
+                  getPrimary={(tk) => tk.truckRegistrationPlate}
+                  getSecondary={(tk) =>
+                    tk.transporterName ?? (tk.capacityTons != null ? `${tk.capacityTons} t` : null)
+                  }
+                  getSearchText={(tk) =>
+                    `${tk.truckRegistrationPlate} ${tk.trailerRegistrationPlate ?? ''} ${tk.transporterName ?? ''}`
+                  }
+                  onSelect={setSelTruckId}
+                  onAdd={() => setRecordModal({ kind: 'truck' })}
+                  onEdit={(tk) => setRecordModal({ kind: 'truck', record: tk })}
+                  onDelete={(tk) =>
+                    setDeleteTarget({ kind: 'truck', id: tk.id, label: tk.truckRegistrationPlate })
+                  }
+                  onRetry={() => void reloadTrucks()}
+                />
+                {selectedTruck && (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                      <LockedField
+                        label={t('beneficiaryPortal.truckRegistrationPlate')}
+                        value={selectedTruck.truckRegistrationPlate}
                       />
-                    </Field>
+                      <LockedField
+                        label={t('beneficiaryPortal.trailerRegistrationPlate')}
+                        value={selectedTruck.trailerRegistrationPlate}
+                      />
+                      <LockedField
+                        label={t('beneficiaryPortal.truckCapacityTons')}
+                        value={selectedTruck.capacityTons}
+                      />
+                      <LockedField
+                        label={t('beneficiaryPortal.transporterName')}
+                        value={selectedTruck.transporterName}
+                      />
+                      <LockedField
+                        label={t('beneficiaryPortal.transporterCui')}
+                        value={selectedTruck.transporterCui}
+                      />
+                      <LockedField
+                        label={t('beneficiaryPortal.transporterAddress')}
+                        value={selectedTruck.transporterAddress}
+                      />
+                    </div>
+                    <EditSelectedButton
+                      onClick={() => setRecordModal({ kind: 'truck', record: selectedTruck })}
+                    />
                   </div>
-                </div>
+                )}
+              </section>
+
+              {/* Driver — pick a saved one or add new */}
+              <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
+                <SectionHeader
+                  icon={<UserRound className="h-4 w-4" />}
+                  label={t('beneficiaryPortal.saved.driverLabel')}
+                />
+                <BeneficiarySavedSelect
+                  placeholder={t('beneficiaryPortal.saved.selectDriver')}
+                  items={drivers}
+                  selectedId={selDriverId}
+                  loading={savedLoading}
+                  error={driversError}
+                  getPrimary={(d) => d.name}
+                  getSecondary={(d) => d.phone ?? d.email}
+                  getSearchText={(d) => `${d.name} ${d.phone ?? ''} ${d.email ?? ''}`}
+                  onSelect={setSelDriverId}
+                  onAdd={() => setRecordModal({ kind: 'driver' })}
+                  onEdit={(d) => setRecordModal({ kind: 'driver', record: d })}
+                  onDelete={(d) => setDeleteTarget({ kind: 'driver', id: d.id, label: d.name })}
+                  onRetry={() => void reloadDrivers()}
+                />
+                {selectedDriver && (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                      <LockedField
+                        label={t('beneficiaryPortal.driverName')}
+                        value={selectedDriver.name}
+                      />
+                      <LockedField
+                        label={t('beneficiaryPortal.driverPhone')}
+                        value={selectedDriver.phone}
+                      />
+                      <div className="sm:col-span-2">
+                        <LockedField
+                          label={t('beneficiaryPortal.driverEmail')}
+                          value={selectedDriver.email}
+                        />
+                      </div>
+                    </div>
+                    <EditSelectedButton
+                      onClick={() => setRecordModal({ kind: 'driver', record: selectedDriver })}
+                    />
+                  </div>
+                )}
               </section>
 
               {/* Pickup / request details */}
@@ -753,6 +953,30 @@ export default function BeneficiaryPortalPage() {
           )}
         </div>
       </main>
+
+      {recordModal && (
+        <BeneficiaryRecordModal
+          kind={recordModal.kind}
+          record={recordModal.record}
+          orgSlug={orgSlug}
+          beneficiarySlug={beneficiarySlug}
+          pin={pin}
+          onSaved={handleSaved}
+          onClose={() => setRecordModal(null)}
+        />
+      )}
+      {deleteTarget && (
+        <BeneficiaryRecordDeleteDialog
+          kind={deleteTarget.kind}
+          recordId={deleteTarget.id}
+          recordLabel={deleteTarget.label}
+          orgSlug={orgSlug}
+          beneficiarySlug={beneficiarySlug}
+          pin={pin}
+          onDeleted={handleDeleted}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }
