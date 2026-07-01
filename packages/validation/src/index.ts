@@ -57,7 +57,11 @@ export {
   createBaleProductionSchema,
 } from './schemas/bale-production.schema.js';
 
-export { fuelLogSchema, createFuelLogSchema } from './schemas/fuel-log.schema.js';
+export {
+  fuelLogSchema,
+  createFuelLogSchema,
+  updateFuelLogSchema,
+} from './schemas/fuel-log.schema.js';
 
 export {
   consumableTypeSchema,

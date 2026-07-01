@@ -55,7 +55,14 @@ export {
 
 export { useBaleLoads, useCreateBaleLoad } from './use-bale-loads.js';
 
-export { useFuelLogs, useCreateFuelLog } from './use-fuel-logs.js';
+export {
+  useFuelLogs,
+  useCreateFuelLog,
+  useFuelLogsList,
+  useUpdateFuelLog,
+  useDeleteFuelLog,
+} from './use-fuel-logs.js';
+export type { FuelLogFilters } from './use-fuel-logs.js';
 
 export { useDocuments, useDocument, useGenerateCmr } from './use-documents.js';
 

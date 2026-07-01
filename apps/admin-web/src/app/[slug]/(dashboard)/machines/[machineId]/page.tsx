@@ -12,19 +12,19 @@ import {
   CheckCircle2,
   XCircle,
   MapPin,
-  Fuel,
   Bell,
   Activity,
 } from 'lucide-react';
-import { useMachine, useMachineLocations, useTrips, useFuelLogs, useAlerts } from '@strawboss/api';
+import { useMachine, useMachineLocations, useTrips, useAlerts } from '@strawboss/api';
 import { MachineType, FuelType, AlertSeverity } from '@strawboss/types';
-import type { Trip, Alert, FuelLog } from '@strawboss/types';
+import type { Trip, Alert } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { todayInRomania, addDays } from '@/lib/date';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { LoggingErrorBoundary } from '@/components/shared/LoggingErrorBoundary';
+import { FuelConsumptionCard } from './FuelConsumptionCard';
 
 // ── Dynamic Leaflet mini-map (no SSR) ─────────────────────────────────────
 
@@ -127,8 +127,6 @@ export default function MachineDetailPage() {
   const machineId = params.machineId;
   const slug = params.slug;
 
-  const sevenDaysAgo = addDays(todayInRomania(), -7);
-
   const machineQuery = useMachine(apiClient, machineId);
   const locationsQuery = useMachineLocations(apiClient);
   const tripsQuery = useTrips(apiClient, {
@@ -136,18 +134,12 @@ export default function MachineDetailPage() {
     limit: '20',
     sort: '-createdAt',
   });
-  const fuelQuery = useFuelLogs(apiClient, machineId);
   const alertsQuery = useAlerts(apiClient, { machineId, limit: '10', sort: '-createdAt' });
 
   const machine = machineQuery.data;
   const location = locationsQuery.data?.find((l) => l.machineId === machineId);
   const trips: Trip[] = normalizeList<Trip>(tripsQuery.data);
-  const fuelLogs: FuelLog[] = normalizeList<FuelLog>(fuelQuery.data).filter(
-    (l) => l.loggedAt >= sevenDaysAgo,
-  );
   const alerts: Alert[] = normalizeList<Alert>(alertsQuery.data);
-
-  const totalFuelLiters = fuelLogs.reduce((s, l) => s + l.quantityLiters, 0);
 
   const TypeIcon = machine ? TYPE_ICON[machine.machineType] : Wrench;
   const typeBadgeCls = machine
@@ -304,43 +296,7 @@ export default function MachineDetailPage() {
             <ActivityChart trips={trips} />
           )}
 
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <h3 className="mb-4 text-sm font-semibold text-neutral-700">
-              {t('machineDetail.fuelLast7d')}
-            </h3>
-            {fuelQuery.isLoading ? (
-              <div className="h-16 animate-pulse rounded-lg bg-neutral-100" />
-            ) : fuelLogs.length === 0 ? (
-              <p className="text-sm text-neutral-400">{t('machineDetail.noFuelLogs')}</p>
-            ) : (
-              <>
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="rounded-lg bg-amber-50 p-2">
-                    <Fuel className="h-5 w-5 text-amber-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-neutral-800">
-                      {totalFuelLiters.toLocaleString()} L
-                    </p>
-                    <p className="text-xs text-neutral-400">
-                      {t('machineDetail.fuelEntries', { count: fuelLogs.length })}
-                    </p>
-                  </div>
-                </div>
-                <ul className="space-y-1">
-                  {fuelLogs.slice(0, 5).map((log) => (
-                    <li
-                      key={log.id}
-                      className="flex items-center justify-between text-xs text-neutral-600"
-                    >
-                      <span>{new Date(log.loggedAt).toLocaleDateString()}</span>
-                      <span className="font-medium">{log.quantityLiters} L</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
+          <FuelConsumptionCard machineId={machineId} machine={machine} />
         </div>
 
         {/* Row 3: recent trips */}

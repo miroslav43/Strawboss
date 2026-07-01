@@ -41,3 +41,15 @@ export const createFuelLogSchema = z.object({
   receiptPhotoUrl: z.string().url().nullable().optional(),
   notes: z.string().nullable().optional(),
 });
+
+/**
+ * Partial update DTO for the admin web edit flow (PATCH /fuel-logs/:id).
+ * Every remaining field is optional; the service only applies keys present in
+ * the body. `machineId`/`operatorId`/`parcelId` are intentionally NOT editable:
+ * they are bare cross-org FKs (a fuel log stays tied to its machine, and its
+ * attribution/parcel is fixed at creation), so leaving them out of the contract
+ * keeps an admin from repointing a log at another organization's row.
+ */
+export const updateFuelLogSchema = createFuelLogSchema
+  .partial()
+  .omit({ machineId: true, operatorId: true, parcelId: true });
