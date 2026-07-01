@@ -1843,6 +1843,8 @@
       "editSelected": "Editează selecția",
       "selectAllError": "Selectează un contact, un camion și un șofer.",
       "phoneRequired": "Contactul și șoferul selectați trebuie să aibă număr de telefon. Editează înregistrarea pentru a-l adăuga.",
+      "phoneInvalid": "Introdu un număr de telefon valid (minim 4 caractere).",
+      "emailInvalid": "Introdu o adresă de e-mail validă sau las-o goală.",
       "createContactTitle": "Contact nou",
       "editContactTitle": "Editează contactul",
       "createTruckTitle": "Camion nou",

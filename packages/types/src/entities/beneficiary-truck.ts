@@ -20,11 +20,11 @@ export interface BeneficiaryTruck {
 
 export interface CreateBeneficiaryTruckDto {
   truckRegistrationPlate: string;
-  trailerRegistrationPlate?: string | null;
-  capacityTons?: number | null;
-  transporterName?: string | null;
-  transporterCui?: string | null;
-  transporterAddress?: string | null;
+  trailerRegistrationPlate: string;
+  capacityTons: number;
+  transporterName: string;
+  transporterCui: string;
+  transporterAddress: string;
 }
 
 export type UpdateBeneficiaryTruckDto = Partial<CreateBeneficiaryTruckDto>;

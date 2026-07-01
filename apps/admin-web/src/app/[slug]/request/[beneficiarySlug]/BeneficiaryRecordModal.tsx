@@ -78,7 +78,15 @@ export function BeneficiaryRecordModal({
   const [error, setError] = useState<string | null>(null);
 
   const canSave =
-    kind === 'truck' ? plate.trim() !== '' : name.trim() !== '' && phone.trim() !== '';
+    kind === 'truck'
+      ? plate.trim() !== '' &&
+        trailer.trim() !== '' &&
+        capacity.trim() !== '' &&
+        Number(capacity) > 0 &&
+        transporterName.trim() !== '' &&
+        transporterCui.trim() !== '' &&
+        transporterAddress.trim() !== ''
+      : name.trim() !== '' && phone.trim() !== '';
 
   const titleKey = isEdit
     ? `beneficiaryPortal.saved.edit${kind[0].toUpperCase()}${kind.slice(1)}Title`
@@ -86,14 +94,13 @@ export function BeneficiaryRecordModal({
 
   function buildFields(): Record<string, unknown> {
     if (kind === 'truck') {
-      const cap = capacity.trim();
       return {
         truckRegistrationPlate: plate.trim(),
-        trailerRegistrationPlate: trailer.trim() || null,
-        capacityTons: cap === '' ? null : Number(cap),
-        transporterName: transporterName.trim() || null,
-        transporterCui: transporterCui.trim() || null,
-        transporterAddress: transporterAddress.trim() || null,
+        trailerRegistrationPlate: trailer.trim(),
+        capacityTons: Number(capacity),
+        transporterName: transporterName.trim(),
+        transporterCui: transporterCui.trim(),
+        transporterAddress: transporterAddress.trim(),
       };
     }
     return { name: name.trim(), phone: phone.trim(), email: email.trim() || null };
@@ -102,6 +109,19 @@ export function BeneficiaryRecordModal({
   async function handleSubmit() {
     if (!canSave) return;
     setError(null);
+    // Client-side checks so the user gets a specific reason instead of the
+    // server's opaque 400 (the validation pipe's field errors are masked upstream).
+    if (kind !== 'truck') {
+      if (phone.trim().length < 4) {
+        setError(t('beneficiaryPortal.saved.phoneInvalid'));
+        return;
+      }
+      const em = email.trim();
+      if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+        setError(t('beneficiaryPortal.saved.emailInvalid'));
+        return;
+      }
+    }
     setSaving(true);
     try {
       const basePath = `/public/portal/${orgSlug}/beneficiary/${beneficiarySlug}/${KIND_PATH[kind]}`;
@@ -174,56 +194,66 @@ export function BeneficiaryRecordModal({
                 <label className="block">
                   <span className="mb-1.5 block text-[13px] font-medium text-stone-600">
                     {t('beneficiaryPortal.trailerRegistrationPlate')}
+                    <span className="ml-0.5 text-rose-500">*</span>
                   </span>
                   <input
                     className={inputCls}
                     value={trailer}
                     onChange={(e) => setTrailer(e.target.value)}
+                    required
                   />
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-[13px] font-medium text-stone-600">
                     {t('beneficiaryPortal.truckCapacityTons')}
+                    <span className="ml-0.5 text-rose-500">*</span>
                   </span>
                   <input
                     type="number"
-                    min="0"
+                    min="0.1"
                     step="0.1"
                     className={inputCls}
                     value={capacity}
                     onChange={(e) => setCapacity(e.target.value)}
+                    required
                   />
                 </label>
               </div>
               <label className="block">
                 <span className="mb-1.5 block text-[13px] font-medium text-stone-600">
                   {t('beneficiaryPortal.transporterName')}
+                  <span className="ml-0.5 text-rose-500">*</span>
                 </span>
                 <input
                   className={inputCls}
                   value={transporterName}
                   onChange={(e) => setTransporterName(e.target.value)}
+                  required
                 />
               </label>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1.5 block text-[13px] font-medium text-stone-600">
                     {t('beneficiaryPortal.transporterCui')}
+                    <span className="ml-0.5 text-rose-500">*</span>
                   </span>
                   <input
                     className={inputCls}
                     value={transporterCui}
                     onChange={(e) => setTransporterCui(e.target.value)}
+                    required
                   />
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-[13px] font-medium text-stone-600">
                     {t('beneficiaryPortal.transporterAddress')}
+                    <span className="ml-0.5 text-rose-500">*</span>
                   </span>
                   <input
                     className={inputCls}
                     value={transporterAddress}
                     onChange={(e) => setTransporterAddress(e.target.value)}
+                    required
                   />
                 </label>
               </div>

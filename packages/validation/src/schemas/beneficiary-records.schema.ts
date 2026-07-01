@@ -30,11 +30,11 @@ export type UpdateBeneficiaryContactInput = z.infer<typeof updateBeneficiaryCont
 // ── Truck (+ transporter company) ────────────────────────────────────────────
 export const createBeneficiaryTruckSchema = z.object({
   truckRegistrationPlate: z.string().min(1).max(40),
-  trailerRegistrationPlate: z.string().max(40).nullable().optional(),
-  capacityTons: z.number().positive().max(1000).nullable().optional(),
-  transporterName: z.string().max(200).nullable().optional(),
-  transporterCui: z.string().max(20).nullable().optional(),
-  transporterAddress: z.string().max(300).nullable().optional(),
+  trailerRegistrationPlate: z.string().min(1).max(40),
+  capacityTons: z.number().positive().max(1000),
+  transporterName: z.string().min(1).max(200),
+  transporterCui: z.string().min(1).max(20),
+  transporterAddress: z.string().min(1).max(300),
 });
 export type CreateBeneficiaryTruckInput = z.infer<typeof createBeneficiaryTruckSchema>;
 

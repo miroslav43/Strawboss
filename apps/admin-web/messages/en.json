@@ -1843,6 +1843,8 @@
       "editSelected": "Edit selected",
       "selectAllError": "Please select a contact, a truck and a driver.",
       "phoneRequired": "The selected contact and driver each need a phone number. Edit the record to add one.",
+      "phoneInvalid": "Enter a valid phone number (at least 4 characters).",
+      "emailInvalid": "Enter a valid email address, or leave it empty.",
       "createContactTitle": "New contact",
       "editContactTitle": "Edit contact",
       "createTruckTitle": "New truck",
