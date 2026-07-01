@@ -880,28 +880,31 @@ export default function BeneficiaryPortalPage() {
                       ))}
                     </select>
                   </Field>
-                  <Field label={t('beneficiaryPortal.neededDate')} optional>
+                  <Field label={t('beneficiaryPortal.neededDate')} required>
                     <input
                       type="date"
                       className={inputCls}
+                      required
                       value={form.neededDate}
                       onChange={(e) => patch({ neededDate: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('beneficiaryPortal.tonsRequested')} optional>
+                  <Field label={t('beneficiaryPortal.tonsRequested')} required>
                     <input
                       type="number"
-                      min="0"
+                      min="0.1"
                       step="0.1"
                       className={inputCls}
+                      required
                       value={form.tonsRequested}
                       onChange={(e) => patch({ tonsRequested: e.target.value })}
                     />
                   </Field>
                   <div className="sm:col-span-2">
-                    <Field label={t('beneficiaryPortal.destinationAddress')} optional>
+                    <Field label={t('beneficiaryPortal.destinationAddress')} required>
                       <input
                         className={inputCls}
+                        required
                         value={form.destinationAddress}
                         onChange={(e) => patch({ destinationAddress: e.target.value })}
                       />

@@ -55,13 +55,11 @@ export const createBeneficiaryRequestSchema = z.object({
   driverName: z.string().min(1).max(120),
   driverPhone: z.string().min(4).max(40),
   driverEmail: z.string().email().max(160).nullable().optional(),
-  // the ask
+  // the ask (crop, date, tons and destination are all required on the portal)
   cropType: cropTypeSchema,
-  // Optional in the portal UI (no `required` on the date input) — accept null so an
-  // empty date doesn't fail with an opaque 400. The insert already coalesces to NULL.
-  neededDate: isoDateSchema.nullable().optional(),
-  tonsRequested: z.number().positive().max(100000).nullable().optional(),
-  destinationAddress: z.string().min(1).max(300).nullable().optional(),
+  neededDate: isoDateSchema,
+  tonsRequested: z.number().positive().max(100000),
+  destinationAddress: z.string().min(1).max(300),
   destinationCoords: geoPointSchema.nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   // Optional traceability: which saved beneficiary records this request was
