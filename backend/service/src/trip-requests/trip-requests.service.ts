@@ -69,6 +69,7 @@ const TR_COLS = sql`
   contact_id                   AS "contactId",
   truck_id                     AS "truckId",
   driver_id                    AS "driverId",
+  source_depot_id              AS "sourceDepotId",
   created_at               AS "createdAt",
   updated_at               AS "updatedAt",
   deleted_at               AS "deletedAt"
@@ -133,11 +134,27 @@ export class TripRequestsService {
    * assigns a loader on the truck board, which materializes the trip
    * (autoUpsertAuxiliaryTrip).
    */
-  async confirm(orgId: string | null, id: string, userId: string, internalCode?: string) {
+  async confirm(
+    orgId: string | null,
+    id: string,
+    userId: string,
+    depotId: string,
+    internalCode?: string,
+  ) {
     const req = await this.findById(orgId, id);
     if (req.status !== RequestStatus.pending) {
       throw new BadRequestException('Cererea a fost deja procesată.');
     }
+    // The pickup depot must belong to the request's org.
+    const depotRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT 1 FROM delivery_destinations
+          WHERE id = ${depotId}::uuid
+            AND organization_id = ${req.organizationId}::uuid
+            AND deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as unknown[];
+    if (!depotRows.length) throw new BadRequestException('Depozit invalid.');
+
     const code = internalCode ?? `AUX-${randomUUID().slice(0, 6).toUpperCase()}`;
 
     const machineRows = (await this.drizzleProvider.db.execute(
@@ -160,6 +177,7 @@ export class TripRequestsService {
       sql`UPDATE trip_requests SET
             status = ${RequestStatus.confirmed}::request_status,
             machine_id = ${machineId}::uuid,
+            source_depot_id = ${depotId}::uuid,
             confirmed_by = ${userId}::uuid,
             confirmed_at = NOW(),
             updated_at = NOW()

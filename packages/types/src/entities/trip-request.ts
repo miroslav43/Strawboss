@@ -50,6 +50,8 @@ export interface TripRequest extends Timestamps, SoftDelete {
   contactId: string | null;
   truckId: string | null;
   driverId: string | null;
+  // pickup source depot chosen by the dispatcher on confirm
+  sourceDepotId: string | null;
   // linkage, filled on confirm
   machineId: string | null;
   tripId: string | null;

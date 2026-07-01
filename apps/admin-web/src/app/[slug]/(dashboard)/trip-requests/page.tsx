@@ -1,10 +1,15 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useMemo, useCallback } from 'react';
-import { CheckCircle2, XCircle, Loader2, ClipboardList } from 'lucide-react';
-import { useTripRequests, useConfirmTripRequest, useCancelTripRequest } from '@strawboss/api';
-import type { TripRequest } from '@strawboss/types';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { CheckCircle2, XCircle, Loader2, ClipboardList, MapPin, Warehouse } from 'lucide-react';
+import {
+  useTripRequests,
+  useConfirmTripRequest,
+  useCancelTripRequest,
+  useDeliveryDestinations,
+} from '@strawboss/api';
+import type { TripRequest, DeliveryDestination } from '@strawboss/types';
 import { RequestStatus } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiClient } from '@/lib/api';
@@ -44,12 +49,28 @@ function StatusBadge({ status }: { status: RequestStatus }) {
 function ConfirmModal({ request, onClose }: { request: TripRequest; onClose: () => void }) {
   const { t } = useI18n();
   const [internalCode, setInternalCode] = useState('');
+  const [depotId, setDepotId] = useState('');
   const confirm = useConfirmTripRequest(apiClient);
+  const { data: rawDepots } = useDeliveryDestinations(apiClient);
+  const depots = useMemo(
+    () => normalizeList<DeliveryDestination>(rawDepots).filter((d) => d.isActive),
+    [rawDepots],
+  );
+
+  // Preselect the default (or first) depot once the list loads.
+  useEffect(() => {
+    if (!depotId && depots.length) {
+      setDepotId((depots.find((d) => d.isDefault) ?? depots[0]).id);
+    }
+  }, [depots, depotId]);
+
+  const selectedDepot = depots.find((d) => d.id === depotId) ?? null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!depotId) return;
     confirm.mutate(
-      { id: request.id, internalCode: internalCode.trim() || undefined },
+      { id: request.id, depotId, internalCode: internalCode.trim() || undefined },
       { onSuccess: () => onClose() },
     );
   };
@@ -73,6 +94,44 @@ function ConfirmModal({ request, onClose }: { request: TripRequest; onClose: () 
           <div>
             <p className="text-sm font-medium text-neutral-700">
               {request.requesterName} — {request.truckRegistrationPlate}
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700">
+              {t('tripRequests.depotLabel')} <span className="text-red-500">*</span>
+            </label>
+            <p className="mb-1 text-xs text-neutral-500">{t('tripRequests.depotHint')}</p>
+            <select
+              value={depotId}
+              onChange={(e) => setDepotId(e.target.value)}
+              required
+              className={inputCls}
+            >
+              <option value="">{t('tripRequests.depotPlaceholder')}</option>
+              {depots.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                  {d.address ? ` — ${d.address}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">
+            <p className="flex items-start gap-1.5">
+              <Warehouse className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
+              <span>
+                <span className="font-medium">{t('tripRequests.pickupPreview')}:</span>{' '}
+                {selectedDepot
+                  ? `${selectedDepot.name}${selectedDepot.address ? `, ${selectedDepot.address}` : ''}`
+                  : '—'}
+              </span>
+            </p>
+            <p className="flex items-start gap-1.5">
+              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+              <span>
+                <span className="font-medium">{t('tripRequests.deliveryPreview')}:</span>{' '}
+                {request.destinationAddress || '—'}
+              </span>
             </p>
           </div>
           <div>
@@ -102,7 +161,7 @@ function ConfirmModal({ request, onClose }: { request: TripRequest; onClose: () 
             </button>
             <button
               type="submit"
-              disabled={confirm.isPending}
+              disabled={confirm.isPending || !depotId}
               className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
             >
               {confirm.isPending && <Loader2 className="h-4 w-4 animate-spin" />}

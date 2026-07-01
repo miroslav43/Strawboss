@@ -95,7 +95,10 @@ export type UpdateOrgRequestSettingsInput = z.infer<typeof updateOrgRequestSetti
 export const confirmTripRequestSchema = z.object({
   // Optional override of the internal code for the spawned auxiliary truck.
   internalCode: z.string().min(1).max(40).optional(),
+  // Source depot (delivery_destination) the driver picks the goods up from.
+  depotId: uuidSchema,
 });
+export type ConfirmTripRequestInput = z.infer<typeof confirmTripRequestSchema>;
 
 /** Body for cancelling a request (admin/dispatcher). */
 export const cancelTripRequestSchema = z.object({

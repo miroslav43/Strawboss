@@ -36,9 +36,10 @@ export class TripRequestsController {
   confirm(
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(confirmTripRequestSchema)) dto: { internalCode?: string },
+    @Body(new ZodValidationPipe(confirmTripRequestSchema))
+    dto: { internalCode?: string; depotId: string },
   ) {
-    return this.service.confirm(this.requireOrg(user), id, user.id, dto.internalCode);
+    return this.service.confirm(this.requireOrg(user), id, user.id, dto.depotId, dto.internalCode);
   }
 
   @Post(':id/cancel')

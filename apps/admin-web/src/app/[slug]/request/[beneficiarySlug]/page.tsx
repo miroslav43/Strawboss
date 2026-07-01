@@ -14,7 +14,10 @@ import {
   PackageCheck,
   Building2,
   Pencil,
+  MapPin,
+  X,
 } from 'lucide-react';
+import { LeafletPointPicker } from '@/components/map/LeafletPointPicker';
 import { CropType } from '@strawboss/types';
 import type {
   PublicBeneficiaryInfo,
@@ -264,6 +267,8 @@ export default function BeneficiaryPortalPage() {
   const [form, setForm] = useState<FormState>(BLANK);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [destCoords, setDestCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   // Saved per-beneficiary records (loaded once the PIN is verified)
   const [contacts, setContacts] = useState<BeneficiaryContact[]>([]);
@@ -526,6 +531,7 @@ export default function BeneficiaryPortalPage() {
       neededDate: trim(form.neededDate),
       tonsRequested: numOrNull(form.tonsRequested),
       destinationAddress: trim(form.destinationAddress),
+      destinationCoords: destCoords,
       notes: trim(form.notes),
       contactId: contact.id,
       truckId: truck.id,
@@ -909,6 +915,30 @@ export default function BeneficiaryPortalPage() {
                         onChange={(e) => patch({ destinationAddress: e.target.value })}
                       />
                     </Field>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowMapPicker(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-600 transition-colors hover:border-primary hover:text-primary"
+                      >
+                        <MapPin className="h-3.5 w-3.5" />
+                        {t('beneficiaryPortal.pickOnMap')}
+                      </button>
+                      {destCoords && (
+                        <span className="inline-flex items-center gap-1 text-[13px] font-medium text-primary">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          {t('beneficiaryPortal.coordsSet')}
+                          <button
+                            type="button"
+                            onClick={() => setDestCoords(null)}
+                            className="ml-1 text-stone-400 hover:text-stone-600"
+                            aria-label={t('beneficiaryPortal.coordsClear')}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="sm:col-span-2">
                     <Field label={t('beneficiaryPortal.notes')} optional>
@@ -956,6 +986,53 @@ export default function BeneficiaryPortalPage() {
           )}
         </div>
       </main>
+
+      {showMapPicker && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div
+            className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+            style={{ maxHeight: 'min(90vh, 640px)' }}
+          >
+            <div className="flex items-center justify-between border-b border-stone-100 px-5 py-3">
+              <div>
+                <h2 className="text-base font-semibold text-bark">
+                  {t('beneficiaryPortal.mapPickerTitle')}
+                </h2>
+                <p className="text-xs text-stone-500">{t('beneficiaryPortal.mapPickerHint')}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMapPicker(false)}
+                className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="relative flex-1">
+              <LeafletPointPicker
+                initial={destCoords}
+                onChange={(lat, lon) => setDestCoords({ lat, lon })}
+                className="h-full min-h-[320px] w-full"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t border-stone-100 bg-stone-50 px-5 py-3">
+              <span className="text-xs text-stone-500">
+                {destCoords
+                  ? `${destCoords.lat.toFixed(5)}, ${destCoords.lon.toFixed(5)}`
+                  : t('beneficiaryPortal.mapPickerNone')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowMapPicker(false)}
+                disabled={!destCoords}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {t('beneficiaryPortal.mapPickerConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {recordModal && (
         <BeneficiaryRecordModal

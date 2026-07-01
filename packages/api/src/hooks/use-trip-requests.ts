@@ -29,8 +29,16 @@ export function useTripRequest(client: ApiClient, id: string) {
 export function useConfirmTripRequest(client: ApiClient) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, internalCode }: { id: string; internalCode?: string }) =>
-      client.post<TripRequest>(`/api/v1/trip-requests/${id}/confirm`, { internalCode }),
+    mutationFn: ({
+      id,
+      internalCode,
+      depotId,
+    }: {
+      id: string;
+      internalCode?: string;
+      depotId: string;
+    }) =>
+      client.post<TripRequest>(`/api/v1/trip-requests/${id}/confirm`, { internalCode, depotId }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
       void qc.invalidateQueries({ queryKey: queryKeys.machines.all });
