@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
+import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
 import { TripRequestsService } from './trip-requests.service';
 import { TripRequestsController } from './trip-requests.controller';
 import { PublicPortalController } from './public-portal.controller';
@@ -12,7 +14,12 @@ import { TripsModule } from '../trips/trips.module';
 import { BeneficiariesModule } from '../beneficiaries/beneficiaries.module';
 
 @Module({
-  imports: [AlertsModule, TripsModule, BeneficiariesModule],
+  imports: [
+    AlertsModule,
+    TripsModule,
+    BeneficiariesModule,
+    BullModule.registerQueue({ name: QUEUE_MESSAGE_SEND }),
+  ],
   controllers: [TripRequestsController, PublicPortalController, BeneficiaryRecordsController],
   providers: [
     TripRequestsService,

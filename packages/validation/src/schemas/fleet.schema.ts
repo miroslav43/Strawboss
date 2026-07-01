@@ -63,6 +63,17 @@ export const deviceCheckinSchema = z.object({
   otaReports: z.array(deviceOtaReportSchema).max(50).optional(),
   commandReports: z.array(deviceCommandReportSchema).max(50).optional(),
   remoteCommandReports: z.array(deviceRemoteCommandReportSchema).max(50).optional(),
+  smsReports: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        status: z.enum(['sent', 'failed']),
+        providerInfo: z.string().max(500).optional(),
+        error: z.string().max(500).optional(),
+      }),
+    )
+    .max(50)
+    .optional(),
   lastError: z.string().max(4000).optional(),
 });
 export type DeviceCheckinInput = z.infer<typeof deviceCheckinSchema>;

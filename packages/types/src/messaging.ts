@@ -21,6 +21,10 @@ export enum MessageKind {
   driver_assigned = 'driver_assigned',
   /** Loading complete → notify the driver (SMS) with the public sign-and-leave link. */
   driver_loaded_sign_link = 'driver_loaded_sign_link',
+  /** Request confirmed → detailed email to driver + requester (pickup + delivery + route). */
+  transport_confirmed = 'transport_confirmed',
+  /** Request confirmed → short SMS to the driver (pickup + delivery + maps links + km). */
+  transport_confirmed_driver_sms = 'transport_confirmed_driver_sms',
 }
 
 export interface OutboundMessage {

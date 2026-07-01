@@ -24,6 +24,7 @@ import {
   MonitorDot,
   ClipboardList,
   Building2,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
@@ -36,6 +37,7 @@ function buildNavItems(slug: string) {
     { href: `/${slug}/trips`, icon: Truck, labelKey: 'nav.trips' as const },
     { href: `/${slug}/trip-requests`, icon: ClipboardList, labelKey: 'nav.tripRequests' as const },
     { href: `/${slug}/beneficiaries`, icon: Building2, labelKey: 'nav.beneficiaries' as const },
+    { href: `/${slug}/messages`, icon: Mail, labelKey: 'nav.messages' as const },
     { href: `/${slug}/documents`, icon: FileText, labelKey: 'nav.documents' as const },
     { href: `/${slug}/reports`, icon: BarChart3, labelKey: 'nav.reports' as const },
     { href: `/${slug}/alerts`, icon: Bell, labelKey: 'nav.alerts' as const },

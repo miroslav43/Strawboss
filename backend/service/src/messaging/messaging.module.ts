@@ -1,15 +1,22 @@
 import { Global, Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { MESSAGING_SERVICE } from './messaging.tokens';
-import { StubMessagingService } from './stub-messaging.service';
+import { ResendMessagingService } from './resend-messaging.service';
+import { TransportConfirmationProcessor } from './transport-confirmation.processor';
+import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
 
 /**
- * Binds the (unwired) messaging service. Global so any module can inject
- * MESSAGING_SERVICE without re-importing. To go live, replace useClass with a
- * real implementation of IMessagingService — no call sites change.
+ * Binds the real outbound messaging service (email via Resend, SMS via the
+ * outbound_messages outbox). Global so any module can inject MESSAGING_SERVICE
+ * without re-importing. Also hosts the transport-confirmation queue + processor.
  */
 @Global()
 @Module({
-  providers: [{ provide: MESSAGING_SERVICE, useClass: StubMessagingService }],
+  imports: [BullModule.registerQueue({ name: QUEUE_MESSAGE_SEND })],
+  providers: [
+    { provide: MESSAGING_SERVICE, useClass: ResendMessagingService },
+    TransportConfirmationProcessor,
+  ],
   exports: [MESSAGING_SERVICE],
 })
 export class MessagingModule {}

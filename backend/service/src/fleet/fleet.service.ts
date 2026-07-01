@@ -25,6 +25,8 @@ import type {
   DeviceRemoteCommand,
   DeviceRemoteCommandRecord,
   DeviceRemoteCommandReport,
+  PendingSms,
+  DeviceSmsReport,
   PendingDeployment,
   OtaState,
   DeviceCommand,
@@ -268,6 +270,7 @@ export class FleetService {
         pendingDeployment: null,
         pendingCommand: null,
         pendingCommands: [],
+        pendingSms: [],
       };
     }
 
@@ -294,6 +297,11 @@ export class FleetService {
       await this.applyRemoteCommandReports(deviceId, dto.remoteCommandReports);
     }
 
+    // 4b. Apply SMS send receipts (gateway devices)
+    if (dto.smsReports && dto.smsReports.length > 0) {
+      await this.applySmsReports(deviceId, dto.smsReports);
+    }
+
     // 5. Compute pending deployment
     const pendingDeployment = await this.computePendingDeployment(deviceId, dto.versionCode, orgId);
 
@@ -303,6 +311,9 @@ export class FleetService {
     // 7. Compute pending one-shot remote-debug commands
     const pendingCommands = await this.computePendingRemoteCommands(deviceId);
 
+    // 8. Compute pending SMS to send (gateway devices only)
+    const pendingSms = await this.computePendingSms(deviceId);
+
     return {
       deviceId,
       assignedOrgId: orgId,
@@ -310,6 +321,7 @@ export class FleetService {
       pendingDeployment,
       pendingCommand,
       pendingCommands,
+      pendingSms,
     };
   }
 
@@ -525,6 +537,51 @@ export class FleetService {
     }
 
     return commands;
+  }
+
+  /** Apply SMS send-attempt receipts from a gateway device (anti-spoof: must own the row). */
+  private async applySmsReports(deviceId: string, reports: DeviceSmsReport[]): Promise<void> {
+    const db = this.drizzleProvider.db;
+    for (const r of reports) {
+      await db.execute(
+        sql`UPDATE outbound_messages
+            SET status = ${r.status === 'sent' ? 'delivered' : 'failed'},
+                provider_message_id = COALESCE(${r.providerInfo ?? null}, provider_message_id),
+                error = ${r.status === 'failed' ? (r.error ?? 'send failed') : null},
+                delivered_at = CASE WHEN ${r.status === 'sent'} THEN now() ELSE delivered_at END,
+                updated_at = now()
+            WHERE id = ${r.id}::uuid
+              AND channel = 'sms'
+              AND claimed_by_device = ${deviceId}::uuid`,
+      );
+    }
+  }
+
+  /**
+   * Claim + return pending SMS for a gateway device: atomically marks them 'sent'
+   * (claimed) so no other device grabs them, and returns {id, to, body}. Non-gateway
+   * devices get nothing. FOR UPDATE SKIP LOCKED avoids double-claims under concurrency.
+   */
+  private async computePendingSms(deviceId: string): Promise<PendingSms[]> {
+    const db = this.drizzleProvider.db;
+    const rows = await db.execute(
+      sql`UPDATE outbound_messages
+          SET status = 'sent', claimed_by_device = ${deviceId}::uuid,
+              sent_at = now(), updated_at = now()
+          WHERE id IN (
+            SELECT om.id FROM outbound_messages om
+            WHERE om.channel = 'sms' AND om.status = 'pending'
+              AND EXISTS (
+                SELECT 1 FROM devices d
+                WHERE d.id = ${deviceId}::uuid AND d.is_sms_gateway = true
+              )
+            ORDER BY om.created_at ASC
+            LIMIT 20
+            FOR UPDATE SKIP LOCKED
+          )
+          RETURNING id, to_address AS "to", body`,
+    );
+    return rows as unknown as PendingSms[];
   }
 
   /**

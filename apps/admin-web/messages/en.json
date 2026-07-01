@@ -47,6 +47,7 @@
     "commandCenter": "Command Center",
     "tracks": "Tracks",
     "tripRequests": "Trip Requests",
+    "messages": "Messages",
     "beneficiaries": "Beneficiaries"
   },
   "tracks": {
@@ -888,6 +889,27 @@
       "totalHours": "Total hours",
       "activeUsers": "Active users",
       "avgHours": "Average per user"
+    }
+  },
+  "messages": {
+    "title": "Messages",
+    "subtitle": "Outbound emails and SMS (transport confirmations).",
+    "allChannels": "All channels",
+    "allStatuses": "All statuses",
+    "email": "Email",
+    "sms": "SMS",
+    "empty": "No messages yet.",
+    "retry": "Retry",
+    "colWhen": "When",
+    "colChannel": "Channel",
+    "colTo": "To",
+    "colStatus": "Status",
+    "colDetail": "Detail",
+    "status": {
+      "pending": "Pending",
+      "sent": "Sent",
+      "delivered": "Delivered",
+      "failed": "Failed"
     }
   },
   "tripRequests": {

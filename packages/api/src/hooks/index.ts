@@ -70,6 +70,8 @@ export {
   useUpdateOrgRequestSettings,
 } from './use-trip-requests.js';
 
+export { useMessages, useRetryMessage, type MessageFilters } from './use-messages.js';
+
 export {
   useDashboardOverview,
   useDashboardTrending,

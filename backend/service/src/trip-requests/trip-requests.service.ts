@@ -16,6 +16,9 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { AlertsService } from '../alerts/alerts.service';
 import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
 import { PinThrottleService } from './pin-throttle.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates } from '../messaging/message-templates';
 import { MessageKind, RequestStatus } from '@strawboss/types';
@@ -101,6 +104,7 @@ export class TripRequestsService {
     private readonly beneficiariesService: BeneficiariesService,
     private readonly pinThrottle: PinThrottleService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
+    @InjectQueue(QUEUE_MESSAGE_SEND) private readonly messageQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -191,24 +195,14 @@ export class TripRequestsService {
       machineId,
     });
 
-    // Notify the requester (stubbed). Best-effort.
-    if (req.requesterEmail) {
-      const orgName = await this.orgName(req.organizationId);
-      const tpl = messageTemplates[MessageKind.request_confirmed_requester]({
-        organizationName: orgName,
-        requesterName: req.requesterName,
-        neededDate: req.neededDate,
-      });
-      void this.messaging
-        .sendEmail({
-          to: req.requesterEmail,
-          subject: tpl.subject,
-          body: tpl.body,
-          kind: MessageKind.request_confirmed_requester,
-          metadata: { requestId: id },
-        })
-        .catch(() => undefined);
-    }
+    // Dispatch the detailed transport-confirmation email (driver + requester) and
+    // the driver SMS asynchronously — the route/map/distance rendering happens in
+    // the processor so confirm() stays fast.
+    await this.messageQueue.add(
+      'transport-confirmation',
+      { requestId: id, depotId },
+      { removeOnComplete: true, attempts: 1 },
+    );
 
     return updated[0];
   }

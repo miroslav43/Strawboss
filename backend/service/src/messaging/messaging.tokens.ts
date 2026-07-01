@@ -7,6 +7,8 @@ export interface SendEmailParams {
   to: string;
   subject: string;
   body: string;
+  /** Optional rich HTML body; falls back to `body` (plain text) when absent. */
+  html?: string;
   kind: MessageKind;
   metadata?: Record<string, unknown>;
 }

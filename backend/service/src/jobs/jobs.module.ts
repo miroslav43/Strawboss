@@ -12,6 +12,7 @@ import {
   QUEUE_TRUCK_IDLE_CHECK,
   QUEUE_OTA_DEPLOY,
   QUEUE_PIN_REGEN,
+  QUEUE_MESSAGE_SEND,
 } from './queues';
 
 @Module({
@@ -33,6 +34,7 @@ import {
       { name: QUEUE_TRUCK_IDLE_CHECK },
       { name: QUEUE_OTA_DEPLOY },
       { name: QUEUE_PIN_REGEN },
+      { name: QUEUE_MESSAGE_SEND },
     ),
   ],
   providers: [JobSchedulerService],

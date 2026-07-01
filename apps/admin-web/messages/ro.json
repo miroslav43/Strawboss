@@ -47,6 +47,7 @@
     "commandCenter": "Centru de comandă",
     "tracks": "Trasee",
     "tripRequests": "Solicitări curse",
+    "messages": "Mesaje",
     "beneficiaries": "Beneficiari"
   },
   "tracks": {
@@ -888,6 +889,27 @@
       "totalHours": "Total ore",
       "activeUsers": "Utilizatori activi",
       "avgHours": "Media per utilizator"
+    }
+  },
+  "messages": {
+    "title": "Mesaje",
+    "subtitle": "E-mailuri și SMS-uri trimise (confirmări de transport).",
+    "allChannels": "Toate canalele",
+    "allStatuses": "Toate statusurile",
+    "email": "E-mail",
+    "sms": "SMS",
+    "empty": "Niciun mesaj încă.",
+    "retry": "Reîncearcă",
+    "colWhen": "Când",
+    "colChannel": "Canal",
+    "colTo": "Către",
+    "colStatus": "Status",
+    "colDetail": "Detaliu",
+    "status": {
+      "pending": "În așteptare",
+      "sent": "Trimis",
+      "delivered": "Livrat",
+      "failed": "Eșuat"
     }
   },
   "tripRequests": {

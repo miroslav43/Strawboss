@@ -105,6 +105,10 @@ export const queryKeys = {
   orgRequestSettings: {
     all: ['orgRequestSettings'] as const,
   },
+  messages: {
+    all: ['messages'] as const,
+    list: (filters?: Record<string, unknown>) => ['messages', 'list', filters] as const,
+  },
   beneficiaries: {
     all: ['beneficiaries'] as const,
     list: () => ['beneficiaries', 'list'] as const,

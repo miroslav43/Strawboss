@@ -9,3 +9,5 @@ export const QUEUE_TRUCK_IDLE_CHECK = 'truck-idle-check';
 export const QUEUE_OTA_DEPLOY = 'ota-deploy';
 // Daily PIN regeneration for beneficiary records (02:00 Europe/Bucharest).
 export const QUEUE_PIN_REGEN = 'pin-regen';
+// Outbound message send (transport-confirmation email + driver SMS enqueue).
+export const QUEUE_MESSAGE_SEND = 'message-send';

@@ -42,6 +42,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
 import { DevModule } from './dev/dev.module';
 import { DepositInventoryModule } from './deposit-inventory/deposit-inventory.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { MessagesModule } from './messages/messages.module';
 import { TripRequestsModule } from './trip-requests/trip-requests.module';
 import { FleetModule } from './fleet/fleet.module';
 import { BeneficiariesModule } from './beneficiaries/beneficiaries.module';
@@ -62,6 +63,7 @@ const devModules =
     RedisModule,
     DatabaseModule,
     MessagingModule,
+    MessagesModule,
     OrganizationsModule,
     AuthModule,
     ParcelsModule,

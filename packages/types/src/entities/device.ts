@@ -414,4 +414,21 @@ export interface DeviceCheckinResponse {
   pendingCommand: DeviceCommand | null;
   /** One-shot remote-debug commands to run now (deduped on the device by id). */
   pendingCommands: DeviceRemoteCommand[];
+  /** Outbound SMS to send via the SIM (only for devices flagged is_sms_gateway). */
+  pendingSms: PendingSms[];
+}
+
+/** An SMS the SIM-gateway device should send; deduped on the device by id. */
+export interface PendingSms {
+  id: string;
+  to: string;
+  body: string;
+}
+
+/** The device's report after attempting to send an SMS. */
+export interface DeviceSmsReport {
+  id: string;
+  status: 'sent' | 'failed';
+  providerInfo?: string;
+  error?: string;
 }
