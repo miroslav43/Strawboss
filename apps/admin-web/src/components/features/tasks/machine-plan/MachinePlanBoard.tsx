@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Draggable, Droppable } from '@dnd-kit/dom';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable, isSortable } from '@dnd-kit/react/sortable';
-import { Plus, X, Loader2, GripVertical, Search, MapPin } from 'lucide-react';
+import { Plus, X, Loader2, GripVertical, MapPin } from 'lucide-react';
 import {
   useTasksByMachineType,
   useCreateTaskAssignment,
@@ -25,6 +25,7 @@ import { clientLogger } from '@/lib/client-logger';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
+import { FarmParcelCascade } from './FarmParcelCascade';
 
 const ParcelMapModal = dynamic(
   () =>
@@ -43,88 +44,6 @@ interface Assignment {
   parcelCode: string | null;
   sequenceOrder: number;
   status: string;
-}
-
-// ─── ParcelPicker ────────────────────────────────────────────────────────────
-
-function ParcelPicker({
-  parcels,
-  excludeParcelIds,
-  assignedCountByParcel,
-  color,
-  onSelect,
-  onClose,
-}: {
-  parcels: Parcel[];
-  /** Parcels to hide entirely — already on THIS machine (can't add the same parcel twice). */
-  excludeParcelIds: Set<string>;
-  /** How many other machines of this type already work each parcel (for the "already N" badge). */
-  assignedCountByParcel: Map<string, number>;
-  color: string;
-  onSelect: (parcelId: string) => void;
-  onClose: () => void;
-}) {
-  const { t } = useI18n();
-  const [search, setSearch] = useState('');
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return parcels.filter((p) => {
-      if (!p.isActive) return false;
-      if (excludeParcelIds.has(p.id)) return false;
-      if (q && ![p.name, p.code, p.municipality].some((v) => v?.toLowerCase().includes(q)))
-        return false;
-      return true;
-    });
-  }, [parcels, excludeParcelIds, search]);
-
-  return (
-    <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-neutral-200 bg-white shadow-xl">
-      <div className="flex items-center gap-2 border-b border-neutral-100 px-3 py-2">
-        <Search className="h-3.5 w-3.5 text-neutral-400" />
-        <input
-          type="text"
-          autoFocus
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t('tasks.selectParcel')}
-          className="flex-1 text-sm text-neutral-700 placeholder:text-neutral-400 focus:outline-none"
-        />
-        <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <ul className="max-h-48 overflow-y-auto py-1">
-        {filtered.length === 0 ? (
-          <li className="px-3 py-2 text-xs text-neutral-400">{t('tasks.noParcelResults')}</li>
-        ) : (
-          filtered.map((p) => {
-            const assignedCount = assignedCountByParcel.get(p.id) ?? 0;
-            return (
-              <li key={p.id}>
-                <button
-                  onClick={() => {
-                    onSelect(p.id);
-                    onClose();
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-50"
-                >
-                  <span className="font-mono text-xs text-neutral-500">{p.code}</span>
-                  <span className="truncate text-neutral-700">{p.name || '—'}</span>
-                  {assignedCount > 0 && (
-                    <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600">
-                      <span className={cn('h-1.5 w-1.5 rounded-full', `bg-${color}-500`)} />
-                      {t('tasks.alreadyOnParcel', { count: assignedCount })}
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })
-        )}
-      </ul>
-    </div>
-  );
 }
 
 const PARCEL_SORT_TRANSITION = {
@@ -489,7 +408,7 @@ function AssignedMachineCard({
           </button>
         </div>
         {showPicker && (
-          <ParcelPicker
+          <FarmParcelCascade
             parcels={parcels}
             excludeParcelIds={machineParcelIds}
             assignedCountByParcel={assignedCountByParcel}
