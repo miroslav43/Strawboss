@@ -21,7 +21,8 @@
     "liters": "liters",
     "entries": "entries",
     "unknownMachine": "Unknown machine",
-    "empty": "No fuel logs in this range."
+    "empty": "No fuel logs in this range.",
+    "viewMachine": "View machine"
   },
   "consumableLogs": {
     "empty": "No consumable logs in this range."

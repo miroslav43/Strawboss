@@ -21,7 +21,8 @@
     "liters": "litri",
     "entries": "înregistrări",
     "unknownMachine": "Mașină necunoscută",
-    "empty": "Nu există consumuri de motorină în această perioadă."
+    "empty": "Nu există consumuri de motorină în această perioadă.",
+    "viewMachine": "Vezi mașina"
   },
   "consumableLogs": {
     "empty": "Nu există consumabile înregistrate în această perioadă."

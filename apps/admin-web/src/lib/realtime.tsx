@@ -78,6 +78,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           queryClient.invalidateQueries({ queryKey: queryKeys.machines.detail(recordId) });
         }
       })
+      // Fuel tab sync: a mobile refuel (synced via /sync/push) or another
+      // admin session's add/edit/delete must show up live on both the
+      // machine-detail fuel card and the global fuel-logs page — `.all` is
+      // the ['fuelLogs'] prefix, so it invalidates every filtered variant.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fuel_logs' }, () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.fuelLogs.all });
+      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           if (retryCountRef.current > 0) {

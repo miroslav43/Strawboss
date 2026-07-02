@@ -2,10 +2,11 @@
 export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useMachines, queryKeys } from '@strawboss/api';
-import type { Machine } from '@strawboss/types';
-import { ChevronDown, ChevronRight, Fuel, User, Calendar } from 'lucide-react';
+import { useMachines, useAdminUsers, queryKeys } from '@strawboss/api';
+import type { Machine, User as UserEntity } from '@strawboss/types';
+import { ChevronDown, ChevronRight, Fuel, User, Calendar, ExternalLink } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ReceiptThumb } from '@/components/shared/ReceiptThumb';
 import { apiClient } from '@/lib/api';
@@ -52,6 +53,8 @@ function toNumber(value: string | number | null | undefined): number {
 
 export default function FuelLogsPage() {
   const { t } = useI18n();
+  const router = useRouter();
+  const routeParams = useParams<{ slug: string }>();
   const initial = useMemo(defaultDateRange, []);
   const [dateFrom, setDateFrom] = useState(initial.from);
   const [dateTo, setDateTo] = useState(initial.to);
@@ -67,6 +70,19 @@ export default function FuelLogsPage() {
     for (const m of machines) map.set(m.id, m);
     return map;
   }, [machines]);
+
+  // Resolve operator_id -> a human name instead of showing the raw UUID
+  // (mirrors FuelConsumptionCard's operatorName() on the machine detail page).
+  const usersQuery = useAdminUsers(apiClient);
+  const userById = useMemo(() => {
+    const map = new Map<string, UserEntity>();
+    for (const u of normalizeList<UserEntity>(usersQuery.data)) map.set(u.id, u);
+    return map;
+  }, [usersQuery.data]);
+  const operatorName = (id: string | null): string | null => {
+    if (!id) return null;
+    return userById.get(id)?.fullName ?? id.slice(0, 8);
+  };
 
   const logsQuery = useQuery({
     queryKey: queryKeys.fuelLogs.adminList(dateFrom, dateTo),
@@ -178,12 +194,12 @@ export default function FuelLogsPage() {
                 key={group.machineId}
                 className="overflow-hidden rounded-lg border border-neutral-200 bg-white"
               >
-                <button
-                  type="button"
-                  onClick={() => toggle(group.machineId)}
-                  className="flex w-full items-center justify-between px-4 py-3 hover:bg-neutral-50"
-                >
-                  <div className="flex items-center gap-3">
+                <div className="flex w-full items-center justify-between px-4 py-3 hover:bg-neutral-50">
+                  <button
+                    type="button"
+                    onClick={() => toggle(group.machineId)}
+                    className="flex flex-1 items-center gap-3 text-left"
+                  >
                     {isOpen ? (
                       <ChevronDown className="h-4 w-4 text-neutral-500" />
                     ) : (
@@ -191,7 +207,7 @@ export default function FuelLogsPage() {
                     )}
                     <Fuel className="h-5 w-5 text-primary" />
                     <span className="font-medium text-neutral-900">{machineLabel}</span>
-                  </div>
+                  </button>
                   <div className="flex items-center gap-4 text-sm">
                     <span className="text-neutral-500">
                       {group.entries.length} {t('fuelLogs.entries')}
@@ -199,8 +215,21 @@ export default function FuelLogsPage() {
                     <span className="font-semibold text-primary">
                       {group.totalLiters.toFixed(1)} L
                     </span>
+                    {group.machine ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/${routeParams.slug}/machines/${group.machineId}`)
+                        }
+                        title={t('fuelLogs.viewMachine')}
+                        aria-label={t('fuelLogs.viewMachine')}
+                        className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-primary"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </div>
-                </button>
+                </div>
 
                 {isOpen ? (
                   <div className="divide-y divide-neutral-100 border-t border-neutral-100">
@@ -219,7 +248,7 @@ export default function FuelLogsPage() {
                             {entry.operator_id ? (
                               <span className="flex items-center gap-1 text-neutral-500">
                                 <User className="h-3.5 w-3.5" />
-                                {entry.operator_id.slice(0, 8)}
+                                {operatorName(entry.operator_id)}
                               </span>
                             ) : null}
                           </div>
