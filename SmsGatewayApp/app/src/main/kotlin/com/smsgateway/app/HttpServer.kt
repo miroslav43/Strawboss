@@ -28,6 +28,10 @@ class HttpServer(
 
     private val rateLimitMaxPerMinute = 5
     private val rateLimitWindowMs = 60_000L
+
+    // A send payload is a tiny JSON ({apiKey, phone, message<=1000}). Cap the
+    // declared body size so a malicious/huge Content-Length can't OOM the app.
+    private val maxBodyBytes = 16 * 1024
     private val sendTimestamps = ArrayDeque<Long>()
     private val startTime = System.currentTimeMillis()
     private val dateFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
@@ -64,6 +68,10 @@ class HttpServer(
     private fun handleSendSms(session: IHTTPSession): Response {
         val body: String = try {
             val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
+            if (contentLength > maxBodyBytes) {
+                log("✗ Body too large ($contentLength bytes) from ${session.remoteIpAddress}")
+                return json(413, mapOf("success" to false, "error" to "Payload too large"))
+            }
             if (contentLength > 0) {
                 val bytes = ByteArray(contentLength)
                 var totalRead = 0
@@ -184,6 +192,7 @@ class HttpServer(
             400 -> Response.Status.BAD_REQUEST
             401 -> Response.Status.UNAUTHORIZED
             404 -> Response.Status.NOT_FOUND
+            413 -> Response.Status.lookup(413) ?: Response.Status.BAD_REQUEST
             429 -> Response.Status.lookup(429) ?: Response.Status.BAD_REQUEST
             500 -> Response.Status.INTERNAL_ERROR
             else -> Response.Status.OK

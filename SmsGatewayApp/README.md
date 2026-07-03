@@ -82,9 +82,17 @@ keytool -genkey -v -keystore smsgateway.jks -keyalg RSA -keysize 2048 \
 - `localServerEnabled` (default false), `apiKey` (legacy local server only)
 - `deviceUuid`, `deviceToken`, and the queued delivery-report list
 
-> Security note: the original build shipped a hardcoded default local-server API key
-> (`secret123`). That only matters for the optional `:8080` server; pull mode uses the
-> per-device token instead. If you enable the local server, change the key.
+> Security notes:
+> - The original build shipped a hardcoded default local-server key (`secret123`);
+>   that default is removed — the optional `:8080` server refuses to send until you
+>   set a key, and pull mode uses the per-device token instead.
+> - The local server caps request bodies (16 KB) so a huge `Content-Length` can't OOM it.
+> - `allowBackup=false` keeps the `deviceToken` out of `adb`/cloud backups. The token
+>   lives in app-private `SharedPreferences` (plaintext) — a deliberate choice over the
+>   flaky EncryptedSharedPreferences/Keystore path on low-end hardware; the phone is a
+>   dedicated, non-rooted gateway.
+> - `usesCleartextTraffic` stays enabled **on purpose** so the app can also point at an
+>   `http://` dev/LAN backend for testing; production uses `https://nortiauno.com`.
 
 ## Source map
 - `MainActivity.kt` — UI (server URL, interval, local-server toggle, log)

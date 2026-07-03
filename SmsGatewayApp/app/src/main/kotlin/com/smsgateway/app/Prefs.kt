@@ -28,7 +28,10 @@ object Prefs {
 
     const val DEFAULT_SERVER_URL = "https://nortiauno.com"
     const val DEFAULT_POLL_INTERVAL_SEC = 20
-    const val DEFAULT_API_KEY = "secret123"
+
+    // No credential is shipped: the (optional, off-by-default) local server refuses
+    // to send while its key is blank, so the operator must set one to enable it.
+    const val DEFAULT_API_KEY = ""
 
     fun of(context: Context): SharedPreferences =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)

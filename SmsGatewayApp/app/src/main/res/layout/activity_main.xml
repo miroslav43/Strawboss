@@ -86,7 +86,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:autofillHints="password"
-            android:hint="secret123"
+            android:hint="cheie API (obligatorie pt. serverul local)"
             android:inputType="text" />
 
         <TextView
