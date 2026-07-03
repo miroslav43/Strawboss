@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   Upload,
+  MessageSquare,
 } from 'lucide-react';
 import {
   useDevices,
@@ -92,6 +93,11 @@ function DeviceNickname({ device }: { device: FleetDeviceListItem }) {
         <p className="font-semibold text-neutral-900">{device.name}</p>
       ) : (
         <p className="text-sm text-neutral-400 italic">{t('superAdmin.devices.noName')}</p>
+      )}
+      {device.isSmsGateway && (
+        <span className="mt-0.5 inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+          <MessageSquare className="h-3 w-3" /> SMS Gateway
+        </span>
       )}
       {userLine && <p className="text-xs font-medium text-teal-700">👤 {userLine}</p>}
       {device.organizationName && (

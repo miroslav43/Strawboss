@@ -24,7 +24,14 @@ object Prefs {
     // Gateway identity + delivery-report queue
     const val KEY_DEVICE_UUID = "deviceUuid"
     const val KEY_DEVICE_TOKEN = "deviceToken"
-    const val KEY_PENDING_REPORTS = "pendingReports" // JSON array queued for next check-in
+    const val KEY_PENDING_REPORTS = "pendingReports" // SMS reports queued for next check-in
+
+    // Remote-debug plumbing + health counters
+    const val KEY_REMOTE_COMMAND_REPORTS = "remoteCommandReports" // JSON queued for next check-in
+    const val KEY_EXECUTED_COMMAND_IDS = "executedCommandIds" // dedup set (JSON array, capped)
+    const val KEY_SMS_SENT_TOTAL = "smsSentTotal"
+    const val KEY_SMS_FAILED_TOTAL = "smsFailedTotal"
+    const val KEY_LAST_ERROR = "lastError"
 
     const val DEFAULT_SERVER_URL = "https://nortiauno.com"
     const val DEFAULT_POLL_INTERVAL_SEC = 20
@@ -63,4 +70,13 @@ object Prefs {
     fun setDeviceToken(p: SharedPreferences, token: String) {
         p.edit().putString(KEY_DEVICE_TOKEN, token).apply()
     }
+
+    // ── Health counters + last error (surfaced via report_state) ──
+    fun smsSentTotal(p: SharedPreferences): Int = p.getInt(KEY_SMS_SENT_TOTAL, 0)
+    fun smsFailedTotal(p: SharedPreferences): Int = p.getInt(KEY_SMS_FAILED_TOTAL, 0)
+    fun incSmsSent(p: SharedPreferences) = p.edit().putInt(KEY_SMS_SENT_TOTAL, smsSentTotal(p) + 1).apply()
+    fun incSmsFailed(p: SharedPreferences) = p.edit().putInt(KEY_SMS_FAILED_TOTAL, smsFailedTotal(p) + 1).apply()
+
+    fun lastError(p: SharedPreferences): String? = p.getString(KEY_LAST_ERROR, null)
+    fun setLastError(p: SharedPreferences, msg: String?) = p.edit().putString(KEY_LAST_ERROR, msg).apply()
 }

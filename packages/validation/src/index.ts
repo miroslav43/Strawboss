@@ -204,6 +204,8 @@ export {
   createDeploymentSchema,
   updateDeviceSchema,
   setDeviceTailscaleSchema,
+  setDeviceSmsGatewaySchema,
+  testSmsSchema,
   updateTailscaleSettingsSchema,
   type DeviceCheckinInput,
   type CreateReleaseInput,
@@ -211,6 +213,8 @@ export {
   type CreateDeploymentInput,
   type UpdateDeviceInput,
   type SetDeviceTailscaleInput,
+  type SetDeviceSmsGatewayInput,
+  type TestSmsInput,
   type UpdateTailscaleSettingsInput,
 } from './schemas/fleet.schema.js';
 

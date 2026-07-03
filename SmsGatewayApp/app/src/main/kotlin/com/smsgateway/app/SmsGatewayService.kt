@@ -145,6 +145,7 @@ class SmsGatewayService : Service() {
     }
 
     private fun broadcastLog(msg: String) {
+        LogBuffer.add(msg) // keep a tail for the fetch_logs remote command
         val i = Intent(ACTION_LOG).setPackage(packageName).putExtra(EXTRA_LOG_MSG, msg)
         sendBroadcast(i)
     }

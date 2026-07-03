@@ -79,6 +79,8 @@ export interface Device extends Timestamps, SoftDelete {
   tailscaleLastSeen: string | null;
   /** Best-effort reason the last tailscale command failed (device-reported). */
   tailscaleLastError: string | null;
+  /** When true, this device claims pending outbound SMS on check-in (the SMS gateway). */
+  isSmsGateway: boolean;
   /** Latest device-reported health snapshot (from a `report_state` remote command). */
   lastState: DeviceHealthReport | null;
   lastStateAt: string | null;

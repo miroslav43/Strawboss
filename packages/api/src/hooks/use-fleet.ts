@@ -201,6 +201,35 @@ export function useSetDeviceTailscale(client: ApiClient) {
   });
 }
 
+// ── SMS gateway ─────────────────────────────────────────────────────────────
+
+/** PATCH a device's SMS-gateway flag (on/off). Invalidates the devices list + detail. */
+export function useSetDeviceSmsGateway(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      client.patch<Device>(`/api/v1/super-admin/devices/${id}/sms-gateway`, { enabled }),
+    onSuccess: (updated) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
+      void queryClient.setQueryData(queryKeys.devices.detail(updated.id), updated);
+    },
+  });
+}
+
+/** POST a one-off test SMS through the gateway device. Invalidates device detail. */
+export function useSendGatewayTestSms(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, to }: { id: string; to: string }) =>
+      client.post<{ ok: true; messageId: string }>(`/api/v1/super-admin/devices/${id}/test-sms`, {
+        to,
+      }),
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.detail(id) });
+    },
+  });
+}
+
 /** GET the masked Tailscale settings. Returns the full AppSettings shape (no raw secrets). */
 export function useTailscaleSettings(client: ApiClient) {
   return useQuery({

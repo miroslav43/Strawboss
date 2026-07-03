@@ -45,16 +45,23 @@ it resets the row to `pending` so a gateway re-claims it.
 1. Install + open the app, grant **SEND_SMS** (and notifications), allow the
    battery-optimization exemption. Set the **Server URL** (`https://nortiauno.com`),
    press **START**. The app registers and the UI shows `înregistrat`.
-2. Find its `devices` row and flag it (there is **no admin UI** for this yet):
-   ```sql
-   -- newest registration is usually the phone you just set up
-   SELECT id, device_uuid, model, last_checkin_at
-     FROM devices ORDER BY last_checkin_at DESC LIMIT 5;
+2. In **super-admin → Devices**, open the phone (it appears under *Unassigned*) and flip
+   the **SMS Gateway** toggle on (Remote tab). No SQL needed. (Fallback if ever required:
+   `UPDATE devices SET is_sms_gateway = true WHERE device_uuid = '<uuid>';`.)
+3. Enqueue a message (any trip-request confirmation, or the **Send test SMS** button on the
+   device page) and watch it go `pending → sent → delivered` on `/messages`.
 
-   UPDATE devices SET is_sms_gateway = true WHERE device_uuid = '<uuid-from-the-app>';
-   ```
-3. Enqueue a message (any trip-request confirmation) and watch it appear as
-   `sent → delivered` on `/messages`.
+## Remote debug (super-admin, no Tailscale)
+The phone answers the fleet's one-shot commands over the same pull channel — open the
+device in super-admin → **Remote** tab:
+- **Refresh state** (`report_state`) → app version, uptime, battery, SMS sent/failed counts,
+  poll interval, `serverUrl`, and `lastError`; shown in the Device Health panel.
+- **Fetch logs** (`fetch_logs`) → the app's recent in-memory log tail, shown (expandable) in
+  the command history's *Rezultat* column.
+- **Send test SMS** → fires a one-off SMS through this gateway.
+
+`reboot` / `reinstall_apk` are intentionally **not** supported (the phone is not a Device
+Owner); the app returns `failure` for them so the server stops re-delivering.
 
 ## Building
 Requires the Android SDK (build via **Android Studio**, or CLI with `ANDROID_HOME` set):
@@ -97,12 +104,14 @@ keytool -genkey -v -keystore smsgateway.jks -keyalg RSA -keysize 2048 \
 ## Source map
 - `MainActivity.kt` — UI (server URL, interval, local-server toggle, log)
 - `SmsGatewayService.kt` — foreground service: WakeLock + poll loop + optional local server
-- `CheckinClient.kt` — **pull-mode** check-in / SMS-send / delivery-report queue
+- `CheckinClient.kt` — **pull-mode** check-in: SMS send + delivery-report queue, plus the
+  remote-command dispatch (`report_state`, `fetch_logs`) and richer device fields
+- `LogBuffer.kt` — in-memory log ring buffer feeding `fetch_logs`
 - `HttpServer.kt` — legacy NanoHTTPD push server on `:8080` (optional)
 - `SmsSender.kt` — `SmsManager` send (multipart), phone validation
 - `NetUtils.kt` — local-IP lookup (for the local-server URL display)
-- `Prefs.kt` — config + gateway identity
+- `Prefs.kt` — config, gateway identity, health counters
 
 ## Ideas for later
 Boot auto-start (`RECEIVE_BOOT_COMPLETED` + receiver), inbound/2-way SMS, multi-SIM
-selection, and a super-admin toggle for `is_sms_gateway` so step 2 above needs no SQL.
+selection.

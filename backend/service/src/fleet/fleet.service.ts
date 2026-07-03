@@ -40,6 +40,8 @@ import type {
   CreateDeploymentInput,
   UpdateDeviceInput,
   SetDeviceTailscaleInput,
+  SetDeviceSmsGatewayInput,
+  TestSmsInput,
   UpdateTailscaleSettingsInput,
   CreateRemoteCommandInput,
 } from '@strawboss/validation';
@@ -71,6 +73,7 @@ const DEVICE_COLS = sql`
   tailscale_hostname      AS "tailscaleHostname",
   tailscale_last_seen     AS "tailscaleLastSeen",
   tailscale_last_error    AS "tailscaleLastError",
+  is_sms_gateway          AS "isSmsGateway",
   last_state              AS "lastState",
   last_state_at           AS "lastStateAt",
   last_user_id            AS "lastUserId",
@@ -1166,6 +1169,7 @@ export class FleetService {
             d.tailscale_hostname    AS "tailscaleHostname",
             d.tailscale_last_seen   AS "tailscaleLastSeen",
             d.tailscale_last_error  AS "tailscaleLastError",
+            d.is_sms_gateway        AS "isSmsGateway",
             d.created_at            AS "createdAt",
             d.updated_at            AS "updatedAt",
             d.deleted_at            AS "deletedAt",
@@ -1747,6 +1751,72 @@ export class FleetService {
     }
 
     return updated;
+  }
+
+  // ─── Super-admin: SMS-gateway per-device toggle ──────────────────────────────
+
+  /**
+   * Flag/unflag a device as the SMS gateway. When true, `computePendingSms`
+   * hands this device pending `outbound_messages` on check-in. Best-effort FCM
+   * wake so the change takes effect quickly.
+   */
+  async setDeviceSmsGateway(id: string, dto: SetDeviceSmsGatewayInput): Promise<Row> {
+    await this.getDevice(id); // 404 check
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`UPDATE devices
+            SET is_sms_gateway = ${dto.enabled}, updated_at = now()
+          WHERE id = ${id}::uuid AND deleted_at IS NULL
+          RETURNING ${DEVICE_COLS}`,
+    );
+    const updated = (result as unknown as Row[])[0];
+
+    this.winston.log('flow', 'SMS gateway flag toggled', {
+      context: 'FleetService',
+      deviceId: id,
+      enabled: dto.enabled,
+    });
+
+    const pushToken = updated?.pushToken as string | null | undefined;
+    if (pushToken) {
+      this.fleetPushService.sendOtaCheckinPush([pushToken], `sms-gateway-${id}`).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  /**
+   * Enqueue a one-off test SMS for the gateway. Writes a `pending`
+   * `outbound_messages` row exactly like the messaging service does; the flagged
+   * gateway claims it on its next check-in and sends it via the SIM. Requires the
+   * device to already be a gateway (else the row would never be claimed).
+   */
+  async enqueueGatewayTestSms(
+    id: string,
+    dto: TestSmsInput,
+  ): Promise<{ ok: true; messageId: string }> {
+    const device = (await this.getDevice(id)) as Record<string, unknown>;
+    if (!device['isSmsGateway']) {
+      throw new BadRequestException('Device is not an SMS gateway — enable it first');
+    }
+    const orgId = (device['organizationId'] as string | null) ?? null;
+    const body = `StrawBoss test SMS · ${new Date().toISOString()}`;
+
+    const result = await this.drizzleProvider.db.execute(
+      sql`INSERT INTO outbound_messages (organization_id, channel, kind, to_address, body, status)
+          VALUES (${orgId}::uuid, 'sms', 'gateway_test', ${dto.to}, ${body}, 'pending')
+          RETURNING id`,
+    );
+    const messageId = (result as unknown as { id: string }[])[0]?.id;
+
+    this.winston.log('flow', 'Gateway test SMS enqueued', {
+      context: 'FleetService',
+      deviceId: id,
+      to: dto.to,
+      messageId,
+    });
+
+    return { ok: true, messageId };
   }
 
   // ─── Super-admin: app_settings (Tailscale global config) ─────────────────────

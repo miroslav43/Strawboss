@@ -23,6 +23,8 @@ import {
   updateReleaseSchema,
   createDeploymentSchema,
   setDeviceTailscaleSchema,
+  setDeviceSmsGatewaySchema,
+  testSmsSchema,
   updateTailscaleSettingsSchema,
   createRemoteCommandSchema,
   type UpdateDeviceInput,
@@ -30,6 +32,8 @@ import {
   type UpdateReleaseInput,
   type CreateDeploymentInput,
   type SetDeviceTailscaleInput,
+  type SetDeviceSmsGatewayInput,
+  type TestSmsInput,
   type UpdateTailscaleSettingsInput,
   type CreateRemoteCommandInput,
 } from '@strawboss/validation';
@@ -195,6 +199,32 @@ export class FleetAdminController {
     @Body(new ZodValidationPipe(setDeviceTailscaleSchema)) dto: SetDeviceTailscaleInput,
   ) {
     return this.fleetService.setDeviceTailscale(id, dto);
+  }
+
+  // ─── SMS-gateway per-device toggle + test send ────────────────────────────
+
+  /**
+   * PATCH /api/v1/super-admin/devices/:id/sms-gateway
+   * Flag/unflag a device as the SMS gateway that claims pending outbound SMS.
+   */
+  @Patch('devices/:id/sms-gateway')
+  setDeviceSmsGateway(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(setDeviceSmsGatewaySchema)) dto: SetDeviceSmsGatewayInput,
+  ) {
+    return this.fleetService.setDeviceSmsGateway(id, dto);
+  }
+
+  /**
+   * POST /api/v1/super-admin/devices/:id/test-sms
+   * Enqueue a one-off test SMS through the gateway (device must be a gateway).
+   */
+  @Post('devices/:id/test-sms')
+  sendGatewayTestSms(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(testSmsSchema)) dto: TestSmsInput,
+  ) {
+    return this.fleetService.enqueueGatewayTestSms(id, dto);
   }
 
   // ─── Tailscale global settings ─────────────────────────────────────────────

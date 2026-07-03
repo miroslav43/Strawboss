@@ -191,6 +191,8 @@ export {
   useCreateDeployment,
   useCancelDeployment,
   useSetDeviceTailscale,
+  useSetDeviceSmsGateway,
+  useSendGatewayTestSms,
   useTailscaleSettings,
   useUpdateTailscaleSettings,
   useUploadTailscaleApk,

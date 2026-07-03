@@ -20,6 +20,7 @@ import {
   PackageOpen,
   Network,
   Radio,
+  MessageSquare,
 } from 'lucide-react';
 import {
   useDevice,
@@ -27,6 +28,8 @@ import {
   useDeviceOtaStatus,
   useDeviceLogs,
   useSetDeviceTailscale,
+  useSetDeviceSmsGateway,
+  useSendGatewayTestSms,
   useSendDeviceCommand,
   useDeviceCommands,
   useReapplyTailscale,
@@ -535,6 +538,7 @@ function CommandHistoryTable({
             <th className="px-4 py-2.5">{t('superAdmin.devices.remote.historyColSent')}</th>
             <th className="px-4 py-2.5">{t('superAdmin.devices.remote.historyColCompleted')}</th>
             <th className="px-4 py-2.5">{t('superAdmin.devices.remote.historyColError')}</th>
+            <th className="px-4 py-2.5">Rezultat</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-100 bg-white">
@@ -574,6 +578,24 @@ function CommandHistoryTable({
                   <span className="text-xs text-red-600" title={rec.lastError}>
                     {rec.lastError.length > 60 ? `${rec.lastError.slice(0, 60)}…` : rec.lastError}
                   </span>
+                ) : (
+                  <span className="text-neutral-300">—</span>
+                )}
+              </td>
+              <td className="px-4 py-2.5">
+                {rec.result && Object.keys(rec.result).length > 0 ? (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-neutral-500 hover:text-neutral-800">
+                      {Array.isArray((rec.result as Record<string, unknown>).lines)
+                        ? `${((rec.result as Record<string, unknown>).lines as unknown[]).length} linii`
+                        : 'JSON'}
+                    </summary>
+                    <pre className="mt-1 max-h-64 max-w-md overflow-auto rounded bg-neutral-900 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-neutral-100">
+                      {Array.isArray((rec.result as Record<string, unknown>).lines)
+                        ? ((rec.result as Record<string, unknown>).lines as unknown[]).join('\n')
+                        : JSON.stringify(rec.result, null, 2)}
+                    </pre>
+                  </details>
                 ) : (
                   <span className="text-neutral-300">—</span>
                 )}
@@ -1036,6 +1058,100 @@ function DeviceHealthPanel({
 
 type ConfirmKind = 'reboot' | 'reinstall' | null;
 
+/** Toggle a device as the SMS gateway + fire a one-off test SMS through it. */
+function SmsGatewayPanel({
+  device,
+}: {
+  device: NonNullable<ReturnType<typeof useDevice>['data']>;
+}) {
+  const setGateway = useSetDeviceSmsGateway(apiClient);
+  const sendTest = useSendGatewayTestSms(apiClient);
+  const [phone, setPhone] = useState('');
+  const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
+
+  const isGateway = !!device.isSmsGateway;
+
+  const showToast = (message: string, kind: 'success' | 'error') => {
+    setToast({ message, kind });
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  const toggle = () =>
+    setGateway.mutate(
+      { id: device.id, enabled: !isGateway },
+      { onError: () => showToast('Nu s-a putut schimba flagul', 'error') },
+    );
+
+  const handleSendTest = () => {
+    const to = phone.trim();
+    if (!/^\+?[0-9]{8,15}$/.test(to)) {
+      showToast('Număr invalid', 'error');
+      return;
+    }
+    sendTest.mutate(
+      { id: device.id, to },
+      {
+        onSuccess: () => showToast('Test SMS pus în coadă', 'success'),
+        onError: () => showToast('Trimiterea a eșuat', 'error'),
+      },
+    );
+  };
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+      {toast && (
+        <InlineToast message={toast.message} kind={toast.kind} onDismiss={() => setToast(null)} />
+      )}
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          <MessageSquare className="h-4 w-4" /> SMS Gateway
+        </h3>
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={setGateway.isPending}
+          aria-pressed={isGateway}
+          aria-label="SMS Gateway"
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition disabled:opacity-50 ${
+            isGateway ? 'bg-emerald-500' : 'bg-neutral-300'
+          }`}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+              isGateway ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </div>
+      <p className="mb-4 text-sm text-neutral-500">
+        {isGateway
+          ? 'Acest device preia SMS-urile în așteptare la fiecare check-in și le trimite prin SIM.'
+          : 'Activează pentru ca acest device să preia și să trimită SMS-urile din outbox.'}
+      </p>
+      {isGateway && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+40…"
+            className="rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={handleSendTest}
+            disabled={sendTest.isPending || !phone.trim()}
+            className="flex items-center gap-2 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Trimite SMS de test
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RemotePanel({ device }: { device: ReturnType<typeof useDevice>['data'] }) {
   const { t } = useI18n();
 
@@ -1126,6 +1242,9 @@ function RemotePanel({ device }: { device: ReturnType<typeof useDevice>['data'] 
           isPending={isBusy}
         />
       )}
+
+      {/* ── SMS gateway toggle + test send ── */}
+      <SmsGatewayPanel device={device} />
 
       {/* ── Actions ── */}
       <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">

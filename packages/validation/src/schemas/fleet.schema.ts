@@ -139,6 +139,18 @@ export const setDeviceTailscaleSchema = z.object({
 });
 export type SetDeviceTailscaleInput = z.infer<typeof setDeviceTailscaleSchema>;
 
+/** Flag/unflag a device as the SMS gateway (gets pending outbound SMS on check-in). */
+export const setDeviceSmsGatewaySchema = z.object({
+  enabled: z.boolean(),
+});
+export type SetDeviceSmsGatewayInput = z.infer<typeof setDeviceSmsGatewaySchema>;
+
+/** Enqueue a one-off test SMS through the gateway. Same phone shape as the app. */
+export const testSmsSchema = z.object({
+  to: z.string().regex(/^\+?[0-9]{8,15}$/, 'Invalid phone number'),
+});
+export type TestSmsInput = z.infer<typeof testSmsSchema>;
+
 /** Global Tailscale settings the super-admin edits. authKey null = leave unchanged;
  * empty string = clear. */
 export const updateTailscaleSettingsSchema = z.object({
