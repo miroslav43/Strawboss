@@ -21,6 +21,10 @@ object Prefs {
     const val KEY_POLL_INTERVAL_SEC = "pollIntervalSec"
     const val KEY_LOCAL_SERVER_ENABLED = "localServerEnabled"
 
+    // Whether the operator has the gateway ON. Read by BootReceiver / WatchdogReceiver
+    // to decide whether to auto-start the service after a reboot / OEM kill.
+    const val KEY_SERVICE_ENABLED = "serviceEnabled"
+
     // Gateway identity + delivery-report queue
     const val KEY_DEVICE_UUID = "deviceUuid"
     const val KEY_DEVICE_TOKEN = "deviceToken"
@@ -53,6 +57,13 @@ object Prefs {
 
     fun localServerEnabled(p: SharedPreferences): Boolean =
         p.getBoolean(KEY_LOCAL_SERVER_ENABLED, false)
+
+    /** Whether the operator wants the gateway running (persists across reboot/kill). */
+    fun serviceEnabled(p: SharedPreferences): Boolean =
+        p.getBoolean(KEY_SERVICE_ENABLED, false)
+
+    fun setServiceEnabled(p: SharedPreferences, enabled: Boolean) =
+        p.edit().putBoolean(KEY_SERVICE_ENABLED, enabled).apply()
 
     fun apiKey(p: SharedPreferences): String =
         p.getString(KEY_API_KEY, "") ?: ""

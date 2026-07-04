@@ -69,9 +69,12 @@ class SmsGatewayService : Service() {
 
     private fun start() {
         if (isRunning) return
+        // Persist intent so BootReceiver/WatchdogReceiver auto-restart after reboot/kill.
+        Prefs.setServiceEnabled(prefs, true)
         startForeground(NOTIF_ID, buildNotification("Pornire..."))
         acquireWakeLock()
         isRunning = true
+        AlarmScheduler.schedule(this)
 
         if (Prefs.localServerEnabled(prefs)) startLocalServer()
 
@@ -126,6 +129,9 @@ class SmsGatewayService : Service() {
     }
 
     private fun stopEverythingAndSelf() {
+        // Operator-requested stop: clear the auto-restart intent + cancel the watchdog.
+        Prefs.setServiceEnabled(prefs, false)
+        AlarmScheduler.cancel(this)
         pollJob?.cancel()
         pollJob = null
         try {
@@ -184,6 +190,13 @@ class SmsGatewayService : Service() {
 
     private fun updateNotification(text: String) {
         (getSystemService(NotificationManager::class.java)).notify(NOTIF_ID, buildNotification(text))
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // App swiped from Recents: the OS may kill this service. Re-arm the watchdog so
+        // it gets restarted (START_STICKY alone is unreliable on some OEMs).
+        if (Prefs.serviceEnabled(prefs)) AlarmScheduler.schedule(applicationContext)
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {

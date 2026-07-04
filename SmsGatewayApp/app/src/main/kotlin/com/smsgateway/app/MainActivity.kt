@@ -64,6 +64,9 @@ class MainActivity : AppCompatActivity() {
         ensurePermissions()
         requestBatteryOptimizationExemption()
         refreshStatus()
+
+        // Reopened after an OEM kill while the operator had the gateway ON → bring it back.
+        if (Prefs.serviceEnabled(prefs) && !SmsGatewayService.isRunning) startService()
     }
 
     override fun onStart() {
@@ -135,12 +138,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startService() {
+        Prefs.setServiceEnabled(prefs, true)
+        // Re-prompt for the battery exemption if it was dismissed/revoked — critical on
+        // Samsung where "Deep sleep" otherwise kills the poll loop.
+        requestBatteryOptimizationExemption()
         val i = Intent(this, SmsGatewayService::class.java).setAction(SmsGatewayService.ACTION_START)
         startForegroundService(i)
         appendLog("⟳ Pornire serviciu...")
     }
 
     private fun stopService() {
+        Prefs.setServiceEnabled(prefs, false)
         val i = Intent(this, SmsGatewayService::class.java).setAction(SmsGatewayService.ACTION_STOP)
         startService(i)
     }
@@ -154,10 +162,20 @@ class MainActivity : AppCompatActivity() {
             "Device: ${uuid.take(8)}…  ·  ${if (registered) "înregistrat" else "neînregistrat"}"
 
         val running = SmsGatewayService.isRunning
-        binding.statusText.text = if (running) {
-            "Status: RULEAZĂ  →  pull ${Prefs.serverUrl(prefs)}"
+        val battOptOk = try {
+            (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
+        } catch (_: Exception) {
+            false
+        }
+        val battLine = if (battOptOk) {
+            "🔋 Baterie: nerestricționată ✓"
         } else {
-            "Status: OPRIT"
+            "⚠ Baterie: OPTIMIZARE ACTIVĂ — poate opri serviciul (setează „Nerestricționat”)"
+        }
+        binding.statusText.text = if (running) {
+            "Status: RULEAZĂ  →  pull ${Prefs.serverUrl(prefs)}\n$battLine"
+        } else {
+            "Status: OPRIT\n$battLine"
         }
         binding.startBtn.isEnabled = !running
         binding.stopBtn.isEnabled = running
