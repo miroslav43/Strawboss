@@ -227,6 +227,34 @@ export class FleetAdminController {
     return this.fleetService.enqueueGatewayTestSms(id, dto);
   }
 
+  // ─── SMS-gateway messages monitor (global, super-admin) ─────────────────────
+
+  /**
+   * GET /api/v1/super-admin/messages?channel=&status=&deviceId=
+   * Global outbound_messages list (NOT org-scoped) so NULL-org gateway_test rows
+   * are visible. The org-scoped /messages monitor cannot show these.
+   */
+  @Get('messages')
+  listAllMessages(
+    @Query('channel') channel?: string,
+    @Query('status') status?: string,
+    @Query('deviceId') deviceId?: string,
+  ) {
+    return this.fleetService.listAllMessages({ channel, status, deviceId });
+  }
+
+  /** POST /api/v1/super-admin/messages/:id/retry — SMS re-queue / email re-send. */
+  @Post('messages/:id/retry')
+  retryMessage(@Param('id') id: string) {
+    return this.fleetService.retryMessage(id);
+  }
+
+  /** GET /api/v1/super-admin/devices/:id/messages — outbox history for one gateway. */
+  @Get('devices/:id/messages')
+  listDeviceMessages(@Param('id') id: string) {
+    return this.fleetService.listDeviceMessages(id);
+  }
+
   // ─── Tailscale global settings ─────────────────────────────────────────────
 
   /**

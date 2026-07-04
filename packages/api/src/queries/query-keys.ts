@@ -109,6 +109,8 @@ export const queryKeys = {
   messages: {
     all: ['messages'] as const,
     list: (filters?: Record<string, unknown>) => ['messages', 'list', filters] as const,
+    superAdminList: (filters?: Record<string, unknown>) =>
+      ['messages', 'superAdmin', 'list', filters] as const,
   },
   beneficiaries: {
     all: ['beneficiaries'] as const,
@@ -124,6 +126,7 @@ export const queryKeys = {
       ['devices', 'logs', id, filters] as const,
     commands: (id: string) => ['devices', 'commands', id] as const,
     uptime: (id: string, days: number) => ['devices', 'uptime', id, days] as const,
+    messages: (id: string) => ['devices', 'messages', id] as const,
   },
   releases: {
     all: ['releases'] as const,

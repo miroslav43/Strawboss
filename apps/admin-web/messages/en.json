@@ -1344,6 +1344,26 @@
   },
   "superAdmin": {
     "brand": "Super Admin",
+    "messages": {
+      "navLabel": "Messages",
+      "title": "SMS Gateway Messages",
+      "subtitle": "All outbound SMS/email across every organization — including test messages from unassigned gateways.",
+      "gatewaysTitle": "Gateway phones",
+      "noGateways": "No SMS-gateway phones yet. Flag a device as SMS Gateway on its device page.",
+      "online": "Online",
+      "offline": "Offline",
+      "lastCheckin": "Last check-in",
+      "testSmsPlaceholder": "+40…",
+      "testSmsSend": "Send test",
+      "testSmsQueued": "Test SMS queued",
+      "testSmsInvalid": "Invalid phone number",
+      "refreshState": "Refresh state",
+      "fetchLogs": "Fetch logs",
+      "commandQueued": "Command queued",
+      "logTitle": "Message log",
+      "colDevice": "Gateway",
+      "openDevice": "Open device"
+    },
     "orgs": {
       "empty": "No organizations yet.",
       "emptyHint": "Click \"New Organization\" to create the first one.",

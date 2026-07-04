@@ -80,6 +80,9 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
           <a href="/super-admin/devices" className="hover:underline">
             {t('superAdmin.devices.navLabel')}
           </a>
+          <a href="/super-admin/messages" className="hover:underline">
+            {t('superAdmin.messages.navLabel')}
+          </a>
         </nav>
         <button
           onClick={handleLogout}

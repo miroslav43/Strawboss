@@ -47,6 +47,7 @@ import type {
 } from '@strawboss/validation';
 import { FleetPushService } from './fleet-push.service';
 import { QUEUE_OTA_DEPLOY } from '../jobs/queues';
+import { postResendEmail } from '../messaging/resend-client';
 
 /** Max APK size: 250 MB */
 export const APK_MAX_BYTES = 250 * 1024 * 1024;
@@ -108,6 +109,25 @@ const DEPLOYMENT_COLS = sql`
   force_now           AS "forceNow",
   status,
   created_by          AS "createdBy",
+  created_at          AS "createdAt",
+  updated_at          AS "updatedAt"
+`;
+
+/** Column list for the outbound_messages outbox (mirrors messages.service.ts COLS). */
+const OUTBOUND_MESSAGE_COLS = sql`
+  id,
+  organization_id     AS "organizationId",
+  channel, kind,
+  to_address          AS "toAddress",
+  subject,
+  left(body, 200)     AS "bodyPreview",
+  status,
+  provider_message_id AS "providerMessageId",
+  error, attempts,
+  trip_request_id     AS "tripRequestId",
+  claimed_by_device   AS "claimedByDevice",
+  sent_at             AS "sentAt",
+  delivered_at        AS "deliveredAt",
   created_at          AS "createdAt",
   updated_at          AS "updatedAt"
 `;
@@ -1817,6 +1837,97 @@ export class FleetService {
     });
 
     return { ok: true, messageId };
+  }
+
+  // ─── Super-admin: global outbound-messages monitor ──────────────────────────
+
+  /**
+   * GET /api/v1/super-admin/messages — global outbox list (NOT org-scoped), so
+   * NULL-org rows (e.g. gateway_test from an unassigned gateway) are visible.
+   */
+  async listAllMessages(filters: {
+    channel?: string;
+    status?: string;
+    deviceId?: string;
+  }): Promise<Row[]> {
+    const conds = [sql`true`];
+    if (filters.channel) conds.push(sql`channel = ${filters.channel}`);
+    if (filters.status) conds.push(sql`status = ${filters.status}`);
+    if (filters.deviceId) conds.push(sql`claimed_by_device = ${filters.deviceId}::uuid`);
+    const where = sql.join(conds, sql` AND `);
+    const rows = await this.drizzleProvider.db.execute(
+      sql`SELECT ${OUTBOUND_MESSAGE_COLS} FROM outbound_messages
+          WHERE ${where} ORDER BY created_at DESC LIMIT 200`,
+    );
+    return rows as unknown as Row[];
+  }
+
+  /** GET /api/v1/super-admin/devices/:id/messages — outbox history for one gateway. */
+  async listDeviceMessages(id: string): Promise<Row[]> {
+    await this.getDevice(id); // 404-guard
+    const rows = await this.drizzleProvider.db.execute(
+      sql`SELECT ${OUTBOUND_MESSAGE_COLS} FROM outbound_messages
+          WHERE claimed_by_device = ${id}::uuid ORDER BY created_at DESC LIMIT 200`,
+    );
+    return rows as unknown as Row[];
+  }
+
+  /**
+   * POST /api/v1/super-admin/messages/:id/retry — global retry (no org predicate).
+   * SMS → reset to pending for re-claim; email → re-POST to Resend. Mirrors
+   * MessagesService.retry() minus the organization_id filter.
+   */
+  async retryMessage(id: string): Promise<{ ok: true }> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id, channel, to_address AS "to", subject, body, html
+          FROM outbound_messages WHERE id = ${id}::uuid LIMIT 1`,
+    )) as unknown as {
+      id: string;
+      channel: string;
+      to: string;
+      subject: string | null;
+      body: string;
+      html: string | null;
+    }[];
+    const row = rows[0];
+    if (!row) throw new NotFoundException('Message not found');
+
+    // SMS: reset to pending so a gateway device re-claims and re-sends it.
+    if (row.channel === 'sms') {
+      await this.drizzleProvider.db.execute(
+        sql`UPDATE outbound_messages
+            SET status = 'pending', claimed_by_device = NULL, error = NULL, updated_at = now()
+            WHERE id = ${id}::uuid`,
+      );
+      return { ok: true };
+    }
+
+    // Email: re-POST to Resend, updating this same row.
+    const key = this.configService.get<string>('RESEND_API_KEY');
+    const from = this.configService.get<string>('RESEND_FROM');
+    if (!key || !from) throw new BadRequestException('RESEND_API_KEY / RESEND_FROM not configured');
+    const result = await postResendEmail(key, from, {
+      to: row.to,
+      subject: row.subject ?? '',
+      html: row.html,
+      text: row.body,
+    });
+    if (!result.ok) {
+      await this.drizzleProvider.db.execute(
+        sql`UPDATE outbound_messages
+            SET status = 'failed', error = ${(result.error ?? 'error').slice(0, 500)},
+                attempts = attempts + 1, updated_at = now()
+            WHERE id = ${id}::uuid`,
+      );
+      throw new BadRequestException(result.error ?? 'send failed');
+    }
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE outbound_messages
+          SET status = 'sent', provider_message_id = ${result.providerId ?? null}, error = NULL,
+              attempts = attempts + 1, sent_at = now(), updated_at = now()
+          WHERE id = ${id}::uuid`,
+    );
+    return { ok: true };
   }
 
   // ─── Super-admin: app_settings (Tailscale global config) ─────────────────────

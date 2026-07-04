@@ -1344,6 +1344,26 @@
   },
   "superAdmin": {
     "brand": "Super Admin",
+    "messages": {
+      "navLabel": "Mesaje",
+      "title": "Mesaje SMS Gateway",
+      "subtitle": "Toate SMS-urile/emailurile trimise din toate organizațiile — inclusiv mesajele de test de la gateway-uri nealocate.",
+      "gatewaysTitle": "Telefoane gateway",
+      "noGateways": "Niciun telefon SMS-gateway încă. Marchează un dispozitiv ca SMS Gateway în pagina lui.",
+      "online": "Online",
+      "offline": "Offline",
+      "lastCheckin": "Ultimul check-in",
+      "testSmsPlaceholder": "+40…",
+      "testSmsSend": "Trimite test",
+      "testSmsQueued": "SMS de test pus în coadă",
+      "testSmsInvalid": "Număr invalid",
+      "refreshState": "Reîmprospătează starea",
+      "fetchLogs": "Ia log-urile",
+      "commandQueued": "Comandă pusă în coadă",
+      "logTitle": "Jurnal mesaje",
+      "colDevice": "Gateway",
+      "openDevice": "Deschide dispozitiv"
+    },
     "orgs": {
       "empty": "Nu există organizații încă.",
       "emptyHint": "Apasă „Organizație nouă\" pentru a o crea pe prima.",
