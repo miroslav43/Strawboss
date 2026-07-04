@@ -15,6 +15,11 @@ const KIND_PATH: Record<RecordKind, string> = {
   driver: 'drivers',
 };
 
+// Every truck in this fleet is a fixed 40000 kg (40 t). Not editable on the form —
+// shown read-only below. The system stores capacity in tons.
+const TRUCK_CAPACITY_KG = 40000;
+const TRUCK_CAPACITY_TONS = TRUCK_CAPACITY_KG / 1000;
+
 // Reuse the existing portal field-label keys per kind.
 const LABELS: Record<'contact' | 'driver', { name: string; phone: string; email: string }> = {
   contact: {
@@ -67,9 +72,6 @@ export function BeneficiaryRecordModal({
   // Truck fields
   const [plate, setPlate] = useState(truck?.truckRegistrationPlate ?? '');
   const [trailer, setTrailer] = useState(truck?.trailerRegistrationPlate ?? '');
-  const [capacity, setCapacity] = useState(
-    truck?.capacityTons != null ? String(truck.capacityTons) : '',
-  );
   const [transporterName, setTransporterName] = useState(truck?.transporterName ?? '');
   const [transporterCui, setTransporterCui] = useState(truck?.transporterCui ?? '');
   const [transporterAddress, setTransporterAddress] = useState(truck?.transporterAddress ?? '');
@@ -81,8 +83,6 @@ export function BeneficiaryRecordModal({
     kind === 'truck'
       ? plate.trim() !== '' &&
         trailer.trim() !== '' &&
-        capacity.trim() !== '' &&
-        Number(capacity) > 0 &&
         transporterName.trim() !== '' &&
         transporterCui.trim() !== '' &&
         transporterAddress.trim() !== ''
@@ -97,7 +97,7 @@ export function BeneficiaryRecordModal({
       return {
         truckRegistrationPlate: plate.trim(),
         trailerRegistrationPlate: trailer.trim(),
-        capacityTons: Number(capacity),
+        capacityTons: TRUCK_CAPACITY_TONS,
         transporterName: transporterName.trim(),
         transporterCui: transporterCui.trim(),
         transporterAddress: transporterAddress.trim(),
@@ -203,21 +203,14 @@ export function BeneficiaryRecordModal({
                     required
                   />
                 </label>
-                <label className="block">
+                <div className="block">
                   <span className="mb-1.5 block text-[13px] font-medium text-stone-600">
-                    {t('beneficiaryPortal.truckCapacityTons')}
-                    <span className="ml-0.5 text-rose-500">*</span>
+                    {t('beneficiaryPortal.truckCapacity')}
                   </span>
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    className={inputCls}
-                    value={capacity}
-                    onChange={(e) => setCapacity(e.target.value)}
-                    required
-                  />
-                </label>
+                  <p className="rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-[15px] font-medium text-stone-500">
+                    {t('beneficiaryPortal.truckCapacityFixed')}
+                  </p>
+                </div>
               </div>
               <label className="block">
                 <span className="mb-1.5 block text-[13px] font-medium text-stone-600">

@@ -14,11 +14,7 @@ import {
   PackageCheck,
   Building2,
   Pencil,
-  MapPin,
-  X,
 } from 'lucide-react';
-import { LeafletPointPicker } from '@/components/map/LeafletPointPicker';
-import { CropType } from '@strawboss/types';
 import type {
   PublicBeneficiaryInfo,
   BeneficiaryContact,
@@ -86,18 +82,14 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 // Only the pickup details are typed on every request; contact / truck / driver
 // now come from the selected saved records.
 type FormState = {
-  cropType: string;
+  quality: string;
   neededDate: string;
-  tonsRequested: string;
-  destinationAddress: string;
   notes: string;
 };
 
 const BLANK: FormState = {
-  cropType: '',
+  quality: '',
   neededDate: '',
-  tonsRequested: '',
-  destinationAddress: '',
   notes: '',
 };
 
@@ -267,8 +259,6 @@ export default function BeneficiaryPortalPage() {
   const [form, setForm] = useState<FormState>(BLANK);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [destCoords, setDestCoords] = useState<{ lat: number; lon: number } | null>(null);
-  const [showMapPicker, setShowMapPicker] = useState(false);
 
   // Saved per-beneficiary records (loaded once the PIN is verified)
   const [contacts, setContacts] = useState<BeneficiaryContact[]>([]);
@@ -496,7 +486,6 @@ export default function BeneficiaryPortalPage() {
     setSubmitting(true);
 
     const trim = (s: string) => (s.trim() === '' ? null : s.trim());
-    const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s));
 
     const contact = contacts.find((c) => c.id === selContactId);
     const truck = trucks.find((tk) => tk.id === selTruckId);
@@ -527,11 +516,8 @@ export default function BeneficiaryPortalPage() {
       driverName: driver.name,
       driverPhone: driver.phone ?? '',
       driverEmail: driver.email,
-      cropType: form.cropType || null,
+      quality: form.quality,
       neededDate: trim(form.neededDate),
-      tonsRequested: numOrNull(form.tonsRequested),
-      destinationAddress: trim(form.destinationAddress),
-      destinationCoords: destCoords,
       notes: trim(form.notes),
       contactId: contact.id,
       truckId: truck.id,
@@ -567,9 +553,6 @@ export default function BeneficiaryPortalPage() {
       setSubmitting(false);
     }
   }
-
-  const allowedCrops =
-    info && info.allowedCropTypes.length > 0 ? info.allowedCropTypes : Object.values(CropType);
 
   const selectedContact = contacts.find((c) => c.id === selContactId) ?? null;
   const selectedTruck = trucks.find((tk) => tk.id === selTruckId) ?? null;
@@ -770,7 +753,8 @@ export default function BeneficiaryPortalPage() {
                   error={trucksError}
                   getPrimary={(tk) => tk.truckRegistrationPlate}
                   getSecondary={(tk) =>
-                    tk.transporterName ?? (tk.capacityTons != null ? `${tk.capacityTons} t` : null)
+                    tk.transporterName ??
+                    (tk.capacityTons != null ? `${tk.capacityTons * 1000} kg` : null)
                   }
                   getSearchText={(tk) =>
                     `${tk.truckRegistrationPlate} ${tk.trailerRegistrationPlate ?? ''} ${tk.transporterName ?? ''}`
@@ -795,8 +779,12 @@ export default function BeneficiaryPortalPage() {
                         value={selectedTruck.trailerRegistrationPlate}
                       />
                       <LockedField
-                        label={t('beneficiaryPortal.truckCapacityTons')}
-                        value={selectedTruck.capacityTons}
+                        label={t('beneficiaryPortal.truckCapacity')}
+                        value={
+                          selectedTruck.capacityTons != null
+                            ? `${selectedTruck.capacityTons * 1000} kg`
+                            : null
+                        }
                       />
                       <LockedField
                         label={t('beneficiaryPortal.transporterName')}
@@ -871,19 +859,16 @@ export default function BeneficiaryPortalPage() {
                   label={t('beneficiaryPortal.sectionRequest')}
                 />
                 <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <Field label={t('beneficiaryPortal.cropType')} required>
+                  <Field label={t('beneficiaryPortal.quality')} required>
                     <select
                       className={inputCls}
                       required
-                      value={form.cropType}
-                      onChange={(e) => patch({ cropType: e.target.value })}
+                      value={form.quality}
+                      onChange={(e) => patch({ quality: e.target.value })}
                     >
-                      <option value="">{t('beneficiaryPortal.cropTypePlaceholder')}</option>
-                      {allowedCrops.map((c) => (
-                        <option key={c} value={c}>
-                          {t(`settings.organization.crop.${c}`)}
-                        </option>
-                      ))}
+                      <option value="">{t('beneficiaryPortal.qualityPlaceholder')}</option>
+                      <option value="quality_1">{t('beneficiaryPortal.quality1')}</option>
+                      <option value="quality_2">{t('beneficiaryPortal.quality2')}</option>
                     </select>
                   </Field>
                   <Field label={t('beneficiaryPortal.neededDate')} required>
@@ -895,51 +880,6 @@ export default function BeneficiaryPortalPage() {
                       onChange={(e) => patch({ neededDate: e.target.value })}
                     />
                   </Field>
-                  <Field label={t('beneficiaryPortal.tonsRequested')} required>
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      className={inputCls}
-                      required
-                      value={form.tonsRequested}
-                      onChange={(e) => patch({ tonsRequested: e.target.value })}
-                    />
-                  </Field>
-                  <div className="sm:col-span-2">
-                    <Field label={t('beneficiaryPortal.destinationAddress')} required>
-                      <input
-                        className={inputCls}
-                        required
-                        value={form.destinationAddress}
-                        onChange={(e) => patch({ destinationAddress: e.target.value })}
-                      />
-                    </Field>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowMapPicker(true)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-600 transition-colors hover:border-primary hover:text-primary"
-                      >
-                        <MapPin className="h-3.5 w-3.5" />
-                        {t('beneficiaryPortal.pickOnMap')}
-                      </button>
-                      {destCoords && (
-                        <span className="inline-flex items-center gap-1 text-[13px] font-medium text-primary">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          {t('beneficiaryPortal.coordsSet')}
-                          <button
-                            type="button"
-                            onClick={() => setDestCoords(null)}
-                            className="ml-1 text-stone-400 hover:text-stone-600"
-                            aria-label={t('beneficiaryPortal.coordsClear')}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </span>
-                      )}
-                    </div>
-                  </div>
                   <div className="sm:col-span-2">
                     <Field label={t('beneficiaryPortal.notes')} optional>
                       <textarea
@@ -986,53 +926,6 @@ export default function BeneficiaryPortalPage() {
           )}
         </div>
       </main>
-
-      {showMapPicker && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div
-            className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
-            style={{ maxHeight: 'min(90vh, 640px)' }}
-          >
-            <div className="flex items-center justify-between border-b border-stone-100 px-5 py-3">
-              <div>
-                <h2 className="text-base font-semibold text-bark">
-                  {t('beneficiaryPortal.mapPickerTitle')}
-                </h2>
-                <p className="text-xs text-stone-500">{t('beneficiaryPortal.mapPickerHint')}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowMapPicker(false)}
-                className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="relative flex-1">
-              <LeafletPointPicker
-                initial={destCoords}
-                onChange={(lat, lon) => setDestCoords({ lat, lon })}
-                className="h-full min-h-[320px] w-full"
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2 border-t border-stone-100 bg-stone-50 px-5 py-3">
-              <span className="text-xs text-stone-500">
-                {destCoords
-                  ? `${destCoords.lat.toFixed(5)}, ${destCoords.lon.toFixed(5)}`
-                  : t('beneficiaryPortal.mapPickerNone')}
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowMapPicker(false)}
-                disabled={!destCoords}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-              >
-                {t('beneficiaryPortal.mapPickerConfirm')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {recordModal && (
         <BeneficiaryRecordModal

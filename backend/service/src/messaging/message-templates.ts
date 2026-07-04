@@ -11,9 +11,18 @@ export interface NewRequestAdminCtx {
   requesterName: string;
   requesterPhone: string;
   cropType: string | null;
+  // beneficiary portal: 'quality_1' | 'quality_2' (absent on the non-beneficiary portal)
+  quality?: string | null;
   neededDate: string | null;
   tonsRequested: number | null;
   destinationAddress: string | null;
+}
+
+/** Human label for the beneficiary quality grade. */
+function qualityLabel(quality: string | null | undefined): string | null {
+  if (quality === 'quality_1') return 'Calitate 1';
+  if (quality === 'quality_2') return 'Calitate 2';
+  return quality ?? null;
 }
 
 export interface RequestConfirmedCtx {
@@ -104,6 +113,7 @@ export const messageTemplates = {
       `Solicitant: ${ctx.requesterName} (${ctx.requesterPhone})\n` +
       (ctx.companyName ? `Firmă: ${ctx.companyName}\n` : '') +
       (ctx.cropType ? `Recoltă: ${ctx.cropType}\n` : '') +
+      (qualityLabel(ctx.quality) ? `Calitate: ${qualityLabel(ctx.quality)}\n` : '') +
       (ctx.tonsRequested != null ? `Tone: ${ctx.tonsRequested}\n` : '') +
       (ctx.neededDate ? `Data necesară: ${ctx.neededDate}\n` : '') +
       (ctx.destinationAddress ? `Livrare la: ${ctx.destinationAddress}\n` : '') +

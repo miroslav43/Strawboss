@@ -55,11 +55,14 @@ export const createBeneficiaryRequestSchema = z.object({
   driverName: z.string().min(1).max(120),
   driverPhone: z.string().min(4).max(40),
   driverEmail: z.string().email().max(160).nullable().optional(),
-  // the ask (crop, date, tons and destination are all required on the portal)
-  cropType: cropTypeSchema,
+  // the ask — the beneficiary portal now captures a quality grade + date + notes.
+  // cropType / tonsRequested / destinationAddress were dropped from the form and
+  // are left optional (inserted as NULL) so older clients / data stay valid.
+  quality: z.enum(['quality_1', 'quality_2']),
+  cropType: cropTypeSchema.nullable().optional(),
   neededDate: isoDateSchema,
-  tonsRequested: z.number().positive().max(100000),
-  destinationAddress: z.string().min(1).max(300),
+  tonsRequested: z.number().positive().max(100000).nullable().optional(),
+  destinationAddress: z.string().min(1).max(300).nullable().optional(),
   destinationCoords: geoPointSchema.nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   // Optional traceability: which saved beneficiary records this request was

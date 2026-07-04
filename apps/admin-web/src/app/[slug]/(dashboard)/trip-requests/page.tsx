@@ -46,6 +46,11 @@ function StatusBadge({ status }: { status: RequestStatus }) {
 
 // ── Confirm modal ─────────────────────────────────────────────────────────
 
+/** i18n key for a beneficiary quality grade ('quality_1' | 'quality_2'). */
+function qualityLabelKey(quality: string): string {
+  return quality === 'quality_1' ? 'tripRequests.quality1' : 'tripRequests.quality2';
+}
+
 function ConfirmModal({ request, onClose }: { request: TripRequest; onClose: () => void }) {
   const { t } = useI18n();
   const [internalCode, setInternalCode] = useState('');
@@ -307,6 +312,9 @@ function PendingRequestRow({
         <Detail label={t('tripRequests.colDriver')} value={request.driverName} />
         <Detail label={t('tripRequests.driverPhone')} value={request.driverPhone} />
         {request.cropType && <Detail label={t('tripRequests.colCrop')} value={request.cropType} />}
+        {request.quality && (
+          <Detail label={t('tripRequests.quality')} value={t(qualityLabelKey(request.quality))} />
+        )}
         {request.neededDate && (
           <Detail label={t('tripRequests.colNeededDate')} value={request.neededDate} />
         )}
@@ -363,7 +371,8 @@ function ClosedRequestRow({ request }: { request: TripRequest }) {
       </td>
       <td className="px-4 py-3 text-sm text-neutral-600">{request.driverName}</td>
       <td className="px-4 py-3 text-sm text-neutral-600">
-        {request.cropType ?? t('tripRequests.none')}
+        {request.cropType ??
+          (request.quality ? t(qualityLabelKey(request.quality)) : t('tripRequests.none'))}
       </td>
       <td className="px-4 py-3 text-sm text-neutral-600">
         {request.machineId ? (

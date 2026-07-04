@@ -34,6 +34,8 @@ export interface TripRequest extends Timestamps, SoftDelete {
   driverEmail: string | null;
   // the ask
   cropType: CropType | null;
+  // beneficiary portal: quality grade requested (quality_1 | quality_2), replaces cropType
+  quality: string | null;
   neededDate: string | null;
   tonsRequested: number | null;
   destinationAddress: string | null;
