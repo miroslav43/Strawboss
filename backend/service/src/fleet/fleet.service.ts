@@ -1820,7 +1820,7 @@ export class FleetService {
       throw new BadRequestException('Device is not an SMS gateway — enable it first');
     }
     const orgId = (device['organizationId'] as string | null) ?? null;
-    const body = `StrawBoss test SMS · ${new Date().toISOString()}`;
+    const body = dto.body?.trim() || `StrawBoss test SMS · ${new Date().toISOString()}`;
 
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO outbound_messages (organization_id, channel, kind, to_address, body, status)

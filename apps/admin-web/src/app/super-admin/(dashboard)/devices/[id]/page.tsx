@@ -1067,6 +1067,7 @@ function SmsGatewayPanel({
   const setGateway = useSetDeviceSmsGateway(apiClient);
   const sendTest = useSendGatewayTestSms(apiClient);
   const [phone, setPhone] = useState('');
+  const [message, setMessage] = useState('');
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
 
   const isGateway = !!device.isSmsGateway;
@@ -1089,9 +1090,12 @@ function SmsGatewayPanel({
       return;
     }
     sendTest.mutate(
-      { id: device.id, to },
+      { id: device.id, to, body: message.trim() || undefined },
       {
-        onSuccess: () => showToast('Test SMS pus în coadă', 'success'),
+        onSuccess: () => {
+          showToast('SMS pus în coadă', 'success');
+          setMessage('');
+        },
         onError: () => showToast('Trimiterea a eșuat', 'error'),
       },
     );
@@ -1129,23 +1133,33 @@ function SmsGatewayPanel({
           : 'Activează pentru ca acest device să preia și să trimită SMS-urile din outbox.'}
       </p>
       {isGateway && (
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+40…"
-            className="rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none"
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+40…"
+              className="rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleSendTest}
+              disabled={sendTest.isPending || !phone.trim()}
+              className="flex items-center gap-2 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Trimite SMS
+            </button>
+          </div>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={2}
+            maxLength={1000}
+            placeholder="Mesaj (opțional) — lasă gol pentru ping-ul de test standard"
+            className="w-full resize-y rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none"
           />
-          <button
-            type="button"
-            onClick={handleSendTest}
-            disabled={sendTest.isPending || !phone.trim()}
-            className="flex items-center gap-2 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-          >
-            <MessageSquare className="h-4 w-4" />
-            Trimite SMS de test
-          </button>
         </div>
       )}
     </div>

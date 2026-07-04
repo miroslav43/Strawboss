@@ -66,6 +66,7 @@ function GatewayCard({ device }: { device: FleetDeviceListItem }) {
   const sendTest = useSendGatewayTestSms(apiClient);
   const sendCommand = useSendDeviceCommand(apiClient);
   const [to, setTo] = useState('');
+  const [body, setBody] = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const online = isOnline(device.lastSeenAt);
   const label = device.name || device.model || device.deviceUuid.slice(0, 8);
@@ -77,11 +78,12 @@ function GatewayCard({ device }: { device: FleetDeviceListItem }) {
       return;
     }
     sendTest.mutate(
-      { id: device.id, to: trimmed },
+      { id: device.id, to: trimmed, body: body.trim() || undefined },
       {
         onSuccess: () => {
           setFeedback({ ok: true, msg: t('superAdmin.messages.testSmsQueued') });
           setTo('');
+          setBody('');
         },
         onError: (e: unknown) => setFeedback({ ok: false, msg: (e as Error).message }),
       },
@@ -142,6 +144,15 @@ function GatewayCard({ device }: { device: FleetDeviceListItem }) {
           {t('superAdmin.messages.testSmsSend')}
         </button>
       </div>
+
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        rows={2}
+        maxLength={1000}
+        placeholder={t('superAdmin.messages.testSmsBodyPlaceholder')}
+        className="mt-2 w-full resize-y rounded-md border border-neutral-200 px-2 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+      />
 
       <div className="mt-2 flex gap-2">
         <button

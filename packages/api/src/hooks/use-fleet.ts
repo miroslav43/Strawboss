@@ -216,13 +216,15 @@ export function useSetDeviceSmsGateway(client: ApiClient) {
   });
 }
 
-/** POST a one-off test SMS through the gateway device. Invalidates device detail. */
+/** POST a one-off test SMS through the gateway device. `body` optional = custom text
+ * (else a default test ping is sent). Invalidates device detail. */
 export function useSendGatewayTestSms(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, to }: { id: string; to: string }) =>
+    mutationFn: ({ id, to, body }: { id: string; to: string; body?: string }) =>
       client.post<{ ok: true; messageId: string }>(`/api/v1/super-admin/devices/${id}/test-sms`, {
         to,
+        ...(body ? { body } : {}),
       }),
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.devices.detail(id) });

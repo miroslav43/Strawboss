@@ -145,9 +145,11 @@ export const setDeviceSmsGatewaySchema = z.object({
 });
 export type SetDeviceSmsGatewayInput = z.infer<typeof setDeviceSmsGatewaySchema>;
 
-/** Enqueue a one-off test SMS through the gateway. Same phone shape as the app. */
+/** Enqueue a one-off test SMS through the gateway. Same phone shape as the app.
+ * `body` is optional custom text; when omitted a default "StrawBoss test SMS · <ts>" is sent. */
 export const testSmsSchema = z.object({
   to: z.string().regex(/^\+?[0-9]{8,15}$/, 'Invalid phone number'),
+  body: z.string().trim().min(1).max(1000).optional(),
 });
 export type TestSmsInput = z.infer<typeof testSmsSchema>;
 
