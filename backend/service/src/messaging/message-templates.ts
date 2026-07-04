@@ -114,7 +114,6 @@ export const messageTemplates = {
       (ctx.companyName ? `Firmă: ${ctx.companyName}\n` : '') +
       (ctx.cropType ? `Recoltă: ${ctx.cropType}\n` : '') +
       (qualityLabel(ctx.quality) ? `Calitate: ${qualityLabel(ctx.quality)}\n` : '') +
-      (ctx.tonsRequested != null ? `Tone: ${ctx.tonsRequested}\n` : '') +
       (ctx.neededDate ? `Data necesară: ${ctx.neededDate}\n` : '') +
       (ctx.destinationAddress ? `Livrare la: ${ctx.destinationAddress}\n` : '') +
       `\nConfirmați sau anulați cererea din pagina Cereri transport.`,
@@ -161,7 +160,6 @@ export const messageTemplates = {
       (km ? `\nDistanță: ${km}\n` : '') +
       (ctx.routeUrl ? `Rută: ${ctx.routeUrl}\n` : '') +
       (ctx.cropType ? `\nRecoltă: ${ctx.cropType}` : '') +
-      (ctx.tonsRequested != null ? `\nTone: ${ctx.tonsRequested}` : '') +
       (ctx.neededDate ? `\nData necesară: ${ctx.neededDate}` : '') +
       (ctx.driverName ? `\nȘofer: ${ctx.driverName}` : '') +
       (ctx.notes ? `\nNote: ${ctx.notes}` : '');
@@ -190,7 +188,6 @@ export const messageTemplates = {
           <table style="border-collapse:collapse;margin:0 0 6px">
             ${summaryRow('Șofer', ctx.driverName)}
             ${summaryRow('Recoltă', ctx.cropType)}
-            ${summaryRow('Tone', ctx.tonsRequested != null ? String(ctx.tonsRequested) : null)}
             ${summaryRow('Data necesară', ctx.neededDate)}
             ${summaryRow('Note', ctx.notes)}
           </table>

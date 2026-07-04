@@ -2,7 +2,7 @@
  * No-key OSM helpers for the confirmation-email route map + distance.
  *
  * - Driving distance + route geometry from the public OSRM demo server.
- * - A static PNG (openstreetmap.de) with pickup/delivery markers + the route path.
+ * - A static PNG (Yandex, no key, Latin labels) with pickup/delivery markers + route line.
  *
  * Everything is best-effort: on any failure we fall back to a straight-line
  * (haversine) distance and a straight geometry, so the email is still valid
@@ -115,23 +115,23 @@ function fitZoom(from: LatLon, to: LatLon): number {
 }
 
 /**
- * openstreetmap.de static map: green pickup + red delivery markers and the route
- * path. Unknown params are ignored by the renderer, so if `path` is unsupported
- * the markers still render. Returns null if inputs are missing.
+ * Yandex static map (no key): green pickup + red delivery markers and the blue route
+ * polyline. `lang=en_US` forces Latin (not Cyrillic) place labels. Coordinates are
+ * lon,lat order. Replaces the openstreetmap.de renderer, which was discontinued (its
+ * host no longer resolves, so those emails shipped a broken map image). The query is
+ * built by hand so the `,` `~` `:` separators stay literal (Yandex requires them raw).
  */
 export function staticMapUrl(base: string, from: LatLon, to: LatLon, points: LatLon[]): string {
   const center = { lat: (from.lat + to.lat) / 2, lon: (from.lon + to.lon) / 2 };
-  const markers = [`${from.lat},${from.lon},lightgreen`, `${to.lat},${to.lon},red`].join('|');
-  const path = sample(points, 30)
-    .map((p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`)
-    .join('|');
-  const params = new URLSearchParams({
-    center: `${center.lat.toFixed(5)},${center.lon.toFixed(5)}`,
-    zoom: String(fitZoom(from, to)),
-    size: '600x300',
-    maptype: 'mapnik',
-    markers,
-    path: `color:0x1d4ed8|weight:4|${path}`,
-  });
-  return `${base}?${params.toString()}`;
+  const pt = `${from.lon},${from.lat},pm2gnm~${to.lon},${to.lat},pm2rdm`;
+  const line = sample(points, 30)
+    .map((p) => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`)
+    .join(',');
+  const q =
+    `ll=${center.lon.toFixed(5)},${center.lat.toFixed(5)}` +
+    `&z=${fitZoom(from, to)}` +
+    `&size=600,300&l=map&lang=en_US` +
+    `&pt=${pt}` +
+    `&pl=c:1d4ed8ff,w:4,${line}`;
+  return `${base.replace(/\/$/, '')}/?${q}`;
 }

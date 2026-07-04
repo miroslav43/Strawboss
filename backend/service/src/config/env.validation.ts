@@ -14,7 +14,9 @@ export const envSchema = z.object({
   RESEND_FROM: z.string().optional(),
   // No-key OSM helpers for the confirmation-email route map + distance.
   OSRM_BASE_URL: z.string().default('https://router.project-osrm.org'),
-  STATICMAP_BASE_URL: z.string().default('https://staticmap.openstreetmap.de/staticmap.php'),
+  // Yandex static maps (no key, Latin labels). The old openstreetmap.de host was
+  // discontinued and no longer resolves, so route-map images shipped broken.
+  STATICMAP_BASE_URL: z.string().default('https://static-maps.yandex.ru/1.x'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
