@@ -64,14 +64,17 @@ device in super-admin → **Remote** tab:
 Owner); the app returns `failure` for them so the server stops re-delivering.
 
 ## Building
-Requires the Android SDK (build via **Android Studio**, or CLI with `ANDROID_HOME` set):
+Build via **Android Studio**, or headless on this VM with the miro-owned SDK
+(`/home/miro/Android/Sdk`) — the root-owned `/usr/lib/android-sdk` is *not* usable:
 ```bash
-./gradlew assembleRelease      # app/build/outputs/apk/release/app-release-unsigned.apk
-# or a quick debug build:
-./gradlew assembleDebug
+cd SmsGatewayApp
+printf 'sdk.dir=/home/miro/Android/Sdk\n' > local.properties   # gitignored
+# one-time: the app targets compileSdk 34, so install the matching bits into the SDK
+/home/miro/Android/Sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
+ANDROID_HOME=/home/miro/Android/Sdk ./gradlew :app:assembleDebug
+# → app/build/outputs/apk/debug/app-debug.apk   (debug-signed, installable)
+# release (needs your own keystore): ./gradlew :app:assembleRelease
 ```
-> On this server the Android SDK is root-owned and Gradle can't run as the dev user,
-> so the APK is built on a machine with the SDK (Android Studio), not on the VM.
 
 ### Signing / updating an already-installed phone
 The original APK's keystore is **not** in this repo, so a fresh build has a **different
