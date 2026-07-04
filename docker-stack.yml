@@ -32,6 +32,11 @@ services:
       - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379
+      # Email via Resend (outbound_messages / ResendMessagingService). Sourced from
+      # .env at deploy time (set -a; source .env). Without these, transport-confirmation
+      # emails are marked `failed` ("RESEND not configured") in /messages.
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM=${RESEND_FROM}
     volumes:
       - /srv/apps/Strawboss/logs:/app/logs
       - /srv/apps/Strawboss/uploads:/app/uploads
