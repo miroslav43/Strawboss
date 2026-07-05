@@ -24,12 +24,15 @@ import {
   useDeleteParcel,
   useFarms,
   useDeliveryDestinations,
+  useDeleteDeliveryDestination,
 } from '@strawboss/api';
 import type { Parcel, MachineLastLocation, DeliveryDestination } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DepositGeofenceModal } from '@/components/map/DepositGeofenceModal';
+import { DepositFormModal } from '@/components/deposits/DepositFormModal';
 import { FilterableMachineList } from '@/components/map/FilterableMachineList';
 import { FilterableFarmList } from '@/components/map/FilterableFarmList';
+import { FilterableDepositList } from '@/components/map/FilterableDepositList';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { clientLogger } from '@/lib/client-logger';
@@ -339,6 +342,7 @@ export default function MapPage() {
   const { data: farmsRaw = [], refetch: refetchFarms } = useFarms(apiClient);
   const { data: depositsRaw = [], refetch: refetchDeposits } = useDeliveryDestinations(apiClient);
   const deleteParcel = useDeleteParcel(apiClient);
+  const deleteDeposit = useDeleteDeliveryDestination(apiClient);
   const { realtimeStatus } = useRealtimeStatus();
 
   // T8 — log realtime status transitions for live-tracking visibility.
@@ -357,18 +361,26 @@ export default function MapPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [navigateToParcelId, setNavigateToParcelId] = useState<string | null>(null);
   const [navigateToMachineId, setNavigateToMachineId] = useState<string | null>(null);
+  const [navigateToDepositId, setNavigateToDepositId] = useState<string | null>(null);
+
+  // Deposit management state (mirrors the parcel/field flow).
+  const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
+  const [editDeposit, setEditDeposit] = useState<DeliveryDestination | null>(null);
+  const [editingDepositInfo, setEditingDepositInfo] = useState<DeliveryDestination | null>(null);
 
   // Visibility toggles
   const [hiddenFarmIds, setHiddenFarmIds] = useState<Set<string>>(new Set());
   const [hiddenParcelIds, setHiddenParcelIds] = useState<Set<string>>(new Set());
   const [hiddenMachineIds, setHiddenMachineIds] = useState<Set<string>>(new Set());
+  const [hiddenDepositIds, setHiddenDepositIds] = useState<Set<string>>(new Set());
   const [mapSidebarOpen, setMapSidebarOpen] = useState(true);
 
   // T2: per-section collapse state, persisted across reloads.
   const [sectionsOpen, setSectionsOpen] = useLocalStorageState<{
     machines: boolean;
     farms: boolean;
-  }>('strawboss.map.sidebar.sections.v1', { machines: true, farms: true });
+    deposits: boolean;
+  }>('strawboss.map.sidebar.sections.v1', { machines: true, farms: true, deposits: true });
 
   const hiddenFarmIdsRef = useRef(hiddenFarmIds);
   useEffect(() => {
@@ -387,8 +399,8 @@ export default function MapPage() {
   ) as DeliveryDestination[];
 
   useEffect(() => {
-    if (editParcel) setDrawMode(null);
-  }, [editParcel]);
+    if (editParcel || editDeposit) setDrawMode(null);
+  }, [editParcel, editDeposit]);
 
   // Manual map refresh (button on the map): re-fetch all map layers at once.
   const handleRefresh = useCallback(async () => {
@@ -445,11 +457,54 @@ export default function MapPage() {
   const handleNavigationComplete = useCallback(() => {
     setNavigateToParcelId(null);
     setNavigateToMachineId(null);
+    setNavigateToDepositId(null);
   }, []);
 
   const handleParcelEditBoundary = useCallback((parcel: Parcel) => {
     setEditParcel(parcel);
   }, []);
+
+  // ── Deposit (delivery destination) actions — mirror the parcel flow ──────
+  const handleDepositNavigate = useCallback((deposit: DeliveryDestination) => {
+    setSelectedDepositId(deposit.id);
+    setNavigateToDepositId(deposit.id);
+  }, []);
+
+  const handleDepositSelect = useCallback((id: string) => setSelectedDepositId(id), []);
+
+  const handleDepositEdit = useCallback((deposit: DeliveryDestination) => {
+    setEditingDepositInfo(deposit);
+  }, []);
+
+  const handleDepositEditBoundary = useCallback((deposit: DeliveryDestination) => {
+    setEditDeposit(deposit);
+  }, []);
+
+  const handleToggleDeposit = useCallback((depositId: string) => {
+    setHiddenDepositIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(depositId)) next.delete(depositId);
+      else next.add(depositId);
+      return next;
+    });
+  }, []);
+
+  const handleDepositDelete = useCallback(
+    (id: string) => {
+      const deposit = deposits.find((d) => d.id === id);
+      const label = deposit?.name ?? deposit?.code ?? id;
+      if (!confirm(t('map.deleteDepositConfirm', { label }))) return;
+      setDeleteError(null);
+      deleteDeposit.mutate(id, {
+        onError: (err) => {
+          const msg = (err as Error)?.message ?? t('map.deleteFailed');
+          clientLogger.error('Map: delete deposit failed', { depositId: id, message: msg });
+          setDeleteError(t('map.deleteErrorWithMessage', { message: msg }));
+        },
+      });
+    },
+    [deposits, deleteDeposit, t],
+  );
 
   const handleToggleFarm = useCallback(
     (farmId: string) => {
@@ -543,6 +598,19 @@ export default function MapPage() {
             open={sectionsOpen.farms}
             onOpenChange={(next) => setSectionsOpen((prev) => ({ ...prev, farms: next }))}
           />
+          <FilterableDepositList
+            deposits={deposits}
+            hiddenDepositIds={hiddenDepositIds}
+            selectedDepositId={selectedDepositId}
+            onToggleDeposit={handleToggleDeposit}
+            onNavigate={handleDepositNavigate}
+            onEdit={handleDepositEdit}
+            onEditBoundary={handleDepositEditBoundary}
+            onDelete={handleDepositDelete}
+            deleteIsPending={deleteDeposit.isPending}
+            open={sectionsOpen.deposits}
+            onOpenChange={(next) => setSectionsOpen((prev) => ({ ...prev, deposits: next }))}
+          />
         </aside>
 
         <button
@@ -575,7 +643,11 @@ export default function MapPage() {
             onParcelEdit={handleParcelEdit}
             onParcelDelete={handleParcelDelete}
             editParcel={editParcel}
-            onEditDone={() => setEditParcel(null)}
+            editDeposit={editDeposit}
+            onEditDone={() => {
+              setEditParcel(null);
+              setEditDeposit(null);
+            }}
             drawMode={drawMode}
             onDrawModeChange={setDrawMode}
             onNewParcelDrawn={handleNewParcelDrawn}
@@ -583,10 +655,14 @@ export default function MapPage() {
             onDrawCancel={handleDrawCancel}
             navigateToParcelId={navigateToParcelId}
             navigateToMachineId={navigateToMachineId}
+            navigateToDepositId={navigateToDepositId}
             onNavigationComplete={handleNavigationComplete}
             hiddenParcelIds={hiddenParcelIds}
             hiddenMachineIds={hiddenMachineIds}
             deposits={deposits}
+            hiddenDepositIds={hiddenDepositIds}
+            selectedDepositId={selectedDepositId}
+            onDepositSelect={handleDepositSelect}
             iconPrefs={iconPrefs}
             onRefresh={handleRefresh}
           />
@@ -611,6 +687,14 @@ export default function MapPage() {
         <EditParcelInfoModal
           parcel={editingParcelInfo}
           onClose={() => setEditingParcelInfo(null)}
+        />
+      )}
+
+      {/* Edit-deposit-info modal (reuses the Deposits page form) */}
+      {editingDepositInfo && (
+        <DepositFormModal
+          deposit={editingDepositInfo}
+          onClose={() => setEditingDepositInfo(null)}
         />
       )}
     </div>

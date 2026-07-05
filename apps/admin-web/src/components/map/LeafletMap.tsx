@@ -9,7 +9,7 @@ import type {
   DeliveryDestination,
 } from '@strawboss/types';
 import { HarvestStatus } from '@strawboss/types';
-import { useUpdateParcelBoundary } from '@strawboss/api';
+import { useUpdateParcelBoundary, useUpdateDeliveryDestination } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { getMachineVisual } from './machine-icons';
@@ -160,6 +160,8 @@ export interface LeafletMapProps {
   onParcelEdit: (parcel: Parcel) => void;
   onParcelDelete: (id: string) => void;
   editParcel?: Parcel | null;
+  /** When set, enters boundary-edit (or draw, if it has none) for this deposit. */
+  editDeposit?: DeliveryDestination | null;
   onEditDone?: () => void;
   /** When set, enables polygon draw and routes the next shape to parcel or deposit flow. */
   drawMode?: 'parcel' | 'deposit' | null;
@@ -173,6 +175,8 @@ export interface LeafletMapProps {
   navigateToParcelId?: string | null;
   /** Trigger: pan/zoom to this machine, then reset via onNavigationComplete. */
   navigateToMachineId?: string | null;
+  /** Trigger: pan/zoom to this deposit (boundary or point), then reset. */
+  navigateToDepositId?: string | null;
   onNavigationComplete?: () => void;
   /** Parcel IDs to hide on map (farm/parcel toggles from sidebar). */
   hiddenParcelIds?: Set<string>;
@@ -206,6 +210,7 @@ export function LeafletMap({
   onParcelEdit,
   onParcelDelete,
   editParcel,
+  editDeposit,
   onEditDone,
   drawMode = null,
   onDrawModeChange,
@@ -215,6 +220,7 @@ export function LeafletMap({
   routePoints,
   navigateToParcelId,
   navigateToMachineId,
+  navigateToDepositId,
   onNavigationComplete,
   hiddenParcelIds,
   hiddenMachineIds,
@@ -365,7 +371,7 @@ export function LeafletMap({
   // Seconds left in the post-refresh cooldown; counts 5 → 4 → 3 → 2 → 1 → 0.
   const [refreshCooldown, setRefreshCooldown] = useState(0);
 
-  const drawToolsDisabled = !!editParcel || !!editingId;
+  const drawToolsDisabled = !!editParcel || !!editDeposit || !!editingId;
 
   // Ref so the global pm:create handler (registered once in map init) can read current editingId.
   const editingIdRef = useRef(editingId);
@@ -373,7 +379,13 @@ export function LeafletMap({
     editingIdRef.current = editingId;
   }, [editingId]);
 
+  // Which entity the current boundary-edit belongs to — drives which mutation
+  // handleSave() calls and how the save overlay resolves the item's label.
+  const editKindRef = useRef<'parcel' | 'deposit'>('parcel');
+
   const updateBoundary = useUpdateParcelBoundary(apiClient);
+  const updateDeposit = useUpdateDeliveryDestination(apiClient);
+  const boundarySaving = updateBoundary.isPending || updateDeposit.isPending;
 
   // ── 1. Initialize map ────────────────────────────────────────────────────
   useEffect(() => {
@@ -685,26 +697,45 @@ export function LeafletMap({
 
       deposits.forEach((d) => {
         const boundary = d.boundary as unknown as GeoJSON.Geometry | null;
-        if (!boundary) return;
-
         const isSelected = d.id === selectedDepositId;
-        const layer = L.geoJSON(boundary as GeoJSON.GeoJsonObject, {
-          style: () => ({
-            color: isSelected ? '#b91c1c' : '#2563eb',
-            weight: isSelected ? 3 : 2,
-            fillColor: isSelected ? '#fecaca' : '#3b82f6',
-            fillOpacity: isSelected ? 0.35 : 0.2,
-            dashArray: '6 4',
-          }),
-        }).bindPopup(
-          `<div style="min-width:160px;font-family:sans-serif;line-height:1.5;">
+
+        const popupHtml = `<div style="min-width:160px;font-family:sans-serif;line-height:1.5;">
             <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${esc(d.name)}</div>
             <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${esc(d.code)}</div>
             ${d.address ? `<div style="font-size:12px;color:#6b7280;">${esc(d.address)}</div>` : ''}
             ${d.contactName ? `<div style="font-size:12px;color:#6b7280;">${esc(d.contactName)}</div>` : ''}
-          </div>`,
-          { maxWidth: 260 },
-        );
+          </div>`;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let layer: any;
+        if (boundary) {
+          layer = L.geoJSON(boundary as GeoJSON.GeoJsonObject, {
+            style: () => ({
+              color: isSelected ? '#b91c1c' : '#2563eb',
+              weight: isSelected ? 3 : 2,
+              fillColor: isSelected ? '#fecaca' : '#3b82f6',
+              fillOpacity: isSelected ? 0.35 : 0.2,
+              dashArray: '6 4',
+            }),
+          }).bindPopup(popupHtml, { maxWidth: 260 });
+        } else if (d.coords) {
+          // Point-only deposit (no boundary drawn yet): a small blue pin so the
+          // sidebar's target/show-hide actions still have something to act on.
+          const ring = isSelected ? '#b91c1c' : '#1d4ed8';
+          const icon = L.divIcon({
+            html: `<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#2563eb;border:2px solid ${ring};box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>`,
+            className: '',
+            iconSize: [26, 26],
+            iconAnchor: [13, 26],
+            popupAnchor: [0, -24],
+          });
+          layer = L.marker([d.coords.lat, d.coords.lon], { icon }).bindPopup(popupHtml, {
+            maxWidth: 260,
+          });
+        } else {
+          // No boundary and no point — nothing to place on the map.
+          return;
+        }
 
         layer.on('click', () => {
           onDepositSelectRef.current?.(d.id);
@@ -727,9 +758,19 @@ export function LeafletMap({
   useEffect(() => {
     if (selectionOnly) return;
     if (editParcel && mapInstanceRef.current) {
+      editKindRef.current = 'parcel';
       void handleStartEdit(editParcel);
     }
   }, [editParcel, selectionOnly]);
+
+  // ── 4b. Start boundary-edit (or draw) when editDeposit changes ──────────
+  useEffect(() => {
+    if (selectionOnly) return;
+    if (editDeposit && mapInstanceRef.current) {
+      editKindRef.current = 'deposit';
+      void handleStartEdit(editDeposit);
+    }
+  }, [editDeposit, selectionOnly]);
 
   // ── 5. Draw mode (parcel or deposit) ─────────────────────────────────────
   // Auto-enable polygon draw when a mode is selected; Geoman toolbar still works
@@ -841,6 +882,27 @@ export function LeafletMap({
     onNavigationCompleteRef.current?.();
   }, [navigateToMachineId, mapReady]);
 
+  // ── 8b. Navigate to deposit ─────────────────────────────────────────────
+  // The stored layer is a polygon (boundary) or a marker (point-only). Fit to
+  // the polygon's bounds, else pan to the marker's point. Deposits with neither
+  // have no layer and are un-targetable (the sidebar button is disabled).
+  useEffect(() => {
+    if (!navigateToDepositId || !mapInstanceRef.current || !mapReady) return;
+
+    const map = mapInstanceRef.current;
+    const layer = depositLayersRef.current.get(navigateToDepositId);
+    if (layer) {
+      const bounds = layer.getBounds?.();
+      if (bounds?.isValid?.()) {
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+      } else if (layer.getLatLng) {
+        map.setView(layer.getLatLng(), 16, { animate: true });
+      }
+      layer.openPopup?.();
+    }
+    onNavigationCompleteRef.current?.();
+  }, [navigateToDepositId, mapReady]);
+
   // Auto-dismiss the geolocation error banner after a few seconds.
   useEffect(() => {
     if (!locateError) return;
@@ -849,19 +911,21 @@ export function LeafletMap({
   }, [locateError]);
 
   // ── Edit-boundary handlers ───────────────────────────────────────────────
-  const handleStartEdit = async (parcel: Parcel) => {
+  // Works for any entity carrying a stringified-GeoJSON boundary (parcel or
+  // deposit); editKindRef records which so handleSave() picks the right mutation.
+  const handleStartEdit = async (item: { id: string; boundary: string | null }) => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
     const L = (await import('leaflet')).default;
-    const boundary = parcel.boundary as unknown as GeoJSON.Geometry | null;
+    const boundary = item.boundary as unknown as GeoJSON.Geometry | null;
 
     if (editableLayerRef.current) {
       map.removeLayer(editableLayerRef.current);
       editableLayerRef.current = null;
     }
 
-    setEditingId(parcel.id);
+    setEditingId(item.id);
     setSaveError(null);
 
     if (boundary) {
@@ -900,20 +964,26 @@ export function LeafletMap({
       return;
     }
 
-    updateBoundary.mutate(
-      { id: editingId, boundary: geometry },
-      {
-        onSuccess: () => {
-          setEditingId(null);
-          if (editableLayerRef.current) {
-            mapInstanceRef.current?.removeLayer(editableLayerRef.current);
-            editableLayerRef.current = null;
-          }
-          onEditDone?.();
-        },
-        onError: (err) => setSaveError((err as Error)?.message ?? t('leaflet.saveBoundaryFailed')),
-      },
-    );
+    const onSuccess = () => {
+      setEditingId(null);
+      if (editableLayerRef.current) {
+        mapInstanceRef.current?.removeLayer(editableLayerRef.current);
+        editableLayerRef.current = null;
+      }
+      onEditDone?.();
+    };
+    const onError = (err: unknown) =>
+      setSaveError((err as Error)?.message ?? t('leaflet.saveBoundaryFailed'));
+
+    if (editKindRef.current === 'deposit') {
+      // The deposit boundary column stores stringified GeoJSON.
+      updateDeposit.mutate(
+        { id: editingId, data: { boundary: JSON.stringify(geometry) } },
+        { onSuccess, onError },
+      );
+    } else {
+      updateBoundary.mutate({ id: editingId, boundary: geometry }, { onSuccess, onError });
+    }
   };
 
   const handleCancelEdit = () => {
@@ -1191,18 +1261,22 @@ export function LeafletMap({
           <span className="text-sm font-medium text-neutral-700">
             {t('leaflet.editingBoundary')}{' '}
             <span className="text-primary">
-              {parcels.find((p) => p.id === editingId)?.name ??
-                parcels.find((p) => p.id === editingId)?.code ??
-                editingId}
+              {(() => {
+                const p = parcels.find((x) => x.id === editingId);
+                if (p) return p.name ?? p.code;
+                const d = deposits?.find((x) => x.id === editingId);
+                if (d) return d.name ?? d.code;
+                return editingId;
+              })()}
             </span>
           </span>
           {saveError && <span className="text-xs text-red-500">{saveError}</span>}
           <button
             onClick={handleSave}
-            disabled={updateBoundary.isPending}
+            disabled={boundarySaving}
             className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-60"
           >
-            {updateBoundary.isPending ? t('map.savingShort') : t('leaflet.saveBoundary')}
+            {boundarySaving ? t('map.savingShort') : t('leaflet.saveBoundary')}
           </button>
           <button
             onClick={handleCancelEdit}
