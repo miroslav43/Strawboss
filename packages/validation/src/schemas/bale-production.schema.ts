@@ -1,8 +1,8 @@
-import { z } from "zod";
-import { uuidSchema } from "../helpers/uuid.js";
-import { isoDateSchema } from "../helpers/iso-date.js";
-import { timestampsSchema } from "../helpers/common.js";
-import { softDeleteSchema } from "../helpers/common.js";
+import { z } from 'zod';
+import { uuidSchema } from '../helpers/uuid.js';
+import { isoDateSchema } from '../helpers/iso-date.js';
+import { timestampsSchema } from '../helpers/common.js';
+import { softDeleteSchema } from '../helpers/common.js';
 
 export const baleProductionSchema = z
   .object({
@@ -23,7 +23,9 @@ export const baleProductionSchema = z
 export const createBaleProductionSchema = z.object({
   parcelId: uuidSchema,
   balerId: uuidSchema,
-  operatorId: uuidSchema,
+  // Nullable/optional: baler operators send their own id from mobile, but admins
+  // recording production manually from the baler's web page have no operator.
+  operatorId: uuidSchema.nullable().optional(),
   productionDate: z.string().min(1),
   baleCount: z.number().int().positive(),
   avgBaleWeightKg: z.number().positive().nullable().optional(),

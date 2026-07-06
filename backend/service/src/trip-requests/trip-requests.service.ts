@@ -73,10 +73,15 @@ const TR_COLS = sql`
   contact_id                   AS "contactId",
   truck_id                     AS "truckId",
   driver_id                    AS "driverId",
+  notify_recipients            AS "notifyRecipients",
   source_depot_id              AS "sourceDepotId",
   created_at               AS "createdAt",
   updated_at               AS "updatedAt",
-  deleted_at               AS "deletedAt"
+  deleted_at               AS "deletedAt",
+  (SELECT m.make               FROM machines m WHERE m.id = trip_requests.machine_id) AS "machineMake",
+  (SELECT m.model              FROM machines m WHERE m.id = trip_requests.machine_id) AS "machineModel",
+  (SELECT m.registration_plate FROM machines m WHERE m.id = trip_requests.machine_id) AS "machinePlate",
+  (SELECT t.trip_number        FROM trips t    WHERE t.id = trip_requests.trip_id)    AS "tripNumber"
 `;
 
 interface OrgPortalRow {
@@ -390,6 +395,33 @@ export class TripRequestsService {
     // bad id from reaching the FK as an unhandled 23503 → 500.
     await this.assertOwnedRecords(row.org.id, row.beneficiary.id, fields);
 
+    // Resolve the selected contacts (1..10) to their saved name/phone/email and
+    // verify EVERY id belongs to this beneficiary in one round-trip. The
+    // count-match below is a stronger ownership check than a per-id lookup: the
+    // portal only ever sends ids (never raw addresses), so a public submission
+    // can only notify this beneficiary's own saved contacts.
+    const contactRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id, name, phone, email FROM beneficiary_contacts
+          WHERE organization_id = ${row.org.id}::uuid
+            AND beneficiary_id = ${row.beneficiary.id}::uuid
+            AND id IN (${sql.join(
+              fields.contactIds.map((id) => sql`${id}::uuid`),
+              sql`, `,
+            )})`,
+    )) as unknown as { id: string; name: string; phone: string | null; email: string | null }[];
+    if (contactRows.length !== fields.contactIds.length) {
+      throw new BadRequestException('Persoană de contact invalidă.');
+    }
+    // Preserve the client-picked order (Postgres IN does not) — first = primary.
+    const contactById = new Map(contactRows.map((c) => [c.id, c]));
+    const orderedContacts = fields.contactIds.map((id) => contactById.get(id)!);
+    const primaryContact = orderedContacts[0];
+    const notifyRecipients = orderedContacts.map((c) => ({
+      name: c.name,
+      phone: c.phone,
+      email: c.email,
+    }));
+
     const coords = fields.destinationCoords ?? null;
     const inserted = (await this.drizzleProvider.db.execute(
       sql`INSERT INTO trip_requests (
@@ -401,10 +433,10 @@ export class TripRequestsService {
             driver_name, driver_phone, driver_email,
             crop_type, quality, needed_date, tons_requested, destination_address, destination_coords, notes,
             beneficiary_id,
-            contact_id, truck_id, driver_id
+            contact_id, truck_id, driver_id, notify_recipients
           ) VALUES (
             ${row.org.id}::uuid, 'pending',
-            ${fields.requesterName}, ${fields.requesterPhone}, ${fields.requesterEmail ?? null},
+            ${primaryContact.name}, ${primaryContact.phone ?? fields.requesterPhone}, ${primaryContact.email ?? fields.requesterEmail ?? null},
             ${row.beneficiary.companyName}, ${row.beneficiary.companyAddress ?? null}, ${row.beneficiary.companyCui ?? null},
             ${fields.truckRegistrationPlate}, ${fields.truckCapacityTons ?? null},
             ${fields.trailerRegistrationPlate ?? null}, ${fields.transporterName ?? null}, ${fields.transporterCui ?? null}, ${fields.transporterAddress ?? null},
@@ -413,7 +445,8 @@ export class TripRequestsService {
             ${coords ? sql`ST_SetSRID(ST_MakePoint(${coords.lon}, ${coords.lat}), 4326)` : sql`NULL`},
             ${fields.notes ?? null},
             ${row.beneficiary.id}::uuid,
-            ${fields.contactId ?? null}::uuid, ${fields.truckId ?? null}::uuid, ${fields.driverId ?? null}::uuid
+            ${fields.contactIds[0]}::uuid, ${fields.truckId ?? null}::uuid, ${fields.driverId ?? null}::uuid,
+            ${JSON.stringify(notifyRecipients)}::jsonb
           )
           RETURNING id`,
     )) as unknown as { id: string }[];
@@ -495,10 +528,12 @@ export class TripRequestsService {
   private async assertOwnedRecords(
     orgId: string,
     beneficiaryId: string,
-    fields: { contactId?: string | null; truckId?: string | null; driverId?: string | null },
+    fields: { truckId?: string | null; driverId?: string | null },
   ): Promise<void> {
+    // Contacts are verified separately in submitBeneficiaryRequest via a
+    // count-match query over the whole contactIds array (stronger than a per-id
+    // check). Here we only cover the single truck / driver saved records.
     const checks: Array<{ table: string; id: string }> = [];
-    if (fields.contactId) checks.push({ table: 'beneficiary_contacts', id: fields.contactId });
     if (fields.truckId) checks.push({ table: 'beneficiary_trucks', id: fields.truckId });
     if (fields.driverId) checks.push({ table: 'beneficiary_drivers', id: fields.driverId });
     for (const c of checks) {

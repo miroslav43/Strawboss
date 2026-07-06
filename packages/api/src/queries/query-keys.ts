@@ -41,6 +41,7 @@ export const queryKeys = {
     all: ['consumableLogs'] as const,
     byMachine: (machineId: string) => ['consumableLogs', 'machine', machineId] as const,
     adminList: (from: string, to: string) => ['consumableLogs', 'admin-list', from, to] as const,
+    list: (filters?: Record<string, unknown>) => ['consumableLogs', 'list', filters] as const,
   },
   documents: {
     all: ['documents'] as const,

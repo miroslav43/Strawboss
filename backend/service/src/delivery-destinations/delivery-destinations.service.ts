@@ -55,7 +55,17 @@ export class DeliveryDestinationsService {
           SELECT MAX(ta.updated_at)
           FROM task_assignments ta
           WHERE ta.destination_id = d.id AND ta.deleted_at IS NULL
-        ) AS "lastActivityAt"
+        ) AS "lastActivityAt",
+        -- read-only enrichment: current bales in the depot. No outbound in the
+        -- model, so stock = all-time delivered. Same formula as reports.getDepotReports.
+        COALESCE((
+          SELECT SUM(t.bale_count)::int
+          FROM trips t
+          WHERE t.destination_name = d.name
+            AND t.status IN ('delivered', 'completed')
+            AND t.deleted_at IS NULL
+            AND t.organization_id = d.organization_id
+        ), 0) AS "currentBaleStock"
       FROM delivery_destinations d
       WHERE ${where}
       ORDER BY d.name ASC

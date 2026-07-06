@@ -12,17 +12,35 @@ import { buildRoute, staticMapUrl, type LatLon } from './route-map';
 import { MessageKind } from '@strawboss/types';
 import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
 
+interface NotifyRecipientRow {
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
 interface RequestRow {
   requester_name: string;
   requester_email: string | null;
+  requester_phone: string | null;
   driver_name: string;
   driver_email: string | null;
   driver_phone: string;
   crop_type: string | null;
+  quality: string | null;
   tons_requested: number | null;
   needed_date: string | null;
   notes: string | null;
   destination_address: string | null;
+  company_name: string | null;
+  company_address: string | null;
+  company_cui: string | null;
+  truck_registration_plate: string | null;
+  trailer_registration_plate: string | null;
+  truck_capacity_tons: number | null;
+  transporter_name: string | null;
+  transporter_cui: string | null;
+  transporter_address: string | null;
+  notify_recipients: NotifyRecipientRow[];
   organization_id: string;
   dest_lat: number | null;
   dest_lon: number | null;
@@ -54,8 +72,13 @@ export class TransportConfirmationProcessor extends WorkerHost {
     const { requestId, depotId } = job.data;
 
     const reqRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT requester_name, requester_email, driver_name, driver_email, driver_phone,
-                 crop_type, tons_requested, needed_date, notes, destination_address,
+      sql`SELECT requester_name, requester_email, requester_phone,
+                 driver_name, driver_email, driver_phone,
+                 crop_type, quality, tons_requested, needed_date, notes, destination_address,
+                 company_name, company_address, company_cui,
+                 truck_registration_plate, trailer_registration_plate, truck_capacity_tons,
+                 transporter_name, transporter_cui, transporter_address,
+                 notify_recipients,
                  organization_id,
                  ST_Y(destination_coords) AS dest_lat, ST_X(destination_coords) AS dest_lon
           FROM trip_requests WHERE id = ${requestId}::uuid LIMIT 1`,
@@ -117,27 +140,77 @@ export class TransportConfirmationProcessor extends WorkerHost {
       mapsUrl: deliveryCoords ? fmtCoordsUrl(deliveryCoords.lat, deliveryCoords.lon) : null,
     };
 
+    // Optional raster brand logo for the email header (unset → text-only header).
+    const logoUrl = this.config.get<string>('EMAIL_LOGO_URL') ?? null;
+
     const renderEmail = (recipientName: string | null) =>
       messageTemplates[MessageKind.transport_confirmed]({
         organizationName: orgName,
         recipientName,
         driverName: req.driver_name,
         cropType: req.crop_type,
+        quality: req.quality,
         tonsRequested: req.tons_requested,
         neededDate: req.needed_date,
         notes: req.notes,
+        requesterPhone: req.requester_phone,
+        companyName: req.company_name,
+        companyCui: req.company_cui,
+        companyAddress: req.company_address,
+        truckRegistrationPlate: req.truck_registration_plate,
+        trailerRegistrationPlate: req.trailer_registration_plate,
+        truckCapacityTons: req.truck_capacity_tons,
+        transporterName: req.transporter_name,
+        transporterCui: req.transporter_cui,
+        transporterAddress: req.transporter_address,
         pickup,
         delivery,
         routeUrl,
         distanceKm,
         staticMapUrl: mapImg,
+        logoUrl,
       });
 
-    // Driver email + requester email (both detailed).
-    const recipients: Array<{ to: string; name: string }> = [];
-    if (req.driver_email) recipients.push({ to: req.driver_email, name: req.driver_name });
-    if (req.requester_email) recipients.push({ to: req.requester_email, name: req.requester_name });
-    for (const r of recipients) {
+    // Build the deduped recipient sets. Driver first (primary operational
+    // contact), then every selected contact (beneficiary portal). Falls back to
+    // the legacy single requester when notify_recipients is empty — covers
+    // pre-migration rows AND the non-beneficiary public portal.
+    const seenEmails = new Set<string>();
+    const seenPhones = new Set<string>();
+    const emailRecipients: Array<{ to: string; name: string | null }> = [];
+    const smsRecipients: string[] = [];
+
+    const addEmail = (raw: string | null, name: string | null) => {
+      if (!raw) return;
+      const key = raw.trim().toLowerCase();
+      if (!key || seenEmails.has(key)) return;
+      seenEmails.add(key);
+      emailRecipients.push({ to: raw, name });
+    };
+    const addSms = (raw: string | null) => {
+      if (!raw) return;
+      const key = raw.replace(/[\s\-()]/g, '');
+      if (!key || seenPhones.has(key)) return;
+      seenPhones.add(key);
+      smsRecipients.push(raw);
+    };
+
+    addEmail(req.driver_email, req.driver_name);
+    addSms(req.driver_phone);
+
+    const notifyRecipients = Array.isArray(req.notify_recipients) ? req.notify_recipients : [];
+    for (const r of notifyRecipients) {
+      addEmail(r.email, r.name);
+      addSms(r.phone);
+    }
+    if (notifyRecipients.length === 0) {
+      addEmail(req.requester_email, req.requester_name);
+      addSms(req.requester_phone);
+    }
+
+    // One detailed email per distinct recipient (personalized greeting) — each is
+    // its own outbox row, individually retryable from /messages.
+    for (const r of emailRecipients) {
       const tpl = renderEmail(r.name);
       await this.messaging.sendEmail({
         to: r.to,
@@ -149,8 +222,9 @@ export class TransportConfirmationProcessor extends WorkerHost {
       });
     }
 
-    // Driver SMS.
-    if (req.driver_phone) {
+    // SMS to every distinct phone (driver + contacts). Body is recipient-agnostic,
+    // rendered once; the SIM-gateway phone claims each pending row on /fleet/checkin.
+    if (smsRecipients.length) {
       const sms = messageTemplates[MessageKind.transport_confirmed_driver_sms]({
         pickupName: pickup.label,
         pickupMapsUrl: pickup.mapsUrl,
@@ -159,18 +233,21 @@ export class TransportConfirmationProcessor extends WorkerHost {
         distanceKm,
         neededDate: req.needed_date,
       });
-      await this.messaging.sendSms({
-        to: req.driver_phone,
-        body: sms.body,
-        kind: MessageKind.transport_confirmed_driver_sms,
-        metadata: meta,
-      });
+      for (const to of smsRecipients) {
+        await this.messaging.sendSms({
+          to,
+          body: sms.body,
+          kind: MessageKind.transport_confirmed_driver_sms,
+          metadata: meta,
+        });
+      }
     }
 
     this.winston.log('flow', `Transport confirmation dispatched for request ${requestId}`, {
       context: 'TransportConfirmationProcessor',
       requestId,
-      emails: recipients.length,
+      emails: emailRecipients.length,
+      smsCount: smsRecipients.length,
       routed: distanceKm != null,
     });
   }

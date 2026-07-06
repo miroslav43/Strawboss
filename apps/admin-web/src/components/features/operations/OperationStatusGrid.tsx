@@ -51,7 +51,7 @@ export function OperationStatusGrid({ trips, className }: OperationStatusGridPro
           {/* Route */}
           <div className="flex items-center gap-2 text-xs text-neutral-600">
             <span className="truncate">
-              {t('operations.statusGrid.parcel')} {trip.sourceParcelId.slice(0, 8)}
+              {t('operations.statusGrid.parcel')} {trip.sourceParcelId?.slice(0, 8) ?? '—'}
             </span>
             <ArrowRight className="h-3 w-3 flex-shrink-0 text-neutral-400" />
             <span className="truncate">

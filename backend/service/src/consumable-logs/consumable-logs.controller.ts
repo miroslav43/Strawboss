@@ -1,9 +1,9 @@
-import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query } from '@nestjs/common';
 import { ConsumableLogsService } from './consumable-logs.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { createConsumableLogSchema } from '@strawboss/validation';
+import { createConsumableLogSchema, updateConsumableLogSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
 
@@ -37,12 +37,35 @@ export class ConsumableLogsController {
   }
 
   @Post()
-  @Roles('admin' as UserRole, 'baler_operator' as UserRole, 'loader_operator' as UserRole, 'driver' as UserRole)
+  @Roles(
+    'admin' as UserRole,
+    'baler_operator' as UserRole,
+    'loader_operator' as UserRole,
+    'driver' as UserRole,
+  )
   create(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createConsumableLogSchema))
     dto: Record<string, unknown>,
   ) {
     return this.consumableLogsService.create(user.organizationId!, dto);
+  }
+
+  // Edit/delete are admin-only web actions (operators still create via mobile POST).
+  @Patch(':id')
+  @Roles('admin' as UserRole)
+  update(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(updateConsumableLogSchema))
+    dto: Record<string, unknown>,
+  ) {
+    return this.consumableLogsService.update(id, user.organizationId, dto);
+  }
+
+  @Delete(':id')
+  @Roles('admin' as UserRole)
+  softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.consumableLogsService.softDelete(id, user.organizationId);
   }
 }

@@ -170,7 +170,9 @@ export function TripDetail({ trip, className }: TripDetailProps) {
               value={
                 <div className="flex flex-col">
                   <span>
-                    {trip.sourceParcelName ?? trip.sourceParcelCode ?? shortId(trip.sourceParcelId)}
+                    {trip.sourceParcelName ??
+                      trip.sourceParcelCode ??
+                      (trip.sourceParcelId ? shortId(trip.sourceParcelId) : '—')}
                   </span>
                   {(trip.sourceFarmName || trip.sourceParcelMunicipality) && (
                     <span className="text-xs text-neutral-500">

@@ -26,6 +26,7 @@ import { apiV1Url } from '@/lib/api';
 import { BeneficiarySavedSelect } from './BeneficiarySavedSelect';
 import { BeneficiaryRecordModal, type RecordKind } from './BeneficiaryRecordModal';
 import { BeneficiaryRecordDeleteDialog } from './BeneficiaryRecordDeleteDialog';
+import { SelectedContactsChips } from './SelectedContactsChips';
 
 const TRACTOR = '/brand/strawboss-tractor.svg';
 
@@ -268,7 +269,7 @@ export default function BeneficiaryPortalPage() {
   const [contactsError, setContactsError] = useState(false);
   const [trucksError, setTrucksError] = useState(false);
   const [driversError, setDriversError] = useState(false);
-  const [selContactId, setSelContactId] = useState<string | null>(null);
+  const [selContactIds, setSelContactIds] = useState<string[]>([]);
   const [selTruckId, setSelTruckId] = useState<string | null>(null);
   const [selDriverId, setSelDriverId] = useState<string | null>(null);
   const [recordModal, setRecordModal] = useState<{
@@ -280,6 +281,16 @@ export default function BeneficiaryPortalPage() {
     id: string;
     label: string;
   } | null>(null);
+
+  const MAX_CONTACTS = 10;
+  function addContact(id: string) {
+    setSelContactIds((prev) =>
+      prev.includes(id) || prev.length >= MAX_CONTACTS ? prev : [...prev, id],
+    );
+  }
+  function removeContact(id: string) {
+    setSelContactIds((prev) => prev.filter((x) => x !== id));
+  }
 
   // Current step
   const [step, setStep] = useState<Step>('pin');
@@ -451,7 +462,7 @@ export default function BeneficiaryPortalPage() {
     if (recordModal.kind === 'contact') {
       const r = rec as BeneficiaryContact;
       setContacts((prev) => upsertById(prev, r));
-      if (isNew) setSelContactId(r.id);
+      if (isNew) addContact(r.id);
     } else if (recordModal.kind === 'truck') {
       const r = rec as BeneficiaryTruck;
       setTrucks((prev) => upsertById(prev, r));
@@ -469,7 +480,7 @@ export default function BeneficiaryPortalPage() {
     if (!deleteTarget) return;
     if (deleteTarget.kind === 'contact') {
       setContacts((prev) => prev.filter((x) => x.id !== id));
-      setSelContactId((cur) => (cur === id ? null : cur));
+      setSelContactIds((prev) => prev.filter((x) => x !== id));
     } else if (deleteTarget.kind === 'truck') {
       setTrucks((prev) => prev.filter((x) => x.id !== id));
       setSelTruckId((cur) => (cur === id ? null : cur));
@@ -487,26 +498,34 @@ export default function BeneficiaryPortalPage() {
 
     const trim = (s: string) => (s.trim() === '' ? null : s.trim());
 
-    const contact = contacts.find((c) => c.id === selContactId);
+    const selectedContacts = selContactIds
+      .map((id) => contacts.find((c) => c.id === id))
+      .filter((c): c is BeneficiaryContact => !!c);
     const truck = trucks.find((tk) => tk.id === selTruckId);
     const driver = drivers.find((d) => d.id === selDriverId);
-    if (!contact || !truck || !driver) {
+    if (selectedContacts.length === 0) {
+      setSubmitError(t('beneficiaryPortal.saved.contactsRequired'));
+      setSubmitting(false);
+      return;
+    }
+    if (!truck || !driver) {
       setSubmitError(t('beneficiaryPortal.saved.selectAllError'));
       setSubmitting(false);
       return;
     }
-    // requesterPhone / driverPhone are required (min 4) by the submit schema; the
-    // save modal enforces this, but guard against a record with a missing phone.
-    if (!contact.phone?.trim() || !driver.phone?.trim()) {
+    // driverPhone is required (min 4) by the submit schema; the save modal
+    // enforces this, but guard against a record with a missing phone.
+    if (!driver.phone?.trim()) {
       setSubmitError(t('beneficiaryPortal.saved.phoneRequired'));
       setSubmitting(false);
       return;
     }
+    const primary = selectedContacts[0];
 
     const payload = {
-      requesterName: contact.name,
-      requesterPhone: contact.phone ?? '',
-      requesterEmail: contact.email,
+      requesterName: primary.name,
+      requesterPhone: primary.phone ?? '',
+      requesterEmail: primary.email,
       truckRegistrationPlate: truck.truckRegistrationPlate,
       trailerRegistrationPlate: truck.trailerRegistrationPlate,
       truckCapacityTons: truck.capacityTons,
@@ -519,7 +538,8 @@ export default function BeneficiaryPortalPage() {
       quality: form.quality,
       neededDate: trim(form.neededDate),
       notes: trim(form.notes),
-      contactId: contact.id,
+      contactIds: selContactIds,
+      contactId: primary.id,
       truckId: truck.id,
       driverId: driver.id,
       pin,
@@ -554,7 +574,6 @@ export default function BeneficiaryPortalPage() {
     }
   }
 
-  const selectedContact = contacts.find((c) => c.id === selContactId) ?? null;
   const selectedTruck = trucks.find((tk) => tk.id === selTruckId) ?? null;
   const selectedDriver = drivers.find((d) => d.id === selDriverId) ?? null;
 
@@ -699,43 +718,33 @@ export default function BeneficiaryPortalPage() {
                   icon={<UserRound className="h-4 w-4" />}
                   label={t('beneficiaryPortal.sectionRequester')}
                 />
-                <BeneficiarySavedSelect
-                  placeholder={t('beneficiaryPortal.saved.selectContact')}
-                  items={contacts}
-                  selectedId={selContactId}
-                  loading={savedLoading}
-                  error={contactsError}
-                  getPrimary={(c) => c.name}
-                  getSecondary={(c) => c.phone ?? c.email}
-                  getSearchText={(c) => `${c.name} ${c.phone ?? ''} ${c.email ?? ''}`}
-                  onSelect={setSelContactId}
-                  onAdd={() => setRecordModal({ kind: 'contact' })}
+                <SelectedContactsChips
+                  contacts={selContactIds
+                    .map((id) => contacts.find((c) => c.id === id))
+                    .filter((c): c is BeneficiaryContact => !!c)}
+                  onRemove={removeContact}
                   onEdit={(c) => setRecordModal({ kind: 'contact', record: c })}
-                  onDelete={(c) => setDeleteTarget({ kind: 'contact', id: c.id, label: c.name })}
-                  onRetry={() => void reloadContacts()}
                 />
-                {selectedContact && (
-                  <div className="mt-4">
-                    <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
-                      <LockedField
-                        label={t('beneficiaryPortal.requesterName')}
-                        value={selectedContact.name}
-                      />
-                      <LockedField
-                        label={t('beneficiaryPortal.requesterPhone')}
-                        value={selectedContact.phone}
-                      />
-                      <div className="sm:col-span-2">
-                        <LockedField
-                          label={t('beneficiaryPortal.requesterEmail')}
-                          value={selectedContact.email}
-                        />
-                      </div>
-                    </div>
-                    <EditSelectedButton
-                      onClick={() => setRecordModal({ kind: 'contact', record: selectedContact })}
-                    />
-                  </div>
+                {selContactIds.length < MAX_CONTACTS ? (
+                  <BeneficiarySavedSelect
+                    placeholder={t('beneficiaryPortal.saved.addContactPlaceholder')}
+                    items={contacts.filter((c) => !selContactIds.includes(c.id))}
+                    selectedId={null}
+                    loading={savedLoading}
+                    error={contactsError}
+                    getPrimary={(c) => c.name}
+                    getSecondary={(c) => c.phone ?? c.email}
+                    getSearchText={(c) => `${c.name} ${c.phone ?? ''} ${c.email ?? ''}`}
+                    onSelect={addContact}
+                    onAdd={() => setRecordModal({ kind: 'contact' })}
+                    onEdit={(c) => setRecordModal({ kind: 'contact', record: c })}
+                    onDelete={(c) => setDeleteTarget({ kind: 'contact', id: c.id, label: c.name })}
+                    onRetry={() => void reloadContacts()}
+                  />
+                ) : (
+                  <p className="mt-2 text-xs font-medium text-amber-600">
+                    {t('beneficiaryPortal.saved.maxContactsReached')}
+                  </p>
                 )}
               </section>
 

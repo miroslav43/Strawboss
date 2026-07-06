@@ -67,6 +67,7 @@ export {
   consumableTypeSchema,
   consumableLogSchema,
   createConsumableLogSchema,
+  updateConsumableLogSchema,
 } from './schemas/consumable-log.schema.js';
 
 export {

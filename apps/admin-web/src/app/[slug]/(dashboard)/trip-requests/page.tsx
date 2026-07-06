@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import { CheckCircle2, XCircle, Loader2, ClipboardList, MapPin, Warehouse } from 'lucide-react';
 import {
   useTripRequests,
@@ -14,6 +15,7 @@ import { RequestStatus } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { cn } from '@/lib/utils';
 
@@ -49,6 +51,14 @@ function StatusBadge({ status }: { status: RequestStatus }) {
 /** i18n key for a beneficiary quality grade ('quality_1' | 'quality_2'). */
 function qualityLabelKey(quality: string): string {
   return quality === 'quality_1' ? 'tripRequests.quality1' : 'tripRequests.quality2';
+}
+
+/** "Make Model · PLATE" for the aux fleet machine, falling back to the id prefix. */
+function machineLabel(r: TripRequest): string {
+  const name = [r.machineMake, r.machineModel].filter(Boolean).join(' ').trim();
+  const plate = r.machinePlate?.trim();
+  if (name && plate) return `${name} · ${plate}`;
+  return name || plate || (r.machineId ? r.machineId.slice(0, 8) : '');
 }
 
 function ConfirmModal({ request, onClose }: { request: TripRequest; onClose: () => void }) {
@@ -357,6 +367,7 @@ function Detail({ label, value }: { label: string; value: string | null | undefi
 
 function ClosedRequestRow({ request }: { request: TripRequest }) {
   const { t } = useI18n();
+  const slug = useOrgSlug();
   return (
     <tr className="border-b border-neutral-100 hover:bg-neutral-50">
       <td className="px-4 py-3">
@@ -376,19 +387,30 @@ function ClosedRequestRow({ request }: { request: TripRequest }) {
       </td>
       <td className="px-4 py-3 text-sm text-neutral-600">
         {request.machineId ? (
-          <span className="font-mono text-xs text-neutral-700">
-            {request.machineId.slice(0, 8)}
-          </span>
+          <Link
+            href={`/${slug}/machines/${request.machineId}`}
+            className="font-medium text-primary hover:underline"
+          >
+            {machineLabel(request)}
+          </Link>
         ) : (
           <span className="text-neutral-300">{t('tripRequests.none')}</span>
         )}
       </td>
       <td className="px-4 py-3 text-sm text-neutral-600">
         {request.tripId ? (
-          <span className="font-mono text-xs text-neutral-700">{request.tripId.slice(0, 8)}</span>
+          <Link
+            href={`/${slug}/trips/${request.tripId}`}
+            className="font-medium text-primary hover:underline"
+          >
+            {request.tripNumber ?? request.tripId.slice(0, 8)}
+          </Link>
         ) : (
           <span className="text-neutral-300">{t('tripRequests.none')}</span>
         )}
+      </td>
+      <td className="px-4 py-3 text-sm text-neutral-600">
+        {request.neededDate ?? <span className="text-neutral-300">{t('tripRequests.none')}</span>}
       </td>
     </tr>
   );
@@ -495,6 +517,7 @@ export default function TripRequestsPage() {
                 <th className="px-4 py-3">{t('tripRequests.colCrop')}</th>
                 <th className="px-4 py-3">{t('tripRequests.colMachine')}</th>
                 <th className="px-4 py-3">{t('tripRequests.colTrip')}</th>
+                <th className="px-4 py-3">{t('tripRequests.colNeededDate')}</th>
               </tr>
             </thead>
             <tbody>

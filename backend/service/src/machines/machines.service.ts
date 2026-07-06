@@ -47,7 +47,14 @@ export class MachinesService {
 
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
-      sql`SELECT ${MACHINE_COLS} FROM machines WHERE ${where} ORDER BY created_at DESC`,
+      sql`SELECT ${MACHINE_COLS},
+            (SELECT tr.requester_name
+               FROM trip_requests tr
+              WHERE tr.machine_id = machines.id
+                AND tr.deleted_at IS NULL
+              ORDER BY tr.confirmed_at DESC NULLS LAST
+              LIMIT 1) AS "primaryContactName"
+          FROM machines WHERE ${where} ORDER BY created_at DESC`,
     );
     return result;
   }

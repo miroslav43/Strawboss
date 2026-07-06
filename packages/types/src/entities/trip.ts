@@ -17,7 +17,9 @@ export interface Trip extends Timestamps, SoftDelete {
   id: string;
   tripNumber: string;
   status: TripStatus;
-  sourceParcelId: string;
+  sourceParcelId: string | null;
+  /** Depot source — set when the load is sourced from a depot instead of a parcel. Exactly one of sourceParcelId / sourceDepotId is set. */
+  sourceDepotId: string | null;
   sourceParcelAuto: boolean;
   loaderId: string | null;
   truckId: string;

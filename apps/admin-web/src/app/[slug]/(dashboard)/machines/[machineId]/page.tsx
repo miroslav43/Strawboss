@@ -25,6 +25,8 @@ import { todayInRomania, addDays } from '@/lib/date';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { LoggingErrorBoundary } from '@/components/shared/LoggingErrorBoundary';
 import { FuelConsumptionCard } from './FuelConsumptionCard';
+import { BaleProductionCard } from './BaleProductionCard';
+import { ConsumableCard } from './ConsumableCard';
 
 // ── Dynamic Leaflet mini-map (no SSR) ─────────────────────────────────────
 
@@ -288,63 +290,77 @@ export default function MachineDetailPage() {
           </div>
         </div>
 
-        {/* Row 2: activity chart + fuel stats */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          {tripsQuery.isLoading ? (
-            <div className="h-40 animate-pulse rounded-xl bg-neutral-100" />
-          ) : (
-            <ActivityChart trips={trips} />
-          )}
+        {/* Baler-only: record & review bale production per field */}
+        {machine.machineType === MachineType.baler && <BaleProductionCard machineId={machineId} />}
 
-          <FuelConsumptionCard machineId={machineId} machine={machine} />
-        </div>
+        {/* Row 2: half/half period cards, directly under the bale history */}
+        {machine.machineType === MachineType.baler ? (
+          /* Baler: consumables (twine / net wrap) + fuel, side by side */
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ConsumableCard machineId={machineId} />
+            <FuelConsumptionCard machineId={machineId} machine={machine} />
+          </div>
+        ) : (
+          /* Truck / loader: trips activity + fuel */
+          <div className="grid gap-4 lg:grid-cols-2">
+            {tripsQuery.isLoading ? (
+              <div className="h-40 animate-pulse rounded-xl bg-neutral-100" />
+            ) : (
+              <ActivityChart trips={trips} />
+            )}
 
-        {/* Row 3: recent trips */}
-        <div className="rounded-xl bg-white p-6 shadow-sm">
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-neutral-700">
-            <Activity className="h-4 w-4" />
-            {t('machineDetail.recentTrips')}
-          </h3>
-          {tripsQuery.isLoading ? (
-            <div className="h-24 animate-pulse rounded-lg bg-neutral-100" />
-          ) : trips.length === 0 ? (
-            <p className="text-sm text-neutral-400">{t('machineDetail.noTrips')}</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-100 text-left text-xs font-medium uppercase tracking-wider text-neutral-400">
-                  <th className="pb-2 pr-4">{t('trips_list.colTripNumber')}</th>
-                  <th className="pb-2 pr-4">{t('trips_list.colStatus')}</th>
-                  <th className="pb-2 pr-4">{t('trips_list.colSource')}</th>
-                  <th className="pb-2 pr-4">{t('trips_list.colDestination')}</th>
-                  <th className="pb-2">{t('trips_list.colBales')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-50">
-                {trips.slice(0, 10).map((trip) => (
-                  <tr
-                    key={trip.id}
-                    className="cursor-pointer hover:bg-neutral-50"
-                    onClick={() => router.push(`/${slug}/trips/${trip.id}`)}
-                  >
-                    <td className="py-2 pr-4 font-mono text-xs text-neutral-600">
-                      {trip.tripNumber ?? trip.id.slice(0, 8)}
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
-                        {t(`trips_status.${trip.status as string}` as Parameters<typeof t>[0]) ??
-                          trip.status}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4 text-neutral-600">{trip.sourceParcelCode ?? '—'}</td>
-                    <td className="py-2 pr-4 text-neutral-600">{trip.destinationName ?? '—'}</td>
-                    <td className="py-2 text-neutral-600">{trip.baleCount ?? '—'}</td>
+            <FuelConsumptionCard machineId={machineId} machine={machine} />
+          </div>
+        )}
+
+        {/* Row 3: recent trips — trucks/loaders only (a baler runs no trips) */}
+        {machine.machineType !== MachineType.baler && (
+          <div className="rounded-xl bg-white p-6 shadow-sm">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-neutral-700">
+              <Activity className="h-4 w-4" />
+              {t('machineDetail.recentTrips')}
+            </h3>
+            {tripsQuery.isLoading ? (
+              <div className="h-24 animate-pulse rounded-lg bg-neutral-100" />
+            ) : trips.length === 0 ? (
+              <p className="text-sm text-neutral-400">{t('machineDetail.noTrips')}</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-100 text-left text-xs font-medium uppercase tracking-wider text-neutral-400">
+                    <th className="pb-2 pr-4">{t('trips_list.colTripNumber')}</th>
+                    <th className="pb-2 pr-4">{t('trips_list.colStatus')}</th>
+                    <th className="pb-2 pr-4">{t('trips_list.colSource')}</th>
+                    <th className="pb-2 pr-4">{t('trips_list.colDestination')}</th>
+                    <th className="pb-2">{t('trips_list.colBales')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody className="divide-y divide-neutral-50">
+                  {trips.slice(0, 10).map((trip) => (
+                    <tr
+                      key={trip.id}
+                      className="cursor-pointer hover:bg-neutral-50"
+                      onClick={() => router.push(`/${slug}/trips/${trip.id}`)}
+                    >
+                      <td className="py-2 pr-4 font-mono text-xs text-neutral-600">
+                        {trip.tripNumber ?? trip.id.slice(0, 8)}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+                          {t(`trips_status.${trip.status as string}` as Parameters<typeof t>[0]) ??
+                            trip.status}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4 text-neutral-600">{trip.sourceParcelCode ?? '—'}</td>
+                      <td className="py-2 pr-4 text-neutral-600">{trip.destinationName ?? '—'}</td>
+                      <td className="py-2 text-neutral-600">{trip.baleCount ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
 
         {/* Row 4: alerts */}
         <div className="rounded-xl bg-white p-6 shadow-sm">

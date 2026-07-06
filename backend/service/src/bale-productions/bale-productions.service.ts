@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import type { MachineProductionReport } from '@strawboss/types';
@@ -12,6 +12,7 @@ export class BaleProductionsService {
     filters?: {
       operatorId?: string;
       parcelId?: string;
+      balerId?: string;
       dateFrom?: string;
       dateTo?: string;
     },
@@ -26,6 +27,9 @@ export class BaleProductionsService {
     }
     if (filters?.parcelId) {
       conditions.push(sql`parcel_id = ${filters.parcelId}`);
+    }
+    if (filters?.balerId) {
+      conditions.push(sql`baler_id = ${filters.balerId}`);
     }
     if (filters?.dateFrom) {
       conditions.push(sql`production_date >= ${filters.dateFrom}`);
@@ -62,6 +66,7 @@ export class BaleProductionsService {
     filters?: {
       operatorId?: string;
       parcelId?: string;
+      balerId?: string;
       dateFrom?: string;
       dateTo?: string;
       groupBy?: 'operator' | 'parcel' | 'date';
@@ -77,6 +82,9 @@ export class BaleProductionsService {
     }
     if (filters?.parcelId) {
       conditions.push(sql`bp.parcel_id = ${filters.parcelId}::uuid`);
+    }
+    if (filters?.balerId) {
+      conditions.push(sql`bp.baler_id = ${filters.balerId}::uuid`);
     }
     if (filters?.dateFrom) {
       conditions.push(sql`bp.production_date >= ${filters.dateFrom}`);
@@ -245,7 +253,7 @@ export class BaleProductionsService {
         organization_id
       ) VALUES (
         gen_random_uuid(),
-        ${dto.parcelId}, ${dto.balerId}, ${dto.operatorId},
+        ${dto.parcelId}, ${dto.balerId}, ${dto.operatorId ?? null},
         ${dto.productionDate}, ${dto.baleCount},
         ${dto.avgBaleWeightKg ?? null},
         ${dto.startTime ?? null}, ${dto.endTime ?? null},
@@ -254,5 +262,28 @@ export class BaleProductionsService {
       ) RETURNING *`,
     );
     return result;
+  }
+
+  /**
+   * Soft-delete one production entry (admin correcting a mistaken row from the
+   * baler's web page). Scoped to the caller's org so a foreign-org id resolves
+   * to nothing. The BEFORE UPDATE sync_version trigger bumps the version, so the
+   * tombstone propagates to mobile on the next delta pull.
+   */
+  async softDelete(id: string, orgId: string | null) {
+    const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}::uuid`, sql`deleted_at IS NULL`];
+    if (orgId !== null) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const result = (await this.drizzleProvider.db.execute(
+      sql`UPDATE bale_productions
+          SET deleted_at = NOW()
+          WHERE ${sql.join(conditions, sql` AND `)}
+          RETURNING id`,
+    )) as unknown as { id: string }[];
+    if (!result.length) {
+      throw new NotFoundException('Bale production not found in your organization');
+    }
+    return result[0];
   }
 }

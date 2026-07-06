@@ -428,7 +428,10 @@ type ParcelSortKey =
   | 'municipality'
   | 'areaHectares'
   | 'harvestStatus'
-  | 'cropType';
+  | 'cropType'
+  | 'balesProduced'
+  | 'balesLoaded'
+  | 'balesRemaining';
 
 /** Două săgeți: direcția activă e evidențiată; coloana sortată folosește culoarea primary. */
 function ThSortIndicator({
@@ -534,6 +537,14 @@ export default function ParcelsPage() {
         const sa = a.farmId ? (farmMap.get(a.farmId) ?? '') : '';
         const sb = b.farmId ? (farmMap.get(b.farmId) ?? '') : '';
         cmp = sa.localeCompare(sb, 'ro', { sensitivity: 'base' });
+      } else if (sortKey === 'balesProduced' || sortKey === 'balesLoaded') {
+        const na = Number(a[sortKey] ?? 0);
+        const nb = Number(b[sortKey] ?? 0);
+        cmp = na < nb ? -1 : na > nb ? 1 : 0;
+      } else if (sortKey === 'balesRemaining') {
+        const na = Number(a.balesProduced ?? 0) - Number(a.balesLoaded ?? 0);
+        const nb = Number(b.balesProduced ?? 0) - Number(b.balesLoaded ?? 0);
+        cmp = na < nb ? -1 : na > nb ? 1 : 0;
       } else {
         const aVal = a[sortKey];
         const bVal = b[sortKey];
@@ -725,6 +736,9 @@ export default function ParcelsPage() {
                   { key: 'areaHectares' as const, label: t('parcels.colArea') },
                   { key: 'cropType' as const, label: t('parcels.crop.label') },
                   { key: 'harvestStatus' as const, label: t('parcels.colHarvestStatus') },
+                  { key: 'balesProduced' as const, label: t('parcels.colProduced') },
+                  { key: 'balesLoaded' as const, label: t('parcels.colDelivered') },
+                  { key: 'balesRemaining' as const, label: t('parcels.colRemaining') },
                 ].map(({ key, label }) => (
                   <th
                     key={key}
@@ -803,6 +817,32 @@ export default function ParcelsPage() {
                     {/* Recoltă / harvest */}
                     <td className="px-4 py-3">
                       <HarvestStatusBadge status={p.harvestStatus ?? HarvestStatus.planned} />
+                    </td>
+
+                    {/* Baloți produși */}
+                    <td className="px-4 py-3 text-sm tabular-nums text-neutral-700">
+                      {Number(p.balesProduced ?? 0)}
+                    </td>
+
+                    {/* Baloți livrați (plecați de pe câmp) */}
+                    <td className="px-4 py-3 text-sm tabular-nums text-neutral-700">
+                      {Number(p.balesLoaded ?? 0)}
+                    </td>
+
+                    {/* Rămași pe câmp = produși − livrați */}
+                    <td className="px-4 py-3 text-sm tabular-nums">
+                      {(() => {
+                        const remaining = Number(p.balesProduced ?? 0) - Number(p.balesLoaded ?? 0);
+                        return (
+                          <span
+                            className={
+                              remaining > 0 ? 'font-semibold text-amber-600' : 'text-neutral-400'
+                            }
+                          >
+                            {remaining}
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Actions */}

@@ -1,14 +1,15 @@
-import { z } from "zod";
-import { uuidSchema } from "../helpers/uuid.js";
-import { isoDateSchema } from "../helpers/iso-date.js";
-import { timestampsSchema } from "../helpers/common.js";
-import { softDeleteSchema } from "../helpers/common.js";
+import { z } from 'zod';
+import { uuidSchema } from '../helpers/uuid.js';
+import { isoDateSchema } from '../helpers/iso-date.js';
+import { timestampsSchema } from '../helpers/common.js';
+import { softDeleteSchema } from '../helpers/common.js';
 
 export const baleLoadSchema = z
   .object({
     id: uuidSchema,
     tripId: uuidSchema,
-    parcelId: uuidSchema,
+    parcelId: uuidSchema.nullable(),
+    sourceDepotId: uuidSchema.nullable().optional(),
     loaderId: uuidSchema,
     operatorId: uuidSchema,
     baleCount: z.number().int().positive(),

@@ -66,6 +66,11 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   // Computed read-model flag from the pull (not a server-stored column).
   await addColumnIfMissing(db, 'trips', 'destination_has_operator', 'INTEGER DEFAULT 0');
 
+  // Depot confirmation radius (matches server `delivery_destinations.confirm_radius_m`)
+  // so the loader depot-load flow can gate on proximity to the depot's confirm ring
+  // when the depot has no drawn boundary. Additive; NULL means "no radius configured".
+  await addColumnIfMissing(db, 'delivery_destinations', 'confirm_radius_m', 'INTEGER');
+
   // Plan B T9.1 — local parcel cache mirrors crop_type for offline map labels
   // and the baler parcel detail screen.
   await addColumnIfMissing(db, 'parcels', 'crop_type', 'TEXT');

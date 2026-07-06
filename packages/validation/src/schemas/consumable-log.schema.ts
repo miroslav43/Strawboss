@@ -1,9 +1,9 @@
-import { z } from "zod";
-import { ConsumableType } from "@strawboss/types";
-import { uuidSchema } from "../helpers/uuid.js";
-import { isoDateSchema } from "../helpers/iso-date.js";
-import { timestampsSchema } from "../helpers/common.js";
-import { softDeleteSchema } from "../helpers/common.js";
+import { z } from 'zod';
+import { ConsumableType } from '@strawboss/types';
+import { uuidSchema } from '../helpers/uuid.js';
+import { isoDateSchema } from '../helpers/iso-date.js';
+import { timestampsSchema } from '../helpers/common.js';
+import { softDeleteSchema } from '../helpers/common.js';
 
 export const consumableTypeSchema = z.nativeEnum(ConsumableType);
 
@@ -36,3 +36,13 @@ export const createConsumableLogSchema = z.object({
   totalCost: z.number().nonnegative().nullable().optional(),
   loggedAt: isoDateSchema,
 });
+
+/**
+ * Partial update DTO for the admin web edit flow (PATCH /consumable-logs/:id).
+ * machineId/operatorId/parcelId are intentionally NOT editable — they are bare
+ * cross-org FKs, so omitting them keeps an admin from repointing a log at another
+ * organization's machine/parcel. Mirrors updateFuelLogSchema.
+ */
+export const updateConsumableLogSchema = createConsumableLogSchema
+  .partial()
+  .omit({ machineId: true, operatorId: true, parcelId: true });

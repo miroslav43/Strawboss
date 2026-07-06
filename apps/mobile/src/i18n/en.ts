@@ -647,6 +647,10 @@ export const en = {
       gpsLocating: 'Locating...',
       gpsNone: 'No GPS',
       parcelCardLabel: 'Field',
+      depotCardLabel: 'Depot',
+      depotRequiresConnectionTitle: 'Connection required',
+      depotRequiresConnectionMessage:
+        'Loading from a depot requires an internet connection. Reconnect and try again.',
       parcelIdentifying: 'Identifying...',
       parcelUnconfirmedFallback: 'Unconfirmed — confirm on the main screen',
       presenceInside: '● You are in the field',
@@ -980,6 +984,8 @@ export const en = {
     },
     activeFieldCard: {
       sectionLabel: 'Active field',
+      depotSectionLabel: 'Active depot',
+      depotTag: 'Depot',
       loading: 'Loading…',
       openFieldA11y: 'Open field details',
       assignedField: 'Assigned field',

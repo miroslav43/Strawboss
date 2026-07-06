@@ -27,6 +27,7 @@ import { getDatabase } from '@/lib/storage';
 import { BaleLoadsRepo } from '@/db/bale-loads-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { TripsRepo } from '@/db/trips-repo';
+import { DeliveryDestinationsRepo } from '@/db/delivery-destinations-repo';
 import { useAuthStore } from '@/stores/auth-store';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 import { mobileLogger } from '@/lib/logger';
@@ -112,9 +113,20 @@ export default function LoadBalesScreen() {
   // doesn't silently change which parcel the bales get registered against.
   const [snapshotParcelId, setSnapshotParcelId] = useState<string | null>(null);
   const [snapshotParcelName, setSnapshotParcelName] = useState<string | null>(null);
+  // Depot mode: a loader assigned to a depot loads a truck sourced from the
+  // depot instead of a field. Snapshotted the same way as the parcel above.
+  const [snapshotDepotId, setSnapshotDepotId] = useState<string | null>(null);
+  const [snapshotDepotName, setSnapshotDepotName] = useState<string | null>(null);
+  // Whether the snapshotted depot has any cached geometry (boundary or centroid).
+  // null = still loading; false = no geometry → soft confirm (no hard GPS gate).
+  const [depotHasGeometry, setDepotHasGeometry] = useState<boolean | null>(null);
+
+  // Live target kind. Once a depot is snapshotted it stays a depot; before the
+  // snapshot we trust the hook's resolution.
+  const targetIsDepot = snapshotDepotId != null || parcel.targetType === 'depot';
 
   useEffect(() => {
-    if (snapshotParcelId) return;
+    if (snapshotParcelId || snapshotDepotId) return;
     if (isAuxiliary) {
       // Prefer the parcel the trip was created with; otherwise the auxiliary load
       // is attributed to the loader's OWN current/assigned field (the external
@@ -129,19 +141,54 @@ export default function LoadBalesScreen() {
       }
       return;
     }
-    if (parcel.status === 'resolved' && parcel.parcelId) {
-      setSnapshotParcelId(parcel.parcelId);
-      setSnapshotParcelName(parcel.parcelName);
+    if (parcel.status === 'resolved') {
+      // Depot target takes precedence — no parcel is attached.
+      if (parcel.targetType === 'depot' && parcel.destinationId) {
+        setSnapshotDepotId(parcel.destinationId);
+        setSnapshotDepotName(parcel.destinationName ?? parcel.destinationCode);
+        return;
+      }
+      if (parcel.parcelId) {
+        setSnapshotParcelId(parcel.parcelId);
+        setSnapshotParcelName(parcel.parcelName);
+      }
     }
-    // Only run when parcel resolves; snapshot is intentionally frozen after first capture.
+    // Only run when the target resolves; snapshot is intentionally frozen after first capture.
   }, [
     isAuxiliary,
     auxParcelId,
     parcel.status,
     parcel.parcelId,
     parcel.parcelName,
+    parcel.targetType,
+    parcel.destinationId,
+    parcel.destinationName,
+    parcel.destinationCode,
     snapshotParcelId,
+    snapshotDepotId,
   ]);
+
+  // Load the snapshotted depot's geometry presence — used to decide whether the
+  // hard GPS gate applies (geometry present) or a soft confirm is allowed (none).
+  useEffect(() => {
+    if (!snapshotDepotId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const db = await getDatabase();
+        const repo = new DeliveryDestinationsRepo(db);
+        const row = await repo.findById(snapshotDepotId);
+        if (cancelled) return;
+        setDepotHasGeometry(!!(row?.boundary || row?.coords_json));
+      } catch {
+        // Treat a lookup failure as "no geometry" → soft confirm, never a hard block.
+        if (!cancelled) setDepotHasGeometry(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshotDepotId]);
 
   const [baleCountStr, setBaleCountStr] = useState('');
   const [saving, setSaving] = useState(false);
@@ -174,6 +221,18 @@ export default function LoadBalesScreen() {
     parcel.presence === 'outside' &&
     parcel.distanceM != null &&
     parcel.distanceM > LOAD_FIELD_TOLERANCE_M;
+
+  // Whether the hard in-target GPS gate is bypassed. Auxiliary loads always
+  // bypass (external truck arrives wherever). A depot with NO cached geometry
+  // also bypasses to a soft confirm — but a depot WITH geometry is gated on
+  // presence exactly like a field. While the geometry is still loading
+  // (depotHasGeometry === null) we keep the gate on.
+  const bypassFieldGate = isAuxiliary || (targetIsDepot && depotHasGeometry === false);
+
+  // The active target (parcel or depot) has been snapshotted and is ready to load.
+  const targetReady = targetIsDepot ? snapshotDepotId !== null : snapshotParcelId !== null;
+  // Display name for the active target, used in gate/duplicate copy.
+  const targetName = targetIsDepot ? snapshotDepotName : snapshotParcelName;
 
   const truckId = truckIdFromParams(truckIdParam);
   const { data: truck } = useQuery<Machine>({
@@ -244,14 +303,14 @@ export default function LoadBalesScreen() {
     // Hard gate: must be provably on the field the bales are attributed to.
     // Auxiliary loads bypass this entirely — the external truck arrives wherever;
     // proximity is irrelevant and must never block the operator.
-    if (!isAuxiliary && !inField) {
+    if (!bypassFieldGate && !inField) {
       if (awayFromField) {
-        // GPS proves the loader is too far from the field.
+        // GPS proves the loader is too far from the field/depot.
         showModal({
           type: 'warning',
           title: t('loader.loadBales.modalNotInFieldTitle'),
           message: t('loader.loadBales.modalNotInFieldMessage', {
-            parcelName: snapshotParcelName ?? 'selectat',
+            parcelName: targetName ?? 'selectat',
             distance: parcel.distanceM ?? 0,
           }),
           confirmText: t('loader.loadBales.modalUnderstood'),
@@ -283,7 +342,14 @@ export default function LoadBalesScreen() {
       }
       return;
     }
-    if (baleCount <= 0 || !snapshotParcelId || !truckId) {
+    if (baleCount <= 0 || !truckId || (!targetIsDepot && !snapshotParcelId)) {
+      setShowSignature(true);
+      return;
+    }
+    // Depot loads have no per-parcel duplicate/availability checks yet
+    // (depot-inventory reconciliation is a future enhancement) — sign directly.
+    // The `!snapshotParcelId` re-check also narrows the type for the checks below.
+    if (targetIsDepot || !snapshotParcelId) {
       setShowSignature(true);
       return;
     }
@@ -369,12 +435,14 @@ export default function LoadBalesScreen() {
     setShowSignature(true);
   }, [
     isAuxiliary,
+    bypassFieldGate,
+    targetIsDepot,
     inField,
     awayFromField,
     baleCount,
     truckId,
     snapshotParcelId,
-    snapshotParcelName,
+    targetName,
     isOnline,
     fullTruckCount,
     parcel.distanceM,
@@ -387,8 +455,19 @@ export default function LoadBalesScreen() {
   const handleSignatureConfirm = useCallback(
     async (loaderSignature: string) => {
       if (!userId || !assignedMachineId || !truckId) return;
-      // Use the snapshot parcelId — immune to background refresh changing the active parcel.
-      if (!snapshotParcelId) return;
+      // Use the snapshotted target — immune to background refresh changing it.
+      if (targetIsDepot ? !snapshotDepotId : !snapshotParcelId) return;
+
+      // Depot loads are ONLINE ONLY this iteration — the offline depot sync path
+      // (SQLite parity + queue) is out of scope. Block with a clear message
+      // rather than silently enqueuing a mutation that can't be replayed.
+      if (targetIsDepot && !isOnline) {
+        Alert.alert(
+          t('loader.loadBales.depotRequiresConnectionTitle'),
+          t('loader.loadBales.depotRequiresConnectionMessage'),
+        );
+        return;
+      }
 
       setSaving(true);
       try {
@@ -400,7 +479,8 @@ export default function LoadBalesScreen() {
         const payload = {
           truckId,
           loaderMachineId: assignedMachineId,
-          parcelId: snapshotParcelId,
+          // Exactly one source: a depot load sends sourceDepotId, a field load parcelId.
+          ...(targetIsDepot ? { sourceDepotId: snapshotDepotId } : { parcelId: snapshotParcelId }),
           baleCount,
           gpsLat: gps?.lat,
           gpsLon: gps?.lon,
@@ -413,24 +493,32 @@ export default function LoadBalesScreen() {
             '/api/v1/trips/register-load',
             payload,
           );
-          await applyOptimistic({
-            baleLoadId: result.baleLoadId,
-            tripId: result.trip.id,
-            // Server collapses auxiliary trips straight to `completed`; normal → `loaded`.
-            tripStatus: (result.trip.status as string) ?? (isAuxiliary ? 'completed' : 'loaded'),
-            truckId,
-            parcelId: snapshotParcelId,
-            loaderMachineId: assignedMachineId,
-            operatorId: userId,
-            baleCount,
-            gps,
-          });
+          // Depot loads skip the local optimistic mirror — the local bale_loads /
+          // trips tables require a parcel_id (NOT NULL) that a depot load lacks.
+          // The query invalidations below refetch the authoritative server state.
+          if (!targetIsDepot && snapshotParcelId) {
+            await applyOptimistic({
+              baleLoadId: result.baleLoadId,
+              tripId: result.trip.id,
+              // Server collapses auxiliary trips straight to `completed`; normal → `loaded`.
+              tripStatus: (result.trip.status as string) ?? (isAuxiliary ? 'completed' : 'loaded'),
+              truckId,
+              parcelId: snapshotParcelId,
+              loaderMachineId: assignedMachineId,
+              operatorId: userId,
+              baleCount,
+              gps,
+            });
+          }
           mobileLogger.flow('Loader register-load: online success', {
             tripId: result.trip.id,
             baleLoadId: result.baleLoadId,
             created: result.created,
+            source: targetIsDepot ? 'depot' : 'parcel',
           });
-        } else {
+        } else if (snapshotParcelId) {
+          // Offline path is parcel-only — depot loads are blocked above when
+          // offline, so a snapshotParcelId is always present here.
           const localTripId = `local:${truckId}`;
           await applyOptimistic({
             baleLoadId: idempotencyKey,
@@ -522,18 +610,14 @@ export default function LoadBalesScreen() {
       userId,
       assignedMachineId,
       truckId,
+      targetIsDepot,
+      snapshotDepotId,
       snapshotParcelId,
       baleCount,
+      isAuxiliary,
       isOnline,
       queryClient,
-      inField,
-      awayFromField,
-      snapshotParcelName,
-      parcel.distanceM,
-      parcel.gpsState,
-      parcel.refresh,
-      showModal,
-      hideModal,
+      t,
     ],
   );
 
@@ -620,8 +704,9 @@ export default function LoadBalesScreen() {
     );
   }
 
-  // parcelReady is based on the snapshot so it stays stable once set.
-  const parcelReady = snapshotParcelId !== null;
+  // parcelReady is based on the snapshot so it stays stable once set. Covers
+  // both a field parcel and a depot target (targetReady).
+  const parcelReady = targetReady;
 
   return (
     <View style={styles.outerContainer}>
@@ -655,18 +740,27 @@ export default function LoadBalesScreen() {
       <ScrollView style={styles.body} contentContainerStyle={styles.content}>
         <View style={styles.parcelCard}>
           <MaterialCommunityIcons
-            name="map-marker-radius"
+            name={targetIsDepot ? 'warehouse' : 'map-marker-radius'}
             size={20}
             color={parcelReady ? colors.primary : '#B7791F'}
           />
           <View style={{ flex: 1 }}>
-            <Text style={styles.parcelLabel}>{t('loader.loadBales.parcelCardLabel')}</Text>
+            <Text style={styles.parcelLabel}>
+              {targetIsDepot
+                ? t('loader.loadBales.depotCardLabel')
+                : t('loader.loadBales.parcelCardLabel')}
+            </Text>
             <Text style={styles.parcelName} numberOfLines={1} ellipsizeMode="tail">
-              {snapshotParcelName
-                ? snapshotParcelName
-                : parcel.status === 'loading'
-                  ? t('loader.loadBales.parcelIdentifying')
-                  : t('loader.loadBales.parcelUnconfirmedFallback')}
+              {targetIsDepot
+                ? (snapshotDepotName ??
+                  (parcel.status === 'loading'
+                    ? t('loader.loadBales.parcelIdentifying')
+                    : t('loader.loadBales.parcelUnconfirmedFallback')))
+                : snapshotParcelName
+                  ? snapshotParcelName
+                  : parcel.status === 'loading'
+                    ? t('loader.loadBales.parcelIdentifying')
+                    : t('loader.loadBales.parcelUnconfirmedFallback')}
             </Text>
             {parcelReady ? (
               parcel.presence === 'inside' ? (
@@ -712,11 +806,11 @@ export default function LoadBalesScreen() {
         <BigButton
           title={t('loader.loadBales.registerButton')}
           onPress={() => void handleRegisterPress()}
-          // Auxiliary loads bypass the in-field geofence gate (the external truck
-          // arrives wherever) — but still require a known parcel.
-          disabled={baleCount <= 0 || !parcelReady || (!isAuxiliary && !inField)}
+          // Auxiliary loads (and depots with no geometry) bypass the in-target
+          // geofence gate — but still require a resolved target.
+          disabled={baleCount <= 0 || !parcelReady || (!bypassFieldGate && !inField)}
         />
-        {!isAuxiliary && parcelReady && !inField ? (
+        {!bypassFieldGate && parcelReady && !inField ? (
           <Text style={styles.gateHint}>
             {awayFromField
               ? t('loader.loadBales.gateHintAwayFromField', { distance: parcel.distanceM ?? 0 })

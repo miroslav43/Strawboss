@@ -8,6 +8,17 @@ export enum RequestStatus {
 }
 
 /**
+ * A single confirmation recipient (denormalized snapshot of a selected saved
+ * beneficiary contact). On confirmation the transport-confirmation email + SMS
+ * fan out to every entry that has an email / phone.
+ */
+export interface NotifyRecipient {
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
+/**
  * An external pickup request submitted through the per-org public portal
  * (/<slug>/request). On confirmation it spins up a one-time auxiliary truck
  * (machineId) and, once assigned, an auxiliary trip (tripId).
@@ -52,6 +63,11 @@ export interface TripRequest extends Timestamps, SoftDelete {
   contactId: string | null;
   truckId: string | null;
   driverId: string | null;
+  // Denormalized snapshot of ALL selected contacts (beneficiary portal), used to
+  // fan out the transport-confirmation email + SMS on confirm. First entry =
+  // primary (mirrors requesterName/Phone/Email). Empty for legacy requests and
+  // the non-beneficiary public portal.
+  notifyRecipients: NotifyRecipient[];
   // pickup source depot chosen by the dispatcher on confirm
   sourceDepotId: string | null;
   // linkage, filled on confirm
@@ -61,6 +77,11 @@ export interface TripRequest extends Timestamps, SoftDelete {
   confirmedAt: string | null;
   cancelledAt: string | null;
   cancellationReason: string | null;
+  // read-only enrichment, populated by list()/findById() (joined from machines/trips)
+  machineMake?: string | null;
+  machineModel?: string | null;
+  machinePlate?: string | null;
+  tripNumber?: string | null;
 }
 
 /** Public submission payload (no auth). The portal code is validated separately. */

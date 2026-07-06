@@ -56,6 +56,14 @@ export {
 export { useBaleLoads, useCreateBaleLoad } from './use-bale-loads.js';
 
 export {
+  useConsumableLogsList,
+  useCreateConsumableLog,
+  useUpdateConsumableLog,
+  useDeleteConsumableLog,
+} from './use-consumable-logs.js';
+export type { ConsumableLogFilters } from './use-consumable-logs.js';
+
+export {
   useFuelLogs,
   useCreateFuelLog,
   useFuelLogsList,
@@ -135,6 +143,7 @@ export {
   useBaleProductionStats,
   useMachineOperatorProduction,
   useCreateBaleProduction,
+  useDeleteBaleProduction,
 } from './use-bale-productions.js';
 export type {
   BaleProductionFilters,

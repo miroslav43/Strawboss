@@ -65,8 +65,12 @@ export const createBeneficiaryRequestSchema = z.object({
   destinationAddress: z.string().min(1).max(300).nullable().optional(),
   destinationCoords: geoPointSchema.nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
-  // Optional traceability: which saved beneficiary records this request was
-  // built from (the flat fields above are still the source of truth on insert).
+  // Which saved contacts to notify (email + SMS) on confirm, 1..10. The first is
+  // the primary — its fields still populate requesterName/Phone/Email above. The
+  // server re-resolves every id from the beneficiary's saved contacts, so a
+  // public submission can only notify its own saved contacts (no arbitrary
+  // addresses). `contactId` is kept for back-compat (deprecated = contactIds[0]).
+  contactIds: z.array(uuidSchema).min(1).max(10),
   contactId: uuidSchema.nullable().optional(),
   truckId: uuidSchema.nullable().optional(),
   driverId: uuidSchema.nullable().optional(),

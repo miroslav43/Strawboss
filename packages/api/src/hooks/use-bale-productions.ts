@@ -6,6 +6,7 @@ import { queryKeys } from '../queries/query-keys.js';
 export interface BaleProductionFilters {
   operatorId?: string;
   parcelId?: string;
+  balerId?: string;
   dateFrom?: string;
   dateTo?: string;
 }
@@ -14,6 +15,7 @@ function buildQuery(filters: BaleProductionFilters): string {
   const params = new URLSearchParams();
   if (filters.operatorId) params.set('operatorId', filters.operatorId);
   if (filters.parcelId) params.set('parcelId', filters.parcelId);
+  if (filters.balerId) params.set('balerId', filters.balerId);
   if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
   if (filters.dateTo) params.set('dateTo', filters.dateTo);
   const qs = params.toString();
@@ -101,6 +103,20 @@ export function useCreateBaleProduction(client: ApiClient) {
       client.post<BaleProduction>('/api/v1/bale-productions', data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.baleProductions.all });
+      // A new production changes the parcel's produced tally (availability =
+      // SUM(bale_productions) + SUM(adjustments)), so refresh the parcels page too.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.all });
+    },
+  });
+}
+
+export function useDeleteBaleProduction(client: ApiClient) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.delete<void>(`/api/v1/bale-productions/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.baleProductions.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.parcels.all });
     },
   });
 }

@@ -30,4 +30,10 @@ export interface DeliveryDestination extends Timestamps, SoftDelete {
    * undefined.
    */
   lastActivityAt?: string | null;
+  /**
+   * Current bales in the depot — all-time delivered (bales never leave the
+   * model). Only populated by the list endpoint; matches the Reports → Depozite
+   * figure. Undefined on other endpoints.
+   */
+  currentBaleStock?: number | null;
 }

@@ -195,6 +195,7 @@ export const TABLES = {
     address TEXT,
     boundary TEXT,
     coords_json TEXT,
+    confirm_radius_m INTEGER,
     is_default INTEGER DEFAULT 0,
     cached_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,

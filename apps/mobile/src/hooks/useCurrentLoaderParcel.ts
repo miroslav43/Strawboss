@@ -5,7 +5,20 @@ import { useActiveParcels, findParcelAtLocation, type ActiveParcel } from './use
 import { useCachedParcels } from './useCachedParcels';
 import { useMyTasks, type MyTask } from './useMyTasks';
 import { distanceToBoundaryMeters } from '@/lib/point-in-geojson';
+import { haversineKm } from '@/lib/routing';
+import { getDatabase } from '@/lib/storage';
+import {
+  DeliveryDestinationsRepo,
+  type LocalDeliveryDestination,
+} from '@/db/delivery-destinations-repo';
 import { mobileLogger } from '@/lib/logger';
+
+/**
+ * Fallback confirmation-ring radius (metres) for a depot with a stored centroid
+ * but no drawn boundary. Mirrors the server-side default; used to gate a depot
+ * load by proximity when `confirm_radius_m` isn't set on the cached row.
+ */
+const DEFAULT_DEPOT_CONFIRM_RADIUS_M = 300;
 
 export type CurrentParcelStatus =
   | 'loading'
@@ -26,11 +39,21 @@ export type ParcelGpsState = 'locating' | 'ready' | 'unavailable';
 
 export interface CurrentLoaderParcel {
   status: CurrentParcelStatus;
+  /**
+   * Which kind of source the resolved target is. A loader can be assigned to a
+   * field/parcel (default) or to a depot (`delivery_destinations`), in which
+   * case the bales are sourced from the depot instead of a field.
+   */
+  targetType: 'parcel' | 'depot';
   /** Parcel id when `status === 'resolved'`. */
   parcelId: string | null;
   parcelName: string | null;
   /** T9.3 — code identifier; used as the display name when name is null. */
   parcelCode: string | null;
+  /** Depot id when `targetType === 'depot'` and `status === 'resolved'`. */
+  destinationId: string | null;
+  destinationName: string | null;
+  destinationCode: string | null;
   /** Locality (server `municipality`) of the resolved field, when known. */
   municipality: string | null;
   /** Crop label (grau / orz / rapita / plante_nutret / altele) when set. */
@@ -79,6 +102,47 @@ function computePresence(
   return { presence: 'outside', distanceM: Math.round(d) };
 }
 
+/**
+ * Presence of a GPS fix against a cached depot's geometry.
+ *  - Boundary drawn → strict containment (inside iff distance 0), same as fields.
+ *  - No boundary but a centroid → "inside" when within `confirm_radius_m` of the
+ *    point (fallback {@link DEFAULT_DEPOT_CONFIRM_RADIUS_M}); otherwise the real
+ *    distance to the centroid.
+ *  - No geometry at all → `unknown` (the load screen falls back to a soft
+ *    confirm with no hard GPS block).
+ */
+function computeDepotPresence(
+  destinationId: string | null,
+  gps: { lat: number; lon: number } | null,
+  gpsReady: boolean,
+  depots: LocalDeliveryDestination[],
+): { presence: ParcelPresence; distanceM: number | null } {
+  if (!gpsReady || !gps || !destinationId) return { presence: 'unknown', distanceM: null };
+  const depot = depots.find((x) => x.id === destinationId);
+  if (!depot) return { presence: 'unknown', distanceM: null };
+  if (depot.boundary) {
+    const d = distanceToBoundaryMeters(gps.lon, gps.lat, depot.boundary);
+    if (d === 0) return { presence: 'inside', distanceM: 0 };
+    return { presence: 'outside', distanceM: Math.round(d) };
+  }
+  if (depot.coords_json) {
+    try {
+      const c = JSON.parse(depot.coords_json) as { lat?: number; lon?: number };
+      if (typeof c.lat === 'number' && typeof c.lon === 'number') {
+        const radius = depot.confirm_radius_m ?? DEFAULT_DEPOT_CONFIRM_RADIUS_M;
+        const meters = Math.round(
+          haversineKm({ lat: gps.lat, lon: gps.lon }, { lat: c.lat, lon: c.lon }) * 1000,
+        );
+        if (meters <= radius) return { presence: 'inside', distanceM: 0 };
+        return { presence: 'outside', distanceM: meters };
+      }
+    } catch {
+      // Malformed centroid — fall through to unknown.
+    }
+  }
+  return { presence: 'unknown', distanceM: null };
+}
+
 const GPS_TIMEOUT_MS = 15_000;
 const GPS_RETRY_DELAY_MS = 5_000;
 const GPS_MAX_RETRIES = 1;
@@ -115,6 +179,10 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   // the API, falls back to the local SQLite cache — so the field card keeps its
   // context even with no signal. Kept separate from the GPS source above.
   const { parcels: cachedParcels } = useCachedParcels();
+
+  // Cached depot geometry, loaded from the local SQLite mirror. Used to compute
+  // presence for a depot target (a loader assigned to a delivery destination).
+  const [cachedDepots, setCachedDepots] = useState<LocalDeliveryDestination[]>([]);
 
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<
@@ -192,6 +260,27 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     };
   }, [refreshKey]);
 
+  // Load cached depot geometry once (and on refresh). Non-fatal: on failure the
+  // depot presence stays `unknown` and the load screen falls back to soft confirm.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const db = await getDatabase();
+        const repo = new DeliveryDestinationsRepo(db);
+        const rows = await repo.listAll();
+        if (!cancelled) setCachedDepots(rows);
+      } catch (err) {
+        mobileLogger.flow('useCurrentLoaderParcel: depot cache load failed', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
   const refresh = () => {
     setGps(null);
     setGpsStatus('idle');
@@ -220,9 +309,13 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   if (tasksLoading || parcelsLoading) {
     return {
       status: 'loading',
+      targetType: 'parcel',
       parcelId: null,
       parcelName: null,
       parcelCode: null,
+      destinationId: null,
+      destinationName: null,
+      destinationCode: null,
       municipality: null,
       cropType: null,
       farmName: null,
@@ -245,6 +338,40 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     myMachineTasks.map((t) => t.parcelId).filter(Boolean) as string[],
   );
 
+  // Depot target: a loader assigned to a depot (destinationId set, no parcel).
+  // Resolves like the single-parcel shortcut — presence is computed against the
+  // cached depot geometry rather than a field boundary. Only when the loader has
+  // no parcel tasks at all (field XOR depot per the board convention).
+  const depotTasks = myMachineTasks.filter((t) => !!t.destinationId && !t.parcelId);
+  if (distinctTaskParcelIds.size === 0 && depotTasks.length > 0) {
+    const dt = depotTasks[0]!;
+    const { presence, distanceM } = computeDepotPresence(
+      dt.destinationId,
+      gps,
+      gpsStatus === 'ready',
+      cachedDepots,
+    );
+    return {
+      status: 'resolved',
+      targetType: 'depot',
+      parcelId: null,
+      parcelName: dt.destinationName ?? dt.destinationCode,
+      parcelCode: dt.destinationCode,
+      destinationId: dt.destinationId,
+      destinationName: dt.destinationName,
+      destinationCode: dt.destinationCode,
+      municipality: null,
+      cropType: null,
+      farmName: null,
+      source: 'in_progress_task',
+      presence,
+      distanceM,
+      gpsState,
+      candidates: [],
+      refresh,
+    };
+  }
+
   // Tier 1: exactly one parcel assigned for the whole day → resolve without
   // GPS. The trivial case where there's nothing to pick between.
   if (distinctTaskParcelIds.size === 1) {
@@ -257,10 +384,14 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     );
     return {
       status: 'resolved',
+      targetType: 'parcel',
       parcelId: t.parcelId,
       // Unnamed terrains fall back to the code so the card is never blank.
       parcelName: t.parcelName ?? t.parcelCode,
       parcelCode: t.parcelCode,
+      destinationId: null,
+      destinationName: null,
+      destinationCode: null,
       ...enrich(t.parcelId),
       source: 'in_progress_task',
       presence,
@@ -290,9 +421,13 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       const { presence, distanceM } = computePresence(hit.id, gps, true, activeParcels);
       return {
         status: 'resolved',
+        targetType: 'parcel',
         parcelId: hit.id,
         parcelName: hit.name,
         parcelCode: hit.code,
+        destinationId: null,
+        destinationName: null,
+        destinationCode: null,
         ...enrich(hit.id),
         source: 'gps',
         presence,
@@ -308,9 +443,13 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   if (inProgress.length > 1) {
     return {
       status: 'multiple_active',
+      targetType: 'parcel',
       parcelId: null,
       parcelName: null,
       parcelCode: null,
+      destinationId: null,
+      destinationName: null,
+      destinationCode: null,
       municipality: null,
       cropType: null,
       farmName: null,
@@ -329,9 +468,13 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   const assignedAny = myMachineTasks.filter((t) => !!t.parcelId);
   return {
     status: assignedAny.length ? 'needs_start' : 'unavailable',
+    targetType: 'parcel',
     parcelId: null,
     parcelName: null,
     parcelCode: null,
+    destinationId: null,
+    destinationName: null,
+    destinationCode: null,
     municipality: null,
     cropType: null,
     farmName: null,

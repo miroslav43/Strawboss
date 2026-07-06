@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, Loader2, X, MapPin } from 'lucide-react';
+import { Plus, Loader2, X, MapPin, Building2, User } from 'lucide-react';
 import {
   useTasksByMachineType,
   useCreateTaskAssignment,
@@ -96,6 +96,7 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
     [rawLoaderAssignments],
   );
   const machines = useMemo(() => normalize<Machine>(rawMachines), [rawMachines]);
+  const machineById = useMemo(() => new Map(machines.map((m) => [m.id, m] as const)), [machines]);
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
   // 15 min GPS threshold for machines (vs 90 s heartbeat for users).
   const MACHINE_ONLINE_MS = 15 * 60 * 1000;
@@ -312,6 +313,31 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
+
+                {/* Aux truck: company + primary contact, for a quick glance */}
+                {auxiliaryMachineIds.has(machineId) &&
+                  (() => {
+                    const m = machineById.get(machineId);
+                    const company = m?.ownerCompanyName?.trim();
+                    const contact = m?.primaryContactName?.trim();
+                    if (!company && !contact) return null;
+                    return (
+                      <div className="flex flex-col gap-0.5 border-t border-neutral-100 px-4 py-2 text-xs text-neutral-600">
+                        {company && (
+                          <span className="flex items-center gap-1.5" title={t('tasks.auxCompany')}>
+                            <Building2 className="h-3 w-3 shrink-0 text-neutral-400" />
+                            <span className="truncate font-medium text-neutral-700">{company}</span>
+                          </span>
+                        )}
+                        {contact && (
+                          <span className="flex items-center gap-1.5" title={t('tasks.auxContact')}>
+                            <User className="h-3 w-3 shrink-0 text-neutral-400" />
+                            <span className="truncate">{contact}</span>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                 {/* Loader selector */}
                 <div className="border-t border-neutral-100 px-4 py-3 space-y-2">

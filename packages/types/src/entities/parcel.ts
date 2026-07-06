@@ -101,4 +101,11 @@ export interface Parcel extends Timestamps, SoftDelete {
   harvestStatus: HarvestStatus;
   /** T9.1 — null until admin sets it. */
   cropType: CropType | null;
+  /**
+   * Read-only bale tallies, populated by the parcels list() endpoint only (same
+   * semantics as GET /parcels/:id/bale-availability). remaining-in-field =
+   * balesProduced − balesLoaded, derived in the UI. Undefined on other endpoints.
+   */
+  balesProduced?: number | null;
+  balesLoaded?: number | null;
 }

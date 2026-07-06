@@ -22,6 +22,13 @@ export interface LocalDeliveryDestination {
   boundary: string | null;
   /** JSON-serialised `{ lat, lon }` centroid. */
   coords_json: string | null;
+  /**
+   * Confirmation-ring radius in metres. Used to gate a depot load by proximity
+   * when the depot has no drawn `boundary`. Optional: legacy callers (and rows
+   * cached before this column existed) may omit it — treat absent/NULL as "no
+   * radius configured".
+   */
+  confirm_radius_m?: number | null;
   is_default: number;
   cached_at: string;
 }
@@ -32,16 +39,17 @@ export class DeliveryDestinationsRepo {
   async upsert(data: LocalDeliveryDestination): Promise<void> {
     await this.db.runAsync(
       `INSERT INTO delivery_destinations (
-        id, code, name, address, boundary, coords_json, is_default, cached_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        id, code, name, address, boundary, coords_json, confirm_radius_m, is_default, cached_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        code        = excluded.code,
-        name        = excluded.name,
-        address     = excluded.address,
-        boundary    = excluded.boundary,
-        coords_json = excluded.coords_json,
-        is_default  = excluded.is_default,
-        cached_at   = excluded.cached_at`,
+        code             = excluded.code,
+        name             = excluded.name,
+        address          = excluded.address,
+        boundary         = excluded.boundary,
+        coords_json      = excluded.coords_json,
+        confirm_radius_m = excluded.confirm_radius_m,
+        is_default       = excluded.is_default,
+        cached_at        = excluded.cached_at`,
       [
         data.id,
         data.code,
@@ -49,6 +57,7 @@ export class DeliveryDestinationsRepo {
         data.address,
         data.boundary,
         data.coords_json,
+        data.confirm_radius_m ?? null,
         data.is_default,
         data.cached_at,
       ] as SQLiteBindValue[],

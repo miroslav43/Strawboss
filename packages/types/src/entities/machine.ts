@@ -37,4 +37,7 @@ export interface Machine extends Timestamps, SoftDelete {
    * auto-deactivated (isActive=false) once its trip completes.
    */
   isAuxiliary: boolean;
+  /** Read-only enrichment, populated by the machines list() only: the primary
+   *  contact (requester_name) of the aux truck's originating trip_request. */
+  primaryContactName?: string | null;
 }

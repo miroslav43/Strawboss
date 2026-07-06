@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query } from '@nestjs/common';
 import { BaleProductionsService } from './bale-productions.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -16,6 +16,7 @@ export class BaleProductionsController {
     @CurrentUser() user: RequestUser,
     @Query('operatorId') operatorId?: string,
     @Query('parcelId') parcelId?: string,
+    @Query('balerId') balerId?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
     @Query('groupBy') groupBy?: 'operator' | 'parcel' | 'date',
@@ -23,6 +24,7 @@ export class BaleProductionsController {
     return this.baleProductionsService.getStats(user.organizationId, {
       operatorId,
       parcelId,
+      balerId,
       dateFrom,
       dateTo,
       groupBy,
@@ -47,12 +49,14 @@ export class BaleProductionsController {
     @CurrentUser() user: RequestUser,
     @Query('operatorId') operatorId?: string,
     @Query('parcelId') parcelId?: string,
+    @Query('balerId') balerId?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
     return this.baleProductionsService.list(user.organizationId, {
       operatorId,
       parcelId,
+      balerId,
       dateFrom,
       dateTo,
     });
@@ -66,5 +70,11 @@ export class BaleProductionsController {
     dto: Record<string, unknown>,
   ) {
     return this.baleProductionsService.create(user.organizationId!, dto);
+  }
+
+  @Delete(':id')
+  @Roles('admin' as UserRole)
+  remove(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.baleProductionsService.softDelete(id, user.organizationId);
   }
 }

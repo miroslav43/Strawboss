@@ -47,35 +47,61 @@ export function ActiveFieldCard({
   }
 
   if (parcel.status === 'resolved') {
-    // T9.3 — code is the canonical field identifier; name only as a last resort.
-    const title =
-      parcel.parcelCode ?? parcel.parcelName ?? t('shared.activeFieldCard.assignedField');
+    const isDepot = parcel.targetType === 'depot';
+    // T9.3 — code is the canonical field/depot identifier; name only as a last resort.
+    const title = isDepot
+      ? (parcel.destinationCode ??
+        parcel.destinationName ??
+        t('shared.activeFieldCard.depotSectionLabel'))
+      : (parcel.parcelCode ?? parcel.parcelName ?? t('shared.activeFieldCard.assignedField'));
     const cropLabel = parcel.cropType
       ? CROP_LABEL_KEYS[parcel.cropType]
         ? t(CROP_LABEL_KEYS[parcel.cropType])
         : parcel.cropType
       : null;
-    const hasMeta = !!(parcel.farmName || parcel.municipality || cropLabel);
+    // Depot targets have no farm/locality/crop context — those are parcel-only.
+    const hasMeta = !isDepot && !!(parcel.farmName || parcel.municipality || cropLabel);
 
     return (
       <TouchableOpacity
         style={styles.parcelBanner}
-        activeOpacity={0.8}
-        onPress={() => parcel.parcelId && onOpenParcel(parcel.parcelId)}
-        disabled={!parcel.parcelId}
+        activeOpacity={isDepot ? 1 : 0.8}
+        // Depot targets have no parcel-detail screen to open — navigation is a no-op.
+        onPress={() => {
+          if (!isDepot && parcel.parcelId) onOpenParcel(parcel.parcelId);
+        }}
+        disabled={isDepot || !parcel.parcelId}
         accessibilityRole="button"
         accessibilityLabel={t('shared.activeFieldCard.openFieldA11y')}
       >
         <View style={styles.parcelHeader}>
-          <MaterialCommunityIcons name="map-marker-radius" size={20} color={colors.primary} />
-          <Text style={styles.parcelLabel}>{t('shared.activeFieldCard.sectionLabel')}</Text>
+          <MaterialCommunityIcons
+            name={isDepot ? 'warehouse' : 'map-marker-radius'}
+            size={20}
+            color={colors.primary}
+          />
+          <Text style={styles.parcelLabel}>
+            {isDepot
+              ? t('shared.activeFieldCard.depotSectionLabel')
+              : t('shared.activeFieldCard.sectionLabel')}
+          </Text>
         </View>
         <View style={styles.parcelNameRow}>
           <Text style={[styles.parcelName, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
             {title}
           </Text>
-          <MaterialCommunityIcons name="chevron-right" size={24} color={colors.tertiary} />
+          {isDepot ? null : (
+            <MaterialCommunityIcons name="chevron-right" size={24} color={colors.tertiary} />
+          )}
         </View>
+
+        {/* Depot tag chip — marks the source as a depot rather than a field. */}
+        {isDepot ? (
+          <View style={styles.depotTag}>
+            <MaterialCommunityIcons name="warehouse" size={13} color="#92400E" />
+            <Text style={styles.depotTagText}>{t('shared.activeFieldCard.depotTag')}</Text>
+          </View>
+        ) : null}
 
         {/* Farm · locality · crop — each rendered only when present. */}
         {hasMeta ? (
@@ -135,7 +161,9 @@ export function ActiveFieldCard({
             </Text>
           </View>
         )}
-        <Text style={styles.parcelHint}>{t('shared.activeFieldCard.tapForDetails')}</Text>
+        {isDepot ? null : (
+          <Text style={styles.parcelHint}>{t('shared.activeFieldCard.tapForDetails')}</Text>
+        )}
       </TouchableOpacity>
     );
   }
@@ -260,6 +288,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   cropChipText: { fontSize: 12, fontWeight: '700', color: '#3F6212' },
+  depotTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  depotTagText: { fontSize: 12, fontWeight: '700', color: '#92400E' },
 
   presencePill: {
     flexDirection: 'row',

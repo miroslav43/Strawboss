@@ -128,7 +128,13 @@ function StatCard({ icon, label, value, accent = 'text-primary' }: StatCardProps
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 
 type SortDir = 'asc' | 'desc';
-type DepositSortKey = 'code' | 'name' | 'address' | 'contactName' | 'lastActivityAt';
+type DepositSortKey =
+  | 'code'
+  | 'name'
+  | 'address'
+  | 'contactName'
+  | 'lastActivityAt'
+  | 'currentBaleStock';
 
 function ThSortIndicator({
   columnKey,
@@ -208,6 +214,10 @@ export default function DepositsPage() {
         const ta = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : -Infinity;
         const tb = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : -Infinity;
         cmp = ta - tb;
+      } else if (sortKey === 'currentBaleStock') {
+        const na = Number(a.currentBaleStock ?? 0);
+        const nb = Number(b.currentBaleStock ?? 0);
+        cmp = na < nb ? -1 : na > nb ? 1 : 0;
       } else {
         const sa = (a[sortKey] ?? '') as string;
         const sb = (b[sortKey] ?? '') as string;
@@ -354,6 +364,7 @@ export default function DepositsPage() {
                   { key: 'address' as const, label: t('deposits.address') },
                   { key: 'contactName' as const, label: t('deposits.contactName') },
                   { key: 'lastActivityAt' as const, label: t('deposits.lastActivity') },
+                  { key: 'currentBaleStock' as const, label: t('deposits.currentStock') },
                 ].map(({ key, label }) => (
                   <th key={key} className={thClass} onClick={() => handleSort(key)}>
                     <div className="flex items-center">
@@ -416,6 +427,19 @@ export default function DepositsPage() {
                   {/* Last activity */}
                   <td className="px-4 py-3">
                     <DepositLastActivity at={d.lastActivityAt ?? null} />
+                  </td>
+
+                  {/* Baloți în stoc */}
+                  <td className="px-4 py-3 text-sm tabular-nums">
+                    <span
+                      className={
+                        Number(d.currentBaleStock ?? 0) > 0
+                          ? 'font-semibold text-neutral-800'
+                          : 'text-neutral-400'
+                      }
+                    >
+                      {Number(d.currentBaleStock ?? 0)}
+                    </span>
                   </td>
 
                   {/* Has Boundary */}

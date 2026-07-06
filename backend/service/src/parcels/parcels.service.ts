@@ -85,7 +85,12 @@ export class ParcelsService {
         crop_type           AS "cropType",
         created_at          AS "createdAt",
         updated_at          AS "updatedAt",
-        deleted_at          AS "deletedAt"
+        deleted_at          AS "deletedAt",
+        -- read-only enrichment: bale tallies, same semantics as getBaleAvailability()
+        (COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = parcels.id AND deleted_at IS NULL), 0)
+         + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = parcels.id AND kind = 'produced' AND deleted_at IS NULL), 0))::int AS "balesProduced",
+        (COALESCE((SELECT SUM(bale_count) FROM bale_loads WHERE parcel_id = parcels.id AND deleted_at IS NULL), 0)
+         + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = parcels.id AND kind = 'loaded' AND deleted_at IS NULL), 0))::int AS "balesLoaded"
       FROM parcels
       WHERE ${where}
       ORDER BY code ASC NULLS LAST

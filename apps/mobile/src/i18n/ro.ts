@@ -648,6 +648,10 @@ export const ro = {
       gpsLocating: 'Localizare...',
       gpsNone: 'Fără GPS',
       parcelCardLabel: 'Teren',
+      depotCardLabel: 'Depozit',
+      depotRequiresConnectionTitle: 'Necesită conexiune',
+      depotRequiresConnectionMessage:
+        'Încărcarea de la depozit necesită conexiune la internet. Reconectează-te și încearcă din nou.',
       parcelIdentifying: 'Se identifică...',
       parcelUnconfirmedFallback: 'Neconfirmat — confirmă pe ecranul principal',
       presenceInside: '● Ești în câmp',
@@ -982,6 +986,8 @@ export const ro = {
     },
     activeFieldCard: {
       sectionLabel: 'Teren activ',
+      depotSectionLabel: 'Depozit activ',
+      depotTag: 'Depozit',
       loading: 'Se încarcă…',
       openFieldA11y: 'Deschide detaliile terenului',
       assignedField: 'Teren asignat',

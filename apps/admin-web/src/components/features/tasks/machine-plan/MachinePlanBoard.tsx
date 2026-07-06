@@ -26,6 +26,7 @@ import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { FarmParcelCascade } from './FarmParcelCascade';
+import { DepotSelectDropdown } from './DepotSelectDropdown';
 
 const ParcelMapModal = dynamic(
   () =>
@@ -42,6 +43,9 @@ interface Assignment {
   parcelId: string | null;
   parcelName: string | null;
   parcelCode: string | null;
+  destinationId: string | null;
+  destinationName: string | null;
+  destinationCode: string | null;
   sequenceOrder: number;
   status: string;
 }
@@ -302,7 +306,9 @@ function AssignedMachineCard({
   assignments,
   parcels,
   assignedCountByParcel,
+  allowDepot,
   onAddParcel,
+  onAddDepot,
   onRemoveAssignment,
   onReorderParcels,
   onUnassignMachine,
@@ -313,14 +319,17 @@ function AssignedMachineCard({
   assignments: Assignment[];
   parcels: Parcel[];
   assignedCountByParcel: Map<string, number>;
+  allowDepot: boolean;
   onAddParcel: (machineId: string, parcelId: string) => void;
+  onAddDepot: (machineId: string, destinationId: string) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onReorderParcels: (fromIndex: number, toIndex: number) => void;
   onUnassignMachine: () => void;
   color: string;
 }) {
   const { t } = useI18n();
-  const [showPicker, setShowPicker] = useState(false);
+  // `null` = chooser collapsed; 'field' = parcel picker; 'depot' = depot picker.
+  const [addMode, setAddMode] = useState<null | 'field' | 'depot'>(null);
   const [showParcelMap, setShowParcelMap] = useState(false);
 
   const parcelRows = useMemo(
@@ -329,8 +338,22 @@ function AssignedMachineCard({
     [assignments],
   );
 
+  // Depot rows: no parcel, but a destination is set (loader/baler loading at a depot).
+  const depotRows = useMemo(
+    () => [...assignments].filter((a) => !a.parcelId && a.destinationId),
+    [assignments],
+  );
+
   const machineParcelIds = useMemo(
     () => new Set(assignments.map((a) => a.parcelId).filter(Boolean) as string[]),
+    [assignments],
+  );
+
+  const machineDepotIds = useMemo(
+    () =>
+      new Set(
+        assignments.map((a) => (!a.parcelId ? a.destinationId : null)).filter(Boolean) as string[],
+      ),
     [assignments],
   );
 
@@ -381,40 +404,122 @@ function AssignedMachineCard({
         t={t}
       />
 
-      {/* Add parcel: list or map */}
+      {/* Depot rows — loader/baler loading at a depot (no parcel). */}
+      {depotRows.length > 0 && (
+        <ul className="m-0 list-none divide-y divide-neutral-100 px-0 py-2">
+          {depotRows.map((a) => (
+            <li key={a.id} className="flex items-center gap-2 px-3 py-2.5 text-sm">
+              <MapPin className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-neutral-700">
+                {a.destinationName || a.destinationCode || '—'}
+              </span>
+              <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                {t('tasks.depotTag')}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemoveAssignment(a.id)}
+                className="shrink-0 rounded p-0.5 text-neutral-300 hover:bg-red-50 hover:text-red-500"
+                title={t('tasks.removeParcel')}
+                aria-label={t('tasks.removeParcel')}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Add target: field (parcel list/map) or depot. */}
       <div className="relative space-y-2 border-t border-neutral-100 px-3 py-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
-            className={cn(
-              'inline-flex items-center gap-1.5 text-xs font-medium transition-colors',
-              `text-${color}-600 hover:text-${color}-800`,
-            )}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('tasks.addParcel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowParcelMap(true);
-              setShowPicker(false);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-700 transition-colors hover:border-primary hover:text-primary"
-          >
-            <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            {t('tasks.selectOnMap')}
-          </button>
-        </div>
-        {showPicker && (
-          <FarmParcelCascade
-            parcels={parcels}
-            excludeParcelIds={machineParcelIds}
-            assignedCountByParcel={assignedCountByParcel}
+        {allowDepot ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500">
+              <Plus className="h-3.5 w-3.5" />
+              {t('tasks.chooseTargetType')}
+            </span>
+            <button
+              type="button"
+              onClick={() => setAddMode(addMode === 'field' ? null : 'field')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors',
+                addMode === 'field'
+                  ? `border-${color}-400 bg-${color}-50 text-${color}-700`
+                  : 'border-neutral-200 bg-white text-neutral-700 hover:border-primary hover:text-primary',
+              )}
+            >
+              {t('tasks.addField')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddMode(addMode === 'depot' ? null : 'depot')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors',
+                addMode === 'depot'
+                  ? `border-${color}-400 bg-${color}-50 text-${color}-700`
+                  : 'border-neutral-200 bg-white text-neutral-700 hover:border-primary hover:text-primary',
+              )}
+            >
+              {t('tasks.addDepot')}
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAddMode(addMode === 'field' ? null : 'field')}
+              className={cn(
+                'inline-flex items-center gap-1.5 text-xs font-medium transition-colors',
+                `text-${color}-600 hover:text-${color}-800`,
+              )}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t('tasks.addParcel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowParcelMap(true);
+                setAddMode(null);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-700 transition-colors hover:border-primary hover:text-primary"
+            >
+              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {t('tasks.selectOnMap')}
+            </button>
+          </div>
+        )}
+
+        {addMode === 'field' && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setShowParcelMap(true);
+                setAddMode(null);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-700 transition-colors hover:border-primary hover:text-primary"
+            >
+              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {t('tasks.selectOnMap')}
+            </button>
+            <FarmParcelCascade
+              parcels={parcels}
+              excludeParcelIds={machineParcelIds}
+              assignedCountByParcel={assignedCountByParcel}
+              color={color}
+              onSelect={(parcelId) => onAddParcel(machine.id, parcelId)}
+              onClose={() => setAddMode(null)}
+            />
+          </>
+        )}
+
+        {addMode === 'depot' && (
+          <DepotSelectDropdown
+            excludeDestinationIds={machineDepotIds}
             color={color}
-            onSelect={(parcelId) => onAddParcel(machine.id, parcelId)}
-            onClose={() => setShowPicker(false)}
+            onSelect={(destinationId) => onAddDepot(machine.id, destinationId)}
+            onClose={() => setAddMode(null)}
           />
         )}
       </div>
@@ -572,6 +677,26 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
         assignmentDate: date,
         machineId,
         parcelId,
+        status: AssignmentStatus.in_progress,
+        sequenceOrder: 0,
+      });
+    },
+    [date, machineType, createAssignment],
+  );
+
+  const handleAddDepot = useCallback(
+    (machineId: string, destinationId: string) => {
+      clientLogger.flow('Machine plan: add depot to machine', {
+        board: 'machine-plan',
+        planDate: date,
+        machineType,
+        machineId,
+        destinationId,
+      });
+      createAssignment.mutate({
+        assignmentDate: date,
+        machineId,
+        destinationId,
         status: AssignmentStatus.in_progress,
         sequenceOrder: 0,
       });
@@ -759,7 +884,9 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
                 assignments={assignmentsByMachine.get(m.id) ?? []}
                 parcels={parcels}
                 assignedCountByParcel={assignedCountByParcel}
+                allowDepot={machineType === 'loader' || machineType === 'baler'}
                 onAddParcel={handleAddParcel}
+                onAddDepot={handleAddDepot}
                 onRemoveAssignment={handleRemoveAssignment}
                 onReorderParcels={(from, to) => handleReorderParcels(m.id, from, to)}
                 onUnassignMachine={() => void handleUnassignMachine(m.id)}

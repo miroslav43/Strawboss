@@ -109,13 +109,18 @@ export const resolveDisputeSchema = z.object({
  *
  * `idempotencyKey` is the client-side bale_load UUID so retries dedupe.
  */
-export const registerLoadSchema = z.object({
-  truckId: uuidSchema,
-  loaderMachineId: uuidSchema,
-  parcelId: uuidSchema,
-  baleCount: z.number().int().positive(),
-  gpsLat: z.number().min(-90).max(90).optional(),
-  gpsLon: z.number().min(-180).max(180).optional(),
-  idempotencyKey: uuidSchema,
-  loaderSignature: z.string().optional(),
-});
+export const registerLoadSchema = z
+  .object({
+    truckId: uuidSchema,
+    loaderMachineId: uuidSchema,
+    parcelId: uuidSchema.optional(),
+    sourceDepotId: uuidSchema.optional(),
+    baleCount: z.number().int().positive(),
+    gpsLat: z.number().min(-90).max(90).optional(),
+    gpsLon: z.number().min(-180).max(180).optional(),
+    idempotencyKey: uuidSchema,
+    loaderSignature: z.string().optional(),
+  })
+  .refine((d) => !!d.parcelId !== !!d.sourceDepotId, {
+    message: 'exactly one of parcelId or sourceDepotId is required',
+  });

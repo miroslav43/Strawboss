@@ -58,6 +58,19 @@ interface TruckReleaseRow {
   truck_code: string | null;
 }
 
+/**
+ * register-load input. A load is EITHER parcel-sourced (`parcelId` set,
+ * `sourceDepotId` null) OR depot-sourced (`sourceDepotId` set, `parcelId` null).
+ * The `registerLoadSchema` Zod pipe enforces "exactly one of" at the boundary;
+ * this local type widens the shared `RegisterLoadDto` (whose `parcelId` is still
+ * required) so the depot branch can read `sourceDepotId` and treat `parcelId` as
+ * optional without touching the shared `@strawboss/types` package.
+ */
+type RegisterLoadInput = Omit<RegisterLoadDto, 'parcelId'> & {
+  parcelId?: string | null;
+  sourceDepotId?: string | null;
+};
+
 @Injectable()
 export class TripsService implements OnModuleInit {
   constructor(
@@ -527,7 +540,7 @@ export class TripsService implements OnModuleInit {
    *   c) NULL (driver picks before "Plecare")
    */
   async registerLoad(
-    dto: RegisterLoadDto,
+    dto: RegisterLoadInput,
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
@@ -543,11 +556,20 @@ export class TripsService implements OnModuleInit {
       if (!loaderCheck.length)
         throw new ForbiddenException('Loader not found in your organization');
 
-      const parcelCheck = (await this.drizzleProvider.db.execute(sql`
-        SELECT id FROM parcels WHERE id = ${dto.parcelId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-      `)) as unknown as { id: string }[];
-      if (!parcelCheck.length)
-        throw new ForbiddenException('Parcel not found in your organization');
+      if (dto.sourceDepotId) {
+        // Depot-sourced load: verify the depot exists in the caller's org.
+        const depotCheck = (await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM delivery_destinations WHERE id = ${dto.sourceDepotId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `)) as unknown as { id: string }[];
+        if (!depotCheck.length)
+          throw new ForbiddenException('Depot not found in your organization');
+      } else {
+        const parcelCheck = (await this.drizzleProvider.db.execute(sql`
+          SELECT id FROM parcels WHERE id = ${dto.parcelId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+        `)) as unknown as { id: string }[];
+        if (!parcelCheck.length)
+          throw new ForbiddenException('Parcel not found in your organization');
+      }
     }
 
     // Auxiliary (one-time external) trucks take a collapsed path: no date filter,
@@ -667,7 +689,7 @@ export class TripsService implements OnModuleInit {
           sql`INSERT INTO trips (
                 organization_id,
                 trip_number, status,
-                source_parcel_id, source_parcel_auto,
+                source_parcel_id, source_depot_id, source_parcel_auto,
                 truck_id, driver_id,
                 loader_id, loader_operator_id,
                 destination_name, destination_address, destination_coords,
@@ -675,7 +697,9 @@ export class TripsService implements OnModuleInit {
               ) VALUES (
                 ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
                 ${tripNumber}, ${TripStatus.planned}::trip_status,
-                ${dto.parcelId}, true,
+                ${dto.sourceDepotId ? sql`NULL` : sql`${dto.parcelId}`},
+                ${dto.sourceDepotId ? sql`${dto.sourceDepotId}::uuid` : sql`NULL`},
+                ${dto.sourceDepotId ? sql`false` : sql`true`},
                 ${dto.truckId}, ${driverId},
                 ${dto.loaderMachineId}, ${callerId},
                 ${destName}, ${destAddress},
@@ -713,38 +737,44 @@ export class TripsService implements OnModuleInit {
       // Both checks run inside the same `tx` as the bale_loads INSERT so concurrent
       // loaders racing on the same parcel/truck cannot both pass.
       if (process.env.STRAWBOSS_BALE_VALIDATION_ENABLED !== 'false') {
-        const availabilityRows = (await tx.execute(
-          sql`SELECT
-                COALESCE((SELECT SUM(bale_count) FROM bale_productions
-                          WHERE parcel_id = ${dto.parcelId}
-                            AND deleted_at IS NULL
-                            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS produced,
-                COALESCE((SELECT SUM(bale_count) FROM bale_loads
-                          WHERE parcel_id = ${dto.parcelId}
-                            AND deleted_at IS NULL
-                            ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS loaded`,
-        )) as unknown as { produced: number; loaded: number }[];
-        const produced = Number(availabilityRows[0]?.produced ?? 0);
-        const loaded = Number(availabilityRows[0]?.loaded ?? 0);
-        const remaining = produced - loaded;
+        // Parcel-availability guard (A): only meaningful for parcel loads. A depot
+        // has no per-parcel `bale_productions`, so skip it entirely for depot loads
+        // (depot-inventory reconciliation is a future enhancement). The truck-capacity
+        // guard (B) below still applies to both parcel and depot loads.
+        if (!dto.sourceDepotId) {
+          const availabilityRows = (await tx.execute(
+            sql`SELECT
+                  COALESCE((SELECT SUM(bale_count) FROM bale_productions
+                            WHERE parcel_id = ${dto.parcelId}
+                              AND deleted_at IS NULL
+                              ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS produced,
+                  COALESCE((SELECT SUM(bale_count) FROM bale_loads
+                            WHERE parcel_id = ${dto.parcelId}
+                              AND deleted_at IS NULL
+                              ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS loaded`,
+          )) as unknown as { produced: number; loaded: number }[];
+          const produced = Number(availabilityRows[0]?.produced ?? 0);
+          const loaded = Number(availabilityRows[0]?.loaded ?? 0);
+          const remaining = produced - loaded;
 
-        if (remaining <= 0) {
-          throw new BadRequestException({
-            error: 'parcel_fully_loaded',
-            message: 'Pe parcela aceasta toți baloții au fost deja încărcați.',
-            produced,
-            loaded,
-            remaining,
-          });
-        }
-        if (dto.baleCount > remaining) {
-          throw new BadRequestException({
-            error: 'bale_count_exceeds_remaining',
-            message: `Pe parcelă au mai rămas ${remaining} baloți disponibili.`,
-            produced,
-            loaded,
-            remaining,
-          });
+          if (remaining <= 0) {
+            throw new BadRequestException({
+              error: 'parcel_fully_loaded',
+              message: 'Pe parcela aceasta toți baloții au fost deja încărcați.',
+              produced,
+              loaded,
+              remaining,
+            });
+          }
+          if (dto.baleCount > remaining) {
+            throw new BadRequestException({
+              error: 'bale_count_exceeds_remaining',
+              message: `Pe parcelă au mai rămas ${remaining} baloți disponibili.`,
+              produced,
+              loaded,
+              remaining,
+            });
+          }
         }
 
         const truckCapRows = (await tx.execute(
@@ -767,11 +797,13 @@ export class TripsService implements OnModuleInit {
       await tx.execute(
         sql`INSERT INTO bale_loads (
               organization_id,
-              id, trip_id, parcel_id, loader_id, operator_id,
+              id, trip_id, parcel_id, source_depot_id, loader_id, operator_id,
               bale_count, loaded_at, gps_lat, gps_lon
             ) VALUES (
               ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
-              ${dto.idempotencyKey}, ${tripId}, ${dto.parcelId},
+              ${dto.idempotencyKey}, ${tripId},
+              ${dto.sourceDepotId ? sql`NULL` : sql`${dto.parcelId}`},
+              ${dto.sourceDepotId ? sql`${dto.sourceDepotId}::uuid` : sql`NULL`},
               ${dto.loaderMachineId}, ${callerId},
               ${dto.baleCount}, NOW(),
               ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null}
@@ -838,18 +870,22 @@ export class TripsService implements OnModuleInit {
       'trip_loaded',
     );
 
-    try {
-      const remaining = await this.computeRemainingBalesOnParcel(dto.parcelId, orgId);
-      if (remaining <= 0) {
-        await this.parcelsService.advanceHarvestOnLoadEvent(dto.parcelId, 'all_loaded', orgId);
+    // Harvest-rank advancement is parcel-scoped; depot loads have no parcel to
+    // advance, so this only runs for parcel-sourced loads.
+    if (dto.parcelId) {
+      try {
+        const remaining = await this.computeRemainingBalesOnParcel(dto.parcelId, orgId);
+        if (remaining <= 0) {
+          await this.parcelsService.advanceHarvestOnLoadEvent(dto.parcelId, 'all_loaded', orgId);
+        }
+      } catch (err) {
+        this.winston.warn('registerLoad: advanceHarvestOnLoadEvent failed', {
+          context: 'TripsService',
+          tripId: result.trip.id as string,
+          parcelId: dto.parcelId,
+          err: err instanceof Error ? { message: err.message } : err,
+        });
       }
-    } catch (err) {
-      this.winston.warn('registerLoad: advanceHarvestOnLoadEvent failed', {
-        context: 'TripsService',
-        tripId: result.trip.id as string,
-        parcelId: dto.parcelId,
-        err: err instanceof Error ? { message: err.message } : err,
-      });
     }
     return result;
   }
@@ -863,7 +899,7 @@ export class TripsService implements OnModuleInit {
    * (via signByPublicToken) finalizes stage-2 of the document.
    */
   private async registerAuxiliaryLoad(
-    dto: RegisterLoadDto,
+    dto: RegisterLoadInput,
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
@@ -920,7 +956,7 @@ export class TripsService implements OnModuleInit {
               bale_count, loaded_at, gps_lat, gps_lon
             ) VALUES (
               ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
-              ${dto.idempotencyKey}, ${tripId}, ${dto.parcelId},
+              ${dto.idempotencyKey}, ${tripId}, ${dto.parcelId ?? null},
               ${dto.loaderMachineId}, ${callerId},
               ${dto.baleCount}, NOW(),
               ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null}
@@ -939,7 +975,7 @@ export class TripsService implements OnModuleInit {
               loader_operator_id = COALESCE(loader_operator_id, ${callerId}),
               -- record the actual pickup parcel (the loader's field) if the trip
               -- was created without one (aux trucks aren't tied to a fixed parcel).
-              source_parcel_id = COALESCE(source_parcel_id, ${dto.parcelId}),
+              source_parcel_id = COALESCE(source_parcel_id, ${dto.parcelId ?? null}),
               public_sign_token = COALESCE(public_sign_token, ${signToken}),
               bale_count = (
                 SELECT COALESCE(SUM(bale_count), 0)::int
@@ -1053,6 +1089,7 @@ export class TripsService implements OnModuleInit {
             t.id, t.trip_number AS "tripNumber", t.status,
             t.bale_count AS "baleCount",
             t.source_parcel_id AS "sourceParcelId",
+            t.source_depot_id AS "sourceDepotId",
             t.external_driver_name AS "externalDriverName",
             t.external_driver_phone AS "externalDriverPhone",
             t.destination_name AS "destinationName",

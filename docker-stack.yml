@@ -37,6 +37,8 @@ services:
       # emails are marked `failed` ("RESEND not configured") in /messages.
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_FROM=${RESEND_FROM}
+      # Optional raster logo URL for the confirmation email header (see .env.example).
+      - EMAIL_LOGO_URL=${EMAIL_LOGO_URL}
     volumes:
       - /srv/apps/Strawboss/logs:/app/logs
       - /srv/apps/Strawboss/uploads:/app/uploads
