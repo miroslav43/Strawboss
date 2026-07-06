@@ -611,6 +611,9 @@ export const ro = {
       badgeReadyToLoad: 'Pregătit de încărcare',
       auxTruckFallbackLabel: 'Camion auxiliar',
       baleCountSuffix: '{count} baloți',
+      baleQualityLabel: 'Calitate baloți',
+      quality1: 'Calitate 1',
+      quality2: 'Calitate 2',
     },
     bales: {
       screenTitle: 'Încărcări',

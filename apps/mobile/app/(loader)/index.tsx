@@ -287,6 +287,13 @@ function AuxTruckCard({
   const parcelLine = [trip.sourceParcelName, trip.sourceParcelMunicipality]
     .filter(Boolean)
     .join(', ');
+  // Bale quality (calitate baloți) the truck must load — set by the beneficiary
+  // request portal (quality_1 / quality_2), shown to the loader before loading.
+  const qualityText = trip.quality
+    ? trip.quality === 'quality_1'
+      ? t('loader.home.quality1')
+      : t('loader.home.quality2')
+    : null;
   const disabled = !onPress;
 
   return (
@@ -331,6 +338,11 @@ function AuxTruckCard({
           ) : trip.baleCount != null ? (
             <Text style={auxStyles.metaLine}>
               {t('loader.home.baleCountSuffix', { count: trip.baleCount })}
+            </Text>
+          ) : null}
+          {qualityText ? (
+            <Text style={auxStyles.qualityLine} numberOfLines={1} ellipsizeMode="tail">
+              {t('loader.home.baleQualityLabel')}: {qualityText}
             </Text>
           ) : null}
         </View>
@@ -491,6 +503,12 @@ const auxStyles = StyleSheet.create({
     fontSize: 12,
     color: '#5D4037',
     marginTop: 1,
+  },
+  qualityLine: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: 2,
   },
   disabledHint: {
     fontSize: 11,

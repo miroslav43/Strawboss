@@ -1219,7 +1219,8 @@ export class TripsService implements OnModuleInit {
             m.registration_plate AS "truckPlate", m.internal_code AS "truckCode",
             p.name AS "sourceParcelName", p.code AS "sourceParcelCode",
             p.municipality AS "sourceParcelMunicipality",
-            tr.crop_type AS "cropType"
+            tr.crop_type AS "cropType",
+            tr.quality AS "quality"
           FROM trips t
           JOIN machines m ON m.id = t.truck_id
           LEFT JOIN parcels p ON p.id = t.source_parcel_id

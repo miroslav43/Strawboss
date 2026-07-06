@@ -610,6 +610,9 @@ export const en = {
       badgeReadyToLoad: 'Ready to load',
       auxTruckFallbackLabel: 'Auxiliary truck',
       baleCountSuffix: '{count} bales',
+      baleQualityLabel: 'Bale quality',
+      quality1: 'Quality 1',
+      quality2: 'Quality 2',
     },
     bales: {
       screenTitle: 'Loads',

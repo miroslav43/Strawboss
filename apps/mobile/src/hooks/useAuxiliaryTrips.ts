@@ -19,6 +19,8 @@ export interface AuxiliaryTrip {
   sourceParcelCode: string | null;
   sourceParcelMunicipality: string | null;
   cropType: string | null;
+  /** trip_requests quality grade: 'quality_1' | 'quality_2' (beneficiary portal). */
+  quality: string | null;
 }
 
 interface Options {
