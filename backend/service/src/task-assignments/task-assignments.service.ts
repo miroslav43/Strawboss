@@ -153,7 +153,13 @@ export class TaskAssignmentsService {
         p.code                   AS "parcelCode",
         u.full_name              AS "assignedUserName",
         dd.name                  AS "destinationName",
-        dd.code                  AS "destinationCode"
+        dd.code                  AS "destinationCode",
+        -- Depot geometry so the mobile app can cache it and compute in-depot
+        -- presence for depot-sourced loads (loaders) and delivery geofences
+        -- (drivers). NULL for parcel-only tasks / depots without geometry.
+        ST_AsGeoJSON(dd.boundary)::json AS "destinationBoundary",
+        ST_AsGeoJSON(dd.coords)::json    AS "destinationCoords",
+        dd.confirm_radius_m              AS "destinationConfirmRadiusM"
       FROM task_assignments ta
       JOIN machines m ON ta.machine_id = m.id
       LEFT JOIN parcels p ON ta.parcel_id = p.id

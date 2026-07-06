@@ -13,6 +13,19 @@ export enum TripStatus {
   disputed = 'disputed',
 }
 
+/**
+ * Auxiliary (external, one-time) trucks have a collapsed 3-status lifecycle:
+ * `planned → loaded → completed`. There is no depart/arrive/deliver — the loader
+ * finishing the load lands the trip on `loaded`, and it auto-completes a few
+ * minutes later. Single source of truth for the admin trip-detail timeline and
+ * status-override dropdown when `trip.isAuxiliary` is true.
+ */
+export const AUXILIARY_TRIP_STATUSES = [
+  TripStatus.planned,
+  TripStatus.loaded,
+  TripStatus.completed,
+] as const;
+
 export interface Trip extends Timestamps, SoftDelete {
   id: string;
   tripNumber: string;

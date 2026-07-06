@@ -11,3 +11,6 @@ export const QUEUE_OTA_DEPLOY = 'ota-deploy';
 export const QUEUE_PIN_REGEN = 'pin-regen';
 // Outbound message send (transport-confirmation email + driver SMS enqueue).
 export const QUEUE_MESSAGE_SEND = 'message-send';
+// Auxiliary trips — delayed job that auto-completes an aux trip a few minutes
+// after it is loaded (planned → loaded → completed).
+export const QUEUE_TRIP_AUTOCOMPLETE = 'trip-autocomplete';

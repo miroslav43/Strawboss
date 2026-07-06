@@ -65,7 +65,9 @@ export default function LoaderHomeScreen() {
     router.push({
       pathname: '/loader-ops/load-bales',
       params: {
-        truckId: trip.id,
+        // register-load resolves the aux trip by its truck's machine id — NOT the
+        // trip id. Passing trip.id here silently broke the aux load path.
+        truckId: trip.truckId,
         parcelId: trip.sourceParcelId ?? '',
         isAuxiliary: '1',
       },

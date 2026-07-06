@@ -14,7 +14,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import type { Trip, Document as StrawbossDocument } from '@strawboss/types';
-import { TripStatus } from '@strawboss/types';
+import { TripStatus, AUXILIARY_TRIP_STATUSES } from '@strawboss/types';
 import { useDocuments, useForceTripStatus } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -71,8 +71,14 @@ export function TripDetail({ trip, className }: TripDetailProps) {
     (d: StrawbossDocument) => d.documentType === 'cmr' && d.status === 'generated',
   );
 
-  // Admin-only manual status override (bypasses the state machine).
+  // Admin-only manual status override (bypasses the state machine). Auxiliary
+  // trips have a collapsed lifecycle, so the override only exposes their three
+  // statuses (planned/loaded/completed) — plus the current one, so a trip already
+  // cancelled/disputed still shows correctly.
   const forceStatus = useForceTripStatus(apiClient);
+  const overrideOptions: readonly TripStatus[] = trip.isAuxiliary
+    ? Array.from(new Set<TripStatus>([...AUXILIARY_TRIP_STATUSES, trip.status]))
+    : (Object.values(TripStatus) as TripStatus[]);
   const [overrideStatus, setOverrideStatus] = useState<TripStatus>(trip.status);
   const applyForceStatus = () => {
     if (overrideStatus === trip.status) return;
@@ -105,7 +111,7 @@ export function TripDetail({ trip, className }: TripDetailProps) {
             onChange={(e) => setOverrideStatus(e.target.value as TripStatus)}
             className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-neutral-800"
           >
-            {Object.values(TripStatus).map((s) => (
+            {overrideOptions.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -127,7 +133,7 @@ export function TripDetail({ trip, className }: TripDetailProps) {
 
       {/* Timeline */}
       <div className="rounded-lg border border-neutral-200 bg-white p-4">
-        <TripTimeline currentStatus={trip.status} />
+        <TripTimeline currentStatus={trip.status} isAuxiliary={trip.isAuxiliary} />
       </div>
 
       {/* Info sections */}

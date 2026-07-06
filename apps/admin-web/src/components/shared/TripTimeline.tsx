@@ -1,7 +1,7 @@
 'use client';
 
 import { Check } from 'lucide-react';
-import { TripStatus } from '@strawboss/types';
+import { TripStatus, AUXILIARY_TRIP_STATUSES } from '@strawboss/types';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -16,12 +16,16 @@ const TRIP_STEPS: TripStatus[] = [
   TripStatus.completed,
 ];
 
+// Auxiliary trips have a collapsed 3-step lifecycle (planned → loaded → completed).
+const AUX_TRIP_STEPS: TripStatus[] = [...AUXILIARY_TRIP_STATUSES];
+
 interface TripTimelineProps {
   currentStatus: TripStatus;
+  isAuxiliary?: boolean;
   className?: string;
 }
 
-export function TripTimeline({ currentStatus, className }: TripTimelineProps) {
+export function TripTimeline({ currentStatus, isAuxiliary, className }: TripTimelineProps) {
   const { t } = useI18n();
   if (currentStatus === TripStatus.cancelled || currentStatus === TripStatus.disputed) {
     return (
@@ -33,12 +37,13 @@ export function TripTimeline({ currentStatus, className }: TripTimelineProps) {
     );
   }
 
-  const currentIndex = TRIP_STEPS.indexOf(currentStatus);
+  const steps = isAuxiliary ? AUX_TRIP_STEPS : TRIP_STEPS;
+  const currentIndex = steps.indexOf(currentStatus);
 
   return (
     <div className={cn('overflow-x-auto', className)}>
       <div className="flex items-center gap-0 min-w-max">
-        {TRIP_STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const isCompleted = index < currentIndex;
           const isCurrent = index === currentIndex;
           const isFuture = index > currentIndex;
@@ -70,7 +75,7 @@ export function TripTimeline({ currentStatus, className }: TripTimelineProps) {
               </div>
 
               {/* Connector line */}
-              {index < TRIP_STEPS.length - 1 && (
+              {index < steps.length - 1 && (
                 <div
                   className={cn(
                     'mx-1 h-0.5 w-8',

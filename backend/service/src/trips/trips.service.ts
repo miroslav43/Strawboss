@@ -24,7 +24,7 @@ import { AlertsService } from '../alerts/alerts.service';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates, fmtCoordsUrl } from '../messaging/message-templates';
 import { TripStatus, MessageKind, type UserRole, type PublicSignInfo } from '@strawboss/types';
-import { QUEUE_CMR_GENERATION } from '../jobs/queues';
+import { QUEUE_CMR_GENERATION, QUEUE_TRIP_AUTOCOMPLETE } from '../jobs/queues';
 import type {
   TripCreateDto,
   StartLoadingDto,
@@ -43,6 +43,14 @@ import type {
   RegisterLoadResult,
 } from '@strawboss/types';
 import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss/domain';
+
+/**
+ * How long an auxiliary trip sits in `loaded` before it auto-completes. Aux
+ * trips have a collapsed lifecycle (planned → loaded → completed): the loader
+ * finishing the load lands it on `loaded`, and this delayed job flips it to
+ * `completed`. Fixed at 5 minutes.
+ */
+const AUX_AUTOCOMPLETE_DELAY_MS = 5 * 60_000;
 
 /** Row shape used by recordNoRecall + alertAdminTruckReleased (P1b). */
 interface TruckReleaseRow {
@@ -77,6 +85,7 @@ export class TripsService implements OnModuleInit {
     private readonly drizzleProvider: DrizzleProvider,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
     @InjectQueue(QUEUE_CMR_GENERATION) private readonly cmrQueue: Queue,
+    @InjectQueue(QUEUE_TRIP_AUTOCOMPLETE) private readonly tripAutocompleteQueue: Queue,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
     private readonly deliveryDestinationsService: DeliveryDestinationsService,
@@ -915,14 +924,12 @@ export class TripsService implements OnModuleInit {
       return existing[0].result_data;
     }
 
-    const signToken = randomUUID();
-
     const result = await this.drizzleProvider.db.transaction(async (tx) => {
       // The auxiliary trip is created up-front by autoUpsertAuxiliaryTrip when the
       // admin assigns a loader — there is no date filter (the external truck may
       // arrive any day) and we never auto-create here.
       const openRows = (await tx.execute(
-        sql`SELECT id, status, public_sign_token, external_driver_phone, organization_id
+        sql`SELECT id, status
             FROM trips
             WHERE truck_id = ${dto.truckId}
               AND is_auxiliary = true
@@ -935,9 +942,6 @@ export class TripsService implements OnModuleInit {
       )) as unknown as {
         id: string;
         status: TripStatus;
-        public_sign_token: string | null;
-        external_driver_phone: string | null;
-        organization_id: string | null;
       }[];
 
       if (!openRows[0]) {
@@ -950,33 +954,49 @@ export class TripsService implements OnModuleInit {
       this.validateTransition(fromStatus, 'REGISTER_LOAD');
 
       await tx.execute(
+        // A load is EITHER parcel-sourced (loader at a field) OR depot-sourced
+        // (loader assigned to a depot). bale_loads enforces
+        // CHECK (parcel_id IS NOT NULL OR source_depot_id IS NOT NULL), so exactly
+        // one must be set — mirrors the normal register-load path above.
         sql`INSERT INTO bale_loads (
               organization_id,
-              id, trip_id, parcel_id, loader_id, operator_id,
+              id, trip_id, parcel_id, source_depot_id, loader_id, operator_id,
               bale_count, loaded_at, gps_lat, gps_lon
             ) VALUES (
               ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
-              ${dto.idempotencyKey}, ${tripId}, ${dto.parcelId ?? null},
+              ${dto.idempotencyKey}, ${tripId},
+              ${dto.sourceDepotId ? sql`NULL` : sql`${dto.parcelId ?? null}`},
+              ${dto.sourceDepotId ? sql`${dto.sourceDepotId}::uuid` : sql`NULL`},
               ${dto.loaderMachineId}, ${callerId},
               ${dto.baleCount}, NOW(),
               ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null}
             )`,
       );
 
-      // Collapse straight to `completed` (no depart/arrive/depot for auxiliary).
+      // Aux lifecycle: planned → loaded → completed. The loader finishing the
+      // load lands the trip on `loaded` (same as a normal trip); a delayed job
+      // auto-completes it a few minutes later. The sign-token, stage-1 CMR,
+      // driver SMS and truck retirement happen in applyAuxiliaryLoadedSideEffects
+      // after commit (shared with the admin force-load path).
       const updated = (await tx.execute(
         sql`UPDATE trips SET
-              status = ${TripStatus.completed}::trip_status,
+              status = ${TripStatus.loaded}::trip_status,
               loading_started_at = COALESCE(loading_started_at, NOW()),
               loading_completed_at = NOW(),
-              completed_at = NOW(),
               loader_signature_url = ${dto.loaderSignature ?? null},
               loader_id = ${dto.loaderMachineId},
               loader_operator_id = COALESCE(loader_operator_id, ${callerId}),
-              -- record the actual pickup parcel (the loader's field) if the trip
-              -- was created without one (aux trucks aren't tied to a fixed parcel).
-              source_parcel_id = COALESCE(source_parcel_id, ${dto.parcelId ?? null}),
-              public_sign_token = COALESCE(public_sign_token, ${signToken}),
+              -- record the actual pickup source (the loader's field OR depot) if
+              -- the trip was created without one (aux trucks aren't tied to a
+              -- fixed parcel; a depot-assigned loader sources from the depot).
+              source_parcel_id = COALESCE(
+                source_parcel_id,
+                ${dto.sourceDepotId ? sql`NULL` : sql`${dto.parcelId ?? null}`}
+              ),
+              source_depot_id = COALESCE(
+                source_depot_id,
+                ${dto.sourceDepotId ? sql`${dto.sourceDepotId}::uuid` : sql`NULL`}
+              ),
               bale_count = (
                 SELECT COALESCE(SUM(bale_count), 0)::int
                 FROM bale_loads
@@ -992,22 +1012,6 @@ export class TripsService implements OnModuleInit {
       if (!updated.length) {
         throw new BadRequestException(
           'Trip status changed concurrently — nu se poate închide încărcarea.',
-        );
-      }
-
-      // Retire the one-time auxiliary truck now that its trip is completed:
-      // soft-delete it so it drops out of the fleet/trucks list (machines.list()
-      // filters deleted_at IS NULL), while staying fully readable for CMR and trip
-      // history — those read the machine by truck_id WITHOUT a deleted_at filter
-      // (cmr.service.ts, and the trip-detail LEFT JOIN machines).
-      const auxTruckId = updated[0].truck_id;
-      if (auxTruckId) {
-        await tx.execute(
-          sql`UPDATE machines
-              SET deleted_at = NOW(), updated_at = NOW()
-              WHERE id = ${auxTruckId as string}::uuid
-                AND is_auxiliary = true
-                AND deleted_at IS NULL`,
         );
       }
 
@@ -1033,22 +1037,89 @@ export class TripsService implements OnModuleInit {
 
     const trip = result.trip;
     const tripId = trip.id as string;
-    this.logTripFlow(tripId, 'REGISTER_LOAD_AUX', 'planned', TripStatus.completed);
+    this.logTripFlow(tripId, 'REGISTER_LOAD_AUX', 'planned', TripStatus.loaded);
+
+    // Schedule the delayed auto-complete (loaded → completed after ~5 min), then
+    // fire the loaded side-effects (sign-token + stage-1 CMR + driver SMS + retire
+    // the one-time truck). Both are idempotent and shared with the admin
+    // force-load path; the auto-complete job also re-runs the side-effects as a
+    // crash backstop.
+    await this.scheduleAuxiliaryAutoComplete(tripId, orgId);
+    await this.applyAuxiliaryLoadedSideEffects(tripId, orgId);
+
+    return result;
+  }
+
+  /**
+   * Idempotent side-effects fired when an auxiliary trip enters `loaded` (from a
+   * mobile register-load OR an admin force-status). Gated on atomically claiming
+   * `public_sign_token`, so it runs EXACTLY ONCE even if called from several
+   * paths: mints the driver sign-token, retires the one-time aux truck (soft
+   * delete — it drops out of the fleet list but stays readable for CMR + trip
+   * history), queues the stage-1 (loading) CMR, and SMSs the external driver the
+   * sign-and-leave link. All best-effort — failures are logged, never thrown.
+   */
+  private async applyAuxiliaryLoadedSideEffects(
+    tripId: string,
+    orgId: string | null,
+  ): Promise<void> {
+    const token = randomUUID();
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+    // Atomic claim: only the first caller (token still null) proceeds; a second
+    // caller (redundant admin force, or the auto-complete backstop) gets 0 rows.
+    const claimed = (await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET public_sign_token = ${token}, updated_at = NOW()
+          WHERE id = ${tripId}
+            AND is_auxiliary = true
+            AND public_sign_token IS NULL${orgFilter}
+          RETURNING truck_id, external_driver_phone, organization_id, bale_count`,
+    )) as unknown as {
+      truck_id: string | null;
+      external_driver_phone: string | null;
+      organization_id: string | null;
+      bale_count: number | null;
+    }[];
+    if (!claimed.length) return; // side-effects already ran for this trip
+
+    const row = claimed[0];
+
+    if (row.truck_id) {
+      await this.drizzleProvider.db
+        .execute(
+          sql`UPDATE machines
+              SET deleted_at = NOW(), updated_at = NOW()
+              WHERE id = ${row.truck_id}::uuid
+                AND is_auxiliary = true
+                AND deleted_at IS NULL`,
+        )
+        .catch((err) =>
+          this.winston.warn('applyAuxiliaryLoadedSideEffects: retire truck failed', {
+            context: 'TripsService',
+            tripId,
+            err: err instanceof Error ? { message: err.message } : err,
+          }),
+        );
+    }
 
     // Stage-1 CMR (loading part) — auxiliary trips never depart(), so queue here.
-    await this.cmrQueue.add('generate', { tripId, orgId, stage: 1 });
+    await this.cmrQueue.add('generate', { tripId, orgId, stage: 1 }).catch((err) =>
+      this.winston.warn('applyAuxiliaryLoadedSideEffects: CMR enqueue failed', {
+        context: 'TripsService',
+        tripId,
+        err: err instanceof Error ? { message: err.message } : err,
+      }),
+    );
 
     // SMS the external driver a one-time sign-and-leave link (stubbed).
-    const token = (trip.public_sign_token as string | null) ?? signToken;
-    const driverPhone = trip.external_driver_phone as string | null;
+    const driverPhone = row.external_driver_phone;
     if (driverPhone) {
-      const slug = await this.resolveOrgSlug(trip.organization_id as string | null);
+      const slug = await this.resolveOrgSlug(row.organization_id);
       const signUrl = slug
         ? `${this.publicWebBaseUrl()}/${slug}/sign/${token}`
         : `${this.publicWebBaseUrl()}/sign/${token}`;
       const tpl = messageTemplates[MessageKind.driver_loaded_sign_link]({
         signUrl,
-        baleCount: Number(trip.bale_count ?? 0),
+        baleCount: Number(row.bale_count ?? 0),
       });
       void this.messaging
         .sendSms({
@@ -1058,15 +1129,66 @@ export class TripsService implements OnModuleInit {
           metadata: { tripId },
         })
         .catch((err) =>
-          this.winston.warn('registerAuxiliaryLoad: sign-link SMS failed', {
+          this.winston.warn('applyAuxiliaryLoadedSideEffects: sign-link SMS failed', {
             context: 'TripsService',
             tripId,
             err: err instanceof Error ? { message: err.message } : err,
           }),
         );
     }
+  }
 
-    return result;
+  /**
+   * Enqueue (or replace) the delayed job that auto-completes an auxiliary trip
+   * `loaded → completed`. Deterministic jobId → a repeat schedule dedupes rather
+   * than piling up. Non-fatal: a Redis hiccup is logged, not thrown (the load
+   * already committed).
+   */
+  private async scheduleAuxiliaryAutoComplete(tripId: string, orgId: string | null): Promise<void> {
+    await this.tripAutocompleteQueue
+      .add(
+        'complete',
+        { tripId, orgId },
+        { delay: AUX_AUTOCOMPLETE_DELAY_MS, jobId: `aux-autocomplete-${tripId}` },
+      )
+      .catch((err) =>
+        this.winston.error('scheduleAuxiliaryAutoComplete: enqueue failed', {
+          context: 'TripsService',
+          tripId,
+          err: err instanceof Error ? { message: err.message } : err,
+        }),
+      );
+  }
+
+  /**
+   * Delayed-job target: flip an auxiliary trip `loaded → completed` a few minutes
+   * after it was loaded. Idempotent — a no-op if the trip already left `loaded`
+   * (an admin completed or cancelled it early). Also re-runs the loaded
+   * side-effects first as a backstop, in case they never fired at load time
+   * (e.g. a crash right after the load committed).
+   */
+  async autoCompleteAuxiliary(tripId: string, orgId: string | null): Promise<void> {
+    await this.applyAuxiliaryLoadedSideEffects(tripId, orgId);
+
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+    const updated = (await this.drizzleProvider.db.execute(
+      sql`UPDATE trips SET
+            status = ${TripStatus.completed}::trip_status,
+            completed_at = COALESCE(completed_at, NOW()),
+            updated_at = NOW()
+          WHERE id = ${tripId}
+            AND is_auxiliary = true
+            AND status = ${TripStatus.loaded}::trip_status${orgFilter}
+          RETURNING id`,
+    )) as unknown as { id: string }[];
+    if (!updated.length) {
+      this.winston.log('flow', 'Aux auto-complete: no-op (trip not in loaded)', {
+        context: 'TripsService',
+        tripId,
+      });
+      return;
+    }
+    this.logTripFlow(tripId, 'AUTO_COMPLETE_AUX', TripStatus.loaded, TripStatus.completed);
   }
 
   /** Org slug for building public driver links; null if not resolvable. */
@@ -1093,6 +1215,7 @@ export class TripsService implements OnModuleInit {
             t.external_driver_name AS "externalDriverName",
             t.external_driver_phone AS "externalDriverPhone",
             t.destination_name AS "destinationName",
+            m.id AS "truckId",
             m.registration_plate AS "truckPlate", m.internal_code AS "truckCode",
             p.name AS "sourceParcelName", p.code AS "sourceParcelCode",
             p.municipality AS "sourceParcelMunicipality",
@@ -2009,6 +2132,15 @@ export class TripsService implements OnModuleInit {
       to: target,
       reason: dto.reason ?? null,
     });
+
+    // Auxiliary force-load: an admin forcing an aux trip to `loaded` should behave
+    // like a mobile register-load — fire the loaded side-effects once (idempotent)
+    // and schedule the delayed auto-complete so it still lands on `completed`.
+    if (trip.is_auxiliary === true && target === TripStatus.loaded) {
+      await this.applyAuxiliaryLoadedSideEffects(id, orgId);
+      await this.scheduleAuxiliaryAutoComplete(id, orgId);
+    }
+
     return result;
   }
 

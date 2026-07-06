@@ -3,14 +3,11 @@ import * as Location from 'expo-location';
 import { useAuthStore } from '@/stores/auth-store';
 import { useActiveParcels, findParcelAtLocation, type ActiveParcel } from './useActiveParcels';
 import { useCachedParcels } from './useCachedParcels';
+import { useCachedDepots } from './useCachedDepots';
 import { useMyTasks, type MyTask } from './useMyTasks';
 import { distanceToBoundaryMeters } from '@/lib/point-in-geojson';
 import { haversineKm } from '@/lib/routing';
-import { getDatabase } from '@/lib/storage';
-import {
-  DeliveryDestinationsRepo,
-  type LocalDeliveryDestination,
-} from '@/db/delivery-destinations-repo';
+import { type LocalDeliveryDestination } from '@/db/delivery-destinations-repo';
 import { mobileLogger } from '@/lib/logger';
 
 /**
@@ -180,9 +177,10 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   // context even with no signal. Kept separate from the GPS source above.
   const { parcels: cachedParcels } = useCachedParcels();
 
-  // Cached depot geometry, loaded from the local SQLite mirror. Used to compute
-  // presence for a depot target (a loader assigned to a delivery destination).
-  const [cachedDepots, setCachedDepots] = useState<LocalDeliveryDestination[]>([]);
+  // Depot geometry — API when online (persisted to SQLite for offline), local
+  // cache otherwise. Used to compute presence for a depot target (a loader
+  // assigned to a delivery destination).
+  const { depots: cachedDepots } = useCachedDepots();
 
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<
@@ -257,27 +255,6 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-    };
-  }, [refreshKey]);
-
-  // Load cached depot geometry once (and on refresh). Non-fatal: on failure the
-  // depot presence stays `unknown` and the load screen falls back to soft confirm.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const db = await getDatabase();
-        const repo = new DeliveryDestinationsRepo(db);
-        const rows = await repo.listAll();
-        if (!cancelled) setCachedDepots(rows);
-      } catch (err) {
-        mobileLogger.flow('useCurrentLoaderParcel: depot cache load failed', {
-          err: err instanceof Error ? err.message : String(err),
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
     };
   }, [refreshKey]);
 

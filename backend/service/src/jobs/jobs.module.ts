@@ -13,6 +13,7 @@ import {
   QUEUE_OTA_DEPLOY,
   QUEUE_PIN_REGEN,
   QUEUE_MESSAGE_SEND,
+  QUEUE_TRIP_AUTOCOMPLETE,
 } from './queues';
 
 @Module({
@@ -35,6 +36,7 @@ import {
       { name: QUEUE_OTA_DEPLOY },
       { name: QUEUE_PIN_REGEN },
       { name: QUEUE_MESSAGE_SEND },
+      { name: QUEUE_TRIP_AUTOCOMPLETE },
     ),
   ],
   providers: [JobSchedulerService],

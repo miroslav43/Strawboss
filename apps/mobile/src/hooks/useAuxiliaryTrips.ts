@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/auth-store';
 
 export interface AuxiliaryTrip {
   id: string;
+  /** The aux truck's machine id — what register-load expects as `truckId`. */
+  truckId: string;
   tripNumber: string | null;
   status: string;
   baleCount: number | null;

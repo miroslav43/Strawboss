@@ -3,7 +3,12 @@ import { BullModule } from '@nestjs/bullmq';
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 import { TruckIdleProcessor } from './truck-idle.processor';
-import { QUEUE_CMR_GENERATION, QUEUE_TRUCK_IDLE_CHECK } from '../jobs/queues';
+import { TripAutocompleteProcessor } from './trip-autocomplete.processor';
+import {
+  QUEUE_CMR_GENERATION,
+  QUEUE_TRUCK_IDLE_CHECK,
+  QUEUE_TRIP_AUTOCOMPLETE,
+} from '../jobs/queues';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DeliveryDestinationsModule } from '../delivery-destinations/delivery-destinations.module';
 import { AlertsModule } from '../alerts/alerts.module';
@@ -11,14 +16,18 @@ import { ParcelsModule } from '../parcels/parcels.module';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: QUEUE_CMR_GENERATION }, { name: QUEUE_TRUCK_IDLE_CHECK }),
+    BullModule.registerQueue(
+      { name: QUEUE_CMR_GENERATION },
+      { name: QUEUE_TRUCK_IDLE_CHECK },
+      { name: QUEUE_TRIP_AUTOCOMPLETE },
+    ),
     forwardRef(() => NotificationsModule),
     DeliveryDestinationsModule,
     AlertsModule,
     ParcelsModule,
   ],
   controllers: [TripsController],
-  providers: [TripsService, TruckIdleProcessor],
+  providers: [TripsService, TruckIdleProcessor, TripAutocompleteProcessor],
   exports: [TripsService],
 })
 export class TripsModule {}

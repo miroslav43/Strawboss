@@ -129,15 +129,26 @@ export default function LoadBalesScreen() {
     if (snapshotParcelId || snapshotDepotId) return;
     if (isAuxiliary) {
       // Prefer the parcel the trip was created with; otherwise the auxiliary load
-      // is attributed to the loader's OWN current/assigned field (the external
+      // is attributed to the loader's OWN current/assigned target (the external
       // truck isn't tied to a fixed parcel — it loads wherever the loader is).
       if (auxParcelId) {
         setSnapshotParcelId(auxParcelId);
         return;
       }
-      if (parcel.status === 'resolved' && parcel.parcelId) {
-        setSnapshotParcelId(parcel.parcelId);
-        setSnapshotParcelName(parcel.parcelName);
+      if (parcel.status === 'resolved') {
+        // A depot-assigned loader has no parcel — snapshot the depot so the aux
+        // load can proceed (aux loads bypass the GPS gate; they just need a
+        // target). Without this the Register button stays disabled and the card
+        // is stuck on "Determining the field from your location…".
+        if (parcel.targetType === 'depot' && parcel.destinationId) {
+          setSnapshotDepotId(parcel.destinationId);
+          setSnapshotDepotName(parcel.destinationName ?? parcel.destinationCode);
+          return;
+        }
+        if (parcel.parcelId) {
+          setSnapshotParcelId(parcel.parcelId);
+          setSnapshotParcelName(parcel.parcelName);
+        }
       }
       return;
     }
@@ -500,8 +511,9 @@ export default function LoadBalesScreen() {
             await applyOptimistic({
               baleLoadId: result.baleLoadId,
               tripId: result.trip.id,
-              // Server collapses auxiliary trips straight to `completed`; normal → `loaded`.
-              tripStatus: (result.trip.status as string) ?? (isAuxiliary ? 'completed' : 'loaded'),
+              // Register-load lands every trip on `loaded` (aux trips then
+              // auto-complete server-side a few minutes later).
+              tripStatus: (result.trip.status as string) ?? 'loaded',
               truckId,
               parcelId: snapshotParcelId,
               loaderMachineId: assignedMachineId,
@@ -523,7 +535,7 @@ export default function LoadBalesScreen() {
           await applyOptimistic({
             baleLoadId: idempotencyKey,
             tripId: localTripId,
-            tripStatus: isAuxiliary ? 'completed' : 'loaded',
+            tripStatus: 'loaded',
             truckId,
             parcelId: snapshotParcelId,
             loaderMachineId: assignedMachineId,
