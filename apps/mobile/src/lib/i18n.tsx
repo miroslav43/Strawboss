@@ -24,7 +24,17 @@ function getByPath(obj: Record<string, unknown>, path: string): unknown {
 
 function interpolate(template: string, params?: Record<string, string | number>): string {
   if (!params) return template;
-  return template.replace(/\{\{(\w+)\}\}/g, (_, k) => (params[k] != null ? String(params[k]) : ''));
+  // The catalogs use two placeholder conventions. Support both:
+  //  1. Double-brace {{param}} — replaced with the value, or '' when missing
+  //     (legacy behaviour, kept for the strings already written this way).
+  //  2. Single-brace {param}   — replaced with the value; left untouched when
+  //     there is no matching param, so a genuine mismatch stays visible and
+  //     stray literal braces are never clobbered.
+  // Double-brace runs first so {{param}} is fully consumed before the single
+  // pass sees it.
+  return template
+    .replace(/\{\{(\w+)\}\}/g, (_, k) => (params[k] != null ? String(params[k]) : ''))
+    .replace(/\{(\w+)\}/g, (match, k) => (params[k] != null ? String(params[k]) : match));
 }
 
 export function normalizeLocale(raw: string | null | undefined): Locale {
