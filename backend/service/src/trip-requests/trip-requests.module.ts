@@ -12,12 +12,16 @@ import { PinThrottleGuard } from './pin-throttle.guard';
 import { AlertsModule } from '../alerts/alerts.module';
 import { TripsModule } from '../trips/trips.module';
 import { BeneficiariesModule } from '../beneficiaries/beneficiaries.module';
+import { UploadsModule } from '../uploads/uploads.module';
+import { DocumentsModule } from '../documents/documents.module';
 
 @Module({
   imports: [
     AlertsModule,
     TripsModule,
     BeneficiariesModule,
+    UploadsModule,
+    DocumentsModule,
     BullModule.registerQueue({ name: QUEUE_MESSAGE_SEND }),
   ],
   controllers: [TripRequestsController, PublicPortalController, BeneficiaryRecordsController],

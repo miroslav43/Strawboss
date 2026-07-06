@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { TripRequest, OrgRequestSettings } from '@strawboss/types';
+import type { TripRequest, OrgRequestSettings, Document } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
@@ -53,6 +53,34 @@ export function useCancelTripRequest(client: ApiClient) {
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       client.post<TripRequest>(`/api/v1/trip-requests/${id}/cancel`, { reason }),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
+    },
+  });
+}
+
+/**
+ * List the aviz (delivery-note PDF) document(s) attached to a request. With the
+ * single-aviz model this returns 0 or 1 document.
+ */
+export function useRequestAvize(client: ApiClient, requestId: string) {
+  return useQuery({
+    queryKey: queryKeys.tripRequests.avize(requestId),
+    queryFn: () => client.get<Document[]>(`/api/v1/trip-requests/${requestId}/aviz`),
+    enabled: !!requestId,
+  });
+}
+
+/**
+ * Upload (or replace) the aviz PDF for a request. Invalidates that request's
+ * avize list so the fresh PDF appears immediately, plus the request list.
+ */
+export function useUploadAviz(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, formData }: { requestId: string; formData: FormData }) =>
+      client.upload<Document>(`/api/v1/trip-requests/${requestId}/aviz`, formData),
+    onSuccess: (_doc, { requestId }) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.avize(requestId) });
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
     },
   });

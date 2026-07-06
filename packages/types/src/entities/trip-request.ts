@@ -82,6 +82,9 @@ export interface TripRequest extends Timestamps, SoftDelete {
   machineModel?: string | null;
   machinePlate?: string | null;
   tripNumber?: string | null;
+  // resolved names for the ids above (joined from delivery_destinations / users)
+  sourceDepotName?: string | null;
+  confirmedByName?: string | null;
 }
 
 /** Public submission payload (no auth). The portal code is validated separately. */

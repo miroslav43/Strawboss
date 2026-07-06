@@ -22,6 +22,18 @@ const ALLOWED_MIMES: Record<string, string> = {
 };
 
 /**
+ * Avize (delivery-note PDFs) are scanned documents that routinely exceed the
+ * 3 MB image cap, so they get their own larger limit and a PDF-only allowlist.
+ * Kept separate from ALLOWED_MIMES so the receipt/signature/avatar paths stay
+ * image-only.
+ */
+export const AVIZ_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
+const AVIZ_ALLOWED_MIMES: Record<string, string> = {
+  'application/pdf': 'pdf',
+};
+
+/**
  * Accepted input MIME types for avatar uploads. We re-encode everything to WebP
  * 512×512 on disk, so the client just needs to send a format libvips can read.
  * HEIC is accepted because iPhones default to it when "Most Compatible" is off.
@@ -148,6 +160,58 @@ export class UploadsService {
 
     // URL is relative to the API origin so mobile/admin can use their normal
     // `${API_URL}/...` composition without extra configuration.
+    return {
+      url: `/api/v1/uploads/${key}`,
+      key,
+      sizeBytes: bytesWritten,
+    };
+  }
+
+  /**
+   * Save an uploaded aviz (delivery-note PDF) for a trip request.
+   *
+   * A fresh UUID filename is used on every upload — even though only one aviz is
+   * kept per request — so the signed URL changes and browsers never render a
+   * stale cached PDF after a replace. Stored under `UPLOADS_ROOT/avize/<uuid>.pdf`
+   * and served at `/api/v1/uploads/avize/<uuid>.pdf` via the signed
+   * @fastify/static route (no controller change — it globs the whole prefix).
+   */
+  async saveAviz(input: SaveSignatureInput): Promise<SaveSignatureResult> {
+    const ext = AVIZ_ALLOWED_MIMES[input.mimetype];
+    if (!ext) {
+      throw new BadRequestException(
+        `Unsupported file type '${input.mimetype}'. Allowed: ${Object.keys(AVIZ_ALLOWED_MIMES).join(', ')}`,
+      );
+    }
+
+    const dir = path.join(this.uploadsRoot, 'avize');
+    await fsp.mkdir(dir, { recursive: true });
+
+    const key = `avize/${randomUUID()}.${ext}`;
+    const absolute = path.join(this.uploadsRoot, key);
+
+    let bytesWritten = 0;
+    const ws = createWriteStream(absolute);
+
+    input.stream.on('data', (chunk: Buffer) => {
+      bytesWritten += chunk.length;
+      if (bytesWritten > AVIZ_MAX_BYTES) {
+        input.stream.destroy(
+          new PayloadTooLargeException(`File exceeds max size of ${AVIZ_MAX_BYTES} bytes`),
+        );
+      }
+    });
+
+    try {
+      await pipeline(input.stream, ws);
+    } catch (err) {
+      await fsp.unlink(absolute).catch(() => {
+        /* already gone */
+      });
+      if (err instanceof PayloadTooLargeException) throw err;
+      throw new InternalServerErrorException(err instanceof Error ? err.message : 'Upload failed');
+    }
+
     return {
       url: `/api/v1/uploads/${key}`,
       key,

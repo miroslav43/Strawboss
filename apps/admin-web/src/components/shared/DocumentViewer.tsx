@@ -65,8 +65,10 @@ export function DocumentViewer({ document: doc, className }: DocumentViewerProps
         if (blobUrl) URL.revokeObjectURL(blobUrl);
       };
     }
-    // Already a real URL (e.g. Supabase Storage) — use as-is.
-    if (url.startsWith('https://') || url.startsWith('http://localhost')) {
+    // Already a real URL (e.g. Supabase Storage) or a same-origin server-relative
+    // path (e.g. an uploaded aviz at `/api/v1/uploads/avize/<uuid>.pdf?exp&sig`,
+    // pre-resolved by the caller) — use as-is; the browser loads it directly.
+    if (url.startsWith('https://') || url.startsWith('http://localhost') || url.startsWith('/')) {
       setObjectUrl(url);
     } else {
       setObjectUrl(null);

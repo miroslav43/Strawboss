@@ -8,6 +8,7 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 const DOCUMENT_COLUMNS = sql`
   id,
   trip_id          AS "tripId",
+  trip_request_id  AS "tripRequestId",
   document_type    AS "documentType",
   status,
   title,
@@ -28,7 +29,10 @@ const DOCUMENT_COLUMNS = sql`
 export class DocumentsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(orgId: string | null, filters?: { tripId?: string; documentType?: string }) {
+  async list(
+    orgId: string | null,
+    filters?: { tripId?: string; tripRequestId?: string; documentType?: string },
+  ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
     if (orgId) {
@@ -36,6 +40,9 @@ export class DocumentsService {
     }
     if (filters?.tripId) {
       conditions.push(sql`trip_id = ${filters.tripId}`);
+    }
+    if (filters?.tripRequestId) {
+      conditions.push(sql`trip_request_id = ${filters.tripRequestId}::uuid`);
     }
     if (filters?.documentType) {
       conditions.push(sql`document_type = ${filters.documentType}`);
@@ -69,27 +76,49 @@ export class DocumentsService {
   async create(
     orgId: string | null,
     data: {
-      tripId: string;
+      tripId?: string | null;
+      tripRequestId?: string | null;
       documentType: string;
       title: string;
       status: string;
       fileUrl?: string | null;
+      fileSizeBytes?: number | null;
       mimeType?: string | null;
       metadata?: Record<string, unknown> | null;
     },
   ) {
     const result = await this.drizzleProvider.db.execute(
       sql`INSERT INTO documents (
-        trip_id, document_type, title, status,
-        file_url, mime_type, metadata, organization_id
+        trip_id, trip_request_id, document_type, title, status,
+        file_url, file_size_bytes, mime_type, metadata, organization_id
       ) VALUES (
-        ${data.tripId}, ${data.documentType}, ${data.title}, ${data.status},
-        ${data.fileUrl ?? null}, ${data.mimeType ?? null},
+        ${data.tripId ?? null}, ${data.tripRequestId ?? null}, ${data.documentType}, ${data.title}, ${data.status},
+        ${data.fileUrl ?? null}, ${data.fileSizeBytes ?? null}, ${data.mimeType ?? null},
         ${data.metadata ? JSON.stringify(data.metadata) : null}::jsonb,
         ${orgId ? sql`${orgId}::uuid` : sql`NULL`}
       ) RETURNING *`,
     );
     return result;
+  }
+
+  /**
+   * Soft-delete every active document of a given type for a trip request.
+   * Used to enforce "one aviz per request" — the previous aviz is retired
+   * before a replacement is inserted, so listAvize() returns a single row.
+   */
+  async softDeleteByTripRequest(orgId: string | null, tripRequestId: string, documentType: string) {
+    const conditions: ReturnType<typeof sql>[] = [
+      sql`trip_request_id = ${tripRequestId}::uuid`,
+      sql`document_type = ${documentType}`,
+      sql`deleted_at IS NULL`,
+    ];
+    if (orgId) {
+      conditions.push(sql`organization_id = ${orgId}::uuid`);
+    }
+    const where = sql.join(conditions, sql` AND `);
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE documents SET deleted_at = NOW(), updated_at = NOW() WHERE ${where}`,
+    );
   }
 
   async updateStatus(id: string, orgId: string | null, status: string, fileUrl?: string | null) {

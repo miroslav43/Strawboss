@@ -3,7 +3,16 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, XCircle, Loader2, ClipboardList, MapPin, Warehouse } from 'lucide-react';
+import {
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  ClipboardList,
+  MapPin,
+  Warehouse,
+  Eye,
+  FileText,
+} from 'lucide-react';
 import {
   useTripRequests,
   useConfirmTripRequest,
@@ -18,6 +27,8 @@ import { useI18n } from '@/lib/i18n';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { cn } from '@/lib/utils';
+import { RequestDetailsModal } from '@/components/features/trip-requests/RequestDetailsModal';
+import { AvizUploadModal } from '@/components/features/trip-requests/AvizUploadModal';
 
 // ── Shared UI atoms (same style as machines/page.tsx) ─────────────────────
 
@@ -266,21 +277,57 @@ function CancelModal({ request, onClose }: { request: TripRequest; onClose: () =
 
 // ── Pending request card ──────────────────────────────────────────────────
 
+/** The two new per-row actions (details popup + aviz upload), shared by both rows. */
+function RowActions({
+  request,
+  onViewDetails,
+  onUploadAviz,
+}: {
+  request: TripRequest;
+  onViewDetails: (r: TripRequest) => void;
+  onUploadAviz: (r: TripRequest) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <>
+      <button
+        onClick={() => onViewDetails(request)}
+        className="flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+      >
+        <Eye className="h-3.5 w-3.5" />
+        {t('tripRequests.viewDetails')}
+      </button>
+      <button
+        onClick={() => onUploadAviz(request)}
+        className="flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+      >
+        <FileText className="h-3.5 w-3.5" />
+        {t('tripRequests.uploadAviz')}
+      </button>
+    </>
+  );
+}
+
 function PendingRequestRow({
   request,
   onConfirm,
   onCancel,
+  onViewDetails,
+  onUploadAviz,
 }: {
   request: TripRequest;
   onConfirm: (r: TripRequest) => void;
   onCancel: (r: TripRequest) => void;
+  onViewDetails: (r: TripRequest) => void;
+  onUploadAviz: (r: TripRequest) => void;
 }) {
   const { t } = useI18n();
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <StatusBadge status={request.status as RequestStatus} />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          <RowActions request={request} onViewDetails={onViewDetails} onUploadAviz={onUploadAviz} />
           <button
             onClick={() => onConfirm(request)}
             className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
@@ -365,7 +412,15 @@ function Detail({ label, value }: { label: string; value: string | null | undefi
 
 // ── Confirmed / cancelled row ─────────────────────────────────────────────
 
-function ClosedRequestRow({ request }: { request: TripRequest }) {
+function ClosedRequestRow({
+  request,
+  onViewDetails,
+  onUploadAviz,
+}: {
+  request: TripRequest;
+  onViewDetails: (r: TripRequest) => void;
+  onUploadAviz: (r: TripRequest) => void;
+}) {
   const { t } = useI18n();
   const slug = useOrgSlug();
   return (
@@ -412,6 +467,11 @@ function ClosedRequestRow({ request }: { request: TripRequest }) {
       <td className="px-4 py-3 text-sm text-neutral-600">
         {request.neededDate ?? <span className="text-neutral-300">{t('tripRequests.none')}</span>}
       </td>
+      <td className="px-4 py-3">
+        <div className="flex justify-end gap-2">
+          <RowActions request={request} onViewDetails={onViewDetails} onUploadAviz={onUploadAviz} />
+        </div>
+      </td>
     </tr>
   );
 }
@@ -423,6 +483,8 @@ export default function TripRequestsPage() {
   const [statusFilter, setStatusFilter] = useState<RequestStatus | ''>('');
   const [confirmTarget, setConfirmTarget] = useState<TripRequest | null>(null);
   const [cancelTarget, setCancelTarget] = useState<TripRequest | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<TripRequest | null>(null);
+  const [avizTarget, setAvizTarget] = useState<TripRequest | null>(null);
 
   const filterOptions = useMemo(
     () => [
@@ -451,6 +513,8 @@ export default function TripRequestsPage() {
 
   const handleConfirm = useCallback((r: TripRequest) => setConfirmTarget(r), []);
   const handleCancel = useCallback((r: TripRequest) => setCancelTarget(r), []);
+  const handleViewDetails = useCallback((r: TripRequest) => setDetailsTarget(r), []);
+  const handleUploadAviz = useCallback((r: TripRequest) => setAvizTarget(r), []);
 
   return (
     <div className="space-y-5">
@@ -498,6 +562,8 @@ export default function TripRequestsPage() {
               request={r}
               onConfirm={handleConfirm}
               onCancel={handleCancel}
+              onViewDetails={handleViewDetails}
+              onUploadAviz={handleUploadAviz}
             />
           ))}
         </div>
@@ -518,11 +584,17 @@ export default function TripRequestsPage() {
                 <th className="px-4 py-3">{t('tripRequests.colMachine')}</th>
                 <th className="px-4 py-3">{t('tripRequests.colTrip')}</th>
                 <th className="px-4 py-3">{t('tripRequests.colNeededDate')}</th>
+                <th className="px-4 py-3 text-right">{t('tripRequests.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {closedRequests.map((r) => (
-                <ClosedRequestRow key={r.id} request={r} />
+                <ClosedRequestRow
+                  key={r.id}
+                  request={r}
+                  onViewDetails={handleViewDetails}
+                  onUploadAviz={handleUploadAviz}
+                />
               ))}
             </tbody>
           </table>
@@ -534,6 +606,10 @@ export default function TripRequestsPage() {
         <ConfirmModal request={confirmTarget} onClose={() => setConfirmTarget(null)} />
       )}
       {cancelTarget && <CancelModal request={cancelTarget} onClose={() => setCancelTarget(null)} />}
+      {detailsTarget && (
+        <RequestDetailsModal request={detailsTarget} onClose={() => setDetailsTarget(null)} />
+      )}
+      {avizTarget && <AvizUploadModal request={avizTarget} onClose={() => setAvizTarget(null)} />}
     </div>
   );
 }

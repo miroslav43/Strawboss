@@ -9,12 +9,15 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import type { Readable } from 'node:stream';
 import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { AlertsService } from '../alerts/alerts.service';
 import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
+import { UploadsService } from '../uploads/uploads.service';
+import { DocumentsService } from '../documents/documents.service';
 import { PinThrottleService } from './pin-throttle.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -81,7 +84,9 @@ const TR_COLS = sql`
   (SELECT m.make               FROM machines m WHERE m.id = trip_requests.machine_id) AS "machineMake",
   (SELECT m.model              FROM machines m WHERE m.id = trip_requests.machine_id) AS "machineModel",
   (SELECT m.registration_plate FROM machines m WHERE m.id = trip_requests.machine_id) AS "machinePlate",
-  (SELECT t.trip_number        FROM trips t    WHERE t.id = trip_requests.trip_id)    AS "tripNumber"
+  (SELECT t.trip_number        FROM trips t    WHERE t.id = trip_requests.trip_id)    AS "tripNumber",
+  (SELECT dd.name       FROM delivery_destinations dd WHERE dd.id = trip_requests.source_depot_id) AS "sourceDepotName",
+  (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.confirmed_by)     AS "confirmedByName"
 `;
 
 interface OrgPortalRow {
@@ -108,6 +113,8 @@ export class TripRequestsService {
     private readonly drizzleProvider: DrizzleProvider,
     private readonly alertsService: AlertsService,
     private readonly beneficiariesService: BeneficiariesService,
+    private readonly uploads: UploadsService,
+    private readonly documents: DocumentsService,
     private readonly pinThrottle: PinThrottleService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     @InjectQueue(QUEUE_MESSAGE_SEND) private readonly messageQueue: Queue,
@@ -228,6 +235,51 @@ export class TripRequestsService {
           RETURNING ${TR_COLS}`,
     )) as unknown as TripRequest[];
     return updated[0];
+  }
+
+  // ── Avize (delivery-note PDFs attached to a request) ─────────────────────
+
+  /**
+   * Attach an aviz PDF to a request. Enforces one aviz per request: the previous
+   * one (if any) is soft-deleted before the new `documents` row is inserted.
+   * The stored file is served via the signed /api/v1/uploads/ static route.
+   */
+  async uploadAviz(
+    orgId: string,
+    requestId: string,
+    input: { mimetype: string; filename: string; stream: Readable },
+  ) {
+    const req = await this.findById(orgId, requestId); // 404 + org check
+    const saved = await this.uploads.saveAviz({
+      mimetype: input.mimetype,
+      stream: input.stream,
+    });
+    await this.documents.softDeleteByTripRequest(orgId, requestId, 'delivery_note');
+    await this.documents.create(orgId, {
+      tripId: req.tripId ?? null,
+      tripRequestId: requestId,
+      documentType: 'delivery_note',
+      status: 'generated',
+      title: `Aviz — ${req.truckRegistrationPlate}`,
+      fileUrl: saved.url,
+      fileSizeBytes: saved.sizeBytes,
+      mimeType: 'application/pdf',
+    });
+    // Return the freshly-inserted row projected to camelCase (matches GET :id/aviz).
+    const rows = (await this.documents.list(orgId, {
+      tripRequestId: requestId,
+      documentType: 'delivery_note',
+    })) as unknown as Record<string, unknown>[];
+    return rows[0];
+  }
+
+  /** List the aviz document(s) attached to a request (0 or 1 with single-aviz). */
+  async listAvize(orgId: string, requestId: string) {
+    await this.findById(orgId, requestId); // 404 + org check
+    return this.documents.list(orgId, {
+      tripRequestId: requestId,
+      documentType: 'delivery_note',
+    });
   }
 
   // ── Public (no auth, code-gated) ──────────────────────────────────────────

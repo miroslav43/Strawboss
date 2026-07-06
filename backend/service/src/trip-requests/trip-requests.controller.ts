@@ -1,9 +1,21 @@
-import { Controller, Get, Post, Body, Param, Query, ForbiddenException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Req,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { TripRequestsService } from './trip-requests.service';
 import { Roles, CurrentUser, type RequestUser } from '../auth';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { confirmTripRequestSchema, cancelTripRequestSchema } from '@strawboss/validation';
 import { UserRole } from '@strawboss/types';
+import { AVIZ_MAX_BYTES } from '../uploads/uploads.service';
 
 @Controller('trip-requests')
 export class TripRequestsController {
@@ -50,5 +62,37 @@ export class TripRequestsController {
     @Body(new ZodValidationPipe(cancelTripRequestSchema)) dto: { reason?: string },
   ) {
     return this.service.cancel(this.requireOrg(user), id, dto.reason);
+  }
+
+  /**
+   * Upload (or replace) the aviz PDF for a request. multipart/form-data, field
+   * `file`. Overrides the global 3 MB multipart cap per-call so scanned avize
+   * up to AVIZ_MAX_BYTES are accepted.
+   */
+  @Post(':id/aviz')
+  @Roles(UserRole.admin, UserRole.dispatcher)
+  async uploadAviz(
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Req() req: FastifyRequest,
+  ) {
+    if (!req.isMultipart()) {
+      throw new BadRequestException('Expected multipart/form-data');
+    }
+    const file = await req.file({ limits: { fileSize: AVIZ_MAX_BYTES } });
+    if (!file) {
+      throw new BadRequestException('Missing "file" part');
+    }
+    return this.service.uploadAviz(this.requireOrg(user), id, {
+      mimetype: file.mimetype,
+      filename: file.filename,
+      stream: file.file,
+    });
+  }
+
+  @Get(':id/aviz')
+  @Roles(UserRole.admin, UserRole.dispatcher)
+  listAvize(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.service.listAvize(this.requireOrg(user), id);
   }
 }

@@ -42,7 +42,7 @@ interface DocRow extends Record<string, unknown> {
   title: string;
   documentType: DocumentType;
   status: string;
-  tripId: string;
+  tripId: string | null;
   createdAt: string;
 }
 
@@ -62,9 +62,7 @@ const columns: Column<DocRow>[] = [
     key: 'title',
     header: 'Title',
     sortable: true,
-    render: (row) => (
-      <span className="font-medium text-neutral-800">{row.title}</span>
-    ),
+    render: (row) => <span className="font-medium text-neutral-800">{row.title}</span>,
   },
   {
     key: 'documentType',
@@ -94,7 +92,7 @@ const columns: Column<DocRow>[] = [
     header: 'Trip',
     render: (row) => (
       <span className="text-xs text-neutral-500">
-        {String(row.tripId).slice(0, 8)}...
+        {row.tripId ? `${String(row.tripId).slice(0, 8)}...` : '—'}
       </span>
     ),
   },
@@ -119,9 +117,7 @@ export default function DocumentsPage() {
   const docsQuery = useDocuments(apiClient);
   const allDocs: DocType[] = docsQuery.data ?? [];
 
-  const docs = typeFilter
-    ? allDocs.filter((d) => d.documentType === typeFilter)
-    : allDocs;
+  const docs = typeFilter ? allDocs.filter((d) => d.documentType === typeFilter) : allDocs;
 
   return (
     <div>
@@ -143,9 +139,7 @@ export default function DocumentsPage() {
       </div>
 
       {docsQuery.isLoading ? (
-        <div className="py-8 text-center text-sm text-neutral-400">
-          Loading documents...
-        </div>
+        <div className="py-8 text-center text-sm text-neutral-400">Loading documents...</div>
       ) : docsQuery.isError ? (
         <div className="py-8 text-center text-sm text-red-500">
           Failed to load documents. The backend may not be running.
