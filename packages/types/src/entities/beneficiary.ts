@@ -8,6 +8,7 @@ export interface Beneficiary {
   companyName: string;
   companyAddress: string | null;
   companyCui: string | null;
+  email: string | null;
   dailyPin: string;
   pinGeneratedAt: string;
   isActive: boolean;
@@ -30,6 +31,8 @@ export interface CreateBeneficiaryDto {
   slug: string;
   displayName: string;
   companyName: string;
+  /** Where transport-confirmation emails are sent when the beneficiary's request is confirmed. */
+  email: string;
   companyAddress?: string | null;
   companyCui?: string | null;
 }

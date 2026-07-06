@@ -42,6 +42,8 @@ interface RequestRow {
   transporter_address: string | null;
   notify_recipients: NotifyRecipientRow[];
   organization_id: string;
+  beneficiary_email: string | null;
+  beneficiary_name: string | null;
   dest_lat: number | null;
   dest_lon: number | null;
 }
@@ -72,16 +74,22 @@ export class TransportConfirmationProcessor extends WorkerHost {
     const { requestId, depotId } = job.data;
 
     const reqRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT requester_name, requester_email, requester_phone,
-                 driver_name, driver_email, driver_phone,
-                 crop_type, quality, tons_requested, needed_date, notes, destination_address,
-                 company_name, company_address, company_cui,
-                 truck_registration_plate, trailer_registration_plate, truck_capacity_tons,
-                 transporter_name, transporter_cui, transporter_address,
-                 notify_recipients,
-                 organization_id,
-                 ST_Y(destination_coords) AS dest_lat, ST_X(destination_coords) AS dest_lon
-          FROM trip_requests WHERE id = ${requestId}::uuid LIMIT 1`,
+      sql`SELECT tr.requester_name, tr.requester_email, tr.requester_phone,
+                 tr.driver_name, tr.driver_email, tr.driver_phone,
+                 tr.crop_type, tr.quality, tr.tons_requested, tr.needed_date, tr.notes,
+                 tr.destination_address,
+                 tr.company_name, tr.company_address, tr.company_cui,
+                 tr.truck_registration_plate, tr.trailer_registration_plate, tr.truck_capacity_tons,
+                 tr.transporter_name, tr.transporter_cui, tr.transporter_address,
+                 tr.notify_recipients,
+                 tr.organization_id,
+                 b.email        AS beneficiary_email,
+                 b.display_name AS beneficiary_name,
+                 ST_Y(tr.destination_coords) AS dest_lat, ST_X(tr.destination_coords) AS dest_lon
+          FROM trip_requests tr
+          LEFT JOIN beneficiaries b
+                 ON b.id = tr.beneficiary_id AND b.deleted_at IS NULL
+          WHERE tr.id = ${requestId}::uuid LIMIT 1`,
     )) as unknown as RequestRow[];
     const req = reqRows[0];
     if (!req) return;
@@ -197,6 +205,11 @@ export class TransportConfirmationProcessor extends WorkerHost {
 
     addEmail(req.driver_email, req.driver_name);
     addSms(req.driver_phone);
+
+    // The beneficiary company's own email (set on the beneficiary record). Always a
+    // recipient when the request came from a beneficiary portal; dedup skips it if it
+    // matches a contact/requester address. NULL for generic public requests.
+    addEmail(req.beneficiary_email, req.beneficiary_name ?? req.company_name);
 
     const notifyRecipients = Array.isArray(req.notify_recipients) ? req.notify_recipients : [];
     for (const r of notifyRecipients) {

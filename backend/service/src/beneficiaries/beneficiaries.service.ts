@@ -14,6 +14,7 @@ const BEN_COLS = sql`
   company_name     AS "companyName",
   company_address  AS "companyAddress",
   company_cui      AS "companyCui",
+  email,
   daily_pin        AS "dailyPin",
   pin_generated_at AS "pinGeneratedAt",
   is_active        AS "isActive",
@@ -39,6 +40,7 @@ interface OrgJoinRow {
   company_name: string;
   company_address: string | null;
   company_cui: string | null;
+  email: string | null;
   daily_pin: string;
   pin_generated_at: string;
   is_active: boolean;
@@ -101,6 +103,7 @@ export class BeneficiariesService {
             b.company_name,
             b.company_address,
             b.company_cui,
+            b.email,
             b.daily_pin,
             b.pin_generated_at,
             b.is_active,
@@ -131,6 +134,7 @@ export class BeneficiariesService {
         companyName: r.company_name,
         companyAddress: r.company_address,
         companyCui: r.company_cui,
+        email: r.email,
         dailyPin: r.daily_pin,
         pinGeneratedAt: r.pin_generated_at,
         isActive: r.is_active,
@@ -153,10 +157,10 @@ export class BeneficiariesService {
       rows = await this.drizzleProvider.db.execute(
         sql`INSERT INTO beneficiaries (
               organization_id, slug, display_name, company_name,
-              company_address, company_cui, daily_pin, pin_generated_at
+              email, company_address, company_cui, daily_pin, pin_generated_at
             ) VALUES (
               ${orgId}::uuid, ${dto.slug}, ${dto.displayName}, ${dto.companyName},
-              ${dto.companyAddress ?? null}, ${dto.companyCui ?? null}, ${pin}, now()
+              ${dto.email}, ${dto.companyAddress ?? null}, ${dto.companyCui ?? null}, ${pin}, now()
             )
             RETURNING ${BEN_COLS}`,
       );
@@ -180,6 +184,7 @@ export class BeneficiariesService {
     if (dto.slug !== undefined) setClauses.push(sql`slug = ${dto.slug}`);
     if (dto.displayName !== undefined) setClauses.push(sql`display_name = ${dto.displayName}`);
     if (dto.companyName !== undefined) setClauses.push(sql`company_name = ${dto.companyName}`);
+    if (dto.email !== undefined) setClauses.push(sql`email = ${dto.email}`);
     if ('companyAddress' in dto)
       setClauses.push(sql`company_address = ${dto.companyAddress ?? null}`);
     if ('companyCui' in dto) setClauses.push(sql`company_cui = ${dto.companyCui ?? null}`);

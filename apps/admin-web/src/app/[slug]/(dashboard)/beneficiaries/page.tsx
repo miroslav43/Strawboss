@@ -42,6 +42,7 @@ type BeneficiaryFormData = {
   displayName: string;
   slug: string;
   companyName: string;
+  email: string;
   companyAddress: string;
   companyCui: string;
 };
@@ -50,6 +51,7 @@ const BLANK_FORM: BeneficiaryFormData = {
   displayName: '',
   slug: '',
   companyName: '',
+  email: '',
   companyAddress: '',
   companyCui: '',
 };
@@ -70,6 +72,7 @@ function BeneficiaryModal({
           displayName: editing.displayName,
           slug: editing.slug,
           companyName: editing.companyName,
+          email: editing.email ?? '',
           companyAddress: editing.companyAddress ?? '',
           companyCui: editing.companyCui ?? '',
         }
@@ -91,6 +94,7 @@ function BeneficiaryModal({
       displayName: trim(form.displayName),
       slug: trim(form.slug),
       companyName: trim(form.companyName),
+      email: trim(form.email),
       companyAddress: trim(form.companyAddress) || undefined,
       companyCui: trim(form.companyCui) || undefined,
     };
@@ -161,6 +165,20 @@ function BeneficiaryModal({
               required
               value={form.companyName}
               onChange={(e) => patch({ companyName: e.target.value })}
+              className={cn(inputCls, 'mt-1')}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700">
+              {t('beneficiaries.emailLabel')}
+              <span className="ml-0.5 text-rose-500">*</span>
+            </label>
+            <input
+              required
+              type="email"
+              value={form.email}
+              onChange={(e) => patch({ email: e.target.value })}
               className={cn(inputCls, 'mt-1')}
             />
           </div>
@@ -483,7 +501,10 @@ export default function BeneficiariesPage() {
                       <td className="px-4 py-3">
                         <p className="font-medium text-neutral-800">{b.displayName}</p>
                       </td>
-                      <td className="px-4 py-3 text-neutral-600">{b.companyName}</td>
+                      <td className="px-4 py-3 text-neutral-600">
+                        <p>{b.companyName}</p>
+                        {b.email && <p className="text-xs text-neutral-400">{b.email}</p>}
+                      </td>
                       <td className="px-4 py-3 text-neutral-500">
                         {b.companyCui ?? <span className="text-neutral-300">&mdash;</span>}
                       </td>

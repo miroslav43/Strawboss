@@ -1990,6 +1990,7 @@
     "slugHint": "Litere mici, cifre, cratime. Nu poate fi schimbat ulterior.",
     "displayNameLabel": "Nume afișat",
     "companyNameLabel": "Denumire firmă",
+    "emailLabel": "E-mail",
     "companyAddressLabel": "Adresă firmă",
     "companyCuiLabel": "CUI firmă",
     "isActive": "Activ",

@@ -8,6 +8,7 @@ export const createBeneficiarySchema = z.object({
     .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers and hyphens only'),
   displayName: z.string().min(2).max(100),
   companyName: z.string().min(2).max(200),
+  email: z.string().trim().email().max(255),
   companyAddress: z.string().max(300).nullable().optional(),
   companyCui: z.string().max(20).nullable().optional(),
 });

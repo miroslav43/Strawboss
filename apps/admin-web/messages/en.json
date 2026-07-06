@@ -1990,6 +1990,7 @@
     "slugHint": "Lowercase letters, numbers, hyphens. Cannot be changed later.",
     "displayNameLabel": "Display name",
     "companyNameLabel": "Company name",
+    "emailLabel": "Email",
     "companyAddressLabel": "Company address",
     "companyCuiLabel": "Company CUI",
     "isActive": "Active",
