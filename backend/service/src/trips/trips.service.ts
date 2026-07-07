@@ -2119,10 +2119,18 @@ export class TripsService implements OnModuleInit {
     // write is atomically scoped to the caller's org, matching every other
     // mutation in this file.
     const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+    // Optional optimistic-lock guard: when the caller supplies expectedStatus,
+    // only apply if the trip hasn't moved since they read it (matches the
+    // status-guarded pattern used by dispute()/cancel() elsewhere in this file).
+    const expectedFilter =
+      dto.expectedStatus !== undefined ? sql` AND status = ${dto.expectedStatus}` : sql``;
     const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET ${setClause} WHERE id = ${id}${orgFilter} RETURNING *`,
+      sql`UPDATE trips SET ${setClause} WHERE id = ${id}${orgFilter}${expectedFilter} RETURNING *`,
     );
     if (!(result as unknown as unknown[]).length) {
+      if (dto.expectedStatus !== undefined) {
+        throw new BadRequestException('Trip status changed concurrently');
+      }
       throw new BadRequestException('Trip not found');
     }
     this.logTripFlow(id, 'FORCE_STATUS', from, target);
