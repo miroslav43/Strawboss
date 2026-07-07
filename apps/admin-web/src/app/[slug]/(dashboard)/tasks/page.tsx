@@ -35,19 +35,27 @@ function StatusColumn({
 
   const machineColor = (type: string | undefined) => {
     switch (type) {
-      case 'baler': return 'bg-amber-100 text-amber-700';
-      case 'loader': return 'bg-blue-100 text-blue-700';
-      case 'truck': return 'bg-green-100 text-green-700';
-      default: return 'bg-neutral-100 text-neutral-700';
+      case 'baler':
+        return 'bg-amber-100 text-amber-700';
+      case 'loader':
+        return 'bg-blue-100 text-blue-700';
+      case 'truck':
+        return 'bg-green-100 text-green-700';
+      default:
+        return 'bg-neutral-100 text-neutral-700';
     }
   };
 
   const machineLabel = (type: string | undefined) => {
     switch (type) {
-      case 'baler': return t('tasks.balers');
-      case 'loader': return t('tasks.loaders');
-      case 'truck': return t('tasks.trucks');
-      default: return '';
+      case 'baler':
+        return t('tasks.balers');
+      case 'loader':
+        return t('tasks.loaders');
+      case 'truck':
+        return t('tasks.trucks');
+      default:
+        return '';
     }
   };
 
@@ -69,12 +77,12 @@ function StatusColumn({
               className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 shadow-sm"
             >
               <div className="flex items-center gap-2">
-                <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${machineColor(a.machineType)}`}>
+                <span
+                  className={`rounded px-1.5 py-0.5 text-xs font-medium ${machineColor(a.machineType)}`}
+                >
                   {machineLabel(a.machineType)}
                 </span>
-                <span className="text-sm font-medium text-neutral-800">
-                  {a.machineCode || '—'}
-                </span>
+                <span className="text-sm font-medium text-neutral-800">{a.machineCode || '—'}</span>
               </div>
               {a.parcelName && (
                 <p className="mt-1 text-xs text-neutral-500">
@@ -82,9 +90,7 @@ function StatusColumn({
                 </p>
               )}
               {a.destinationName && (
-                <p className="mt-0.5 text-xs text-neutral-500">
-                  → {a.destinationName}
-                </p>
+                <p className="mt-0.5 text-xs text-neutral-500">→ {a.destinationName}</p>
               )}
             </div>
           ))
@@ -97,7 +103,7 @@ function StatusColumn({
 export default function TasksOverviewPage() {
   const { t } = useI18n();
   const { selectedDate } = useTasksDate();
-  const { data: rawPlan, isLoading } = useDailyPlan(apiClient, selectedDate);
+  const { data: rawPlan, isLoading, isError } = useDailyPlan(apiClient, selectedDate);
 
   const plan = rawPlan as {
     available?: { machine: OverviewAssignment }[];
@@ -131,7 +137,8 @@ export default function TasksOverviewPage() {
   // Summary counts by machine type
   const summary = useMemo(() => {
     const all = [...availableList, ...allInProgress, ...doneList];
-    const count = (type: string) => new Set(all.filter((a) => a.machineType === type).map((a) => a.machineId)).size;
+    const count = (type: string) =>
+      new Set(all.filter((a) => a.machineType === type).map((a) => a.machineId)).size;
     return {
       balers: count('baler'),
       loaders: count('loader'),
@@ -146,6 +153,10 @@ export default function TasksOverviewPage() {
         {t('common.loading')}
       </div>
     );
+  }
+
+  if (isError) {
+    return <div className="py-16 text-center text-sm text-red-500">{t('tasks.loadError')}</div>;
   }
 
   const isEmpty = availableList.length === 0 && allInProgress.length === 0 && doneList.length === 0;
