@@ -13,6 +13,11 @@ export interface SyncQueueEntry {
   next_retry_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Bumped on every corrected re-send (updatePayload/enqueueOrUpdate/
+   *  repairAndRequeue) and sent to the server as the mutation's clientVersion,
+   *  so a corrected retry isn't masked as a duplicate of an already-applied
+   *  sync_idempotency row keyed at the original (lower) version. */
+  client_version: number;
 }
 
 export interface EnqueueInput {
@@ -86,10 +91,13 @@ export class SyncQueueRepo {
       return;
     }
     if (existing.status === 'pending' || existing.status === 'failed') {
+      // Bump client_version so a corrected re-send isn't matched against the
+      // sync_idempotency row cached for the original (lower-version) payload.
       await this.db.runAsync(
         `UPDATE sync_queue
            SET payload = ?, status = 'pending', last_error = NULL,
-               retry_count = 0, next_retry_at = NULL, updated_at = datetime('now')
+               retry_count = 0, next_retry_at = NULL, updated_at = datetime('now'),
+               client_version = COALESCE(client_version, 0) + 1
          WHERE id = ?`,
         [JSON.stringify(entry.payload), existing.id],
       );
@@ -195,11 +203,17 @@ export class SyncQueueRepo {
    * Replace the payload of a queued entry. Used by the pre-push upload hook
    * that turns a local receipt URI into a server URL just before the queue
    * is drained, so the payload we send reflects the latest known URL.
+   *
+   * Bumps client_version so this corrected payload is sent with a fresh
+   * clientVersion — if an earlier version of this entry already reached the
+   * server (e.g. applied with a still-local receipt URI before this patch
+   * landed), the corrected send must not be matched against that cached
+   * sync_idempotency row and silently skipped.
    */
   async updatePayload(id: number, payload: unknown): Promise<void> {
     await this.db.runAsync(
       `UPDATE sync_queue
-       SET payload = ?, updated_at = datetime('now')
+       SET payload = ?, updated_at = datetime('now'), client_version = COALESCE(client_version, 0) + 1
        WHERE id = ?`,
       [JSON.stringify(payload), id],
     );
@@ -227,12 +241,16 @@ export class SyncQueueRepo {
    * was permanently failing (null machine_id → Postgres 23502) becomes
    * immediately retriable once a machine is filled in. Mirrors the reset that
    * enqueueOrUpdate applies on re-save.
+   *
+   * Bumps client_version so the repaired payload isn't matched against a
+   * sync_idempotency row cached for a prior (lower-version) attempt.
    */
   async repairAndRequeue(id: number, payload: unknown): Promise<void> {
     await this.db.runAsync(
       `UPDATE sync_queue
        SET payload = ?, status = 'pending', last_error = NULL,
-           retry_count = 0, next_retry_at = NULL, updated_at = datetime('now')
+           retry_count = 0, next_retry_at = NULL, updated_at = datetime('now'),
+           client_version = COALESCE(client_version, 0) + 1
        WHERE id = ?`,
       [JSON.stringify(payload), id],
     );
