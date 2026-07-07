@@ -1372,6 +1372,16 @@ export class TripsService implements OnModuleInit {
     }
     const tareWeightKg = dto.tareWeightKg;
 
+    // M8 — delivered_bale_count (distinct from the loaded bale_count) so
+    // reconciliation can see damage/loss on this non-depot path: the depot
+    // path already overwrites bale_count itself with the operator-confirmed
+    // count (confirmDepotDelivery, see 00053), but this path never touches
+    // bale_count, so without a separate column deliveredVsLoadedDiff was
+    // always 0 even when bales were deteriorated in transit.
+    const loadedBaleCount = Number(trip.bale_count ?? 0);
+    const deterioratedCount = dto.deterioratedBalesCount ?? 0;
+    const deliveredBaleCount = Math.max(loadedBaleCount - deterioratedCount, 0);
+
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.delivered},
@@ -1380,6 +1390,7 @@ export class TripsService implements OnModuleInit {
         weight_ticket_number = ${dto.weightTicketNumber ?? null},
         weight_ticket_photo_url = ${dto.weightTicketPhotoUrl ?? null},
         deteriorated_bales_count = ${dto.deterioratedBalesCount ?? null},
+        delivered_bale_count = ${deliveredBaleCount},
         delivered_at = NOW(),
         updated_at = NOW()
       WHERE id = ${id} AND status = ${from} RETURNING *`,
@@ -2777,6 +2788,11 @@ export class TripsService implements OnModuleInit {
     }
 
     const dest = destRows[0];
+    // Re-check status atomically inside the UPDATE — the `findById` +
+    // `allowedStatuses.includes` check above is only advisory; without this,
+    // a concurrent depart() between that check and this write could let the
+    // destination change after the trip has already left. Mirrors the
+    // check-then-act guard used by depart()/complete()/etc.
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
             destination_id      = ${dest.id}::uuid,
@@ -2785,9 +2801,13 @@ export class TripsService implements OnModuleInit {
             destination_coords  = ${dest.coords_geojson ? sql`ST_GeomFromGeoJSON(${dest.coords_geojson})` : sql`NULL`},
             updated_at          = NOW()
           WHERE id = ${id}
+            AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loaded}::trip_status)
             ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
           RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
 
     this.logTripFlow(id, 'SET_DESTINATION', trip.status as string, trip.status as string);
     return (result as unknown as Record<string, unknown>[])[0];

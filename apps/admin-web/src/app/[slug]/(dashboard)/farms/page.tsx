@@ -301,7 +301,7 @@ function AssignParcelModal({ farm, unassignedParcels, onClose }: AssignParcelMod
 
 export default function FarmsPage() {
   const { t } = useI18n();
-  const { data: farmsRaw = [], isLoading: farmsLoading } = useFarms(apiClient);
+  const { data: farmsRaw = [], isLoading: farmsLoading, isError: farmsError } = useFarms(apiClient);
   const { data: parcelsRaw = [] } = useParcels(apiClient);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -606,6 +606,8 @@ export default function FarmsPage() {
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           {t('farms.loading')}
         </div>
+      ) : farmsError ? (
+        <div className="py-16 text-center text-sm text-red-500">{t('farms.loadError')}</div>
       ) : farms.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
           <Tractor className="h-12 w-12 mb-3 opacity-20" />

@@ -6,7 +6,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDeliveryDestinations } from '@strawboss/api';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
-import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
+import {
+  PendingTransitionBadge,
+  type PendingTransitionStatus,
+} from '@/components/shared/PendingTransitionBadge';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { StepIndicator } from '@/components/ui/StepIndicator';
 import { WeightInput } from './WeightInput';
@@ -103,6 +106,13 @@ export function EnhancedDeliveryFlow({
   const [receiverSignature, setReceiverSignature] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
+  // M11 — real sync_queue status for this trip's pending transition (e.g. a
+  // resumed-after-failure delivery), so the confirm step's badge distinguishes
+  // `failed` (needs a tap to retry) from `pending`/`in_flight`.
+  const [transitionStatus, setTransitionStatus] = useState<{
+    id: number;
+    status: PendingTransitionStatus;
+  } | null>(null);
   const { modalProps, showModal, hideModal } = useModal();
   const slideAnim = useRef(new Animated.Value(0)).current;
   const prevStepRef = useRef<Step>(0);
@@ -200,6 +210,40 @@ export function EnhancedDeliveryFlow({
     },
     [slideAnim],
   );
+
+  // M11 — refresh the real transition status whenever the confirm step is
+  // shown (covers resuming a delivery whose previous confirm attempt failed).
+  const refreshTransitionStatus = useCallback(async () => {
+    try {
+      const db = await getDatabase();
+      const syncQueueRepo = new SyncQueueRepo(db);
+      setTransitionStatus(await syncQueueRepo.getTransitionStatusForTrip(tripId));
+    } catch {
+      // Non-critical — badge falls back to the default `pending` look.
+    }
+  }, [tripId]);
+
+  useEffect(() => {
+    if (currentStep === LAST_STEP) {
+      void refreshTransitionStatus();
+    }
+  }, [currentStep, refreshTransitionStatus]);
+
+  const handleRetryTransition = useCallback(async () => {
+    if (!transitionStatus) return;
+    try {
+      const db = await getDatabase();
+      const syncQueueRepo = new SyncQueueRepo(db);
+      await syncQueueRepo.retry(transitionStatus.id);
+      await refreshTransitionStatus();
+      void triggerSync().catch(() => {});
+    } catch (err) {
+      mobileLogger.error('EnhancedDeliveryFlow: retry transition failed', {
+        tripId,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
+    }
+  }, [transitionStatus, refreshTransitionStatus, triggerSync, tripId]);
 
   const handleHeaderBack = useCallback(() => {
     if (currentStep > 0) {
@@ -377,7 +421,14 @@ export function EnhancedDeliveryFlow({
         return (
           <>
             <View style={styles.pendingBadgeRow}>
-              <PendingTransitionBadge />
+              <PendingTransitionBadge
+                status={transitionStatus?.status ?? 'pending'}
+                onRetry={
+                  transitionStatus?.status === 'failed'
+                    ? () => void handleRetryTransition()
+                    : undefined
+                }
+              />
             </View>
             <CmrConfirmation
               tripNumber={tripNumber}

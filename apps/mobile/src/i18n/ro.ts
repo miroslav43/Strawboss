@@ -298,6 +298,11 @@ export const ro = {
     errorFallback: 'Specimenul nu a putut fi salvat. Verifică conexiunea și încearcă din nou.',
   },
 
+  webOnly: {
+    title: 'Gestionat din dashboard-ul web',
+    body: 'Contul tău (dispecer/admin) este gestionat din dashboard-ul web StrawBoss. Nu ai nimic de făcut în aplicația mobilă — aceasta este construită pentru șoferi și operatorii de teren.',
+  },
+
   tabs: {
     label: {
       home: 'Acasă',
@@ -1012,6 +1017,8 @@ export const ro = {
     pendingTransitionBadge: {
       a11y: 'Tranziție în așteptare de sincronizare',
       label: 'va fi trimis la reconectare',
+      failedA11y: 'Sincronizarea tranziției a eșuat, atinge pentru a reîncerca',
+      failedLabel: 'sincronizare eșuată — atinge pentru a reîncerca',
     },
     syncStatusIndicator: {
       syncing: 'Sincronizare în curs',

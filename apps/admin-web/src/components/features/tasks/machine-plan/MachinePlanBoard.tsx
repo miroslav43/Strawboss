@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Draggable, Droppable } from '@dnd-kit/dom';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable, isSortable } from '@dnd-kit/react/sortable';
-import { Plus, X, Loader2, GripVertical, MapPin } from 'lucide-react';
+import { Plus, X, Loader2, GripVertical, MapPin, RefreshCw } from 'lucide-react';
 import {
   useTasksByMachineType,
   useCreateTaskAssignment,
@@ -549,7 +549,12 @@ interface MachinePlanBoardProps {
 export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const { data: rawAssignments, isLoading } = useTasksByMachineType(apiClient, date, machineType);
+  const {
+    data: rawAssignments,
+    isLoading,
+    isError,
+    refetch,
+  } = useTasksByMachineType(apiClient, date, machineType);
   const { data: rawParcels } = useParcels(apiClient);
   const { data: rawMachines } = useMachines(apiClient);
   const { data: rawLocations } = useMachineLocations(apiClient);
@@ -817,6 +822,21 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
       <div className="flex items-center justify-center py-16 text-neutral-400">
         <Loader2 className="h-5 w-5 animate-spin mr-2" />
         {t('common.loading')}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-sm text-red-500">
+        {t('tasks.loadError')}
+        <button
+          onClick={() => refetch()}
+          className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t('tasks.retry')}
+        </button>
       </div>
     );
   }

@@ -33,9 +33,14 @@ export class ReconciliationService {
     const loadedRows = loadedResult as unknown as { total: number }[];
     const loaded = loadedRows[0]?.total ?? 0;
 
-    // Count bales delivered (from completed trips sourced from this parcel)
+    // Count bales delivered (from completed trips sourced from this parcel).
+    // delivered_bale_count (driver/non-depot path) is bale_count net of
+    // deteriorated_bales_count; it's NULL for depot-confirmed trips (which
+    // already overwrite bale_count with the operator-confirmed count, see
+    // 00053) and for trips predating the column, so COALESCE falls back to
+    // bale_count for those — matching prior behavior exactly.
     const deliveredResult = await this.drizzleProvider.db.execute(
-      sql`SELECT COALESCE(SUM(bale_count), 0)::int AS total
+      sql`SELECT COALESCE(SUM(COALESCE(delivered_bale_count, bale_count)), 0)::int AS total
           FROM trips
           WHERE source_parcel_id = ${parcelId}
             AND status IN ('delivered', 'completed')

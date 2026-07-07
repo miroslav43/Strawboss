@@ -81,6 +81,12 @@ const ROLE_ROUTES: Record<string, string> = {
   depot_manager: '/(deposit)',
 };
 
+// M10 — roles with no mobile workflow (no assigned machine, no trip-signing
+// flow). Without an explicit check they fell through ROLE_ROUTES to the
+// `/(tabs)` operator fallback and saw a perpetual "no machine assigned" card.
+// Route them to a clear "managed from the web dashboard" screen instead.
+const NON_FIELD_ROLES = new Set(['dispatcher', 'admin', 'super_admin']);
+
 function LoadingSplash() {
   return (
     <View style={splash.container}>
@@ -563,7 +569,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     // Authenticated — determine correct destination once profile is settled
     if (!profileReady) return; // Wait for profile fetch to complete
 
-    const destination = role ? (ROLE_ROUTES[role] ?? '/(tabs)') : '/(tabs)';
+    const destination = role
+      ? NON_FIELD_ROLES.has(role)
+        ? '/web-only'
+        : (ROLE_ROUTES[role] ?? '/(tabs)')
+      : '/(tabs)';
 
     // Specimen gate: roles that sign on trips (driver, loader_operator) must
     // capture a signature specimen once before reaching their role home. This
@@ -579,8 +589,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (inAuthGroup) {
       // FM-17: check onboarding once per login, before navigating to the role home.
       // We do this asynchronously and fall through to the role home on any error
-      // so a SecureStore failure never blocks boot.
-      if (role && !onboardingCheckedRef.current) {
+      // so a SecureStore failure never blocks boot. Skipped for non-field roles —
+      // there is no field-work tutorial to show; they go straight to /web-only.
+      if (role && !onboardingCheckedRef.current && !NON_FIELD_ROLES.has(role)) {
         onboardingCheckedRef.current = true;
         void (async () => {
           try {
@@ -754,6 +765,11 @@ export default function RootLayout() {
               <Stack.Screen
                 name="tracking-setup"
                 options={{ presentation: 'card', animation: 'slide_from_right' }}
+              />
+              {/* M10 — landing screen for non-field roles (dispatcher/admin/super_admin) */}
+              <Stack.Screen
+                name="web-only"
+                options={{ presentation: 'card', animation: 'fade', gestureEnabled: false }}
               />
             </Stack>
           </AuthGate>

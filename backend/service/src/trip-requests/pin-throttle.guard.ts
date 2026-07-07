@@ -17,11 +17,17 @@ export class PinThrottleGuard implements CanActivate {
       headers?: Record<string, unknown>;
     }>();
     const params = req.params ?? {};
-    // Behind nginx the socket IP is the proxy; use the first X-Forwarded-For hop
-    // (same convention as logging.interceptor / audit.interceptor).
+    // Behind nginx the socket IP is the proxy. X-Real-IP is always set to
+    // $remote_addr by nginx and is never client-controlled; X-Forwarded-For is
+    // $proxy_add_x_forwarded_for, which APPENDS to whatever the client already
+    // sent, so its *first* hop is attacker-controlled and could otherwise be
+    // spoofed to reset this per-IP PIN throttle. Prefer X-Real-IP; fall back to
+    // the *last* XFF hop (nginx's own append) only if it's absent.
+    const realIp = req.headers?.['x-real-ip'];
     const xff = req.headers?.['x-forwarded-for'];
+    const xffLastHop = typeof xff === 'string' ? xff.split(',').pop()?.trim() : undefined;
     const ip =
-      (typeof xff === 'string' ? xff.split(',')[0]?.trim() : undefined) || req.ip || 'unknown';
+      (typeof realIp === 'string' ? realIp.trim() : undefined) || xffLastHop || req.ip || 'unknown';
     await this.throttle.assertAllowed(params.slug ?? '', params.beneficiarySlug ?? '', ip);
     return true;
   }

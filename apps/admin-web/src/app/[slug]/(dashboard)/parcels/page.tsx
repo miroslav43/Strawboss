@@ -464,7 +464,7 @@ function ThSortIndicator({
 
 export default function ParcelsPage() {
   const { t } = useI18n();
-  const { data: rawParcels, isLoading } = useParcels(apiClient);
+  const { data: rawParcels, isLoading, isError } = useParcels(apiClient);
   const { data: rawFarms } = useFarms(apiClient);
 
   const parcels = useMemo(() => normalize<Parcel>(rawParcels), [rawParcels]);
@@ -698,6 +698,8 @@ export default function ParcelsPage() {
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           {t('parcels.loading')}
         </div>
+      ) : isError ? (
+        <div className="py-16 text-center text-sm text-red-500">{t('parcels.loadError')}</div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white py-20 text-neutral-400">
           <Search className="h-10 w-10 mb-3 opacity-20" />

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { geoPointSchema } from '../helpers/geo.js';
 import { isoDateSchema } from '../helpers/iso-date.js';
 import { uuidSchema } from '../helpers/uuid.js';
+import { signatureUrlSchema } from '../helpers/signature-url.js';
 import { cropTypeSchema } from './parcel.schema.js';
 
 /** 4-digit portal access code. */
@@ -87,7 +88,7 @@ export type VerifyPortalCodeInput = z.infer<typeof verifyPortalCodeSchema>;
 
 /** Driver's public sign-and-leave submission (base64 PNG/JPEG data URL). */
 export const signTripSchema = z.object({
-  signature: z.string().min(1),
+  signature: signatureUrlSchema,
 });
 export type SignTripInput = z.infer<typeof signTripSchema>;
 

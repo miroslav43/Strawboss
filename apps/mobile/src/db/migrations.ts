@@ -41,6 +41,13 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   // 'next_retry_at' enables exponential back-off for failed sync entries.
   // NULL means "retry immediately" (existing rows) — no data migration needed.
   await addColumnIfMissing(db, 'sync_queue', 'next_retry_at', 'TEXT');
+  // 'client_version' — bumped every time updatePayload()/enqueueOrUpdate()/
+  // repairAndRequeue() overwrites an entry's payload with corrected data, and
+  // sent as the mutation's clientVersion. Without this it was hardcoded to 0
+  // on every push, so a corrected retry of an entity_id the server already
+  // applied at client_version=0 matched the cached sync_idempotency row and
+  // was silently skipped instead of actually updating the server row.
+  await addColumnIfMissing(db, 'sync_queue', 'client_version', 'INTEGER DEFAULT 0');
   // 'has_pending_transition' flags trips whose state machine transition has been
   // applied optimistically locally but not yet confirmed by the server.
   // Used by the UI to show a "will be sent on reconnect" badge (FM-1).

@@ -39,7 +39,7 @@ export default function MessagesPage() {
     return f;
   }, [channel, status]);
 
-  const { data: raw, isLoading } = useMessages(apiClient, filters);
+  const { data: raw, isLoading, isError } = useMessages(apiClient, filters);
   const messages = normalizeList<OutboundMessageRecord>(raw);
   const retry = useRetryMessage(apiClient);
 
@@ -75,6 +75,10 @@ export default function MessagesPage() {
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-neutral-400">
           <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      ) : isError ? (
+        <div className="rounded-xl border border-dashed border-neutral-200 py-16 text-center text-sm text-red-500">
+          {t('messages.loadError')}
         </div>
       ) : messages.length === 0 ? (
         <div className="rounded-xl border border-dashed border-neutral-200 py-16 text-center text-sm text-neutral-400">

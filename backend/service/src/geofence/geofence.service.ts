@@ -324,27 +324,20 @@ export class GeofenceService {
           }
         }
 
-        // 4. Get last known geofence event for this machine + geofence pair.
-        // Restricted to enter/exit so a separately-recorded 'approach' row
-        // (truck-approaching alert, fire-once) never flips the hysteresis.
-        const lastEventResult = await this.drizzleProvider.db.execute(sql`
-        SELECT event_type AS "eventType"
-        FROM geofence_events
-        WHERE machine_id = ${assignment.machineId}::uuid
-          AND geofence_id = ${geofenceId}::uuid
-          AND assignment_id = ${assignment.assignmentId}::uuid
-          AND event_type IN ('enter', 'exit')
-        ORDER BY created_at DESC
-        LIMIT 1
-      `);
-        const lastEvent = (lastEventResult as unknown as LastEvent[])[0];
-        const wasInside = lastEvent?.eventType === 'enter';
-
-        // Tolerance buffer + hysteresis: enter within ENTER_M, leave only past
-        // EXIT_M (audit: baler was 8 m outside → strict containment never fired).
-        const isInside = wasInside
-          ? distM <= GEOFENCE_EXIT_TOLERANCE_M
-          : distM <= GEOFENCE_ENTER_TOLERANCE_M;
+        // 4. Atomically resolve the enter/exit transition for this machine +
+        // geofence pair (advisory-lock guarded — see resolveTransition doc
+        // comment — so two replicas racing the same triple can't both record
+        // + push for a single crossing). Records the enter/exit row itself
+        // when a transition is found, restricted to enter/exit so a
+        // separately-recorded 'approach' row (truck-approaching alert,
+        // fire-once) never flips the hysteresis.
+        const { transition, wasInside, isInside } = await this.resolveTransition(
+          assignment,
+          geofenceType,
+          geofenceId,
+          distM,
+          pos,
+        );
 
         // Baler diagnostics — exact distance + transition decision per check, so
         // a field test shows whether ENTER/EXIT fires and why (grep logs:flow).
@@ -360,7 +353,7 @@ export class GeofenceService {
             exitTolM: GEOFENCE_EXIT_TOLERANCE_M,
             wasInside,
             isInside,
-            transition: isInside && !wasInside ? 'ENTER' : !isInside && wasInside ? 'EXIT' : 'none',
+            transition: transition === 'enter' ? 'ENTER' : transition === 'exit' ? 'EXIT' : 'none',
           });
         }
 
@@ -375,19 +368,9 @@ export class GeofenceService {
             ? (assignment.assignedUserId ?? assignment.tripDriverId)
             : (assignment.assignedUserId ?? assignment.machineOperatorId);
 
-        // 5. Detect transitions
-        if (isInside && !wasInside) {
-          // ENTER event
-          await this.recordEvent(
-            assignment.machineId,
-            assignment.assignmentId,
-            geofenceType,
-            geofenceId,
-            'enter',
-            pos.lat,
-            pos.lon,
-          );
-
+        // 5. Detect transitions (the enter/exit row itself was already
+        // recorded atomically inside resolveTransition() above).
+        if (transition === 'enter') {
           // Baler enter: even the machine-operator fallback found no recipient —
           // log it so a field test surfaces the gap (no operator on task/machine).
           if (geofenceType === 'parcel' && assignment.machineType === 'baler' && !recipientId) {
@@ -490,18 +473,7 @@ export class GeofenceService {
               assignment.organizationId,
             );
           }
-        } else if (!isInside && wasInside) {
-          // EXIT event
-          await this.recordEvent(
-            assignment.machineId,
-            assignment.assignmentId,
-            geofenceType,
-            geofenceId,
-            'exit',
-            pos.lat,
-            pos.lon,
-          );
-
+        } else if (transition === 'exit') {
           this.winston.log(
             'flow',
             `Machine ${assignment.machineId} exited ${geofenceType} ${geofenceId}`,
@@ -953,6 +925,76 @@ export class GeofenceService {
     return summary;
   }
 
+  /**
+   * Atomically resolve the enter/exit transition for one (machine,
+   * assignment, geofence) triple and, if a transition occurred, record it —
+   * all inside a single `pg_advisory_xact_lock`-guarded transaction.
+   *
+   * `checkMachinePositions()` runs on a schedule and the API has 2+ replicas
+   * (see DrizzleProvider), so two ticks can overlap for the same triple. Read
+   * (last event) + decide (enter/exit) + write (INSERT) was previously three
+   * unserialized statements — two concurrent racers could both read the same
+   * "last event", both compute the same transition, and both insert a row +
+   * fire the notification fan-out (double push for one crossing). Locking on
+   * `hashtext(machineId:assignmentId:geofenceId)` makes the read+write atomic:
+   * the second racer blocks until the first commits, then re-reads the
+   * now-current last event and correctly finds no transition.
+   */
+  private async resolveTransition(
+    assignment: Pick<ActiveAssignment, 'machineId' | 'assignmentId'>,
+    geofenceType: 'parcel' | 'deposit',
+    geofenceId: string,
+    distM: number,
+    pos: MachinePosition,
+  ): Promise<{ transition: 'enter' | 'exit' | 'none'; wasInside: boolean; isInside: boolean }> {
+    return this.drizzleProvider.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`${assignment.machineId}:${assignment.assignmentId}:${geofenceId}`}))`,
+      );
+
+      const lastEventResult = await tx.execute(sql`
+        SELECT event_type AS "eventType"
+        FROM geofence_events
+        WHERE machine_id = ${assignment.machineId}::uuid
+          AND geofence_id = ${geofenceId}::uuid
+          AND assignment_id = ${assignment.assignmentId}::uuid
+          AND event_type IN ('enter', 'exit')
+        ORDER BY created_at DESC
+        LIMIT 1
+      `);
+      const lastEvent = (lastEventResult as unknown as LastEvent[])[0];
+      const wasInside = lastEvent?.eventType === 'enter';
+
+      // Tolerance buffer + hysteresis: enter within ENTER_M, leave only past
+      // EXIT_M (audit: baler was 8 m outside → strict containment never fired).
+      const isInside = wasInside
+        ? distM <= GEOFENCE_EXIT_TOLERANCE_M
+        : distM <= GEOFENCE_ENTER_TOLERANCE_M;
+
+      let transition: 'enter' | 'exit' | 'none' = 'none';
+      if (isInside && !wasInside) {
+        transition = 'enter';
+      } else if (!isInside && wasInside) {
+        transition = 'exit';
+      }
+
+      if (transition !== 'none') {
+        await this.recordEvent(
+          assignment.machineId,
+          assignment.assignmentId,
+          geofenceType,
+          geofenceId,
+          transition,
+          pos.lat,
+          pos.lon,
+          tx,
+        );
+      }
+
+      return { transition, wasInside, isInside };
+    });
+  }
+
   private async recordEvent(
     machineId: string,
     assignmentId: string,
@@ -961,8 +1003,9 @@ export class GeofenceService {
     eventType: 'enter' | 'exit' | 'approach',
     lat: number,
     lon: number,
+    executor: Pick<DrizzleProvider['db'], 'execute'> = this.drizzleProvider.db,
   ): Promise<void> {
-    await this.drizzleProvider.db.execute(sql`
+    await executor.execute(sql`
       INSERT INTO geofence_events
         (machine_id, assignment_id, geofence_type, geofence_id, event_type, lat, lon)
       VALUES (

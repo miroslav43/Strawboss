@@ -294,7 +294,12 @@ export async function pushMutations(
         JSON.parse(entry.payload) as Record<string, unknown>,
       ),
       clientId: entry.entity_id,
-      clientVersion: 0,
+      // Real per-entry content version (bumped by updatePayload/
+      // enqueueOrUpdate/repairAndRequeue on every corrected re-send) — a
+      // hardcoded 0 here would let a corrected retry match the
+      // sync_idempotency row cached from an earlier, already-applied
+      // version of this entity_id and be silently skipped as a duplicate.
+      clientVersion: entry.client_version ?? 0,
       idempotencyKey: entry.idempotency_key,
     }));
 

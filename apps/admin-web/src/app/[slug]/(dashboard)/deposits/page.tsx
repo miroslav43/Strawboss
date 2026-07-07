@@ -166,7 +166,7 @@ function ThSortIndicator({
 
 export default function DepositsPage() {
   const { t } = useI18n();
-  const { data: rawDeposits, isLoading } = useDeliveryDestinations(apiClient);
+  const { data: rawDeposits, isLoading, isError } = useDeliveryDestinations(apiClient);
 
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
 
@@ -324,6 +324,8 @@ export default function DepositsPage() {
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           {t('deposits.loading')}
         </div>
+      ) : isError ? (
+        <div className="py-16 text-center text-sm text-red-500">{t('deposits.loadError')}</div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white py-20 text-neutral-400">
           <Search className="h-10 w-10 mb-3 opacity-20" />

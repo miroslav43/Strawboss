@@ -69,7 +69,8 @@ export const TABLES = {
     last_error TEXT,
     next_retry_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    client_version INTEGER DEFAULT 0
   )`,
   bale_productions: `CREATE TABLE IF NOT EXISTS bale_productions (
     id TEXT PRIMARY KEY,

@@ -297,6 +297,11 @@ export const en = {
     errorFallback: 'The specimen could not be saved. Check your connection and try again.',
   },
 
+  webOnly: {
+    title: 'Managed from the web dashboard',
+    body: 'Your account (dispatcher/admin) is managed from the StrawBoss web dashboard. There is nothing to do in this mobile app — it is built for drivers and field operators.',
+  },
+
   tabs: {
     label: {
       home: 'Home',
@@ -1010,6 +1015,8 @@ export const en = {
     pendingTransitionBadge: {
       a11y: 'Transition pending sync',
       label: 'will be sent on reconnect',
+      failedA11y: 'Transition failed to sync, tap to retry',
+      failedLabel: 'sync failed — tap to retry',
     },
     syncStatusIndicator: {
       syncing: 'Sync in progress',
