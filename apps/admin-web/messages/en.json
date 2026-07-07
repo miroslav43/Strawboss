@@ -76,7 +76,10 @@
     "loading": "Loading…",
     "error": "Failed to load",
     "noPoints": "No GPS data in this interval",
-    "selectMachineFirst": "Select a machine first"
+    "selectMachineFirst": "Select a machine first",
+    "hideTrack": "Hide track",
+    "showTrack": "Show track",
+    "removeTrack": "Remove track"
   },
   "topBar": {
     "toggleMenu": "Toggle menu",
@@ -735,7 +738,9 @@
       "shortOffline": "Offline",
       "shortMinutesAgo": "{{n}}m",
       "shortHoursAgo": "{{n}}h",
-      "shortDaysAgo": "{{n}}d"
+      "shortDaysAgo": "{{n}}d",
+      "ariaOnline": "online",
+      "ariaOffline": "offline"
     },
     "truck": {
       "iterations": {
@@ -944,6 +949,7 @@
     "avizExisting": "Uploaded aviz",
     "avizNoFiles": "No aviz uploaded yet",
     "avizReplace": "Replace aviz",
+    "avizReplaceConfirm": "This request already has an aviz uploaded. Replace it with the new file?",
     "avizSelectFile": "Select a PDF",
     "avizPdfOnly": "PDF only, max 10 MB",
     "avizTooLarge": "File too large (max 10 MB)",
@@ -1494,7 +1500,19 @@
       "colSlug": "Slug",
       "linkDashboard": "Dashboard",
       "linkUsers": "Users",
-      "actionManageUsers": "Manage users"
+      "actionManageUsers": "Manage users",
+      "newOrg": {
+        "breadcrumb": "Organizations",
+        "title": "New Organization",
+        "nameLabel": "Name",
+        "namePlaceholder": "e.g. Acme Agriculture",
+        "slugLabel": "Slug",
+        "slugPlaceholder": "e.g. acme-agriculture",
+        "slugHint": "Lowercase letters, numbers, and hyphens only.",
+        "submit": "Create Organization",
+        "cancel": "Cancel",
+        "createFailed": "Failed to create organization"
+      }
     },
     "users": {
       "breadcrumb": {
@@ -1828,6 +1846,19 @@
         },
         "confirm": "Confirm",
         "cancel": "Cancel"
+      },
+      "smsGateway": {
+        "title": "SMS Gateway",
+        "toggleAriaLabel": "SMS Gateway",
+        "toggleFailed": "Could not change the flag",
+        "descriptionOn": "This device picks up pending SMS on every check-in and sends them via SIM.",
+        "descriptionOff": "Enable so this device picks up and sends SMS from the outbox.",
+        "phonePlaceholder": "+40…",
+        "invalidPhone": "Invalid number",
+        "sendTest": "Send SMS",
+        "sendQueued": "SMS queued",
+        "sendFailed": "Sending failed",
+        "messagePlaceholder": "Message (optional) — leave empty for the standard test ping"
       }
     }
   },
@@ -1917,7 +1948,9 @@
     "colSource": "Source",
     "colDestination": "Destination",
     "colBales": "Bales",
-    "colCreated": "Created"
+    "colCreated": "Created",
+    "deleteConfirm": "Delete trip {{label}}?",
+    "deleteAriaLabel": "Delete trip"
   },
   "portal": {
     "title": "Truck Request Portal",

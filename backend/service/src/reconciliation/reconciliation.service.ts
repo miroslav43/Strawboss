@@ -58,25 +58,47 @@ export class ReconciliationService {
   async reconcileFuelForMachine(machineId: string): Promise<FuelReconciliationResult> {
     // Total distance from completed trips using this machine as truck.
     // Distance is the GPS-derived route length (gps_distance_km), populated at
-    // arrive and recomputed by recomputeRecentTripDistances() below.
+    // arrive and recomputed by recomputeRecentTripDistances() below. Also grab
+    // the window (first departure → last delivery) these trips span, so the
+    // fuel sum below can be scoped to the same trips instead of the machine's
+    // entire fuel_logs history (which would include fuel logged for trips
+    // still in progress, or from before/after this completed-trip window).
     const distanceResult = await this.drizzleProvider.db.execute(
-      sql`SELECT COALESCE(SUM(gps_distance_km), 0)::numeric AS total_km
+      sql`SELECT
+            COALESCE(SUM(gps_distance_km), 0)::numeric AS total_km,
+            MIN(COALESCE(departure_at, loading_started_at, created_at)) AS window_start,
+            MAX(COALESCE(delivered_at, completed_at, arrival_at, created_at)) AS window_end
           FROM trips
           WHERE truck_id = ${machineId}
             AND status IN ('delivered', 'completed')
             AND deleted_at IS NULL`,
     );
-    const distanceRows = distanceResult as unknown as { total_km: number }[];
+    const distanceRows = distanceResult as unknown as {
+      total_km: number;
+      window_start: string | null;
+      window_end: string | null;
+    }[];
     const distanceKm = Number(distanceRows[0]?.total_km ?? 0);
+    const windowStart = distanceRows[0]?.window_start ?? null;
+    const windowEnd = distanceRows[0]?.window_end ?? null;
 
-    // Total fuel consumed from fuel_logs for this machine
-    const fuelResult = await this.drizzleProvider.db.execute(
-      sql`SELECT COALESCE(SUM(quantity_liters), 0)::numeric AS total_liters
-          FROM fuel_logs
-          WHERE machine_id = ${machineId} AND deleted_at IS NULL`,
-    );
-    const fuelRows = fuelResult as unknown as { total_liters: number }[];
-    const fuelUsedLiters = Number(fuelRows[0]?.total_liters ?? 0);
+    // Total fuel consumed from fuel_logs for this machine, scoped to the same
+    // completed/delivered trip window as the distance sum above. Outside that
+    // window there is no distance to reconcile the fuel against. No qualifying
+    // trips → nothing to reconcile fuel against, so skip the query.
+    let fuelUsedLiters = 0;
+    if (windowStart && windowEnd) {
+      const fuelResult = await this.drizzleProvider.db.execute(
+        sql`SELECT COALESCE(SUM(quantity_liters), 0)::numeric AS total_liters
+            FROM fuel_logs
+            WHERE machine_id = ${machineId}
+              AND deleted_at IS NULL
+              AND logged_at >= ${windowStart}
+              AND logged_at <= ${windowEnd}`,
+      );
+      const fuelRows = fuelResult as unknown as { total_liters: number }[];
+      fuelUsedLiters = Number(fuelRows[0]?.total_liters ?? 0);
+    }
 
     // Expected consumption: there is no per-machine consumption column in the
     // schema (machines never had `fuel_consumption_l_per_km` — selecting it threw

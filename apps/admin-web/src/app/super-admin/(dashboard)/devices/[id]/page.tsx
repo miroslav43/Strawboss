@@ -618,6 +618,7 @@ function InlineToast({
   kind: 'success' | 'error';
   onDismiss: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div
       className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${
@@ -634,7 +635,7 @@ function InlineToast({
         type="button"
         onClick={onDismiss}
         className="text-xs opacity-60 hover:opacity-100"
-        aria-label="Dismiss"
+        aria-label={t('common.close')}
       >
         ✕
       </button>
@@ -1064,6 +1065,7 @@ function SmsGatewayPanel({
 }: {
   device: NonNullable<ReturnType<typeof useDevice>['data']>;
 }) {
+  const { t } = useI18n();
   const setGateway = useSetDeviceSmsGateway(apiClient);
   const sendTest = useSendGatewayTestSms(apiClient);
   const [phone, setPhone] = useState('');
@@ -1080,23 +1082,23 @@ function SmsGatewayPanel({
   const toggle = () =>
     setGateway.mutate(
       { id: device.id, enabled: !isGateway },
-      { onError: () => showToast('Nu s-a putut schimba flagul', 'error') },
+      { onError: () => showToast(t('superAdmin.devices.smsGateway.toggleFailed'), 'error') },
     );
 
   const handleSendTest = () => {
     const to = phone.trim();
     if (!/^\+?[0-9]{8,15}$/.test(to)) {
-      showToast('Număr invalid', 'error');
+      showToast(t('superAdmin.devices.smsGateway.invalidPhone'), 'error');
       return;
     }
     sendTest.mutate(
       { id: device.id, to, body: message.trim() || undefined },
       {
         onSuccess: () => {
-          showToast('SMS pus în coadă', 'success');
+          showToast(t('superAdmin.devices.smsGateway.sendQueued'), 'success');
           setMessage('');
         },
-        onError: () => showToast('Trimiterea a eșuat', 'error'),
+        onError: () => showToast(t('superAdmin.devices.smsGateway.sendFailed'), 'error'),
       },
     );
   };
@@ -1108,14 +1110,14 @@ function SmsGatewayPanel({
       )}
       <div className="mb-3 flex items-center justify-between">
         <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-          <MessageSquare className="h-4 w-4" /> SMS Gateway
+          <MessageSquare className="h-4 w-4" /> {t('superAdmin.devices.smsGateway.title')}
         </h3>
         <button
           type="button"
           onClick={toggle}
           disabled={setGateway.isPending}
           aria-pressed={isGateway}
-          aria-label="SMS Gateway"
+          aria-label={t('superAdmin.devices.smsGateway.toggleAriaLabel')}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition disabled:opacity-50 ${
             isGateway ? 'bg-emerald-500' : 'bg-neutral-300'
           }`}
@@ -1129,8 +1131,8 @@ function SmsGatewayPanel({
       </div>
       <p className="mb-4 text-sm text-neutral-500">
         {isGateway
-          ? 'Acest device preia SMS-urile în așteptare la fiecare check-in și le trimite prin SIM.'
-          : 'Activează pentru ca acest device să preia și să trimită SMS-urile din outbox.'}
+          ? t('superAdmin.devices.smsGateway.descriptionOn')
+          : t('superAdmin.devices.smsGateway.descriptionOff')}
       </p>
       {isGateway && (
         <div className="space-y-2">
@@ -1139,7 +1141,7 @@ function SmsGatewayPanel({
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="+40…"
+              placeholder={t('superAdmin.devices.smsGateway.phonePlaceholder')}
               className="rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none"
             />
             <button
@@ -1149,7 +1151,7 @@ function SmsGatewayPanel({
               className="flex items-center gap-2 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
             >
               <MessageSquare className="h-4 w-4" />
-              Trimite SMS
+              {t('superAdmin.devices.smsGateway.sendTest')}
             </button>
           </div>
           <textarea
@@ -1157,7 +1159,7 @@ function SmsGatewayPanel({
             onChange={(e) => setMessage(e.target.value)}
             rows={2}
             maxLength={1000}
-            placeholder="Mesaj (opțional) — lasă gol pentru ping-ul de test standard"
+            placeholder={t('superAdmin.devices.smsGateway.messagePlaceholder')}
             className="w-full resize-y rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none"
           />
         </div>

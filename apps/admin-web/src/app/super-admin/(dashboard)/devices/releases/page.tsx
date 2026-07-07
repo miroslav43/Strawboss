@@ -319,7 +319,7 @@ export default function ReleasesPage() {
         )}
 
         {!isLoading && !isError && releases.length > 0 && (
-          <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead className="border-b border-neutral-100 bg-neutral-50">
                 <tr className="text-left text-xs font-medium uppercase tracking-wider text-neutral-500">

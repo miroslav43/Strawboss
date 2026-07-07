@@ -3,10 +3,18 @@ import type { TaskAssignment } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
+/**
+ * GET /api/v1/task-assignments is backed by a `SELECT *` (task-assignments.service.ts
+ * `list()`), which returns raw snake_case columns (e.g. `assignment_date`,
+ * `machine_id`) — NOT the camelCase `TaskAssignment` entity shape. Typing this
+ * as `TaskAssignment[]` would silently produce `undefined` for every field a
+ * consumer reads. Type it honestly as raw rows until the backend aliases the
+ * columns to camelCase.
+ */
 export function useTaskAssignments(client: ApiClient, date: string) {
   return useQuery({
     queryKey: queryKeys.taskAssignments.byDate(date),
-    queryFn: () => client.get<TaskAssignment[]>(`/api/v1/task-assignments?date=${date}`),
+    queryFn: () => client.get<Record<string, unknown>[]>(`/api/v1/task-assignments?date=${date}`),
     enabled: !!date,
   });
 }
@@ -14,7 +22,8 @@ export function useTaskAssignments(client: ApiClient, date: string) {
 export function useDailyPlan(client: ApiClient, date: string) {
   return useQuery({
     queryKey: queryKeys.taskAssignments.dailyPlan(date),
-    queryFn: () => client.get<Record<string, unknown>>(`/api/v1/task-assignments/daily-plan/${date}`),
+    queryFn: () =>
+      client.get<Record<string, unknown>>(`/api/v1/task-assignments/daily-plan/${date}`),
     enabled: !!date,
   });
 }
@@ -44,8 +53,12 @@ export function useBulkCreateTaskAssignments(client: ApiClient) {
 export function useAssignMachineToParcel(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { machineId: string; parcelId: string; assignmentDate: string; sequenceOrder: number }) =>
-      client.post<TaskAssignment>('/api/v1/task-assignments', data),
+    mutationFn: (data: {
+      machineId: string;
+      parcelId: string;
+      assignmentDate: string;
+      sequenceOrder: number;
+    }) => client.post<TaskAssignment>('/api/v1/task-assignments', data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
     },
@@ -99,8 +112,7 @@ export function useUpdateTaskAssignment(client: ApiClient) {
 export function useDeleteTaskAssignment(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      client.delete<unknown>(`/api/v1/task-assignments/${id}`),
+    mutationFn: (id: string) => client.delete<unknown>(`/api/v1/task-assignments/${id}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
     },

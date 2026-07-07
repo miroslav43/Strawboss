@@ -134,13 +134,16 @@ export function TripList({ trips }: TripListProps) {
             // Don't trigger row click when tapping trash
             e.stopPropagation();
             const label = row.trip_number ?? row.id.slice(0, 8);
-            if (typeof window !== 'undefined' && window.confirm(`Șterge cursa ${label}?`)) {
+            if (
+              typeof window !== 'undefined' &&
+              window.confirm(t('trips_list.deleteConfirm', { label }))
+            ) {
               deleteTrip.mutate(row.id);
             }
           }}
           className="rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
-          aria-label="Șterge cursa"
-          title="Șterge cursa"
+          aria-label={t('trips_list.deleteAriaLabel')}
+          title={t('trips_list.deleteAriaLabel')}
           disabled={deleteTrip.isPending}
         >
           <Trash2 className="h-4 w-4" />

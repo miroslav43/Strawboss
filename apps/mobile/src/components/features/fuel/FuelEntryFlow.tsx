@@ -132,29 +132,11 @@ export function FuelEntryFlow({
       // the pre-push hook retry the upload at every sync cycle.
       const receiptPhotoUrl: string | null = null;
 
-      await fuelLogsRepo.create({
-        id,
-        machine_id: machineId,
-        operator_id: operatorId,
-        parcel_id: null,
-        logged_at: now,
-        fuel_type: 'diesel',
-        quantity_liters: quantityLiters,
-        hourmeter_hrs: null,
-        is_full_tank: 0,
-        receipt_photo_uri: photoUri,
-        receipt_photo_url: receiptPhotoUrl,
-        notes: null,
-        created_at: now,
-        updated_at: now,
-        server_version: 0,
-      });
-
-      await syncQueue.enqueue({
-        entityType: 'fuel_logs',
-        entityId: id,
-        action: 'insert',
-        payload: {
+      // Local insert + queue enqueue must land together — a crash between the
+      // two would otherwise leave a fuel log with server_version=0 and no
+      // queue entry, so it silently never syncs.
+      await db.withTransactionAsync(async () => {
+        await fuelLogsRepo.create({
           id,
           machine_id: machineId,
           operator_id: operatorId,
@@ -162,13 +144,36 @@ export function FuelEntryFlow({
           logged_at: now,
           fuel_type: 'diesel',
           quantity_liters: quantityLiters,
-          is_full_tank: false,
+          hourmeter_hrs: null,
+          is_full_tank: 0,
+          receipt_photo_uri: photoUri,
           receipt_photo_url: receiptPhotoUrl,
           notes: null,
-          sync_version: 1,
-          client_id: id,
-        },
-        idempotencyKey: `fuel_logs_${id}`,
+          created_at: now,
+          updated_at: now,
+          server_version: 0,
+        });
+
+        await syncQueue.enqueue({
+          entityType: 'fuel_logs',
+          entityId: id,
+          action: 'insert',
+          payload: {
+            id,
+            machine_id: machineId,
+            operator_id: operatorId,
+            parcel_id: null,
+            logged_at: now,
+            fuel_type: 'diesel',
+            quantity_liters: quantityLiters,
+            is_full_tank: false,
+            receipt_photo_url: receiptPhotoUrl,
+            notes: null,
+            sync_version: 1,
+            client_id: id,
+          },
+          idempotencyKey: `fuel_logs_${id}`,
+        });
       });
 
       void queryClient.invalidateQueries({

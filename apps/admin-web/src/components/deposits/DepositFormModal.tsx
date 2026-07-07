@@ -243,6 +243,9 @@ export function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
               </span>
               <button
                 type="button"
+                role="switch"
+                aria-checked={isActive}
+                aria-label={t('deposits.form.activeDeposit')}
                 onClick={() => setIsActive((v) => !v)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isActive ? 'bg-primary' : 'bg-neutral-300'}`}
               >
@@ -260,6 +263,9 @@ export function DepositFormModal({ deposit, onClose }: DepositFormModalProps) {
             </span>
             <button
               type="button"
+              role="switch"
+              aria-checked={isDefault}
+              aria-label={t('deposits.form.defaultDeposit')}
               onClick={() => setIsDefault((v) => !v)}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${isDefault ? 'bg-primary' : 'bg-neutral-300'}`}
             >

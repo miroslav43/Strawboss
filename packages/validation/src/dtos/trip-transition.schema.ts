@@ -78,20 +78,23 @@ export const cancelSchema = z.object({
  * Admin-only manual status override. Bypasses the state machine — lets an admin
  * force a trip into any status to recover from stuck/edge situations.
  */
+const tripStatusEnum = z.enum([
+  'planned',
+  'loading',
+  'loaded',
+  'in_transit',
+  'arrived',
+  'delivering',
+  'delivered',
+  'completed',
+  'cancelled',
+  'disputed',
+]);
+
 export const forceStatusSchema = z.object({
-  status: z.enum([
-    'planned',
-    'loading',
-    'loaded',
-    'in_transit',
-    'arrived',
-    'delivering',
-    'delivered',
-    'completed',
-    'cancelled',
-    'disputed',
-  ]),
+  status: tripStatusEnum,
   reason: z.string().optional(),
+  expectedStatus: tripStatusEnum.optional(),
 });
 
 export const disputeSchema = z.object({

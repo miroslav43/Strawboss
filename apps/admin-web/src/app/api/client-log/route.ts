@@ -18,6 +18,24 @@ const MAX_REQUESTS_PER_WINDOW = 50;
 
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
+// This route runs on a long-lived Node process, and every distinct client IP
+// gets its own bucket that otherwise never gets removed — a client hitting
+// this endpoint once from many IPs (or over a long-running deployment) would
+// grow the map forever. Sweep expired buckets at most once per window instead
+// of on every request, so the map stays bounded to "recently active IPs"
+// without paying an O(n) scan on every call.
+let lastSweepAt = 0;
+
+function sweepExpiredBuckets(now: number): void {
+  if (now - lastSweepAt < WINDOW_MS) return;
+  lastSweepAt = now;
+  for (const [ip, bucket] of rateBuckets) {
+    if (now > bucket.resetAt) {
+      rateBuckets.delete(ip);
+    }
+  }
+}
+
 function clientIp(req: NextRequest): string {
   // nginx sets X-Real-IP to $remote_addr on every proxied request — it is
   // never client-controlled. X-Forwarded-For is set to
@@ -40,6 +58,7 @@ function clientIp(req: NextRequest): string {
 
 function allowRateLimit(ip: string): boolean {
   const now = Date.now();
+  sweepExpiredBuckets(now);
   let b = rateBuckets.get(ip);
   if (!b || now > b.resetAt) {
     b = { count: 0, resetAt: now + WINDOW_MS };

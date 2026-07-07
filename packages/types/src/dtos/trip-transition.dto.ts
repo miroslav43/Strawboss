@@ -9,6 +9,12 @@ export interface StartLoadingDto {
 export interface ForceStatusDto {
   status: TripStatus;
   reason?: string;
+  /**
+   * Optional optimistic-lock guard: when supplied, the update only applies if
+   * the trip's current status still matches. Lets an admin UI that read a
+   * status confirm it hasn't changed concurrently before overriding it.
+   */
+  expectedStatus?: TripStatus;
 }
 
 export interface CompleteLoadingDto {}

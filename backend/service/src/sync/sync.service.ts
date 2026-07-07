@@ -43,7 +43,6 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'receiver_signature_url',
     'receiver_signed_at',
     'cancellation_reason',
-    'fraud_flags',
     'gps_distance_km',
     'source_parcel_id',
     'truck_id',
@@ -577,13 +576,20 @@ export class SyncService {
       throw new BadRequestException(`recordId '${mutation.recordId}' is not a valid UUID`);
     }
 
-    // 1. Idempotency check
+    // 1. Idempotency check — org-scoped so a client cannot replay another
+    // org's (client_id, table_name, record_id, client_version) tuple to read
+    // back its cached result_data.
+    const idempotencyOrgFilter =
+      orgId !== null
+        ? sql` AND organization_id = ${orgId}::uuid`
+        : sql` AND organization_id IS NULL`;
     const existing = await this.drizzleProvider.db.execute(
       sql`SELECT server_version, result_data FROM sync_idempotency
           WHERE client_id = ${mutation.clientId}
             AND table_name = ${mutation.table}
             AND record_id = ${mutation.recordId}
             AND client_version = ${mutation.clientVersion}
+            ${idempotencyOrgFilter}
           LIMIT 1`,
     );
     const existingRows = existing as unknown as Record<string, unknown>[];
@@ -728,14 +734,16 @@ export class SyncService {
     }
 
     // 3. Record in idempotency table so future retries are fast no-ops.
+    // organization_id is stored so the lookup above can be org-scoped.
     await this.drizzleProvider.db.execute(
       sql`INSERT INTO sync_idempotency (
         client_id, table_name, record_id, client_version,
-        server_version, result_data
+        server_version, result_data, organization_id
       ) VALUES (
         ${mutation.clientId}, ${mutation.table}, ${mutation.recordId},
         ${mutation.clientVersion}, ${serverVersion},
-        ${resultData ? JSON.stringify(resultData) : null}::jsonb
+        ${resultData ? JSON.stringify(resultData) : null}::jsonb,
+        ${orgId !== null ? sql`${orgId}::uuid` : sql`NULL`}
       )`,
     );
 

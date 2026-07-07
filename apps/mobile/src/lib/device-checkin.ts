@@ -89,6 +89,9 @@ const MAX_EXECUTED_IDS = 100;
 
 const MAX_INSTALL_ATTEMPTS = 3;
 
+/** Downloaded OTA APKs older than this are swept on terminal deployment states. */
+const OTA_APK_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 // ---------------------------------------------------------------------------
@@ -586,6 +589,36 @@ async function sha256OfFile(uri: string): Promise<string> {
 }
 
 /**
+ * Deletes downloaded `strawboss-ota-*.apk` files older than
+ * {@link OTA_APK_RETENTION_MS}. Called on terminal deployment states
+ * (installed / already-up-to-date / gave-up) — the local mirror is cleared
+ * at that point too, but the multi-hundred-MB APK itself was never removed
+ * from documentDirectory otherwise, accumulating across every OTA cycle.
+ */
+async function sweepOldOtaApks(): Promise<void> {
+  try {
+    const dir = FileSystem.documentDirectory ?? '';
+    if (!dir) return;
+    const files = await FileSystem.readDirectoryAsync(dir);
+    const cutoff = Date.now() - OTA_APK_RETENTION_MS;
+    for (const name of files) {
+      if (!/^strawboss-ota-.*\.apk$/.test(name)) continue;
+      const uri = `${dir}${name}`;
+      const info = await FileSystem.getInfoAsync(uri);
+      if (!info.exists) continue;
+      const modMs = info.modificationTime ? info.modificationTime * 1000 : 0;
+      if (modMs && modMs < cutoff) {
+        await FileSystem.deleteAsync(uri, { idempotent: true });
+      }
+    }
+  } catch (err) {
+    mobileLogger.warn('Fleet OTA: APK sweep failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
  * Drive one OTA step for the given pending deployment.
  * Called after a successful check-in response.
  */
@@ -610,6 +643,7 @@ async function handlePendingDeployment(
       await appendOtaReport(existing, 'installed' as OtaState);
       await clearOtaMirror();
     }
+    void sweepOldOtaApks();
     return;
   }
 
@@ -647,6 +681,7 @@ async function handlePendingDeployment(
     if (mirror.state !== ('failed' as OtaState)) {
       mirror = await appendOtaReport(mirror, 'failed' as OtaState, 'max attempts exceeded');
     }
+    void sweepOldOtaApks();
     return;
   }
 
@@ -734,6 +769,7 @@ async function handlePendingDeployment(
     mobileLogger.flow('Fleet OTA: install completed (process survived)', {
       deploymentId: deployment.deploymentId,
     });
+    void sweepOldOtaApks();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // Re-download on the next check-in instead of retrying install against the

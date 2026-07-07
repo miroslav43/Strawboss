@@ -8,17 +8,23 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
 import { todayInRomania } from '../common/date';
 
+/** Parses an env override, falling back when unset/non-numeric — but keeps an explicit `0`. */
+function envNumber(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 // GPS-tolerance geofence detection. Phone GPS drifts 5–20 m and operators work
 // at field edges, so exact ST_Contains misses "I'm on the field" constantly
 // (a baler 8 m outside a parcel produced no enter event). We treat the machine
 // as INSIDE within ENTER_M of the boundary, and only OUTSIDE past EXIT_M — the
 // gap is hysteresis so a machine parked near the edge does not flap enter/exit
 // on GPS noise. Both are env-tunable.
-const GEOFENCE_ENTER_TOLERANCE_M = Number(process.env.STRAWBOSS_GEOFENCE_ENTER_M) || 30;
-const GEOFENCE_EXIT_TOLERANCE_M = Number(process.env.STRAWBOSS_GEOFENCE_EXIT_M) || 60;
+const GEOFENCE_ENTER_TOLERANCE_M = envNumber(process.env.STRAWBOSS_GEOFENCE_ENTER_M, 30);
+const GEOFENCE_EXIT_TOLERANCE_M = envNumber(process.env.STRAWBOSS_GEOFENCE_EXIT_M, 60);
 // Radius at which a truck nearing its source parcel triggers a one-time
 // "truck approaching" alert to the loaders waiting at that field. Env-tunable.
-const GEOFENCE_APPROACH_M = Number(process.env.STRAWBOSS_GEOFENCE_APPROACH_M) || 5000;
+const GEOFENCE_APPROACH_M = envNumber(process.env.STRAWBOSS_GEOFENCE_APPROACH_M, 5000);
 
 interface ActiveAssignment {
   assignmentId: string;

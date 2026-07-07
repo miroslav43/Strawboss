@@ -91,39 +91,44 @@ export function ConsumableFlow({
       const id = generateUuid();
       const now = new Date().toISOString();
 
-      await consumableLogsRepo.create({
-        id,
-        machine_id: machineId,
-        operator_id: operatorId,
-        parcel_id: parcelId ?? null,
-        consumable_type: 'twine',
-        quantity: qty,
-        unit: 'kg',
-        logged_at: now,
-        receipt_photo_uri: null,
-        receipt_photo_url: null,
-        created_at: now,
-        updated_at: now,
-        server_version: 0,
-      });
-
-      await syncQueue.enqueue({
-        entityType: 'consumable_logs',
-        entityId: id,
-        action: 'insert',
-        payload: {
+      // Local insert + queue enqueue must land together — a crash between the
+      // two would otherwise leave a consumable log with server_version=0 and no
+      // queue entry, so it silently never syncs.
+      await db.withTransactionAsync(async () => {
+        await consumableLogsRepo.create({
           id,
           machine_id: machineId,
           operator_id: operatorId,
           parcel_id: parcelId ?? null,
           consumable_type: 'twine',
-          description: null,
           quantity: qty,
           unit: 'kg',
           logged_at: now,
+          receipt_photo_uri: null,
           receipt_photo_url: null,
-        },
-        idempotencyKey: `consumable_logs_${id}`,
+          created_at: now,
+          updated_at: now,
+          server_version: 0,
+        });
+
+        await syncQueue.enqueue({
+          entityType: 'consumable_logs',
+          entityId: id,
+          action: 'insert',
+          payload: {
+            id,
+            machine_id: machineId,
+            operator_id: operatorId,
+            parcel_id: parcelId ?? null,
+            consumable_type: 'twine',
+            description: null,
+            quantity: qty,
+            unit: 'kg',
+            logged_at: now,
+            receipt_photo_url: null,
+          },
+          idempotencyKey: `consumable_logs_${id}`,
+        });
       });
 
       void queryClient.invalidateQueries({ queryKey: operatorStatsQueryKey(operatorId) });
