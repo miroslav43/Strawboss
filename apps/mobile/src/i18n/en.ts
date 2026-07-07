@@ -297,6 +297,11 @@ export const en = {
     errorFallback: 'The specimen could not be saved. Check your connection and try again.',
   },
 
+  webOnly: {
+    title: 'Managed from the web dashboard',
+    body: 'Your account (dispatcher/admin) is managed from the StrawBoss web dashboard. There is nothing to do in this mobile app — it is built for drivers and field operators.',
+  },
+
   tabs: {
     label: {
       home: 'Home',
