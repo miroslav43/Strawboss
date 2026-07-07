@@ -25,9 +25,10 @@ import type { User, Machine } from '@strawboss/types';
 import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { mobileApiClient } from '@/lib/api-client';
-import { getSupabaseClient } from '@/lib/auth';
+import { getSupabaseClient, setManualSignOutInFlight } from '@/lib/auth';
 import { registerForPushNotifications } from '@/lib/notifications';
-import { clearLocalData } from '@/lib/storage';
+import { clearLocalData, getDatabase } from '@/lib/storage';
+import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { isDeviceOwner, releaseDeviceOwner } from '@/lib/device-owner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDevModeStore } from '@/stores/dev-mode-store';
@@ -96,29 +97,75 @@ export function ProfileScreen() {
     enabled: !!assignedMachineId,
   });
 
-  const handleLogout = async () => {
-    const supabase = getSupabaseClient();
-    // Deactivate THIS device's push token for the current user BEFORE signing
-    // out (while the JWT is still valid), so the next operator who logs in on
-    // this phone does not keep receiving the previous user's notifications.
-    // Best-effort: if offline, the server also deactivates stale tokens on the
-    // next user's login (see NotificationsService.registerToken).
+  // Performs the actual sign-out + local data wipe. Only ever called after
+  // the pending-queue confirm (if one was needed) — see handleLogout below.
+  const performLogout = useCallback(async () => {
+    // Flag consulted by the `onAuthStateChange` listener in app/_layout.tsx
+    // so it knows this SIGNED_OUT is user-initiated (and must not repeat the
+    // wipe below) rather than an automatic session loss.
+    setManualSignOutInFlight(true);
     try {
-      const token = await registerForPushNotifications();
-      if (token) {
-        await mobileApiClient.post('/api/v1/notifications/unregister-token', { token });
+      const supabase = getSupabaseClient();
+      // Deactivate THIS device's push token for the current user BEFORE
+      // signing out (while the JWT is still valid), so the next operator who
+      // logs in on this phone does not keep receiving the previous user's
+      // notifications. Best-effort: if offline, the server also deactivates
+      // stale tokens on the next user's login (see NotificationsService.registerToken).
+      try {
+        const token = await registerForPushNotifications();
+        if (token) {
+          await mobileApiClient.post('/api/v1/notifications/unregister-token', { token });
+        }
+      } catch {
+        // Non-critical — covered by server-side cross-user cleanup on next login.
       }
-    } catch {
-      // Non-critical — covered by server-side cross-user cleanup on next login.
+      await supabase.auth.signOut();
+      await clearLocalData();
+      queryClient.clear();
+      clear();
+      // Session-only debug toggles reset on logout so the next signed-in user
+      // starts from the same baseline as a fresh install.
+      hideSync();
+    } finally {
+      setManualSignOutInFlight(false);
     }
-    await supabase.auth.signOut();
-    await clearLocalData();
-    queryClient.clear();
-    clear();
-    // Session-only debug toggles reset on logout so the next signed-in user
-    // starts from the same baseline as a fresh install.
-    hideSync();
-  };
+  }, [queryClient, clear, hideSync]);
+
+  // Manual logout entry point (Logout button). Unlike an automatic SIGNED_OUT
+  // (revoked/expired refresh token), the operator is present and can decide:
+  // if unsynced records exist, block with a confirm before wiping anything.
+  const handleLogout = useCallback(async () => {
+    let pending = 0;
+    let failed = 0;
+    try {
+      const db = await getDatabase();
+      const repo = new SyncQueueRepo(db);
+      [pending, failed] = await Promise.all([repo.getPendingCount(), repo.getFailedCount()]);
+    } catch {
+      // If the local count can't be read, fall through and allow logout —
+      // a broken count check must never trap the operator signed in.
+    }
+    const unsynced = pending + failed;
+    if (unsynced > 0) {
+      showModal({
+        type: 'confirm',
+        title: t('profile.modal.logoutPending.title'),
+        message: t('profile.modal.logoutPending.message', { count: unsynced }),
+        confirmText: t('profile.modal.logoutPending.confirm'),
+        cancelText: t('profile.modal.logoutPending.syncNow'),
+        onCancel: () => {
+          hideModal();
+          void triggerSync();
+        },
+        onConfirm: () => {
+          hideModal();
+          void performLogout();
+        },
+      });
+      return;
+    }
+    await performLogout();
+  }, [showModal, hideModal, t, triggerSync, performLogout]);
 
   const handleAvatarUploaded = useCallback(
     (user: User) => {

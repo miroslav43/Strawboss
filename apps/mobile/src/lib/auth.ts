@@ -78,3 +78,20 @@ export async function signOut(): Promise<void> {
   const client = getSupabaseClient();
   await client.auth.signOut();
 }
+
+// In-flight flag distinguishing a user-initiated logout from an SDK-emitted
+// `SIGNED_OUT` event (e.g. a revoked/expired refresh token after a long
+// offline stretch). Set by the logout handler (ProfileScreen) *before*
+// calling `signOut()` and read by the `onAuthStateChange` listener in
+// `app/_layout.tsx`: manual logout is the only path allowed to wipe local
+// SQLite data (and only after the operator confirms, if a sync queue is
+// pending) — an automatic `SIGNED_OUT` must never touch it.
+let manualSignOutInFlight = false;
+
+export function setManualSignOutInFlight(value: boolean): void {
+  manualSignOutInFlight = value;
+}
+
+export function isManualSignOutInFlight(): boolean {
+  return manualSignOutInFlight;
+}

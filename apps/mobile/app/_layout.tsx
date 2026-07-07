@@ -20,10 +20,16 @@ import {
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { getDatabase, clearLocalData } from '@/lib/storage';
-import { getSupabaseClient, startAuthAutoRefresh, stopAuthAutoRefresh } from '@/lib/auth';
+import {
+  getSupabaseClient,
+  startAuthAutoRefresh,
+  stopAuthAutoRefresh,
+  isManualSignOutInFlight,
+} from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
 import { mobileApiClient } from '@/lib/api-client';
-import { cleanupOldMobileLogFiles } from '@/lib/logger';
+import { cleanupOldMobileLogFiles, mobileLogger } from '@/lib/logger';
+import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import {
   registerForPushNotifications,
   addNotificationListener,
@@ -186,17 +192,51 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const supabase = getSupabaseClient();
+
+    // A different user successfully authenticating on this device is the
+    // ONLY case where local data is purged unconditionally (no one can
+    // confirm on behalf of the previous session, and leaking one operator's
+    // offline data to the next login is worse than losing an unsynced row).
+    // "Last known user" is read from the ref first (covers same-mount
+    // re-logins) and falls back to the persisted auth store's `userId`
+    // (survives a cold restart) so the check still works after the app was
+    // killed and reopened.
+    const detectUserSwitch = (newUserId: string) => {
+      const lastUserId = activeUserIdRef.current ?? useAuthStore.getState().userId;
+      if (lastUserId && lastUserId !== newUserId) {
+        void (async () => {
+          try {
+            const db = await getDatabase();
+            const repo = new SyncQueueRepo(db);
+            const [pending, failed] = await Promise.all([
+              repo.getPendingCount(),
+              repo.getFailedCount(),
+            ]);
+            if (pending + failed > 0) {
+              mobileLogger.warn('auth.userSwitch.discardingUnsyncedData', {
+                pending,
+                failed,
+                previousUserId: lastUserId,
+                newUserId,
+              });
+            }
+          } catch {
+            // Best-effort logging only — never block the purge on it.
+          }
+          await clearLocalData().catch(() => {});
+        })();
+        queryClient.clear();
+        useAuthStore.getState().clear();
+        setProfileReady(false);
+      }
+      activeUserIdRef.current = newUserId;
+    };
+
     supabase.auth
       .getSession()
       .then(({ data }) => {
         if (data.session) {
-          if (activeUserIdRef.current && activeUserIdRef.current !== data.session.user.id) {
-            void clearLocalData().catch(() => {});
-            queryClient.clear();
-            useAuthStore.getState().clear();
-            setProfileReady(false);
-          }
-          activeUserIdRef.current = data.session.user.id;
+          detectUserSwitch(data.session.user.id);
         }
         setIsAuthenticated(!!data.session);
       })
@@ -209,24 +249,32 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
-        void clearLocalData().catch(() => {});
-        queryClient.clear();
-        useAuthStore.getState().clear();
-        activeUserIdRef.current = null;
+        const manual = isManualSignOutInFlight();
+        if (manual) {
+          // ProfileScreen.handleLogout already ran the pending-queue confirm
+          // (if needed), wiped local SQLite data, and cleared the query
+          // cache / auth store itself before/after calling signOut(). Reset
+          // the in-memory "last known user" so the next login starts clean.
+          activeUserIdRef.current = null;
+          mobileLogger.flow('auth.signedOut.manual');
+        } else {
+          // Automatic SIGNED_OUT — e.g. a refresh token that expired or was
+          // revoked while the device was offline for a long stretch. This
+          // must NEVER wipe local data: the sync queue may still hold
+          // unsynced mutations that need to survive until the same user's
+          // session is restored. Deliberately leave SQLite, the query
+          // cache, and the persisted auth store (role/userId) untouched;
+          // `activeUserIdRef` is also kept so a *different* user logging in
+          // afterwards is still detected and purged.
+          mobileLogger.flow('auth.signedOut.automatic.preservingLocalData');
+        }
         onboardingCheckedRef.current = false;
         trackingSetupCheckedRef.current = false;
         setProfileReady(false);
         setIsAuthenticated(false);
         return;
       }
-      // Different user logged in without an explicit logout — purge previous data
-      if (activeUserIdRef.current && activeUserIdRef.current !== session.user.id) {
-        void clearLocalData().catch(() => {});
-        queryClient.clear();
-        useAuthStore.getState().clear();
-        setProfileReady(false);
-      }
-      activeUserIdRef.current = session.user.id;
+      detectUserSwitch(session.user.id);
       setIsAuthenticated(true);
     });
 
