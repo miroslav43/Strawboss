@@ -266,7 +266,10 @@ export class TripRequestsService {
       mimeType: 'application/pdf',
     });
     // Return the freshly-inserted row projected to camelCase (matches GET :id/aviz).
-    const rows = (await this.documents.list(orgId, {
+    // 'system' is not the super_admin sentinel, so DocumentsService.list always
+    // applies the `orgId` filter here — this call is already org-scoped by the
+    // findById() org check above, never a cross-org super_admin lookup.
+    const rows = (await this.documents.list(orgId, 'system', {
       tripRequestId: requestId,
       documentType: 'delivery_note',
     })) as unknown as Record<string, unknown>[];
@@ -276,7 +279,7 @@ export class TripRequestsService {
   /** List the aviz document(s) attached to a request (0 or 1 with single-aviz). */
   async listAvize(orgId: string, requestId: string) {
     await this.findById(orgId, requestId); // 404 + org check
-    return this.documents.list(orgId, {
+    return this.documents.list(orgId, 'system', {
       tripRequestId: requestId,
       documentType: 'delivery_note',
     });
