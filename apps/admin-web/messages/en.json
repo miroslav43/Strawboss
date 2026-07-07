@@ -1910,7 +1910,9 @@
     "colSource": "Source",
     "colDestination": "Destination",
     "colBales": "Bales",
-    "colCreated": "Created"
+    "colCreated": "Created",
+    "deleteConfirm": "Delete trip {{label}}?",
+    "deleteAriaLabel": "Delete trip"
   },
   "portal": {
     "title": "Truck Request Portal",

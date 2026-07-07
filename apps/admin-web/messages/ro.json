@@ -1910,7 +1910,9 @@
     "colSource": "Sursă",
     "colDestination": "Destinație",
     "colBales": "Baloți",
-    "colCreated": "Creat"
+    "colCreated": "Creat",
+    "deleteConfirm": "Ștergi cursa {{label}}?",
+    "deleteAriaLabel": "Șterge cursa"
   },
   "portal": {
     "title": "Portal solicitări camioane",
