@@ -268,6 +268,20 @@ itself the proof the anchor protects the process). Restore with `always_finish_a
 `dumpsys deviceidle unforce`, `dumpsys battery reset`. **Note:** `am force-stop` logs the app
 out (drops to the login screen) — use `am kill`, not `force-stop`, to test recovery.
 
+**Two gotchas when validating the onCreate autostart (fix #5) on a device-owner phone:**
+
+- `am force-stop` is **ignored** on the protected package (`setUserControlDisabledPackages`) —
+  logcat shows `Ignoring request to force stop protected package`. The process never restarts,
+  so `onCreate` never re-runs. Use **`am kill`** (backgrounded, no FGS up) to force a genuine
+  process restart, then relaunch — `onCreate` then starts PresenceService (proven while
+  **logged out** on a fresh enrol: `ActivityManager: Background started FGS: Allowed …
+  reasonCode:SYSTEM_ALLOW_LISTED … PresenceService`).
+- The `onCreate` background FGS start is **allowed by the battery-opt exemption**
+  (`SYSTEM_ALLOW_LISTED`). QR provisioning / `DeviceOwnerPolicies.applyAll` (on first app open)
+  applies it; an **adb-enrolled** phone needs it added first
+  (`dumpsys deviceidle whitelist +com.strawboss.mobile`, or open the app once) or a headless
+  FGS start can be rejected. adb device-owner enrol flow: `INSTALARE-DEVICE-OWNER.md` §7.
+
 Related memory: `[[project-honor-js-pause-presence]]`, `[[project-gps-ingestion-replay-trap]]`,
 `[[project-honor-powergenie-hide-fails]]`, `[[project-device-owner-build]]`,
 `[[project-fleet-ota-selfupdate]]`.
