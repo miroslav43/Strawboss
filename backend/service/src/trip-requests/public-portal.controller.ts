@@ -22,9 +22,11 @@ const submitTripRequestSchema = createTripRequestSchema.extend({ code: portalCod
 /**
  * Unauthenticated, code-gated portal endpoints.
  *
- * NOTE: there is no rate-limiter in this backend yet (no @nestjs/throttler). The
- * 4-digit code is scoped per-slug, but a global IP throttle should be added
- * before exposing this publicly at scale — tracked in the plan's risks.
+ * `verify`/`submit` carry the org-wide 4-digit access code and are brute-force
+ * protected by PinThrottleGuard (per-IP request cap + per-slug lockout, keyed on
+ * slug + '' since there is no beneficiarySlug on these routes) — see
+ * TripRequestsService.verifyPortalCode/submitPublicRequest for the recordFailure/
+ * recordSuccess wiring.
  */
 @Controller('public')
 export class PublicPortalController {
@@ -35,6 +37,7 @@ export class PublicPortalController {
 
   @Post('portal/:slug/verify')
   @Public()
+  @UseGuards(PinThrottleGuard)
   verify(
     @Param('slug') slug: string,
     @Body(new ZodValidationPipe(verifyPortalCodeSchema)) dto: { code: string },
@@ -44,6 +47,7 @@ export class PublicPortalController {
 
   @Post('portal/:slug/requests')
   @Public()
+  @UseGuards(PinThrottleGuard)
   submit(
     @Param('slug') slug: string,
     @Body(new ZodValidationPipe(submitTripRequestSchema))

@@ -288,8 +288,12 @@ export class TripRequestsService {
   async verifyPortalCode(slug: string, code: string): Promise<PortalInfo> {
     const org = await this.resolveOrgBySlug(slug);
     if (!org.request_access_code || org.request_access_code !== code) {
+      // No beneficiarySlug on this route — key the per-slug lockout on the org
+      // slug alone (same convention PinThrottleGuard uses: beneficiarySlug ?? '').
+      await this.pinThrottle.recordFailure(slug, '');
       throw new ForbiddenException('Cod invalid.');
     }
+    await this.pinThrottle.recordSuccess(slug, '');
     return {
       organizationName: org.name,
       allowedCropTypes: (org.allowed_crop_types ?? []) as PortalInfo['allowedCropTypes'],
@@ -304,8 +308,10 @@ export class TripRequestsService {
   ): Promise<{ ok: true }> {
     const org = await this.resolveOrgBySlug(slug);
     if (!org.request_access_code || org.request_access_code !== code) {
+      await this.pinThrottle.recordFailure(slug, '');
       throw new ForbiddenException('Cod invalid.');
     }
+    await this.pinThrottle.recordSuccess(slug, '');
     const allowed = org.allowed_crop_types ?? [];
     if (dto.cropType && allowed.length && !allowed.includes(dto.cropType)) {
       throw new BadRequestException('Recoltă neacceptată.');
