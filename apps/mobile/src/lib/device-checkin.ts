@@ -17,8 +17,6 @@
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system/legacy';
-import { File } from 'expo-file-system';
-import * as Crypto from 'expo-crypto';
 import Constants from 'expo-constants';
 import { ApiClient } from '@strawboss/api';
 import type {
@@ -570,25 +568,6 @@ async function hasActiveTrip(): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute the SHA-256 hex digest of a downloaded file.
- *
- * Verifies an OTA APK immediately after download so a corrupted/truncated
- * transfer is caught — and retried — at the download step. `installApkSilent`
- * also verifies the digest natively before it will ever open an install
- * session, but by the time that runs the failure is misattributed to
- * "install failed", and without this earlier check `localUri` stays set —
- * the retry loop then skips re-downloading and burns every remaining attempt
- * re-trying install against the same unfixable file.
- */
-async function sha256OfFile(uri: string): Promise<string> {
-  const bytes = await new File(uri).bytes();
-  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/**
  * Deletes downloaded `strawboss-ota-*.apk` files older than
  * {@link OTA_APK_RETENTION_MS}. Called on terminal deployment states
  * (installed / already-up-to-date / gave-up) — the local mirror is cleared
@@ -700,16 +679,11 @@ async function handlePendingDeployment(
       if (downloadResult.status !== 200) {
         throw new Error(`Download failed with status ${downloadResult.status}`);
       }
-      // Verify SHA-256 right away — a mismatch here is a corrupted/truncated
-      // transfer, not an install problem, so it must be retried at this step
-      // (never sets localUri) rather than falling through to install.
-      const actualSha256 = await sha256OfFile(downloadResult.uri);
-      if (actualSha256.toLowerCase() !== deployment.sha256.toLowerCase()) {
-        await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
-        throw new Error(
-          `Downloaded APK SHA-256 mismatch: expected ${deployment.sha256}, got ${actualSha256}`,
-        );
-      }
+      // SHA-256 is verified natively inside installApkSilent() before it opens
+      // an install session, so a corrupted/truncated transfer fails at the
+      // install step — whose catch handler clears localUri and deletes the file
+      // so the next check-in re-downloads a fresh copy (self-heal), instead of
+      // burning every remaining attempt re-installing the same unfixable file.
       mirror = { ...mirror, localUri: downloadResult.uri };
       await writeOtaMirror(mirror);
       mirror = await appendOtaReport(mirror, 'downloaded' as OtaState);

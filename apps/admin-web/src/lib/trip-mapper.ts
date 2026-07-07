@@ -42,6 +42,7 @@ export function toTripCamel(raw: unknown): Trip | null {
     weightTicketNumber: (r.weight_ticket_number as string | null) ?? null,
     weightTicketPhotoUrl: (r.weight_ticket_photo_url as string | null) ?? null,
     deterioratedBalesCount: num(r.deteriorated_bales_count),
+    deliveredBaleCount: num(r.delivered_bale_count),
     loaderSignatureUrl: (r.loader_signature_url as string | null) ?? null,
     driverSignatureUrl: (r.driver_signature_url as string | null) ?? null,
     deliveredAt: (r.delivered_at as string | null) ?? null,
