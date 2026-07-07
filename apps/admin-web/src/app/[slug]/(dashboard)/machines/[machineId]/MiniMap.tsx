@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { esc } from '@/lib/html-escape';
 
 interface MiniMapProps {
   lat: number;
@@ -53,7 +54,11 @@ export function MiniMap({ lat, lon, label }: MiniMapProps) {
       }).addTo(map);
 
       if (label) {
-        L.marker([lat, lon]).addTo(map).bindTooltip(label, { permanent: true, direction: 'top' });
+        // `label` is user-controlled (machine internalCode/plate) — bindTooltip
+        // sets string content via innerHTML, so it must be escaped (H8).
+        L.marker([lat, lon])
+          .addTo(map)
+          .bindTooltip(esc(label), { permanent: true, direction: 'top' });
       } else {
         L.marker([lat, lon]).addTo(map);
       }
