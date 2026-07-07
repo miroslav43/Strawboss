@@ -70,20 +70,35 @@ export function DataTable<T extends Record<string, unknown>>({
                 key={col.key}
                 className={cn(
                   'px-4 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-500',
-                  col.sortable && 'cursor-pointer select-none hover:text-neutral-700',
+                  col.sortable && 'select-none',
                 )}
-                onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                aria-sort={
+                  col.sortable
+                    ? sortKey === col.key
+                      ? sortDir === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : 'none'
+                    : undefined
+                }
               >
-                <div className="flex items-center gap-1">
-                  {col.header}
-                  {col.sortable &&
-                    sortKey === col.key &&
-                    (sortDir === 'asc' ? (
-                      <ChevronUp className="h-3 w-3" />
-                    ) : (
-                      <ChevronDown className="h-3 w-3" />
-                    ))}
-                </div>
+                {col.sortable ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSort(col.key)}
+                    className="flex items-center gap-1 hover:text-neutral-700"
+                  >
+                    {col.header}
+                    {sortKey === col.key &&
+                      (sortDir === 'asc' ? (
+                        <ChevronUp className="h-3 w-3" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3" />
+                      ))}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">{col.header}</div>
+                )}
               </th>
             ))}
           </tr>
