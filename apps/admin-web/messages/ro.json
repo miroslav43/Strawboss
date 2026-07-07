@@ -943,6 +943,7 @@
     "avizExisting": "Aviz încărcat",
     "avizNoFiles": "Niciun aviz încărcat",
     "avizReplace": "Înlocuiește avizul",
+    "avizReplaceConfirm": "Această cerere are deja un aviz încărcat. Îl înlocuiești cu fișierul nou?",
     "avizSelectFile": "Alege un PDF",
     "avizPdfOnly": "Doar PDF, max 10 MB",
     "avizTooLarge": "Fișier prea mare (max 10 MB)",

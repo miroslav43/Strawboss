@@ -943,6 +943,7 @@
     "avizExisting": "Uploaded aviz",
     "avizNoFiles": "No aviz uploaded yet",
     "avizReplace": "Replace aviz",
+    "avizReplaceConfirm": "This request already has an aviz uploaded. Replace it with the new file?",
     "avizSelectFile": "Select a PDF",
     "avizPdfOnly": "PDF only, max 10 MB",
     "avizTooLarge": "File too large (max 10 MB)",

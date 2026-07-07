@@ -30,6 +30,15 @@ export function AvizUploadModal({
 
   const handleUpload = () => {
     if (!file || !isPdf(file)) return;
+    // Uploading replaces any existing aviz (uploadAviz soft-deletes the prior
+    // one server-side, single-aviz-per-request) — confirm before overwriting.
+    if (
+      existing &&
+      typeof window !== 'undefined' &&
+      !window.confirm(t('tripRequests.avizReplaceConfirm'))
+    ) {
+      return;
+    }
     const formData = new FormData();
     formData.append('file', file);
     upload.mutate({ requestId: request.id, formData }, { onSuccess: () => setFile(null) });
