@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { signatureUrlSchema } from '../helpers/signature-url.js';
 
 /** Admin UI locale — stored on users.locale, drives i18n in admin-web. */
 export const updateProfileLocaleSchema = z.object({
@@ -10,7 +11,7 @@ export const updateProfileSchema = z.object({
   phone: z.string().nullable().optional(),
   locale: z.enum(['en', 'ro']).optional(),
   notificationPrefs: z.record(z.boolean()).optional(),
-  signatureSpecimenUrl: z.string().nullable().optional(),
+  signatureSpecimenUrl: signatureUrlSchema.nullable().optional(),
 });
 
 export const changePasswordSchema = z.object({

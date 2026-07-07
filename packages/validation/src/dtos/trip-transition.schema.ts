@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { uuidSchema } from '../helpers/uuid.js';
+import { signatureUrlSchema } from '../helpers/signature-url.js';
 
 export const startLoadingSchema = z.object({
   loaderId: uuidSchema.optional(),
@@ -9,7 +10,7 @@ export const startLoadingSchema = z.object({
 export const completeLoadingSchema = z.object({});
 
 export const departSchema = z.object({
-  driverSignature: z.string().min(1),
+  driverSignature: signatureUrlSchema,
 });
 
 // Trip distance comes entirely from the GPS track (depart → arrive), so the
@@ -42,7 +43,7 @@ export const confirmDeliverySchema = z
 
 export const completeSchema = z.object({
   receiverName: z.string().min(1),
-  receiverSignature: z.string().min(1),
+  receiverSignature: signatureUrlSchema,
 });
 
 /**
@@ -58,7 +59,7 @@ export const confirmDepotDeliverySchema = z
     grossWeightKg: z.number().positive().nullable().optional(),
     tareWeightKg: z.number().nonnegative().nullable().optional(),
     scaleBroken: z.boolean().optional(),
-    depotOperatorSignature: z.string().min(1),
+    depotOperatorSignature: signatureUrlSchema,
     idempotencyKey: uuidSchema,
   })
   .refine(
@@ -119,7 +120,7 @@ export const registerLoadSchema = z
     gpsLat: z.number().min(-90).max(90).optional(),
     gpsLon: z.number().min(-180).max(180).optional(),
     idempotencyKey: uuidSchema,
-    loaderSignature: z.string().optional(),
+    loaderSignature: signatureUrlSchema.optional(),
   })
   .refine((d) => !!d.parcelId !== !!d.sourceDepotId, {
     message: 'exactly one of parcelId or sourceDepotId is required',

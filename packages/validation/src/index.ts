@@ -3,6 +3,7 @@ export { uuidSchema } from './helpers/uuid.js';
 export { isoDateSchema } from './helpers/iso-date.js';
 export { geoPointSchema } from './helpers/geo.js';
 export { timestampsSchema, softDeleteSchema } from './helpers/common.js';
+export { SIGNATURE_URL_PATTERN, signatureUrlSchema } from './helpers/signature-url.js';
 
 // Entity schemas
 export { createFarmSchema, updateFarmSchema } from './schemas/farm.schema.js';

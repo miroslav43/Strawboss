@@ -1,4 +1,5 @@
 import { FileSignature } from 'lucide-react';
+import { signatureUrlSchema } from '@strawboss/validation';
 import { cn } from '@/lib/utils';
 
 interface SignatureDisplayProps {
@@ -14,7 +15,15 @@ export function SignatureDisplay({
   signedAt,
   className,
 }: SignatureDisplayProps) {
-  if (!signatureUrl) {
+  // Defense-in-depth: only ever hand an <img src> a value that matches the
+  // same allowlist enforced server-side on persist (internal upload path or
+  // inline base64 data URL). Guards against rows written before the
+  // allowlist existed and any other path that could smuggle an external URL
+  // in here.
+  const safeSignatureUrl =
+    signatureUrl && signatureUrlSchema.safeParse(signatureUrl).success ? signatureUrl : null;
+
+  if (!safeSignatureUrl) {
     return (
       <div
         className={cn(
@@ -29,18 +38,13 @@ export function SignatureDisplay({
   }
 
   return (
-    <div
-      className={cn(
-        'rounded-lg border border-neutral-200 bg-white p-4',
-        className,
-      )}
-    >
+    <div className={cn('rounded-lg border border-neutral-200 bg-white p-4', className)}>
       <div className="mb-2 flex items-center gap-2">
         <FileSignature className="h-4 w-4 text-neutral-500" />
         <span className="text-sm font-medium text-neutral-700">Signature</span>
       </div>
       <img
-        src={signatureUrl}
+        src={safeSignatureUrl}
         alt={signerName ? `Signature of ${signerName}` : 'Signature'}
         className="max-h-24 rounded border border-neutral-100 bg-white"
       />
