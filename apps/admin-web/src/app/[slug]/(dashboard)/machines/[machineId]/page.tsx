@@ -21,6 +21,7 @@ import type { Trip, Alert } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
+import { toTripCamelList } from '@/lib/trip-mapper';
 import { todayInRomania, addDays } from '@/lib/date';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { LoggingErrorBoundary } from '@/components/shared/LoggingErrorBoundary';
@@ -140,7 +141,7 @@ export default function MachineDetailPage() {
 
   const machine = machineQuery.data;
   const location = locationsQuery.data?.find((l) => l.machineId === machineId);
-  const trips: Trip[] = normalizeList<Trip>(tripsQuery.data);
+  const trips: Trip[] = toTripCamelList(normalizeList(tripsQuery.data));
   const alerts: Alert[] = normalizeList<Alert>(alertsQuery.data);
 
   const TypeIcon = machine ? TYPE_ICON[machine.machineType] : Wrench;
