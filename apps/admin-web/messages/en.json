@@ -1493,7 +1493,19 @@
       "colSlug": "Slug",
       "linkDashboard": "Dashboard",
       "linkUsers": "Users",
-      "actionManageUsers": "Manage users"
+      "actionManageUsers": "Manage users",
+      "newOrg": {
+        "breadcrumb": "Organizations",
+        "title": "New Organization",
+        "nameLabel": "Name",
+        "namePlaceholder": "e.g. Acme Agriculture",
+        "slugLabel": "Slug",
+        "slugPlaceholder": "e.g. acme-agriculture",
+        "slugHint": "Lowercase letters, numbers, and hyphens only.",
+        "submit": "Create Organization",
+        "cancel": "Cancel",
+        "createFailed": "Failed to create organization"
+      }
     },
     "users": {
       "breadcrumb": {

@@ -1493,7 +1493,19 @@
       "colSlug": "Slug",
       "linkDashboard": "Tablou de bord",
       "linkUsers": "Utilizatori",
-      "actionManageUsers": "Administrează utilizatori"
+      "actionManageUsers": "Administrează utilizatori",
+      "newOrg": {
+        "breadcrumb": "Organizații",
+        "title": "Organizație nouă",
+        "nameLabel": "Nume",
+        "namePlaceholder": "ex. Acme Agriculture",
+        "slugLabel": "Slug",
+        "slugPlaceholder": "ex. acme-agriculture",
+        "slugHint": "Doar litere mici, cifre și cratime.",
+        "submit": "Creează organizație",
+        "cancel": "Anulează",
+        "createFailed": "Crearea organizației a eșuat"
+      }
     },
     "users": {
       "breadcrumb": {

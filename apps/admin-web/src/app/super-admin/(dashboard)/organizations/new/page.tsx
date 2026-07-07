@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, ArrowLeft, Check } from 'lucide-react';
 import { apiClient } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 function toSlug(value: string): string {
   return value
@@ -16,6 +17,7 @@ function toSlug(value: string): string {
 }
 
 export default function NewOrganizationPage() {
+  const { t } = useI18n();
   const router = useRouter();
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -23,12 +25,15 @@ export default function NewOrganizationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleNameChange = useCallback((value: string) => {
-    setName(value);
-    if (!slugTouched) {
-      setSlug(toSlug(value));
-    }
-  }, [slugTouched]);
+  const handleNameChange = useCallback(
+    (value: string) => {
+      setName(value);
+      if (!slugTouched) {
+        setSlug(toSlug(value));
+      }
+    },
+    [slugTouched],
+  );
 
   const handleSlugChange = useCallback((value: string) => {
     setSlugTouched(true);
@@ -46,10 +51,10 @@ export default function NewOrganizationPage() {
       await apiClient.post('/api/v1/organizations', { name: trimmedName, slug: trimmedSlug });
       router.replace('/super-admin/organizations');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create organization');
+      setError(err instanceof Error ? err.message : t('superAdmin.orgs.newOrg.createFailed'));
       setSubmitting(false);
     }
-  }, [name, slug, router]);
+  }, [name, slug, router, t]);
 
   const isValid = name.trim().length > 0 && slug.trim().length > 0;
 
@@ -61,23 +66,27 @@ export default function NewOrganizationPage() {
           className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-800"
         >
           <ArrowLeft className="h-4 w-4" />
-          Organizations
+          {t('superAdmin.orgs.newOrg.breadcrumb')}
         </a>
         <span className="text-neutral-300">/</span>
-        <span className="text-sm font-medium text-neutral-800">New Organization</span>
+        <span className="text-sm font-medium text-neutral-800">
+          {t('superAdmin.orgs.newOrg.title')}
+        </span>
       </div>
 
       <div className="max-w-lg rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-5 text-base font-bold text-neutral-800">Create Organization</h1>
+        <h1 className="mb-5 text-base font-bold text-neutral-800">
+          {t('superAdmin.orgs.createTitle')}
+        </h1>
 
         <div className="flex flex-col gap-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-600">
-              Name <span className="text-red-500">*</span>
+              {t('superAdmin.orgs.newOrg.nameLabel')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
-              placeholder="e.g. Acme Agriculture"
+              placeholder={t('superAdmin.orgs.newOrg.namePlaceholder')}
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
               autoFocus
@@ -87,23 +96,23 @@ export default function NewOrganizationPage() {
 
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-600">
-              Slug <span className="text-red-500">*</span>
+              {t('superAdmin.orgs.newOrg.slugLabel')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
-              placeholder="e.g. acme-agriculture"
+              placeholder={t('superAdmin.orgs.newOrg.slugPlaceholder')}
               value={slug}
               onChange={(e) => handleSlugChange(e.target.value)}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-sm focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
-              Lowercase letters, numbers, and hyphens only.
+              {t('superAdmin.orgs.newOrg.slugHint')}
             </p>
           </div>
 
           {slug && (
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
-              <p className="text-xs text-neutral-500">Dashboard URL preview</p>
+              <p className="text-xs text-neutral-500">{t('superAdmin.orgs.urlPreview')}</p>
               <p className="mt-0.5 font-mono text-sm text-neutral-700">
                 nortiauno.com/<span className="font-semibold text-neutral-900">{slug}</span>/
               </p>
@@ -127,13 +136,13 @@ export default function NewOrganizationPage() {
               ) : (
                 <Check className="h-4 w-4" />
               )}
-              Create Organization
+              {t('superAdmin.orgs.newOrg.submit')}
             </button>
             <a
               href="/super-admin/organizations"
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50"
             >
-              Cancel
+              {t('superAdmin.orgs.newOrg.cancel')}
             </a>
           </div>
         </div>

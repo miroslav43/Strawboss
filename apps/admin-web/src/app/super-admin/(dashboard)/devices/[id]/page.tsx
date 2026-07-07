@@ -618,6 +618,7 @@ function InlineToast({
   kind: 'success' | 'error';
   onDismiss: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div
       className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${
@@ -634,7 +635,7 @@ function InlineToast({
         type="button"
         onClick={onDismiss}
         className="text-xs opacity-60 hover:opacity-100"
-        aria-label="Dismiss"
+        aria-label={t('common.close')}
       >
         ✕
       </button>
