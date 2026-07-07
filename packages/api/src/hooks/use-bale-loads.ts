@@ -6,7 +6,7 @@ import { queryKeys } from '../queries/query-keys.js';
 export function useBaleLoads(client: ApiClient, tripId: string) {
   return useQuery({
     queryKey: queryKeys.baleLoads.byTrip(tripId),
-    queryFn: () => client.get<BaleLoad[]>(`/api/v1/trips/${tripId}/bale-loads`),
+    queryFn: () => client.get<BaleLoad[]>(`/api/v1/bale-loads?tripId=${tripId}`),
     enabled: !!tripId,
   });
 }
@@ -15,7 +15,7 @@ export function useCreateBaleLoad(client: ApiClient) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ tripId, data }: { tripId: string; data: Partial<BaleLoad> }) =>
-      client.post<BaleLoad>(`/api/v1/trips/${tripId}/bale-loads`, data),
+      client.post<BaleLoad>(`/api/v1/bale-loads`, { tripId, ...data }),
     onSuccess: (_data, { tripId }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.baleLoads.byTrip(tripId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(tripId) });
