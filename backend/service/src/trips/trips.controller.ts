@@ -249,9 +249,15 @@ export class TripsController {
    * Plan C — create the next iteration of a multi-trip course.
    * Same parcel / truck / driver / loader; iteration_index auto-increments.
    * `recall=true` pushes the new trip to the driver.
+   *
+   * Admin-only manual override. Loaders answer the recall prompt via
+   * POST /notifications/loader-recall-response, which enforces trip ownership
+   * (loader_operator_id === caller) and idempotency before delegating here —
+   * this route must not be reachable by loader_operator directly, or any
+   * loader could fork someone else's trip regardless of status/ownership.
    */
   @Post(':id/next-iteration')
-  @Roles('admin' as UserRole, 'loader_operator' as UserRole)
+  @Roles('admin' as UserRole)
   nextIteration(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
