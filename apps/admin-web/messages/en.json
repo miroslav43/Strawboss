@@ -934,6 +934,7 @@
     "viewDetails": "View details",
     "detailsTitle": "Request details",
     "uploadAviz": "Upload aviz",
+    "avizUploaded": "Aviz ✓",
     "avizTitle": "Avize (delivery notes)",
     "avizExisting": "Uploaded aviz",
     "avizNoFiles": "No aviz uploaded yet",

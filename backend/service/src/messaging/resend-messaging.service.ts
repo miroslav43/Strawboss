@@ -92,6 +92,7 @@ export class ResendMessagingService implements IMessagingService {
       subject: params.subject,
       html: params.html ?? null,
       text: params.body,
+      attachments: params.attachments,
     });
     if (result.ok) await this.markSent(id, result.providerId ?? null);
     else await this.markFailed(id, result.error ?? 'unknown error');

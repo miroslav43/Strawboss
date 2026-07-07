@@ -3,12 +3,23 @@ import type { MessageKind } from '@strawboss/types';
 /** DI token for the (unwired) outbound messaging service. */
 export const MESSAGING_SERVICE = Symbol('MESSAGING_SERVICE');
 
+/** A file attached to an outbound email (Resend format: base64 content). */
+export interface EmailAttachment {
+  filename: string;
+  /** Base64-encoded file bytes. */
+  content: string;
+  /** Optional MIME type (e.g. 'application/pdf'); Resend infers from filename if absent. */
+  contentType?: string;
+}
+
 export interface SendEmailParams {
   to: string;
   subject: string;
   body: string;
   /** Optional rich HTML body; falls back to `body` (plain text) when absent. */
   html?: string;
+  /** Optional file attachments (e.g. the aviz PDF). Not persisted to the outbox. */
+  attachments?: EmailAttachment[];
   kind: MessageKind;
   metadata?: Record<string, unknown>;
 }

@@ -4,11 +4,24 @@ export interface ResendSendResult {
   error?: string;
 }
 
+/** A Resend attachment: base64 `content` + `filename` (content_type optional). */
+export interface ResendAttachment {
+  filename: string;
+  content: string;
+  contentType?: string;
+}
+
 /** POST a single email to the Resend API. Never throws — returns a result. */
 export async function postResendEmail(
   apiKey: string,
   from: string,
-  msg: { to: string; subject: string; html?: string | null; text: string },
+  msg: {
+    to: string;
+    subject: string;
+    html?: string | null;
+    text: string;
+    attachments?: ResendAttachment[];
+  },
 ): Promise<ResendSendResult> {
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -20,6 +33,13 @@ export async function postResendEmail(
         subject: msg.subject,
         html: msg.html ?? undefined,
         text: msg.text,
+        attachments: msg.attachments?.length
+          ? msg.attachments.map((a) => ({
+              filename: a.filename,
+              content: a.content,
+              content_type: a.contentType,
+            }))
+          : undefined,
       }),
     });
     if (!res.ok) {

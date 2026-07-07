@@ -288,6 +288,7 @@ function RowActions({
   onUploadAviz: (r: TripRequest) => void;
 }) {
   const { t } = useI18n();
+  const hasAviz = !!request.hasAviz;
   return (
     <>
       <button
@@ -299,10 +300,16 @@ function RowActions({
       </button>
       <button
         onClick={() => onUploadAviz(request)}
-        className="flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+        title={hasAviz ? t('tripRequests.avizUploaded') : t('tripRequests.uploadAviz')}
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium',
+          hasAviz
+            ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
+            : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50',
+        )}
       >
-        <FileText className="h-3.5 w-3.5" />
-        {t('tripRequests.uploadAviz')}
+        {hasAviz ? <CheckCircle2 className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+        {hasAviz ? t('tripRequests.avizUploaded') : t('tripRequests.uploadAviz')}
       </button>
     </>
   );

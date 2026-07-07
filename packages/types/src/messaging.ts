@@ -25,6 +25,10 @@ export enum MessageKind {
   transport_confirmed = 'transport_confirmed',
   /** Request confirmed → short SMS to the driver (pickup + delivery + maps links + km). */
   transport_confirmed_driver_sms = 'transport_confirmed_driver_sms',
+  /** Aviz uploaded → email with the aviz PDF attached + a download link, to every recipient. */
+  aviz_uploaded = 'aviz_uploaded',
+  /** Aviz uploaded → short SMS with the aviz download link, to every recipient. */
+  aviz_uploaded_sms = 'aviz_uploaded_sms',
 }
 
 export interface OutboundMessage {

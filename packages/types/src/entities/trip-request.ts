@@ -85,6 +85,8 @@ export interface TripRequest extends Timestamps, SoftDelete {
   // resolved names for the ids above (joined from delivery_destinations / users)
   sourceDepotName?: string | null;
   confirmedByName?: string | null;
+  // whether a non-deleted aviz (delivery_note document) exists for this request
+  hasAviz?: boolean;
 }
 
 /** Public submission payload (no auth). The portal code is validated separately. */

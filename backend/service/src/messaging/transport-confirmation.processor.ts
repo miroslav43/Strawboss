@@ -9,6 +9,7 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { MESSAGING_SERVICE, type IMessagingService } from './messaging.tokens';
 import { messageTemplates, fmtCoordsUrl, fmtDirectionsUrl } from './message-templates';
 import { buildRoute, staticMapUrl, type LatLon } from './route-map';
+import { AvizNotificationService } from './aviz-notification.service';
 import { MessageKind } from '@strawboss/types';
 import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
 
@@ -65,13 +66,22 @@ export class TransportConfirmationProcessor extends WorkerHost {
     private readonly config: ConfigService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: WinstonLogger,
+    private readonly avizNotifications: AvizNotificationService,
   ) {
     super();
   }
 
-  async process(job: Job<{ requestId: string; depotId: string }>): Promise<void> {
+  // Single worker on the `message-send` queue → routes by job name. Adding a
+  // second @Processor on this queue would make the two workers COMPETE for jobs
+  // (each job goes to only one), so new job kinds are dispatched from here.
+  async process(job: Job): Promise<void> {
+    if (job.name === 'aviz-uploaded') {
+      const { requestId, fileUrl } = job.data as { requestId: string; fileUrl: string };
+      await this.avizNotifications.dispatch(requestId, fileUrl);
+      return;
+    }
     if (job.name !== 'transport-confirmation') return;
-    const { requestId, depotId } = job.data;
+    const { requestId, depotId } = job.data as { requestId: string; depotId: string };
 
     const reqRows = (await this.drizzleProvider.db.execute(
       sql`SELECT tr.requester_name, tr.requester_email, tr.requester_phone,

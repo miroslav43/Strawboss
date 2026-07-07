@@ -1,0 +1,5 @@
+La loader atunci cand incarca un aux sa vada si calitatea de baloti care trebuie incarcata 
+
+Aviz ul cand e incarcat trebuie trimis pe mail dar si ca link de download prin sms, la toata lumea care are mail si nr de telefon. si sa mi apara si un UI ul de admin ceva reprezentativ cumva ca aviz ul e incarcat sa pot vedea rapid, nu stiu poate sa si chimbe buton ul culoarea in verde asua ceva, 
+
+acolo in stanga la disponible pe un task , 

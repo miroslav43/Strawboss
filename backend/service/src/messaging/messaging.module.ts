@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { MESSAGING_SERVICE } from './messaging.tokens';
 import { ResendMessagingService } from './resend-messaging.service';
 import { TransportConfirmationProcessor } from './transport-confirmation.processor';
+import { AvizNotificationService } from './aviz-notification.service';
 import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
 
 /**
@@ -16,6 +17,7 @@ import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
   providers: [
     { provide: MESSAGING_SERVICE, useClass: ResendMessagingService },
     TransportConfirmationProcessor,
+    AvizNotificationService,
   ],
   exports: [MESSAGING_SERVICE],
 })

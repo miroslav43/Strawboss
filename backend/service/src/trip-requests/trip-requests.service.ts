@@ -86,7 +86,10 @@ const TR_COLS = sql`
   (SELECT m.registration_plate FROM machines m WHERE m.id = trip_requests.machine_id) AS "machinePlate",
   (SELECT t.trip_number        FROM trips t    WHERE t.id = trip_requests.trip_id)    AS "tripNumber",
   (SELECT dd.name       FROM delivery_destinations dd WHERE dd.id = trip_requests.source_depot_id) AS "sourceDepotName",
-  (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.confirmed_by)     AS "confirmedByName"
+  (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.confirmed_by)     AS "confirmedByName",
+  EXISTS(SELECT 1 FROM documents d
+         WHERE d.trip_request_id = trip_requests.id
+           AND d.document_type = 'delivery_note' AND d.deleted_at IS NULL) AS "hasAviz"
 `;
 
 interface OrgPortalRow {
@@ -265,6 +268,12 @@ export class TripRequestsService {
       fileSizeBytes: saved.sizeBytes,
       mimeType: 'application/pdf',
     });
+    // Notify every recipient (email w/ PDF attached + link, SMS w/ link) async.
+    await this.messageQueue.add(
+      'aviz-uploaded',
+      { requestId, fileUrl: saved.url },
+      { removeOnComplete: true, attempts: 1 },
+    );
     // Return the freshly-inserted row projected to camelCase (matches GET :id/aviz).
     const rows = (await this.documents.list(orgId, {
       tripRequestId: requestId,

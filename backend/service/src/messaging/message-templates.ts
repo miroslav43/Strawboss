@@ -88,6 +88,24 @@ export interface TransportConfirmedSmsCtx {
   neededDate: string | null;
 }
 
+export interface AvizUploadedCtx {
+  organizationName: string;
+  recipientName: string | null;
+  companyName: string | null;
+  truckRegistrationPlate: string | null;
+  neededDate: string | null;
+  /** Absolute, signed, no-auth download URL to the aviz PDF (valid ~7 days). */
+  downloadUrl: string;
+  /** Optional absolute URL to a raster brand logo shown in the header (EMAIL_LOGO_URL). */
+  logoUrl: string | null;
+}
+
+export interface AvizUploadedSmsCtx {
+  truckRegistrationPlate: string | null;
+  /** Absolute, signed download URL to the aviz PDF. Keep the rest of the copy GSM-7. */
+  downloadUrl: string;
+}
+
 function fmtCoordsUrl(
   lat: number | null | undefined,
   lon: number | null | undefined,
@@ -312,6 +330,60 @@ export const messageTemplates = {
         km,
     };
   },
+
+  [MessageKind.aviz_uploaded]: (ctx: AvizUploadedCtx) => {
+    const who = ctx.companyName ?? ctx.truckRegistrationPlate ?? null;
+    const subject = `Aviz de transport${who ? ` — ${who}` : ''}`;
+    const greeting = ctx.recipientName ? `Bună ziua, ${ctx.recipientName},` : 'Bună ziua,';
+
+    const body =
+      `${greeting}\n\n` +
+      `Avizul de însoțire a mărfii a fost încărcat` +
+      (ctx.companyName ? ` pentru ${ctx.companyName}` : '') +
+      `.\n` +
+      (ctx.truckRegistrationPlate ? `Camion: ${ctx.truckRegistrationPlate}\n` : '') +
+      (ctx.neededDate ? `Data: ${ctx.neededDate}\n` : '') +
+      `\nDescarcă avizul: ${ctx.downloadUrl}\n` +
+      `(Avizul este atașat și ca PDF la acest email.)\n\n` +
+      `— ${ctx.organizationName}`;
+
+    const logo = ctx.logoUrl
+      ? `<img src="${esc(ctx.logoUrl)}" alt="${esc(ctx.organizationName)}" style="height:40px;display:block;margin:0 auto 8px" />`
+      : '';
+    const rows = [
+      ctx.companyName ? ['Firmă', ctx.companyName] : null,
+      ctx.truckRegistrationPlate ? ['Camion', ctx.truckRegistrationPlate] : null,
+      ctx.neededDate ? ['Data', ctx.neededDate] : null,
+    ].filter(Boolean) as [string, string][];
+    const rowsHtml = rows
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:4px 12px 4px 0;color:#64748b;font-size:13px">${esc(k)}</td>` +
+          `<td style="padding:4px 0;color:#0f172a;font-size:13px;font-weight:600">${esc(v)}</td></tr>`,
+      )
+      .join('');
+
+    const html =
+      `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f1f5f9;padding:24px">` +
+      `<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">` +
+      `<div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:20px;text-align:center">` +
+      logo +
+      `<div style="color:#fff;font-size:18px;font-weight:700">Aviz de transport</div></div>` +
+      `<div style="padding:20px">` +
+      `<p style="margin:0 0 12px;color:#0f172a;font-size:14px">${esc(greeting)}</p>` +
+      `<p style="margin:0 0 16px;color:#334155;font-size:14px;line-height:1.5">Avizul de însoțire a mărfii a fost încărcat. Îl poți descărca de mai jos; este atașat și ca PDF la acest email.</p>` +
+      (rowsHtml ? `<table style="margin:0 0 16px">${rowsHtml}</table>` : '') +
+      `<a href="${esc(ctx.downloadUrl)}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600">Descarcă avizul (PDF)</a>` +
+      `<p style="margin:16px 0 0;color:#94a3b8;font-size:12px">${esc(ctx.organizationName)}</p>` +
+      `</div></div></div>`;
+
+    return { subject, body, html };
+  },
+
+  [MessageKind.aviz_uploaded_sms]: (ctx: AvizUploadedSmsCtx) => ({
+    // GSM-7 friendly (no diacritics) so the SMS stays as few segments as possible.
+    body: `Aviz transport${ctx.truckRegistrationPlate ? ` ${ctx.truckRegistrationPlate}` : ''}: ${ctx.downloadUrl}`,
+  }),
 };
 
 export { fmtCoordsUrl, fmtDirectionsUrl };
