@@ -19,11 +19,23 @@ const MAX_REQUESTS_PER_WINDOW = 50;
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function clientIp(req: NextRequest): string {
+  // nginx sets X-Real-IP to $remote_addr on every proxied request — it is
+  // never client-controlled. X-Forwarded-For is set to
+  // $proxy_add_x_forwarded_for, which APPENDS $remote_addr to whatever the
+  // client already sent, so the *first* hop is attacker-controlled and can
+  // be spoofed to reset this rate limiter's per-IP bucket. Prefer
+  // X-Real-IP; only fall back to XFF (last hop) where a proxy sets XFF but
+  // not X-Real-IP.
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp.trim();
+  }
   const forwarded = req.headers.get('x-forwarded-for');
   if (forwarded) {
-    return forwarded.split(',')[0]?.trim() ?? 'unknown';
+    const hops = forwarded.split(',');
+    return hops[hops.length - 1]?.trim() ?? 'unknown';
   }
-  return req.headers.get('x-real-ip') ?? 'unknown';
+  return 'unknown';
 }
 
 function allowRateLimit(ip: string): boolean {
