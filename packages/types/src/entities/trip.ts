@@ -69,6 +69,14 @@ export interface Trip extends Timestamps, SoftDelete {
   weightTicketNumber: string | null;
   weightTicketPhotoUrl: string | null;
   deterioratedBalesCount: number | null;
+  /**
+   * Bales actually delivered, distinct from the loaded `baleCount`. Set on the
+   * driver (non-depot) confirm-delivery path as `baleCount - deterioratedBalesCount`;
+   * NULL for depot-confirmed trips (which overwrite `baleCount` itself instead —
+   * see confirmDepotDelivery) and for trips predating this column. Reconciliation
+   * falls back to `baleCount` when NULL.
+   */
+  deliveredBaleCount: number | null;
   loaderSignatureUrl: string | null;
   driverSignatureUrl: string | null;
   deliveredAt: string | null;
