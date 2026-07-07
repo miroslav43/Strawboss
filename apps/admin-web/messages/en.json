@@ -1821,6 +1821,19 @@
         },
         "confirm": "Confirm",
         "cancel": "Cancel"
+      },
+      "smsGateway": {
+        "title": "SMS Gateway",
+        "toggleAriaLabel": "SMS Gateway",
+        "toggleFailed": "Could not change the flag",
+        "descriptionOn": "This device picks up pending SMS on every check-in and sends them via SIM.",
+        "descriptionOff": "Enable so this device picks up and sends SMS from the outbox.",
+        "phonePlaceholder": "+40…",
+        "invalidPhone": "Invalid number",
+        "sendTest": "Send SMS",
+        "sendQueued": "SMS queued",
+        "sendFailed": "Sending failed",
+        "messagePlaceholder": "Message (optional) — leave empty for the standard test ping"
       }
     }
   },

@@ -1821,6 +1821,19 @@
         },
         "confirm": "Confirmă",
         "cancel": "Anulează"
+      },
+      "smsGateway": {
+        "title": "SMS Gateway",
+        "toggleAriaLabel": "SMS Gateway",
+        "toggleFailed": "Nu s-a putut schimba flagul",
+        "descriptionOn": "Acest device preia SMS-urile în așteptare la fiecare check-in și le trimite prin SIM.",
+        "descriptionOff": "Activează pentru ca acest device să preia și să trimită SMS-urile din outbox.",
+        "phonePlaceholder": "+40…",
+        "invalidPhone": "Număr invalid",
+        "sendTest": "Trimite SMS",
+        "sendQueued": "SMS pus în coadă",
+        "sendFailed": "Trimiterea a eșuat",
+        "messagePlaceholder": "Mesaj (opțional) — lasă gol pentru ping-ul de test standard"
       }
     }
   },
