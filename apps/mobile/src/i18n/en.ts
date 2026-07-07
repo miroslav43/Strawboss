@@ -1391,6 +1391,13 @@ export const en = {
         errorTitle: 'Error',
         errorDefault: 'Could not clear the queue.',
       },
+      logoutPending: {
+        title: 'Unsynced records',
+        message:
+          'You have {count} unsynced records on this phone. If you log out now, they will be permanently lost. Sync first or log out anyway.',
+        confirm: 'Log out anyway',
+        syncNow: 'Sync now',
+      },
     },
   },
 

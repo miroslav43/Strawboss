@@ -73,8 +73,14 @@ Exemple (rulate de tine, din `apps/mobile`):
 npm run build:android          # profilul "apk"
 
 # sau local
-npm run build:apk              # expo prebuild --clean + gradlew assembleDebug
+npm run build:apk              # expo prebuild --clean + gradlew assembleRelease
 ```
+
+> 🔒 `build:apk` produce un build **release** (`android:debuggable=false`,
+> minificat cu R8), semnat tot cu `debug.keystore`-ul fixat (nu se schimbă —
+> altfel se strică auto-update-ul OTA pe telefoanele deja înrolate). Un APK
+> `debuggable` ar permite citirea bazei SQLite/PII prin `run-as`/adb pe orice
+> telefon din flotă — de aceea flota **nu** mai folosește `assembleDebug`.
 
 Rezultă un fișier, ex. `strawboss-deviceowner.apk`.
 

@@ -1393,6 +1393,13 @@ export const ro = {
         errorTitle: 'Eroare',
         errorDefault: 'Nu s-a putut șterge coada.',
       },
+      logoutPending: {
+        title: 'Înregistrări nesincronizate',
+        message:
+          'Ai {count} înregistrări nesincronizate pe acest telefon. Dacă te deconectezi acum, vor fi pierdute definitiv. Sincronizează mai întâi sau ieși oricum.',
+        confirm: 'Ieși oricum',
+        syncNow: 'Sincronizează acum',
+      },
     },
   },
 
