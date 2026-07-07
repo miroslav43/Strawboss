@@ -731,7 +731,9 @@
       "shortOffline": "Offline",
       "shortMinutesAgo": "{{n}}m",
       "shortHoursAgo": "{{n}}h",
-      "shortDaysAgo": "{{n}}d"
+      "shortDaysAgo": "{{n}}d",
+      "ariaOnline": "online",
+      "ariaOffline": "offline"
     },
     "truck": {
       "iterations": {

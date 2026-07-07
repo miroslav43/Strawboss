@@ -106,7 +106,7 @@ export function UserPresenceDot({
     return (
       <span
         title={title}
-        aria-label={isOnline ? 'online' : 'offline'}
+        aria-label={isOnline ? t('tasks.online.ariaOnline') : t('tasks.online.ariaOffline')}
         className={cn(
           'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1',
           isOnline
@@ -134,7 +134,7 @@ export function UserPresenceDot({
         isOnline ? 'bg-green-500 animate-pulse' : 'bg-neutral-300',
         className,
       )}
-      aria-label={isOnline ? 'online' : 'offline'}
+      aria-label={isOnline ? t('tasks.online.ariaOnline') : t('tasks.online.ariaOffline')}
     />
   );
 }
