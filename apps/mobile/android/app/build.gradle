@@ -65,8 +65,13 @@ react {
 
 /**
  * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
+ *
+ * Defaults to true: the fleet build ships `assembleRelease` (see package.json
+ * `build:apk` / `build:android:local`) and every release artifact must be
+ * minified + shrunk — a non-debuggable, non-minified APK is still trivially
+ * readable via `run-as`/adb (see C5 in audit-plans/01-CRITICAL.md).
  */
-def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
+def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: true).toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -110,10 +115,20 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
+            // Signed with the same pinned debug.keystore on purpose (locked
+            // decision, see audit-plans/01-CRITICAL.md C5): the fleet's ~30
+            // Device-Owner phones self-install OTA updates via a same-signer
+            // check, and rotating the signer would require re-provisioning
+            // every phone by hand. Keystore rotation is out of scope here.
             signingConfig signingConfigs.debug
-            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
+            // Explicitly non-debuggable: the fleet build used to ship
+            // `assembleDebug` (android:debuggable=true), which lets `run-as`/
+            // adb over Tailscale read the private SQLite DB, logs and
+            // SecureStore off any fielded phone. Release builds are
+            // non-debuggable by AGP default, but this is pinned explicitly so
+            // it can never regress silently.
+            debuggable false
+            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'true'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
