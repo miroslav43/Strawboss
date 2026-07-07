@@ -46,8 +46,17 @@ export class DashboardService {
     return sql` AND ${sql.join(parts, sql` AND `)}`;
   }
 
-  async getOverview(orgId: string | null): Promise<DashboardOverview> {
-    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+  /**
+   * The unfiltered (cross-org) branch is gated on an explicit super_admin
+   * role, never on `orgId` being null — an unauthenticated/anon identity
+   * also produces a null orgId and must never see every org's analytics.
+   */
+  private orgFilter(orgId: string | null, callerRole: string) {
+    return callerRole === 'super_admin' ? sql`` : sql` AND organization_id = ${orgId}::uuid`;
+  }
+
+  async getOverview(orgId: string | null, callerRole: string): Promise<DashboardOverview> {
+    const orgFilter = this.orgFilter(orgId, callerRole);
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
@@ -89,10 +98,11 @@ export class DashboardService {
 
   async getProduction(
     orgId: string | null,
+    callerRole: string,
     range?: DashboardDateRange,
   ): Promise<ProductionReport[]> {
     const prodExtra = this.productionDateFilter(range);
-    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+    const orgFilter = this.orgFilter(orgId, callerRole);
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
@@ -140,12 +150,16 @@ export class DashboardService {
     });
   }
 
-  async getCosts(orgId: string | null, range?: DashboardDateRange): Promise<CostReport[]> {
+  async getCosts(
+    orgId: string | null,
+    callerRole: string,
+    range?: DashboardDateRange,
+  ): Promise<CostReport[]> {
     const fuelMachineDates = this.loggedAtFilter(range, 'fl');
     const consMachineDates = this.loggedAtFilter(range, 'cl');
     const fuelParcelDates = this.loggedAtFilter(range, 'fl');
     const consParcelDates = this.loggedAtFilter(range, 'cl');
-    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+    const orgFilter = this.orgFilter(orgId, callerRole);
 
     // Costs by machine (machines has no 'name' column — build display name from available fields)
     const machineResult = await this.drizzleProvider.db.execute(sql`
@@ -240,8 +254,8 @@ export class DashboardService {
     });
   }
 
-  async getTrending(orgId: string | null) {
-    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+  async getTrending(orgId: string | null, callerRole: string) {
+    const orgFilter = this.orgFilter(orgId, callerRole);
 
     const result = await this.drizzleProvider.db.execute(sql`
       WITH dates AS (
@@ -269,8 +283,8 @@ export class DashboardService {
     return result;
   }
 
-  async getAntiFraud(orgId: string | null): Promise<AntiFraudReport> {
-    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+  async getAntiFraud(orgId: string | null, callerRole: string): Promise<AntiFraudReport> {
+    const orgFilter = this.orgFilter(orgId, callerRole);
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
