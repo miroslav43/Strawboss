@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RoutePoint } from '@strawboss/types';
 import { useI18n } from '@/lib/i18n';
+import { esc } from '@/lib/html-escape';
 
 // Default map center: Deta, Timiș (matches LeafletMap / RouteMiniMap).
 const DETA_CENTER: [number, number] = [45.3883, 21.2311];
@@ -171,9 +172,12 @@ export function TracksMap({ routes, className }: TracksMapProps) {
             fillColor: '#16a34a',
             fillOpacity: 1,
           }).bindTooltip(
+            // r.label is user-controlled (machine internalCode/make/model) —
+            // bindTooltip sets string content via innerHTML, so it must be
+            // escaped (H9). The i18n label itself is trusted, static copy.
             r.label
-              ? `${r.label} — ${tRef.current('leaflet.routeStart')}`
-              : tRef.current('leaflet.routeStart'),
+              ? `${esc(r.label)} — ${esc(tRef.current('leaflet.routeStart'))}`
+              : esc(tRef.current('leaflet.routeStart')),
           ),
           L.circleMarker(latLngs[latLngs.length - 1], {
             radius: 5,
@@ -182,8 +186,8 @@ export function TracksMap({ routes, className }: TracksMapProps) {
             fillOpacity: 1,
           }).bindTooltip(
             r.label
-              ? `${r.label} — ${tRef.current('leaflet.routeEnd')}`
-              : tRef.current('leaflet.routeEnd'),
+              ? `${esc(r.label)} — ${esc(tRef.current('leaflet.routeEnd'))}`
+              : esc(tRef.current('leaflet.routeEnd')),
           ),
         );
       }

@@ -11,6 +11,7 @@ import type { Trip, Parcel, DeliveryDestination } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
+import { toTripCamelList } from '@/lib/trip-mapper';
 import { LoggingErrorBoundary } from '@/components/shared/LoggingErrorBoundary';
 import { useMachineIconPrefs } from '@/hooks/useMachineIconPrefs';
 
@@ -128,7 +129,7 @@ export default function CommandCenterPage() {
   const parcels = normalizeList<Parcel>(parcelsQuery.data);
   const machines = locationsQuery.data ?? [];
   const deposits = normalizeList<DeliveryDestination>(depositsQuery.data);
-  const allTrips: Trip[] = normalizeList<Trip>(tripsQuery.data);
+  const allTrips: Trip[] = toTripCamelList(normalizeList(tripsQuery.data));
 
   const activeTrips = useMemo(
     () => allTrips.filter((trip) => ACTIVE_STATUSES.has(trip.status as TripStatus)),

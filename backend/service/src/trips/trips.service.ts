@@ -1799,7 +1799,7 @@ export class TripsService implements OnModuleInit {
     return this.drizzleProvider.db.transaction(async (tx) => {
       // 1. Load current trip + lookup the course root.
       const cur = (await tx.execute(sql`
-        SELECT id, parent_trip_id, source_parcel_id, truck_id, driver_id,
+        SELECT id, status, parent_trip_id, source_parcel_id, truck_id, driver_id,
                loader_id, loader_operator_id,
                destination_name, destination_address,
                ST_AsGeoJSON(destination_coords) AS destination_coords_geojson,
@@ -1813,6 +1813,15 @@ export class TripsService implements OnModuleInit {
       const t = cur[0];
       if (orgId !== null && t.organization_id !== orgId) {
         throw new ForbiddenException('Trip not found in your organization');
+      }
+      // A new iteration can only be forked off a *finished* trip — otherwise a
+      // caller could fork an arbitrary in-flight trip (wrong truck/status) into
+      // a bogus new course. Mirrors recordNoRecall's identical status guard.
+      if (t.status !== TripStatus.completed) {
+        throw new BadRequestException({
+          error: 'invalid_state',
+          message: 'Cursa trebuie finalizată înainte de a crea o nouă cursă.',
+        });
       }
       // Idempotency (loader path only): a loader recall response mints at most
       // one iteration per trip. If the loader already answered (recalled or

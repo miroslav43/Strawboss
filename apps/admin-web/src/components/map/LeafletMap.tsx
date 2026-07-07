@@ -15,14 +15,7 @@ import { useI18n } from '@/lib/i18n';
 import { getMachineVisual } from './machine-icons';
 import type { IconVariant } from './machine-icons';
 import type { IconPrefs } from '@/hooks/useMachineIconPrefs';
-
-function esc(s: string | null | undefined): string {
-  return (s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { esc } from '@/lib/html-escape';
 
 // Default map center: Deta, Timiș
 const DETA_CENTER: [number, number] = [45.3883, 21.2311];

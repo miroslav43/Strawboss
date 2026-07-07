@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { todayInRomania } from '../common/date';
 import type { SyncMutation, SyncResult, SyncResponse, SyncTombstone } from '@strawboss/types';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -850,19 +851,22 @@ export class SyncService {
                 AND du.deleted_at IS NULL
             ) AS destination_has_operator`
           : sql``;
-      // Delta by version, EXCEPT for trips: always include the caller's active
-      // (non-terminal) trips regardless of the cursor. sync_version is stamped by
-      // a global sequence in a BEFORE-UPDATE trigger, so two rows updated in the
-      // same instant can commit out of order — a lower-versioned trip committing
+      // Delta by version, EXCEPT for tables where an out-of-order commit can
+      // strand a row behind the cursor forever: sync_version is stamped by a
+      // global sequence in a BEFORE-UPDATE trigger, so two rows updated in the
+      // same instant can commit out of order — a lower-versioned row committing
       // after a higher-versioned one the device already pulled. With a pure
-      // `> cursor` delta that lower-versioned active trip is skipped forever
-      // (observed: an in_transit trip at v21890 stranded behind a completed trip
-      // at v21891). Re-sending active trips every pull (1–2 rows per driver)
-      // makes that impossible; completed/cancelled history stays delta-only.
+      // `> cursor` delta that lower-versioned row is skipped forever (observed:
+      // an in_transit trip at v21890 stranded behind a completed trip at
+      // v21891). Force-including the operationally-relevant slice of these
+      // tables every pull (a handful of rows) makes that impossible; history
+      // (completed/cancelled trips, past-day assignments) stays delta-only.
       const versionFilter =
         table === 'trips'
           ? sql`(sync_version > ${sinceVersion} OR status NOT IN ('completed', 'cancelled'))`
-          : sql`sync_version > ${sinceVersion}`;
+          : table === 'task_assignments'
+            ? sql`(sync_version > ${sinceVersion} OR assignment_date = ${todayInRomania()}::date)`
+            : sql`sync_version > ${sinceVersion}`;
       const result = await this.drizzleProvider.db.execute(
         sql`SELECT ${colsSql}${extraSelect} FROM ${sql.raw(`"${table}"`)}
             WHERE ${versionFilter} ${ownerFilter}${softDeleteFilter}${orgFilter}

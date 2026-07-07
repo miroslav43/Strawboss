@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   Trip,
-  PaginatedResponse,
   TripCreateDto,
   StartLoadingDto,
   CompleteLoadingDto,
@@ -19,12 +18,18 @@ import type {
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
+/**
+ * `GET /api/v1/trips` returns a bare JSON array of raw snake_case trip rows
+ * (see `TripsService.list()`), not a `PaginatedResponse<Trip>`. Callers must
+ * route the result through `normalizeList()` + `toTripCamelList()` (in
+ * `apps/admin-web/src/lib/trip-mapper.ts`) before reading camelCase fields.
+ */
 export function useTrips(client: ApiClient, filters?: Record<string, unknown>) {
   return useQuery({
     queryKey: queryKeys.trips.list(filters),
     queryFn: () => {
       const params = filters ? `?${new URLSearchParams(filters as Record<string, string>)}` : '';
-      return client.get<PaginatedResponse<Trip>>(`/api/v1/trips${params}`);
+      return client.get<unknown[]>(`/api/v1/trips${params}`);
     },
   });
 }

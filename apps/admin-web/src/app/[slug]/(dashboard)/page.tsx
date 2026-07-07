@@ -20,6 +20,7 @@ import { RecentTrips } from '@/components/features/dashboard/RecentTrips';
 import { apiClient } from '@/lib/api';
 import { todayInRomania } from '@/lib/date';
 import { normalizeList } from '@/lib/normalize-api-list';
+import { toTripCamelList } from '@/lib/trip-mapper';
 import { useI18n } from '@/lib/i18n';
 
 /** Compute a trend badge comparing today vs yesterday from the trending array. */
@@ -61,7 +62,7 @@ export default function DashboardPage() {
   const trending: TrendingDay[] = trendingQuery.data ?? [];
   const operatorStats: OperatorStat[] = (operatorStatsQuery.data ?? []) as OperatorStat[];
   // W14: use normalizeList so both array and {data:[]} shapes are handled
-  const trips: Trip[] = normalizeList<Trip>(tripsQuery.data);
+  const trips: Trip[] = toTripCamelList(normalizeList(tripsQuery.data));
 
   // FW-4: compute trends from historical data
   const vsYesterday = t('dashboard.trendVsYesterday');
