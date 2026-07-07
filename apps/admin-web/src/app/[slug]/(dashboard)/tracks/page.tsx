@@ -320,7 +320,8 @@ export default function TracksPage() {
                   <button
                     onClick={() => toggle(tk.id)}
                     className="text-neutral-400 hover:text-neutral-700"
-                    title={tk.visible ? t('tracks.legend') : t('tracks.legend')}
+                    title={tk.visible ? t('tracks.hideTrack') : t('tracks.showTrack')}
+                    aria-label={tk.visible ? t('tracks.hideTrack') : t('tracks.showTrack')}
                   >
                     {tk.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                   </button>
@@ -342,7 +343,8 @@ export default function TracksPage() {
                   <button
                     onClick={() => remove(tk.id)}
                     className="text-neutral-400 hover:text-red-600"
-                    aria-label={t('tracks.clear')}
+                    aria-label={t('tracks.removeTrack')}
+                    title={t('tracks.removeTrack')}
                   >
                     <X className="h-4 w-4" />
                   </button>

@@ -76,7 +76,10 @@
     "loading": "Se încarcă…",
     "error": "Eroare la încărcare",
     "noPoints": "Fără date GPS în acest interval",
-    "selectMachineFirst": "Alege întâi un utilaj"
+    "selectMachineFirst": "Alege întâi un utilaj",
+    "hideTrack": "Ascunde traseul",
+    "showTrack": "Afișează traseul",
+    "removeTrack": "Elimină traseul"
   },
   "topBar": {
     "toggleMenu": "Comută meniul",
