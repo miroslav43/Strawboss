@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, Loader2, X, MapPin, Building2, User } from 'lucide-react';
+import { Plus, Loader2, X, MapPin, Building2, User, RefreshCw } from 'lucide-react';
 import {
   useTasksByMachineType,
   useCreateTaskAssignment,
@@ -80,7 +80,12 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
   const [depositMapForTruckAssignmentId, setDepositMapForTruckAssignmentId] = useState<
     string | null
   >(null);
-  const { data: rawAssignments, isLoading } = useTasksByMachineType(apiClient, date, 'truck');
+  const {
+    data: rawAssignments,
+    isLoading,
+    isError,
+    refetch,
+  } = useTasksByMachineType(apiClient, date, 'truck');
   const { data: rawLoaderAssignments } = useTasksByMachineType(apiClient, date, 'loader');
   const { data: rawMachines } = useMachines(apiClient);
   const { data: rawDeposits } = useDeliveryDestinations(apiClient);
@@ -223,6 +228,21 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
       <div className="flex items-center justify-center py-16 text-neutral-400">
         <Loader2 className="h-5 w-5 animate-spin mr-2" />
         {t('common.loading')}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-sm text-red-500">
+        {t('tasks.loadError')}
+        <button
+          onClick={() => refetch()}
+          className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t('tasks.retry')}
+        </button>
       </div>
     );
   }

@@ -648,6 +648,7 @@
   "tasks": {
     "title": "Sarcini",
     "loadError": "Nu s-au putut încărca sarcinile. Backend-ul poate fi oprit.",
+    "retry": "Reîncearcă",
     "boardTitle": "Panou sarcini",
     "dailyPlanTitle": "Planificare zilnică",
     "today": "Azi",

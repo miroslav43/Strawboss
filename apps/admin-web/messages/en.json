@@ -648,6 +648,7 @@
   "tasks": {
     "title": "Tasks",
     "loadError": "Failed to load tasks. The backend may not be running.",
+    "retry": "Retry",
     "boardTitle": "Task board",
     "dailyPlanTitle": "Daily Task Planning",
     "today": "Today",
