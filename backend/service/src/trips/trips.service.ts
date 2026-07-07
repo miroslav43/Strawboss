@@ -2768,6 +2768,11 @@ export class TripsService implements OnModuleInit {
     }
 
     const dest = destRows[0];
+    // Re-check status atomically inside the UPDATE — the `findById` +
+    // `allowedStatuses.includes` check above is only advisory; without this,
+    // a concurrent depart() between that check and this write could let the
+    // destination change after the trip has already left. Mirrors the
+    // check-then-act guard used by depart()/complete()/etc.
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
             destination_id      = ${dest.id}::uuid,
@@ -2776,9 +2781,13 @@ export class TripsService implements OnModuleInit {
             destination_coords  = ${dest.coords_geojson ? sql`ST_GeomFromGeoJSON(${dest.coords_geojson})` : sql`NULL`},
             updated_at          = NOW()
           WHERE id = ${id}
+            AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loaded}::trip_status)
             ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
           RETURNING *`,
     );
+    if (!(result as unknown as unknown[]).length) {
+      throw new BadRequestException('Trip status changed concurrently');
+    }
 
     this.logTripFlow(id, 'SET_DESTINATION', trip.status as string, trip.status as string);
     return (result as unknown as Record<string, unknown>[])[0];
