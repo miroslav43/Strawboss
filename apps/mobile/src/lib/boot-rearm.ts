@@ -46,16 +46,15 @@ async function bootRearm(): Promise<void> {
     await SecureStore.deleteItemAsync(PENDING_INSTALL_DEPLOYMENT_ID_KEY).catch(() => {});
   }
 
-  const token = await getAuthToken();
-  if (!token) {
-    mobileLogger.flow('Boot re-arm: no session — skipping');
-    return;
-  }
-
-  // Device-owner: re-arm the keep-alive PresenceService, which schedules the
-  // native presence-checkin alarm. This runs regardless of whether a machine is
-  // assigned, so geofence_maker / depot_manager phones also stay online after a
-  // reboot without anyone opening the app. Best-effort — never block the rest.
+  // Device-owner: re-arm the keep-alive PresenceService FIRST — before any session
+  // guard. The foreground-service anchor must come up even when there is no valid
+  // token yet (e.g. the Supabase session still needs a network refresh right after
+  // an OTA self-update); otherwise the phone is left with no anchor and silently
+  // freezes offline. The check-in the service dispatches hits a PUBLIC endpoint, so
+  // device presence still reports without a user token — the operator heartbeat
+  // resumes automatically once the session hydrates. Runs regardless of whether a
+  // machine is assigned, so geofence_maker / depot_manager phones also stay online.
+  // Best-effort — never block the rest of boot-rearm.
   try {
     if (await isDeviceOwner()) {
       await startPresenceService();
@@ -65,6 +64,12 @@ async function bootRearm(): Promise<void> {
     mobileLogger.warn('Boot re-arm: startPresenceService failed', {
       message: err instanceof Error ? err.message : String(err),
     });
+  }
+
+  const token = await getAuthToken();
+  if (!token) {
+    mobileLogger.flow('Boot re-arm: no session — presence armed, skipping tracking');
+    return;
   }
 
   const machineId = await getPersistedMachineId();

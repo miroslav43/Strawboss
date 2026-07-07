@@ -22,6 +22,20 @@ class PresenceAlarmReceiver : BroadcastReceiver() {
     // Record that the tick actually fired — the health report reads this to prove
     // the 60s presence alarm is alive (vs scheduled-but-never-firing).
     PresenceAlarm.recordFire(context)
+    // Keep-alive self-heal: re-assert the foreground-service anchor on every tick.
+    // If a low-memory kill or an OEM background-killer demoted / dropped
+    // PresenceService (the alarm can outlive a transient service death), this
+    // revives it before we dispatch the check-in. Idempotent when already running.
+    try {
+      val svc = Intent(context, PresenceService::class.java)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(svc)
+      } else {
+        context.startService(svc)
+      }
+    } catch (t: Throwable) {
+      Log.w("StrawbossPresence", "presence re-assert failed", t)
+    }
     try {
       // Hold the CPU until the headless service is up (per RN HeadlessJsTaskService).
       HeadlessJsTaskService.acquireWakeLockNow(context)

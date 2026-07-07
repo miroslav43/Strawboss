@@ -48,6 +48,16 @@ class MainApplication : Application(), ReactApplication {
     }
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
+    // StrawBoss always-on anchor: start the keep-alive foreground service on
+    // every process start, independent of JS/auth, so a device-owner fleet phone
+    // is never left without its FGS anchor and cannot silently freeze offline.
+    try {
+      if (DeviceOwnerPolicies.isDeviceOwner(this)) {
+        PresenceService.start(this)
+      }
+    } catch (t: Throwable) {
+      android.util.Log.w("StrawbossBoot", "onCreate presence autostart failed", t)
+    }
   }
 
   override fun onConfigurationChanged(newConfig: Configuration) {

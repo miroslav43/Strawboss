@@ -1129,6 +1129,20 @@ class PresenceAlarmReceiver : BroadcastReceiver() {
     // Record that the tick actually fired — the health report reads this to prove
     // the 60s presence alarm is alive (vs scheduled-but-never-firing).
     PresenceAlarm.recordFire(context)
+    // Keep-alive self-heal: re-assert the foreground-service anchor on every tick.
+    // If a low-memory kill or an OEM background-killer demoted / dropped
+    // PresenceService (the alarm can outlive a transient service death), this
+    // revives it before we dispatch the check-in. Idempotent when already running.
+    try {
+      val svc = Intent(context, PresenceService::class.java)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(svc)
+      } else {
+        context.startService(svc)
+      }
+    } catch (t: Throwable) {
+      Log.w("StrawbossPresence", "presence re-assert failed", t)
+    }
     try {
       // Hold the CPU until the headless service is up (per RN HeadlessJsTaskService).
       HeadlessJsTaskService.acquireWakeLockNow(context)
@@ -1551,18 +1565,55 @@ function withKotlinSources(config) {
   ]);
 }
 
-/** Register DeviceOwnerPackage in MainApplication.getPackages() (idempotent). */
+/**
+ * Patch MainApplication.kt (idempotent, both patches independent):
+ *   1. Register DeviceOwnerPackage in getPackages().
+ *   2. Start the keep-alive PresenceService from onCreate on EVERY process start.
+ */
 function patchMainApplication(javaDir) {
   const mainAppPath = path.join(javaDir, 'MainApplication.kt');
   if (!fs.existsSync(mainAppPath)) return;
   let src = fs.readFileSync(mainAppPath, 'utf8');
-  if (src.includes('DeviceOwnerPackage()')) return; // already patched
 
-  const anchor = 'PackageList(this).packages.apply {';
-  const idx = src.indexOf(anchor);
-  if (idx === -1) return;
-  const insertAt = idx + anchor.length;
-  src = src.slice(0, insertAt) + '\n              add(DeviceOwnerPackage())' + src.slice(insertAt);
+  // 1. Register DeviceOwnerPackage in getPackages().
+  if (!src.includes('DeviceOwnerPackage()')) {
+    const anchor = 'PackageList(this).packages.apply {';
+    const idx = src.indexOf(anchor);
+    if (idx !== -1) {
+      const insertAt = idx + anchor.length;
+      src =
+        src.slice(0, insertAt) + '\n              add(DeviceOwnerPackage())' + src.slice(insertAt);
+    }
+  }
+
+  // 2. Native always-on anchor: bring the keep-alive PresenceService up on every
+  //    process start (cold / headless / post-kill), with NO dependency on the JS
+  //    runtime or a logged-in session. This is the durable fix for device-owner
+  //    fleet phones silently dropping offline when the JS/auth-driven start path
+  //    (React effect requiring auth, or boot-rearm requiring a token) never ran.
+  //    Device-owner only; no-op otherwise. DeviceOwnerPolicies + PresenceService
+  //    are in the same package, so no imports are needed.
+  if (!src.includes('PresenceService.start(this)')) {
+    const anchor2 = 'ApplicationLifecycleDispatcher.onApplicationCreate(this)';
+    const idx2 = src.indexOf(anchor2);
+    if (idx2 !== -1) {
+      const insertAt2 = idx2 + anchor2.length;
+      const inject =
+        '\n' +
+        '    // StrawBoss always-on anchor: start the keep-alive foreground service on\n' +
+        '    // every process start, independent of JS/auth, so a device-owner fleet phone\n' +
+        '    // is never left without its FGS anchor and cannot silently freeze offline.\n' +
+        '    try {\n' +
+        '      if (DeviceOwnerPolicies.isDeviceOwner(this)) {\n' +
+        '        PresenceService.start(this)\n' +
+        '      }\n' +
+        '    } catch (t: Throwable) {\n' +
+        '      android.util.Log.w("StrawbossBoot", "onCreate presence autostart failed", t)\n' +
+        '    }';
+      src = src.slice(0, insertAt2) + inject + src.slice(insertAt2);
+    }
+  }
+
   fs.writeFileSync(mainAppPath, src);
 }
 

@@ -21,6 +21,9 @@ make it robust:
 | 2 | The presence/alarm path didn't carry GPS, so GPS gapped when backgrounded | The native-alarm presence task also **posts a current GPS fix + drains the outbox** | `182affb` |
 | 3 | After an OTA self-update / reboot, the process was killed and **nothing restarted the services** → silently offline until a human opened the app | **`BootReceiver`** (`MY_PACKAGE_REPLACED` + `BOOT_COMPLETED`) + **`BootRearmService`** restart the FGS + GPS unattended | `e70f97b` |
 | 4 | On a **cold headless start** the bundle loaded but the router never mounted → `"No task registered for key strawboss-boot-rearm"` → the receiver had nothing to run | Register the headless tasks at the **bundle entry** (`index.js`), not behind the router | `e70f97b` |
+| 5 | **The whole always-on anchor was bootstrapped only from JS** — the React effect (needs `isAuthenticated`) or `boot-rearm` (needs a token). If the session was lost → login screen, or a plain OEM/low-memory kill fired no `BootReceiver`, **`PresenceService` never (re)started** → the idle device-owner phone had no FGS → fell to **cached → frozen → offline** with no self-recovery. Confirmed on an SM-G556B: pre-touch the process was `cch+10` (cached), no FGS, alarms piled up unfired. | Start `PresenceService` **natively from `MainApplication.onCreate` on every process start** (device-owner only), independent of JS + auth. Plus: the presence alarm **re-asserts** the FGS each tick, and `boot-rearm` arms presence **before** the token guard. | *(this fix)* |
+
+> **Why "native" (fix #5) is the right call:** an anchor that must be *always* running cannot depend on whether React mounted an effect, whether a Supabase session hydrated, or whether a specific system broadcast fired. Those are three independent points of failure. `MainApplication.onCreate` runs on **every** process start (cold, headless, sticky-restart, alarm/FCM/JobService wake), so the FGS comes up before any JS/auth logic — and once the FGS is up, the phone is provably un-killable (survives Doze, `am kill`, and Activity destruction — see Validation).
 
 ---
 
@@ -81,6 +84,49 @@ but never mounted the router → the tasks were never registered → `BootRearmS
 import './src/lib/register-background-tasks'; // register tasks FIRST (headless-safe)
 import 'expo-router/entry';                    // then the router
 ```
+
+### 5 — Native always-on anchor: start `PresenceService` from `onCreate` (auth-independent)
+
+The bug behind the "latest APK broke always-on" reports was **not** a changed line — it
+was that `PresenceService` (the keep-alive FGS everything else rides) was only ever
+started from **JS**:
+
+- `app/_layout.tsx` — a React effect gated on `isAuthenticated && profileReady && role`.
+  If the session is lost the app sits on the **login screen** and the effect early-returns,
+  so the anchor never starts.
+- `src/lib/boot-rearm.ts` — only on `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED`, and (old
+  code) only *after* a `getAuthToken()` guard.
+
+A plain OEM / low-memory kill of the process fires **no** `BootReceiver`, so nothing
+restarted the anchor. Result: an idle device-owner phone was left with no foreground
+service → the OS moved it to **cached → frozen** → check-ins stopped and it could not
+recover itself. (Confirmed on an SM-G556B via adb-over-Tailscale: process `cch+10`, zero
+FGS, `PresenceAlarmReceiver` alarms piled up unfired for hours.)
+
+The fix decouples the anchor from JS and auth, in three layers:
+
+1. **`plugins/withDeviceOwner.js` → `patchMainApplication`** injects into
+   `MainApplication.onCreate` (runs on **every** process start):
+   ```kotlin
+   try {
+     if (DeviceOwnerPolicies.isDeviceOwner(this)) {
+       PresenceService.start(this)   // startForegroundService — DO + battery-exempt = allowed from bg
+     }
+   } catch (t: Throwable) { Log.w("StrawbossBoot", "onCreate presence autostart failed", t) }
+   ```
+2. **`PresenceAlarmReceiver.onReceive`** now re-asserts `PresenceService` on every ~60 s
+   tick (the alarm re-arms itself in `finally`, so it outlives a transient service death).
+3. **`boot-rearm.ts`** arms `PresenceService` **before** the token guard — the check-in it
+   dispatches hits the **public** `/fleet/checkin`, so device presence reports even with no
+   user token; the operator heartbeat resumes when the session hydrates.
+
+Since `onCreate` fires on cold launch, headless task, sticky restart, and any alarm/FCM/Job
+wake, the anchor is always re-established; combined with `START_STICKY` and
+`setUserControlDisabledPackages` (already applied), the process is genuinely un-killable
+once up. **Latent footgun left in place (moot after this fix):** the `_layout.tsx` effect
+cleanup calls `stopPresenceService()`; on this Expo/RN (bridgeless, retained `ReactHost`)
+the root tree does **not** unmount on Activity destruction, so it does not fire — and even
+if it did, the next `onCreate` / alarm tick revives the anchor.
 
 ---
 
@@ -182,6 +228,45 @@ adb -s 100.114.58.32 shell input keyevent 223   # screen off
 adb -s 100.114.58.32 shell dumpsys activity services com.strawboss.mobile | grep ServiceRecord
 # → PresenceService running; DB last_checkin + GPS go fresh within ~60 s.
 ```
+
+### Debugging a phone connected to a laptop (adb server over Tailscale)
+
+When the phone is on a laptop's USB (not on the tailnet itself), expose the laptop's adb
+server to this VM instead of moving the phone:
+
+```bash
+# On the laptop (leave running):
+adb kill-server && adb -a nodaemon server        # -a = listen on all interfaces incl. Tailscale
+# On this VM (laptop = maleticis-macbook-pro = 100.102.162.74):
+export ADB_SERVER_SOCKET=tcp:100.102.162.74:5037
+adb devices -l                                   # the USB phone shows up here
+```
+
+**The five checks that pinpoint "why is this phone offline" (this exact class of bug):**
+
+```bash
+S=<serial>
+# 1. Is the process alive but CACHED/frozen? cch+NN / (previous-expired) = frozen, no anchor.
+adb -s $S shell dumpsys activity processes | grep -i "Proc #.*strawboss"
+# 2. Which FGS are actually foreground? Need PresenceService (types=0x40000000 SPECIAL_USE)
+#    and/or LocationTaskService (types=0x8). isForeground=true is the proof.
+adb -s $S shell dumpsys activity services com.strawboss.mobile | grep -E "ServiceRecord|isForeground"
+# 3. Is the keep-alive notification actually posted? (proves the FGS reached foreground)
+adb -s $S shell dumpsys notification | grep id=991188
+# 4. Are presence alarms firing or piling up unfired? (frozen process can't drain them)
+adb -s $S shell dumpsys alarm | grep -c PresenceAlarmReceiver
+# 5. Still device owner + battery-exempt? (both are prerequisites for bg FGS start)
+adb -s $S shell dumpsys device_policy | grep -i "device owner"
+adb -s $S shell dumpsys deviceidle whitelist | grep strawboss
+```
+
+Simulate the field condition deterministically (all reversible):
+`settings put global always_finish_activities 1` (destroy Activity on background),
+`dumpsys battery unplug` + `dumpsys deviceidle step`×6 (force deep Doze),
+`am kill com.strawboss.mobile` (OEM/low-memory kill — refused while an FGS is up, which is
+itself the proof the anchor protects the process). Restore with `always_finish_activities 0`,
+`dumpsys deviceidle unforce`, `dumpsys battery reset`. **Note:** `am force-stop` logs the app
+out (drops to the login screen) — use `am kill`, not `force-stop`, to test recovery.
 
 Related memory: `[[project-honor-js-pause-presence]]`, `[[project-gps-ingestion-replay-trap]]`,
 `[[project-honor-powergenie-hide-fails]]`, `[[project-device-owner-build]]`,
