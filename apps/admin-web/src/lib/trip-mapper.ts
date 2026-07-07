@@ -85,3 +85,13 @@ export function toTripCamel(raw: unknown): Trip | null {
       r.destination_has_operator != null ? Boolean(r.destination_has_operator) : undefined,
   };
 }
+
+/**
+ * Map a list of raw snake_case trip rows (as returned by `GET /api/v1/trips`)
+ * into the canonical `Trip` camelCase shape. Use with `normalizeList()` to
+ * unwrap either a bare array or a `{ data: [...] }` envelope first:
+ *   `toTripCamelList(normalizeList(tripsQuery.data))`
+ */
+export function toTripCamelList(rows: unknown[]): Trip[] {
+  return rows.map((r) => toTripCamel(r)).filter((t): t is Trip => t !== null);
+}
