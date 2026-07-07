@@ -31,11 +31,15 @@ export class DocumentsService {
 
   async list(
     orgId: string | null,
+    callerRole: string,
     filters?: { tripId?: string; tripRequestId?: string; documentType?: string },
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
-    if (orgId) {
+    // The unfiltered (cross-org) branch is gated on an explicit super_admin
+    // role, never on `orgId` being null — an unauthenticated/anon identity
+    // also produces a null orgId and must never see every org's documents.
+    if (callerRole !== 'super_admin') {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
     if (filters?.tripId) {
@@ -55,10 +59,12 @@ export class DocumentsService {
     return result;
   }
 
-  async findById(id: string, orgId: string | null) {
+  async findById(id: string, orgId: string | null, callerRole: string) {
     const conditions: ReturnType<typeof sql>[] = [sql`id = ${id}`, sql`deleted_at IS NULL`];
 
-    if (orgId) {
+    // Same rule as list(): only an explicit super_admin caller may skip the
+    // org filter.
+    if (callerRole !== 'super_admin') {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
 

@@ -1,6 +1,8 @@
 import { Controller, Post, Get, Body, Headers } from '@nestjs/common';
+import { UserRole } from '@strawboss/types';
 import { SyncService } from './sync.service';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { Roles } from '../auth/roles.guard';
 import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { syncPushRequestSchema, syncPullRequestSchema } from '@strawboss/validation';
@@ -20,6 +22,19 @@ function callerSupportsTombstones(headerValue?: string): boolean {
     .includes('tombstones-v1');
 }
 
+// Operational (mobile) roles only — dispatch/ops staff who work inside a
+// single organization's sync data. super_admin is deliberately excluded:
+// per the roles.guard.ts convention it must not reach org-scoped operational
+// endpoints. SyncService still carries an explicit super_admin check as a
+// defense-in-depth layer in case this list ever regresses.
+@Roles(
+  UserRole.driver,
+  UserRole.loader_operator,
+  UserRole.baler_operator,
+  UserRole.depot_manager,
+  UserRole.dispatcher,
+  UserRole.admin,
+)
 @Controller('sync')
 export class SyncController {
   constructor(private readonly syncService: SyncService) {}
@@ -29,7 +44,12 @@ export class SyncController {
     @Body(new ZodValidationPipe(syncPushRequestSchema)) body: SyncPushRequest,
     @CurrentUser() user: RequestUser,
   ) {
-    const results = await this.syncService.push(body.mutations, user.id, user.organizationId);
+    const results = await this.syncService.push(
+      body.mutations,
+      user.id,
+      user.organizationId,
+      user.role,
+    );
     return {
       results,
       serverTime: new Date().toISOString(),

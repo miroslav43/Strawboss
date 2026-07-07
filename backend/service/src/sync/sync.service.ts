@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import type { SyncMutation, SyncResult, SyncResponse, SyncTombstone } from '@strawboss/types';
@@ -180,6 +180,28 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
 // NOTE: 'organization_id' is intentionally absent from ALLOWED_COLUMNS.
 // It is injected server-side after column validation to prevent mobile
 // clients from overriding or spoofing their organization scope.
+
+/**
+ * Column(s) recording which user "owns" a row, per syncable table. Used by
+ * applyMutation to ensure only the owning operator (or an elevated role) can
+ * UPDATE/DELETE a record, and that INSERT payloads cannot attribute a row to
+ * a different user. A row is considered owned by the caller if ANY listed
+ * column matches (e.g. a trip is owned by either its driver or its loader
+ * operator). Tables absent from this map (machines, parcels) carry no
+ * per-user ownership concept — org membership (already enforced by the org
+ * guard on every write) is the only scope that applies.
+ */
+const OWNER_COLUMNS: Record<string, string[]> = {
+  trips: ['driver_id', 'loader_operator_id'],
+  bale_loads: ['operator_id'],
+  bale_productions: ['operator_id'],
+  fuel_logs: ['operator_id'],
+  consumable_logs: ['operator_id'],
+  task_assignments: ['assigned_user_id'],
+};
+
+/** Roles that may write/mutate any org member's rows (dispatch/ops staff). */
+const ELEVATED_SYNC_ROLES = new Set(['admin', 'dispatcher', 'depot_manager']);
 
 /**
  * Foreign-key columns whose value must belong to the caller's organization.
@@ -418,6 +440,78 @@ export class SyncService {
     }
   }
 
+  private isElevatedSyncRole(callerRole?: string): boolean {
+    return !!callerRole && ELEVATED_SYNC_ROLES.has(callerRole);
+  }
+
+  /**
+   * For UPDATE/DELETE: fetch the existing row's owner column(s) and reject
+   * unless the caller is the owner (equals ANY listed owner column) or holds
+   * an elevated role. A row whose owner column(s) are all NULL (e.g. an
+   * unassigned truck task_assignment, where the real owner lives on
+   * trips.driver_id instead) has no per-user ownership to verify — the org
+   * guard folded into the write's WHERE clause is the only scope that
+   * applies. Missing/foreign-org rows are left for the write itself (and its
+   * own org guard) to reject, so the error message stays consistent.
+   */
+  private async assertOwnership(
+    table: string,
+    recordId: string,
+    orgId: string | null,
+    callerId: string,
+    callerRole: string | undefined,
+  ): Promise<void> {
+    const ownerColumns = OWNER_COLUMNS[table];
+    if (!ownerColumns || ownerColumns.length === 0) return;
+    if (this.isElevatedSyncRole(callerRole)) return;
+
+    const colsSql = sql.raw(ownerColumns.map((c) => `"${c}"`).join(', '));
+    const orgGuard = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+    const result = await this.drizzleProvider.db.execute(
+      sql`SELECT ${colsSql} FROM ${sql.raw(`"${table}"`)}
+          WHERE id = ${recordId}${orgGuard}
+          LIMIT 1`,
+    );
+    const rows = result as unknown as Record<string, unknown>[];
+    const row = rows[0];
+    if (!row) return;
+
+    const ownerValues = ownerColumns
+      .map((c) => row[c])
+      .filter((v): v is string => v !== null && v !== undefined);
+    if (ownerValues.length === 0) return;
+
+    if (!ownerValues.includes(callerId)) {
+      throw new BadRequestException(
+        `Record ${recordId} in table '${table}' is not owned by the caller`,
+      );
+    }
+  }
+
+  /**
+   * For INSERT: reject a payload that attributes a row's owner column to a
+   * user other than the caller, unless the caller holds an elevated role.
+   */
+  private assertInsertOwnership(
+    table: string,
+    data: Record<string, unknown>,
+    callerId: string,
+    callerRole: string | undefined,
+  ): void {
+    const ownerColumns = OWNER_COLUMNS[table];
+    if (!ownerColumns || ownerColumns.length === 0) return;
+    if (this.isElevatedSyncRole(callerRole)) return;
+
+    for (const column of ownerColumns) {
+      const value = data[column];
+      if (value !== null && value !== undefined && value !== callerId) {
+        throw new BadRequestException(
+          `Cannot set '${column}' to another user on insert into '${table}'`,
+        );
+      }
+    }
+  }
+
   /**
    * Process a batch of offline mutations with idempotency.
    *
@@ -428,14 +522,24 @@ export class SyncService {
    */
   async push(
     mutations: SyncMutation[],
-    _callerId?: string,
+    callerId: string,
     orgId: string | null = null,
+    callerRole?: string,
   ): Promise<SyncResult[]> {
+    // The "no org filter" branch below is reachable ONLY for an explicit
+    // super_admin caller. A missing/null orgId for anyone else — including
+    // elevated org roles (admin/dispatcher/depot_manager), or a forged/stale
+    // identity that slipped past the guards — is rejected outright rather
+    // than silently falling through to "no filter" (i.e. every org).
+    if (callerRole !== 'super_admin' && !orgId) {
+      throw new ForbiddenException('Missing organization context');
+    }
+
     const results: SyncResult[] = [];
 
     for (const mutation of mutations) {
       try {
-        results.push(await this.applyMutation(mutation, orgId));
+        results.push(await this.applyMutation(mutation, orgId, callerId, callerRole));
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(
@@ -455,7 +559,12 @@ export class SyncService {
     return results;
   }
 
-  private async applyMutation(mutation: SyncMutation, orgId: string | null): Promise<SyncResult> {
+  private async applyMutation(
+    mutation: SyncMutation,
+    orgId: string | null,
+    callerId: string,
+    callerRole: string | undefined,
+  ): Promise<SyncResult> {
     if (!SYNCABLE_TABLES.has(mutation.table)) {
       throw new BadRequestException(`Table '${mutation.table}' is not syncable`);
     }
@@ -500,6 +609,11 @@ export class SyncService {
       for (const col of Object.keys(insertData)) {
         validateColumnName(mutation.table, col);
       }
+
+      // Ownership guard: a mobile client cannot attribute a new row to a
+      // different user's owner column (e.g. insert a bale_load with someone
+      // else's operator_id) unless the caller holds an elevated role.
+      this.assertInsertOwnership(mutation.table, insertData, callerId, callerRole);
 
       // Cross-org FK guard: every foreign-key value referenced by this row
       // must point at a row in the same organization as the caller. Without
@@ -552,6 +666,10 @@ export class SyncService {
         }
       }
     } else if (mutation.action === 'update') {
+      // Ownership guard: only the owning operator (or an elevated role) may
+      // update this record — prevents e.g. driver A editing driver B's trip.
+      await this.assertOwnership(mutation.table, mutation.recordId, orgId, callerId, callerRole);
+
       // sync_version is bumped by the set_sync_version() DB trigger.
       if (orgId !== null) {
         await this.validateForeignKeyOrgs(mutation.table, mutation.data, orgId);
@@ -587,6 +705,10 @@ export class SyncService {
       resultData = rows[0] ?? null;
       serverVersion = Number(resultData?.sync_version ?? 0);
     } else if (mutation.action === 'delete') {
+      // Ownership guard: only the owning operator (or an elevated role) may
+      // soft-delete this record.
+      await this.assertOwnership(mutation.table, mutation.recordId, orgId, callerId, callerRole);
+
       // sync_version is bumped by the set_sync_version() DB trigger.
       const orgGuard = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
       const deleteResult = await this.drizzleProvider.db.execute(
@@ -639,6 +761,15 @@ export class SyncService {
     supportsTombstones = false,
     callerRole?: string,
   ): Promise<SyncResponse> {
+    // The "no org filter" branch below is reachable ONLY for an explicit
+    // super_admin caller. A missing/null orgId for anyone else — including a
+    // forged or stale identity that slipped past the guards — is rejected
+    // outright rather than silently falling through to "no filter" (i.e.
+    // every org's data dumped to the caller).
+    if (callerRole !== 'super_admin' && !orgId) {
+      throw new ForbiddenException('Missing organization context');
+    }
+
     const results: SyncResult[] = [];
     const deletions: SyncTombstone[] = [];
 
@@ -684,7 +815,10 @@ export class SyncService {
         }
       } else if (
         _callerId &&
-        (table === 'bale_productions' || table === 'fuel_logs' || table === 'consumable_logs')
+        (table === 'bale_loads' ||
+          table === 'bale_productions' ||
+          table === 'fuel_logs' ||
+          table === 'consumable_logs')
       ) {
         ownerFilter = sql` AND operator_id = ${_callerId}::uuid`;
       }

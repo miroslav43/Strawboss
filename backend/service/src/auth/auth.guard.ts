@@ -9,10 +9,17 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import * as jose from 'jose';
 import { sql } from 'drizzle-orm';
+import { UserRole } from '@strawboss/types';
 import { DrizzleProvider } from '../database/drizzle.provider';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+/** Known application roles. Excludes Supabase's built-in `anon`/`service_role`. */
+const KNOWN_USER_ROLES: ReadonlySet<string> = new Set<string>(Object.values(UserRole));
+
+/** Supabase JWTs are always issued for this audience. */
+const EXPECTED_AUDIENCE = 'authenticated';
 
 export interface RequestUser {
   id: string;
@@ -101,6 +108,9 @@ export class AuthGuard implements CanActivate {
       const [headerB64] = token.split('.');
       const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString());
 
+      const supabaseUrl = this.configService.getOrThrow<string>('SUPABASE_URL');
+      const expectedIssuer = `${supabaseUrl}/auth/v1`;
+
       let payload: jose.JWTPayload;
 
       if (header.alg === 'HS256') {
@@ -109,17 +119,20 @@ export class AuthGuard implements CanActivate {
         const encodedSecret = new TextEncoder().encode(secret);
         ({ payload } = await jose.jwtVerify(token, encodedSecret, {
           algorithms: ['HS256'],
+          issuer: expectedIssuer,
+          audience: EXPECTED_AUDIENCE,
         }));
       } else {
         // Modern asymmetric JWT (ECC P-256 / RS256) — verify via Supabase JWKS.
         if (!this.jwks) {
-          const supabaseUrl = this.configService.getOrThrow<string>('SUPABASE_URL');
           this.jwks = jose.createRemoteJWKSet(
             new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`),
           );
         }
         ({ payload } = await jose.jwtVerify(token, this.jwks, {
           algorithms: ['ES256', 'RS256'],
+          issuer: expectedIssuer,
+          audience: EXPECTED_AUDIENCE,
         }));
       }
 
@@ -136,9 +149,23 @@ export class AuthGuard implements CanActivate {
 
       const sub = (payload.sub as string) ?? '';
 
-      // Block inactive / soft-deleted users from any protected endpoint.
-      // super_admin accounts are exempt to prevent self-lockout.
-      if (role !== 'super_admin' && sub) {
+      // Reject tokens that aren't a real application user: the Supabase anon
+      // and service_role keys are signed with the same SUPABASE_JWT_SECRET but
+      // carry no `sub` and a `role` of `anon`/`service_role` — neither is a
+      // member of the known UserRole enum. Without this check both keys (the
+      // anon key is public, shipped in every client bundle) would sail through
+      // as an unauthenticated, org-less identity.
+      if (!sub || !KNOWN_USER_ROLES.has(role)) {
+        throw new UnauthorizedException('Invalid token identity');
+      }
+
+      // Block inactive / soft-deleted users from any protected endpoint, and
+      // always DB-derive org membership — never trust a bare/missing org
+      // claim from the token as "unscoped". super_admin accounts are exempt
+      // from the org lookup (they live outside any org) but still pass
+      // through the is_active check to prevent a soft-deleted super_admin
+      // from retaining access.
+      if (role !== 'super_admin') {
         const ctx = await this.loadUserContext(sub, role);
         if (!ctx) {
           throw new UnauthorizedException('Cont inexistent sau șters');
@@ -146,8 +173,8 @@ export class AuthGuard implements CanActivate {
         if (!ctx.isActive) {
           throw new UnauthorizedException('Cont inactiv');
         }
-        organizationId ??= ctx.organizationId;
-        organizationSlug ??= ctx.organizationSlug;
+        organizationId = ctx.organizationId;
+        organizationSlug = ctx.organizationSlug;
       }
 
       request.user = {
