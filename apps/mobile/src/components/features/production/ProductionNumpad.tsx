@@ -251,35 +251,40 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       const now = new Date().toISOString();
       const productionDate = todayInRomania();
 
-      await productionsRepo.create({
-        id,
-        parcel_id: parcelId,
-        baler_id: balerId,
-        operator_id: operatorId,
-        production_date: productionDate,
-        bale_count: numericCount,
-        avg_bale_weight_kg: null,
-        start_time: null,
-        end_time: now,
-        created_at: now,
-        updated_at: now,
-        server_version: 0,
-      });
-
-      await syncQueue.enqueue({
-        entityType: 'bale_productions',
-        entityId: id,
-        action: 'insert',
-        payload: {
+      // Local insert + queue enqueue must land together — a crash between the
+      // two would otherwise leave a production row with server_version=0 and
+      // no queue entry, so it silently never syncs.
+      await db.withTransactionAsync(async () => {
+        await productionsRepo.create({
           id,
           parcel_id: parcelId,
           baler_id: balerId,
           operator_id: operatorId,
           production_date: productionDate,
           bale_count: numericCount,
+          avg_bale_weight_kg: null,
+          start_time: null,
           end_time: now,
-        },
-        idempotencyKey: `bale_productions_${id}`,
+          created_at: now,
+          updated_at: now,
+          server_version: 0,
+        });
+
+        await syncQueue.enqueue({
+          entityType: 'bale_productions',
+          entityId: id,
+          action: 'insert',
+          payload: {
+            id,
+            parcel_id: parcelId,
+            baler_id: balerId,
+            operator_id: operatorId,
+            production_date: productionDate,
+            bale_count: numericCount,
+            end_time: now,
+          },
+          idempotencyKey: `bale_productions_${id}`,
+        });
       });
 
       mobileLogger.flow('Baler production: queued for sync', { parcelId, id });
