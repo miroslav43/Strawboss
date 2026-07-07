@@ -1017,6 +1017,8 @@ export const ro = {
     pendingTransitionBadge: {
       a11y: 'Tranziție în așteptare de sincronizare',
       label: 'va fi trimis la reconectare',
+      failedA11y: 'Sincronizarea tranziției a eșuat, atinge pentru a reîncerca',
+      failedLabel: 'sincronizare eșuată — atinge pentru a reîncerca',
     },
     syncStatusIndicator: {
       syncing: 'Sincronizare în curs',

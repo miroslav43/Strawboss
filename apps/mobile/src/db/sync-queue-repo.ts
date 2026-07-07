@@ -347,4 +347,28 @@ export class SyncQueueRepo {
     );
     return row?.status === 'pending';
   }
+
+  /**
+   * M11 — the actual sync_queue status for this trip's most recent unsent
+   * `trip_transition` entry (if any), plus its row id for tap-to-retry.
+   * Unlike `hasUnsentTransitionForTrip`, which collapses pending/in_flight/
+   * failed into one boolean, the UI needs the real status to distinguish
+   * `failed` (actionable — needs a tap to retry) from `pending`/`in_flight`
+   * (will be sent automatically on the next sync cycle).
+   */
+  async getTransitionStatusForTrip(
+    tripId: string,
+  ): Promise<{ id: number; status: 'pending' | 'in_flight' | 'failed' } | null> {
+    const row = await this.db.getFirstAsync<{ id: number; status: string }>(
+      `SELECT id, status FROM sync_queue
+       WHERE entity_type = 'trip_transition'
+         AND entity_id = ?
+         AND status IN ('pending', 'in_flight', 'failed')
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [tripId],
+    );
+    if (!row) return null;
+    return { id: row.id, status: row.status as 'pending' | 'in_flight' | 'failed' };
+  }
 }

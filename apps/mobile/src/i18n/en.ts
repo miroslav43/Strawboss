@@ -1015,6 +1015,8 @@ export const en = {
     pendingTransitionBadge: {
       a11y: 'Transition pending sync',
       label: 'will be sent on reconnect',
+      failedA11y: 'Transition failed to sync, tap to retry',
+      failedLabel: 'sync failed — tap to retry',
     },
     syncStatusIndicator: {
       syncing: 'Sync in progress',

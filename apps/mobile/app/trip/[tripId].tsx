@@ -24,7 +24,10 @@ import { useRelatedMachines } from '@/hooks/useRelatedMachines';
 import { useAuthStore } from '@/stores/auth-store';
 import { TripProgress } from '@/components/shared/TripProgress';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
-import { PendingTransitionBadge } from '@/components/shared/PendingTransitionBadge';
+import {
+  PendingTransitionBadge,
+  type PendingTransitionStatus,
+} from '@/components/shared/PendingTransitionBadge';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { BigButton } from '@/components/ui/BigButton';
@@ -53,6 +56,13 @@ export default function TripDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // M11 — the real sync_queue status for this trip's pending transition (if
+  // any), so the badge can distinguish `failed` (needs a tap to retry) from
+  // `pending`/`in_flight` (will send automatically).
+  const [transitionStatus, setTransitionStatus] = useState<{
+    id: number;
+    status: PendingTransitionStatus;
+  } | null>(null);
   const destinationsQuery = useDeliveryDestinations(mobileApiClient);
 
   // The driver's own task carries the source parcel. The loader is a sibling
@@ -72,6 +82,8 @@ export default function TripDetailScreen() {
         result = await repo.findById(tripId);
       }
       setTrip(result);
+      const syncQueueRepo = new SyncQueueRepo(db);
+      setTransitionStatus(await syncQueueRepo.getTransitionStatusForTrip(tripId));
     } catch (err) {
       mobileLogger.error('Failed to load trip from local DB', {
         tripId,
@@ -174,6 +186,25 @@ export default function TripDetailScreen() {
     }
   }, [trip, enqueueTransition, loadTrip]);
 
+  // M11 — tap-to-retry for a `failed` transition badge: reset the sync_queue
+  // row back to `pending` and kick a sync cycle immediately instead of
+  // waiting for the next automatic trigger.
+  const handleRetryTransition = useCallback(async () => {
+    if (!transitionStatus) return;
+    try {
+      const db = await getDatabase();
+      const syncQueueRepo = new SyncQueueRepo(db);
+      await syncQueueRepo.retry(transitionStatus.id);
+      await loadTrip();
+      void triggerSync().catch(() => {});
+    } catch (err) {
+      mobileLogger.error('Trip detail: retry transition failed', {
+        tripId,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
+    }
+  }, [transitionStatus, loadTrip, triggerSync, tripId]);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -226,10 +257,19 @@ export default function TripDetailScreen() {
               <Text style={styles.cardTitle}>{t('tripDetail.card.tripDetails')}</Text>
               <StatusPill status={trip.status} />
             </View>
-            {/* FM-1: Show badge when a local transition is awaiting sync */}
+            {/* FM-1 / M11: Show badge when a local transition is awaiting sync —
+                status/onRetry reflect the real sync_queue row so a `failed`
+                transition reads as actionable rather than "still pending". */}
             {trip.has_pending_transition === 1 && (
               <View style={styles.pendingBadgeRow}>
-                <PendingTransitionBadge />
+                <PendingTransitionBadge
+                  status={transitionStatus?.status ?? 'pending'}
+                  onRetry={
+                    transitionStatus?.status === 'failed'
+                      ? () => void handleRetryTransition()
+                      : undefined
+                  }
+                />
               </View>
             )}
 
