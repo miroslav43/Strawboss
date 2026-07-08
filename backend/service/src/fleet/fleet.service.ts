@@ -134,6 +134,35 @@ const OUTBOUND_MESSAGE_COLS = sql`
 
 type Row = Record<string, unknown>;
 
+/**
+ * Row shape for the single initial `devices` lookup in checkin(). Widened (beyond the
+ * bare id/token/version/org columns needed for auth) to also carry the Tailscale state
+ * and is_sms_gateway flag, so computePendingCommand/computePendingSms can reuse this one
+ * read instead of re-querying `devices` on every check-in (the common case: nothing
+ * pending, ~1/min/phone).
+ */
+interface DeviceCheckinRow {
+  id: string;
+  device_token_hash: string;
+  version_code: number | null;
+  organization_id: string | null;
+  name: string | null;
+  is_sms_gateway: boolean;
+  tailscale_desired: boolean;
+  tailscale_applied: boolean;
+  tailscale_pending_command_id: string | null;
+  tailscale_pending_action: string | null;
+}
+
+/** Preloaded Tailscale state passed into computePendingCommand to avoid a re-read. */
+interface PreloadedTailscaleState {
+  name: string | null;
+  tailscaleDesired: boolean;
+  tailscaleApplied: boolean;
+  pendingCommandId: string | null;
+  pendingAction: string | null;
+}
+
 @Injectable()
 export class FleetService {
   private readonly uploadsRoot: string;
@@ -202,25 +231,31 @@ export class FleetService {
   async checkin(dto: DeviceCheckinInput): Promise<DeviceCheckinResponse> {
     const db = this.drizzleProvider.db;
 
-    // 1. Look up device by deviceUuid
+    // 1. Look up device by deviceUuid.
+    // Widened beyond the bare auth columns to also preload the Tailscale state and
+    // is_sms_gateway flag — computePendingCommand/computePendingSms reuse this single
+    // read instead of each re-querying `devices` on every check-in.
     const existing = await db.execute(
-      sql`SELECT id, device_token_hash, version_code, organization_id
+      sql`SELECT id, device_token_hash, version_code, organization_id,
+                 name, is_sms_gateway,
+                 tailscale_desired, tailscale_applied,
+                 tailscale_pending_command_id, tailscale_pending_action
           FROM devices
           WHERE device_uuid = ${dto.deviceUuid} AND deleted_at IS NULL
           LIMIT 1`,
     );
-    const rows = existing as unknown as {
-      id: string;
-      device_token_hash: string;
-      version_code: number | null;
-      organization_id: string | null;
-    }[];
+    const rows = existing as unknown as DeviceCheckinRow[];
 
     let deviceId: string;
     let deviceTokenIssued: string | undefined;
     let orgId: string | null;
 
     let isRegistration = false;
+
+    // Populated in the "returning device" branch below; unused (and never read) on the
+    // registration path, which returns early before either is consumed.
+    let preloadedIsSmsGateway = false;
+    let preloadedTailscale: PreloadedTailscaleState | undefined;
 
     if (rows.length === 0) {
       // REGISTRATION — first check-in for this deviceUuid
@@ -263,6 +298,14 @@ export class FleetService {
 
       deviceId = row.id;
       orgId = row.organization_id;
+      preloadedIsSmsGateway = row.is_sms_gateway;
+      preloadedTailscale = {
+        name: row.name,
+        tailscaleDesired: row.tailscale_desired,
+        tailscaleApplied: row.tailscale_applied,
+        pendingCommandId: row.tailscale_pending_command_id,
+        pendingAction: row.tailscale_pending_action,
+      };
 
       // Upsert device fields
       await db.execute(
@@ -328,14 +371,25 @@ export class FleetService {
     // 5. Compute pending deployment
     const pendingDeployment = await this.computePendingDeployment(deviceId, dto.versionCode, orgId);
 
-    // 6. Compute pending Tailscale command
-    const pendingCommand = await this.computePendingCommand(deviceId);
+    // 6. Compute pending Tailscale command.
+    // preloadedTailscale is always set on this path (registration returns early above).
+    const hadCommandReports = !!dto.commandReports && dto.commandReports.length > 0;
+    const pendingCommand = await this.computePendingCommand(
+      deviceId,
+      preloadedTailscale!,
+      hadCommandReports,
+    );
 
     // 7. Compute pending one-shot remote-debug commands
     const pendingCommands = await this.computePendingRemoteCommands(deviceId);
 
-    // 8. Compute pending SMS to send (gateway devices only)
-    const pendingSms = await this.computePendingSms(deviceId);
+    // 8. Compute pending SMS to send (gateway devices only).
+    // Gate on the preloaded is_sms_gateway flag from step 1 so we skip the
+    // `FOR UPDATE SKIP LOCKED` claim-UPDATE on outbound_messages entirely for the
+    // overwhelming majority of devices that are never the SMS gateway. Without this
+    // gate that query (with its row locks) runs fleet-wide, every phone, every minute,
+    // even though at most one device is ever a gateway.
+    const pendingSms = preloadedIsSmsGateway ? await this.computePendingSms(deviceId) : [];
 
     return {
       deviceId,
@@ -763,30 +817,38 @@ export class FleetService {
     return { ok: true };
   }
 
-  private async computePendingCommand(deviceId: string): Promise<DeviceCommand | null> {
+  /**
+   * `preloaded` is the Tailscale state read by checkin()'s initial devices SELECT — reused
+   * here to avoid a second `devices` round trip on the (common) no-op check-in.
+   *
+   * Exception: if this check-in carried commandReports, applyCommandReports() may have
+   * just mutated tailscale_applied / tailscale_pending_* for this same device — re-read
+   * after applying reports so we observe the fresh values instead of the stale preload.
+   */
+  private async computePendingCommand(
+    deviceId: string,
+    preloaded: PreloadedTailscaleState,
+    hadCommandReports: boolean,
+  ): Promise<DeviceCommand | null> {
     const db = this.drizzleProvider.db;
 
-    // Read device tailscale state (re-read after applying reports)
-    // Also read the persisted pending command so we can reuse a stable id across check-ins.
-    const deviceRows = await db.execute(
-      sql`SELECT name,
-                 tailscale_desired              AS "tailscaleDesired",
-                 tailscale_applied              AS "tailscaleApplied",
-                 tailscale_pending_command_id   AS "pendingCommandId",
-                 tailscale_pending_action       AS "pendingAction"
-          FROM devices
-          WHERE id = ${deviceId}::uuid AND deleted_at IS NULL
-          LIMIT 1`,
-    );
-    const device = (
-      deviceRows as unknown as {
-        name: string | null;
-        tailscaleDesired: boolean;
-        tailscaleApplied: boolean;
-        pendingCommandId: string | null;
-        pendingAction: string | null;
-      }[]
-    )[0];
+    let device: PreloadedTailscaleState | undefined = preloaded;
+
+    if (hadCommandReports) {
+      // Read device tailscale state (re-read after applying reports).
+      // Also read the persisted pending command so we can reuse a stable id across check-ins.
+      const deviceRows = await db.execute(
+        sql`SELECT name,
+                   tailscale_desired              AS "tailscaleDesired",
+                   tailscale_applied              AS "tailscaleApplied",
+                   tailscale_pending_command_id   AS "pendingCommandId",
+                   tailscale_pending_action       AS "pendingAction"
+            FROM devices
+            WHERE id = ${deviceId}::uuid AND deleted_at IS NULL
+            LIMIT 1`,
+      );
+      device = (deviceRows as unknown as PreloadedTailscaleState[])[0];
+    }
     if (!device) return null;
 
     // If desired === applied, the command has been fully executed (or was never needed).

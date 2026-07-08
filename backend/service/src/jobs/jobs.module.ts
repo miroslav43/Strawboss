@@ -15,6 +15,7 @@ import {
   QUEUE_MESSAGE_SEND,
   QUEUE_TRIP_AUTOCOMPLETE,
   QUEUE_PRESENCE_DEADMAN,
+  QUEUE_GPS_RETENTION,
 } from './queues';
 
 @Module({
@@ -39,6 +40,7 @@ import {
       { name: QUEUE_MESSAGE_SEND },
       { name: QUEUE_TRIP_AUTOCOMPLETE },
       { name: QUEUE_PRESENCE_DEADMAN },
+      { name: QUEUE_GPS_RETENTION },
     ),
   ],
   providers: [JobSchedulerService],

@@ -10,6 +10,13 @@ export class ProfileService {
   private readonly logger = new Logger(ProfileService.name);
   private readonly supabase: SupabaseClient;
 
+  /** Throttle window for `touchLastSeen` writes, per user, per replica. */
+  private static readonly TOUCH_THROTTLE_MS = 45_000;
+  /** Last time (Date.now()) we actually wrote presence for a user, keyed by userId. */
+  private readonly lastTouchMs = new Map<string, number>();
+  /** device_uuid -> last-bound userId, so re-binding an unchanged pair is a no-op. */
+  private readonly boundDevice = new Map<string, string>();
+
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly configService: ConfigService,
@@ -68,6 +75,27 @@ export class ProfileService {
    * the browser are intentionally not tracked.
    */
   async touchLastSeen(userId: string): Promise<void> {
+    // Write diet: this is called from BOTH the 30s heartbeat AND every GPS
+    // location report (~4.4x/min/phone). Throttle actual DB writes to once
+    // per TOUCH_THROTTLE_MS per user per replica. Safe because the
+    // user_sessions roll below only extends the current session when the gap
+    // since its last `ended_at` is <= INTERVAL '2 minutes' — worst case
+    // (TOUCH_THROTTLE_MS on this replica right after a write on the other)
+    // is ~2 x 45s = 90s between writes for the same user, still comfortably
+    // under that 2-minute window. The admin "online now" presence-dot window
+    // is being widened to 180s in this same release to match.
+    const now = Date.now();
+    const last = this.lastTouchMs.get(userId);
+    if (last !== undefined && now - last < ProfileService.TOUCH_THROTTLE_MS) {
+      return;
+    }
+    // Bound the map: simpler than an LRU and correct here — it repopulates
+    // within seconds from the next heartbeat/location report per active user.
+    if (this.lastTouchMs.size > 10_000) {
+      this.lastTouchMs.clear();
+    }
+    this.lastTouchMs.set(userId, now);
+
     // Critical path: presence "online now" dot. Never gate this on the
     // secondary session-history write below.
     await this.drizzleProvider.db.execute(sql`
@@ -127,11 +155,17 @@ export class ProfileService {
    * a device to *their own* verified id, so the worst case is cosmetic.
    */
   async bindDeviceToUser(deviceUuid: string, userId: string): Promise<void> {
+    // Binding only changes on re-login, so skip the UPDATE when the last
+    // (deviceUuid -> userId) pair we wrote is unchanged.
+    if (this.boundDevice.get(deviceUuid) === userId) {
+      return;
+    }
     await this.drizzleProvider.db.execute(sql`
       UPDATE devices
          SET last_user_id = ${userId}::uuid, updated_at = NOW()
        WHERE device_uuid = ${deviceUuid} AND deleted_at IS NULL
     `);
+    this.boundDevice.set(deviceUuid, userId);
   }
 
   async updateProfile(

@@ -34,6 +34,38 @@ export class AuthGuard implements CanActivate {
   /** Cached JWKS fetcher for the current Supabase project (ECC / RS256 keys). */
   private jwks: ReturnType<typeof jose.createRemoteJWKSet> | null = null;
 
+  /** TTL (ms) for the per-instance user-context cache below. */
+  private static readonly USER_CTX_TTL_MS = 60_000;
+  /** Hard cap on cached entries; evicted FIFO on overflow. */
+  private static readonly USER_CTX_MAX_ENTRIES = 5_000;
+
+  /**
+   * Per-replica in-memory cache of `loadUserContext` results, keyed by
+   * `${userId}:${role}`. Every authenticated request would otherwise run the
+   * users/organizations lookup — at ~30 phones that's ~6 queries/s just for
+   * auth. Negative results (soft-deleted / missing user → `null`) are cached
+   * too, so a phone with a deleted account can't hammer the DB every request.
+   *
+   * Map iteration order == insertion order, which gives us cheap FIFO
+   * eviction once `USER_CTX_MAX_ENTRIES` is exceeded (see `getUserContext`).
+   *
+   * Constraint this cache introduces (accepted per plan): deactivating a
+   * user (`is_active = false`) now takes up to `USER_CTX_TTL_MS` (60s) to
+   * propagate per backend replica — the JWT itself still expires hourly
+   * regardless, so this doesn't extend the outer bound on access.
+   */
+  private readonly userCtxCache = new Map<
+    string,
+    {
+      at: number;
+      ctx: {
+        isActive: boolean;
+        organizationId: string | null;
+        organizationSlug: string | null;
+      } | null;
+    }
+  >();
+
   constructor(
     private readonly configService: ConfigService,
     private readonly reflector: Reflector,
@@ -82,6 +114,41 @@ export class AuthGuard implements CanActivate {
       return { isActive: row.isActive, organizationId: null, organizationSlug: null };
     }
     return row;
+  }
+
+  /**
+   * `loadUserContext`, fronted by the per-replica TTL cache described above.
+   * Hit (fresh) → return the cached value as-is (including cached `null`).
+   * Miss / expired → query, then store, evicting the oldest entry first (FIFO
+   * via Map insertion order) if we're at capacity.
+   */
+  private async getUserContext(
+    userId: string,
+    role: string,
+  ): Promise<{
+    isActive: boolean;
+    organizationId: string | null;
+    organizationSlug: string | null;
+  } | null> {
+    const key = `${userId}:${role}`;
+    const now = Date.now();
+    const cached = this.userCtxCache.get(key);
+    if (cached && now - cached.at < AuthGuard.USER_CTX_TTL_MS) {
+      return cached.ctx;
+    }
+
+    const ctx = await this.loadUserContext(userId, role);
+
+    // Refresh-in-place would leave a stale insertion position, so drop
+    // before re-inserting to keep FIFO eviction meaningful for hot keys.
+    this.userCtxCache.delete(key);
+    if (this.userCtxCache.size >= AuthGuard.USER_CTX_MAX_ENTRIES) {
+      const oldestKey = this.userCtxCache.keys().next().value;
+      if (oldestKey !== undefined) this.userCtxCache.delete(oldestKey);
+    }
+    this.userCtxCache.set(key, { at: now, ctx });
+
+    return ctx;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -172,7 +239,7 @@ export class AuthGuard implements CanActivate {
       // through the is_active check to prevent a soft-deleted super_admin
       // from retaining access.
       if (role !== 'super_admin') {
-        const ctx = await this.loadUserContext(sub, role);
+        const ctx = await this.getUserContext(sub, role);
         if (!ctx) {
           throw new UnauthorizedException('Cont inexistent sau șters');
         }

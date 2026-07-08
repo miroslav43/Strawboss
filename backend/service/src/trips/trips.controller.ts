@@ -54,6 +54,11 @@ export class TripsController {
     @Query('loaderOperatorId') loaderOperatorId?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    // Opt-in enrichment (?include=refs) — see TripsService.list() doc comment.
+    // Not zod-validated: this endpoint has no query-schema today (all filters
+    // are plain optional strings); `include` is treated the same way and is
+    // only ever compared with strict equality against the literal 'refs'.
+    @Query('include') include?: string,
   ) {
     return this.tripsService.list(user.organizationId, {
       status,
@@ -63,6 +68,7 @@ export class TripsController {
       loaderOperatorId,
       dateFrom,
       dateTo,
+      include,
     });
   }
 

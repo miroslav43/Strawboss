@@ -151,37 +151,155 @@ export class LocationService {
   }
 
   /**
+   * Store a batch of GPS pings (1–30) collected while the mobile device was
+   * offline (outbox flush). Same attribution/validation rules as
+   * reportLocation(), but the per-request lookups it would otherwise repeat
+   * once per ping are hoisted to run ONCE for the whole batch:
+   *   - the operator's assigned-machine lookup
+   *   - the machine org-check
+   *   - the presence touch (touchLastSeen)
+   *   - the (already-throttled) geofence nudge
+   * All pings in one batch come from the same offline window on the same
+   * device, so they share one effective machineId — the operator's current
+   * assignment if any, otherwise the client-sent id of the first item.
+   */
+  async reportLocationBatch(
+    reports: LocationReportDto[],
+    operatorId: string,
+    orgId: string | null,
+  ): Promise<void> {
+    if (!Array.isArray(reports) || reports.length === 0) {
+      throw new BadRequestException('reports must be a non-empty array');
+    }
+    if (reports.length > 30) {
+      throw new BadRequestException('reports cannot contain more than 30 items');
+    }
+    for (const dto of reports) {
+      if (dto.lat < -90 || dto.lat > 90 || dto.lon < -180 || dto.lon > 180) {
+        throw new BadRequestException('Invalid coordinates');
+      }
+    }
+
+    // 1x resolve the operator's CURRENT assigned machine — see reportLocation()
+    // above for why we trust this over the client-sent machineId.
+    const assignedRows = (await this.drizzleProvider.db.execute(sql`
+      SELECT assigned_machine_id AS "assignedMachineId"
+      FROM users
+      WHERE id = ${operatorId}::uuid AND deleted_at IS NULL
+      LIMIT 1
+    `)) as unknown as { assignedMachineId: string | null }[];
+    const assignedMachineId = assignedRows[0]?.assignedMachineId ?? null;
+    const machineId = assignedMachineId ?? reports[0].machineId;
+
+    if (assignedMachineId && reports.some((r) => r.machineId !== assignedMachineId)) {
+      this.logger.debug(
+        `Batch location machineId mismatch for operator ${operatorId}: attributing ` +
+          `${reports.length} report(s) to assigned ${assignedMachineId}`,
+      );
+    }
+
+    if (orgId !== null) {
+      const machineCheck = (await this.drizzleProvider.db.execute(sql`
+        SELECT id FROM machines
+        WHERE id = ${machineId}::uuid
+          AND organization_id = ${orgId}::uuid
+          AND deleted_at IS NULL
+        LIMIT 1
+      `)) as unknown as { id: string }[];
+      if (machineCheck.length === 0) {
+        // Mirrors reportLocation(): drop the whole batch silently (204) rather
+        // than throwing a 4xx, so the mobile outbox doesn't spin forever
+        // re-posting a permanently cross-org/stale batch. Throttled warn log.
+        const nowMs = Date.now();
+        if (nowMs - this.lastDropLogMs > LocationService.DROP_LOG_THROTTLE_MS) {
+          this.lastDropLogMs = nowMs;
+          this.logger.warn(
+            `Dropping location batch (${reports.length} report(s)): machine ${machineId} ` +
+              `not in org ${orgId} for operator ${operatorId} — likely a stale cross-org cached machine id`,
+          );
+        }
+        return;
+      }
+    }
+
+    const rows = sql.join(
+      reports.map(
+        (dto) => sql`(
+          ${machineId}::uuid,
+          ${operatorId}::uuid,
+          ${dto.lat},
+          ${dto.lon},
+          ${dto.accuracyM ?? null},
+          ${dto.headingDeg ?? null},
+          ${dto.speedMs ?? null},
+          ${dto.recordedAt}::timestamptz
+        )`,
+      ),
+      sql`, `,
+    );
+
+    await this.drizzleProvider.db.execute(sql`
+      INSERT INTO machine_location_events
+        (machine_id, operator_id, lat, lon, accuracy_m, heading_deg, speed_ms, recorded_at)
+      VALUES ${rows}
+      ON CONFLICT DO NOTHING
+    `);
+
+    // Presence: once per batch — see reportLocation() for the rationale.
+    void this.profileService.touchLastSeen(operatorId).catch((err) => {
+      this.logger.warn(
+        `touchLastSeen from location batch report failed for ${operatorId}: ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    });
+
+    // Event-driven geofence: once per batch. Globally throttled already, so a
+    // burst of small batches still only nudges the queue at most once per
+    // GEOFENCE_NUDGE_THROTTLE_MS window.
+    const now = Date.now();
+    if (now - this.lastGeofenceNudgeMs > LocationService.GEOFENCE_NUDGE_THROTTLE_MS) {
+      this.lastGeofenceNudgeMs = now;
+      void this.geofenceQueue
+        .add('check', {}, { removeOnComplete: true, removeOnFail: true })
+        .catch(() => {});
+    }
+  }
+
+  /**
    * Return the last known position for every machine that has reported GPS,
    * scoped to the caller's organization.
    * Admin-only endpoint.
    */
   async getLastKnownPositions(orgId: string | null): Promise<MachineLastLocation[]> {
-    const whereConditions: ReturnType<typeof sql>[] = [sql`mle.machine_id IS NOT NULL`];
-    if (orgId !== null) whereConditions.push(sql`m.organization_id = ${orgId}::uuid`);
-    const where = sql.join(whereConditions, sql` AND `);
+    // Reads machine_last_positions (migration 00081) — one row per machine,
+    // kept current by an AFTER INSERT trigger on machine_location_events —
+    // instead of a full-history `SELECT DISTINCT ON` scan over
+    // machine_location_events, which had no time window and degraded as that
+    // table grew. No time window here either, by design: a machine parked for
+    // weeks must still surface its last known position.
+    const orgFilter = orgId !== null ? sql`WHERE m.organization_id = ${orgId}::uuid` : sql``;
 
     const result = await this.drizzleProvider.db.execute(sql`
-      SELECT DISTINCT ON (mle.machine_id)
-        mle.machine_id                                        AS "machineId",
+      SELECT
+        mlp.machine_id                                        AS "machineId",
         m.machine_type                                        AS "machineType",
         COALESCE(m.internal_code, m.registration_plate)      AS "machineCode",
-        mle.operator_id                                       AS "operatorId",
+        mlp.operator_id                                       AS "operatorId",
         u.full_name                                           AS "operatorName",
         au.id                                                 AS "assignedUserId",
         au.full_name                                          AS "assignedUserName",
-        mle.lat::float          AS lat,
-        mle.lon::float          AS lon,
-        mle.accuracy_m::float   AS "accuracyM",
-        mle.heading_deg::float  AS "headingDeg",
-        mle.speed_ms::float     AS "speedMs",
-        mle.recorded_at  AS "recordedAt"
-      FROM machine_location_events mle
-      LEFT JOIN machines m  ON m.id = mle.machine_id
-      LEFT JOIN users    u  ON u.id = mle.operator_id
-      LEFT JOIN users    au ON au.assigned_machine_id = mle.machine_id
+        mlp.lat::float          AS lat,
+        mlp.lon::float          AS lon,
+        mlp.accuracy_m::float   AS "accuracyM",
+        mlp.heading_deg::float  AS "headingDeg",
+        mlp.speed_ms::float     AS "speedMs",
+        mlp.recorded_at  AS "recordedAt"
+      FROM machine_last_positions mlp
+      LEFT JOIN machines m  ON m.id = mlp.machine_id
+      LEFT JOIN users    u  ON u.id = mlp.operator_id
+      LEFT JOIN users    au ON au.assigned_machine_id = mlp.machine_id
                             AND au.deleted_at IS NULL
-      WHERE ${where}
-      ORDER BY mle.machine_id, mle.recorded_at DESC
+      ${orgFilter}
     `);
 
     return result as unknown as MachineLastLocation[];

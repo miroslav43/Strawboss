@@ -7,9 +7,12 @@ import {
   Param,
   Body,
   Query,
+  Headers,
   Req,
+  Res,
   Inject,
 } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import type { Logger as WinstonLogger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { ParcelsService } from './parcels.service';
@@ -33,19 +36,46 @@ export class ParcelsController {
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: WinstonLogger,
   ) {}
 
+  /**
+   * The parcels list can be 1-10 MB (bale-tally joins over every parcel) and
+   * is re-fetched on every mobile MapScreen mount, so it is ETag-validated:
+   * `getListCacheMeta()` mirrors this handler's exact filters but only reads
+   * max(sync_version)/count — cheap enough to run before the heavy query on
+   * every request. A match against `If-None-Match` short-circuits to a bare
+   * 304. Response body for a 200 is byte-identical to before this feature.
+   *
+   * Uses a non-passthrough @Res() (see DocumentsController.download for the
+   * same idiom) so we can send either a bodyless 304 or the normal 200 body
+   * from one handler.
+   */
   @Get()
-  list(
+  async list(
+    // Required params first — NestJS binds by decorator, not position, so this
+    // order is purely to satisfy TS1016 (no required param after an optional).
     @CurrentUser() user: RequestUser,
+    @Res() res: FastifyReply,
+    @Headers('if-none-match') ifNoneMatch?: string,
     @Query('municipality') municipality?: string,
     @Query('isActive') isActive?: string,
     @Query('cropType') cropType?: string,
   ) {
     // T9.2 — `isActive` accepted for back-compat but ignored downstream.
-    return this.parcelsService.list(user.organizationId, {
+    const filters = {
       municipality,
       isActive: isActive !== undefined ? isActive === 'true' : undefined,
       cropType,
-    });
+    };
+
+    const meta = await this.parcelsService.getListCacheMeta(user.organizationId, filters);
+    const etag = `"p${meta.version}-${meta.count}"`;
+
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      res.header('ETag', etag).status(304).send();
+      return;
+    }
+
+    const rows = await this.parcelsService.list(user.organizationId, filters);
+    res.header('ETag', etag).status(200).send(rows);
   }
 
   @Get(':id/bale-availability')

@@ -17,3 +17,5 @@ export const QUEUE_TRIP_AUTOCOMPLETE = 'trip-autocomplete';
 // Presence dead-man — periodic scan that FCM-wakes device-owner phones whose
 // last check-in has gone stale (external safety net for the always-on anchor).
 export const QUEUE_PRESENCE_DEADMAN = 'presence-deadman';
+// Daily retention/downsampling of machine_location_events (02:30).
+export const QUEUE_GPS_RETENTION = 'gps-retention';

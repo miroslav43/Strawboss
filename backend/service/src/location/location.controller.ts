@@ -3,7 +3,7 @@ import { LocationService } from './location.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
-import type { LocationReportDto } from '@strawboss/types';
+import type { LocationReportBatchDto, LocationReportDto } from '@strawboss/types';
 import { UserRole } from '@strawboss/types';
 
 @Controller('location')
@@ -19,6 +19,24 @@ export class LocationController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async report(@Body() dto: LocationReportDto, @CurrentUser() user: RequestUser): Promise<void> {
     await this.locationService.reportLocation(dto, user.id, user.organizationId);
+  }
+
+  /**
+   * POST /api/v1/location/report/batch
+   * Batch variant of `report`: 1–30 pings collected while the mobile device
+   * was offline (outbox flush). Same guards as the single endpoint — any
+   * authenticated operator, own-org machines only. See
+   * LocationService.reportLocationBatch for how the per-request lookups
+   * (assigned machine, org check, presence touch, geofence nudge) are hoisted
+   * to run once per batch instead of once per item.
+   */
+  @Post('report/batch')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async reportBatch(
+    @Body() dto: LocationReportBatchDto,
+    @CurrentUser() user: RequestUser,
+  ): Promise<void> {
+    await this.locationService.reportLocationBatch(dto?.reports, user.id, user.organizationId);
   }
 
   /**

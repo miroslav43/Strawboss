@@ -869,12 +869,72 @@ export class SyncService {
       // v21891). Force-including the operationally-relevant slice of these
       // tables every pull (a handful of rows) makes that impossible; history
       // (completed/cancelled trips, past-day assignments) stays delta-only.
-      const versionFilter =
-        table === 'trips'
-          ? sql`(sync_version > ${sinceVersion} OR status NOT IN ('completed', 'cancelled'))`
-          : table === 'task_assignments'
-            ? sql`(sync_version > ${sinceVersion} OR assignment_date = ${todayInRomania()}::date)`
-            : sql`sync_version > ${sinceVersion}`;
+      //
+      // The trips arm above fixes that production incident directly and must
+      // stay exactly as-is — do not add ownership/org narrowing to it.
+      let versionFilter: ReturnType<typeof sql>;
+      if (table === 'trips') {
+        versionFilter = sql`(sync_version > ${sinceVersion} OR status NOT IN ('completed', 'cancelled'))`;
+      } else if (table === 'task_assignments') {
+        // Legacy arm: force-include every one of *today's* org assignments on
+        // every pull, regardless of who they belong to. That is 12-40 KB of
+        // JSON downloaded by every phone, on every pull, for assignments that
+        // are not theirs. Narrow the force-include arm (never the
+        // sync_version arm, which still lets real edits flow through) to the
+        // caller's own slice for non-elevated roles; admin/dispatcher/
+        // depot_manager keep the org-wide arm they rely on for planning
+        // views (isElevatedSyncRole).
+        //
+        // Truck task_assignments have a NULL assigned_user_id — the actual
+        // owner hangs off trips.driver_id / trips.loader_operator_id instead
+        // (see the OWNER_COLUMNS/FK_ORG_CHECKS comments) — hence the
+        // machine_id (driver's assigned truck) and trip_id (linked trip,
+        // added in migration 00029) arms below, not just assigned_user_id.
+        //
+        // Kill-switch: STRAWBOSS_SYNC_TA_OWNER_SCOPE=false reverts to the
+        // org-wide arm instantly, no redeploy. No tombstone/deletion is
+        // emitted by this narrowing, so a phone that already holds a wider
+        // set of rows locally simply stops receiving further updates for the
+        // ones outside its scope going forward — safe for already-synced
+        // clients and for old app builds alike.
+        const ownerScopeEnabled =
+          process.env.STRAWBOSS_SYNC_TA_OWNER_SCOPE !== 'false' &&
+          !this.isElevatedSyncRole(callerRole);
+        if (_callerId && ownerScopeEnabled) {
+          versionFilter = sql`(sync_version > ${sinceVersion} OR (assignment_date = ${todayInRomania()}::date AND (
+              assigned_user_id = ${_callerId}::uuid
+              OR machine_id = (SELECT assigned_machine_id FROM users WHERE id = ${_callerId}::uuid AND deleted_at IS NULL)
+              OR trip_id IN (
+                SELECT t.id FROM trips t
+                WHERE (t.driver_id = ${_callerId}::uuid OR t.loader_operator_id = ${_callerId}::uuid)
+                  AND t.deleted_at IS NULL
+                  AND t.status NOT IN ('completed', 'cancelled')
+              )
+            )))`;
+        } else {
+          versionFilter = sql`(sync_version > ${sinceVersion} OR assignment_date = ${todayInRomania()}::date)`;
+        }
+      } else if (table === 'parcels') {
+        // sync_version alone cannot carry *visibility* changes: a parcel can
+        // become relevant to a phone (it is assigned in today's task, or it
+        // is the source parcel of an active trip) without the parcel row
+        // itself ever changing. Force-include the ids currently referenced
+        // by the caller's org so those flow even though their own
+        // sync_version predates the cursor. Legacy mobile builds send
+        // since=0, so `sync_version > 0` already matches every org parcel —
+        // this arm is then a no-op and behaviour is unchanged for them.
+        const taOrgFilter = orgId !== null ? sql` AND ta.organization_id = ${orgId}::uuid` : sql``;
+        const tripOrgFilter = orgId !== null ? sql` AND t.organization_id = ${orgId}::uuid` : sql``;
+        versionFilter = sql`(sync_version > ${sinceVersion} OR id IN (
+            SELECT ta.parcel_id FROM task_assignments ta
+            WHERE ta.assignment_date = ${todayInRomania()}::date AND ta.parcel_id IS NOT NULL AND ta.deleted_at IS NULL${taOrgFilter}
+            UNION
+            SELECT t.source_parcel_id FROM trips t
+            WHERE t.status NOT IN ('completed', 'cancelled') AND t.source_parcel_id IS NOT NULL AND t.deleted_at IS NULL${tripOrgFilter}
+          ))`;
+      } else {
+        versionFilter = sql`sync_version > ${sinceVersion}`;
+      }
       const result = await this.drizzleProvider.db.execute(
         sql`SELECT ${colsSql}${extraSelect} FROM ${sql.raw(`"${table}"`)}
             WHERE ${versionFilter} ${ownerFilter}${softDeleteFilter}${orgFilter}

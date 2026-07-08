@@ -11,6 +11,7 @@ import {
   QUEUE_TRUCK_IDLE_CHECK,
   QUEUE_PIN_REGEN,
   QUEUE_PRESENCE_DEADMAN,
+  QUEUE_GPS_RETENTION,
 } from './queues';
 
 /**
@@ -27,6 +28,7 @@ export class JobSchedulerService implements OnModuleInit {
     @InjectQueue(QUEUE_TRUCK_IDLE_CHECK) private readonly truckIdleQueue: Queue,
     @InjectQueue(QUEUE_PIN_REGEN) private readonly pinRegenQueue: Queue,
     @InjectQueue(QUEUE_PRESENCE_DEADMAN) private readonly presenceDeadmanQueue: Queue,
+    @InjectQueue(QUEUE_GPS_RETENTION) private readonly gpsRetentionQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -85,8 +87,15 @@ export class JobSchedulerService implements OnModuleInit {
       { name: 'scan', data: {} },
     );
 
+    // GPS retention/downsampling of machine_location_events, daily at 02:30.
+    await this.gpsRetentionQueue.upsertJobScheduler(
+      'gps-retention-daily',
+      { pattern: '30 2 * * *' },
+      { name: 'cleanup', data: {} },
+    );
+
     this.winston.info(
-      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m), pin-regen (daily 02:00), presence-deadman (2m)',
+      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m), pin-regen (daily 02:00), presence-deadman (2m), gps-retention (daily 02:30)',
       {
         context: 'JobSchedulerService',
       },

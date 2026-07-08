@@ -219,6 +219,21 @@ export class TripsService implements OnModuleInit {
       loaderOperatorId?: string;
       dateFrom?: string;
       dateTo?: string;
+      /**
+       * Opt-in enrichment for mobile list screens (e.g. useMyTrucksToLoad)
+       * that would otherwise fan out one GET /machines/:id + one
+       * GET /parcels/:id per row every poll. Pass `include=refs` to also get
+       * the truck's full registration plate / internal code on each row.
+       *
+       * NOTE: `truck_plate`/`truck_code` (abbreviated) and
+       * `source_parcel_name`/`source_parcel_code` are ALREADY selected
+       * unconditionally below — admin-web's trips table depends on them being
+       * present on every response, param or not — so they are NOT duplicated
+       * here. `include=refs` only adds the two genuinely new columns
+       * (truck_registration_plate/truck_internal_code); omitting the param
+       * keeps the response byte-identical to today.
+       */
+      include?: string;
     },
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`t.deleted_at IS NULL`];
@@ -266,6 +281,17 @@ export class TripsService implements OnModuleInit {
     // human-readable labels without per-row lookups.
     // Trips already store `destination_name` inline (denormalized on create),
     // so we only need to enrich truck / driver / source-parcel labels here.
+    //
+    // `refsSelect` reuses this SAME `m` join (no extra JOIN, no extra cost) to
+    // add the two `include=refs` columns. When the param is absent this is an
+    // empty fragment, so the query text — and therefore the response — is
+    // byte-identical to before this feature existed.
+    const refsSelect =
+      filters?.include === 'refs'
+        ? sql`,
+          m.registration_plate                         AS truck_registration_plate,
+          m.internal_code                              AS truck_internal_code`
+        : sql``;
     const result = await this.drizzleProvider.db.execute(
       sql`
         SELECT
@@ -276,7 +302,7 @@ export class TripsService implements OnModuleInit {
           p.name                                       AS source_parcel_name,
           p.code                                       AS source_parcel_code,
           p.municipality                               AS source_parcel_municipality,
-          f.name                                       AS source_farm_name
+          f.name                                       AS source_farm_name${refsSelect}
         FROM trips t
         LEFT JOIN machines m ON m.id = t.truck_id
         LEFT JOIN users    u ON u.id = t.driver_id

@@ -49,10 +49,16 @@ export class ParcelsService {
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: WinstonLogger,
   ) {}
 
-  async list(
+  /**
+   * Shared WHERE-clause builder for the parcels list endpoint. Used by both
+   * `list()` (the full, heavier query) and `getListCacheMeta()` (the cheap
+   * ETag precheck) so the two can NEVER drift apart — the cache key must
+   * mirror the list's exact filters or a 304 could mask real data changes.
+   */
+  private buildListConditions(
     orgId: string | null,
     filters?: { municipality?: string; isActive?: boolean; cropType?: string },
-  ) {
+  ): ReturnType<typeof sql>[] {
     const conditions: ReturnType<typeof sql>[] = [sql`deleted_at IS NULL`];
 
     if (orgId !== null) {
@@ -66,8 +72,65 @@ export class ParcelsService {
     if (filters?.cropType) {
       conditions.push(sql`crop_type = ${filters.cropType}::crop_type`);
     }
+    return conditions;
+  }
 
-    const where = sql.join(conditions, sql` AND `);
+  /**
+   * Cheap cache-validation query for the list endpoint's ETag. Mirrors
+   * list()'s exact filters (via buildListConditions) for the parcels
+   * row-count / parcels-side version, so the controller can short-circuit
+   * with a 304 before ever running the heavier aggregated tally query in
+   * list(). Backed by the (organization_id, sync_version) index added in
+   * 00082.
+   *
+   * IMPORTANT: `balesProduced`/`balesLoaded` in list() are derived from
+   * bale_productions/bale_loads/parcel_bale_adjustments, NOT from columns on
+   * `parcels` itself — and inserting a row in any of those tables does NOT
+   * touch (or bump the sync_version of) the owning parcels row (00040 gives
+   * each table its own independent sync_version trigger; nothing cascades to
+   * `parcels`). So `MAX(sync_version)` over `parcels` ALONE would go stale
+   * the instant a new bale is recorded without also crossing a harvest_status
+   * rank (advanceHarvestOnLoadEvent only writes `parcels` on a rank
+   * increase — see below). We therefore take the GREATEST across all four
+   * tables (each backed by an existing org[+sync_version] index) so a 304 can
+   * never mask a real tally change. The org filter for the three bale tables
+   * is intentionally coarser than `where` (org-only, no municipality/
+   * cropType) — that only means a filtered request may occasionally
+   * invalidate on an unrelated parcel's tally change, which is the safe
+   * direction (it never masks a real one, it just costs an extra refetch).
+   */
+  async getListCacheMeta(
+    orgId: string | null,
+    filters?: { municipality?: string; isActive?: boolean; cropType?: string },
+  ): Promise<{ version: number; count: number }> {
+    const where = sql.join(this.buildListConditions(orgId, filters), sql` AND `);
+    const orgFilter = orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``;
+    const result = await this.drizzleProvider.db.execute(sql`
+      SELECT
+        GREATEST(
+          COALESCE((SELECT MAX(sync_version) FROM parcels WHERE ${where}), 0),
+          COALESCE((SELECT MAX(sync_version) FROM bale_productions        WHERE deleted_at IS NULL ${orgFilter}), 0),
+          COALESCE((SELECT MAX(sync_version) FROM bale_loads              WHERE deleted_at IS NULL ${orgFilter}), 0),
+          COALESCE((SELECT MAX(sync_version) FROM parcel_bale_adjustments WHERE deleted_at IS NULL ${orgFilter}), 0)
+        )::bigint AS v,
+        (SELECT COUNT(*) FROM parcels WHERE ${where})::int AS c
+    `);
+    const rows = result as unknown as Array<{ v: string | number; c: number }>;
+    return { version: Number(rows[0]?.v ?? 0), count: Number(rows[0]?.c ?? 0) };
+  }
+
+  async list(
+    orgId: string | null,
+    filters?: { municipality?: string; isActive?: boolean; cropType?: string },
+  ) {
+    const where = sql.join(this.buildListConditions(orgId, filters), sql` AND `);
+    // Bale tallies were previously two correlated subqueries PER ROW (2x on
+    // bale_productions/bale_loads, plus 2x on parcel_bale_adjustments) — O(n)
+    // subquery executions for an n-row result. Rewritten as pre-aggregated
+    // LEFT JOINs (GROUP BY parcel_id first, one row per parcel_id, THEN
+    // joined) so there is no per-row subquery AND no join fan-out. The
+    // arithmetic is unchanged: COALESCE(sum, 0) + COALESCE(adjustment sum, 0),
+    // same semantics as getBaleAvailability() above.
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         id, code, name,
@@ -87,13 +150,36 @@ export class ParcelsService {
         updated_at          AS "updatedAt",
         deleted_at          AS "deletedAt",
         -- read-only enrichment: bale tallies, same semantics as getBaleAvailability()
-        (COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = parcels.id AND deleted_at IS NULL), 0)
-         + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = parcels.id AND kind = 'produced' AND deleted_at IS NULL), 0))::int AS "balesProduced",
-        (COALESCE((SELECT SUM(bale_count) FROM bale_loads WHERE parcel_id = parcels.id AND deleted_at IS NULL), 0)
-         + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = parcels.id AND kind = 'loaded' AND deleted_at IS NULL), 0))::int AS "balesLoaded"
+        (COALESCE(bp.total, 0) + COALESCE(adj_produced.total, 0))::int AS "balesProduced",
+        (COALESCE(bl.total, 0) + COALESCE(adj_loaded.total, 0))::int AS "balesLoaded"
       FROM parcels
+      LEFT JOIN (
+        SELECT parcel_id, SUM(bale_count) AS total
+        FROM bale_productions
+        WHERE deleted_at IS NULL
+        GROUP BY parcel_id
+      ) bp ON bp.parcel_id = parcels.id
+      LEFT JOIN (
+        SELECT parcel_id, SUM(bale_count) AS total
+        FROM bale_loads
+        WHERE deleted_at IS NULL
+        GROUP BY parcel_id
+      ) bl ON bl.parcel_id = parcels.id
+      LEFT JOIN (
+        SELECT parcel_id, SUM(delta) AS total
+        FROM parcel_bale_adjustments
+        WHERE kind = 'produced' AND deleted_at IS NULL
+        GROUP BY parcel_id
+      ) adj_produced ON adj_produced.parcel_id = parcels.id
+      LEFT JOIN (
+        SELECT parcel_id, SUM(delta) AS total
+        FROM parcel_bale_adjustments
+        WHERE kind = 'loaded' AND deleted_at IS NULL
+        GROUP BY parcel_id
+      ) adj_loaded ON adj_loaded.parcel_id = parcels.id
       WHERE ${where}
       ORDER BY code ASC NULLS LAST
+      LIMIT 5000
     `);
     return result;
   }

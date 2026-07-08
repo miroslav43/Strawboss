@@ -2,7 +2,7 @@
 type: doc
 title: "Backend Service (backend/service)"
 created: 2026-04-16
-updated: 2026-06-28
+updated: 2026-07-08
 tags: [doc, backend, layer, nestjs, drizzle, bullmq]
 status: mature
 related:
@@ -127,7 +127,8 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 
 ### Location (`src/location/location.controller.ts`)
 - `POST /location/report` -- any authenticated -- store GPS ping (lat, lon, accuracy, heading, speed); also calls `ProfileService.touchLastSeen(operatorId)` best-effort (non-fatal) to refresh `users.last_seen_at` — keeps machine-bound operators "online" on the dashboard while their JS heartbeat is paused (backgrounded). See [[backend]] module deps: `LocationModule` imports `ProfileModule`.
-- `GET /location/machines` -- @Roles(admin) -- last known position of all machines (JOIN with users)
+- `POST /location/report/batch` -- any authenticated -- batch variant of `report`: body `{ reports: LocationReportDto[] }`, 1–30 items, for flushing the mobile offline outbox in one request. `LocationService.reportLocationBatch()` hoists the per-request work (assigned-machine lookup, org check, `touchLastSeen`, geofence nudge) to run once per batch instead of once per item, then does one multi-row `INSERT ... ON CONFLICT DO NOTHING`. Returns 204 even when every row was a duplicate. No `ZodValidationPipe`/`@strawboss/validation` schema exists for location bodies (matches the single endpoint's pattern — plain typed DTO + manual bounds checks in the service); the 1–30 size check and lat/lon range check are manual `BadRequestException`s in the service, same as `reportLocation`. Old app builds keep using the single endpoint unmodified during rollout.
+- `GET /location/machines` -- @Roles(admin) -- last known position of all machines. Reads `machine_last_positions` (migration 00081, one row per machine, kept current by an `AFTER INSERT` trigger on `machine_location_events`) instead of a `SELECT DISTINCT ON` scan over full `machine_location_events` history — same output columns/org-scoping, no time window (a machine parked for weeks still shows its last fix).
 - `GET /location/related-machines` -- any authenticated -- positions of machines sharing today's assignments (siblings via parent_assignment_id)
 - `GET /location/machines/:machineId/route?from=...&to=...` -- @Roles(admin) -- GPS route history (up to 50,000 points)
 - `GET /location/machines/:machineId/km-by-day?from=...&to=...` -- @Roles(admin) -- km driven per day (returns `KmByDayResponse`)
@@ -429,6 +430,7 @@ Returns the `key` string or `null` on any error (network or non-2xx). The caller
 | `reconciliation` | every 60 min | `ReconciliationProcessor` -- bale count + fuel reconciliation |
 | `sync-cleanup` | daily 02:00 (cron) | `SyncCleanupProcessor` -- purges idempotency records > 30 days |
 | `truck-idle-check` | on-demand (queued after `start-loading`) | `TruckIdleProcessor` -- checks if truck has been idle > `STRAWBOSS_TRUCK_IDLE_THRESHOLD_MIN` (default 30 min); sends loader-recall push if so (Plan C) |
+| `gps-retention` | daily 02:30 (cron) | `GpsRetentionProcessor` (`src/location/gps-retention.processor.ts`) -- retention/downsampling of `machine_location_events` (D1): batched-delete rows > 90 days; batched-downsample the 14–90 day window to 1 point/machine/minute (NULL-`machine_id` rows downsampled per-operator instead); each step capped at 50 batches of 20 000 rows per run so a first-time backlog is worked off over several nights instead of blocking |
 
 The `cmr-generation` queue is on-demand only (triggered by trip completion or manual endpoint).
 
