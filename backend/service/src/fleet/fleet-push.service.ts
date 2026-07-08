@@ -1,46 +1,58 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readFileSync } from 'fs';
+import { createSign } from 'crypto';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 
 /**
- * Best-effort FCM acceleration / wake push (OTA + presence dead-man).
+ * Best-effort FCM wake push (OTA acceleration + presence dead-man), sent via the
+ * FCM HTTP v1 API directly — NO firebase-admin dependency (the backend image installs
+ * with `--frozen-lockfile`, and firebase-admin's transitive tree isn't in the lockfile).
+ * We sign a short-lived OAuth2 access token from the service-account key with Node's
+ * built-in crypto, then POST one message per token. High-priority data messages are
+ * Doze-exempt, so this is the one layer that wakes a device-owner phone silent in deep
+ * Doze (its on-device exact-idle alarms are throttled to the maintenance windows).
  *
- * firebase-admin is NOT installed. We dynamically import it via a non-literal
- * specifier so TypeScript resolves it to `any` and the app boots cleanly
- * without the package. The service account is read from either
- * `FIREBASE_SERVICE_ACCOUNT_FILE` (a path — preferred, avoids cramming a
- * multi-line private key into env / the escaping pitfalls that break JSON.parse)
- * or `FIREBASE_SERVICE_ACCOUNT` (inline JSON). If neither is present the service
- * logs once at info and becomes a no-op; the device poll remains the
- * authoritative delivery mechanism.
+ * Service account is read from FIREBASE_SERVICE_ACCOUNT_FILE (path, preferred) or
+ * FIREBASE_SERVICE_ACCOUNT (inline JSON). Absent/invalid → the service is a no-op
+ * (device poll remains the fallback).
  */
+
+interface ServiceAccount {
+  client_email: string;
+  private_key: string;
+  project_id: string;
+}
+
 @Injectable()
 export class FleetPushService {
-  private fcmInitialised = false;
-  private fcmApp: unknown = null;
-  private fcmWarned = false;
+  private sa: ServiceAccount | null = null;
+  private saResolved = false;
+  private disabledWarned = false;
+  private accessToken: string | null = null;
+  private accessTokenExpMs = 0;
 
-  // FCM error codes that mean the token is permanently dead → caller should prune it.
-  private static readonly DEAD_TOKEN_CODES = new Set([
-    'messaging/registration-token-not-registered',
-    'messaging/invalid-registration-token',
-    'messaging/invalid-argument',
-  ]);
-  private static readonly SEND_TIMEOUT_MS = 12_000;
+  private static readonly REQ_TIMEOUT_MS = 10_000;
+  private static readonly SEND_CONCURRENCY = 10;
+  private static readonly TOKEN_URL = 'https://oauth2.googleapis.com/token';
+  private static readonly FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
   constructor(
     private readonly configService: ConfigService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
-  /** Service account JSON from FIREBASE_SERVICE_ACCOUNT_FILE (path) or inline env. */
-  private resolveServiceAccountJson(): string | null {
+  /** Parse the service account once from file or inline env. Null → FCM disabled. */
+  private loadServiceAccount(): ServiceAccount | null {
+    if (this.saResolved) return this.sa;
+    this.saResolved = true;
+
+    let json: string | null = null;
     const filePath = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_FILE');
     if (filePath) {
       try {
-        return readFileSync(filePath, 'utf8');
+        json = readFileSync(filePath, 'utf8');
       } catch (err) {
         this.winston.warn('Could not read FIREBASE_SERVICE_ACCOUNT_FILE', {
           context: 'FleetPushService',
@@ -49,63 +61,113 @@ export class FleetPushService {
         });
       }
     }
-    return this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT') ?? null;
-  }
+    if (!json) json = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT') ?? null;
 
-  private async initFcm(): Promise<boolean> {
-    if (this.fcmInitialised) return this.fcmApp !== null;
-
-    this.fcmInitialised = true;
-    const serviceAccountJson = this.resolveServiceAccountJson();
-    if (!serviceAccountJson) {
-      if (!this.fcmWarned) {
-        this.fcmWarned = true;
+    if (!json) {
+      if (!this.disabledWarned) {
+        this.disabledWarned = true;
         this.winston.info('FCM push disabled — devices will pick up via poll', {
           context: 'FleetPushService',
         });
       }
-      return false;
+      return null;
     }
 
     try {
-      // Non-literal import so TS infers `any` (package is not in node_modules).
-      const pkg = 'firebase-admin';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const admin: any = await import(pkg).catch(() => null);
-      if (!admin) {
-        this.winston.warn('firebase-admin not available; FCM push disabled', {
+      const p = JSON.parse(json) as Partial<ServiceAccount>;
+      if (!p.client_email || !p.private_key || !p.project_id) {
+        this.winston.warn('FIREBASE service account JSON missing required fields', {
           context: 'FleetPushService',
         });
-        return false;
+        return null;
       }
-
-      const serviceAccount = JSON.parse(serviceAccountJson) as Record<string, unknown>;
-      if (admin.apps.length === 0) {
-        this.fcmApp = admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-        });
-      } else {
-        this.fcmApp = admin.apps[0];
-      }
-      this.winston.info('FCM push enabled', {
+      this.sa = {
+        client_email: p.client_email,
+        private_key: p.private_key,
+        project_id: p.project_id,
+      };
+      this.winston.info('FCM push enabled (HTTP v1)', {
         context: 'FleetPushService',
-        project: (serviceAccount.project_id as string) ?? 'unknown',
+        project: this.sa.project_id,
       });
-      return true;
+      return this.sa;
     } catch (err) {
-      this.winston.error('Failed to initialise firebase-admin', {
+      this.winston.error('Failed to parse FIREBASE service account JSON', {
         context: 'FleetPushService',
         err: err instanceof Error ? err.message : String(err),
       });
-      return false;
+      return null;
     }
   }
 
-  /**
-   * Send a data-only OTA check-in push to a set of FCM tokens.
-   * Chunked to avoid FCM's per-request limit. Best-effort — errors are logged
-   * but never thrown.
-   */
+  private static base64url(input: string | Buffer): string {
+    return Buffer.from(input)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  }
+
+  private static async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), FleetPushService.REQ_TIMEOUT_MS);
+    try {
+      return await fetch(url, { ...init, signal: ac.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** OAuth2 access token for FCM, cached until ~1 min before expiry. */
+  private async getAccessToken(sa: ServiceAccount): Promise<string | null> {
+    if (this.accessToken && Date.now() < this.accessTokenExpMs - 60_000) return this.accessToken;
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const header = FleetPushService.base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+      const claim = FleetPushService.base64url(
+        JSON.stringify({
+          iss: sa.client_email,
+          scope: FleetPushService.FCM_SCOPE,
+          aud: FleetPushService.TOKEN_URL,
+          iat: now,
+          exp: now + 3600,
+        }),
+      );
+      const signer = createSign('RSA-SHA256');
+      signer.update(`${header}.${claim}`);
+      const signature = FleetPushService.base64url(signer.sign(sa.private_key));
+      const jwt = `${header}.${claim}.${signature}`;
+
+      const res = await FleetPushService.fetchWithTimeout(FleetPushService.TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+          assertion: jwt,
+        }).toString(),
+      });
+      if (!res.ok) {
+        this.winston.warn('FCM OAuth token request failed', {
+          context: 'FleetPushService',
+          status: res.status,
+        });
+        return null;
+      }
+      const body = (await res.json()) as { access_token?: string; expires_in?: number };
+      if (!body.access_token) return null;
+      this.accessToken = body.access_token;
+      this.accessTokenExpMs = Date.now() + (body.expires_in ?? 3600) * 1000;
+      return this.accessToken;
+    } catch (err) {
+      this.winston.warn('FCM OAuth token error', {
+        context: 'FleetPushService',
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  /** Data-only OTA check-in push. Best-effort; never throws. */
   async sendOtaCheckinPush(pushTokens: string[], deploymentId: string): Promise<void> {
     await this.sendDataWake(
       pushTokens,
@@ -115,21 +177,13 @@ export class FleetPushService {
   }
 
   /**
-   * Presence dead-man wake: high-priority data push that wakes a silent
-   * device-owner phone's process (there is no JS handler — the wake itself
-   * restarts the process, which re-arms the keep-alive PresenceService via
-   * MainApplication.onCreate). Returns the tokens FCM reported as permanently
-   * invalid so the caller can prune them from devices.push_token.
+   * Presence dead-man wake. Returns tokens FCM reported as permanently invalid so the
+   * caller can prune devices.push_token (a wiped/uninstalled phone stops being re-woken).
    */
   async sendPresenceWake(pushTokens: string[]): Promise<string[]> {
     return this.sendDataWake(pushTokens, { type: 'presence_wake' }, 'sendPresenceWake');
   }
 
-  /**
-   * Shared high-priority data multicast. Best-effort; never throws. Each chunk is
-   * bounded by a timeout so a stalled FCM call can't hang the caller (e.g. the
-   * 2-min dead-man scan). Returns tokens FCM reported as permanently dead.
-   */
   private async sendDataWake(
     pushTokens: string[],
     data: Record<string, string>,
@@ -138,52 +192,56 @@ export class FleetPushService {
     const dead: string[] = [];
     if (!pushTokens.length) return dead;
 
-    const ready = await this.initFcm();
-    if (!ready || !this.fcmApp) return dead;
+    const sa = this.loadServiceAccount();
+    if (!sa) return dead;
+    const accessToken = await this.getAccessToken(sa);
+    if (!accessToken) return dead;
 
-    try {
-      const pkg = 'firebase-admin';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const admin: any = await import(pkg).catch(() => null);
-      if (!admin) return dead;
+    const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
+    const authHeaders = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    };
 
-      const messaging = admin.messaging(this.fcmApp);
-      const CHUNK = 500;
-      for (let i = 0; i < pushTokens.length; i += CHUNK) {
-        const chunk = pushTokens.slice(i, i + CHUNK);
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const resp: any = await Promise.race([
-            messaging.sendEachForMulticast({ tokens: chunk, data, android: { priority: 'high' } }),
-            new Promise((_resolve, reject) =>
-              setTimeout(
-                () => reject(new Error('FCM send timed out')),
-                FleetPushService.SEND_TIMEOUT_MS,
-              ),
-            ),
-          ]);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const responses: any[] = (resp && resp.responses) || [];
-          responses.forEach((r, idx) => {
-            const code = r?.error?.code;
-            if (!r?.success && code && FleetPushService.DEAD_TOKEN_CODES.has(code)) {
-              dead.push(chunk[idx]);
-            }
-          });
-        } catch (err) {
-          this.winston.warn('FCM multicast chunk failed', {
-            context: 'FleetPushService',
-            label,
-            chunkStart: i,
-            err: err instanceof Error ? err.message : String(err),
-          });
+    const sendOne = async (token: string): Promise<void> => {
+      try {
+        const res = await FleetPushService.fetchWithTimeout(url, {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ message: { token, data, android: { priority: 'high' } } }),
+        });
+        if (res.ok) return;
+        // 404 = UNREGISTERED (token dead); 400 = INVALID_ARGUMENT (often a malformed token).
+        if (res.status === 404) {
+          dead.push(token);
+          return;
         }
+        const bodyText = await res.text().catch(() => '');
+        if (
+          res.status === 400 &&
+          /UNREGISTERED|INVALID_ARGUMENT|registration-token/i.test(bodyText)
+        ) {
+          dead.push(token);
+          return;
+        }
+        this.winston.warn('FCM v1 send failed', {
+          context: 'FleetPushService',
+          label,
+          status: res.status,
+          body: bodyText.slice(0, 200),
+        });
+      } catch (err) {
+        this.winston.warn('FCM v1 send error', {
+          context: 'FleetPushService',
+          label,
+          err: err instanceof Error ? err.message : String(err),
+        });
       }
-    } catch (err) {
-      this.winston.error(`${label} unexpected error`, {
-        context: 'FleetPushService',
-        err: err instanceof Error ? err.message : String(err),
-      });
+    };
+
+    // Bounded concurrency so a big fleet doesn't open hundreds of sockets at once.
+    for (let i = 0; i < pushTokens.length; i += FleetPushService.SEND_CONCURRENCY) {
+      await Promise.all(pushTokens.slice(i, i + FleetPushService.SEND_CONCURRENCY).map(sendOne));
     }
     return dead;
   }
