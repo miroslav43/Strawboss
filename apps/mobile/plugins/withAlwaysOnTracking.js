@@ -71,6 +71,10 @@ class BootReceiver : BroadcastReceiver() {
           // Best-effort — the location-typed BootRearmService below is the
           // primary recovery path and does not depend on this succeeding.
         }
+        // Arm the OS-driven safety nets (defined in withDeviceOwner's Watchdog.kt,
+        // same package) so they survive a reboot / OTA even before any JS runs.
+        try { WatchdogAlarm.schedule(context) } catch (t: Throwable) {}
+        try { NightlyAlarm.schedule(context) } catch (t: Throwable) {}
         try {
           ContextCompat.startForegroundService(
             context,

@@ -32,6 +32,9 @@ class PresenceService : Service() {
     // The alarm dispatches a headless JS check-in (fleet last_seen + Tailscale + OTA
     // + heartbeat) on a fresh context that survives the pause. Idempotent.
     PresenceAlarm.schedule(this)
+    // Arm the OS-driven safety nets alongside the 60s presence loop.
+    WatchdogAlarm.schedule(this)
+    NightlyAlarm.schedule(this)
     return START_STICKY
   }
 
