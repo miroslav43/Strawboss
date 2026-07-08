@@ -106,7 +106,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
   const { data: relatedMachines } = useQuery({
     queryKey: ['map-related-machines'],
     queryFn: () => mobileApiClient.get<RelatedMachine[]>('/api/v1/location/related-machines'),
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
 
   const machineMarkers = useMemo((): MachineMarkerData[] => {

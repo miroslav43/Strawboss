@@ -8,13 +8,13 @@ interface Options {
   loaderMachineId?: string | null;
   radiusM?: number;
   windowMinutes?: number;
-  /** Polling interval in ms (default 10s). */
+  /** Polling interval in ms (default 15s). */
   pollMs?: number;
 }
 
 /**
  * Trucks currently within proximity of the loader's machine.
- * Polls every 10s by default. Disabled when no machine id is available.
+ * Polls every 15s by default. Disabled when no machine id is available.
  */
 export function useTrucksAtLoader(options: Options = {}) {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
@@ -32,6 +32,6 @@ export function useTrucksAtLoader(options: Options = {}) {
         `/api/v1/location/trucks-at-loader/${loaderMachineId}${qs}`,
       ),
     enabled: !!loaderMachineId,
-    refetchInterval: options.pollMs ?? 10_000,
+    refetchInterval: options.pollMs ?? 15_000,
   });
 }

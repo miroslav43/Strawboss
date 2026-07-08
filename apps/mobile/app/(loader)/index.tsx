@@ -39,8 +39,8 @@ export default function LoaderHomeScreen() {
   const { t } = useI18n();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const parcel = useCurrentLoaderParcel();
-  const trucks = useTrucksAtLoader({ pollMs: 10_000 });
-  const auxTrips = useAuxiliaryTrips({ pollMs: 15_000 });
+  const trucks = useTrucksAtLoader();
+  const auxTrips = useAuxiliaryTrips();
   const [refreshing, setRefreshing] = useState(false);
   const { modalProps } = useModal();
 

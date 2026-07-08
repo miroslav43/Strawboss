@@ -3,7 +3,7 @@ import '@/lib/register-background-tasks';
 import { useEffect, useRef, useState } from 'react';
 import { LocaleProvider, tStatic, useI18n } from '@/lib/i18n';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
+import { QueryClientProvider, QueryClient, focusManager } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useKeepAwake } from 'expo-keep-awake';
@@ -382,7 +382,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const fgSub = addNotificationListener((notification) => {
       const data = (notification.request.content.data ?? {}) as Record<string, unknown>;
       if (data?.type === 'ota_checkin') {
-        void runDeviceCheckin();
+        // A broadcast push fans out to the whole fleet near-simultaneously —
+        // without jitter every phone would hit /fleet/checkin within the same
+        // second (thundering herd). Spread over up to 20s, then force past the
+        // temporal gate since this IS the deliberate acceleration path. Kept
+        // non-blocking (void) exactly like the original immediate call.
+        void (async () => {
+          await new Promise((r) => setTimeout(r, Math.random() * 20_000));
+          void runDeviceCheckin({ force: true });
+        })();
       }
       void handleIncomingPush(notification);
     });
@@ -695,6 +703,14 @@ export default function RootLayout() {
     // freezing last_seen_at (driver drops offline after ~1 h).
     startAuthAutoRefresh();
     const sub = AppState.addEventListener('change', (state) => {
+      // React Query's focusManager is permanently "focused" on RN unless wired
+      // manually, so every refetchInterval hook keeps polling with the screen
+      // off on Device-Owner phones (their JS runtime never freezes, unlike a
+      // regular install). This one line stops all foreground polling once the
+      // app backgrounds; refetchIntervalInBackground defaults to false so no
+      // hook opts back in. Wired here (not a separate effect) to keep all
+      // AppState-driven behavior in one listener.
+      focusManager.setFocused(state === 'active');
       // Plan C — pause heartbeat in background to save battery. On device-owner
       // builds a foreground service (location or presence) keeps the JS thread
       // alive, so we keep pinging — and refreshing the token — to stay "online"

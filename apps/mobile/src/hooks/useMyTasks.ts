@@ -128,7 +128,7 @@ export function useMyTasks() {
       return sorted.filter(taskHasRenderableLocation);
     },
     enabled: !!userId,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   return {

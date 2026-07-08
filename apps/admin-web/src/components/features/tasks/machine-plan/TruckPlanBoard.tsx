@@ -103,7 +103,7 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
   const machines = useMemo(() => normalize<Machine>(rawMachines), [rawMachines]);
   const machineById = useMemo(() => new Map(machines.map((m) => [m.id, m] as const)), [machines]);
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
-  // 15 min GPS threshold for machines (vs 90 s heartbeat for users).
+  // 15 min GPS threshold for machines (vs ~180 s heartbeat window for users).
   const MACHINE_ONLINE_MS = 15 * 60 * 1000;
   const lastSeenByMachine = useMemo(() => {
     const map = new Map<string, string>();

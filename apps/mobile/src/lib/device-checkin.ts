@@ -45,7 +45,7 @@ import { uploadTodayMobileLogs } from '../sync/mobile-log-upload';
 import { mobileApiClient } from './api-client';
 import { getDatabase } from './storage';
 import { TripsRepo } from '../db/trips-repo';
-import { markCheckinSuccess } from './health-state';
+import { markCheckinSuccess, readHealthTimestamps } from './health-state';
 import { mobileLogger } from './logger';
 
 // ---------------------------------------------------------------------------
@@ -453,7 +453,8 @@ async function handleRemoteCommand(cmd: DeviceRemoteCommand): Promise<void> {
       case 'fetch_logs': {
         // Upload today's logs immediately (ignore optional date param — mobile
         // logger only keeps today's file in-process; the server has older logs).
-        await uploadTodayMobileLogs(mobileApiClient);
+        // force: an on-demand fleet command must bypass the 10-min upload gate.
+        await uploadTodayMobileLogs(mobileApiClient, { force: true });
         success = true;
         mobileLogger.flow('Fleet: fetch_logs command executed', { commandId });
         break;
@@ -551,8 +552,11 @@ async function handleRemoteCommand(cmd: DeviceRemoteCommand): Promise<void> {
  * Returns true when there is at least one non-terminal trip in local SQLite.
  * Terminal statuses mirror the server: completed, cancelled.
  * A missing or empty DB is treated as idle (no active trip).
+ *
+ * Exported for src/lib/location.ts (piggyback presence check-in needs the same
+ * mid-trip signal without duplicating the SQLite query).
  */
-async function hasActiveTrip(): Promise<boolean> {
+export async function hasActiveTrip(): Promise<boolean> {
   try {
     const db = await getDatabase();
     const repo = new TripsRepo(db);
@@ -783,6 +787,15 @@ async function handlePendingDeployment(
 let checkinInFlight: Promise<void> | null = null;
 
 /**
+ * Shared temporal gate window (ms). Kept in sync with the four redundant
+ * drivers (JS 60s interval, FGS piggyback ~55s, background-sync piggyback,
+ * native AlarmManager 60s) documented in FLEET-BACKGROUND-ONLINE.md — all four
+ * MUST keep firing (do not remove any of them); this gate only skips the
+ * network round-trip when one already succeeded very recently.
+ */
+const CHECKIN_GATE_MS = 90_000;
+
+/**
  * Run one fleet check-in cycle:
  *   1. Gather device identity + hardware info + push token + trip state.
  *   2. POST /api/v1/fleet/checkin (unauthenticated).
@@ -791,11 +804,43 @@ let checkinInFlight: Promise<void> | null = null;
  *
  * Fire-and-forget: errors are logged but never thrown.
  * Concurrent callers share the same in-flight promise — only one cycle runs at a time.
+ *
+ * Temporal gate: HONOR/MagicOS pauses the JS runtime and OEM-kills services, so
+ * check-in is deliberately driven by FOUR redundant, independent timers/paths
+ * (JS interval in app/_layout.tsx, the location-FGS piggyback, the
+ * background-sync piggyback, and the native AlarmManager headless task) — this
+ * is intentional failover redundancy and none of those drivers should ever be
+ * removed. What we DO want is to skip the network round-trip when a sibling
+ * driver already succeeded moments ago. Unless `opts.force` is set, we read the
+ * last-SUCCESS timestamp persisted by markCheckinSuccess() (health-state.ts —
+ * SecureStore-backed, shared with the native headless-task JS context) and, if
+ * a success happened within the last ~90s (±10% jitter to avoid a fleet-wide
+ * synchronized retry cadence), skip this call entirely without hitting the
+ * network. Critically, the stamp is written ONLY on success — never on a mere
+ * attempt — so a phone with flaky network still retries on every driver tick,
+ * exactly like today; that failover semantics is the whole point of the
+ * redundancy and must not be weakened by this gate.
  */
-export function runDeviceCheckin(): Promise<void> {
+export function runDeviceCheckin(opts?: { force?: boolean }): Promise<void> {
   if (checkinInFlight) return checkinInFlight;
   checkinInFlight = (async () => {
     try {
+      if (!opts?.force) {
+        const { lastCheckinAt } = await readHealthTimestamps();
+        const lastSuccessMs = lastCheckinAt ? Date.parse(lastCheckinAt) : NaN;
+        if (!Number.isNaN(lastSuccessMs)) {
+          const gateMs = CHECKIN_GATE_MS * (0.9 + Math.random() * 0.2);
+          const sinceLastSuccessMs = Date.now() - lastSuccessMs;
+          if (sinceLastSuccessMs < gateMs) {
+            mobileLogger.flow('Fleet: checkin skipped by gate', {
+              sinceLastSuccessMs,
+              gateMs: Math.round(gateMs),
+            });
+            return;
+          }
+        }
+      }
+
       const { deviceUuid, deviceToken } = await ensureDeviceId();
 
       // App version

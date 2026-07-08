@@ -270,8 +270,16 @@ export class SyncManager {
       consumable_logs: 0,
       bale_loads: 0,
       task_assignments: 0,
-      // FM-13: request parcel geometry updates on every pull (no server_version
-      // column on parcels table — always send 0 to get all assigned parcels)
+      // FM-13: parcels DOES have a server-side sync_version column (migration
+      // 00040) and the pull response includes it, so it resolves through the
+      // same persisted-cursor path as every other table below. Delta sync
+      // still works even though a parcel's own row rarely changes version:
+      // the server force-includes parcels newly visible via today's task
+      // assignments / active trips (visibility changes without a
+      // sync_version bump). Fresh installs (and any existing install that
+      // never persisted a parcels cursor yet) fall back to 0, so the first
+      // pull after this change is effectively a full parcels pull once, then
+      // delta from then on.
       parcels: 0,
     };
 
@@ -325,6 +333,15 @@ export class SyncManager {
         this.taskAssignmentsRepo!.getMaxServerVersion(),
       );
     }
+
+    // Local parcels cache has no server_version column (it stores the latest
+    // geometry snapshot, not a version-tracked row history), so there is no
+    // local MAX-scan fallback — the persisted sync_cursors row (written
+    // generically for every table in the pull response, see the upsert loop
+    // in pull() above) is the only source of truth. Fallback 0 covers fresh
+    // installs and any existing install that never persisted a parcels
+    // cursor yet; their next pull is a one-time full parcels pull, then delta.
+    versions['parcels'] = await resolveVersion('parcels', async () => 0);
 
     return versions;
   }

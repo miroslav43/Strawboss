@@ -30,7 +30,7 @@ import { sendHeartbeatOnce } from './heartbeat';
 import {
   getPersistedMachineId,
   postBestEffortLocationNow,
-  flushPendingLocationReports,
+  maybeFlushBatchedLocationReports,
 } from './location';
 import { mobileLogger } from './logger';
 
@@ -83,7 +83,11 @@ async function presenceCheckin(): Promise<void> {
         // gets frozen out by PowerGenie before it returns on HONOR. See
         // getBestEffortPosition().
         await postBestEffortLocationNow(machineId);
-        await flushPendingLocationReports();
+        // Gated (~60s shared floor with the FGS tick): when the FGS is alive
+        // both drivers would otherwise flush back-to-back every minute; when
+        // the FGS is dead the stamp is stale and the flush proceeds — the
+        // recovery role of this alarm path is unchanged.
+        await maybeFlushBatchedLocationReports();
       }
     } catch (err) {
       mobileLogger.warn('Presence checkin task: GPS continuity failed', {

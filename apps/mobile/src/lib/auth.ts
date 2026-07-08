@@ -35,6 +35,13 @@ export async function getAuthToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
+// Single-flight guard: pull, push, log upload, and location reporting can all
+// hit a 401 at the same instant (they share one token expiry), which without
+// this would fire N parallel `refreshSession()` calls — wasteful, and racy
+// against Supabase's own refresh-token rotation. Every caller awaits the same
+// in-flight promise instead.
+let refreshInFlight: Promise<string | null> | null = null;
+
 /**
  * Force a real session refresh and return the fresh access token. Used by the
  * ApiClient on a 401 — unlike {@link getAuthToken}, this renews the session
@@ -43,10 +50,20 @@ export async function getAuthToken(): Promise<string | null> {
  * unauthenticated.
  */
 export async function refreshAuthToken(): Promise<string | null> {
-  const client = getSupabaseClient();
-  const { data, error } = await client.auth.refreshSession();
-  if (error) return null;
-  return data.session?.access_token ?? null;
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    try {
+      const client = getSupabaseClient();
+      const { data, error } = await client.auth.refreshSession();
+      if (error) return null;
+      return data.session?.access_token ?? null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
 }
 
 /**

@@ -13,7 +13,7 @@ import { getAuthToken } from './auth';
 import { mobileLogger } from './logger';
 import { runBackgroundSyncCycle } from '../sync/run-background-sync';
 import { maybeRaiseGeofenceWake } from './geofence-wake';
-import { runDeviceCheckin } from './device-checkin';
+import { runDeviceCheckin, hasActiveTrip } from './device-checkin';
 
 export type { LocationSubscription } from 'expo-location';
 
@@ -26,9 +26,26 @@ const doc = FileSystem.documentDirectory ?? '';
 const MACHINE_ID_FILE = `${doc}strawboss-location-machine-id.txt`;
 const PENDING_REPORTS_FILE = `${doc}strawboss-pending-location-reports.json`;
 const LAST_SUCCESS_FILE = `${doc}strawboss-location-last-success.txt`;
+// Sibling of LAST_SUCCESS_FILE, but for a different purpose: LAST_SUCCESS_FILE
+// tracks the last successful POST for the UI health snapshot (updated by
+// foreground pings, best-effort pings, AND flushes alike). This one gates how
+// often the background task attempts a flush at all, so it must be updated on
+// every attempt (success or failure) — reusing LAST_SUCCESS_FILE would let a
+// recent foreground ping suppress a due background flush, or let an offline
+// stretch (no successes) retry every ~20-30s tick instead of every ~60s.
+const LAST_FLUSH_ATTEMPT_FILE = `${doc}strawboss-location-last-flush-attempt.txt`;
 
 const MAX_PENDING_REPORTS = 400;
 const PENDING_REPORTS_WARN_THRESHOLD = Math.floor(MAX_PENDING_REPORTS * 0.9);
+// Batch transport: chunk size for POST /api/v1/location/report/batch (server
+// enforces the same 30-item cap). Gate below throttles how often the
+// background task even attempts a flush, independent of this chunk size.
+const BATCH_CHUNK_SIZE = 30;
+// Minimum spacing between background-task flush attempts. GPS capture cadence
+// (20-30s, unchanged) is much tighter than this — fixes accumulate in the
+// outbox between flushes so they go out in a handful of ≤30-item batches
+// instead of one request per fix (~150/h/phone -> ~once/min/phone).
+const BACKGROUND_FLUSH_MIN_INTERVAL_MS = 60_000;
 
 // A queued GPS fix older than this is operationally useless — the dispatcher wants
 // the CURRENT position, not where a frozen phone was half an hour ago. Critically,
@@ -213,8 +230,58 @@ export async function readLastLocationSuccessIso(): Promise<string | null> {
   }
 }
 
+async function writeLastFlushAttempt(): Promise<void> {
+  try {
+    await FileSystem.writeAsStringAsync(LAST_FLUSH_ATTEMPT_FILE, String(Date.now()));
+  } catch {
+    /* non-critical */
+  }
+}
+
+async function readLastFlushAttemptMs(): Promise<number> {
+  try {
+    const info = await FileSystem.getInfoAsync(LAST_FLUSH_ATTEMPT_FILE);
+    if (!info.exists) return 0;
+    const raw = (await FileSystem.readAsStringAsync(LAST_FLUSH_ATTEMPT_FILE)).trim();
+    const v = parseInt(raw, 10);
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function postLocationReport(report: LocationReportDto): Promise<void> {
   await locationApiClient.post<void>('/api/v1/location/report', report);
+}
+
+async function postLocationReportsBatch(reports: LocationReportDto[]): Promise<void> {
+  await locationApiClient.post<void>('/api/v1/location/report/batch', { reports });
+}
+
+/**
+ * Old backend during a rollout window won't have `/report/batch` yet. Once we
+ * observe a 404 (no route) or 405 (method not allowed) we stop probing it and
+ * fall back to the single-report endpoint for the rest of the process
+ * lifetime — no need to keep re-discovering the same fact.
+ */
+let batchUnsupported = false;
+
+function isBatchUnsupportedError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 404 || err.status === 405);
+}
+
+/**
+ * Same cross-org/misconfigured-`machineId` incident class as
+ * {@link isPermanentReportError} (the "Machine not found in your
+ * organization" 400 storm): a bad report inside a batch fails identically on
+ * every retry, so the whole chunk is dropped rather than retried forever.
+ * Narrower than {@link isPermanentReportError} on purpose — only 400/403 drop
+ * the chunk; anything else (401/408/429/5xx, or an unrecognized 4xx) is
+ * treated as transient so good data is never silently discarded on the batch
+ * path.
+ */
+function isBatchPermanentDropError(err: unknown): err is ApiError {
+  return err instanceof ApiError && (err.status === 400 || err.status === 403);
 }
 
 /**
@@ -238,16 +305,96 @@ function isPermanentReportError(err: unknown): err is ApiError {
 }
 
 /**
- * Retry outbox after failed background POSTs (e.g. offline / 401).
+ * Batch phase of the flush: sends chunks of <= BATCH_CHUNK_SIZE via
+ * POST /api/v1/location/report/batch, persisting the outbox after EACH chunk
+ * (same crash-safety guarantee as the single-report loop below — a freeze
+ * mid-flush on HONOR/MagicOS resumes from where it left off, never replays).
+ * Returns whatever is still left in the queue: either because a transient
+ * error stopped the loop (kept for the next flush attempt), or because the
+ * batch endpoint turned out to be unsupported (`batchUnsupported` flips true
+ * and the caller falls back to the single-report loop for the remainder).
+ */
+async function flushPendingLocationReportsBatched(
+  pending: LocationReportDto[],
+): Promise<LocationReportDto[]> {
+  while (pending.length > 0 && !batchUnsupported) {
+    const chunk = pending.slice(0, BATCH_CHUNK_SIZE);
+    try {
+      await postLocationReportsBatch(chunk);
+      await writeLastSuccessTimestamp();
+      pending = pending.slice(chunk.length);
+      await writePendingReports(pending);
+    } catch (err) {
+      if (isBatchUnsupportedError(err)) {
+        // Rollout window with an old backend: no /report/batch route yet.
+        // Don't drop the chunk — fall back to posting it (and everything
+        // after it) one at a time below, now and on subsequent flushes.
+        mobileLogger.flow(
+          'Location batch endpoint unsupported (404/405) — falling back to single-report POSTs',
+          { pendingCount: pending.length },
+        );
+        batchUnsupported = true;
+        break;
+      }
+      if (isBatchPermanentDropError(err)) {
+        mobileLogger.warn('Location report batch dropped from outbox (permanent 4xx)', {
+          status: err.status,
+          chunkSize: chunk.length,
+          message: err.message,
+        });
+        pending = pending.slice(chunk.length);
+        await writePendingReports(pending);
+        continue;
+      }
+      // Transient (offline / 5xx / 401-408-429): stop and keep the rest queued.
+      break;
+    }
+  }
+  return pending;
+}
+
+/**
+ * Single-report fallback loop (pre-batch behavior), used once the batch
+ * endpoint is known unsupported. Persists progress after EACH report so a
+ * freeze mid-loop resumes instead of replaying the whole queue.
+ */
+async function flushPendingLocationReportsSingle(pending: LocationReportDto[]): Promise<void> {
+  while (pending.length > 0) {
+    const report = pending[0];
+    try {
+      await postLocationReport(report);
+      await writeLastSuccessTimestamp();
+    } catch (err) {
+      if (!isPermanentReportError(err)) {
+        // Transient (offline / 5xx / 401-408-429): stop and keep the rest queued.
+        break;
+      }
+      mobileLogger.warn('Location report dropped from outbox (permanent 4xx)', {
+        status: err.status,
+        machineId: report.machineId,
+        message: err.message,
+      });
+      // Permanent 4xx — fall through to drop it from the queue.
+    }
+    pending = pending.slice(1);
+    await writePendingReports(pending);
+  }
+}
+
+/**
+ * Retry outbox after failed/queued POSTs (e.g. offline / 401), or drain fixes
+ * appended by the background task's batch transport.
  *
  * Crash-safe and age-bounded by design, because this runs inside a foreground
  * service that OEM ROMs (HONOR/MagicOS PowerGenie) freeze without warning:
  *   1. Stale reports are dropped up front and the trim is persisted immediately,
  *      so even if we're frozen before posting anything the zombie backlog is gone.
- *   2. We persist progress after EACH report. A freeze mid-loop therefore resumes
- *      where it left off instead of replaying the whole queue — the old "post all,
- *      then write back once" shape never reached the writeback under a freeze, so
- *      it re-posted the same backlog every wake (thousands of dup pings/day).
+ *   2. We persist progress after EACH chunk/report. A freeze mid-loop therefore
+ *      resumes where it left off instead of replaying the whole queue — the old
+ *      "post all, then write back once" shape never reached the writeback under
+ *      a freeze, so it re-posted the same backlog every wake (thousands of dup
+ *      pings/day). This guarantee holds for both the batch and single-report
+ *      phases below.
  */
 export async function flushPendingLocationReports(): Promise<void> {
   let pending = await readPendingReports();
@@ -268,26 +415,17 @@ export async function flushPendingLocationReports(): Promise<void> {
   }
   pending = fresh;
 
-  // 2. Flush incrementally, persisting after each report so a freeze can't replay.
-  while (pending.length > 0) {
-    const report = pending[0];
-    try {
-      await postLocationReport(report);
-      await writeLastSuccessTimestamp();
-    } catch (err) {
-      if (!isPermanentReportError(err)) {
-        // Transient (offline / 5xx / 401-408-429): stop and keep the rest queued.
-        break;
-      }
-      mobileLogger.warn('Location report dropped from outbox (permanent 4xx)', {
-        status: err.status,
-        machineId: report.machineId,
-        message: err.message,
-      });
-      // Permanent 4xx — fall through to drop it from the queue.
-    }
-    pending = pending.slice(1);
-    await writePendingReports(pending);
+  // 2. Batch transport first (chunks of <= BATCH_CHUNK_SIZE), unless we've
+  // already learned this backend doesn't support it.
+  if (!batchUnsupported) {
+    pending = await flushPendingLocationReportsBatched(pending);
+  }
+
+  // 3. Only reached when the batch endpoint just turned out unsupported (or
+  // was already known unsupported from an earlier flush) — drain the rest
+  // one report at a time, same semantics as before this feature existed.
+  if (batchUnsupported && pending.length > 0) {
+    await flushPendingLocationReportsSingle(pending);
   }
 }
 
@@ -352,17 +490,45 @@ let lastSyncAtMs = 0;
 // polling hooks for live views, so a frequent full sync there mostly just
 // causes jank. Background stays tighter so the dispatcher still sees field data
 // without large lag while the screen is off.
+//
+// D4: background itself is adaptive — a machine mid-trip needs its structured
+// data (loads, fuel, task assignments) flowing near-real-time, but an idle
+// machine with no active trip can wait longer, so we back off to save battery
+// / network on the ~30-phone fleet.
 const PIGGYBACK_SYNC_MIN_INTERVAL_FG_MS = 120_000;
-const PIGGYBACK_SYNC_MIN_INTERVAL_BG_MS = 60_000;
+const PIGGYBACK_SYNC_MIN_INTERVAL_BG_ACTIVE_TRIP_MS = 60_000;
+const PIGGYBACK_SYNC_MIN_INTERVAL_BG_IDLE_MS = 180_000;
+
+// hasActiveTrip() reads SQLite; cache its result briefly so a background tick
+// every ~20-30s doesn't hit the DB on every single wake.
+const ACTIVE_TRIP_CACHE_TTL_MS = 60_000;
+let cachedHasActiveTrip = false;
+let cachedHasActiveTripAtMs = 0;
+
+async function hasActiveTripCached(): Promise<boolean> {
+  const now = Date.now();
+  if (now - cachedHasActiveTripAtMs < ACTIVE_TRIP_CACHE_TTL_MS) return cachedHasActiveTrip;
+  cachedHasActiveTrip = await hasActiveTrip();
+  cachedHasActiveTripAtMs = now;
+  return cachedHasActiveTrip;
+}
 
 async function maybePiggybackSync(): Promise<void> {
   const now = Date.now();
   if (syncInFlight) return; // re-entrancy guard — a previous cycle is still running
-  const minInterval =
-    AppState.currentState === 'active'
-      ? PIGGYBACK_SYNC_MIN_INTERVAL_FG_MS
-      : PIGGYBACK_SYNC_MIN_INTERVAL_BG_MS;
-  if (now - lastSyncAtMs < minInterval) return; // throttle (state-dependent)
+  let minInterval: number;
+  if (AppState.currentState === 'active') {
+    minInterval = PIGGYBACK_SYNC_MIN_INTERVAL_FG_MS;
+  } else {
+    const activeTrip = await hasActiveTripCached();
+    minInterval = activeTrip
+      ? PIGGYBACK_SYNC_MIN_INTERVAL_BG_ACTIVE_TRIP_MS
+      : PIGGYBACK_SYNC_MIN_INTERVAL_BG_IDLE_MS;
+  }
+  // Fleet-wide desync: ~30 phones on identical fixed periods would otherwise
+  // synchronize into simultaneous request bursts. Jitter +/-10% per check.
+  const jitter = 0.9 + Math.random() * 0.2;
+  if (now - lastSyncAtMs < minInterval * jitter) return; // throttle (state-dependent)
   syncInFlight = true;
   lastSyncAtMs = now;
   try {
@@ -395,7 +561,10 @@ const PIGGYBACK_CHECKIN_MIN_INTERVAL_MS = 55_000;
 async function maybePresenceCheckin(): Promise<void> {
   if (checkinInFlight) return;
   const now = Date.now();
-  if (now - lastCheckinAtMs < PIGGYBACK_CHECKIN_MIN_INTERVAL_MS) return;
+  // Fleet-wide desync: jitter +/-10% so 30 phones don't all check in on the
+  // exact same cadence and pile up on the server at once.
+  const jitter = 0.9 + Math.random() * 0.2;
+  if (now - lastCheckinAtMs < PIGGYBACK_CHECKIN_MIN_INTERVAL_MS * jitter) return;
   checkinInFlight = true;
   lastCheckinAtMs = now;
   try {
@@ -407,6 +576,25 @@ async function maybePresenceCheckin(): Promise<void> {
   } finally {
     checkinInFlight = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Batch transport: gate for how often the background task attempts a flush
+// ---------------------------------------------------------------------------
+// GPS fixes are captured every 20-30s (adaptive profile, unchanged) but we
+// only want the outbox to actually hit the network about once a minute — the
+// background task appends every fix to the outbox unconditionally, and this
+// gate decides whether THIS tick is the one that flushes it. Persisted to
+// disk (not a module var like syncInFlight/checkinInFlight above) because
+// this exact background task is documented elsewhere in this file to survive
+// OEM freezes/HeadlessJS cold-starts that can hand a tick to a fresh JS
+// context — a module var would silently reset the throttle in that case.
+export async function maybeFlushBatchedLocationReports(): Promise<void> {
+  const now = Date.now();
+  const last = await readLastFlushAttemptMs();
+  if (now - last < BACKGROUND_FLUSH_MIN_INTERVAL_MS) return;
+  await writeLastFlushAttempt();
+  await flushPendingLocationReports();
 }
 
 TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
@@ -421,7 +609,10 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
     return;
   }
 
-  await flushPendingLocationReports();
+  // Drains whatever is already queued (previous ticks' appends, or backlog
+  // left over from before batching existed), gated to ~once/60s so this
+  // doesn't fire on every 20-30s tick.
+  await maybeFlushBatchedLocationReports();
 
   // Presence/online rides the location foreground service here (the Doze-proof
   // path on Samsung/HONOR) — placed BEFORE the no-machine early-return so the
@@ -451,34 +642,19 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
     await writeLastSpeedKmh(speedKmh);
   }
 
+  // Batch transport: queue every fix instead of posting it individually — the
+  // gated flush above (and on the next tick(s) once ~60s has elapsed) drains
+  // the outbox via chunked POST /report/batch. GPS capture cadence (20-30s)
+  // is unchanged; only the transport to the server is batched.
   for (const loc of locations) {
     const report = coordsToReport(machineId, loc);
-    try {
-      await postLocationReport(report);
-      await writeLastSuccessTimestamp();
-      mobileLogger.debug('Location report OK (background)', {
-        machineId,
-        lat: report.lat,
-        lon: report.lon,
-        speedKmh,
-      });
-    } catch (err) {
-      if (isPermanentReportError(err)) {
-        mobileLogger.warn('Location report dropped (background, permanent 4xx)', {
-          status: err.status,
-          machineId,
-          message: err.message,
-        });
-        continue; // drop — re-queueing a permanent failure just re-floods the server
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      mobileLogger.warn('Location report failed (background), queued for retry', {
-        machineId,
-        message: msg,
-      });
-      await appendPendingReport(report);
-    }
+    await appendPendingReport(report);
   }
+  mobileLogger.debug('Location fixes queued (background, batched)', {
+    machineId,
+    count: locations.length,
+    speedKmh,
+  });
 
   // Continuous background sync: fire-and-forget (never awaited) so a sync error
   // or slow network can never delay/break location posting. Debounced + guarded

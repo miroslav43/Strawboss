@@ -25,7 +25,7 @@ export function useNearbyLoaders() {
     queryFn: () =>
       mobileApiClient.get<NearbyLoader[]>(`/api/v1/location/loaders-near-truck/${truckId}`),
     enabled: !!userId && !!truckId,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
     staleTime: 20_000,
   });
 }

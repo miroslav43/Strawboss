@@ -19,7 +19,7 @@ export function useMachineLastLocation(machineId: string | null, windowMinutes =
         `/api/v1/location/machine/${machineId}/last?windowMinutes=${windowMinutes}`,
       ),
     enabled: !!userId && !!machineId,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
     staleTime: 20_000,
   });
 }

@@ -26,14 +26,14 @@ export interface AuxiliaryTrip {
 interface Options {
   /** Override the default loader machine id (e.g. for admins). */
   loaderMachineId?: string | null;
-  /** Polling interval in ms (default 15s). */
+  /** Polling interval in ms (default 30s). */
   pollMs?: number;
 }
 
 /**
  * Auxiliary (external) trucks assigned to this loader, regardless of GPS proximity.
  * These trucks have no GPS device and are assigned explicitly by dispatchers.
- * Polls every 15s by default. Disabled when no machine id is available.
+ * Polls every 30s by default. Disabled when no machine id is available.
  */
 export function useAuxiliaryTrips(options: Options = {}) {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
@@ -44,6 +44,6 @@ export function useAuxiliaryTrips(options: Options = {}) {
     queryFn: () =>
       mobileApiClient.get<AuxiliaryTrip[]>(`/api/v1/trips/auxiliary/at-loader/${loaderMachineId}`),
     enabled: !!loaderMachineId,
-    refetchInterval: options.pollMs ?? 15_000,
+    refetchInterval: options.pollMs ?? 30_000,
   });
 }

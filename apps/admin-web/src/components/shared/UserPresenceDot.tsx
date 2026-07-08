@@ -4,10 +4,12 @@ import { useEffect, useReducer } from 'react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 
-// Default window: 30 s mobile heartbeat + 60 s grace → 90 s. Caller can pass
-// `thresholdMs` to widen the window — e.g. machine GPS recordings come every
-// few minutes, so the Machines / Available-truck lists use 15 min.
-const DEFAULT_ONLINE_WINDOW_MS = 90 * 1000;
+// Default window: heartbeat relaxed to ~60 s + gate on mobile (jittered
+// 60-65 s JS interval, deduped against a 60 s native alarm) → 180 s tolerates
+// one missed tick without flapping the dot. Caller can pass `thresholdMs` to
+// widen the window — e.g. machine GPS recordings come every few minutes, so
+// the Machines / Available-truck lists use 15 min.
+const DEFAULT_ONLINE_WINDOW_MS = 180_000;
 
 // Shared 30 s tick so we don't run one timer per dot. The interval is created
 // lazily the first time a subscriber mounts, and torn down when the last one
@@ -59,15 +61,15 @@ export interface UserPresenceDotProps {
    */
   variant?: 'dot' | 'badge';
   /**
-   * Override the "online" window. Default 90 s (covers a 30 s heartbeat with
-   * 60 s grace). For GPS-based machine presence pass 15 min.
+   * Override the "online" window. Default 180 s (covers a ~60 s heartbeat
+   * with a missed-tick grace). For GPS-based machine presence pass 15 min.
    */
   thresholdMs?: number;
 }
 
 /**
  * Plan C — green/grey indicator showing whether a user is currently connected
- * (heartbeat within the last 90 s). Tooltip carries the full "last seen" text;
+ * (heartbeat within the last 180 s). Tooltip carries the full "last seen" text;
  * the `badge` variant also renders a short label inline.
  */
 export function UserPresenceDot({
