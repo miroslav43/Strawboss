@@ -12,8 +12,10 @@ Validated end-to-end on a **Samsung Galaxy S25 (SM-S931B, Android 16)** over
 ## TL;DR
 
 A backgrounded Device-Owner phone stays online by keeping a **foreground service**
-alive — that's the only thing aggressive OEM power management can't defeat. Four fixes
-make it robust:
+alive — but over **hours** in *real* deep Doze even that isn't enough on its own (the
+exact wake-alarm the check-in rides gets throttled/cancelled), so a **server-side
+dead-man + high-priority FCM** (Doze-exempt) is the final backstop. Six layers make it
+robust:
 
 | # | Problem | Fix | Commit |
 |---|---------|-----|--------|
@@ -21,9 +23,14 @@ make it robust:
 | 2 | The presence/alarm path didn't carry GPS, so GPS gapped when backgrounded | The native-alarm presence task also **posts a current GPS fix + drains the outbox** | `182affb` |
 | 3 | After an OTA self-update / reboot, the process was killed and **nothing restarted the services** → silently offline until a human opened the app | **`BootReceiver`** (`MY_PACKAGE_REPLACED` + `BOOT_COMPLETED`) + **`BootRearmService`** restart the FGS + GPS unattended | `e70f97b` |
 | 4 | On a **cold headless start** the bundle loaded but the router never mounted → `"No task registered for key strawboss-boot-rearm"` → the receiver had nothing to run | Register the headless tasks at the **bundle entry** (`index.js`), not behind the router | `e70f97b` |
-| 5 | **The whole always-on anchor was bootstrapped only from JS** — the React effect (needs `isAuthenticated`) or `boot-rearm` (needs a token). If the session was lost → login screen, or a plain OEM/low-memory kill fired no `BootReceiver`, **`PresenceService` never (re)started** → the idle device-owner phone had no FGS → fell to **cached → frozen → offline** with no self-recovery. Confirmed on an SM-G556B: pre-touch the process was `cch+10` (cached), no FGS, alarms piled up unfired. | Start `PresenceService` **natively from `MainApplication.onCreate` on every process start** (device-owner only), independent of JS + auth. Plus: the presence alarm **re-asserts** the FGS each tick, and `boot-rearm` arms presence **before** the token guard. | *(this fix)* |
+| 5 | **The whole always-on anchor was bootstrapped only from JS** — the React effect (needs `isAuthenticated`) or `boot-rearm` (needs a token). If the session was lost → login screen, or a plain OEM/low-memory kill fired no `BootReceiver`, **`PresenceService` never (re)started** → the idle device-owner phone had no FGS → fell to **cached → frozen → offline** with no self-recovery. Confirmed on an SM-G556B: pre-touch the process was `cch+10` (cached), no FGS, alarms piled up unfired. | Start `PresenceService` **natively from `MainApplication.onCreate` on every process start** (device-owner only), independent of JS + auth. Plus: the presence alarm **re-asserts** the FGS each tick, and `boot-rearm` arms presence **before** the token guard. | `77635b9` |
+| 6 | **Over HOURS in real deep Doze the phone still went offline even with the FGS alive** — ground-truth: 3 vc36 device-owner phones silent ~11 h; process alive, FGS present, but the `setExactAndAllowWhileIdle` presence alarm was throttled to Doze maintenance windows (backing off **1 h → 2 h → 4 h**) / cancelled on FGS teardown. A `user_sessions` gap of 18 h confirmed the web went gray overnight. The on-device nets (presence alarm + watchdog) are ALL exact-idle alarms → same throttle, can't beat it. | **Three OS-driven nets + one external:** (a) alarm **not cancelled** on `onDestroy`; (b) a **`WatchdogAlarm`** (~10 min, independent of the service) re-asserts the FGS + re-arms the presence loop; (c) a **`NightlyAlarm`** clean-restarts the *process* ~03:30 (not a device reboot — lock-screen trap); (d) **backend presence dead-man** (BullMQ, 2 min) FCM-wakes any device-owner phone whose `last_checkin_at` is stale — **high-priority FCM is Doze-exempt**, so it's the only thing that reliably pierces deep Doze. Requires `FIREBASE_SERVICE_ACCOUNT[_FILE]` on the backend. | `56071d8` + backend |
 
-> **Why "native" (fix #5) is the right call:** an anchor that must be *always* running cannot depend on whether React mounted an effect, whether a Supabase session hydrated, or whether a specific system broadcast fired. Those are three independent points of failure. `MainApplication.onCreate` runs on **every** process start (cold, headless, sticky-restart, alarm/FCM/JobService wake), so the FGS comes up before any JS/auth logic — and once the FGS is up, the phone is provably un-killable (survives Doze, `am kill`, and Activity destruction — see Validation).
+> **Why "native" (fix #5) is right:** an anchor that must be *always* running cannot depend on whether React mounted an effect, a Supabase session hydrated, or a system broadcast fired. `MainApplication.onCreate` runs on **every** process start, so the FGS comes up before any JS/auth logic.
+>
+> **Why the dead-man (fix #6) is non-negotiable for deep Doze:** every on-device timer is a `setExactAndAllowWhileIdle` alarm, and in *real* prolonged Doze those get deferred to the maintenance windows (hours apart) — even the watchdog. Only a **push from outside** (high-priority FCM) bypasses Doze. So the server watches `last_checkin_at` and pokes silent phones. Without FCM configured, a deep-dozing phone is only recovered when a human touches it.
+>
+> ⚠️ **Testing pitfall:** `dumpsys deviceidle force-idle` does NOT reproduce this — forced-idle still lets exact-idle alarms fire at 60 s. Only a phone left **unplugged, screen-off, stationary for hours** hits the exponential-backoff maintenance windows. And **an active `adb` connection keeps the device awake** — validate via `user_sessions` / `last_checkin_at` in the DB or a *passive* on-device logcat-to-file, not live adb polling.
 
 ---
 
