@@ -14,6 +14,7 @@ import {
   QUEUE_PIN_REGEN,
   QUEUE_MESSAGE_SEND,
   QUEUE_TRIP_AUTOCOMPLETE,
+  QUEUE_PRESENCE_DEADMAN,
 } from './queues';
 
 @Module({
@@ -37,6 +38,7 @@ import {
       { name: QUEUE_PIN_REGEN },
       { name: QUEUE_MESSAGE_SEND },
       { name: QUEUE_TRIP_AUTOCOMPLETE },
+      { name: QUEUE_PRESENCE_DEADMAN },
     ),
   ],
   providers: [JobSchedulerService],

@@ -74,6 +74,30 @@ export class FleetPushService {
    * but never thrown.
    */
   async sendOtaCheckinPush(pushTokens: string[], deploymentId: string): Promise<void> {
+    await this.sendDataWake(
+      pushTokens,
+      { type: 'ota_checkin', deploymentId },
+      'sendOtaCheckinPush',
+    );
+  }
+
+  /**
+   * Presence dead-man wake: high-priority data push that wakes a silent
+   * device-owner phone's process (there is no JS handler — the wake itself
+   * restarts the process, which re-arms the keep-alive PresenceService via
+   * MainApplication.onCreate). Called by the presence-deadman BullMQ job for
+   * device-owner phones whose last_checkin_at has gone stale.
+   */
+  async sendPresenceWake(pushTokens: string[]): Promise<void> {
+    await this.sendDataWake(pushTokens, { type: 'presence_wake' }, 'sendPresenceWake');
+  }
+
+  /** Shared high-priority data multicast. Best-effort; never throws. */
+  private async sendDataWake(
+    pushTokens: string[],
+    data: Record<string, string>,
+    label: string,
+  ): Promise<void> {
     if (!pushTokens.length) return;
 
     const ready = await this.initFcm();
@@ -92,22 +116,21 @@ export class FleetPushService {
         try {
           await messaging.sendEachForMulticast({
             tokens: chunk,
-            data: { type: 'ota_checkin', deploymentId },
+            data,
             android: { priority: 'high' },
           });
         } catch (err) {
           this.winston.warn('FCM multicast chunk failed', {
             context: 'FleetPushService',
-            deploymentId,
+            label,
             chunkStart: i,
             err: err instanceof Error ? err.message : String(err),
           });
         }
       }
     } catch (err) {
-      this.winston.error('sendOtaCheckinPush unexpected error', {
+      this.winston.error(`${label} unexpected error`, {
         context: 'FleetPushService',
-        deploymentId,
         err: err instanceof Error ? err.message : String(err),
       });
     }

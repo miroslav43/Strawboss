@@ -10,6 +10,7 @@ import {
   QUEUE_SYNC_CLEANUP,
   QUEUE_TRUCK_IDLE_CHECK,
   QUEUE_PIN_REGEN,
+  QUEUE_PRESENCE_DEADMAN,
 } from './queues';
 
 /**
@@ -25,6 +26,7 @@ export class JobSchedulerService implements OnModuleInit {
     @InjectQueue(QUEUE_SYNC_CLEANUP) private readonly syncCleanupQueue: Queue,
     @InjectQueue(QUEUE_TRUCK_IDLE_CHECK) private readonly truckIdleQueue: Queue,
     @InjectQueue(QUEUE_PIN_REGEN) private readonly pinRegenQueue: Queue,
+    @InjectQueue(QUEUE_PRESENCE_DEADMAN) private readonly presenceDeadmanQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -75,8 +77,16 @@ export class JobSchedulerService implements OnModuleInit {
       { name: 'regen-all', data: {} },
     );
 
+    // Presence dead-man — every 2 min, FCM-wake device-owner phones whose
+    // last check-in has gone stale (external safety net for the always-on anchor).
+    await this.presenceDeadmanQueue.upsertJobScheduler(
+      'presence-deadman-repeat',
+      { every: 2 * 60_000 },
+      { name: 'scan', data: {} },
+    );
+
     this.winston.info(
-      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m), pin-regen (daily 02:00)',
+      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m), pin-regen (daily 02:00), presence-deadman (2m)',
       {
         context: 'JobSchedulerService',
       },

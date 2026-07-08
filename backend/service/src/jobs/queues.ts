@@ -14,3 +14,6 @@ export const QUEUE_MESSAGE_SEND = 'message-send';
 // Auxiliary trips — delayed job that auto-completes an aux trip a few minutes
 // after it is loaded (planned → loaded → completed).
 export const QUEUE_TRIP_AUTOCOMPLETE = 'trip-autocomplete';
+// Presence dead-man — periodic scan that FCM-wakes device-owner phones whose
+// last check-in has gone stale (external safety net for the always-on anchor).
+export const QUEUE_PRESENCE_DEADMAN = 'presence-deadman';

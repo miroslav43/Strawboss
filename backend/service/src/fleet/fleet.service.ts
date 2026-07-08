@@ -671,6 +671,35 @@ export class FleetService {
   }
 
   /**
+   * Presence dead-man: wake device-owner phones whose last check-in has gone
+   * stale by sending a high-priority FCM data push. The wake restarts the frozen/
+   * killed process, which re-arms the keep-alive PresenceService via onCreate.
+   * Called by the presence-deadman BullMQ job (~every 2 min). Best-effort.
+   */
+  async wakeStaleDeviceOwners(staleMinutes = 4): Promise<{ scanned: number; woken: number }> {
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      SELECT push_token AS "pushToken"
+      FROM devices
+      WHERE is_device_owner = true
+        AND deleted_at IS NULL
+        AND push_token IS NOT NULL
+        AND (
+          last_checkin_at IS NULL
+          OR last_checkin_at < now() - (${staleMinutes} * interval '1 minute')
+        )
+    `)) as unknown as { pushToken: string | null }[];
+    const tokens = rows.map((r) => r.pushToken).filter((t): t is string => !!t);
+    if (tokens.length > 0) {
+      await this.fleetPushService.sendPresenceWake(tokens);
+      this.winston.log('flow', 'Presence dead-man woke stale device-owners', {
+        context: 'FleetService',
+        woken: tokens.length,
+      });
+    }
+    return { scanned: rows.length, woken: tokens.length };
+  }
+
+  /**
    * List one-shot command history for a device (newest-first, max 50).
    */
   async listCommands(deviceId: string): Promise<DeviceRemoteCommandRecord[]> {
