@@ -66,6 +66,8 @@
       </intent-filter>
     </receiver>
     <receiver android:name=".InstallResultReceiver" android:exported="false"/>
-    <receiver android:name=".PresenceAlarmReceiver" android:exported="false"/><receiver android:name=".WatchdogReceiver" android:exported="false"/><receiver android:name=".NightlyRestartReceiver" android:exported="false"/>
+    <receiver android:name=".PresenceAlarmReceiver" android:exported="false"/>
+    <receiver android:name=".WatchdogReceiver" android:exported="false"/>
+    <receiver android:name=".NightlyRestartReceiver" android:exported="false"/>
   </application>
 </manifest>
