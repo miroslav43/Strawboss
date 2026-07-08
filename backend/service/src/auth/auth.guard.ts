@@ -109,7 +109,13 @@ export class AuthGuard implements CanActivate {
       const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString());
 
       const supabaseUrl = this.configService.getOrThrow<string>('SUPABASE_URL');
-      const expectedIssuer = `${supabaseUrl}/auth/v1`;
+      // Accept both the modern full-URL issuer and the legacy short "supabase"
+      // issuer. This project predates the URL format (its anon key still carries
+      // iss:"supabase"), and GoTrue may emit either depending on its version —
+      // pinning only the URL form would lock out every real login. The anon /
+      // service_role keys are still rejected by the sub/role check below
+      // regardless of which issuer they carry, so accepting both is safe.
+      const acceptedIssuers = [`${supabaseUrl}/auth/v1`, 'supabase'];
 
       let payload: jose.JWTPayload;
 
@@ -119,7 +125,7 @@ export class AuthGuard implements CanActivate {
         const encodedSecret = new TextEncoder().encode(secret);
         ({ payload } = await jose.jwtVerify(token, encodedSecret, {
           algorithms: ['HS256'],
-          issuer: expectedIssuer,
+          issuer: acceptedIssuers,
           audience: EXPECTED_AUDIENCE,
         }));
       } else {
@@ -131,7 +137,7 @@ export class AuthGuard implements CanActivate {
         }
         ({ payload } = await jose.jwtVerify(token, this.jwks, {
           algorithms: ['ES256', 'RS256'],
-          issuer: expectedIssuer,
+          issuer: acceptedIssuers,
           audience: EXPECTED_AUDIENCE,
         }));
       }
