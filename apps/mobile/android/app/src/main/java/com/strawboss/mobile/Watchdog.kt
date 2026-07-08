@@ -57,6 +57,12 @@ object WatchdogAlarm {
       }
     } catch (t: Throwable) { Log.w("StrawbossWatchdog", "schedule failed", t) }
   }
+
+  fun cancel(context: Context) {
+    try {
+      (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pending(context))
+    } catch (t: Throwable) { /* best-effort */ }
+  }
 }
 
 class NightlyRestartReceiver : BroadcastReceiver() {
@@ -104,5 +110,11 @@ object NightlyAlarm {
         am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending(context))
       }
     } catch (t: Throwable) { Log.w("StrawbossNightly", "schedule failed", t) }
+  }
+
+  fun cancel(context: Context) {
+    try {
+      (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pending(context))
+    } catch (t: Throwable) { /* best-effort */ }
   }
 }

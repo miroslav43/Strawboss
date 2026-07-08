@@ -222,6 +222,10 @@ object DeviceOwnerPolicies {
     val dpm = dpm(context)
     if (!dpm.isDeviceOwnerApp(PKG)) return
     val admin = admin(context)
+    // Tear down the always-on anchor + ALL keep-alive alarms first, so a
+    // decommissioned phone is not left haunted by the watchdog re-arming
+    // PresenceService and the nightly self-kill (alarms outlive ownership).
+    try { PresenceService.stop(context) } catch (t: Throwable) {}
     try { dpm.setUninstallBlocked(admin, PKG, false) } catch (t: Throwable) {}
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       try { dpm.setUserControlDisabledPackages(admin, emptyList()) } catch (t: Throwable) {}
@@ -1104,7 +1108,11 @@ class PresenceService : Service() {
     }
 
     fun stop(ctx: Context) {
+      // Cancel ALL three keep-alive alarms — otherwise a logged-out / non-owner
+      // (or decommissioned) phone keeps getting woken by the watchdog + nightly kill.
       try { PresenceAlarm.cancel(ctx) } catch (t: Throwable) {}
+      try { WatchdogAlarm.cancel(ctx) } catch (t: Throwable) {}
+      try { NightlyAlarm.cancel(ctx) } catch (t: Throwable) {}
       try { ctx.stopService(Intent(ctx, PresenceService::class.java)) } catch (t: Throwable) {}
     }
   }
@@ -1307,6 +1315,12 @@ object WatchdogAlarm {
       }
     } catch (t: Throwable) { Log.w("StrawbossWatchdog", "schedule failed", t) }
   }
+
+  fun cancel(context: Context) {
+    try {
+      (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pending(context))
+    } catch (t: Throwable) { /* best-effort */ }
+  }
 }
 
 class NightlyRestartReceiver : BroadcastReceiver() {
@@ -1354,6 +1368,12 @@ object NightlyAlarm {
         am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending(context))
       }
     } catch (t: Throwable) { Log.w("StrawbossNightly", "schedule failed", t) }
+  }
+
+  fun cancel(context: Context) {
+    try {
+      (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pending(context))
+    } catch (t: Throwable) { /* best-effort */ }
   }
 }
 `;
@@ -1620,57 +1640,75 @@ function withKotlinSources(config) {
 }
 
 /**
- * Patch MainApplication.kt (idempotent, both patches independent):
+ * Patch MainApplication.kt:
  *   1. Register DeviceOwnerPackage in getPackages().
- *   2. Start the keep-alive PresenceService from onCreate on EVERY process start.
+ *   2. Start the keep-alive PresenceService + arm the safety nets from onCreate on
+ *      EVERY process start.
+ * Both anchors throw LOUDLY if the Expo/RN template drifts (a silent no-op would ship
+ * a fleet APK with the device-owner always-on autostart missing). The onCreate block
+ * is delimited and stripped-then-reinserted every prebuild, so a plugin upgrade never
+ * leaves a stale block (an older build injected only PresenceService.start, no nets).
  */
 function patchMainApplication(javaDir) {
   const mainAppPath = path.join(javaDir, 'MainApplication.kt');
   if (!fs.existsSync(mainAppPath)) return;
   let src = fs.readFileSync(mainAppPath, 'utf8');
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   // 1. Register DeviceOwnerPackage in getPackages().
-  if (!src.includes('DeviceOwnerPackage()')) {
+  if (!src.includes('add(DeviceOwnerPackage())')) {
     const anchor = 'PackageList(this).packages.apply {';
     const idx = src.indexOf(anchor);
-    if (idx !== -1) {
-      const insertAt = idx + anchor.length;
-      src =
-        src.slice(0, insertAt) + '\n              add(DeviceOwnerPackage())' + src.slice(insertAt);
+    if (idx === -1) {
+      throw new Error(
+        `[withDeviceOwner] MainApplication getPackages anchor not found ("${anchor}"). ` +
+          'Expo/RN template changed — update the anchor, or the native device-owner module ' +
+          'would be silently unregistered.',
+      );
     }
+    const insertAt = idx + anchor.length;
+    src =
+      src.slice(0, insertAt) + '\n              add(DeviceOwnerPackage())' + src.slice(insertAt);
   }
 
-  // 2. Native always-on anchor: bring the keep-alive PresenceService up on every
-  //    process start (cold / headless / post-kill), with NO dependency on the JS
-  //    runtime or a logged-in session. This is the durable fix for device-owner
-  //    fleet phones silently dropping offline when the JS/auth-driven start path
-  //    (React effect requiring auth, or boot-rearm requiring a token) never ran.
-  //    Device-owner only; no-op otherwise. DeviceOwnerPolicies + PresenceService
-  //    are in the same package, so no imports are needed.
-  if (!src.includes('PresenceService.start(this)')) {
-    const anchor2 = 'ApplicationLifecycleDispatcher.onApplicationCreate(this)';
-    const idx2 = src.indexOf(anchor2);
-    if (idx2 !== -1) {
-      const insertAt2 = idx2 + anchor2.length;
-      const inject =
-        '\n' +
-        '    // StrawBoss always-on anchor: start the keep-alive foreground service on\n' +
-        '    // every process start, independent of JS/auth, so a device-owner fleet phone\n' +
-        '    // is never left without its FGS anchor and cannot silently freeze offline.\n' +
-        '    // Also arm the OS-driven safety nets (watchdog + nightly restart) directly\n' +
-        '    // here, so they survive even if PresenceService.start() itself fails.\n' +
-        '    try {\n' +
-        '      if (DeviceOwnerPolicies.isDeviceOwner(this)) {\n' +
-        '        PresenceService.start(this)\n' +
-        '        WatchdogAlarm.schedule(this)\n' +
-        '        NightlyAlarm.schedule(this)\n' +
-        '      }\n' +
-        '    } catch (t: Throwable) {\n' +
-        '      android.util.Log.w("StrawbossBoot", "onCreate presence autostart failed", t)\n' +
-        '    }';
-      src = src.slice(0, insertAt2) + inject + src.slice(insertAt2);
-    }
+  // 2. Native always-on anchor in onCreate — delimited, strip-and-reinsert.
+  const BEGIN = '    // >>> strawboss-always-on-anchor (generated by withDeviceOwner.js) >>>';
+  const END = '    // <<< strawboss-always-on-anchor <<<';
+  // Strip a prior delimited block...
+  src = src.replace(new RegExp(`\\n[ \\t]*${esc(BEGIN)}[\\s\\S]*?${esc(END)}`, 'g'), '');
+  // ...and any pre-delimiter legacy block (comment header → its catch's closing brace).
+  src = src.replace(
+    /\n[ \t]*\/\/ StrawBoss always-on anchor:[\s\S]*?android\.util\.Log\.w\("StrawbossBoot"[\s\S]*?\n[ \t]*\}/g,
+    '',
+  );
+  const anchor2 = 'ApplicationLifecycleDispatcher.onApplicationCreate(this)';
+  const idx2 = src.indexOf(anchor2);
+  if (idx2 === -1) {
+    throw new Error(
+      `[withDeviceOwner] MainApplication onCreate anchor not found ("${anchor2}"). ` +
+        'Expo/RN template changed — update the anchor, or the device-owner always-on ' +
+        'autostart would be SILENTLY missing from the fleet build.',
+    );
   }
+  const insertAt2 = idx2 + anchor2.length;
+  const inject =
+    '\n' +
+    BEGIN +
+    '\n' +
+    '    // Start the keep-alive PresenceService on EVERY process start (cold / headless /\n' +
+    '    // post-kill), independent of JS + auth, and arm the OS-driven safety nets, so a\n' +
+    '    // device-owner fleet phone is never left without its FGS anchor.\n' +
+    '    try {\n' +
+    '      if (DeviceOwnerPolicies.isDeviceOwner(this)) {\n' +
+    '        PresenceService.start(this)\n' +
+    '        WatchdogAlarm.schedule(this)\n' +
+    '        NightlyAlarm.schedule(this)\n' +
+    '      }\n' +
+    '    } catch (t: Throwable) {\n' +
+    '      android.util.Log.w("StrawbossBoot", "onCreate presence autostart failed", t)\n' +
+    '    }\n' +
+    END;
+  src = src.slice(0, insertAt2) + inject + src.slice(insertAt2);
 
   fs.writeFileSync(mainAppPath, src);
 }

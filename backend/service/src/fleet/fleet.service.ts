@@ -676,27 +676,37 @@ export class FleetService {
    * killed process, which re-arms the keep-alive PresenceService via onCreate.
    * Called by the presence-deadman BullMQ job (~every 2 min). Best-effort.
    */
-  async wakeStaleDeviceOwners(staleMinutes = 4): Promise<{ scanned: number; woken: number }> {
+  async wakeStaleDeviceOwners(
+    staleMinutes = 4,
+  ): Promise<{ scanned: number; woken: number; pruned: number }> {
+    // Require last_checkin_at IS NOT NULL: a push_token only exists after a check-in,
+    // so a genuinely never-seen row is skipped rather than FCM-spammed forever.
     const rows = (await this.drizzleProvider.db.execute(sql`
       SELECT push_token AS "pushToken"
       FROM devices
       WHERE is_device_owner = true
         AND deleted_at IS NULL
         AND push_token IS NOT NULL
-        AND (
-          last_checkin_at IS NULL
-          OR last_checkin_at < now() - (${staleMinutes} * interval '1 minute')
-        )
+        AND last_checkin_at IS NOT NULL
+        AND last_checkin_at < now() - (${staleMinutes} * interval '1 minute')
     `)) as unknown as { pushToken: string | null }[];
     const tokens = rows.map((r) => r.pushToken).filter((t): t is string => !!t);
-    if (tokens.length > 0) {
-      await this.fleetPushService.sendPresenceWake(tokens);
-      this.winston.log('flow', 'Presence dead-man woke stale device-owners', {
-        context: 'FleetService',
-        woken: tokens.length,
-      });
+    if (tokens.length === 0) return { scanned: rows.length, woken: 0, pruned: 0 };
+
+    // sendPresenceWake returns tokens FCM reports as permanently dead — prune them so
+    // a factory-reset/uninstalled phone stops being re-woken every scan.
+    const dead = await this.fleetPushService.sendPresenceWake(tokens);
+    for (const t of dead) {
+      await this.drizzleProvider.db.execute(
+        sql`UPDATE devices SET push_token = NULL WHERE push_token = ${t}`,
+      );
     }
-    return { scanned: rows.length, woken: tokens.length };
+    this.winston.log('flow', 'Presence dead-man woke stale device-owners', {
+      context: 'FleetService',
+      woken: tokens.length,
+      prunedDeadTokens: dead.length,
+    });
+    return { scanned: rows.length, woken: tokens.length, pruned: dead.length };
   }
 
   /**

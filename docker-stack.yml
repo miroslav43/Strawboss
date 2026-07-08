@@ -39,9 +39,14 @@ services:
       - RESEND_FROM=${RESEND_FROM}
       # Optional raster logo URL for the confirmation email header (see .env.example).
       - EMAIL_LOGO_URL=${EMAIL_LOGO_URL}
+      # FCM sender credential for OTA-accel + presence dead-man wake pushes. The
+      # service-account JSON is bind-mounted read-only below (never baked into the
+      # image / committed). Path is the in-container mount point.
+      - FIREBASE_SERVICE_ACCOUNT_FILE=/app/firebase-sa.json
     volumes:
       - /srv/apps/Strawboss/logs:/app/logs
       - /srv/apps/Strawboss/uploads:/app/uploads
+      - /srv/apps/Strawboss/strawboss-e8de9-firebase-adminsdk-fbsvc-825c42790e.json:/app/firebase-sa.json:ro
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3001/api/v1/health']
       interval: 10s

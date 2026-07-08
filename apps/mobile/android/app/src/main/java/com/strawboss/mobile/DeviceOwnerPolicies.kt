@@ -154,6 +154,10 @@ object DeviceOwnerPolicies {
     val dpm = dpm(context)
     if (!dpm.isDeviceOwnerApp(PKG)) return
     val admin = admin(context)
+    // Tear down the always-on anchor + ALL keep-alive alarms first, so a
+    // decommissioned phone is not left haunted by the watchdog re-arming
+    // PresenceService and the nightly self-kill (alarms outlive ownership).
+    try { PresenceService.stop(context) } catch (t: Throwable) {}
     try { dpm.setUninstallBlocked(admin, PKG, false) } catch (t: Throwable) {}
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       try { dpm.setUserControlDisabledPackages(admin, emptyList()) } catch (t: Throwable) {}

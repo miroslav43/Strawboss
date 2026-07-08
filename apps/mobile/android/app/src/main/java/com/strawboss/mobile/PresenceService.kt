@@ -113,7 +113,11 @@ class PresenceService : Service() {
     }
 
     fun stop(ctx: Context) {
+      // Cancel ALL three keep-alive alarms — otherwise a logged-out / non-owner
+      // (or decommissioned) phone keeps getting woken by the watchdog + nightly kill.
       try { PresenceAlarm.cancel(ctx) } catch (t: Throwable) {}
+      try { WatchdogAlarm.cancel(ctx) } catch (t: Throwable) {}
+      try { NightlyAlarm.cancel(ctx) } catch (t: Throwable) {}
       try { ctx.stopService(Intent(ctx, PresenceService::class.java)) } catch (t: Throwable) {}
     }
   }

@@ -32,19 +32,23 @@ class BootReceiver : BroadcastReceiver() {
       "com.htc.intent.action.QUICKBOOT_POWERON" -> {
         // Keep the CPU awake until the service is up (per RN HeadlessJsTaskService docs).
         HeadlessJsTaskService.acquireWakeLockNow(context)
-        try {
-          ContextCompat.startForegroundService(
-            context,
-            Intent(context, PresenceService::class.java)
-          )
-        } catch (t: Throwable) {
-          // Best-effort — the location-typed BootRearmService below is the
-          // primary recovery path and does not depend on this succeeding.
+        // Device-owner only (match MainApplication.onCreate): an ex-owner / non-owner
+        // phone must NOT be re-armed with the always-on anchor + alarms on every boot.
+        if (DeviceOwnerPolicies.isDeviceOwner(context)) {
+          try {
+            ContextCompat.startForegroundService(
+              context,
+              Intent(context, PresenceService::class.java)
+            )
+          } catch (t: Throwable) {
+            // Best-effort — the location-typed BootRearmService below is the
+            // primary recovery path and does not depend on this succeeding.
+          }
+          // Arm the OS-driven safety nets (defined in withDeviceOwner's Watchdog.kt,
+          // same package) so they survive a reboot / OTA even before any JS runs.
+          try { WatchdogAlarm.schedule(context) } catch (t: Throwable) {}
+          try { NightlyAlarm.schedule(context) } catch (t: Throwable) {}
         }
-        // Arm the OS-driven safety nets (defined in withDeviceOwner's Watchdog.kt,
-        // same package) so they survive a reboot / OTA even before any JS runs.
-        try { WatchdogAlarm.schedule(context) } catch (t: Throwable) {}
-        try { NightlyAlarm.schedule(context) } catch (t: Throwable) {}
         try {
           ContextCompat.startForegroundService(
             context,
