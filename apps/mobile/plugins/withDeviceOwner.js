@@ -1027,7 +1027,16 @@ class PresenceService : Service() {
   }
 
   override fun onDestroy() {
-    PresenceAlarm.cancel(this)
+    // Deliberately do NOT cancel the presence alarm here. onDestroy fires on an
+    // UNEXPECTED FGS teardown (prolonged Doze / OEM / a SPECIAL_USE FGS timeout) as
+    // well as on an intentional stop. Cancelling the wake alarm on an unexpected
+    // teardown removes the ONLY thing that can wake a frozen (or killed) process to
+    // re-assert this service — the root cause of multi-hour offline gaps where the
+    // phone stays powered but the app freezes with no alarm to revive it. The alarm
+    // is exact + allow-while-idle on a battery-exempt device owner (fires ~60s even
+    // in Doze) and its receiver re-asserts PresenceService, so leaving it armed makes
+    // the anchor self-heal. It is cancelled ONLY via the companion stop() — the
+    // intentional logout / non-owner path.
     super.onDestroy()
   }
 
