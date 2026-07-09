@@ -115,8 +115,9 @@ export class TripsController {
   auxiliaryAtLoader(
     @Param('loaderMachineId') loaderMachineId: string,
     @CurrentUser() user: RequestUser,
+    @Query('dateFrom') dateFrom?: string,
   ) {
-    return this.tripsService.listAuxiliaryForLoader(loaderMachineId, user.organizationId);
+    return this.tripsService.listAuxiliaryForLoader(loaderMachineId, user.organizationId, dateFrom);
   }
 
   @Post(':id/start-loading')

@@ -1227,11 +1227,15 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
-   * Open auxiliary trips assigned to a loader machine — independent of GPS
-   * distance (the external truck has no device, so it never appears in the
-   * trucks-at-loader proximity query). Drives the mobile loader's AUX cards.
+   * Open auxiliary trips currently assigned to a loader machine — independent
+   * of GPS distance (the external truck has no device, so it never appears in
+   * the trucks-at-loader proximity query). Drives the mobile loader's AUX
+   * cards. Scoped to `dateFrom` (same day boundary the "Încărcări" tab uses
+   * via `useMyTrucksToLoad`'s `dateFrom=startOfDayRomaniaISO()`) so a trip
+   * whose task was left open across days — or that stalled in `loading` and
+   * was never picked up — doesn't linger on the tab forever.
    */
-  async listAuxiliaryForLoader(loaderMachineId: string, orgId: string | null) {
+  async listAuxiliaryForLoader(loaderMachineId: string, orgId: string | null, dateFrom?: string) {
     const rows = await this.drizzleProvider.db.execute(
       sql`SELECT
             t.id, t.trip_number AS "tripNumber", t.status,
@@ -1256,6 +1260,7 @@ export class TripsService implements OnModuleInit {
             AND t.deleted_at IS NULL
             AND t.status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
             ${orgId ? sql`AND t.organization_id = ${orgId}::uuid` : sql``}
+            ${dateFrom ? sql`AND t.created_at >= ${dateFrom}` : sql``}
           ORDER BY t.created_at ASC`,
     );
     return rows as unknown as Record<string, unknown>[];

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { mobileApiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store';
+import { startOfDayRomaniaISO } from '@/lib/date';
 
 export interface AuxiliaryTrip {
   id: string;
@@ -39,10 +40,14 @@ export function useAuxiliaryTrips(options: Options = {}) {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const loaderMachineId = options.loaderMachineId ?? assignedMachineId;
 
+  const dateFrom = startOfDayRomaniaISO();
+
   return useQuery<AuxiliaryTrip[]>({
-    queryKey: ['auxiliary-trips-at-loader', loaderMachineId],
+    queryKey: ['auxiliary-trips-at-loader', loaderMachineId, dateFrom],
     queryFn: () =>
-      mobileApiClient.get<AuxiliaryTrip[]>(`/api/v1/trips/auxiliary/at-loader/${loaderMachineId}`),
+      mobileApiClient.get<AuxiliaryTrip[]>(
+        `/api/v1/trips/auxiliary/at-loader/${loaderMachineId}?dateFrom=${encodeURIComponent(dateFrom)}`,
+      ),
     enabled: !!loaderMachineId,
     refetchInterval: options.pollMs ?? 30_000,
   });
