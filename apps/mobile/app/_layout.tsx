@@ -32,6 +32,7 @@ import { cleanupOldMobileLogFiles, mobileLogger } from '@/lib/logger';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import {
   registerForPushNotifications,
+  registerBackgroundNotificationTask,
   addNotificationListener,
   addNotificationResponseListener,
 } from '@/lib/notifications';
@@ -409,6 +410,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // heartbeat pattern (startHeartbeat / stopHeartbeat) but is not paused on
   // background because it piggybacks on the device-owner foreground service.
   useEffect(() => {
+    // Activate the FCM background-wake task so the backend presence dead-man can
+    // pierce deep Doze (high-priority data message → REMOTE_NOTIFICATION_TASK →
+    // check-in). Unconditional + idempotent; the task itself is defined at the
+    // bundle entry (register-background-tasks.ts).
+    void registerBackgroundNotificationTask();
     void runDeviceCheckin();
     const checkinTimer = setInterval(() => {
       void runDeviceCheckin();

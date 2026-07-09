@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { REMOTE_NOTIFICATION_TASK } from './remote-notification-task';
 
 /**
  * Configure notification handler defaults.
@@ -105,6 +106,30 @@ export async function registerForPushNotifications(): Promise<string | null> {
         err instanceof Error ? err.message : String(err),
       );
     return null;
+  }
+}
+
+/**
+ * Activate the background FCM data-message task with expo-notifications so incoming
+ * pushes — including data-only presence-wakes from the backend dead-man — are dispatched
+ * to `REMOTE_NOTIFICATION_TASK` even when the app is backgrounded or terminated. The task
+ * is DEFINED at the bundle entry (remote-notification-task.ts via
+ * register-background-tasks.ts); this call registers it with expo-task-manager.
+ *
+ * Called UNCONDITIONALLY on launch (NOT gated on operator auth): the dead-man wakes an
+ * idle device-owner phone regardless of login, and the check-in it triggers is public.
+ * Idempotent (re-registering the same task is a safe no-op) and best-effort (a failure
+ * here — e.g. missing FCM credentials in a dev build — never blocks launch).
+ */
+export async function registerBackgroundNotificationTask(): Promise<void> {
+  try {
+    await Notifications.registerTaskAsync(REMOTE_NOTIFICATION_TASK);
+  } catch (err) {
+    if (__DEV__)
+      console.warn(
+        '[StrawBoss] registerTaskAsync failed:',
+        err instanceof Error ? err.message : String(err),
+      );
   }
 }
 

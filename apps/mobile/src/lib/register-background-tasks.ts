@@ -6,3 +6,4 @@ import './location';
 import './background-sync';
 import './boot-rearm';
 import './presence-checkin-task';
+import './remote-notification-task';

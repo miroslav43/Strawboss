@@ -37,7 +37,7 @@ import { mobileLogger } from './logger';
 /** Must match the task name used by the native PresenceCheckinService. */
 export const PRESENCE_CHECKIN_TASK_NAME = 'strawboss-presence-checkin';
 
-async function presenceCheckin(): Promise<void> {
+export async function presenceCheckin(): Promise<void> {
   // 1. Fleet check-in is PUBLIC (no session needed): keeps devices.last_seen
   //    fresh AND delivers/applies any pending Tailscale / OTA / remote command.
   try {
