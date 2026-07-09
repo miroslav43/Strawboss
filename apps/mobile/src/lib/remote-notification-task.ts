@@ -26,6 +26,7 @@
  * so a wake and an alarm tick are indistinguishable downstream (one source of truth).
  */
 import * as TaskManager from 'expo-task-manager';
+import * as Notifications from 'expo-notifications';
 import { presenceCheckin } from './presence-checkin-task';
 import { isDeviceOwner, startPresenceService } from './device-owner';
 import { mobileLogger } from './logger';
@@ -100,4 +101,23 @@ TaskManager.defineTask(REMOTE_NOTIFICATION_TASK, async ({ data, error }) => {
       message: err instanceof Error ? err.message : String(err),
     });
   }
+});
+
+// PERSIST the registration FROM THE BUNDLE ENTRY (headless-safe). `defineTask` above
+// only teaches the CURRENT JS runtime how to run the task; the native FCM dispatcher
+// (ExpoFirebaseMessagingService → runTaskManagerTasks) decides WHETHER to spin up a
+// runtime at all by reading `registerTaskAsync`'s persisted SharedPreferences entry.
+// Registering only from the Activity-mounted `_layout` useEffect would leave a
+// freshly-OTA'd phone that is never foregrounded — the dead-man's exact target —
+// with no persisted entry, so its first `presence_wake` would be a silent no-op.
+// This module loads at the true bundle entry (index.js → register-background-tasks.ts),
+// which the boot check-in headless task runs BEFORE any dead-man wake is needed, so the
+// registration is persisted without an Activity. Idempotent + best-effort; the
+// `_layout` call remains as a redundant reinforcement (covers a native-init race here).
+// Expo's documented pattern: define + register in the module scope of an early-required
+// module. See https://docs.expo.dev/versions/latest/sdk/notifications/#registertaskasync.
+void Notifications.registerTaskAsync(REMOTE_NOTIFICATION_TASK).catch((err) => {
+  mobileLogger.warn('registerTaskAsync (bundle entry) failed', {
+    message: err instanceof Error ? err.message : String(err),
+  });
 });
