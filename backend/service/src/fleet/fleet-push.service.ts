@@ -211,15 +211,24 @@ export class FleetPushService {
           body: JSON.stringify({ message: { token, data, android: { priority: 'high' } } }),
         });
         if (res.ok) return;
-        // 404 = UNREGISTERED (token dead); 400 = INVALID_ARGUMENT (often a malformed token).
+        // 404 = the token is no longer registered (UNREGISTERED / NOT_FOUND) — always
+        // safe to prune.
         if (res.status === 404) {
           dead.push(token);
           return;
         }
         const bodyText = await res.text().catch(() => '');
+        // 400 is ambiguous: FCM returns INVALID_ARGUMENT for a bad TOKEN *and* for a
+        // malformed message. Only prune when the error specifically implicates the token
+        // (a field violation on `message.token`, an unregistered/legacy token, or a
+        // sender-id mismatch) — NEVER on a bare INVALID_ARGUMENT, or a future
+        // payload-shape bug would 400 for every token and wipe the whole fleet's
+        // push_token, disabling the dead-man until every phone re-checks-in.
         if (
           res.status === 400 &&
-          /UNREGISTERED|INVALID_ARGUMENT|registration-token/i.test(bodyText)
+          /message\.token|registration-token-not-registered|SENDER_ID_MISMATCH|UNREGISTERED/i.test(
+            bodyText,
+          )
         ) {
           dead.push(token);
           return;
