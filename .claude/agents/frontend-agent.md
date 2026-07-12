@@ -3,7 +3,7 @@ name: frontend-agent
 description: Specialist in the Next.js admin dashboard -- App Router, TanStack Query, i18n, Leaflet maps
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-06-28
+updated: 2026-07-12
 ---
 
 # StrawBoss Frontend Agent
@@ -37,6 +37,7 @@ apps/admin-web/src/app/
     reports/        -- Reporting dashboards
     settings/       -- App settings
     tasks/          -- Daily task planning
+    trip-requests/  -- Trip request list; per-row Aviz + CMR-scan document upload (AvizUploadModal, CmrUploadModal)
     trips/          -- Trip management
   super-admin/
     (dashboard)/    -- Super-admin only pages (role gate in layout.tsx)
@@ -84,6 +85,7 @@ return <h1>{t('trips.title')}</h1>;
 - Locale persistence: `localStorage` key `strawboss-locale`.
 - Profile-driven: `ProfileLocaleHydration` component sets locale from user profile on load.
 - RULE: Every user-visible string MUST use `t()`. No hardcoded English in JSX.
+- RULE: Labels derived from a `@strawboss/types` enum (e.g. `DocumentType`) must be built as `` t(`namespace.subkey.${value}`) `` inside the component (via `useMemo`, keyed on `t`) so they re-resolve on locale change — never a hardcoded `Record<Enum, string>` map at module scope. See `documents/page.tsx` and `DocumentViewer.tsx` (`documents.types.*`, `documents.allTypes`), which replaced a hardcoded English map this way.
 
 ### Shared components (`src/components/shared/`)
 
@@ -95,7 +97,8 @@ return <h1>{t('trips.title')}</h1>;
 - `ParcelCard` -- Parcel info card.
 - `SignatureDisplay` -- Renders base64 signature images.
 - `TripTimeline` -- Visual timeline of trip state transitions.
-- `DocumentViewer` -- PDF/image document viewer.
+- `DocumentViewer` -- PDF/image document viewer. Type label via `` t(`documents.types.${doc.documentType}`) ``, covering all `DocumentType` values including `cmr_scan`.
+- `UserPresenceDot` -- green/grey presence dot; default online window `DEFAULT_ONLINE_WINDOW_MS = 180_000` (180 s), override via `thresholdMs` prop.
 
 ### Map components (`src/components/map/`)
 
@@ -155,6 +158,16 @@ The app-online dot (green/grey) and the Tailscale dot are separate controls and 
 
 **Releases page — APK filename:** render `r.apkKey.split('/').pop()` as truncated monospace below the version number in the release list table. Use `title={...}` for the full filename on hover.
 
+### Trip Requests — document upload modals (`AvizUploadModal`, `CmrUploadModal`)
+
+`src/app/[slug]/(dashboard)/trip-requests/page.tsx` renders per-row `RowActions` for two independent document uploads — Aviz (`FileText` icon, `AvizUploadModal.tsx`) and the scanned paper CMR (`ScanLine` icon, `CmrUploadModal.tsx`, the admin override for the phone-scanned CMR — see [[mobile]]). Both:
+
+- Are PDF-only, single-document-per-request (upload replaces the prior one; confirm via `window.confirm()` before overwriting an existing file).
+- Enforce a client-side size cap that **mirrors the backend constant**: Aviz `MAX_UPLOAD_BYTES = 10 * 1024 * 1024` (`AVIZ_MAX_BYTES`), CMR `MAX_UPLOAD_BYTES = 15 * 1024 * 1024` (`CMR_SCAN_MAX_BYTES`). If you add another upload modal, read the backend limit constant in `backend/service/src/uploads/uploads.service.ts` rather than guessing.
+- Use the boolean flag on the `TripRequest` row (`hasAviz` / `hasCmrScan`, computed server-side) to flip the row button green — invalidate `queryKeys.tripRequests.all` on upload success, not just the per-request document query, or the button stays grey.
+
+**Accessible dialog pattern** (use for any new modal): `role="dialog"` + `aria-modal="true"` + `aria-labelledby={titleId}` (from `useId()`) on the panel; on mount, focus the close button (`useRef<HTMLButtonElement>` + `.focus()`) and remember `document.activeElement` to restore focus to it on unmount; listen for `Escape` on `document` to call `onClose`. Read `onClose` through a ref inside the mount `useEffect` so the effect only runs once. See `AvizUploadModal.tsx` / `CmrUploadModal.tsx` for the reference implementation.
+
 ### API client
 
 `@/lib/api.ts` exports `apiClient` -- a configured instance of `ApiClient` from `@strawboss/api`.
@@ -196,3 +209,4 @@ The admin-web runs as a Swarm service with a healthcheck on `GET /healthz`. When
 9. Add navigation links for new pages in `components/layout/Sidebar.tsx`.
 10. After making changes, run: `pnpm --filter @strawboss/admin-web build` to verify the build.
 11. After code changes, update `.claude/docs/admin-web.md` (and `agents/frontend-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.
+12. New modal dialogs must follow the accessible-dialog pattern (`role="dialog"`, `aria-modal`, `aria-labelledby`, focus-in on mount / focus-restore on unmount, `Escape` to close) — see `AvizUploadModal.tsx` / `CmrUploadModal.tsx`. New file-upload modals must mirror the backend's byte-size limit constant client-side rather than guessing a number.

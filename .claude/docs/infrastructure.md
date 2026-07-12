@@ -2,7 +2,7 @@
 type: doc
 title: "Infrastructure"
 created: 2026-04-16
-updated: 2026-06-28
+updated: 2026-07-12
 tags: [doc, devops, infra, docker, nginx, redis, fleet, tailscale]
 status: mature
 related:
@@ -120,6 +120,8 @@ TLS configuration:
 - HSTS: 31536000s with includeSubDomains
 
 Security headers: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`.
+
+**gzip (traffic diet F0)**: `gzip on`, `gzip_comp_level 5`, `gzip_min_length 1024`, `gzip_proxied any`, `gzip_vary on`, `gzip_types application/json application/geo+json text/plain`. The backend (Fastify, no `@fastify/compress`) proxies uncompressed JSON, so nginx does the compression at the edge — sync pull and parcels GeoJSON responses shrink 8-10x. `gzip_proxied any` is required because every response nginx serves here is itself a proxied response (from the backend or admin upstream); without it nginx would refuse to compress.
 
 Routing:
 - `= /api/client-log` -> `strawboss-admin:3000` (admin Next.js handles browser client-log batching).

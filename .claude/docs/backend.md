@@ -2,7 +2,7 @@
 type: doc
 title: "Backend Service (backend/service)"
 created: 2026-04-16
-updated: 2026-07-08
+updated: 2026-07-12
 tags: [doc, backend, layer, nestjs, drizzle, bullmq]
 status: mature
 related:
@@ -25,7 +25,7 @@ Entry point: `backend/service/src/main.ts` -- boots a `NestFastifyApplication`, 
 
 ## Module Structure
 
-The `AppModule` (`src/app.module.ts`) imports 31 feature modules:
+The `AppModule` (`src/app.module.ts`) imports 41 feature modules (plus dev-only `DevModule` outside production):
 
 | Module | Path | Purpose |
 |---|---|---|
@@ -43,6 +43,7 @@ The `AppModule` (`src/app.module.ts`) imports 31 feature modules:
 | `FuelLogsModule` | `src/fuel-logs/` | Fuel consumption logs + stats |
 | `ConsumableLogsModule` | `src/consumable-logs/` | Twine/consumable logs + stats |
 | `DocumentsModule` | `src/documents/` | Document registry + CMR sub-module |
+| `CmrScansModule` | `src/cmr-scans/` | Scanned *paper* CMR upload (loader photo scan or admin override), stored as `document_type: 'cmr_scan'`; see [[backend#CMR Scans]] |
 | `AlertsModule` | `src/alerts/` | Alert CRUD + BullMQ alert-evaluation processor |
 | `AuditModule` | `src/audit/` | `AuditInterceptor` + `AuditService` for change tracking |
 | `SyncModule` | `src/sync/` | Mobile push/pull sync + cleanup processor |
@@ -116,9 +117,22 @@ The resolved user is attached to `request.user` as `RequestUser { id, email, rol
 - `POST /trips/:id/resolve-dispute` -- @Roles(admin) -- disputed -> completed or delivered
 - `POST /trips/:id/next-iteration` -- @Roles(admin, loader_operator) -- create next iteration trip for same course (Plan C multi-iteration)
 - `POST /trips/:id/recall-loader` -- @Roles(admin, dispatcher) -- send loader-recall push when truck is idle (Plan C)
+- `GET /trips/auxiliary/at-loader/:loaderMachineId` -- any authenticated -- open auxiliary trips (`planned`/`loading`) assigned to a loader machine, independent of GPS proximity (the external truck carries no device, so it never appears in the trucks-at-loader query); drives the mobile loader's AUX cards. Optional `dateFrom` query param (`TripsService.listAuxiliaryForLoader`) scopes to `created_at >= dateFrom` -- mobile passes `startOfDayRomaniaISO()` (same boundary `useMyTrucksToLoad` uses for the "Încărcări" tab) so a trip stalled in `loading` or left open across days stops lingering on the tab forever.
 
 ### CMR (`src/documents/cmr/cmr.controller.ts`)
 - `POST /trips/:tripId/generate-cmr` -- @Roles(admin, dispatcher) -- on-demand CMR PDF generation
+
+### CMR Scans (`src/cmr-scans/`)
+
+The *scanned paper* CMR -- the physical transport document the external driver brings, photographed by the loader at the end of an auxiliary load. Own `document_type: 'cmr_scan'`, deliberately distinct from the Puppeteer-generated `cmr` above (trip-scoped, `trip_request_id` NULL); the two coexist on the same trip without competing for a document slot. A leaf module (not a method on `TripsService`): the mobile route needs `UploadsService` + `DocumentsService`, `TripsModule` imports neither, and `TripRequestsModule` already imports `TripsModule`, so hanging it off either would need a `forwardRef`.
+
+- `POST /cmr-scans/trip/:tripId` -- @Roles(admin, loader_operator) -- mobile: loader uploads the PDF built on-device from the document-scanner shots, addressed by trip
+- `POST /cmr-scans/trip-request/:requestId` -- @Roles(admin, dispatcher) -- admin override: upload/replace the CMR straight from the trip-requests page
+- `GET /cmr-scans/trip-request/:requestId` -- @Roles(admin, dispatcher) -- list scans filed against a request
+
+Both writers funnel into `CmrScansService.attachScan()` -- the single place that decides how a scan is stored. "One scan per request" is enforced by retiring the previous `cmr_scan` document before inserting the replacement, both inside a transaction guarded by a per-request `pg_advisory_xact_lock(hashtext('cmr_scan:' + requestId))` so a loader auto-sync racing an admin override can't leave two active rows (or zero). An aux trip with no `trip_request_id` (shouldn't happen, but defensively handled) still keeps the PDF via a plain insert and logs a `winston.warn`, but can't light up the green button on the requests page. The freshly-inserted row is returned directly -- `DocumentsService.create()` now `RETURNING`s the camelCase column projection (not `*`) instead of the caller re-reading via `list()`, because a re-read filtered only by request/type could hand back a *different* trip's scan (leaking its metadata and signed link). `DocumentsService.create()` / `softDeleteByTripRequest()` both accept an optional Drizzle transaction executor so the retire+insert can run atomically.
+
+`UploadsService.saveCmrScan()` (max `CMR_SCAN_MAX_BYTES` = 15 MB, vs 10 MB for `saveAviz()`; both share a `savePdf()` helper) sniffs the leading `%PDF-` magic bytes rather than trusting the client-declared MIME, and accepts an optional UUID-validated `scanId` as the storage filename (`cmr-scans/<uuid>.pdf`) so a sync-queue retry after an ambiguous upload failure overwrites the same blob instead of orphaning one; a non-UUID value is ignored and falls back to a random filename. `trip_requests` list rows (`TR_COLS` in `trip-requests.service.ts`) expose `hasCmrScan` (EXISTS on `documents.document_type = 'cmr_scan'`) alongside `hasAviz`, driving the green CMR-scan button on the admin requests page.
 
 ### Sync (`src/sync/sync.controller.ts`)
 - `POST /sync/push` -- any authenticated -- push offline mutations (insert/update/delete) with idempotency
@@ -361,6 +375,8 @@ When `createDeploymentSchema.scheduledAt` is set, a BullMQ delayed job is added 
 ### FCM acceleration push (`fleet-push.service.ts`)
 
 `FleetPushService` sends a data-only FCM push (`type: ota_checkin`) after deployment activation to prompt devices to check in sooner than their normal poll interval. `firebase-admin` is **not** a hard dependency — it is dynamically imported via a non-literal specifier (`const pkg = 'firebase-admin'; await import(pkg)`). If the `FIREBASE_SERVICE_ACCOUNT` env var is absent or the package is unavailable, the service logs once at `info` and becomes a no-op. **Poll is the authoritative delivery mechanism.**
+
+The same low-level `sendDataWake()` also backs `sendPresenceWake()` (the presence dead-man wake, `type: presence_wake`, called from `fleet.service.ts`), which returns the list of tokens FCM reports as permanently invalid so the caller can prune `devices.push_token`. Pruning is deliberately conservative: a **404** (UNREGISTERED/NOT_FOUND) is always pruned; a **400** is only pruned when the response body specifically implicates the token (`message.token` field violation, `registration-token-not-registered`, `SENDER_ID_MISMATCH`, `UNREGISTERED`) — a bare `INVALID_ARGUMENT` is never pruned on its own, because FCM also returns that code for a malformed *message*, and treating it as token-dead would let a future payload-shape bug null the whole fleet's `push_token` in one pass, disabling the dead-man wake until every phone re-checks in.
 
 ### Mobile log viewer (`GET /super-admin/devices/:id/logs`)
 

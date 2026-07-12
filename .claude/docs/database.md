@@ -2,7 +2,7 @@
 type: doc
 title: "Database Schema"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-07-12
 tags: [doc, database, schema, postgres, postgis, rls]
 status: mature
 related:
@@ -21,7 +21,7 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 - `uuid-ossp` -- UUID generation (`uuid_generate_v4()`)
 - `postgis` -- Spatial types and functions
 
-## Enums (00001, 00009, 00015, 00017, 00055)
+## Enums (00001, 00009, 00015, 00017, 00055, 00083)
 
 | Enum | Values |
 |---|---|
@@ -31,7 +31,7 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 | `trip_status` | `planned`, `loading`, `loaded`, `in_transit`, `arrived`, `delivering`, `delivered`, `completed`, `cancelled`, `disputed` |
 | `parcel_status` | `active`, `inactive` |
 | `consumable_type` | `twine`, `net_wrap`, `silage_film`, `other` |
-| `document_type` | `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report` |
+| `document_type` | `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `cmr_scan` (added 00083 -- the photographed *paper* CMR from an auxiliary load's external driver, distinct from the backend-generated `cmr`; both can coexist on one trip) |
 | `document_status` | `pending`, `generating`, `partial`, `generated`, `sent`, `failed` |
 | `alert_category` | `fraud`, `anomaly`, `maintenance`, `safety`, `system` |
 | `alert_severity` | `low`, `medium`, `high`, `critical` |

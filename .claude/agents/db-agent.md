@@ -3,6 +3,7 @@ name: db-agent
 description: Specialist in PostgreSQL + PostGIS -- migrations, RLS, spatial queries, sync versioning
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
+updated: 2026-07-12
 ---
 
 # StrawBoss Database Agent
@@ -53,6 +54,8 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 00055_fleet_devices.sql                    -- Fleet management + OTA: devices, app_releases, ota_deployments, device_ota_status; 4 new enums (ota_state, ota_deployment_status, release_status, ota_target_kind); server-authoritative tables (no sync_version); RLS defense-in-depth only (backend bypasses as table owner)
 00056_fleet_tailscale.sql                  -- Tailscale columns on devices (desired/applied/online/ip/hostname/last_seen/last_error) + singleton app_settings table (auth_key, tailnet, updated_at/by); RLS: no permissive policy, service-role only
 00057_fleet_tailscale_oauth_apk.sql        -- app_settings += tailscale_oauth_client_id/secret, tailscale_tag, tailscale_apk_key/sha256/size; OAuth enables per-device ephemeral keys; APK enables zero-touch Tailscale auto-install
+... (migrations 00058–00082 added in subsequent feature branches)
+00083_cmr_scan_document_type.sql           -- ALTER TYPE document_type ADD VALUE IF NOT EXISTS 'cmr_scan' -- the photographed *paper* CMR from an auxiliary load's external driver (PDF), distinct from the backend-generated 'cmr'; both can exist on the same trip. Single-statement file only -- a new enum label cannot be referenced by any other statement in the same transaction (PG 12+ restriction), so no index/CHECK/backfill was added (idx_documents_trip_request_id from 00076 already covers the lookups).
 ```
 
 ### Key enums (current values)
@@ -65,6 +68,7 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 - `harvest_status`: `planned`, `to_harvest`, `harvesting`, `partial_harvested`, `harvested`, `in_loading`, `loaded`, `completed` (extended 00042; monotonic ladder enforced by `trg_prevent_harvest_status_downgrade`)
 - `crop_type`: `grau`, `orz`, `rapita`, `plante_nutret` (added 00042)
 - `document_status`: `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
+- `document_type`: `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `cmr_scan` (added 00083 -- photographed paper CMR, distinct from the backend-generated `cmr`)
 
 ### Key design patterns
 
@@ -149,7 +153,7 @@ The backend checks this table before processing each sync mutation. If the key e
 
 ### Writing new migrations
 
-The next migration should be `supabase/migrations/00058_<descriptive_name>.sql` (current last: 00057).
+The next migration should be `supabase/migrations/00084_<descriptive_name>.sql` (current last: 00083).
 
 Rules:
 1. **Idempotent**: Safe to run multiple times.
@@ -158,6 +162,7 @@ Rules:
    - Policies: `DROP POLICY IF EXISTS ... ON ...; CREATE POLICY ...`
    - Functions: `CREATE OR REPLACE FUNCTION ...`
    - Columns: `DO $$ BEGIN ALTER TABLE ... ADD COLUMN ...; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`
+   - Enum values: `ALTER TYPE some_enum ADD VALUE IF NOT EXISTS 'new_value';` -- must be the **only** statement in the file (PG 12+ forbids referencing a newly-added enum label anywhere else in the same transaction, so no index/CHECK/backfill in that migration; add those in a follow-up migration if needed). See `00083_cmr_scan_document_type.sql`.
 
 2. **Enable RLS** on new tables: `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;`
 

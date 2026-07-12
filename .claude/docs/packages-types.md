@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/types"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-07-12
 tags: [doc, package, types, typescript]
 status: mature
 related:
@@ -138,10 +138,22 @@ Fields: `id`, `code`, `name`, `address`, `coords` (GeoPoint), `contactName`, `co
 
 Extends `Timestamps`, `SoftDelete`.
 
-**Enum `DocumentType`:** `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`
+**Enum `DocumentType`:** `cmr`, `cmr_scan`, `invoice`, `delivery_note`, `weight_ticket`, `report` — `cmr` is the CMR the backend generates itself (Puppeteer); `cmr_scan` is the physical paper CMR the loader photographs at the end of an auxiliary load, a separate artefact with its own slot rather than competing with the generated one.
 **Enum `DocumentStatus`:** `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
 
 Fields: `id`, `tripId`, `documentType`, `status`, `title`, `fileUrl`, `fileSizeBytes`, `mimeType`, `metadata` (JSONB), `generatedAt`, `sentAt`, `sentTo` (string array).
+
+### TripRequest (`entities/trip-request.ts`)
+
+Extends `Timestamps`, `SoftDelete`. An external pickup request submitted through the per-org public portal (`/<slug>/request`); on confirmation it spins up a one-time auxiliary truck (`machineId`) and, once assigned, an auxiliary trip (`tripId`). See [[packages-api]] for the `use-trip-requests.ts` hooks.
+
+**Enum `RequestStatus`:** `pending`, `confirmed`, `cancelled`
+
+Key fields: `organizationId`, `status`; requester (`requesterName/Phone/Email`, `companyName/Address/Cui`); their truck (`truckRegistrationPlate`, `truckMake/Model/CapacityTons`); their driver, no app account (`driverName/Phone/Email`); the ask (`cropType`, `quality`, `neededDate`, `tonsRequested`, `destinationAddress/Locality/Coords`); beneficiary-portal transporter fields (`beneficiaryId`, `trailerRegistrationPlate`, `transporterCui/Name/Address`); `notifyRecipients: NotifyRecipient[]` — denormalized snapshot of the selected contacts, fanned out (email + SMS) on confirm; `sourceDepotId` (pickup depot chosen by the dispatcher on confirm); linkage filled on confirm (`machineId`, `tripId`, `confirmedBy`, `confirmedAt`, `cancelledAt`, `cancellationReason`); read-only join enrichment (`machineMake/Model/Plate`, `tripNumber`, `sourceDepotName`, `confirmedByName`); `hasAviz?: boolean` (non-deleted `delivery_note` document exists); `hasCmrScan?: boolean` (non-deleted `cmr_scan` document exists — uploaded by the loader after an aux load, or overridden by an admin).
+
+`NotifyRecipient`: `{ name: string; phone: string | null; email: string | null }`.
+
+Related DTOs (same file): `CreateTripRequestDto` (public submission payload, no auth), `PortalInfo` (org name + allowed crop types, returned after portal code verification), `PublicSignInfo` (load summary shown to the driver on the public sign page).
 
 ### Alert (`entities/alert.ts`)
 

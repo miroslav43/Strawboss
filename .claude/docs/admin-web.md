@@ -2,7 +2,7 @@
 type: doc
 title: "Admin Web (apps/admin-web)"
 created: 2026-04-16
-updated: 2026-06-28
+updated: 2026-07-12
 tags: [doc, frontend, layer, nextjs]
 status: mature
 related:
@@ -12,6 +12,7 @@ related:
   - "[[backend]]"
 ---
 
+<!-- updated 2026-07-12: Trip Requests — CmrUploadModal (admin CMR-scan override) + accessible-dialog pattern in AvizUploadModal/CmrUploadModal; documents.types.* i18n replaces hardcoded type-label maps (adds cmr_scan); UserPresenceDot default window 90s -> 180s -->
 <!-- updated 2026-06-28: /healthz Swarm probe, preloadEntriesOnStart disabled, HOSTNAME=0.0.0.0 deploy note -->
 <!-- updated 2026-06-22: Fleet — Tailscale controls, nickname-first display, APK filename column -->
 
@@ -43,8 +44,9 @@ All routes live under `src/app/`. Two route groups: `(auth)` for login, `(dashbo
 | `/operations` | `(dashboard)/operations/page.tsx` | 100% | OperationStatusGrid -- operation overview |
 | `/alerts` | `(dashboard)/alerts/page.tsx` | 100% | AlertList with severity/category filters, acknowledge action |
 | `/reports` | `(dashboard)/reports/page.tsx` | 100% | Tabbed: Production, Costs, Operators with chart components |
-| `/documents` | `(dashboard)/documents/page.tsx` | 100% | Document list with type filters |
+| `/documents` | `(dashboard)/documents/page.tsx` | 100% | Document list with type filters (labels via i18n `documents.types.*`, includes `cmr_scan`) |
 | `/documents/[documentId]` | `(dashboard)/documents/[documentId]/page.tsx` | 100% | DocumentViewer for PDF/image preview |
+| `/trip-requests` | `(dashboard)/trip-requests/page.tsx` | 100% | Pending/closed trip request list; per-row Aviz + CMR-scan document upload (see Trip Requests below) |
 | `/accounts` | `(dashboard)/accounts/page.tsx` | 100% | Admin user management (list, create, edit, deactivate) |
 | `/settings` | `(dashboard)/settings/page.tsx` | 100% | Profile editing, password change, locale toggle, notification prefs |
 | `/deposits` | `(dashboard)/deposits/page.tsx` | 100% | Delivery destination management (Plan C — previously under `/delivery-destinations`) |
@@ -298,6 +300,19 @@ Truck-specific planner with multi-trip course support (Plan C):
 
 ---
 
+## Trip Requests (`src/app/[slug]/(dashboard)/trip-requests/page.tsx`)
+
+Each pending/closed request row exposes shared `RowActions` — view details, upload Aviz, upload CMR scan — with distinct icons (`FileText` for aviz, `ScanLine` for CMR) so a dispatcher scanning the row doesn't have to read the label to tell the two documents apart.
+
+- **Aviz** (`AvizUploadModal.tsx`) — delivery-note PDF. `TripRequest.hasAviz` (server-computed from `documents.document_type = 'delivery_note'`) flips the row button green. Client-side size cap `MAX_UPLOAD_BYTES = 10 MiB`, mirroring the backend's `AVIZ_MAX_BYTES`. Data via `useRequestAvize` / `useUploadAviz` (`GET`/`POST /api/v1/trip-requests/:id/aviz`).
+- **CMR scan** (`CmrUploadModal.tsx`, new) — the physical paper CMR that the loader normally photographs from the phone at the end of an auxiliary load (see [[mobile]]); this modal is the admin's manual upload/replace override for when that didn't happen or produced an unusable scan. `TripRequest.hasCmrScan` (server-computed from `document_type = 'cmr_scan'`) flips the row button green. Client-side size cap `MAX_UPLOAD_BYTES = 15 MiB`, mirroring the backend's `CMR_SCAN_MAX_BYTES`. Data via `useRequestCmrScans` / `useUploadCmrScan` (`GET`/`POST /api/v1/cmr-scans/trip-request/:id`).
+
+Both modals share the same shape: PDF-only (client extension/MIME check; backend additionally sniffs the `%PDF-` magic byte), single-document-per-request (uploading replaces the prior one — soft-deleted server-side — a `window.confirm()` warns before overwriting), and an **accessible dialog pattern**: `role="dialog"` + `aria-modal="true"` + `aria-labelledby` on the panel, focus moves to the close button on mount and is restored to the previously-focused trigger on unmount, and `Escape` closes the modal (`onClose` read through a ref so the mount effect only runs once).
+
+`DocumentType.cmr_scan` is a distinct type from the backend-generated `DocumentType.cmr` (the CMR the backend itself generates via Puppeteer, stage 1/2) — they intentionally don't share a slot. See [[packages-types]].
+
+---
+
 ## Reports (`src/app/(dashboard)/reports/page.tsx`)
 
 Four tabs:
@@ -375,11 +390,11 @@ Subscribes a per-component channel to a specific table and invalidates the given
 ### Shared UI
 - `StatusBadge` (`src/components/shared/StatusBadge.tsx`) -- colored pill for trip/assignment/harvest status
 - `DataTable` (`src/components/shared/DataTable.tsx`) -- generic table with sorting
-- `DocumentViewer` (`src/components/shared/DocumentViewer.tsx`) -- PDF/image preview
+- `DocumentViewer` (`src/components/shared/DocumentViewer.tsx`) -- PDF/image preview. Document-type label resolved via `` t(`documents.types.${doc.documentType}`) `` (all six `DocumentType` values, including `cmr_scan`) — replaced a hardcoded English `typeLabels: Record<DocumentType, string>` map
 - `LoggingErrorBoundary` (`src/components/shared/LoggingErrorBoundary.tsx`) -- React error boundary that logs to `clientLogger`
 - `SearchInput` (`src/components/shared/SearchInput.tsx`) -- debounced search field
 - `SignatureDisplay` (`src/components/shared/SignatureDisplay.tsx`) -- renders base64 signature images
-- `UserPresenceDot` (`src/components/shared/UserPresenceDot.tsx`) -- green/grey dot indicator based on `user.lastSeenAt` within `ONLINE_WINDOW_S`. Tooltip localized via `useI18n()` (Plan C, H-8 fix)
+- `UserPresenceDot` (`src/components/shared/UserPresenceDot.tsx`) -- green/grey dot indicator based on `user.lastSeenAt` within a shared default window, `DEFAULT_ONLINE_WINDOW_MS = 180_000` (raised from 90 s) -- covers the relaxed mobile heartbeat (jittered ~60-65 s JS interval, deduped against a 60 s native alarm) with room for one missed tick before the dot flips grey. Callers override via `thresholdMs` (e.g. Machines / Available-truck lists pass 15 min for GPS-based presence). Tooltip localized via `useI18n()` (Plan C, H-8 fix)
 - `TripTimeline` (`src/components/shared/TripTimeline.tsx`) -- visual timeline of trip state transitions
 - `MachineCard` / `ParcelCard` -- compact card views for machines and parcels
 

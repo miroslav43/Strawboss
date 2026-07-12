@@ -2,7 +2,7 @@
 type: doc
 title: "Mobile App (apps/mobile)"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-07-12
 tags: [doc, mobile, layer, expo, react-native, offline-first]
 status: mature
 related:
@@ -25,9 +25,10 @@ Expo SDK 54 + Expo Router. Offline-first: all writes go to local SQLite + sync q
 
 1. **Database init**: `getDatabase()` runs SQLite migrations before rendering any routes
 2. **AuthGate**: checks Supabase session, fetches profile via `GET /api/v1/profile`, routes to role-specific tab group
-3. **Fleet check-in**: `runDeviceCheckin()` fires unconditionally on `AuthGate` mount and every 60 s — runs **before** the auth check so OTA and fleet telemetry work pre-login. An `ota_checkin` push notification type also triggers an immediate call.
-4. **Push token registration**: after profile load, calls `registerForPushNotifications()` -> `POST /api/v1/notifications/register-token`
+3. **Fleet check-in**: `runDeviceCheckin()` fires unconditionally on `AuthGate` mount and every 60 s — runs **before** the auth check so OTA and fleet telemetry work pre-login. Every call is now subject to a shared ~90 s temporal gate (skips the network round-trip if a sibling driver already succeeded recently — see Fleet Management below) unless forced. An `ota_checkin` push notification type spreads over a random 0-20 s delay (thundering-herd protection for a broadcast push), then forces past the gate.
+4. **Push token registration**: after profile load, calls `registerForPushNotifications()` -> `POST /api/v1/notifications/register-token`. `registerBackgroundNotificationTask()` is also called unconditionally on mount (not gated on auth) to bind the FCM data-wake handler — see "FCM data-wake" below.
 5. **Log cleanup**: runs `cleanupOldMobileLogFiles()` on mount and on each `AppState` resume
+6. **React Query focus wiring**: the root `AppState` listener calls `focusManager.setFocused(state === 'active')` (from `@tanstack/react-query`). On Device-Owner builds the JS runtime never freezes with the screen off (a foreground service keeps it alive), so without this every `refetchInterval` hook would keep polling in the background; `refetchIntervalInBackground` defaults to `false`, so this one line stops all foreground polling once the app backgrounds.
 
 ### Auth & Session Persistence (`src/lib/auth.ts`, `src/lib/secure-store-adapter.ts`)
 
@@ -42,6 +43,8 @@ Expo SDK 54 + Expo Router. Offline-first: all writes go to local SQLite + sync q
 **Profile-fetch failure path**: if the `GET /api/v1/profile` call fails (e.g. flaky network at shift start), the auth gate **does not call `supabase.auth.signOut()`**. Instead it shows a retry modal ("Eroare de conectare"). The persisted session remains intact. This prevents operators from being logged out by a transient server error.
 
 **Store hydration guard**: `AuthGate` waits for `useAuthStore.persist.hasHydrated()` before firing the profile fetch. This means a returning operator with a persisted `role` gets routed to their home screen on a cold boot without a network round-trip.
+
+**Single-flight refresh guard**: `refreshAuthToken()` now dedups concurrent callers behind one shared in-flight promise (`refreshInFlight`). Pull, push, log upload, and location reporting can all hit a 401 at the same instant (they share one token expiry) — without this, each would fire its own parallel `refreshSession()` call, wasteful and racy against Supabase's own refresh-token rotation.
 
 ### Role-based routing
 
@@ -174,10 +177,12 @@ Each table has a repo class in `src/db/`:
 Orchestrates the full push/pull cycle:
 
 1. **`resetInFlight()`**: crash recovery -- any entries stuck as `in_flight` from interrupted sync are reset to `pending`
-2. **Push** (`src/sync/push.ts`): dequeues up to 50 entries, marks `in_flight`, POSTs to `POST /api/v1/sync/push` as `SyncPushRequest`. Each entry carries an `idempotency_key` (e.g. `bale_production_{id}`, `fuel_log_{id}`). Server returns `applied`, `skipped`, or `conflict` per mutation
-3. **Pull** (`src/sync/pull.ts`): collects `getMaxServerVersion()` from each repo, POSTs to `POST /api/v1/sync/pull` with `{ tables: { trips: N, bale_loads: N, ... } }`. Server returns deltas
+2. **Push** (`src/sync/push.ts`): dequeues up to 50 entries, marks `in_flight`, POSTs to `POST /api/v1/sync/push` as `SyncPushRequest`. Each entry carries an `idempotency_key` (e.g. `bale_production_{id}`, `fuel_log_{id}`). Server returns `applied`, `skipped`, or `conflict` per mutation. Entries whose `entity_type` is in `DIRECT_ENDPOINT_TYPES` (`parcel_create`, `delivery_destination_create`, `register_load`, `cmr_scan`) bypass the generic table-mutation path and hit a dedicated handler/endpoint instead.
+3. **Pull** (`src/sync/pull.ts`): collects `getMaxServerVersion()` from each repo (plus `parcels` — see the fix below), POSTs to `POST /api/v1/sync/pull` with `{ tables: { trips: N, bale_loads: N, parcels: N, ... } }`. Server returns deltas
 4. **Merge** (`src/sync/conflict.ts`): `mergeRecords()` resolves local vs server data using `server_version` as arbiter. Existing records are merged, new records are inserted via repo `upsert()`
-5. **Log upload**: on zero-error sync, calls `uploadTodayMobileLogs()` (`src/sync/mobile-log-upload.ts`) to POST today's NDJSON log file to `POST /api/v1/logs/mobile`
+5. **Log upload**: on zero-error sync, calls `uploadTodayMobileLogs()` (`src/sync/mobile-log-upload.ts`) to POST today's NDJSON log file to `POST /api/v1/logs/mobile` — now gated, see "Mobile log upload gate" below
+
+**Parcels delta-sync fix**: `SyncManager.pull()` used to hardcode `parcels: 0` on every pull request (a stale FM-13 comment claimed parcels had no `sync_version` column). Parcels DOES have a server-side `sync_version` (migration `00040`) and the pull response includes it, so the parcels cursor now resolves through the same persisted `sync_cursors` path as every other table (`versions['parcels'] = await resolveVersion('parcels', async () => 0)`). Fresh installs (and any existing install that never persisted a parcels cursor) still fall back to `0` — a one-time full parcels pull, then delta from then on. Note: a parcel's own row rarely changes version even on this delta path, because the server also force-includes parcels newly visible via today's task assignments / active trips (a visibility change, not a row-version bump).
 
 ### Sync queue status values
 `pending` -> `in_flight` -> `completed` | `failed`
@@ -223,7 +228,9 @@ Mounted in every role-specific tab layout (baler, driver, loader) as an absolute
 
 ### Heartbeat (`src/lib/heartbeat.ts`) (Plan C)
 
-Sends `POST /api/v1/profile/heartbeat` every 30 seconds while the app is running. Updates `users.last_seen_at` on the server. Used by `UserPresenceDot` in admin-web to show online status.
+Sends `POST /api/v1/profile/heartbeat` roughly every 60-65 seconds (was 30 s; jittered `60_000 + random(5_000)` ms to desync the ~30-phone fleet) while the app is running. Updates `users.last_seen_at` on the server. Used by `UserPresenceDot` in admin-web to show online status.
+
+**Self-dedup gate**: `sendHeartbeatOnce()` reads the last-success timestamp (`health-state.ts`) and skips the POST if one landed within the last 55 s. Both drivers — the JS `setInterval` here and the native-alarm-triggered `presenceCheckin()` call (`presence-checkin-task.ts`) — share this same function, so a JS tick and a native alarm tick landing close together don't double-send. A failed send never stamps, so retries continue on every driver's tick regardless of the gate.
 
 **Background behavior differs by build variant:**
 
@@ -306,10 +313,26 @@ The function is **fire-and-forget**: errors are logged at `warn` but never throw
 
 | Context | Trigger |
 |---|---|
-| Foreground (`_layout.tsx` `AuthGate`) | On mount + every 60 s (`setInterval`) — unconditional, outside the auth check |
+| Foreground (`_layout.tsx` `AuthGate`) | On mount + every 60 s (`setInterval`) — unconditional, outside the auth check. Each call is subject to the temporal gate below unless forced. |
 | 15-min WorkManager background cycle (`run-background-sync.ts`) | Called at the **top** of `runBackgroundSyncCycle()` BEFORE the `!token` guard, so OTA works headless |
-| Push notification of type `ota_checkin` | Immediate best-effort acceleration (foreground notification listener in `_layout.tsx`) |
+| Push notification of type `ota_checkin` | Spread over a random 0-20 s delay (thundering-herd protection for a broadcast push that fans out to the whole fleet near-simultaneously), then `runDeviceCheckin({ force: true })` — bypasses the gate since acceleration is the deliberate point |
+| Push notification of type `presence_wake` (FCM data message) | `REMOTE_NOTIFICATION_TASK` re-asserts the native presence anchor then calls `presenceCheckin()` — see "FCM data-wake" below |
 | Boot / `MY_PACKAGE_REPLACED` (`boot-rearm.ts`) | Called at the top of `bootRearm()` when `strawboss.pending_install_deployment_id` is set (post-OTA re-report, Part 4) |
+
+### Temporal gate (`runDeviceCheckin(opts?: { force?: boolean })`, traffic diet, Jul 2026)
+
+Check-in is deliberately driven by **four redundant, independent drivers**: the JS `setInterval` above, the location-FGS piggyback, the background-sync piggyback, and the native `AlarmManager` headless task (see `apps/mobile/FLEET-BACKGROUND-ONLINE.md`) — because HONOR/MagicOS pauses the JS runtime and OEM-kills services, no single driver is reliable alone, and **none of the four should ever be removed**.
+
+What's new: unless `opts.force` is set, `runDeviceCheckin()` reads the last-SUCCESS timestamp persisted by `markCheckinSuccess()` (`health-state.ts`, SecureStore-backed, shared with the native headless-task JS context) and skips the network round-trip entirely if a success landed within `CHECKIN_GATE_MS = 90_000` ms (±10% jitter). The stamp is written **only on success**, never on a mere attempt, so a phone with flaky network still retries on every driver's tick — the failover redundancy is unchanged; only the redundant *network calls* on an already-healthy phone are cut.
+
+### FCM data-wake (`src/lib/remote-notification-task.ts`, new, vc40+)
+
+Deep Doze throttles the native `AlarmManager` anchor to the OS's maintenance windows (1-4 h apart the longer a phone sits idle), which alone can't hold the ~90 s presence gate above — measured on-device gaps of 26-73 min overnight. High-priority FCM **data** messages are the one signal that reliably pierces Doze.
+
+- Backend: `QUEUE_PRESENCE_DEADMAN` (BullMQ, every 2 min, `fleet-push.service.ts`) sends `{ type: 'presence_wake' }` (`android.priority=high`) to any device-owner phone whose last check-in has gone stale. Requires `FIREBASE_SERVICE_ACCOUNT_FILE` (backend concern — see [[backend]]).
+- `REMOTE_NOTIFICATION_TASK = 'strawboss-remote-notification'` is **defined at the bundle entry** (`register-background-tasks.ts`, imported from `index.js`) so the headless runtime can resolve the task key with no Activity mounted — defining it only inside `_layout.tsx` would leave a freshly-OTA'd, never-foregrounded phone with no persisted task registration for its first wake. `Notifications.registerTaskAsync(REMOTE_NOTIFICATION_TASK)` runs both at module scope here (headless-safe, fixed in commit `3ad81c3` after it was found missing) AND from `_layout.tsx`'s `AuthGate` effect (`registerBackgroundNotificationTask()` in `src/lib/notifications.ts`, unconditional on mount, best-effort) as redundant reinforcement.
+- `extractWakeType()` parses the expo-notifications task payload (data-message shape `{ data: { type } }` or `{ data: { dataString: '<json>' } }`; ignores notification-response payloads carrying `actionIdentifier`) and reacts only to `WAKE_TYPES = new Set(['presence_wake', 'ota_checkin'])`.
+- On a matching wake: (1) if `isDeviceOwner()`, calls `startPresenceService()` to re-assert the native FGS/alarm anchor first — a bare check-in alone leaves the phone dependent on the next (throttled) alarm — then (2) calls `presenceCheckin()`, the identical function the native alarm tick calls, so a wake and an alarm tick are indistinguishable downstream (one source of truth).
 
 ### OTA Orchestrator (`handlePendingDeployment()`)
 
@@ -417,9 +440,31 @@ On any failure in either branch, a failure report `{ commandId, status: 'failure
 ### useLocationTracking (`src/hooks/useLocationTracking.ts`)
 
 - `startTracking(machineId)`: requests foreground permission via `requestLocationPermission()`, starts `startLocationWatcher()` from `src/lib/location.ts`
-- Each GPS update POSTs to `POST /api/v1/location/report` with `{ machineId, lat, lon, accuracyM, headingDeg, speedMs, recordedAt }`
+- Each GPS update POSTs to `POST /api/v1/location/report` with `{ machineId, lat, lon, accuracyM, headingDeg, speedMs, recordedAt }` — this single-report foreground path is unaffected by the background batching below
 - Returns `{ isTracking, error, lastReportedAt, startTracking, stopTracking }`
 - All errors and successes logged via `mobileLogger`
+
+### Background batching (`src/lib/location.ts`, traffic diet F2, Jul 2026)
+
+The `TaskManager` background location task (`LOCATION_UPDATES_TASK_NAME`) no longer POSTs each GPS fix immediately. It appends every fix to the on-disk pending-reports outbox (`appendPendingReport`) unconditionally; a separate gate decides when to actually flush to the network:
+
+- **`maybeFlushBatchedLocationReports()`**: a gate persisted to disk (`LAST_FLUSH_ATTEMPT_FILE`, not a module var — this task can resume in a fresh JS context after an OEM freeze / HeadlessJS cold-start) limits flush *attempts* to once per `BACKGROUND_FLUSH_MIN_INTERVAL_MS = 60_000` ms, independent of the 20-30 s GPS capture cadence (unchanged). Both the location background task and the presence-checkin-task's piggyback flush (`presence-checkin-task.ts`) now call this instead of `flushPendingLocationReports()` directly, so they share the same ~60 s floor.
+- **Batch transport**: `flushPendingLocationReportsBatched()` sends chunks of `BATCH_CHUNK_SIZE = 30` via `POST /api/v1/location/report/batch` (`{ reports: [...] }`), persisting the outbox after **each chunk** — same crash-safety guarantee as before (a freeze mid-flush resumes from where it left off, never replays).
+- **Rollout fallback**: a 404/405 from the batch endpoint (`isBatchUnsupportedError`) flips a module-level `batchUnsupported` flag permanently for the process lifetime; every subsequent flush (this one included, for the remainder) falls back to `flushPendingLocationReportsSingle()` — the original one-POST-per-report loop — so an old backend mid-rollout still works.
+- **Permanent-failure handling**: `isBatchPermanentDropError()` (400/403 only — narrower than the single-report path's `isPermanentReportError`, which also treats other 4xx as permanent) drops the whole chunk from the outbox; anything else (401/408/429/5xx) is treated as transient and stops the loop, keeping the rest queued.
+- Net effect: ~150 GPS fixes/hour/phone collapse to roughly one batched POST per minute per phone instead of one POST per fix.
+
+### Adaptive background sync piggyback (`maybePiggybackSync()`)
+
+Background piggyback sync interval is now trip-state-adaptive, not a flat value:
+
+| State | Interval |
+|---|---|
+| Foreground (`AppState === 'active'`) | 120 000 ms (`PIGGYBACK_SYNC_MIN_INTERVAL_FG_MS`, unchanged) |
+| Background, active trip | 60 000 ms (`PIGGYBACK_SYNC_MIN_INTERVAL_BG_ACTIVE_TRIP_MS`) |
+| Background, no active trip | 180 000 ms (`PIGGYBACK_SYNC_MIN_INTERVAL_BG_IDLE_MS`) |
+
+`hasActiveTripCached()` wraps `hasActiveTrip()` (now exported from `src/lib/device-checkin.ts` for this reuse) with a 60 s in-memory TTL cache so a background tick every 20-30 s doesn't hit SQLite on every wake. Both this throttle and the presence-checkin throttle (`PIGGYBACK_CHECKIN_MIN_INTERVAL_MS = 55_000`) now apply a ±10% jitter to desync the ~30-phone fleet from synchronized request bursts.
 
 ---
 
@@ -430,7 +475,7 @@ On any failure in either branch, a failure report `{ commandId, status: 'failure
 - Fetches `GET /api/v1/task-assignments/daily-plan/{today}` (returns `DailyPlanResponse` with `available`, `inProgress[]`, `done`)
 - Collects all assignments, filters client-side by `assignedUserId`
 - Sorts by `sequenceOrder`
-- Refetches every 30 seconds
+- Refetches every 60 seconds (was 30 s — traffic diet cadence pass, see "Polling cadence" under Sync Details)
 - Returns `{ tasks: MyTask[], isLoading, error, refetch }`
 
 ### TaskList component (`src/components/shared/TaskList.tsx`)
@@ -483,6 +528,42 @@ Extended delivery flow with additional steps: `DeterioratedBalesInput` (count da
 
 ---
 
+## CMR Scan (Auxiliary Loads)
+
+New (Jul 2026). Auxiliary (external-transporter) loads finish on a **scanned paper CMR** instead of the specimen signature used for own-fleet loads — there is no paper CMR for a truck that never leaves the company. Entry point: `app/loader-ops/load-bales.tsx`; `proceedToFinish()` branches to `cmrStep: 'intro'` when `isAuxiliary`, else `setShowSignature(true)` (own-fleet path unchanged).
+
+### Screen state machine (`cmrStep: null | 'intro' | 'preview' | 'saving'`)
+
+1. **intro/preview**: `handleScanPages()` opens the ML Kit document scanner (`scanCmrPages()` in `src/lib/cmrScanner.ts` — live edge detection, auto-crop, up to `MAX_PAGES = 10` pages, quality 80). Falls back to a plain camera shot (`captureCmrPageWithCamera()`, via `expo-image-picker`) when the scanner module throws `ScannerUnavailableError` — the operator is offered a "Take a photo" fallback rather than being trapped, since the scan is mandatory to finish an aux load.
+2. Captured pages accumulate in `cmrPages` (local image URIs); the preview screen is the mandatory gate — no "Confirm and send" button renders with zero pages, and pages can be individually removed.
+3. **`handleCmrConfirm()`**: builds the PDF **before** anything is written (`buildCmrPdf()`), so a scanner/render failure never leaves a registered load without a CMR — the operator stays on the preview and can just retry. Offline, refuses to proceed unless `auxTripId` is available (carried in via route params from the loader home's aux truck card — online it could be read off the register-load response, but there is no response offline).
+4. **`submitLoad()`** (renamed from `handleSignatureConfirm`, now shared by both finish paths): registers the load; own-fleet passes `loaderSignature`, aux passes `cmr: { uri, pageCount, scanId }` — exactly one is ever set. `loaderSignature` is optional in the server's Zod schema, so aux loads simply omit it and `trips.loader_signature_url` stays null.
+
+### PDF build (`buildCmrPdf()`, `src/lib/cmrScanUpload.ts`, new)
+
+- Downscales each page to `PAGE_MAX_WIDTH = 1600` px, JPEG quality `0.7` (`expo-image-manipulator`) before base64-inlining into HTML — a raw 12 MP page is ~8 MB and `expo-print`'s WebView reliably OOMs on a low-end fleet phone without this.
+- Renders one paginated A4 PDF (`A4_WIDTH_PT/HEIGHT_PT = 595 x 842`) via `expo-print`'s `printToFileAsync`; sets both `page-break-after` and the modern `break-after` CSS (the Android WebView print path only honours the older property) with a `:last-child` reset so the PDF doesn't end on a blank page.
+- Moves the PDF from `expo-print`'s cache dir into `DocumentDirectory/cmr-scans/` — cache is evictable under Android storage pressure and a scan queued offline can sit for days waiting for signal.
+- Mints a stable `scanId` (UUID) once, reused across every upload retry of the same PDF — the server keys the storage filename on it, so an ambiguous-failure retry overwrites the same blob instead of orphaning one on disk.
+- Deletes the intermediate `ImageManipulator` output copies immediately after encoding; `deleteLocalCmrImages()` deletes the original captured source pages once the PDF has been sent or queued (otherwise every load leaves a stack of transport-document photos — driver name, plates, signatures — in app storage forever).
+
+### Upload & sync queue integration
+
+- **Online**: `uploadCmrScan(tripId, uri, pageCount, scanId)` POSTs multipart to `POST /api/v1/cmr-scans/trip/:tripId`. On failure, the load registration is **not** rolled back — the scan is queued instead (`enqueueCmrScan`) and drained by the sync loop; `mobileLogger.flow` records the fallback.
+- **Offline**: the `register_load` sync-queue entry is now enqueued with `action: 'insert'` (fixed a bug where it used `'register'` — `sync_queue` has `CHECK (action IN ('insert','update','delete'))`, enforced by SQLite, so the old value threw on `enqueue()` and the load was silently never queued). The `cmr_scan` entry is enqueued **after** it (FIFO dequeue order) and carries `registerLoadIdempotencyKey` so `push.ts` can defer a scan whose sibling `register_load` failed this sync cycle (`failedRegisterLoads` set in `pushMutations()`), letting the pair recover together on the next retry.
+- `cmr_scan` is a new entry in `DIRECT_ENDPOINT_TYPES` (`src/sync/push.ts`) — a multipart file upload to its own endpoint, not a row in any syncable table. `sendCmrScan()` stats the local PDF first (a missing file — e.g. app data cleared — fails only that one entry, not the whole dequeued batch of up to 50) then uploads and deletes the local copy on success. Idempotent server-side by replacement (a retry supersedes rather than duplicates).
+- Idempotency key format: `cmr_scan_{uuid}` where `uuid` is a fresh id minted at enqueue time (distinct from `scanId`, the storage-filename id minted at PDF-build time).
+
+### ML Kit pre-fetch (`plugins/withMlKitDocScanner.js`, new)
+
+Expo config plugin adding `com.google.mlkit.vision.DEPENDENCIES = docscanner` meta-data to `AndroidManifest.xml`, asking Play Services to download the scanner module at install time instead of on first use. Best-effort only — needs healthy Play Services and connectivity at install time, which the sideloaded Device-Owner fleet often lacks at first boot, which is exactly why the camera fallback above exists. New npm dependency: `react-native-document-scanner-plugin@2.0.4` (also has an `app.json` config-plugin entry with a `cameraPermission` string).
+
+### i18n
+
+New keys under `loader.loadBales.*` in `src/i18n/en.ts` / `ro.ts`: `cmrScanScreenTitle`, `cmrScanTitle`, `cmrScanHint`, `cmrScanButton`, `cmrScanAddPage`, `cmrScanDeletePage`, `cmrScanPagesLabel`, `cmrScanConfirmButton`, `cmrScanBuildingPdf`, `cmrScanUnavailableTitle/Message`, `cmrScanFallbackPhotoButton`, `cmrScanPdfFailedTitle/Message`, `cmrScanNoTripTitle/Message`.
+
+---
+
 ## Sync Details
 
 ### Batched logger (`src/lib/logger.ts`)
@@ -500,8 +581,9 @@ Each sync queue entry carries a unique `idempotency_key`. Keys MUST be stable ac
 - `consumable_log_{id}` -- consumable entries
 - `deliver_{tripId}` -- delivery completion
 - `load_{tripId}` -- loading completion
+- `cmr_scan_{uuid}` -- CMR scan PDF upload (queued alongside `register_load_{idempotencyKey}`, see CMR Scan section above)
 
-`load-bales.tsx` stabilizes the key by generating it at screen mount and holding it in a `useRef` (H-7 fix, commit `e03b4e4`).
+`load-bales.tsx` stabilizes the key by generating it at screen mount and holding it in a `useRef` (H-7 fix, commit `e03b4e4`). The offline `register_load` sync-queue entry's `action` field must be `'insert'` (was buggy `'register'`, which the `sync_queue` CHECK constraint silently rejected — see CMR Scan section above).
 
 ### In-flight reset (`SyncQueueRepo.resetInFlight()`)
 On sync start, all entries stuck as `in_flight` (from a crashed previous sync) are reset to `pending`. This prevents data loss on interrupted syncs.
@@ -509,13 +591,37 @@ On sync start, all entries stuck as `in_flight` (from a crashed previous sync) a
 ### SQL MAX versions
 Each repo has `getMaxServerVersion()`: `SELECT MAX(server_version) FROM {table}`. This value is sent during pull to get only newer records. The server returns records with `sync_version > requested` up to LIMIT 1000.
 
+### Mobile log upload gate (`uploadTodayMobileLogs()`, traffic diet, Jul 2026)
+
+Gated to at most once per `MIN_UPLOAD_INTERVAL_MS = 10 min` per phone, unless `options.force` is set (used by the remote `fetch_logs` fleet command, which must bypass the gate for on-demand support requests) or today's pending entries include an `error`/`warn` line (those still ship immediately regardless of cadence). Last-upload timestamp is cached in-memory and persisted to `strawboss-logs/.last-upload-at` so the gate survives app restarts.
+
+### Polling cadence (traffic diet F2/F3, Jul 2026)
+
+Several TanStack Query hooks had their `refetchInterval` widened to cut aggregate request rate across the ~30-phone fleet — all now paired with the `focusManager` wiring in `_layout.tsx` (Navigation section above), so polling also stops entirely once the app backgrounds instead of just slowing down:
+
+| Hook / query | Old | New |
+|---|---|---|
+| `useTrucksAtLoader` | 10 s | 15 s |
+| `useAuxiliaryTrips` | 15 s | 30 s |
+| `useMachineLastLocation` | 30 s | 60 s |
+| `useMyTasks` | 30 s | 60 s |
+| `useNearbyLoaders` | 30 s | 60 s |
+| `MapScreen` related-machines query | 15 s | 30 s |
+
+`(loader)/index.tsx` also dropped its explicit `pollMs` overrides for `useTrucksAtLoader()` / `useAuxiliaryTrips()`, now relying on each hook's own (widened) default.
+
+**`useAuxiliaryTrips` scoped to today** (bug fix, commit `54c6e51`): now sends `dateFrom=startOfDayRomaniaISO()` to `GET /api/v1/trips/auxiliary/at-loader/:machineId`, and the query key includes `dateFrom` — stops stale auxiliary trips from prior days piling up on the loader home screen; the cache naturally rolls over at local (Romania) midnight.
+
+**`useMyTrucksToLoad` `include=refs` optimization**: requests `GET /api/v1/trips?...&include=refs` so the backend inlines `truck_registration_plate`/`truck_internal_code`/`source_parcel_name`/`source_parcel_code` directly on each trip row, avoiding a per-truck `/machines/:id` + per-parcel `/parcels/:id` fan-out (N+1). `tripsCarryRefs()` checks whether every trip row actually carries those fields (present, possibly `null`); `undefined` means an older backend mid-rollout doesn't support `include=refs` yet, and the hook transparently falls back to the original parallel fan-out lookups.
+
 ---
 
 ## Build System
 
 ### App config (`app.json`)
 - Package: `com.strawboss.mobile`
-- Plugins: expo-router, expo-camera, expo-image-picker, expo-sqlite, expo-location, expo-notifications
+- Version: `version` / `android.versionCode` are bumped by `scripts/bump-version.mjs` (kept in lockstep with `android/app/build.gradle`'s `versionName`/`versionCode`); as of this diff `versionCode 41` / `versionName "1.0.37"` (vc40 shipped the FCM data-wake handler, vc41 the `build:apk` keystore-checkout fix below).
+- Plugins: expo-router, expo-camera, expo-image-picker, `react-native-document-scanner-plugin` (new — CMR scan, config: `cameraPermission`), expo-sqlite, expo-location, expo-notifications, `./plugins/withAlwaysOnTracking`, `./plugins/withDeviceOwner`, `./plugins/withMlKitDocScanner` (new — see CMR Scan section)
   - `expo-notifications` config: `color: "#0A5C36"` — **no custom sounds declared** (see note below)
 - Android permissions: `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `FOREGROUND_SERVICE_SPECIAL_USE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`, `CAMERA`, `RECORD_AUDIO`
 - iOS: location usage descriptions for when-in-use, always, and both
@@ -538,6 +644,8 @@ Cloud builds via Expo Application Services. Profile configured in `eas.json`.
 
 ### Local Android build
 `./strawboss.sh mobile-build-local` (optional `ANDROID_HOME` env var for SDK path). Produces APK via Gradle.
+
+**Keystore pin hardening (`package.json` `build:apk`, commit `3ad81c3`)**: the script now runs `git checkout -- android/app/debug.keystore` immediately after `expo prebuild --clean --platform android` and before `gradlew assembleRelease`. `prebuild --clean` can otherwise regenerate/overwrite the debug keystore in place, and OTA self-update requires every fielded phone's APK to share the same signer (see the keystore-pin warning in `hot.md` / [[infrastructure]]) — this checkout restores the pinned, git-tracked keystore right before the signing step.
 
 ---
 

@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/api"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-07-12
 tags: [doc, package, api, tanstack-query, supabase]
 status: mature
 related:
@@ -95,6 +95,8 @@ Centralized TanStack Query key definitions. Every hook references these for cach
 | `baleProductions` | `.all`, `.list(filters?)`, `.byOperator(operatorId)`, `.stats(filters?)` |
 | `farms` | `.all`, `.list(filters?)`, `.detail(id)` |
 | `deliveryDestinations` | `.all`, `.list(filters?)`, `.detail(id)` |
+| `tripRequests` | `.all`, `.list(filters?)`, `.detail(id)`, `.avize(id)`, `.cmrScans(id)` |
+| `orgRequestSettings` | `.all` |
 | `devices` | `.all`, `.list(filters?)`, `.detail(id)`, `.otaStatus(id)`, `.logs(id, filters?)` |
 | `releases` | `.all` |
 | `deployments` | `.all` |
@@ -187,6 +189,23 @@ Mutations auto-invalidate related query keys on success.
 | `useUpdateFarm(client)` | `PATCH /api/v1/farms/:id` |
 | `useDeleteFarm(client)` | `DELETE /api/v1/farms/:id` |
 | `useAssignParcelToFarm(client)` | `PATCH /api/v1/parcels/:id` (farmId only) |
+
+### Trip Requests (`hooks/use-trip-requests.ts`)
+
+External pickup requests submitted through the public per-org portal (`/<slug>/request`). See [[packages-types]] for the `TripRequest` entity.
+
+| Hook | Type | Endpoint | Notes |
+|---|---|---|---|
+| `useTripRequests(client, filters?)` | Query | `GET /api/v1/trip-requests` | filters: `status`, `dateFrom`, `dateTo` |
+| `useTripRequest(client, id)` | Query | `GET /api/v1/trip-requests/:id` | |
+| `useConfirmTripRequest(client)` | Mutation | `POST /api/v1/trip-requests/:id/confirm` | Spins up a one-time auxiliary truck (machine); invalidates `tripRequests.all` + `machines.all` + `taskAssignments.all` |
+| `useCancelTripRequest(client)` | Mutation | `POST /api/v1/trip-requests/:id/cancel` | |
+| `useRequestAvize(client, requestId)` | Query | `GET /api/v1/trip-requests/:id/aviz` | Returns 0 or 1 `Document` (single-aviz model) |
+| `useUploadAviz(client)` | Mutation | `POST /api/v1/trip-requests/:id/aviz` (multipart) | Invalidates that request's avize + `tripRequests.all` |
+| `useRequestCmrScans(client, requestId)` | Query | `GET /api/v1/cmr-scans/trip-request/:id` | Returns 0 or 1 `Document` of type `cmr_scan` — the scanned paper CMR for an auxiliary load |
+| `useUploadCmrScan(client)` | Mutation | `POST /api/v1/cmr-scans/trip-request/:id` (multipart) | Admin override upload — the loader normally posts the scan from the phone against the trip instead. Invalidates `tripRequests.cmrScans(id)` **and** `tripRequests.all`, since `hasCmrScan` is computed server-side on the list row, not the document |
+| `useOrgRequestSettings(client)` | Query | `GET /api/v1/organizations/me/request-settings` | Admin: caller's own org portal code + allowed crop list |
+| `useUpdateOrgRequestSettings(client)` | Mutation | `PATCH /api/v1/organizations/me/request-settings` | Sets `orgRequestSettings.all` query data on success |
 
 ### Auth, Profile, Location, Sync
 

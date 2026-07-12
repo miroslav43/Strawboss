@@ -3,7 +3,7 @@ name: mobile-agent
 description: Specialist in the Expo/React Native mobile app -- offline-first, sync, geofence, role-based layouts
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-06-22
+updated: 2026-07-12
 ---
 
 # StrawBoss Mobile Agent
@@ -59,6 +59,7 @@ Key invariants:
 - Profile-fetch failure does **not** sign the user out — it shows a retry modal instead.
 - `AuthGate` waits for `useAuthStore.persist.hasHydrated()` before fetching the profile; a returning operator with a persisted `role` boots offline without a network call.
 - `src/lib/secure-store-adapter.ts` chunks values > 1800 bytes across sibling keys to clear SecureStore's ~2 KB/key ceiling.
+- `refreshAuthToken()` is single-flight (`refreshInFlight` shared promise) — pull, push, log upload, and location reporting can all hit a 401 at once (shared token expiry); every caller awaits the same in-flight `refreshSession()` instead of firing parallel ones.
 
 ### Auth store
 
@@ -120,11 +121,11 @@ Orchestrates the push/pull cycle:
 4. On success (no errors), upload today's mobile logs via `uploadTodayMobileLogs()`.
 
 Supporting files:
-- `src/sync/push.ts` -- push logic, binary file upload first.
-- `src/sync/pull.ts` -- pull logic, merge into local SQLite.
+- `src/sync/push.ts` -- push logic, binary file upload first. `DIRECT_ENDPOINT_TYPES` (`parcel_create`, `delivery_destination_create`, `register_load`, `cmr_scan`) bypass the generic table-mutation path for entity types with no matching SQLite table / a dedicated REST endpoint — add new file-upload-shaped or endpoint-shaped sync entities here, not to a repo.
+- `src/sync/pull.ts` -- pull logic, merge into local SQLite. `parcels` now resolves its cursor via the persisted `sync_cursors` path like every other table (fixed a stale hardcoded-`0` bug — parcels DOES have a server `sync_version`, migration `00040`).
 - `src/sync/conflict.ts` -- `mergeRecords()` for conflict resolution (server wins).
 - `src/sync/outbox.ts` -- outbox pattern helpers.
-- `src/sync/mobile-log-upload.ts` -- upload NDJSON logs after sync.
+- `src/sync/mobile-log-upload.ts` -- upload NDJSON logs after sync. Gated: `uploadTodayMobileLogs()` skips unless 10 min have passed since the last upload, an `error`/`warn` log entry is pending, or `options.force` is set (used by the remote `fetch_logs` fleet command).
 
 ### Sync triggers
 - App comes to foreground (`AppState` change to `'active'`).
@@ -147,6 +148,16 @@ Two-step screen that replaces a direct `depart` API call:
 2. Driver signature capture.
 Calls `POST /trips/:id/depart` with `{ departureOdometerKm, driverSignature }`.
 
+### CMR scan — auxiliary loads (`app/loader-ops/load-bales.tsx`, new, Jul 2026)
+
+Auxiliary (external-transporter) loads finish on a scanned paper CMR instead of the specimen signature — `proceedToFinish()` branches on `isAuxiliary`. Screen state machine `cmrStep: null | 'intro' | 'preview' | 'saving'`; `submitLoad()` (renamed from `handleSignatureConfirm`) is now shared by both finish paths and takes `{ loaderSignature? , cmr? }` (exactly one set).
+
+- Capture: `src/lib/cmrScanner.ts` — ML Kit document scanner (`scanCmrPages()`), falls back to a plain camera shot (`captureCmrPageWithCamera()`) on `ScannerUnavailableError`. Kept in a separate file from the upload/queue code so the sync-queue drain path never imports the native scanner module.
+- Build: `src/lib/cmrScanUpload.ts` `buildCmrPdf()` — downscales pages (1600px/JPEG 0.7), renders one A4 PDF via `expo-print`, moves it out of the evictable cache dir into `DocumentDirectory/cmr-scans/`, mints a stable `scanId` reused across retries. Built **before** anything is written server-side.
+- Upload: `uploadCmrScan()` POSTs multipart to `POST /api/v1/cmr-scans/trip/:tripId`. Online failure queues (`enqueueCmrScan`) rather than failing the whole load registration.
+- Sync queue: `cmr_scan` is a new `entity_type`, added to `push.ts`'s `DIRECT_ENDPOINT_TYPES` (file upload, not a table row). Its `action` must be `'insert'` (`sync_queue` has a `CHECK` constraint SQLite enforces — an invalid action throws inside `enqueue()`, silently dropping the mutation). It carries `registerLoadIdempotencyKey` so `push.ts` can defer a scan whose sibling `register_load` failed this cycle (`failedRegisterLoads` set).
+- Offline addressing: `auxTripId` is now carried through the route params from the loader home's aux truck card (`(loader)/index.tsx`) specifically so the CMR can be addressed without a register-load response (which doesn't exist offline).
+
 ### Fleet Management + OTA self-update (`src/lib/device-checkin.ts`)
 
 **Device identity**: `ensureDeviceId()` creates a stable device UUID (SecureStore key `strawboss.device_id`) on first run. The server's HMAC device token is persisted under `strawboss.device_token`. Both survive APK updates.
@@ -156,8 +167,13 @@ Calls `POST /trips/:id/depart` with `{ departureOdometerKm, driverSignature }`.
 Trigger points:
 - `AuthGate` in `app/_layout.tsx`: on mount + every 60 s (unconditional — outside auth check).
 - `runBackgroundSyncCycle()` in `src/sync/run-background-sync.ts`: **before** the `!token` guard so headless WorkManager cycles report telemetry and receive OTA even when no user is logged in.
-- Push notification type `ota_checkin`: immediate acceleration call.
+- Push notification type `ota_checkin`: spread over a random 0-20 s delay (thundering-herd protection for a broadcast push), then forced past the gate.
+- Push notification type `presence_wake` (FCM data message): handled by `REMOTE_NOTIFICATION_TASK` (below), not `ota_checkin`'s listener.
 - `boot-rearm.ts`: called at the top of `bootRearm()` when `strawboss.pending_install_deployment_id` exists (post-OTA install re-report).
+
+**Temporal gate (`runDeviceCheckin(opts?: { force?: boolean })`, traffic diet, Jul 2026)**: check-in is driven by 4 redundant, independent drivers (the JS interval above, the location-FGS piggyback, the background-sync piggyback, and the native `AlarmManager` headless task — see `FLEET-BACKGROUND-ONLINE.md`) because HONOR/MagicOS pauses the JS runtime and OEM-kills services. **Never remove any of the four drivers.** Unless `opts.force`, `runDeviceCheckin()` reads the last-SUCCESS timestamp (`health-state.ts` `readHealthTimestamps()`) and skips the network call if one landed within `CHECKIN_GATE_MS = 90_000` ms (±10% jitter). The stamp is written only on success, so a phone with a flaky network still retries every tick — only redundant calls on an already-healthy phone are cut.
+
+**FCM data-wake (`src/lib/remote-notification-task.ts`, new)**: the backend presence dead-man (`QUEUE_PRESENCE_DEADMAN`, every 2 min) sends a high-priority FCM data message `{ type: 'presence_wake' }` to stale device-owner phones — this is the one signal that pierces deep Doze, which the native alarm alone cannot (measured 26-73 min overnight gaps). `REMOTE_NOTIFICATION_TASK` **must stay defined at the bundle entry** (`register-background-tasks.ts` → `index.js`), not only inside `_layout.tsx` — a headless-runtime FCM dispatch needs the task registered with no Activity mounted. On wake: re-assert `PresenceService` (if device owner) then call `presenceCheckin()` — the same function the native alarm tick calls.
 
 **OTA orchestrator (`handlePendingDeployment()`)**: state machine persisted in `strawboss.ota_mirror`.
 - Downloads APK via `expo-file-system` `downloadAsync` to `DocumentDirectory`.
@@ -227,16 +243,24 @@ On any error in either branch, a failure report `{ commandId, status: 'failure',
 
 ### Heartbeat & background presence (`src/lib/heartbeat.ts`, `src/lib/device-owner.ts`)
 
-`startHeartbeat()` pings `POST /api/v1/profile/heartbeat` every 30 s.
+`startHeartbeat()` pings `POST /api/v1/profile/heartbeat` roughly every 60-65 s (jittered `60_000 + random(5_000)`; was a flat 30 s). `sendHeartbeatOnce()` self-dedups: it skips the POST if `health-state.ts` shows a success within the last 55 s, so the JS `setInterval` driver and the native-alarm-triggered `presenceCheckin()` driver don't double-send when they land close together. A failed send never stamps, so retries continue on every tick.
 
 - **Non-device-owner**: heartbeat is stopped when `AppState` goes `'background'` (battery saving).
 - **Device-owner**: `isDeviceOwnerResolved()` (synchronous memoized flag) returns `true`; the heartbeat is NOT stopped on background because a foreground service keeps the JS thread alive.
 
 **PresenceService** (native, `plugins/withDeviceOwner.js`): a `specialUse` Android FGS that holds the process at foreground importance. Started for device-owner installs whose role has **no** `assignedMachineId` (`geofence_maker`, `depot_manager`). Roles with a machine skip it — they already have the GPS location FGS. Notification channel: `strawboss-presence`, `IMPORTANCE_MIN`. JS bindings: `startPresenceService()` / `stopPresenceService()` in `src/lib/device-owner.ts`.
 
+**React Query `focusManager` wiring (root `_layout.tsx`)**: the `AppState` listener calls `focusManager.setFocused(state === 'active')`. On Device-Owner builds the JS runtime never freezes with the screen off, so without this every `refetchInterval` hook would keep polling in the background — this single call stops all foreground polling once backgrounded (`refetchIntervalInBackground` defaults `false`).
+
 ### Location tracking (`src/lib/location.ts`)
 
-Background location tracking for GPS-equipped devices. Reports machine position for geofence checks on the server side.
+Background location tracking for GPS-equipped devices. Reports machine position for geofence checks on the server side. The foreground `useLocationTracking` hook still POSTs `POST /api/v1/location/report` per fix, unchanged.
+
+**Background batching (traffic diet F2, Jul 2026)**: the `TaskManager` background task no longer posts each GPS fix immediately — it appends to an on-disk outbox and a persisted gate (`maybeFlushBatchedLocationReports()`, `BACKGROUND_FLUSH_MIN_INTERVAL_MS = 60_000`) throttles actual flush attempts to ~once/min. Flushing sends chunks of `BATCH_CHUNK_SIZE = 30` via `POST /api/v1/location/report/batch`, persisting the outbox after each chunk (crash-safe, same guarantee as the pre-batch single-report loop). A 404/405 from the batch endpoint permanently flips `batchUnsupported` for the process and falls back to the original one-POST-per-report loop (old-backend rollout window). Background piggyback sync (`maybePiggybackSync()`) is now trip-adaptive: 60 s with an active trip, 180 s idle (`hasActiveTripCached()`, 60 s TTL, backed by `hasActiveTrip()` exported from `device-checkin.ts`) — plus ±10% jitter on both this and the presence-checkin throttle to desync the fleet.
+
+### Polling cadence (traffic diet, Jul 2026)
+
+Several hook `refetchInterval`s were widened to cut aggregate fleet request rate: `useTrucksAtLoader` 10s→15s, `useAuxiliaryTrips` 15s→30s, `useMachineLastLocation`/`useMyTasks`/`useNearbyLoaders` 30s→60s, `MapScreen` related-machines 15s→30s. When adding a new polling hook, default to the widest interval the UI can tolerate and rely on the `focusManager` wiring above rather than a manual pause/resume — do not reintroduce a flat 10-15s poll without a specific reason.
 
 ### Geofence overlay
 
@@ -262,6 +286,8 @@ For mutations that need offline support, use the sync queue instead.
 
 `registerForPushNotifications()` requests permission and returns an Expo push token. The token is sent to `POST /api/v1/notifications/register-token` with platform info and machine ID.
 
+`registerBackgroundNotificationTask()` (new) calls `Notifications.registerTaskAsync(REMOTE_NOTIFICATION_TASK)` — activates the FCM data-wake handler (`src/lib/remote-notification-task.ts`, see Fleet Management above). Called unconditionally on `_layout.tsx` mount (not gated on auth); best-effort, never blocks launch.
+
 ### Map (`src/map/`)
 
 WebView-based map rendering with a bridge for communication between React Native and the web map.
@@ -278,3 +304,6 @@ WebView-based map rendering with a bridge for communication between React Native
 8. **Add migrations**: New SQLite tables need entries in `src/db/migrations.ts`.
 9. **Register repos in SyncManager**: New repos must be added to the `SyncManager` constructor.
 10. **Update docs**: After code changes, update `.claude/docs/mobile.md` (and `agents/mobile-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.
+11. **`sync_queue.action` must be `'insert' | 'update' | 'delete'`**: the table has a `CHECK` constraint SQLite enforces at the driver level — any other value (e.g. a bespoke verb like `'register'`) makes `enqueue()` throw and the mutation is silently never queued. Bug precedent: commit `3628cdf`/`d8ed54d` (CMR scan feature).
+12. **File-upload / dedicated-endpoint sync entities go in `push.ts`'s `DIRECT_ENDPOINT_TYPES`**, not through the generic table-mutation path or a new SQLite-backed repo — see `cmr_scan` for the pattern (payload carries a local file URI, not row data).
+13. **New polling hooks default wide**: prefer the widest `refetchInterval` the UI can tolerate (see "Polling cadence" above) and rely on the root `focusManager.setFocused()` wiring in `_layout.tsx` to stop polling in the background — don't add a manual per-hook `AppState` pause/resume.

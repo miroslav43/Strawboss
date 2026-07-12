@@ -3,7 +3,7 @@ name: backend-agent
 description: Specialist in the NestJS backend -- modules, Drizzle ORM, auth, sync, geofence, BullMQ
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-06-28
+updated: 2026-07-12
 ---
 
 # StrawBoss Backend Agent
@@ -24,7 +24,7 @@ Every feature is a NestJS module in its own directory under `backend/service/src
 - `<feature>.controller.ts` -- HTTP endpoints under `/api/v1/<feature>`
 - `<feature>.service.ts` -- business logic and database queries
 
-Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bale-productions`, `fuel-logs`, `alerts`, `reconciliation`, `parcels`, `machines`, `documents`, `jobs`, `notifications`, `mobile-logs`, `health`, `farms`, `delivery-destinations`, `parcel-daily-status`, `admin-users`, `dashboard`, `profile`, `location`, `audit`, `consumable-logs`, `deposit-inventory` (Plan C), `reports`, `fleet` (device registry + OTA updates).
+Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bale-productions`, `fuel-logs`, `alerts`, `reconciliation`, `parcels`, `machines`, `documents`, `cmr-scans` (scanned paper CMR, leaf module -- see below), `jobs`, `notifications`, `mobile-logs`, `health`, `farms`, `delivery-destinations`, `parcel-daily-status`, `admin-users`, `dashboard`, `profile`, `location`, `audit`, `consumable-logs`, `deposit-inventory` (Plan C), `reports`, `trip-requests`, `fleet` (device registry + OTA updates).
 
 ### Database access
 - Uses Drizzle ORM with `DrizzleProvider` injected into services.
@@ -35,6 +35,7 @@ Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bal
 - List queries must have a `LIMIT` clause.
 - `drizzleProvider.client` (the raw `ReturnType<typeof postgres>`) is exposed as a public field. Use `.reserve()` on it when you need a **session-pinned** connection (e.g. for PostgreSQL advisory locks in `onModuleInit`). Always call `.release()` in `finally`.
 - Pool is capped at `max: 8` per replica (Supabase session-mode pooler budget for 2 replicas). Do not raise this without checking the pooler limit.
+- **"Replace the single active row" race** (e.g. one aviz / one `cmr_scan` per trip request): wrap retire (`softDeleteByTripRequest`) + insert (`create`) in one `drizzleProvider.db.transaction()`, taking `pg_advisory_xact_lock(hashtext('<namespace>:' + resourceId))` first so two concurrent writers targeting the same resource serialize instead of both inserting (or leaving zero active rows). See `CmrScansService.attachScan()`. `DocumentsService.create()` / `softDeleteByTripRequest()` both accept an optional transaction executor (`Pick<PostgresJsDatabase, 'execute'>`) for this.
 
 ### Auth system
 - Global guards registered as `APP_GUARD` in `app.module.ts`: `AuthGuard` then `RolesGuard`.
@@ -93,6 +94,12 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - Import schemas from `@strawboss/validation`.
 - Pattern: `@Body(new ZodValidationPipe(createFooSchema)) dto: FooCreateDto`
 
+### File uploads (multipart PDFs)
+- `UploadsService.savePdf(input, subdir, maxBytes, basename?)` is the shared streaming writer behind `saveAviz()` (10 MB, `avize/`) and `saveCmrScan()` (15 MB, `cmr-scans/`). Don't duplicate it for a new PDF upload kind -- add a thin wrapper that calls `savePdf()` with its own subdir/limit.
+- The **global** `@fastify/multipart` cap in `main.ts` is only 3 MB. Every PDF/APK controller MUST pass its own limit to `req.file({ limits: { fileSize } })` per-request, or a legitimate multi-page upload gets a confusing 413.
+- `savePdf()` sniffs the leading `%PDF-` magic bytes as the stream comes in (destroys the stream early on mismatch) and re-checks after the pipeline for files too small to have tripped the streaming check -- never trust the client-declared MIME alone.
+- Optional `basename` lets a caller pin a stable, client-minted UUID as the storage filename (validated against `UUID_RE`; anything else is ignored and a random UUID is used instead) so a sync-queue retry after an ambiguous failure overwrites the same blob instead of orphaning one.
+
 ### Fleet module (`src/fleet/`)
 - `FleetController`: single public endpoint `POST /fleet/checkin`. Uses `@Public()` — no JWT required. Device identity is proven via HMAC-SHA256 device token (keyed with `SUPABASE_JWT_SECRET`). First check-in registers the device and returns `deviceTokenIssued`; subsequent calls verify it with `timingSafeEqual`.
 - `FleetAdminController`: all routes under `/super-admin/` restricted to `@Roles(UserRole.super_admin)`. Covers devices (list/get/patch/delete/ota-status/logs), releases (list/upload/patch), deployments (list/create/cancel), plus Tailscale control:
@@ -106,7 +113,7 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
   - `sanitizeHostname(name, deviceId)`: lowercase → replace non-`[a-z0-9-]` runs with `-` → strip leading/trailing `-`; fallback `phone-<first-8-chars-id>`.
   - `mintEphemeralAuthKey(clientId, clientSecret, tag, hostname)`: preferred auth key source. Two calls: `POST /api/v2/oauth/token` (client-credentials) → `POST /api/v2/tailnet/-/keys` (ephemeral, single-use, preauthorized, tagged, 1 h expiry). Returns `null` on any error; caller falls back to the shared `app_settings.tailscale_auth_key`. If neither is available, `tailscale_last_error` is written and no command is issued.
   - Device reports outcomes via `commandReports[{ commandId, status, error? }]` in the next check-in. Success: `tailscale_applied = tailscale_desired`, error cleared. Failure: `tailscale_last_error` updated.
-- `FleetPushService`: optional FCM acceleration push. `firebase-admin` is **not** installed. It is imported via `const pkg = 'firebase-admin'; await import(pkg)` — a non-literal dynamic import so TypeScript resolves to `any` and the app boots without the package. Enabled only when `FIREBASE_SERVICE_ACCOUNT` env var is present. Poll is the authoritative delivery trigger.
+- `FleetPushService`: optional FCM acceleration push. `firebase-admin` is **not** installed. It is imported via `const pkg = 'firebase-admin'; await import(pkg)` — a non-literal dynamic import so TypeScript resolves to `any` and the app boots without the package. Enabled only when `FIREBASE_SERVICE_ACCOUNT` env var is present. Poll is the authoritative delivery trigger. Its shared `sendDataWake()` backs both the OTA checkin push and `sendPresenceWake()` (presence dead-man). Dead-token pruning is conservative on purpose: prune on 404 always, but on 400 only when the body specifically implicates the token (`message.token`, `registration-token-not-registered`, `SENDER_ID_MISMATCH`, `UNREGISTERED`) — **never** on a bare `INVALID_ARGUMENT`, since FCM also returns that for a malformed message, and a payload-shape bug would otherwise null the whole fleet's `push_token` in one pass.
 - Device log viewer resolves `deviceUuid` from the device record, then reads `logs/mobile/{level}/{date}.log` and filters NDJSON lines by `meta.deviceId === deviceUuid`. Requires `MobileLogsService` to persist `deviceId` in Winston meta (added in this feature).
 
 ### Swarm / multi-replica awareness
