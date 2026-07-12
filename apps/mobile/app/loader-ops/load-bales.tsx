@@ -32,6 +32,13 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 import { mobileLogger } from '@/lib/logger';
 import { generateUuid } from '@/lib/uuid';
+import {
+  buildCmrPdf,
+  uploadCmrScan,
+  deleteLocalCmrPdf,
+  enqueueCmrScan,
+} from '@/lib/cmrScanUpload';
+import { scanCmrPages, captureCmrPageWithCamera, ScannerUnavailableError } from '@/lib/cmrScanner';
 import { colors } from '@strawboss/ui-tokens';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 import { useI18n } from '@/lib/i18n';
@@ -47,6 +54,13 @@ const DEFAULT_MAX_BALES_PER_TRUCK = 33;
 const LOAD_FIELD_TOLERANCE_M = 5;
 
 type GpsStatus = 'idle' | 'loading' | 'denied' | 'unavailable' | 'ok';
+
+/**
+ * The CMR scan step, shown only for auxiliary loads. `intro` prompts the scan,
+ * `preview` shows the captured pages and is the gate that enforces "at least one
+ * page" before anything is written, `saving` runs the register + upload.
+ */
+type CmrStep = null | 'intro' | 'preview' | 'saving';
 
 interface RegisterLoadResponse {
   trip: { id: string; status: string; bale_count: number };
@@ -80,10 +94,12 @@ export default function LoadBalesScreen() {
     truckId: truckIdParam,
     parcelId: parcelIdParam,
     isAuxiliary: isAuxiliaryParam,
+    auxTripId: auxTripIdParam,
   } = useLocalSearchParams<{
     truckId?: string | string[];
     parcelId?: string | string[];
     isAuxiliary?: string | string[];
+    auxTripId?: string | string[];
   }>();
 
   // Auxiliary flag: passed from the aux truck card on the loader home.
@@ -91,6 +107,14 @@ export default function LoadBalesScreen() {
   // arrives wherever; the loader loads it on demand at any location.
   const isAuxiliary =
     (Array.isArray(isAuxiliaryParam) ? isAuxiliaryParam[0] : isAuxiliaryParam) === '1';
+
+  // The aux trip's id. Only used to address the CMR scan: online we could read it
+  // off the register-load response, but offline there is no response, so the id
+  // has to come in with the route.
+  const auxTripId = (() => {
+    const raw = Array.isArray(auxTripIdParam) ? auxTripIdParam[0] : auxTripIdParam;
+    return raw && raw.length > 0 ? raw : null;
+  })();
 
   // For auxiliary trips the parcel is pre-resolved from the trip row (passed via
   // route param). For normal trips it still comes from useCurrentLoaderParcel.
@@ -203,7 +227,13 @@ export default function LoadBalesScreen() {
 
   const [baleCountStr, setBaleCountStr] = useState('');
   const [saving, setSaving] = useState(false);
+  // Own-fleet loads still end on the specimen signature. Auxiliary loads end on a
+  // CMR scan instead — the external transporter's paper document, which only exists
+  // for aux. The two finish paths are mutually exclusive; see handleRegisterPress.
   const [showSignature, setShowSignature] = useState(false);
+  const [cmrStep, setCmrStep] = useState<CmrStep>(null);
+  const [cmrPages, setCmrPages] = useState<string[]>([]);
+  const [scanning, setScanning] = useState(false);
   const [saved, setSaved] = useState(false);
   const successScale = useRef(new Animated.Value(0.5)).current;
 
@@ -308,6 +338,19 @@ export default function LoadBalesScreen() {
 
   const fullTruckCount = truck?.maxBaleCount ?? DEFAULT_MAX_BALES_PER_TRUCK;
 
+  /**
+   * Every gate in handleRegisterPress ends here. Auxiliary loads finish by scanning
+   * the transporter's paper CMR; own-fleet loads finish on the specimen signature,
+   * unchanged — there is no paper CMR for a truck that never leaves the company.
+   */
+  const proceedToFinish = useCallback(() => {
+    if (isAuxiliary) {
+      setCmrStep('intro');
+    } else {
+      setShowSignature(true);
+    }
+  }, [isAuxiliary]);
+
   // FM-5: duplicate detection — check for a recent bale_load on same (truckId, parcelId).
   // Uses snapshotParcelId directly (parcelReady = snapshotParcelId !== null, declared later).
   const handleRegisterPress = useCallback(async () => {
@@ -354,14 +397,14 @@ export default function LoadBalesScreen() {
       return;
     }
     if (baleCount <= 0 || !truckId || (!targetIsDepot && !snapshotParcelId)) {
-      setShowSignature(true);
+      proceedToFinish();
       return;
     }
     // Depot loads have no per-parcel duplicate/availability checks yet
     // (depot-inventory reconciliation is a future enhancement) — sign directly.
     // The `!snapshotParcelId` re-check also narrows the type for the checks below.
     if (targetIsDepot || !snapshotParcelId) {
-      setShowSignature(true);
+      proceedToFinish();
       return;
     }
     try {
@@ -384,7 +427,7 @@ export default function LoadBalesScreen() {
           cancelText: t('loader.loadBales.modalCancel'),
           onConfirm: () => {
             hideModal();
-            setShowSignature(true);
+            proceedToFinish();
           },
           onCancel: hideModal,
         });
@@ -443,8 +486,9 @@ export default function LoadBalesScreen() {
       }
     }
 
-    setShowSignature(true);
+    proceedToFinish();
   }, [
+    proceedToFinish,
     isAuxiliary,
     bypassFieldGate,
     targetIsDepot,
@@ -463,11 +507,27 @@ export default function LoadBalesScreen() {
     hideModal,
   ]);
 
-  const handleSignatureConfirm = useCallback(
-    async (loaderSignature: string) => {
-      if (!userId || !assignedMachineId || !truckId) return;
+  /**
+   * Register the load, then attach the CMR scan if this is an auxiliary load.
+   *
+   * Both finish paths land here: own-fleet passes `loaderSignature` (the specimen
+   * URL), aux passes `cmr` (a PDF already built on-device). Exactly one is set.
+   *
+   * `loaderSignature` is optional in the server's Zod schema, so an aux load simply
+   * omits it and `trips.loader_signature_url` stays null.
+   *
+   * Returns false if a guard refused the submit before anything was written, so the
+   * caller can put its own screen back into an interactive state.
+   */
+  const submitLoad = useCallback(
+    async (opts: {
+      loaderSignature?: string;
+      cmr?: { uri: string; pageCount: number };
+    }): Promise<boolean> => {
+      const { loaderSignature, cmr } = opts;
+      if (!userId || !assignedMachineId || !truckId) return false;
       // Use the snapshotted target — immune to background refresh changing it.
-      if (targetIsDepot ? !snapshotDepotId : !snapshotParcelId) return;
+      if (targetIsDepot ? !snapshotDepotId : !snapshotParcelId) return false;
 
       // Depot loads are ONLINE ONLY this iteration — the offline depot sync path
       // (SQLite parity + queue) is out of scope. Block with a clear message
@@ -477,7 +537,7 @@ export default function LoadBalesScreen() {
           t('loader.loadBales.depotRequiresConnectionTitle'),
           t('loader.loadBales.depotRequiresConnectionMessage'),
         );
-        return;
+        return false;
       }
 
       setSaving(true);
@@ -496,7 +556,7 @@ export default function LoadBalesScreen() {
           gpsLat: gps?.lat,
           gpsLon: gps?.lon,
           idempotencyKey,
-          loaderSignature,
+          ...(loaderSignature ? { loaderSignature } : {}),
         };
 
         if (isOnline) {
@@ -528,6 +588,20 @@ export default function LoadBalesScreen() {
             created: result.created,
             source: targetIsDepot ? 'depot' : 'parcel',
           });
+
+          if (cmr) {
+            // The load is already registered at this point, so a failed upload must
+            // never fail the whole operation — queue it and let the sync loop retry.
+            try {
+              await uploadCmrScan(result.trip.id, cmr.uri, cmr.pageCount);
+              await deleteLocalCmrPdf(cmr.uri);
+            } catch {
+              await enqueueCmrScan(result.trip.id, cmr, `register_load_${idempotencyKey}`);
+              mobileLogger.flow('CMR scan upload failed online, queued for retry', {
+                tripId: result.trip.id,
+              });
+            }
+          }
         } else if (snapshotParcelId) {
           // Offline path is parcel-only — depot loads are blocked above when
           // offline, so a snapshotParcelId is always present here.
@@ -548,11 +622,22 @@ export default function LoadBalesScreen() {
           await queue.enqueue({
             entityType: 'register_load',
             entityId: idempotencyKey,
-            action: 'register',
+            // 'insert', not 'register': sync_queue has CHECK (action IN
+            // ('insert','update','delete')), and SQLite enforces it — an invalid
+            // action makes enqueue() throw, so the load was never actually queued.
+            action: 'insert',
             payload,
             idempotencyKey: `register_load_${idempotencyKey}`,
           });
           mobileLogger.flow('Loader register-load: offline queued', { idempotencyKey });
+
+          // Enqueued AFTER the register_load so the FIFO dequeue sends them in that
+          // order. The aux trip already exists server-side (the dispatcher's loader
+          // assignment created it), so the scan can never be orphaned by a
+          // register-load that hasn't landed yet — auxTripId addresses it directly.
+          if (cmr && auxTripId) {
+            await enqueueCmrScan(auxTripId, cmr, `register_load_${idempotencyKey}`);
+          }
         }
 
         void queryClient.invalidateQueries({ queryKey: ['bale-loads', 'my', userId] });
@@ -564,12 +649,16 @@ export default function LoadBalesScreen() {
         idempotencyKeyRef.current = null;
         setSaved(true);
         setTimeout(() => router.back(), 2500);
+        return true;
       } catch (err) {
         mobileLogger.error('Loader register-load failed', {
           truckId,
           err: err instanceof Error ? { message: err.message } : err,
         });
+        // Back to whichever finish screen this came from, with the work intact:
+        // the scanned pages survive so the operator can just retry the submit.
         setShowSignature(false);
+        setCmrStep(cmr ? 'preview' : null);
 
         // Surface structured business-rule errors with the exact numbers the
         // server reported, so the operator sees how many bales actually remain
@@ -589,14 +678,14 @@ export default function LoadBalesScreen() {
                   remaining: body.remaining ?? 0,
                 }),
             );
-            return;
+            return false;
           }
           if (body.error === 'parcel_fully_loaded') {
             Alert.alert(
               t('loader.loadBales.alertParcelFullyLoadedTitle'),
               body.message ?? t('loader.loadBales.alertParcelFullyLoadedFallback'),
             );
-            return;
+            return false;
           }
           if (body.error === 'bale_count_exceeds_truck_capacity') {
             Alert.alert(
@@ -606,7 +695,7 @@ export default function LoadBalesScreen() {
                   truckCap: body.truckCap ?? fullTruckCount,
                 }),
             );
-            return;
+            return false;
           }
         }
 
@@ -614,6 +703,7 @@ export default function LoadBalesScreen() {
           t('loader.loadBales.alertErrorTitle'),
           err instanceof Error ? err.message : t('loader.loadBales.alertErrorFallbackMessage'),
         );
+        return false;
       } finally {
         setSaving(false);
       }
@@ -627,11 +717,105 @@ export default function LoadBalesScreen() {
       snapshotParcelId,
       baleCount,
       isAuxiliary,
+      auxTripId,
       isOnline,
       queryClient,
       t,
     ],
   );
+
+  /**
+   * Open the document scanner and append whatever pages come back.
+   *
+   * If the ML Kit module isn't there (Play Services hasn't fetched it and the phone
+   * is offline — the exact situation a loader in a field is in), fall back to a
+   * plain camera shot. No auto-crop, but the operator is never trapped: the scan is
+   * mandatory, so a hard failure here would mean an un-registerable load.
+   */
+  const handleScanPages = useCallback(async () => {
+    setScanning(true);
+    try {
+      const pages = await scanCmrPages();
+      if (pages.length > 0) {
+        setCmrPages((prev) => [...prev, ...pages]);
+        setCmrStep('preview');
+      }
+    } catch (err) {
+      if (!(err instanceof ScannerUnavailableError)) throw err;
+      Alert.alert(
+        t('loader.loadBales.cmrScanUnavailableTitle'),
+        t('loader.loadBales.cmrScanUnavailableMessage'),
+        [
+          { text: t('loader.loadBales.modalCancel'), style: 'cancel' },
+          {
+            text: t('loader.loadBales.cmrScanFallbackPhotoButton'),
+            onPress: () => {
+              void (async () => {
+                const uri = await captureCmrPageWithCamera();
+                if (uri) {
+                  setCmrPages((prev) => [...prev, uri]);
+                  setCmrStep('preview');
+                }
+              })();
+            },
+          },
+        ],
+      );
+    } finally {
+      setScanning(false);
+    }
+  }, [t]);
+
+  const handleRemoveCmrPage = useCallback((index: number) => {
+    setCmrPages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  /**
+   * Build the PDF, then submit. The PDF is built BEFORE anything is written, so a
+   * scanner or render failure leaves no registered load without a CMR — the
+   * operator stays on the preview with their pages and can just retry.
+   */
+  const handleCmrConfirm = useCallback(async () => {
+    if (cmrPages.length === 0) return;
+
+    // Offline we can only address the scan by the trip id carried in on the route.
+    // Without it the PDF would have nowhere to go, so refuse rather than register a
+    // load whose CMR can never be delivered.
+    if (!isOnline && !auxTripId) {
+      Alert.alert(
+        t('loader.loadBales.cmrScanNoTripTitle'),
+        t('loader.loadBales.cmrScanNoTripMessage'),
+      );
+      return;
+    }
+
+    setCmrStep('saving');
+    setSaving(true);
+    let pdf: { uri: string; pageCount: number };
+    try {
+      pdf = await buildCmrPdf(cmrPages, auxTripId ?? truckId ?? 'unknown');
+    } catch (err) {
+      mobileLogger.error('CMR scan PDF build failed', {
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+      setSaving(false);
+      setCmrStep('preview');
+      Alert.alert(
+        t('loader.loadBales.cmrScanPdfFailedTitle'),
+        t('loader.loadBales.cmrScanPdfFailedMessage'),
+      );
+      return;
+    }
+
+    // A guard inside submitLoad can refuse before writing anything (an aux truck
+    // loaded from a depot while offline, say). It alerts and returns false — put the
+    // screen back into an interactive state instead of stranding it on 'saving'.
+    const submitted = await submitLoad({ cmr: pdf });
+    if (!submitted) {
+      setSaving(false);
+      setCmrStep('preview');
+    }
+  }, [cmrPages, isOnline, auxTripId, truckId, submitLoad, t]);
 
   const truckLabel = truck
     ? (truck.registrationPlate ?? truck.internalCode)
@@ -656,6 +840,84 @@ export default function LoadBalesScreen() {
           <Text style={styles.successText}>{t('loader.loadBales.successText')}</Text>
           <Text style={styles.successSubtext}>{t('loader.loadBales.successSubtext')}</Text>
         </View>
+      </View>
+    );
+  }
+
+  // ── CMR scan (auxiliary loads only) ───────────────────────────────────────
+  // Replaces the specimen signature for aux: what matters for an external
+  // transporter is the paper CMR they carry, not a rubber-stamped signature.
+  if (cmrStep) {
+    const busy = saving || cmrStep === 'saving';
+    return (
+      <View style={styles.outerContainer}>
+        <ScreenHeader title={t('loader.loadBales.cmrScanScreenTitle')} />
+        <ScrollView style={[styles.body, { flex: 1 }]} contentContainerStyle={styles.sigContent}>
+          <View style={styles.sigHeader}>
+            <MaterialCommunityIcons name="file-document-outline" size={20} color={colors.primary} />
+            <Text style={styles.sigTitle}>{t('loader.loadBales.cmrScanTitle')}</Text>
+          </View>
+          <Text style={styles.sigHint}>
+            {t('loader.loadBales.cmrScanHint', { baleCount, truckLabel: truckLabel ?? '' })}
+          </Text>
+
+          {cmrPages.length > 0 && (
+            <>
+              <Text style={styles.cmrPagesLabel}>
+                {t('loader.loadBales.cmrScanPagesLabel', { count: cmrPages.length })}
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {cmrPages.map((uri, index) => (
+                  <View key={`${uri}-${index}`} style={styles.cmrThumbWrap}>
+                    <Image source={{ uri }} style={styles.cmrThumb} resizeMode="cover" />
+                    {!busy && (
+                      <TouchableOpacity
+                        style={styles.cmrThumbRemove}
+                        onPress={() => handleRemoveCmrPage(index)}
+                        accessibilityLabel={t('loader.loadBales.cmrScanDeletePage')}
+                      >
+                        <MaterialCommunityIcons name="close" size={16} color="#fff" />
+                      </TouchableOpacity>
+                    )}
+                    <Text style={styles.cmrThumbIndex}>{index + 1}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </>
+          )}
+
+          {busy ? (
+            <Text style={styles.cmrBusy}>{t('loader.loadBales.cmrScanBuildingPdf')}</Text>
+          ) : (
+            <>
+              <BigButton
+                title={
+                  cmrPages.length === 0
+                    ? t('loader.loadBales.cmrScanButton')
+                    : t('loader.loadBales.cmrScanAddPage')
+                }
+                onPress={() => void handleScanPages()}
+                disabled={scanning}
+                variant={cmrPages.length === 0 ? 'primary' : 'outline'}
+              />
+              {/* The mandatory gate: no path out of here with zero pages. */}
+              {cmrPages.length > 0 && (
+                <BigButton
+                  title={t('loader.loadBales.cmrScanConfirmButton')}
+                  onPress={() => void handleCmrConfirm()}
+                />
+              )}
+              <BigButton
+                title={t('loader.loadBales.giveUpButton')}
+                onPress={() => {
+                  setCmrStep(null);
+                  setCmrPages([]);
+                }}
+                variant="outline"
+              />
+            </>
+          )}
+        </ScrollView>
       </View>
     );
   }
@@ -700,7 +962,7 @@ export default function LoadBalesScreen() {
                 );
                 return;
               }
-              void handleSignatureConfirm(signatureSpecimenUrl);
+              void submitLoad({ loaderSignature: signatureSpecimenUrl });
             }}
             disabled={saving}
           />
@@ -1017,5 +1279,50 @@ const styles = StyleSheet.create({
     color: '#C62828',
     paddingVertical: 24,
     textAlign: 'center',
+  },
+  cmrPagesLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#5D4037',
+    textTransform: 'uppercase',
+    paddingHorizontal: 4,
+  },
+  cmrThumbWrap: {
+    width: 110,
+    height: 150,
+    marginRight: 10,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#F9F5F2',
+    borderWidth: 1,
+    borderColor: '#E0D6D0',
+  },
+  cmrThumb: { width: '100%', height: '100%' },
+  cmrThumbRemove: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cmrThumbIndex: {
+    position: 'absolute',
+    bottom: 4,
+    left: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowRadius: 3,
+  },
+  cmrBusy: {
+    fontSize: 15,
+    color: '#5D4037',
+    textAlign: 'center',
+    paddingVertical: 28,
   },
 });

@@ -86,6 +86,38 @@ export function useUploadAviz(client: ApiClient) {
   });
 }
 
+/**
+ * List the scanned paper CMR attached to a request. Like the aviz, only one is
+ * kept active at a time, so this returns 0 or 1 document.
+ */
+export function useRequestCmrScans(client: ApiClient, requestId: string) {
+  return useQuery({
+    queryKey: queryKeys.tripRequests.cmrScans(requestId),
+    queryFn: () => client.get<Document[]>(`/api/v1/cmr-scans/trip-request/${requestId}`),
+    enabled: !!requestId,
+  });
+}
+
+/**
+ * Admin override: upload (or replace) the scanned CMR for a request — the loader
+ * normally posts it from the phone against the trip instead.
+ *
+ * Invalidating `tripRequests.all` is what flips the button green: `hasCmrScan` is
+ * computed server-side on the *list* row, not on the document, so refetching the
+ * scan alone would leave the button grey.
+ */
+export function useUploadCmrScan(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, formData }: { requestId: string; formData: FormData }) =>
+      client.upload<Document>(`/api/v1/cmr-scans/trip-request/${requestId}`, formData),
+    onSuccess: (_doc, { requestId }) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.cmrScans(requestId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
+    },
+  });
+}
+
 /** Admin: read the caller's own org request-portal settings (code + crop list). */
 export function useOrgRequestSettings(client: ApiClient) {
   return useQuery({

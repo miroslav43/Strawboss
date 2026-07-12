@@ -87,6 +87,9 @@ export interface TripRequest extends Timestamps, SoftDelete {
   confirmedByName?: string | null;
   // whether a non-deleted aviz (delivery_note document) exists for this request
   hasAviz?: boolean;
+  // whether a non-deleted scanned paper CMR (cmr_scan document) exists for this
+  // request — uploaded by the loader after an aux load, or overridden by an admin
+  hasCmrScan?: boolean;
 }
 
 /** Public submission payload (no auth). The portal code is validated separately. */

@@ -12,6 +12,7 @@ import {
   Warehouse,
   Eye,
   FileText,
+  ScanLine,
 } from 'lucide-react';
 import {
   useTripRequests,
@@ -29,6 +30,7 @@ import { normalizeList } from '@/lib/normalize-api-list';
 import { cn } from '@/lib/utils';
 import { RequestDetailsModal } from '@/components/features/trip-requests/RequestDetailsModal';
 import { AvizUploadModal } from '@/components/features/trip-requests/AvizUploadModal';
+import { CmrUploadModal } from '@/components/features/trip-requests/CmrUploadModal';
 
 // ── Shared UI atoms (same style as machines/page.tsx) ─────────────────────
 
@@ -277,18 +279,27 @@ function CancelModal({ request, onClose }: { request: TripRequest; onClose: () =
 
 // ── Pending request card ──────────────────────────────────────────────────
 
-/** The two new per-row actions (details popup + aviz upload), shared by both rows. */
+/**
+ * Per-row actions (details popup + the two document uploads), shared by both rows.
+ *
+ * Aviz and CMR are different documents with the same green-when-present affordance,
+ * so they get distinct icons — a dispatcher scanning the row must not have to read
+ * the label to tell them apart.
+ */
 function RowActions({
   request,
   onViewDetails,
   onUploadAviz,
+  onUploadCmr,
 }: {
   request: TripRequest;
   onViewDetails: (r: TripRequest) => void;
   onUploadAviz: (r: TripRequest) => void;
+  onUploadCmr: (r: TripRequest) => void;
 }) {
   const { t } = useI18n();
   const hasAviz = !!request.hasAviz;
+  const hasCmr = !!request.hasCmrScan;
   return (
     <>
       <button
@@ -311,6 +322,19 @@ function RowActions({
         {hasAviz ? <CheckCircle2 className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
         {hasAviz ? t('tripRequests.avizUploaded') : t('tripRequests.uploadAviz')}
       </button>
+      <button
+        onClick={() => onUploadCmr(request)}
+        title={hasCmr ? t('tripRequests.cmrUploaded') : t('tripRequests.uploadCmr')}
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium',
+          hasCmr
+            ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
+            : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50',
+        )}
+      >
+        {hasCmr ? <CheckCircle2 className="h-3.5 w-3.5" /> : <ScanLine className="h-3.5 w-3.5" />}
+        {hasCmr ? t('tripRequests.cmrUploaded') : t('tripRequests.uploadCmr')}
+      </button>
     </>
   );
 }
@@ -321,12 +345,14 @@ function PendingRequestRow({
   onCancel,
   onViewDetails,
   onUploadAviz,
+  onUploadCmr,
 }: {
   request: TripRequest;
   onConfirm: (r: TripRequest) => void;
   onCancel: (r: TripRequest) => void;
   onViewDetails: (r: TripRequest) => void;
   onUploadAviz: (r: TripRequest) => void;
+  onUploadCmr: (r: TripRequest) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -334,7 +360,12 @@ function PendingRequestRow({
       <div className="mb-3 flex items-center justify-between">
         <StatusBadge status={request.status as RequestStatus} />
         <div className="flex flex-wrap justify-end gap-2">
-          <RowActions request={request} onViewDetails={onViewDetails} onUploadAviz={onUploadAviz} />
+          <RowActions
+            request={request}
+            onViewDetails={onViewDetails}
+            onUploadAviz={onUploadAviz}
+            onUploadCmr={onUploadCmr}
+          />
           <button
             onClick={() => onConfirm(request)}
             className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
@@ -423,10 +454,12 @@ function ClosedRequestRow({
   request,
   onViewDetails,
   onUploadAviz,
+  onUploadCmr,
 }: {
   request: TripRequest;
   onViewDetails: (r: TripRequest) => void;
   onUploadAviz: (r: TripRequest) => void;
+  onUploadCmr: (r: TripRequest) => void;
 }) {
   const { t } = useI18n();
   const slug = useOrgSlug();
@@ -475,8 +508,13 @@ function ClosedRequestRow({
         {request.neededDate ?? <span className="text-neutral-300">{t('tripRequests.none')}</span>}
       </td>
       <td className="px-4 py-3">
-        <div className="flex justify-end gap-2">
-          <RowActions request={request} onViewDetails={onViewDetails} onUploadAviz={onUploadAviz} />
+        <div className="flex flex-wrap justify-end gap-2">
+          <RowActions
+            request={request}
+            onViewDetails={onViewDetails}
+            onUploadAviz={onUploadAviz}
+            onUploadCmr={onUploadCmr}
+          />
         </div>
       </td>
     </tr>
@@ -492,6 +530,7 @@ export default function TripRequestsPage() {
   const [cancelTarget, setCancelTarget] = useState<TripRequest | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<TripRequest | null>(null);
   const [avizTarget, setAvizTarget] = useState<TripRequest | null>(null);
+  const [cmrTarget, setCmrTarget] = useState<TripRequest | null>(null);
 
   const filterOptions = useMemo(
     () => [
@@ -522,6 +561,7 @@ export default function TripRequestsPage() {
   const handleCancel = useCallback((r: TripRequest) => setCancelTarget(r), []);
   const handleViewDetails = useCallback((r: TripRequest) => setDetailsTarget(r), []);
   const handleUploadAviz = useCallback((r: TripRequest) => setAvizTarget(r), []);
+  const handleUploadCmr = useCallback((r: TripRequest) => setCmrTarget(r), []);
 
   return (
     <div className="space-y-5">
@@ -571,6 +611,7 @@ export default function TripRequestsPage() {
               onCancel={handleCancel}
               onViewDetails={handleViewDetails}
               onUploadAviz={handleUploadAviz}
+              onUploadCmr={handleUploadCmr}
             />
           ))}
         </div>
@@ -601,6 +642,7 @@ export default function TripRequestsPage() {
                   request={r}
                   onViewDetails={handleViewDetails}
                   onUploadAviz={handleUploadAviz}
+                  onUploadCmr={handleUploadCmr}
                 />
               ))}
             </tbody>
@@ -617,6 +659,7 @@ export default function TripRequestsPage() {
         <RequestDetailsModal request={detailsTarget} onClose={() => setDetailsTarget(null)} />
       )}
       {avizTarget && <AvizUploadModal request={avizTarget} onClose={() => setAvizTarget(null)} />}
+      {cmrTarget && <CmrUploadModal request={cmrTarget} onClose={() => setCmrTarget(null)} />}
     </div>
   );
 }
