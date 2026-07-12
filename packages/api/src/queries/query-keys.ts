@@ -104,6 +104,7 @@ export const queryKeys = {
     list: (filters?: Record<string, unknown>) => ['tripRequests', 'list', filters] as const,
     detail: (id: string) => ['tripRequests', 'detail', id] as const,
     avize: (id: string) => ['tripRequests', 'avize', id] as const,
+    cmrScans: (id: string) => ['tripRequests', 'cmrScans', id] as const,
   },
   orgRequestSettings: {
     all: ['orgRequestSettings'] as const,

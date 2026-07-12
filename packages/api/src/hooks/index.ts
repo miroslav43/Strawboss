@@ -83,6 +83,8 @@ export {
   useCancelTripRequest,
   useRequestAvize,
   useUploadAviz,
+  useRequestCmrScans,
+  useUploadCmrScan,
   useOrgRequestSettings,
   useUpdateOrgRequestSettings,
 } from './use-trip-requests.js';
