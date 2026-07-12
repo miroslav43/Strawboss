@@ -637,6 +637,21 @@
     "cmrDownload": "Download CMR",
     "cmrGenerating": "CMR is generated automatically when the trip transitions to delivering."
   },
+  "fleet": {
+    "presence": {
+      "online": "Online",
+      "dozing": "Idle (dozing)",
+      "offline": "Offline",
+      "neverSeen": "Never connected",
+      "lastSeen": "Last check-in {{when}}",
+      "ariaOnline": "device online",
+      "ariaDozing": "device idle",
+      "ariaOffline": "device offline",
+      "shortOnline": "Online",
+      "shortDozing": "Idle",
+      "shortOffline": "Offline"
+    }
+  },
   "documents": {
     "title": "Documents",
     "detailTitle": "Document detail",

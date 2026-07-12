@@ -3,10 +3,11 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Crosshair, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
 import type { MachineLastLocation } from '@strawboss/types';
+import { MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { useI18n } from '@/lib/i18n';
 
-const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
+const ONLINE_THRESHOLD_MS = MACHINE_ONLINE_WINDOW_MS;
 
 function isOnline(recordedAt: string): boolean {
   return Date.now() - new Date(recordedAt).getTime() < ONLINE_THRESHOLD_MS;

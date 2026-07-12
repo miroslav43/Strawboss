@@ -24,7 +24,7 @@ import {
   queryKeys,
 } from '@strawboss/api';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { MachineType, FuelType } from '@strawboss/types';
+import { MachineType, FuelType, MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import type { Machine, TruckDistanceSummary, MachineLastLocation } from '@strawboss/types';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -681,7 +681,7 @@ export default function MachinesPage() {
 
   // Last GPS recording per machine — drives the presence badge in the Status
   // column. 15 min threshold since machines emit a position only every few min.
-  const MACHINE_ONLINE_MS = 15 * 60 * 1000;
+  const MACHINE_ONLINE_MS = MACHINE_ONLINE_WINDOW_MS;
   const machineLocations = useMachineLocations(apiClient);
   const lastSeenByMachine = useMemo(() => {
     const map = new Map<string, string>();

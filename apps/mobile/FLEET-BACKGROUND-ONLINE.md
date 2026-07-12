@@ -34,6 +34,29 @@ robust:
 
 ---
 
+## Presence windows / cadence hierarchy (why the web dot no longer flaps)
+
+The device reporting cadence, the backend dead-man, and the web "online" dot are
+**one coherent hierarchy** with a single source of truth: **`packages/types/src/presence.ts`**
+(`@strawboss/types`). Admin-web and backend import it; mobile mirrors the two device
+constants with a "keep in sync" comment (changing them needs a rebuild).
+
+```
+C_awake (~120s)  <  W_green (150s)  <  S (240s)  <  R_max (~360s)  <  W_idle (420s)  <  ∞
+```
+
+- **C_awake** worst-case awake cadence = `DEVICE_CHECKIN_GATE_MS` (90s) + a driver tick (~55-60s).
+- **W_green** `DEVICE_ONLINE_WINDOW_MS` (150s) — device dot green. Above `C_awake`, so an awake phone never flaps.
+- **S** `PRESENCE_DEADMAN_STALE_MS` (240s) — backend FCM-wakes the phone. Above `W_green`, so the dot turns **amber ("dozing")** *before* the wake fires.
+- **R_max** ≈ `S` + `PRESENCE_DEADMAN_RUN_MS` (90s) + FCM/checkin slack ≈ 360s — worst-case revive time.
+- **W_idle** `DEVICE_IDLE_WINDOW_MS` (420s) — device dot amber up to here. Above `R_max`, so a phone the dead-man *can* revive **never shows red**. Beyond → red = genuinely down.
+
+Before this, the web device dot used a **90s** window == the device's own 90s check-in gate, so a healthy phone flapped grey every cycle; and there was no clock-skew correction (the dot compared the admin browser clock to a server timestamp). The web now measures age against **server time** (the API `Date` header, captured in `ApiClient`). The user dot stays 2-state on `USER_ONLINE_WINDOW_MS` (180s); machines on `MACHINE_ONLINE_WINDOW_MS` (15 min).
+
+**Changing any presence timing = edit `presence.ts` only.** The dead-man interval needs a **backend redeploy**; device-side mirrors need a mobile rebuild/OTA.
+
+---
+
 ## Why it's hard: the OEM background-killer landscape
 
 The whole problem is OEM power management killing or freezing a backgrounded app.

@@ -8,7 +8,7 @@ import type {
   RoutePoint,
   DeliveryDestination,
 } from '@strawboss/types';
-import { HarvestStatus } from '@strawboss/types';
+import { HarvestStatus, MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import { useUpdateParcelBoundary, useUpdateDeliveryDestination } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -21,7 +21,7 @@ import { esc } from '@/lib/html-escape';
 const DETA_CENTER: [number, number] = [45.3883, 21.2311];
 const DEFAULT_ZOOM = 13;
 
-const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
+const ONLINE_THRESHOLD_MS = MACHINE_ONLINE_WINDOW_MS;
 
 function isOnline(recordedAt: string): boolean {
   return Date.now() - new Date(recordedAt).getTime() < ONLINE_THRESHOLD_MS;

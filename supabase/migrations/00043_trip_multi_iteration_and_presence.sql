@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_users_last_seen_at
   WHERE deleted_at IS NULL AND last_seen_at IS NOT NULL;
 
 COMMENT ON COLUMN users.last_seen_at IS
-  'Updated by POST /profile/heartbeat (mobile every 30 s). NULL = never connected.';
+  'Updated by POST /profile/heartbeat (mobile ~60 s, jittered). NULL = never connected. Online-window sizing lives in @strawboss/types (USER_ONLINE_WINDOW_MS).';
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- 2) trips multi-iteration columns

@@ -13,6 +13,7 @@ import {
   QUEUE_PRESENCE_DEADMAN,
   QUEUE_GPS_RETENTION,
 } from './queues';
+import { PRESENCE_DEADMAN_RUN_MS } from '@strawboss/types';
 
 /**
  * Seeds BullMQ repeating jobs on application startup.
@@ -79,11 +80,13 @@ export class JobSchedulerService implements OnModuleInit {
       { name: 'regen-all', data: {} },
     );
 
-    // Presence dead-man — every 2 min, FCM-wake device-owner phones whose
-    // last check-in has gone stale (external safety net for the always-on anchor).
+    // Presence dead-man — FCM-wake device-owner phones whose last check-in has
+    // gone stale (external safety net for the always-on anchor). Interval comes
+    // from the @strawboss/types SSOT (PRESENCE_DEADMAN_RUN_MS) so revival timing
+    // stays in lockstep with the web presence windows.
     await this.presenceDeadmanQueue.upsertJobScheduler(
       'presence-deadman-repeat',
-      { every: 2 * 60_000 },
+      { every: PRESENCE_DEADMAN_RUN_MS },
       { name: 'scan', data: {} },
     );
 

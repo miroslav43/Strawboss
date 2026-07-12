@@ -4,14 +4,15 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import type { User } from '@strawboss/types';
+import { USER_TOUCH_THROTTLE_MS } from '@strawboss/types';
 
 @Injectable()
 export class ProfileService {
   private readonly logger = new Logger(ProfileService.name);
   private readonly supabase: SupabaseClient;
 
-  /** Throttle window for `touchLastSeen` writes, per user, per replica. */
-  private static readonly TOUCH_THROTTLE_MS = 45_000;
+  /** Throttle window for `touchLastSeen` writes, per user, per replica (SSOT). */
+  private static readonly TOUCH_THROTTLE_MS = USER_TOUCH_THROTTLE_MS;
   /** Last time (Date.now()) we actually wrote presence for a user, keyed by userId. */
   private readonly lastTouchMs = new Map<string, number>();
   /** device_uuid -> last-bound userId, so re-binding an unchanged pair is a no-op. */

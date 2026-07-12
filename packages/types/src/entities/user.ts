@@ -24,9 +24,13 @@ export interface User extends Timestamps, SoftDelete {
   avatarUrl: string | null;
   signatureSpecimenUrl: string | null;
   lastLoginAt: string | null;
-  /** Plan C — heartbeat timestamp updated by POST /profile/heartbeat (mobile, 30s). */
+  /** Plan C — heartbeat timestamp updated by POST /profile/heartbeat (mobile, ~60s). */
   lastSeenAt: string | null;
-  /** Derived in API layer (`isOnline = lastSeenAt within ONLINE_WINDOW_S`). Not stored. */
+  /**
+   * Computed CLIENT-SIDE by the presence dots (`serverNow() - lastSeenAt <
+   * USER_ONLINE_WINDOW_MS`, see @strawboss/types presence SSOT). Not stored and
+   * not derived by the API — this field is effectively unused by the server.
+   */
   isOnline?: boolean;
   assignedMachineId: string | null;
   assignedDeliveryDestinationId: string | null;

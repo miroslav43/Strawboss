@@ -1,9 +1,10 @@
 -- 00044_user_sessions.sql
 -- Plan A T4 — Per-user session history for the "connected hours" admin report.
--- Sessions are derived from the existing /profile/heartbeat ping (mobile, ~30s):
+-- Sessions are derived from the existing /profile/heartbeat ping (mobile, ~60s):
 --   * gap to last ended_at ≤ 2 min → extend current session (UPDATE ended_at)
 --   * gap > 2 min                  → open a new session (INSERT)
--- The 90 s "online now" threshold (users.last_seen_at) stays unchanged.
+-- The "online now" thresholds now live in @strawboss/types (presence SSOT):
+-- USER_ONLINE_WINDOW_MS (180 s) for users, DEVICE_ONLINE_WINDOW_MS/…_IDLE_… for devices.
 --
 -- Idempotent: every DDL is guarded with IF NOT EXISTS / DO $$ EXCEPTION blocks.
 

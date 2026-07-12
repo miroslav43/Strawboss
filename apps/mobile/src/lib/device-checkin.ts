@@ -792,6 +792,10 @@ let checkinInFlight: Promise<void> | null = null;
  * native AlarmManager 60s) documented in FLEET-BACKGROUND-ONLINE.md — all four
  * MUST keep firing (do not remove any of them); this gate only skips the
  * network round-trip when one already succeeded very recently.
+ *
+ * Mirrors DEVICE_CHECKIN_GATE_MS in @strawboss/types (the presence cadence SSOT
+ * that the web online-windows + backend dead-man are sized against). Keep in
+ * sync — this is the "C" the whole hierarchy is derived from.
  */
 const CHECKIN_GATE_MS = 90_000;
 

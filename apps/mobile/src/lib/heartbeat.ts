@@ -53,7 +53,8 @@ export function startHeartbeat(): void {
   void ping();
   // Jittered ~60-65 s tick: the 55 s dedup gate in sendHeartbeatOnce() means
   // this only needs to be "roughly" 60 s, and the jitter keeps ~30 phones on
-  // the same shift from all ticking in the same second.
+  // the same shift from all ticking in the same second. Mirrors
+  // HEARTBEAT_INTERVAL_MS in @strawboss/types (presence SSOT) — keep in sync.
   timer = setInterval(
     () => {
       void ping();

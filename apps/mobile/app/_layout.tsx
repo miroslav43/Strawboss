@@ -484,8 +484,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, profileReady, role]);
 
-  // Plan C — presence heartbeat (T4). Pings /profile/heartbeat every 30 s so
-  // the admin board can render a green dot next to active operators.
+  // Plan C — presence heartbeat (T4). Pings /profile/heartbeat every ~60 s
+  // (jittered, deduped ~55 s) so the admin board can render a green dot next to
+  // active operators. Window sizing lives in @strawboss/types (presence SSOT).
   // On device-owner builds it keeps running while backgrounded (a foreground
   // service holds the JS thread); elsewhere the AppState listener pauses it.
   useEffect(() => {

@@ -12,7 +12,7 @@ import {
   useMachineLocations,
 } from '@strawboss/api';
 import type { Machine, DeliveryDestination, MachineLastLocation } from '@strawboss/types';
-import { AssignmentStatus } from '@strawboss/types';
+import { AssignmentStatus, MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { clientLogger } from '@/lib/client-logger';
@@ -104,7 +104,7 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
   const machineById = useMemo(() => new Map(machines.map((m) => [m.id, m] as const)), [machines]);
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
   // 15 min GPS threshold for machines (vs ~180 s heartbeat window for users).
-  const MACHINE_ONLINE_MS = 15 * 60 * 1000;
+  const MACHINE_ONLINE_MS = MACHINE_ONLINE_WINDOW_MS;
   const lastSeenByMachine = useMemo(() => {
     const map = new Map<string, string>();
     for (const row of normalize<MachineLastLocation>(rawLocations)) {

@@ -1,50 +1,15 @@
 'use client';
 
-import { useEffect, useReducer } from 'react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { USER_ONLINE_WINDOW_MS } from '@strawboss/types';
+import { usePresenceState, shortAgo } from './usePresenceState';
 
-// Default window: heartbeat relaxed to ~60 s + gate on mobile (jittered
-// 60-65 s JS interval, deduped against a 60 s native alarm) → 180 s tolerates
-// one missed tick without flapping the dot. Caller can pass `thresholdMs` to
-// widen the window — e.g. machine GPS recordings come every few minutes, so
-// the Machines / Available-truck lists use 15 min.
-const DEFAULT_ONLINE_WINDOW_MS = 180_000;
-
-// Shared 30 s tick so we don't run one timer per dot. The interval is created
-// lazily the first time a subscriber mounts, and torn down when the last one
-// unmounts — this keeps hot-reload (Fast Refresh) from accumulating duplicate
-// timers in development.
-const subscribers = new Set<() => void>();
-let tickIntervalId: ReturnType<typeof setInterval> | null = null;
-
-function ensureTick() {
-  if (typeof window === 'undefined') return;
-  if (tickIntervalId !== null) return;
-  tickIntervalId = setInterval(() => {
-    for (const sub of subscribers) sub();
-  }, 30_000);
-}
-
-function maybeStopTick() {
-  if (subscribers.size > 0) return;
-  if (tickIntervalId !== null) {
-    clearInterval(tickIntervalId);
-    tickIntervalId = null;
-  }
-}
-
-function useTick() {
-  const [, force] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => {
-    ensureTick();
-    subscribers.add(force);
-    return () => {
-      subscribers.delete(force);
-      maybeStopTick();
-    };
-  }, []);
-}
+// Default window comes from the @strawboss/types SSOT (USER_ONLINE_WINDOW_MS,
+// 180 s): a ~60 s heartbeat with a missed-tick grace so the dot doesn't flap.
+// Callers can widen it — machine GPS recordings come every few minutes, so the
+// Machines / Available-truck lists pass MACHINE_ONLINE_WINDOW_MS (15 min).
+// The shared re-tick + server-clock-corrected age live in ./usePresenceState.
 
 export interface UserPresenceDotProps {
   /**
@@ -69,21 +34,18 @@ export interface UserPresenceDotProps {
 
 /**
  * Plan C — green/grey indicator showing whether a user is currently connected
- * (heartbeat within the last 180 s). Tooltip carries the full "last seen" text;
- * the `badge` variant also renders a short label inline.
+ * (heartbeat within the online window). Tooltip carries the full "last seen"
+ * text; the `badge` variant also renders a short label inline.
  */
 export function UserPresenceDot({
   lastSeenAt,
   className,
   variant = 'dot',
-  thresholdMs = DEFAULT_ONLINE_WINDOW_MS,
+  thresholdMs = USER_ONLINE_WINDOW_MS,
 }: UserPresenceDotProps) {
-  useTick();
   const { t, locale } = useI18n();
-
-  const lastSeenMs = lastSeenAt ? new Date(lastSeenAt).getTime() : null;
-  const ageMs = lastSeenMs != null ? Date.now() - lastSeenMs : null;
-  const isOnline = ageMs != null && ageMs < thresholdMs;
+  const { state, ageMs } = usePresenceState(lastSeenAt, { online: thresholdMs });
+  const isOnline = state === 'online';
 
   const title = lastSeenAt
     ? isOnline
@@ -94,16 +56,12 @@ export function UserPresenceDot({
     : t('tasks.online.neverSeen');
 
   if (variant === 'badge') {
-    const shortLabel = (() => {
-      if (lastSeenAt == null || ageMs == null) return t('tasks.online.shortOffline');
-      if (isOnline) return t('tasks.online.shortOnline');
-      const minutes = Math.floor(ageMs / 60_000);
-      if (minutes < 60) return t('tasks.online.shortMinutesAgo', { n: minutes });
-      const hours = Math.floor(minutes / 60);
-      if (hours < 24) return t('tasks.online.shortHoursAgo', { n: hours });
-      const days = Math.floor(hours / 24);
-      return t('tasks.online.shortDaysAgo', { n: days });
-    })();
+    const shortLabel =
+      lastSeenAt == null || ageMs == null
+        ? t('tasks.online.shortOffline')
+        : isOnline
+          ? t('tasks.online.shortOnline')
+          : shortAgo(ageMs, t);
 
     return (
       <span

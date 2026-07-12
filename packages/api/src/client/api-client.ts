@@ -1,3 +1,17 @@
+import { setServerClockOffset } from './server-clock.js';
+
+/**
+ * Feed the server clock from a response's `Date` header, so presence dots can
+ * measure staleness against server time instead of a possibly-skewed browser
+ * clock. Cheap and self-refreshing — runs on every polled response.
+ */
+function captureServerDate(res: Response): void {
+  const d = res.headers.get('date');
+  if (!d) return;
+  const serverMs = Date.parse(d);
+  if (!Number.isNaN(serverMs)) setServerClockOffset(serverMs - Date.now());
+}
+
 /** Typed fetch wrapper for backend NestJS endpoints. */
 export interface ApiClientConfig {
   baseUrl: string;
@@ -61,6 +75,7 @@ export class ApiClient {
       headers: buildHeaders(token),
       body: hasBody ? JSON.stringify(body) : undefined,
     });
+    captureServerDate(res);
 
     // On 401, force a real token refresh and retry once.
     if (res.status === 401) {
@@ -72,6 +87,7 @@ export class ApiClient {
         headers: buildHeaders(newToken),
         body: hasBody ? JSON.stringify(body) : undefined,
       });
+      captureServerDate(retryRes);
       if (!retryRes.ok) {
         return this.handleErrorResponse(retryRes, method, path, 'Request failed');
       }

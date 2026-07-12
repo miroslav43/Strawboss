@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import type { MachineLastLocation } from '@strawboss/types';
+import { MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import type { RealtimeStatus } from '@/lib/realtime';
 import { useI18n } from '@/lib/i18n';
 
-const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
+const ONLINE_THRESHOLD_MS = MACHINE_ONLINE_WINDOW_MS;
 
 function fmtAgo(
   ms: number,

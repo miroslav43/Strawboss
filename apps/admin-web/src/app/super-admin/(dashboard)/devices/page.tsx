@@ -35,6 +35,7 @@ import type { UpdateDeviceInput, CreateDeploymentInput } from '@strawboss/valida
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
+import { DevicePresenceDot } from '@/components/shared/DevicePresenceDot';
 
 // ── Shared CSS atoms ──────────────────────────────────────────────────────────
 
@@ -130,19 +131,6 @@ function OtaStateBadge({ state }: { state: OtaState | null }) {
     >
       {t(`superAdmin.devices.otaState.${state}`)}
     </span>
-  );
-}
-
-// ── App online dot ────────────────────────────────────────────────────────────
-
-function OnlineDot({ lastSeenAt }: { lastSeenAt: string | null }) {
-  const { t } = useI18n();
-  const online = lastSeenAt != null && Date.now() - new Date(lastSeenAt).getTime() < 90_000;
-  return (
-    <span
-      title={online ? t('superAdmin.devices.online') : t('superAdmin.devices.offline')}
-      className={`inline-block h-2 w-2 rounded-full ${online ? 'bg-green-500' : 'bg-neutral-300'}`}
-    />
   );
 }
 
@@ -1112,7 +1100,7 @@ export default function FleetDevicesPage() {
                     >
                       {/* App online dot */}
                       <td className="px-4 py-3">
-                        <OnlineDot lastSeenAt={device.lastSeenAt} />
+                        <DevicePresenceDot lastSeenAt={device.lastSeenAt} />
                       </td>
                       {/* Nickname-first name cell */}
                       <td className="px-4 py-3">

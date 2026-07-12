@@ -33,6 +33,7 @@ import type {
   AppSettings,
   DeviceUptimeResponse,
 } from '@strawboss/types';
+import { PRESENCE_DEADMAN_STALE_MS } from '@strawboss/types';
 import type {
   DeviceCheckinInput,
   CreateReleaseInput,
@@ -731,10 +732,11 @@ export class FleetService {
    * Called by the presence-deadman BullMQ job (~every 2 min). Best-effort.
    */
   async wakeStaleDeviceOwners(
-    staleMinutes = 4,
+    staleMs = PRESENCE_DEADMAN_STALE_MS,
   ): Promise<{ scanned: number; woken: number; pruned: number }> {
     // Require last_checkin_at IS NOT NULL: a push_token only exists after a check-in,
     // so a genuinely never-seen row is skipped rather than FCM-spammed forever.
+    const staleSeconds = Math.round(staleMs / 1000);
     const rows = (await this.drizzleProvider.db.execute(sql`
       SELECT push_token AS "pushToken"
       FROM devices
@@ -742,7 +744,7 @@ export class FleetService {
         AND deleted_at IS NULL
         AND push_token IS NOT NULL
         AND last_checkin_at IS NOT NULL
-        AND last_checkin_at < now() - (${staleMinutes} * interval '1 minute')
+        AND last_checkin_at < now() - make_interval(secs => ${staleSeconds})
     `)) as unknown as { pushToken: string | null }[];
     const tokens = rows.map((r) => r.pushToken).filter((t): t is string => !!t);
     if (tokens.length === 0) return { scanned: rows.length, woken: 0, pruned: 0 };

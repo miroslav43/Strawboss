@@ -45,6 +45,7 @@ import type {
   DeviceUptimeResponse,
 } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
+import { DevicePresenceDot } from '@/components/shared/DevicePresenceDot';
 import { useI18n } from '@/lib/i18n';
 
 // ── OTA state badge ───────────────────────────────────────────────────────────
@@ -1527,9 +1528,6 @@ export default function DeviceDetailPage() {
   const { data: device, isLoading, isError, error } = useDevice(apiClient, id);
   const { data: otaEntries = [], isLoading: otaLoading } = useDeviceOtaStatus(apiClient, id);
 
-  const online =
-    device?.lastSeenAt != null && Date.now() - new Date(device.lastSeenAt).getTime() < 90_000;
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20 text-neutral-400">
@@ -1590,16 +1588,8 @@ export default function DeviceDetailPage() {
 
             {/* App online + Tailscale status row */}
             <div className="mt-2 flex flex-wrap items-center gap-4">
-              {/* App online */}
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${online ? 'bg-green-500' : 'bg-neutral-300'}`}
-                  title={online ? t('superAdmin.devices.online') : t('superAdmin.devices.offline')}
-                />
-                <span className={`text-xs ${online ? 'text-green-700' : 'text-neutral-400'}`}>
-                  {online ? t('superAdmin.devices.online') : t('superAdmin.devices.offline')}
-                </span>
-              </div>
+              {/* App online (3-state: online / dozing / offline) */}
+              <DevicePresenceDot lastSeenAt={device.lastSeenAt} variant="badge" />
 
               {/* Tailscale status */}
               <div className="flex items-center gap-1.5">

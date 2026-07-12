@@ -10,6 +10,7 @@ import type {
   RemoteCommandType,
   DeviceUptimeResponse,
 } from '@strawboss/types';
+import { DEVICES_POLL_MS } from '@strawboss/types';
 import type {
   UpdateDeviceInput,
   UpdateReleaseInput,
@@ -43,12 +44,12 @@ export interface DeviceOtaStatusWithVersion extends DeviceOtaStatus {
   versionCode: number;
 }
 
-/** Fleet device list — refetches every 20 s to stay fresh without Realtime. */
+/** Fleet device list — refetches on the shared poll cadence to stay fresh without Realtime. */
 export function useDevices(client: ApiClient) {
   return useQuery({
     queryKey: queryKeys.devices.list(),
     queryFn: () => client.get<FleetDeviceListItem[]>('/api/v1/super-admin/devices'),
-    refetchInterval: 20_000,
+    refetchInterval: DEVICES_POLL_MS,
   });
 }
 
@@ -57,6 +58,9 @@ export function useDevice(client: ApiClient, id: string) {
     queryKey: queryKeys.devices.detail(id),
     queryFn: () => client.get<Device>(`/api/v1/super-admin/devices/${id}`),
     enabled: !!id,
+    // Poll the detail too — the presence dot here is otherwise stale between
+    // manual refreshes (it used to have no refetch at all).
+    refetchInterval: DEVICES_POLL_MS,
   });
 }
 

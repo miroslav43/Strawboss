@@ -637,6 +637,21 @@
     "cmrDownload": "Descarcă CMR",
     "cmrGenerating": "CMR-ul se generează automat la trecerea cursei în starea de livrare."
   },
+  "fleet": {
+    "presence": {
+      "online": "Online",
+      "dozing": "Inactiv (repaus)",
+      "offline": "Offline",
+      "neverSeen": "Niciodată conectat",
+      "lastSeen": "Ultima verificare {{when}}",
+      "ariaOnline": "dispozitiv online",
+      "ariaDozing": "dispozitiv inactiv",
+      "ariaOffline": "dispozitiv offline",
+      "shortOnline": "Online",
+      "shortDozing": "Repaus",
+      "shortOffline": "Offline"
+    }
+  },
   "documents": {
     "title": "Documente",
     "detailTitle": "Detaliu document",

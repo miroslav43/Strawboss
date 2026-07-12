@@ -19,7 +19,7 @@ import {
 } from '@strawboss/api';
 import type { Parcel, Machine, MachineLastLocation, User } from '@strawboss/types';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
-import { AssignmentStatus } from '@strawboss/types';
+import { AssignmentStatus, MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { clientLogger } from '@/lib/client-logger';
 import { useI18n } from '@/lib/i18n';
@@ -567,7 +567,7 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
   const parcels = useMemo(() => normalize<Parcel>(rawParcels), [rawParcels]);
   const machines = useMemo(() => normalize<Machine>(rawMachines), [rawMachines]);
   // 15 min GPS threshold (the machine's last reported position).
-  const MACHINE_ONLINE_MS = 15 * 60 * 1000;
+  const MACHINE_ONLINE_MS = MACHINE_ONLINE_WINDOW_MS;
   const lastSeenByMachine = useMemo(() => {
     const map = new Map<string, string>();
     for (const row of normalize<MachineLastLocation>(rawLocations)) {

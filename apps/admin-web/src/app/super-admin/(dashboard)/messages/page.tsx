@@ -26,6 +26,7 @@ import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { cn } from '@/lib/utils';
+import { DevicePresenceDot } from '@/components/shared/DevicePresenceDot';
 
 const STATUS_CLS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -56,10 +57,6 @@ function relTime(iso: string | null): string {
   return `${Math.round(h / 24)}d`;
 }
 
-function isOnline(lastSeenAt: string | null): boolean {
-  return !!lastSeenAt && Date.now() - new Date(lastSeenAt).getTime() < 90_000;
-}
-
 /** One gateway-phone card: online status, health link, inline test-SMS + remote-debug. */
 function GatewayCard({ device }: { device: FleetDeviceListItem }) {
   const { t } = useI18n();
@@ -68,7 +65,6 @@ function GatewayCard({ device }: { device: FleetDeviceListItem }) {
   const [to, setTo] = useState('');
   const [body, setBody] = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
-  const online = isOnline(device.lastSeenAt);
   const label = device.name || device.model || device.deviceUuid.slice(0, 8);
 
   const submitTest = () => {
@@ -100,10 +96,7 @@ function GatewayCard({ device }: { device: FleetDeviceListItem }) {
     <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span
-            className={cn('h-2.5 w-2.5 rounded-full', online ? 'bg-green-500' : 'bg-neutral-300')}
-            title={online ? t('superAdmin.messages.online') : t('superAdmin.messages.offline')}
-          />
+          <DevicePresenceDot lastSeenAt={device.lastSeenAt} />
           <Smartphone className="h-4 w-4 text-neutral-400" />
           <span className="font-medium text-neutral-800">{label}</span>
         </div>
@@ -122,8 +115,9 @@ function GatewayCard({ device }: { device: FleetDeviceListItem }) {
         <span>
           {t('superAdmin.messages.lastCheckin')}: {relTime(device.lastCheckinAt)}
         </span>
-        <span className={online ? 'text-green-600' : 'text-neutral-400'}>
-          {online ? t('superAdmin.messages.online') : t('superAdmin.messages.offline')}
+        {/* wrap so the badge hugs its content instead of stretching the grid cell */}
+        <span className="flex items-center">
+          <DevicePresenceDot lastSeenAt={device.lastSeenAt} variant="badge" />
         </span>
       </div>
 

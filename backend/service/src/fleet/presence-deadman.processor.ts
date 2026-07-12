@@ -7,11 +7,12 @@ import { QUEUE_PRESENCE_DEADMAN } from '../jobs/queues';
 import { FleetService } from './fleet.service';
 
 /**
- * Presence dead-man worker. Runs ~every 2 min (seeded by JobSchedulerService).
- * Delegates to FleetService.wakeStaleDeviceOwners, which FCM-wakes any
- * device-owner phone whose last_checkin_at has gone stale — the external safety
- * net for the always-on anchor (a frozen phone can't self-recover, but a
- * high-priority FCM wake restarts its process → onCreate → PresenceService).
+ * Presence dead-man worker. Runs on PRESENCE_DEADMAN_RUN_MS (seeded by
+ * JobSchedulerService). Delegates to FleetService.wakeStaleDeviceOwners, which
+ * FCM-wakes any device-owner phone whose last_checkin_at has gone stale (past
+ * PRESENCE_DEADMAN_STALE_MS) — the external safety net for the always-on anchor
+ * (a frozen phone can't self-recover, but a high-priority FCM wake restarts its
+ * process → onCreate → PresenceService).
  */
 @Processor(QUEUE_PRESENCE_DEADMAN)
 export class PresenceDeadmanProcessor extends WorkerHost {
@@ -24,7 +25,7 @@ export class PresenceDeadmanProcessor extends WorkerHost {
 
   async process(_job: Job): Promise<void> {
     try {
-      const { scanned, woken } = await this.fleetService.wakeStaleDeviceOwners(4);
+      const { scanned, woken } = await this.fleetService.wakeStaleDeviceOwners();
       if (woken > 0) {
         this.winston.log('flow', 'Presence dead-man scan', {
           context: 'PresenceDeadmanProcessor',
