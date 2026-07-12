@@ -292,32 +292,35 @@ export class FleetService {
       // RETURNING DEVICE — verify token
       const row = rows[0];
       if (!dto.deviceToken) {
-        // ── Token-recovery path ──────────────────────────────────────────────
-        // A KNOWN device is checking in with NO token. This is the register-once
-        // failure mode: the server created the row + issued a token on the first
-        // check-in, but the device never persisted it — most often the HTTP
-        // response was lost in transit (network drop right after the INSERT), or
-        // SecureStore dropped the token while keeping the deviceUuid. Without
-        // recovery such a device is permanently bricked from the fleet: it can
-        // never re-register (the row already exists) and never holds a token, so
-        // every check-in 401s forever and the phone goes dark — no GPS, no OTA,
-        // stuck red in admin.
+        // ── Token-recovery path (fail-CLOSED) ────────────────────────────────
+        // A KNOWN device checking in with NO token is the register-once failure
+        // mode: the server issued a token on the first check-in, but the device
+        // never persisted it — most often the HTTP response was lost in transit
+        // (network drop right after the INSERT), or SecureStore dropped the token
+        // while keeping the deviceUuid. Without recovery the device is bricked from
+        // the fleet forever (can't re-register — the row exists — and holds no
+        // token, so every check-in 401s): dark GPS/OTA, stuck red in admin.
         //
-        // Re-issue a fresh token and let it back in, guarded by a second factor:
-        // when BOTH the stored and submitted android_id are known they MUST match.
-        // A mismatch means a *different physical device* is presenting this uuid
-        // (clone / uuid-collision / impersonation) and stays locked out. When
-        // either side is unknown we cannot compare, so we fall back to trusting the
-        // 122-bit deviceUuid (these are dedicated, physically-controlled devices)
-        // and recover anyway. A PRESENT-but-WRONG token (the `else if` below) is
-        // never recovered — that path stays a hard 401.
+        // Recovery re-issues a token, but ONLY when a hardware second factor proves
+        // the requester is the same physical device: the submitted android_id must
+        // be present AND equal the android_id captured at registration. This makes
+        // recovery a two-factor bearer check (deviceUuid + android_id) so a leaked
+        // or guessed deviceUuid ALONE cannot mint a token and impersonate a device.
+        // If the second factor is absent or mismatched we FAIL CLOSED (hard 401) —
+        // a device whose stored android_id is unknown is instead recovered by a
+        // super-admin soft-deleting its row so it re-registers cleanly. A PRESENT-
+        // but-WRONG token (the `else if` below) likewise stays a hard 401.
         const submittedAndroidId = dto.androidId?.trim();
         const storedAndroidId = row.android_id?.trim();
-        if (submittedAndroidId && storedAndroidId && submittedAndroidId !== storedAndroidId) {
-          this.winston.warn('Device token recovery refused: android_id mismatch', {
+        const androidIdVerified =
+          !!submittedAndroidId && !!storedAndroidId && submittedAndroidId === storedAndroidId;
+        if (!androidIdVerified) {
+          this.winston.warn('Device token recovery refused (android_id unverified)', {
             context: 'FleetService',
             deviceUuid: dto.deviceUuid,
             deviceId: row.id,
+            hasSubmittedAndroidId: !!submittedAndroidId,
+            hasStoredAndroidId: !!storedAndroidId,
           });
           throw new UnauthorizedException('deviceToken required for known device');
         }
@@ -327,11 +330,10 @@ export class FleetService {
               WHERE id = ${row.id}::uuid`,
         );
         deviceTokenIssued = token;
-        this.winston.warn('Device token re-issued (known device checked in without token)', {
+        this.winston.warn('Device token re-issued (known device recovered via android_id)', {
           context: 'FleetService',
           deviceUuid: dto.deviceUuid,
           deviceId: row.id,
-          androidIdVerified: !!(submittedAndroidId && storedAndroidId),
         });
       } else if (!this.verifyDeviceToken(dto.deviceToken, row.device_token_hash)) {
         throw new UnauthorizedException('Invalid device token');
