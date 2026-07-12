@@ -148,6 +148,7 @@ interface DeviceCheckinRow {
   version_code: number | null;
   organization_id: string | null;
   name: string | null;
+  android_id: string | null;
   is_sms_gateway: boolean;
   tailscale_desired: boolean;
   tailscale_applied: boolean;
@@ -238,7 +239,7 @@ export class FleetService {
     // read instead of each re-querying `devices` on every check-in.
     const existing = await db.execute(
       sql`SELECT id, device_token_hash, version_code, organization_id,
-                 name, is_sms_gateway,
+                 name, android_id, is_sms_gateway,
                  tailscale_desired, tailscale_applied,
                  tailscale_pending_command_id, tailscale_pending_action
           FROM devices
@@ -291,9 +292,48 @@ export class FleetService {
       // RETURNING DEVICE — verify token
       const row = rows[0];
       if (!dto.deviceToken) {
-        throw new UnauthorizedException('deviceToken required for known device');
-      }
-      if (!this.verifyDeviceToken(dto.deviceToken, row.device_token_hash)) {
+        // ── Token-recovery path ──────────────────────────────────────────────
+        // A KNOWN device is checking in with NO token. This is the register-once
+        // failure mode: the server created the row + issued a token on the first
+        // check-in, but the device never persisted it — most often the HTTP
+        // response was lost in transit (network drop right after the INSERT), or
+        // SecureStore dropped the token while keeping the deviceUuid. Without
+        // recovery such a device is permanently bricked from the fleet: it can
+        // never re-register (the row already exists) and never holds a token, so
+        // every check-in 401s forever and the phone goes dark — no GPS, no OTA,
+        // stuck red in admin.
+        //
+        // Re-issue a fresh token and let it back in, guarded by a second factor:
+        // when BOTH the stored and submitted android_id are known they MUST match.
+        // A mismatch means a *different physical device* is presenting this uuid
+        // (clone / uuid-collision / impersonation) and stays locked out. When
+        // either side is unknown we cannot compare, so we fall back to trusting the
+        // 122-bit deviceUuid (these are dedicated, physically-controlled devices)
+        // and recover anyway. A PRESENT-but-WRONG token (the `else if` below) is
+        // never recovered — that path stays a hard 401.
+        const submittedAndroidId = dto.androidId?.trim();
+        const storedAndroidId = row.android_id?.trim();
+        if (submittedAndroidId && storedAndroidId && submittedAndroidId !== storedAndroidId) {
+          this.winston.warn('Device token recovery refused: android_id mismatch', {
+            context: 'FleetService',
+            deviceUuid: dto.deviceUuid,
+            deviceId: row.id,
+          });
+          throw new UnauthorizedException('deviceToken required for known device');
+        }
+        const { token, tokenHash } = this.generateDeviceToken();
+        await db.execute(
+          sql`UPDATE devices SET device_token_hash = ${tokenHash}, updated_at = now()
+              WHERE id = ${row.id}::uuid`,
+        );
+        deviceTokenIssued = token;
+        this.winston.warn('Device token re-issued (known device checked in without token)', {
+          context: 'FleetService',
+          deviceUuid: dto.deviceUuid,
+          deviceId: row.id,
+          androidIdVerified: !!(submittedAndroidId && storedAndroidId),
+        });
+      } else if (!this.verifyDeviceToken(dto.deviceToken, row.device_token_hash)) {
         throw new UnauthorizedException('Invalid device token');
       }
 
