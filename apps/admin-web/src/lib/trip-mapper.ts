@@ -77,6 +77,7 @@ export function toTripCamel(raw: unknown): Trip | null {
     sourceParcelCode: (r.source_parcel_code as string | null) ?? null,
     sourceParcelMunicipality: (r.source_parcel_municipality as string | null) ?? null,
     sourceFarmName: (r.source_farm_name as string | null) ?? null,
+    sourceDepotName: (r.source_depot_name as string | null) ?? null,
     // Depot-operator delivery confirmation fields.
     depotOperatorId: (r.depot_operator_id as string | null) ?? null,
     depotConfirmedAt: (r.depot_confirmed_at as string | null) ?? null,

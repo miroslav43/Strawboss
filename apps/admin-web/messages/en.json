@@ -674,7 +674,7 @@
   },
   "tasks": {
     "title": "Tasks",
-    "loadError": "Failed to load tasks. The backend may not be running.",
+    "loadError": "Failed to load data. The backend may not be running.",
     "retry": "Retry",
     "boardTitle": "Task board",
     "dailyPlanTitle": "Daily Task Planning",
@@ -713,7 +713,6 @@
     "mapDepositsNeedBoundary": "Only deposits with a boundary polygon appear on the map.",
     "noLoaderOnMap": "No loaders with GPS on the map — use the dropdown.",
     "confirm": "Confirm",
-    "loadError": "Failed to load data. The backend may not be running.",
     "hintBefore": "Drag machines between columns to assign them to parcels for",
     "hintAfter": ".",
     "overview": "Overview",
@@ -781,6 +780,7 @@
   "trips": {
     "title": "Trips",
     "allStatuses": "All statuses",
+    "searchPlaceholder": "Search by trip, truck, driver, destination…",
     "detailTitle": "Trip detail",
     "backToTrips": "Back to trips",
     "loadingDetail": "Loading trip details…",
@@ -1985,6 +1985,7 @@
     "colSource": "Source",
     "colDestination": "Destination",
     "colBales": "Bales",
+    "colNetWeight": "Net weight",
     "colCreated": "Created",
     "deleteConfirm": "Delete trip {{label}}?",
     "deleteAriaLabel": "Delete trip"

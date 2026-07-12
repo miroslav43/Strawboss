@@ -3,13 +3,15 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useMemo } from 'react';
 import { useTrips } from '@strawboss/api';
-import { TripStatus } from '@strawboss/types';
+import { TripStatus, type Trip } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { TripList, type TripRow } from '@/components/features/trips/TripList';
+import { TripList } from '@/components/features/trips/TripList';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useIsDispatcher } from '@/hooks/useIsDispatcher';
 import { normalizeList } from '@/lib/normalize-api-list';
+import { toTripCamelList } from '@/lib/trip-mapper';
 
 export default function TripsPage() {
   const { t } = useI18n();
@@ -40,10 +42,13 @@ export default function TripsPage() {
 
   const hasFilters = Object.keys(filters).length > 0;
   const tripsQuery = useTrips(apiClient, hasFilters ? filters : undefined);
-  // Backend returns a raw snake_case array; normalize + expose as TripRow[]
-  // so the table can display labels without any camelCase assumptions.
-  const trips = useMemo<TripRow[]>(
-    () => normalizeList<TripRow>(tripsQuery.data),
+  const canDelete = useIsDispatcher();
+  // The backend emits raw snake_case rows; toTripCamelList maps them onto the
+  // canonical Trip shape (the same path the dashboard, command-center and
+  // machine pages already take). Reading the raw row here is what left aux
+  // trips with a blank driver — externalDriverName was on the row, unread.
+  const trips = useMemo<Trip[]>(
+    () => toTripCamelList(normalizeList(tripsQuery.data)),
     [tripsQuery.data],
   );
 
@@ -95,7 +100,7 @@ export default function TripsPage() {
       ) : tripsQuery.isError ? (
         <div className="py-8 text-center text-sm text-red-500">{t('trips.loadError')}</div>
       ) : (
-        <TripList trips={trips} />
+        <TripList trips={trips} canDelete={canDelete} />
       )}
     </div>
   );

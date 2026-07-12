@@ -674,7 +674,7 @@
   },
   "tasks": {
     "title": "Sarcini",
-    "loadError": "Nu s-au putut încărca sarcinile. Backend-ul poate fi oprit.",
+    "loadError": "Nu s-au putut încărca datele. Backend-ul poate fi oprit.",
     "retry": "Reîncearcă",
     "boardTitle": "Panou sarcini",
     "dailyPlanTitle": "Planificare zilnică",
@@ -713,7 +713,6 @@
     "mapDepositsNeedBoundary": "Pe hartă apar doar depozitele cu poligon de contur.",
     "noLoaderOnMap": "Niciun încărcător cu GPS pe hartă — folosește lista.",
     "confirm": "Confirmă",
-    "loadError": "Nu s-au putut încărca datele. Backend-ul poate fi oprit.",
     "hintBefore": "Trage mașinile între coloane pentru a le asigna la câmpuri pentru",
     "hintAfter": ".",
     "overview": "Prezentare",
@@ -781,6 +780,7 @@
   "trips": {
     "title": "Curse",
     "allStatuses": "Toate stările",
+    "searchPlaceholder": "Caută după cursă, camion, șofer, destinație…",
     "detailTitle": "Detaliu cursă",
     "backToTrips": "Înapoi la curse",
     "loadingDetail": "Se încarcă detaliile cursei…",
@@ -1985,6 +1985,7 @@
     "colSource": "Sursă",
     "colDestination": "Destinație",
     "colBales": "Baloți",
+    "colNetWeight": "Greutate netă",
     "colCreated": "Creat",
     "deleteConfirm": "Ștergi cursa {{label}}?",
     "deleteAriaLabel": "Șterge cursa"

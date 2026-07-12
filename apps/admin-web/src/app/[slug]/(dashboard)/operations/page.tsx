@@ -1,14 +1,17 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
+import { useMemo } from 'react';
 import { Truck, Package, Cog, AlertTriangle } from 'lucide-react';
 import { useDashboardOverview, useTrips } from '@strawboss/api';
-import type { Trip, DashboardOverview, PaginatedResponse } from '@strawboss/types';
+import type { Trip, DashboardOverview } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { OperationStatusGrid } from '@/components/features/operations/OperationStatusGrid';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { normalizeList } from '@/lib/normalize-api-list';
+import { toTripCamelList } from '@/lib/trip-mapper';
 
 interface SummaryCardProps {
   title: string;
@@ -22,9 +25,7 @@ function SummaryCard({ title, value, icon: Icon, color }: SummaryCardProps) {
     <div className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
-            {title}
-          </p>
+          <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">{title}</p>
           <p className="mt-1 text-2xl font-bold text-neutral-800">{value}</p>
         </div>
         <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', color)}>
@@ -39,11 +40,20 @@ export default function OperationsPage() {
   const { t } = useI18n();
   const overviewQuery = useDashboardOverview(apiClient);
   // "Active" = all in-progress states; trip_status has no 'active' value
-  const tripsQuery = useTrips(apiClient, { status: 'planned,loading,loaded,in_transit,arrived,delivering' });
+  const tripsQuery = useTrips(apiClient, {
+    status: 'planned,loading,loaded,in_transit,arrived,delivering',
+  });
 
   const overview: DashboardOverview | undefined = overviewQuery.data;
-  const tripsResponse = tripsQuery.data as PaginatedResponse<Trip> | undefined;
-  const trips = tripsResponse?.data ?? [];
+  // GET /trips returns a BARE ARRAY of snake_case rows. Casting it to
+  // PaginatedResponse and reading `.data` yielded undefined on every render, so
+  // this grid was permanently empty. It must go through toTripCamelList (not
+  // normalizeList alone) — OperationStatusGrid reads `trip.truckId`, which a raw
+  // snake_case row does not have.
+  const trips = useMemo<Trip[]>(
+    () => toTripCamelList(normalizeList(tripsQuery.data)),
+    [tripsQuery.data],
+  );
 
   return (
     <div>

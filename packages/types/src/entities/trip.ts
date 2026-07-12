@@ -138,4 +138,10 @@ export interface Trip extends Timestamps, SoftDelete {
   sourceParcelMunicipality?: string | null;
   /** Name of the farm the source parcel belongs to — enriched join label. */
   sourceFarmName?: string | null;
+  /**
+   * Name of the depot the trip was loaded from — enriched join label.
+   * A trip may carry a source depot instead of (or alongside) a source parcel;
+   * migration 00073's CHECK is a disjunction, not an exclusive-or.
+   */
+  sourceDepotName?: string | null;
 }
