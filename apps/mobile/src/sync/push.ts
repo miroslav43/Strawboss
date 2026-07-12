@@ -142,16 +142,18 @@ async function sendCmrScan(
     };
   }
 
-  // Checked before the upload, so a vanished PDF (app data cleared) costs a stat()
-  // per cycle rather than a network round-trip. It stays in the failed queue, where
-  // the operator sees it in the profile and can re-scan.
-  const info = await FileSystem.getInfoAsync(payload.localPdfUri);
-  if (!info.exists) {
-    return { ok: false, error: 'cmr_scan: PDF file is gone — re-scan the CMR' };
-  }
-
   try {
-    await uploadCmrScan(payload.tripId, payload.localPdfUri, payload.pageCount);
+    // stat() before the upload so a vanished PDF (app data cleared) costs a stat
+    // rather than a network round-trip; it stays in the failed queue where the
+    // operator sees it in the profile and can re-scan. Inside the try/catch so an
+    // I/O or permission error from getInfoAsync (not just "missing") fails only
+    // THIS entry — an escaping throw would mark the whole dequeued batch (up to 50
+    // entries, some already applied server-side) failed and skip the table batch.
+    const info = await FileSystem.getInfoAsync(payload.localPdfUri);
+    if (!info.exists) {
+      return { ok: false, error: 'cmr_scan: PDF file is gone — re-scan the CMR' };
+    }
+    await uploadCmrScan(payload.tripId, payload.localPdfUri, payload.pageCount, payload.scanId);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { FileText, XCircle, UploadCloud, Loader2 } from 'lucide-react';
 import type { TripRequest, Document } from '@strawboss/types';
 import { useRequestAvize, useUploadAviz } from '@strawboss/api';
@@ -14,6 +14,9 @@ function isPdf(f: File): boolean {
   return f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
 }
 
+/** Mirror of the server's AVIZ_MAX_BYTES — reject client-side before streaming. */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
 export function AvizUploadModal({
   request,
   onClose,
@@ -25,11 +28,34 @@ export function AvizUploadModal({
   const [file, setFile] = useState<File | null>(null);
   const upload = useUploadAviz(apiClient);
   const avize = useRequestAvize(apiClient, request.id);
+  const titleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const existing = useMemo(() => normalizeList<Document>(avize.data)[0] ?? null, [avize.data]);
 
+  // Dialog semantics: move focus in on mount, restore it to the trigger on
+  // unmount, and close on Escape — so keyboard/screen-reader users can find and
+  // dismiss the modal. onClose is read through a ref so this runs once.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseRef.current();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, []);
+
+  const badFile = file != null && !isPdf(file);
+  const tooLarge = file != null && file.size > MAX_UPLOAD_BYTES;
+
   const handleUpload = () => {
-    if (!file || !isPdf(file)) return;
+    if (!file || !isPdf(file) || tooLarge) return;
     // Uploading replaces any existing aviz (uploadAviz soft-deletes the prior
     // one server-side, single-aviz-per-request) — confirm before overwriting.
     if (
@@ -51,17 +77,21 @@ export function AvizUploadModal({
     return t('tripRequests.avizUploadError');
   })();
 
-  const badFile = file != null && !isPdf(file);
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
         style={{ maxHeight: 'min(90vh, 820px)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-          <h2 className="flex min-w-0 items-center gap-2 text-lg font-semibold text-neutral-800">
+          <h2
+            id={titleId}
+            className="flex min-w-0 items-center gap-2 text-lg font-semibold text-neutral-800"
+          >
             <FileText className="h-5 w-5 shrink-0 text-primary" />
             <span className="truncate">
               {t('tripRequests.avizTitle')}
@@ -69,6 +99,7 @@ export function AvizUploadModal({
             </span>
           </h2>
           <button
+            ref={closeButtonRef}
             onClick={onClose}
             aria-label={t('common.close')}
             className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100"
@@ -108,7 +139,7 @@ export function AvizUploadModal({
             <label
               className={cn(
                 'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm transition',
-                badFile
+                badFile || tooLarge
                   ? 'border-red-300 bg-red-50 text-red-600'
                   : 'border-neutral-300 text-neutral-500 hover:border-primary hover:bg-neutral-50',
               )}
@@ -126,6 +157,7 @@ export function AvizUploadModal({
               />
             </label>
             {badFile && <p className="text-xs text-red-600">{t('tripRequests.avizPdfOnly')}</p>}
+            {tooLarge && <p className="text-xs text-red-600">{t('tripRequests.avizTooLarge')}</p>}
             {errorMessage && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</p>
             )}
@@ -142,7 +174,7 @@ export function AvizUploadModal({
           </button>
           <button
             onClick={handleUpload}
-            disabled={!file || badFile || upload.isPending}
+            disabled={!file || badFile || tooLarge || upload.isPending}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-60"
           >
             {upload.isPending && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -42,6 +42,12 @@ const PDF_ALLOWED_MIMES: Record<string, string> = {
   'application/pdf': 'pdf',
 };
 
+/** Every PDF (any version) begins with these 5 bytes. */
+const PDF_MAGIC = '%PDF-';
+
+/** Canonical UUID shape — validates a client-supplied filename before we trust it on disk. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Accepted input MIME types for avatar uploads. We re-encode everything to WebP
  * 512×512 on disk, so the client just needs to send a format libvips can read.
@@ -186,11 +192,22 @@ export class UploadsService {
    * render a stale cached PDF after a replace. Served at
    * `/api/v1/uploads/<subdir>/<uuid>.pdf` via the signed @fastify/static route
    * (no controller change needed — it globs the whole prefix).
+   *
+   * `basename` overrides that random name with a caller-supplied stable id (a
+   * scanId minted on-device) so an ambiguous-failure retry overwrites the same
+   * blob instead of orphaning one. It MUST be a UUID — anything else is ignored
+   * and we fall back to a random name, so a hostile value can never traverse out
+   * of `subdir` (no `..`, no slashes reach the path).
+   *
+   * The client-declared MIME is not trusted alone: we sniff the leading bytes for
+   * the `%PDF-` magic and reject anything else, so a payload mislabelled
+   * `application/pdf` can't be stored and later served as one.
    */
   private async savePdf(
     input: SaveSignatureInput,
     subdir: string,
     maxBytes: number,
+    basename?: string,
   ): Promise<SaveSignatureResult> {
     const ext = PDF_ALLOWED_MIMES[input.mimetype];
     if (!ext) {
@@ -202,14 +219,26 @@ export class UploadsService {
     const dir = path.join(this.uploadsRoot, subdir);
     await fsp.mkdir(dir, { recursive: true });
 
-    const key = `${subdir}/${randomUUID()}.${ext}`;
+    const safeBase = basename && UUID_RE.test(basename) ? basename : randomUUID();
+    const key = `${subdir}/${safeBase}.${ext}`;
     const absolute = path.join(this.uploadsRoot, key);
 
     let bytesWritten = 0;
+    // Accumulate just the leading bytes so we can verify the PDF magic. The check
+    // runs as soon as we have PDF_MAGIC.length bytes and aborts the stream early;
+    // a file shorter than that is re-checked after the pipeline (tiny → not a PDF).
+    let head = Buffer.alloc(0);
     const ws = createWriteStream(absolute);
 
     input.stream.on('data', (chunk: Buffer) => {
       bytesWritten += chunk.length;
+      if (head.length < PDF_MAGIC.length) {
+        head = Buffer.concat([head, chunk]).subarray(0, PDF_MAGIC.length);
+        if (head.length >= PDF_MAGIC.length && head.toString('latin1') !== PDF_MAGIC) {
+          input.stream.destroy(new BadRequestException('File is not a valid PDF'));
+          return;
+        }
+      }
       if (bytesWritten > maxBytes) {
         input.stream.destroy(
           new PayloadTooLargeException(`File exceeds max size of ${maxBytes} bytes`),
@@ -223,8 +252,16 @@ export class UploadsService {
       await fsp.unlink(absolute).catch(() => {
         /* already gone */
       });
-      if (err instanceof PayloadTooLargeException) throw err;
+      if (err instanceof PayloadTooLargeException || err instanceof BadRequestException) throw err;
       throw new InternalServerErrorException(err instanceof Error ? err.message : 'Upload failed');
+    }
+
+    // Catches the file too small to trip the streaming check above.
+    if (head.toString('latin1') !== PDF_MAGIC) {
+      await fsp.unlink(absolute).catch(() => {
+        /* already gone */
+      });
+      throw new BadRequestException('File is not a valid PDF');
     }
 
     return {
@@ -242,9 +279,12 @@ export class UploadsService {
   /**
    * Save a scanned paper CMR (PDF) — either built on the loader's phone from the
    * document-scanner shots, or uploaded by an admin as an override.
+   *
+   * `scanId` (a UUID) pins the storage filename so the sync queue's ambiguous-
+   * failure retries overwrite the same blob rather than accumulating orphans.
    */
-  async saveCmrScan(input: SaveSignatureInput): Promise<SaveSignatureResult> {
-    return this.savePdf(input, 'cmr-scans', CMR_SCAN_MAX_BYTES);
+  async saveCmrScan(input: SaveSignatureInput, scanId?: string): Promise<SaveSignatureResult> {
+    return this.savePdf(input, 'cmr-scans', CMR_SCAN_MAX_BYTES, scanId);
   }
 
   /**

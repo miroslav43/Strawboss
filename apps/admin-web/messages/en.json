@@ -643,7 +643,16 @@
     "backToDocuments": "Back to documents",
     "loadingDetail": "Loading document…",
     "loadError": "Failed to load document. The backend may not be running.",
-    "notFound": "Document not found."
+    "notFound": "Document not found.",
+    "allTypes": "All types",
+    "types": {
+      "cmr": "CMR",
+      "cmr_scan": "Scanned CMR",
+      "invoice": "Invoice",
+      "delivery_note": "Delivery Note",
+      "weight_ticket": "Weight Ticket",
+      "report": "Report"
+    }
   },
   "settings_page": {
     "specimenSectionTitle": "Signature specimen"

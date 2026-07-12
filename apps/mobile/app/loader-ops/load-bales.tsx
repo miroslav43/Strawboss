@@ -36,6 +36,7 @@ import {
   buildCmrPdf,
   uploadCmrScan,
   deleteLocalCmrPdf,
+  deleteLocalCmrImages,
   enqueueCmrScan,
 } from '@/lib/cmrScanUpload';
 import { scanCmrPages, captureCmrPageWithCamera, ScannerUnavailableError } from '@/lib/cmrScanner';
@@ -522,7 +523,7 @@ export default function LoadBalesScreen() {
   const submitLoad = useCallback(
     async (opts: {
       loaderSignature?: string;
-      cmr?: { uri: string; pageCount: number };
+      cmr?: { uri: string; pageCount: number; scanId: string };
     }): Promise<boolean> => {
       const { loaderSignature, cmr } = opts;
       if (!userId || !assignedMachineId || !truckId) return false;
@@ -593,7 +594,7 @@ export default function LoadBalesScreen() {
             // The load is already registered at this point, so a failed upload must
             // never fail the whole operation — queue it and let the sync loop retry.
             try {
-              await uploadCmrScan(result.trip.id, cmr.uri, cmr.pageCount);
+              await uploadCmrScan(result.trip.id, cmr.uri, cmr.pageCount, cmr.scanId);
               await deleteLocalCmrPdf(cmr.uri);
             } catch {
               await enqueueCmrScan(result.trip.id, cmr, `register_load_${idempotencyKey}`);
@@ -791,7 +792,7 @@ export default function LoadBalesScreen() {
 
     setCmrStep('saving');
     setSaving(true);
-    let pdf: { uri: string; pageCount: number };
+    let pdf: { uri: string; pageCount: number; scanId: string };
     try {
       pdf = await buildCmrPdf(cmrPages, auxTripId ?? truckId ?? 'unknown');
     } catch (err) {
@@ -811,7 +812,14 @@ export default function LoadBalesScreen() {
     // loaded from a depot while offline, say). It alerts and returns false — put the
     // screen back into an interactive state instead of stranding it on 'saving'.
     const submitted = await submitLoad({ cmr: pdf });
-    if (!submitted) {
+    if (submitted) {
+      // The pages are now captured in the PDF (uploaded, or queued for retry), so
+      // drop the source photos — otherwise each load leaves a stack of
+      // transport-document images (driver name, plates, signatures) in app
+      // storage for good. The PDF itself is cleaned up by its own upload path.
+      await deleteLocalCmrImages(cmrPages);
+      setCmrPages([]);
+    } else {
       setSaving(false);
       setCmrStep('preview');
     }

@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDocuments } from '@strawboss/api';
 import { DocumentType } from '@strawboss/types';
@@ -13,15 +13,6 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 
-const typeLabels: Record<DocumentType, string> = {
-  cmr: 'CMR',
-  cmr_scan: 'Scanned CMR',
-  invoice: 'Invoice',
-  delivery_note: 'Delivery Note',
-  weight_ticket: 'Weight Ticket',
-  report: 'Report',
-};
-
 const statusStyles: Record<string, string> = {
   pending: 'bg-neutral-100 text-neutral-600',
   generating: 'bg-amber-100 text-amber-700',
@@ -29,14 +20,6 @@ const statusStyles: Record<string, string> = {
   sent: 'bg-blue-100 text-blue-700',
   failed: 'bg-red-100 text-red-700',
 };
-
-const typeOptions = [
-  { value: '', label: 'All Types' },
-  ...Object.values(DocumentType).map((t) => ({
-    value: t,
-    label: typeLabels[t],
-  })),
-];
 
 interface DocRow extends Record<string, unknown> {
   id: string;
@@ -58,62 +41,75 @@ function toRow(doc: DocType): DocRow {
   };
 }
 
-const columns: Column<DocRow>[] = [
-  {
-    key: 'title',
-    header: 'Title',
-    sortable: true,
-    render: (row) => <span className="font-medium text-neutral-800">{row.title}</span>,
-  },
-  {
-    key: 'documentType',
-    header: 'Type',
-    render: (row) => (
-      <span className="text-xs text-neutral-600">
-        {typeLabels[row.documentType as DocumentType] ?? String(row.documentType)}
-      </span>
-    ),
-  },
-  {
-    key: 'status',
-    header: 'Status',
-    render: (row) => (
-      <span
-        className={cn(
-          'rounded-full px-2 py-0.5 text-xs font-medium',
-          statusStyles[String(row.status)] ?? 'bg-neutral-100 text-neutral-600',
-        )}
-      >
-        {String(row.status)}
-      </span>
-    ),
-  },
-  {
-    key: 'tripId',
-    header: 'Trip',
-    render: (row) => (
-      <span className="text-xs text-neutral-500">
-        {row.tripId ? `${String(row.tripId).slice(0, 8)}...` : '—'}
-      </span>
-    ),
-  },
-  {
-    key: 'createdAt',
-    header: 'Date',
-    sortable: true,
-    render: (row) => (
-      <span className="text-xs text-neutral-500">
-        {new Date(String(row.createdAt)).toLocaleDateString()}
-      </span>
-    ),
-  },
-];
-
 export default function DocumentsPage() {
   const { t } = useI18n();
   const slug = useOrgSlug();
   const [typeFilter, setTypeFilter] = useState('');
   const router = useRouter();
+
+  const typeOptions = useMemo(
+    () => [
+      { value: '', label: t('documents.allTypes') },
+      ...Object.values(DocumentType).map((v) => ({ value: v, label: t(`documents.types.${v}`) })),
+    ],
+    [t],
+  );
+
+  // Built inside the component (not at module scope) so each label resolves in
+  // the active locale via t().
+  const columns = useMemo<Column<DocRow>[]>(
+    () => [
+      {
+        key: 'title',
+        header: 'Title',
+        sortable: true,
+        render: (row) => <span className="font-medium text-neutral-800">{row.title}</span>,
+      },
+      {
+        key: 'documentType',
+        header: 'Type',
+        render: (row) => (
+          <span className="text-xs text-neutral-600">
+            {t(`documents.types.${row.documentType}`)}
+          </span>
+        ),
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        render: (row) => (
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-xs font-medium',
+              statusStyles[String(row.status)] ?? 'bg-neutral-100 text-neutral-600',
+            )}
+          >
+            {String(row.status)}
+          </span>
+        ),
+      },
+      {
+        key: 'tripId',
+        header: 'Trip',
+        render: (row) => (
+          <span className="text-xs text-neutral-500">
+            {row.tripId ? `${String(row.tripId).slice(0, 8)}...` : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'createdAt',
+        header: 'Date',
+        sortable: true,
+        render: (row) => (
+          <span className="text-xs text-neutral-500">
+            {new Date(String(row.createdAt)).toLocaleDateString()}
+          </span>
+        ),
+      },
+    ],
+    [t],
+  );
 
   const docsQuery = useDocuments(apiClient);
   const allDocs: DocType[] = docsQuery.data ?? [];

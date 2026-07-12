@@ -43,12 +43,37 @@ export class CmrScansController {
     return file;
   }
 
-  /** Only readable if the client appended it BEFORE the file part (busboy is streaming). */
-  private pageCount(file: MultipartFile): number | null {
-    const field = file.fields?.['pageCount'];
+  /**
+   * Read a text field the client streamed BEFORE the `file` part.
+   *
+   * @fastify/multipart only surfaces a field on `file.fields` once it has been
+   * parsed off the wire, and `req.file()` stops reading at the file — so any
+   * field that comes AFTER the file is invisible here. Both callers therefore
+   * MUST append pageCount/scanId ahead of the file part (mobile does; admin-web
+   * sends neither). A field sent out of order silently reads as null.
+   */
+  private textField(file: MultipartFile, name: string): string | null {
+    const field = file.fields?.[name];
     if (!field || Array.isArray(field) || !('value' in field)) return null;
-    const n = Number(field.value);
+    const value = (field as { value: unknown }).value;
+    return typeof value === 'string' ? value : null;
+  }
+
+  private pageCount(file: MultipartFile): number | null {
+    const raw = this.textField(file, 'pageCount');
+    if (raw == null) return null;
+    const n = Number(raw);
     return Number.isInteger(n) && n > 0 ? n : null;
+  }
+
+  /**
+   * Stable per-scan UUID the device mints before its first upload attempt, so a
+   * retry overwrites the same storage blob (see SaveCmrScanInput.scanId).
+   * Passed through raw — UploadsService validates the UUID shape and falls back
+   * to a random filename otherwise, so a bad value can never traverse the path.
+   */
+  private scanId(file: MultipartFile): string | null {
+    return this.textField(file, 'scanId');
   }
 
   /** Mobile: the loader uploads the PDF built from the document-scanner shots. */
@@ -64,6 +89,7 @@ export class CmrScansController {
       mimetype: file.mimetype,
       stream: file.file,
       pageCount: this.pageCount(file),
+      scanId: this.scanId(file),
       source: 'loader_scan',
     });
   }
@@ -81,6 +107,7 @@ export class CmrScansController {
       mimetype: file.mimetype,
       stream: file.file,
       pageCount: this.pageCount(file),
+      scanId: this.scanId(file),
       source: 'admin_upload',
     });
   }

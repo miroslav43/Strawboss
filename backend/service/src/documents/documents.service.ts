@@ -1,6 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DrizzleProvider } from '../database/drizzle.provider';
+
+/**
+ * Either the pooled connection or an open transaction — both expose `execute`.
+ * Passing a `tx` in lets a caller run softDeleteByTripRequest + create inside a
+ * single transaction (see CmrScansService), so the retire-then-insert is atomic
+ * rather than two independent statements that can interleave.
+ */
+type SqlExecutor = Pick<PostgresJsDatabase, 'execute'>;
 
 // Project columns to camelCase — the API contract (@strawboss/types Document)
 // and the admin UI expect camelCase; a raw SELECT * returns snake_case, which
@@ -92,8 +101,12 @@ export class DocumentsService {
       mimeType?: string | null;
       metadata?: Record<string, unknown> | null;
     },
+    executor: SqlExecutor = this.drizzleProvider.db,
   ) {
-    const result = await this.drizzleProvider.db.execute(
+    // RETURNING the camelCase projection (not `*`) so a caller can hand the row
+    // straight back to the client without a re-read — the API contract and the
+    // UploadUrlSigningInterceptor both key on the camelCase `fileUrl`.
+    const result = await executor.execute(
       sql`INSERT INTO documents (
         trip_id, trip_request_id, document_type, title, status,
         file_url, file_size_bytes, mime_type, metadata, organization_id
@@ -102,7 +115,7 @@ export class DocumentsService {
         ${data.fileUrl ?? null}, ${data.fileSizeBytes ?? null}, ${data.mimeType ?? null},
         ${data.metadata ? JSON.stringify(data.metadata) : null}::jsonb,
         ${orgId ? sql`${orgId}::uuid` : sql`NULL`}
-      ) RETURNING *`,
+      ) RETURNING ${DOCUMENT_COLUMNS}`,
     );
     return result;
   }
@@ -112,7 +125,12 @@ export class DocumentsService {
    * Used to enforce "one aviz per request" — the previous aviz is retired
    * before a replacement is inserted, so listAvize() returns a single row.
    */
-  async softDeleteByTripRequest(orgId: string | null, tripRequestId: string, documentType: string) {
+  async softDeleteByTripRequest(
+    orgId: string | null,
+    tripRequestId: string,
+    documentType: string,
+    executor: SqlExecutor = this.drizzleProvider.db,
+  ) {
     const conditions: ReturnType<typeof sql>[] = [
       sql`trip_request_id = ${tripRequestId}::uuid`,
       sql`document_type = ${documentType}`,
@@ -122,7 +140,7 @@ export class DocumentsService {
       conditions.push(sql`organization_id = ${orgId}::uuid`);
     }
     const where = sql.join(conditions, sql` AND `);
-    await this.drizzleProvider.db.execute(
+    await executor.execute(
       sql`UPDATE documents SET deleted_at = NOW(), updated_at = NOW() WHERE ${where}`,
     );
   }

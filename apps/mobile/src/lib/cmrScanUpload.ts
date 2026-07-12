@@ -59,12 +59,15 @@ interface UploadResponse {
 export async function buildCmrPdf(
   imageUris: string[],
   tripId: string,
-): Promise<{ uri: string; pageCount: number }> {
+): Promise<{ uri: string; pageCount: number; scanId: string }> {
   if (imageUris.length === 0) {
     throw new Error('buildCmrPdf: no pages to render');
   }
 
   const pages: string[] = [];
+  // manipulateAsync ALWAYS writes the processed image to disk, even though we
+  // only consume its base64 — track those copies so we can reclaim the space.
+  const intermediates: string[] = [];
   for (const uri of imageUris) {
     const compressed = await ImageManipulator.manipulateAsync(
       uri,
@@ -75,10 +78,17 @@ export async function buildCmrPdf(
         base64: true,
       },
     );
+    if (compressed.uri) {
+      intermediates.push(compressed.uri);
+    }
     if (compressed.base64) {
       pages.push(`data:image/jpeg;base64,${compressed.base64}`);
     }
   }
+
+  // The bytes are now inlined into the PDF HTML below, so the on-disk processed
+  // copies are dead weight whether we succeed or throw on the next line.
+  await deleteLocalCmrImages(intermediates);
 
   if (pages.length === 0) {
     throw new Error('buildCmrPdf: every page failed to encode');
@@ -121,11 +131,15 @@ export async function buildCmrPdf(
   await FileSystem.makeDirectoryAsync(PDF_DIR, { intermediates: true }).catch(() => {
     /* already exists */
   });
-  const destination = `${PDF_DIR}${tripId}-${generateUuid()}.pdf`;
+  // A stable id minted once here and reused across every upload attempt for this
+  // PDF — the server keys the storage filename on it, so an ambiguous-failure
+  // retry overwrites the same blob instead of orphaning one on disk.
+  const scanId = generateUuid();
+  const destination = `${PDF_DIR}${tripId}-${scanId}.pdf`;
   await FileSystem.moveAsync({ from: printed.uri, to: destination });
 
   mobileLogger.flow('CMR scan PDF built', { tripId, pageCount: pages.length });
-  return { uri: destination, pageCount: pages.length };
+  return { uri: destination, pageCount: pages.length, scanId };
 }
 
 /**
@@ -136,12 +150,16 @@ export async function uploadCmrScan(
   tripId: string,
   localPdfUri: string,
   pageCount?: number,
+  scanId?: string,
 ): Promise<UploadResponse> {
   const form = new FormData();
   // Must come BEFORE the file part: the server reads multipart fields off the
   // streaming parser, which only sees what arrived ahead of the file.
   if (pageCount != null) {
     form.append('pageCount', String(pageCount));
+  }
+  if (scanId != null) {
+    form.append('scanId', scanId);
   }
   // React Native's FormData accepts this shape for file parts even though the
   // cross-platform TS types don't model it — same cast as receiptUpload.ts.
@@ -182,6 +200,23 @@ export async function deleteLocalCmrPdf(localPdfUri: string): Promise<void> {
 }
 
 /**
+ * Best-effort delete of scan images — the captured source pages and the
+ * intermediate processed copies ImageManipulator leaves on disk. Called once the
+ * pages are captured in the PDF; otherwise every load strands a stack of
+ * transport-document photos (driver name, plates, signatures) in app storage
+ * forever, on phones that hold zero-to-many loads a day.
+ */
+export async function deleteLocalCmrImages(uris: string[]): Promise<void> {
+  await Promise.all(
+    uris.map((uri) =>
+      FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {
+        /* already gone */
+      }),
+    ),
+  );
+}
+
+/**
  * What a queued `cmr_scan` entry carries. The PDF itself stays on the filesystem —
  * sync_queue.payload is a TEXT column holding JSON and cannot hold binary, so we
  * queue the path and let the sender read the file at push time (the same shape the
@@ -191,6 +226,8 @@ export interface CmrScanPayload {
   tripId: string;
   localPdfUri: string;
   pageCount: number;
+  /** Stable storage id minted at build time, so upload retries overwrite one blob. */
+  scanId?: string;
   /** The sibling register_load's idempotency key, so push.ts can defer if it failed. */
   registerLoadIdempotencyKey?: string;
 }
@@ -198,13 +235,14 @@ export interface CmrScanPayload {
 /** Queue a built PDF for upload once there's signal. */
 export async function enqueueCmrScan(
   tripId: string,
-  cmr: { uri: string; pageCount: number },
+  cmr: { uri: string; pageCount: number; scanId: string },
   registerLoadIdempotencyKey?: string,
 ): Promise<void> {
   const payload: CmrScanPayload = {
     tripId,
     localPdfUri: cmr.uri,
     pageCount: cmr.pageCount,
+    scanId: cmr.scanId,
     registerLoadIdempotencyKey,
   };
 

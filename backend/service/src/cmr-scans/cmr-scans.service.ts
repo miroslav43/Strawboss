@@ -14,6 +14,13 @@ export interface SaveCmrScanInput {
   stream: Readable;
   /** How many pages the loader scanned. Null when an admin uploads a PDF by hand. */
   pageCount?: number | null;
+  /**
+   * Stable per-scan UUID minted on-device before the first upload attempt. Used
+   * as the storage filename so an ambiguous-failure retry OVERWRITES the same
+   * blob instead of leaving an orphan behind (a fresh UUID per attempt would).
+   * Absent for admin uploads — those fall back to a random filename.
+   */
+  scanId?: string | null;
   source: 'loader_scan' | 'admin_upload';
 }
 
@@ -69,31 +76,26 @@ export class CmrScansService {
   /**
    * Store the PDF and file it as the request's single active `cmr_scan` document.
    *
-   * "One scan per request" is enforced the same way the aviz does it: retire the
-   * previous one before inserting the replacement. There is no unique constraint
-   * backing this, so two writers racing (the loader's queue draining while an
-   * admin overrides) can both insert; list() orders created_at DESC, so the UI
-   * shows the newest and the loser is an inert extra row.
+   * "One scan per request" is enforced by retiring the previous one before
+   * inserting the replacement. The retire+insert runs inside a transaction
+   * guarded by a per-request advisory lock, so two writers racing (the loader's
+   * queue draining while an admin overrides) are serialized: the second sees and
+   * retires the first's row instead of both inserting. A mid-write failure rolls
+   * the whole thing back — never zero active rows, never two.
+   *
+   * The freshly-inserted row (projected to camelCase) is returned directly. Its
+   * `fileUrl` is signed on egress by UploadUrlSigningInterceptor. We deliberately
+   * do NOT re-read via list(): a re-read filtered only by request (or, for an
+   * orphan aux trip, by nothing but document_type) could hand back a DIFFERENT
+   * trip's scan — leaking its metadata and signed link to the wrong caller.
    */
   private async attachScan(orgId: string, target: ScanTarget, input: SaveCmrScanInput) {
-    const saved = await this.uploads.saveCmrScan({
-      mimetype: input.mimetype,
-      stream: input.stream,
-    });
+    const saved = await this.uploads.saveCmrScan(
+      { mimetype: input.mimetype, stream: input.stream },
+      input.scanId ?? undefined,
+    );
 
-    if (!target.requestId) {
-      // An aux trip with no request behind it shouldn't exist, but if it does we
-      // still keep the PDF rather than throw it away — it just can't light up the
-      // green button on the requests page, so say so loudly.
-      this.winston.warn('CMR scan stored without a trip request', {
-        tripId: target.tripId,
-        fileUrl: saved.key,
-      });
-    } else {
-      await this.documents.softDeleteByTripRequest(orgId, target.requestId, DOCUMENT_TYPE);
-    }
-
-    await this.documents.create(orgId, {
+    const createData = {
       tripId: target.tripId,
       tripRequestId: target.requestId,
       documentType: DOCUMENT_TYPE,
@@ -103,16 +105,39 @@ export class CmrScansService {
       fileSizeBytes: saved.sizeBytes,
       mimeType: 'application/pdf',
       metadata: { source: input.source, pageCount: input.pageCount ?? null },
-    });
+    };
 
-    // Re-read rather than returning the INSERT: list() projects to camelCase and
-    // the returned fileUrl passes through UploadUrlSigningInterceptor (this is a
-    // plain JSON return, not @Res(), so it gets signed on the way out).
-    const rows = (await this.documents.list(orgId, 'system', {
-      tripRequestId: target.requestId ?? undefined,
-      documentType: DOCUMENT_TYPE,
-    })) as unknown as Record<string, unknown>[];
-    return rows[0];
+    if (!target.requestId) {
+      // An aux trip with no request behind it shouldn't exist, but if it does we
+      // still keep the PDF rather than throw it away — it just can't light up the
+      // green button on the requests page, so say so loudly. Nothing to dedupe
+      // against without a request, so a plain insert (no transaction) is enough.
+      this.winston.warn('CMR scan stored without a trip request', {
+        tripId: target.tripId,
+        fileUrl: saved.key,
+      });
+      const rows = (await this.documents.create(orgId, createData)) as unknown as Record<
+        string,
+        unknown
+      >[];
+      return rows[0];
+    }
+
+    const requestId = target.requestId;
+    const created = await this.drizzleProvider.db.transaction(async (tx) => {
+      // Serialize concurrent writers for THIS request (loader auto-sync vs admin
+      // override). hashtext() → int4 → the bigint pg_advisory_xact_lock overload;
+      // the namespace prefix keeps us from falsely contending with other lock users
+      // that happen to hash the same request id. Released automatically on commit.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`cmr_scan:${requestId}`}))`);
+      await this.documents.softDeleteByTripRequest(orgId, requestId, DOCUMENT_TYPE, tx);
+      const rows = (await this.documents.create(orgId, createData, tx)) as unknown as Record<
+        string,
+        unknown
+      >[];
+      return rows[0];
+    });
+    return created;
   }
 
   private async resolveTargetFromTrip(orgId: string, tripId: string): Promise<ScanTarget> {

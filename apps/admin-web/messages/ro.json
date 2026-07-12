@@ -643,7 +643,16 @@
     "backToDocuments": "Înapoi la documente",
     "loadingDetail": "Se încarcă documentul…",
     "loadError": "Nu s-a putut încărca documentul. Backend-ul poate fi oprit.",
-    "notFound": "Documentul nu a fost găsit."
+    "notFound": "Documentul nu a fost găsit.",
+    "allTypes": "Toate tipurile",
+    "types": {
+      "cmr": "CMR",
+      "cmr_scan": "CMR scanat",
+      "invoice": "Factură",
+      "delivery_note": "Aviz",
+      "weight_ticket": "Bon de cântar",
+      "report": "Raport"
+    }
   },
   "settings_page": {
     "specimenSectionTitle": "Specimen de semnătură"

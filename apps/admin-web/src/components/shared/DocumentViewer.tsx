@@ -2,17 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { FileText, Download, ExternalLink } from 'lucide-react';
-import type { Document as DocType, DocumentType, DocumentStatus } from '@strawboss/types';
+import type { Document as DocType, DocumentStatus } from '@strawboss/types';
 import { cn } from '@/lib/utils';
-
-const typeLabels: Record<DocumentType, string> = {
-  cmr: 'CMR',
-  cmr_scan: 'Scanned CMR',
-  invoice: 'Invoice',
-  delivery_note: 'Delivery Note',
-  weight_ticket: 'Weight Ticket',
-  report: 'Report',
-};
+import { useI18n } from '@/lib/i18n';
 
 const statusStyles: Record<DocumentStatus, string> = {
   pending: 'bg-neutral-100 text-neutral-600',
@@ -51,6 +43,7 @@ interface DocumentViewerProps {
 }
 
 export function DocumentViewer({ document: doc, className }: DocumentViewerProps) {
+  const { t } = useI18n();
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -89,7 +82,7 @@ export function DocumentViewer({ document: doc, className }: DocumentViewerProps
           </div>
           <div>
             <h3 className="text-sm font-semibold text-neutral-800">{doc.title}</h3>
-            <p className="text-xs text-neutral-500">{typeLabels[doc.documentType]}</p>
+            <p className="text-xs text-neutral-500">{t(`documents.types.${doc.documentType}`)}</p>
           </div>
         </div>
         <span
