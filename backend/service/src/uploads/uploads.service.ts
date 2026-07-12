@@ -22,14 +22,23 @@ const ALLOWED_MIMES: Record<string, string> = {
 };
 
 /**
- * Avize (delivery-note PDFs) are scanned documents that routinely exceed the
- * 3 MB image cap, so they get their own larger limit and a PDF-only allowlist.
+ * Uploaded documents (avize, scanned CMRs) are PDFs that routinely exceed the
+ * 3 MB image cap, so they get their own larger limits and a PDF-only allowlist.
  * Kept separate from ALLOWED_MIMES so the receipt/signature/avatar paths stay
  * image-only.
+ *
+ * NOTE: both callers must pass the limit per-request to `req.file({ limits })` —
+ * the *global* @fastify/multipart cap in main.ts is only 3 MB and wins otherwise.
  */
 export const AVIZ_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
-const AVIZ_ALLOWED_MIMES: Record<string, string> = {
+/**
+ * Scanned CMRs are multi-page (a paper CMR has several copies), so they run
+ * bigger than a single-page aviz.
+ */
+export const CMR_SCAN_MAX_BYTES = 15 * 1024 * 1024; // 15 MB
+
+const PDF_ALLOWED_MIMES: Record<string, string> = {
   'application/pdf': 'pdf',
 };
 
@@ -168,26 +177,32 @@ export class UploadsService {
   }
 
   /**
-   * Save an uploaded aviz (delivery-note PDF) for a trip request.
+   * Stream an uploaded PDF to `UPLOADS_ROOT/<subdir>/<uuid>.pdf`, enforcing
+   * `maxBytes` as it goes (the stream is destroyed the moment it overruns, so a
+   * hostile client can't fill the disk).
    *
-   * A fresh UUID filename is used on every upload — even though only one aviz is
-   * kept per request — so the signed URL changes and browsers never render a
-   * stale cached PDF after a replace. Stored under `UPLOADS_ROOT/avize/<uuid>.pdf`
-   * and served at `/api/v1/uploads/avize/<uuid>.pdf` via the signed
-   * @fastify/static route (no controller change — it globs the whole prefix).
+   * A fresh UUID filename is used on every upload — even for the document kinds
+   * where only one file is kept — so the signed URL changes and browsers never
+   * render a stale cached PDF after a replace. Served at
+   * `/api/v1/uploads/<subdir>/<uuid>.pdf` via the signed @fastify/static route
+   * (no controller change needed — it globs the whole prefix).
    */
-  async saveAviz(input: SaveSignatureInput): Promise<SaveSignatureResult> {
-    const ext = AVIZ_ALLOWED_MIMES[input.mimetype];
+  private async savePdf(
+    input: SaveSignatureInput,
+    subdir: string,
+    maxBytes: number,
+  ): Promise<SaveSignatureResult> {
+    const ext = PDF_ALLOWED_MIMES[input.mimetype];
     if (!ext) {
       throw new BadRequestException(
-        `Unsupported file type '${input.mimetype}'. Allowed: ${Object.keys(AVIZ_ALLOWED_MIMES).join(', ')}`,
+        `Unsupported file type '${input.mimetype}'. Allowed: ${Object.keys(PDF_ALLOWED_MIMES).join(', ')}`,
       );
     }
 
-    const dir = path.join(this.uploadsRoot, 'avize');
+    const dir = path.join(this.uploadsRoot, subdir);
     await fsp.mkdir(dir, { recursive: true });
 
-    const key = `avize/${randomUUID()}.${ext}`;
+    const key = `${subdir}/${randomUUID()}.${ext}`;
     const absolute = path.join(this.uploadsRoot, key);
 
     let bytesWritten = 0;
@@ -195,9 +210,9 @@ export class UploadsService {
 
     input.stream.on('data', (chunk: Buffer) => {
       bytesWritten += chunk.length;
-      if (bytesWritten > AVIZ_MAX_BYTES) {
+      if (bytesWritten > maxBytes) {
         input.stream.destroy(
-          new PayloadTooLargeException(`File exceeds max size of ${AVIZ_MAX_BYTES} bytes`),
+          new PayloadTooLargeException(`File exceeds max size of ${maxBytes} bytes`),
         );
       }
     });
@@ -217,6 +232,19 @@ export class UploadsService {
       key,
       sizeBytes: bytesWritten,
     };
+  }
+
+  /** Save an uploaded aviz (delivery-note PDF) for a trip request. */
+  async saveAviz(input: SaveSignatureInput): Promise<SaveSignatureResult> {
+    return this.savePdf(input, 'avize', AVIZ_MAX_BYTES);
+  }
+
+  /**
+   * Save a scanned paper CMR (PDF) — either built on the loader's phone from the
+   * document-scanner shots, or uploaded by an admin as an override.
+   */
+  async saveCmrScan(input: SaveSignatureInput): Promise<SaveSignatureResult> {
+    return this.savePdf(input, 'cmr-scans', CMR_SCAN_MAX_BYTES);
   }
 
   /**

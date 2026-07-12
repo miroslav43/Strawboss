@@ -19,6 +19,7 @@ import { BaleProductionsModule } from './bale-productions/bale-productions.modul
 import { FuelLogsModule } from './fuel-logs/fuel-logs.module';
 import { ConsumableLogsModule } from './consumable-logs/consumable-logs.module';
 import { DocumentsModule } from './documents/documents.module';
+import { CmrScansModule } from './cmr-scans/cmr-scans.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { AuditModule } from './audit/audit.module';
 import { SyncModule } from './sync/sync.module';
@@ -75,6 +76,7 @@ const devModules =
     FuelLogsModule,
     ConsumableLogsModule,
     DocumentsModule,
+    CmrScansModule,
     AlertsModule,
     AuditModule,
     SyncModule,

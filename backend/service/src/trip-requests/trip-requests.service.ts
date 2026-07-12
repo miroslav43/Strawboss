@@ -89,7 +89,12 @@ const TR_COLS = sql`
   (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.confirmed_by)     AS "confirmedByName",
   EXISTS(SELECT 1 FROM documents d
          WHERE d.trip_request_id = trip_requests.id
-           AND d.document_type = 'delivery_note' AND d.deleted_at IS NULL) AS "hasAviz"
+           AND d.document_type = 'delivery_note' AND d.deleted_at IS NULL) AS "hasAviz",
+  -- The scanned paper CMR. Note this can only match a 'cmr_scan' document, never
+  -- the Puppeteer-generated 'cmr' — that one is trip-scoped (trip_request_id NULL).
+  EXISTS(SELECT 1 FROM documents d
+         WHERE d.trip_request_id = trip_requests.id
+           AND d.document_type = 'cmr_scan' AND d.deleted_at IS NULL) AS "hasCmrScan"
 `;
 
 interface OrgPortalRow {
