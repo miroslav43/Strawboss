@@ -19,10 +19,16 @@
 const { withAndroidManifest, AndroidConfig } = require('@expo/config-plugins');
 
 const META_DATA_NAME = 'com.google.mlkit.vision.DEPENDENCIES';
-const META_DATA_VALUE = 'docscanner';
+// expo-camera's own AndroidManifest.xml declares this same meta-data key with
+// value "barcode_ui" (its ML Kit barcode module). The value is a comma-separated
+// list of ML Kit modules for Play Services to pre-fetch, so we combine ours with
+// theirs instead of letting the two collide during the Gradle manifest merge —
+// see the "Manifest merger failed" error this used to throw on assembleRelease.
+const META_DATA_VALUE = 'docscanner,barcode_ui';
 
 module.exports = function withMlKitDocScanner(config) {
   return withAndroidManifest(config, (cfg) => {
+    AndroidConfig.Manifest.ensureToolsAvailable(cfg.modResults);
     const application = AndroidConfig.Manifest.getMainApplicationOrThrow(cfg.modResults);
 
     AndroidConfig.Manifest.addMetaDataItemToMainApplication(
@@ -30,6 +36,11 @@ module.exports = function withMlKitDocScanner(config) {
       META_DATA_NAME,
       META_DATA_VALUE,
     );
+
+    // Tell the merger to keep our (combined) value over expo-camera's
+    // library-manifest value instead of erroring on the mismatch.
+    const item = application['meta-data'].find((e) => e.$['android:name'] === META_DATA_NAME);
+    item.$['tools:replace'] = 'android:value';
 
     return cfg;
   });
