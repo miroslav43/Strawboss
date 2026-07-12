@@ -15,6 +15,7 @@ import { useOrgSlug } from '@/hooks/useOrgSlug';
 
 const typeLabels: Record<DocumentType, string> = {
   cmr: 'CMR',
+  cmr_scan: 'Scanned CMR',
   invoice: 'Invoice',
   delivery_note: 'Delivery Note',
   weight_ticket: 'Weight Ticket',

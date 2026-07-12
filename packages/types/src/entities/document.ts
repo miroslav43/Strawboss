@@ -1,7 +1,12 @@
 import type { Timestamps, SoftDelete } from '../common.js';
 
 export enum DocumentType {
+  // `cmr` is the CMR the backend generates itself (Puppeteer, stage 1/2).
+  // `cmr_scan` is the physical paper CMR the loader photographs at the end of
+  // an auxiliary load — a different artefact, so it gets its own type rather
+  // than competing with the generated one for the same slot.
   cmr = 'cmr',
+  cmr_scan = 'cmr_scan',
   invoice = 'invoice',
   delivery_note = 'delivery_note',
   weight_ticket = 'weight_ticket',
