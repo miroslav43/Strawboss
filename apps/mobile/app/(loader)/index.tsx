@@ -70,6 +70,9 @@ export default function LoaderHomeScreen() {
         truckId: trip.truckId,
         parcelId: trip.sourceParcelId ?? '',
         isAuxiliary: '1',
+        // Carried separately (never as truckId, see above) so the CMR scan can be
+        // addressed offline, when there's no register-load response to read it from.
+        auxTripId: trip.id,
       },
     });
   }, []);

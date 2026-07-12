@@ -711,6 +711,25 @@ export const en = {
       specimenMissingAlertMessage:
         "You don't have a signature specimen yet. Create one from your profile.",
       specimenMissingAlertAction: 'Create specimen',
+      cmrScanScreenTitle: 'CMR',
+      cmrScanTitle: 'Scan the CMR',
+      cmrScanHint:
+        'Photograph the transport document (CMR) the driver handed you. You loaded {baleCount} bales into truck {truckLabel}.',
+      cmrScanButton: 'Scan CMR',
+      cmrScanAddPage: 'Add another page',
+      cmrScanDeletePage: 'Remove page',
+      cmrScanPagesLabel: '{count} pages scanned',
+      cmrScanConfirmButton: 'Confirm and send',
+      cmrScanBuildingPdf: 'Preparing the document…',
+      cmrScanUnavailableTitle: 'Scanner unavailable',
+      cmrScanUnavailableMessage:
+        'The document scanner is not available on this phone. You can take a plain photo instead, without automatic cropping.',
+      cmrScanFallbackPhotoButton: 'Take a photo',
+      cmrScanPdfFailedTitle: 'Could not build the document',
+      cmrScanPdfFailedMessage: 'Try scanning the pages again.',
+      cmrScanNoTripTitle: 'Trip cannot be identified',
+      cmrScanNoTripMessage:
+        'Offline, the CMR cannot be attached to the trip. Re-open the auxiliary truck from the home screen, or get back online.',
       giveUpButton: 'Give up',
       truckFallbackLoading: '...',
       truckFallbackUnknown: 'Unknown truck',

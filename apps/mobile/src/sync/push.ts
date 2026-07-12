@@ -5,8 +5,10 @@ import type {
   RegisterLoadDto,
   RegisterLoadResult,
 } from '@strawboss/types';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { SyncQueueEntry } from '../db/sync-queue-repo';
 import type { TripsRepo } from '../db/trips-repo';
+import { uploadCmrScan, deleteLocalCmrPdf, type CmrScanPayload } from '../lib/cmrScanUpload';
 
 export interface PushResult {
   count: number;
@@ -25,6 +27,10 @@ const DIRECT_ENDPOINT_TYPES = new Set([
   // REST endpoint with the original payload.
   'parcel_create',
   'delivery_destination_create',
+  // Scanned paper CMR: a multipart file upload to its own endpoint, not a row in
+  // any syncable table. Without it here, /sync/push would try to INSERT INTO
+  // cmr_scan and fail forever.
+  'cmr_scan',
 ]);
 
 /**
@@ -103,6 +109,56 @@ async function sendRegisterLoad(
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/** The idempotency_key of the register_load this CMR was queued alongside, if any. */
+function registerLoadKeyOf(entry: SyncQueueEntry): string | undefined {
+  try {
+    return (JSON.parse(entry.payload) as CmrScanPayload).registerLoadIdempotencyKey;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Send a queued `cmr_scan` entry: the PDF the loader built on-device at the end of
+ * an auxiliary load, waiting on the filesystem for signal.
+ *
+ * Idempotent server-side by replacement — re-sending supersedes the previous scan
+ * rather than duplicating it, so a retry after an ambiguous failure is safe.
+ */
+// Takes no ApiClient: uploadCmrScan posts multipart through the mobileApiClient
+// singleton, the same way uploadReceipt does from SyncManager.
+async function sendCmrScan(
+  entry: SyncQueueEntry,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let payload: CmrScanPayload;
+  try {
+    payload = JSON.parse(entry.payload) as CmrScanPayload;
+  } catch (err) {
+    return {
+      ok: false,
+      error: `cmr_scan: payload not parsable (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
+
+  // Checked before the upload, so a vanished PDF (app data cleared) costs a stat()
+  // per cycle rather than a network round-trip. It stays in the failed queue, where
+  // the operator sees it in the profile and can re-scan.
+  const info = await FileSystem.getInfoAsync(payload.localPdfUri);
+  if (!info.exists) {
+    return { ok: false, error: 'cmr_scan: PDF file is gone — re-scan the CMR' };
+  }
+
+  try {
+    await uploadCmrScan(payload.tripId, payload.localPdfUri, payload.pageCount);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  // Only reclaim the space once the server has it.
+  await deleteLocalCmrPdf(payload.localPdfUri);
+  return { ok: true };
 }
 
 /**
@@ -245,6 +301,12 @@ export async function pushMutations(
   // failed rows to pending via enqueueOrUpdate). entity_id is the trip id for
   // trip_transition entries.
   const blockedTrips = new Set<string>();
+  // A cmr_scan is enqueued right after the register_load for the same aux load. The
+  // scan doesn't strictly depend on it (the aux trip row already exists server-side,
+  // created when the dispatcher assigned the loader), but sending a CMR for a load
+  // that failed to register this cycle just muddies the picture — so defer it and
+  // let the pair recover together on the next retry.
+  const failedRegisterLoads = new Set<string>();
   for (const entry of directEntries) {
     if (entry.entity_type === 'trip_transition' && blockedTrips.has(entry.entity_id)) {
       const msg = `deferred: an earlier transition for trip ${entry.entity_id} failed this sync cycle`;
@@ -256,6 +318,15 @@ export async function pushMutations(
     let res: { ok: true } | { ok: false; error: string };
     if (entry.entity_type === 'register_load') {
       res = await sendRegisterLoad(entry, apiClient);
+    } else if (entry.entity_type === 'cmr_scan') {
+      const dependsOn = registerLoadKeyOf(entry);
+      if (dependsOn && failedRegisterLoads.has(dependsOn)) {
+        const msg = `deferred: the register_load for this CMR failed this sync cycle`;
+        errors.push(msg);
+        failedEntries.push({ id: entry.id, error: msg });
+        continue;
+      }
+      res = await sendCmrScan(entry);
     } else if (entry.entity_type === 'trip_transition') {
       res = await sendTripTransition(entry, apiClient, tripsRepo);
     } else if (entry.entity_type === 'parcel_create') {
@@ -275,6 +346,9 @@ export async function pushMutations(
       // order (and silently consumed) before this one succeeds.
       if (entry.entity_type === 'trip_transition') {
         blockedTrips.add(entry.entity_id);
+      }
+      if (entry.entity_type === 'register_load') {
+        failedRegisterLoads.add(entry.idempotency_key);
       }
     }
   }
