@@ -22,7 +22,6 @@ import {
   Fuel,
   Package,
   MonitorDot,
-  ClipboardList,
   Building2,
   Mail,
 } from 'lucide-react';
@@ -34,8 +33,10 @@ function buildNavItems(slug: string) {
   return [
     { href: `/${slug}/command-center`, icon: MonitorDot, labelKey: 'nav.commandCenter' as const },
     { href: `/${slug}/tasks`, icon: KanbanSquare, labelKey: 'nav.tasks' as const },
+    // "Solicitări curse" is folded into Curse — it is the intake strip + the
+    // "Curse Aux" ledger there. /trip-requests still resolves (it redirects), so
+    // old bookmarks keep working.
     { href: `/${slug}/trips`, icon: Truck, labelKey: 'nav.trips' as const },
-    { href: `/${slug}/trip-requests`, icon: ClipboardList, labelKey: 'nav.tripRequests' as const },
     { href: `/${slug}/beneficiaries`, icon: Building2, labelKey: 'nav.beneficiaries' as const },
     { href: `/${slug}/messages`, icon: Mail, labelKey: 'nav.messages' as const },
     { href: `/${slug}/documents`, icon: FileText, labelKey: 'nav.documents' as const },
