@@ -797,7 +797,18 @@
       "completed": "Completed",
       "cancelled": "Cancelled",
       "disputed": "Disputed"
-    }
+    },
+    "sectionIntake": "To confirm",
+    "sectionIntakeHint": "New portal requests",
+    "sectionAux": "Auxiliary trips",
+    "sectionAuxHint": "External transporters",
+    "sectionNormal": "Fleet trips",
+    "sectionNormalHint": "Own fleet",
+    "auxEmpty": "No auxiliary trips.",
+    "normalEmpty": "No trips.",
+    "stageActive": "Active",
+    "stageAll": "All stages",
+    "dateTo": "to"
   },
   "reports": {
     "title": "Reports",
@@ -1086,7 +1097,13 @@
       "awaitingSignature": "Awaiting signature",
       "signed": "Signed",
       "completed": "Completed"
-    }
+    },
+    "chipAviz": "Aviz",
+    "chipCmr": "CMR",
+    "colPickup": "Pickup",
+    "colDocuments": "Documents",
+    "bales": "bales",
+    "multipleTrips": "More than one live trip on this request"
   },
   "alerts": {
     "title": "Alerts",

@@ -797,7 +797,18 @@
       "completed": "Finalizată",
       "cancelled": "Anulată",
       "disputed": "Contestată"
-    }
+    },
+    "sectionIntake": "De confirmat",
+    "sectionIntakeHint": "Solicitări noi din portal",
+    "sectionAux": "Curse Aux",
+    "sectionAuxHint": "Transportatori externi",
+    "sectionNormal": "Curse normale",
+    "sectionNormalHint": "Flota proprie",
+    "auxEmpty": "Nicio cursă auxiliară.",
+    "normalEmpty": "Nicio cursă.",
+    "stageActive": "Active",
+    "stageAll": "Toate stările",
+    "dateTo": "până la"
   },
   "reports": {
     "title": "Rapoarte",
@@ -1086,7 +1097,13 @@
       "awaitingSignature": "De semnat",
       "signed": "Semnată",
       "completed": "Finalizată"
-    }
+    },
+    "chipAviz": "Aviz",
+    "chipCmr": "CMR",
+    "colPickup": "Ridicare",
+    "colDocuments": "Documente",
+    "bales": "baloți",
+    "multipleTrips": "Mai multe curse active pe această solicitare"
   },
   "alerts": {
     "title": "Alerte",
