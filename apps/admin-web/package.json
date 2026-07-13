@@ -18,6 +18,7 @@
     "@mdi/js": "^7.4.47",
     "@next/env": "16.2.1",
     "@strawboss/api": "workspace:*",
+    "@strawboss/domain": "workspace:*",
     "@strawboss/types": "workspace:*",
     "@strawboss/ui-tokens": "workspace:*",
     "@strawboss/validation": "workspace:*",
