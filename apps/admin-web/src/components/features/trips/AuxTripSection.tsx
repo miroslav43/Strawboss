@@ -25,6 +25,9 @@ const selectCls =
 /** Sentinel for the "only live work" default view. */
 const ACTIVE = '__active__';
 
+/** Stages a TABLE row can actually have — pending lives in the intake strip. */
+const STAGE_OPTIONS = AUX_STAGE_ORDER.filter((s) => s !== AuxStage.pending);
+
 interface AuxTripSectionProps {
   /** Shared with the fleet table. Applied server-side. */
   search: string;
@@ -67,15 +70,26 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
     return Object.keys(f).length ? f : undefined;
   }, [search, dateFrom, dateTo]);
 
+  /*
+   * The intake strip gets its OWN query, and it is deliberately NOT filtered.
+   *
+   * Pending requests are unactioned work, and this strip is now the only place in
+   * the app you can confirm or cancel one. If it inherited the page's filters it
+   * would inherit two ways to lose them silently:
+   *   - the date bounds apply to trip_requests.created_at (when the REQUEST
+   *     arrived). Set the bar to "today" and a request submitted at 22:00 last
+   *     night vanishes — no card, no count, no trace.
+   *   - the ledger query is capped at 200 rows by recency, so once an org has
+   *     200+ lifetime requests an old un-actioned one falls out of the window.
+   * Both would read as "there is nothing to confirm". Pending is small and
+   * bounded by definition, so it is safe to always fetch it whole.
+   */
+  const pendingQuery = useTripRequests(apiClient, { status: RequestStatus.pending });
+  const pending = useMemo(() => normalizeList<TripRequest>(pendingQuery.data), [pendingQuery.data]);
+
+  // The ledger: everything already confirmed or cancelled, honouring the filters.
   const { data, isLoading, isError } = useTripRequests(apiClient, filters);
   const requests = useMemo(() => normalizeList<TripRequest>(data), [data]);
-
-  // Pending requests are the intake strip, not table rows: confirming or
-  // cancelling is a judgement call made from the whole picture at once.
-  const pending = useMemo(
-    () => requests.filter((r) => r.status === RequestStatus.pending),
-    [requests],
-  );
 
   const allRows = useMemo(
     () => buildAuxRows(requests.filter((r) => r.status !== RequestStatus.pending)),
@@ -146,7 +160,11 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
           >
             <option value={ACTIVE}>{t('trips.stageActive')}</option>
             <option value="">{t('trips.stageAll')}</option>
-            {AUX_STAGE_ORDER.map((s: AuxStage) => (
+            {/* `pending` is excluded on purpose: a pending request is a card in
+                the intake strip above, never a row here, so offering the option
+                would only ever produce an empty table with N cards visible
+                directly above it — which reads as a data-loss bug. */}
+            {STAGE_OPTIONS.map((s) => (
               <option key={s} value={s}>
                 {t(`tripRequests.stage.${s}`)}
               </option>

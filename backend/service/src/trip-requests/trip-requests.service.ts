@@ -228,12 +228,18 @@ export class TripRequestsService {
     }
     if (filters?.search) {
       const like = `%${filters.search}%`;
+      // `lt.trip_number` is the live trip from TR_TRIP_JOIN. Legal here — the
+      // lateral is in the FROM of this SELECT, so it is in scope in the WHERE.
+      // Without it a dispatcher who pastes an aux trip number off the table (or
+      // off a printed CMR) gets two empty ledgers: the fleet one is filtered to
+      // is_auxiliary=false, and this one would not know the number exists.
       conditions.push(sql`(
         trip_requests.requester_name           ILIKE ${like} OR
         trip_requests.company_name             ILIKE ${like} OR
         trip_requests.truck_registration_plate ILIKE ${like} OR
         trip_requests.driver_name              ILIKE ${like} OR
-        trip_requests.destination_locality     ILIKE ${like}
+        trip_requests.destination_locality     ILIKE ${like} OR
+        lt.trip_number                         ILIKE ${like}
       )`);
     }
     // The admin sends a bare YYYY-MM-DD. created_at is an instant, so anchor the

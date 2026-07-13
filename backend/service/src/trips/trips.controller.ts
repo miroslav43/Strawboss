@@ -63,7 +63,13 @@ export class TripsController {
     // both (unchanged). Compared with strict equality, same as `include`.
     @Query('isAuxiliary') isAuxiliary?: string,
     @Query('search') search?: string,
-    @Query('limit') limit?: string,
+    // NOTE: `limit` is deliberately NOT accepted. Several admin pages
+    // (command-center, machines/[machineId], the dashboard) have always passed
+    // `limit=...` and the backend has always IGNORED it — they rely on getting
+    // the full window and then filtering client-side. Honouring it would
+    // truncate BEFORE their filter runs and silently drop, e.g., a truck that
+    // has been in_transit since Monday from the Command Center. Fix those
+    // callers to filter server-side first; only then is a limit safe to add.
   ) {
     return this.tripsService.list(user.organizationId, {
       status,
@@ -76,7 +82,6 @@ export class TripsController {
       include,
       isAuxiliary,
       search,
-      limit: limit ? Number(limit) : undefined,
     });
   }
 

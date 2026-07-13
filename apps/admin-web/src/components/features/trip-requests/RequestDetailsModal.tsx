@@ -2,9 +2,10 @@
 
 import { ClipboardList, XCircle } from 'lucide-react';
 import type { TripRequest } from '@strawboss/types';
-import { RequestStatus } from '@strawboss/types';
+import { composeAuxStage } from '@strawboss/domain';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { AuxStageBadge } from './AuxStageBadge';
 
 /** i18n key for a beneficiary quality grade ('quality_1' | 'quality_2'). */
 function qualityLabelKey(quality: string): string {
@@ -58,21 +59,22 @@ function Section({
   );
 }
 
-function StatusBadge({ status }: { status: RequestStatus }) {
-  const { t } = useI18n();
-  const cls =
-    status === RequestStatus.pending
-      ? 'bg-amber-100 text-amber-700'
-      : status === RequestStatus.confirmed
-        ? 'bg-green-100 text-green-700'
-        : 'bg-neutral-100 text-neutral-500 line-through';
-  return (
-    <span
-      className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', cls)}
-    >
-      {t(`tripRequests.status.${status}`)}
-    </span>
-  );
+/**
+ * Renders the SAME composed stage the Curse Aux table shows.
+ *
+ * Reading `trip_requests.status` directly here would make the modal disagree with
+ * the row that opened it: that column is never written again after confirm(), so
+ * it stays frozen at "Confirmată" while the truck is out being loaded and the
+ * table correctly says "În încărcare".
+ */
+function StatusBadge({ request }: { request: TripRequest }) {
+  const stage = composeAuxStage({
+    status: request.status,
+    tripStatus: request.tripStatus,
+    tripSignedAt: request.tripSignedAt,
+    tripCompletedAt: request.tripCompletedAt,
+  });
+  return <AuxStageBadge stage={stage} />;
 }
 
 export function RequestDetailsModal({
@@ -122,7 +124,7 @@ export function RequestDetailsModal({
         {/* Body */}
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <div className="flex items-center gap-2">
-            <StatusBadge status={r.status as RequestStatus} />
+            <StatusBadge request={r} />
           </div>
 
           <Section title={t('tripRequests.sectionRequester')}>

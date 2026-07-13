@@ -42,7 +42,7 @@ const inputCls =
  */
 export default function TripsPage() {
   const { t } = useI18n();
-  const isDispatcher = useIsDispatcher();
+  const { isDispatcher, isLoading: roleLoading } = useIsDispatcher();
 
   // Shared across both ledgers.
   const [search, setSearch] = useState('');
@@ -109,8 +109,15 @@ export default function TripsPage() {
 
       {/* Auxiliary ledger — admin/dispatcher only. GET /trip-requests is
           @Roles(admin, dispatcher); not mounting this means an operator who signs
-          in on the web never fires the query and never sees a 403 panel. */}
-      {isDispatcher && <AuxTripSection search={search} dateFrom={dateFrom} dateTo={dateTo} />}
+          in on the web never fires the query and never sees a 403 panel.
+          While the role is still unknown we render a placeholder rather than
+          nothing: an admin hard-reloading must not momentarily see a page with no
+          aux ledger, which is indistinguishable from "nothing to confirm". */}
+      {roleLoading ? (
+        <div className="h-24 animate-pulse rounded-lg border border-neutral-200 bg-neutral-50" />
+      ) : (
+        isDispatcher && <AuxTripSection search={search} dateFrom={dateFrom} dateTo={dateTo} />
+      )}
 
       {/* Own-fleet ledger. */}
       <section id="fleet" className="space-y-3">

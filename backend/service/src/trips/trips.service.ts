@@ -59,15 +59,12 @@ const AUX_AUTOCOMPLETE_DELAY_MS = 5 * 60_000;
  */
 const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Historical hard cap on the trips list; still the ceiling a caller may ask for. */
-const DEFAULT_TRIP_LIMIT = 1000;
-const MAX_TRIP_LIMIT = 1000;
-
-/** Coerce an untrusted numeric query param into a sane bound. */
-function clampInt(value: number | undefined, fallback: number, max: number): number {
-  if (value === undefined || !Number.isFinite(value)) return fallback;
-  return Math.min(Math.max(Math.trunc(value), 1), max);
-}
+/**
+ * Hard cap on the trips list. NOT caller-overridable — see the note on the
+ * controller: several admin pages fetch a wide window and filter it client-side,
+ * so a caller-supplied limit would truncate before their filter runs.
+ */
+const TRIP_LIST_CAP = 1000;
 
 /** Row shape used by recordNoRecall + alertAdminTruckReleased (P1b). */
 interface TruckReleaseRow {
@@ -259,7 +256,6 @@ export class TripsService implements OnModuleInit {
       isAuxiliary?: string;
       /** Free-text over trip number / truck / driver (incl. external) / destination / parcel. */
       search?: string;
-      limit?: number;
     },
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`t.deleted_at IS NULL`];
@@ -391,7 +387,6 @@ export class TripsService implements OnModuleInit {
           m.registration_plate                         AS truck_registration_plate,
           m.internal_code                              AS truck_internal_code`
         : sql``;
-    const limit = clampInt(filters?.limit, DEFAULT_TRIP_LIMIT, MAX_TRIP_LIMIT);
     const result = await this.drizzleProvider.db.execute(
       sql`
         SELECT
@@ -412,7 +407,7 @@ export class TripsService implements OnModuleInit {
         LEFT JOIN delivery_destinations sd ON sd.id = t.source_depot_id
         WHERE ${where}
         ORDER BY t.created_at DESC
-        LIMIT ${limit}
+        LIMIT ${TRIP_LIST_CAP}
       `,
     );
     return result;
