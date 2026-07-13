@@ -26,6 +26,63 @@ export const AUXILIARY_TRIP_STATUSES = [
   TripStatus.completed,
 ] as const;
 
+/**
+ * The single, honest status of an auxiliary transport.
+ *
+ * An aux transport lives on TWO axes that neither alone can describe:
+ *   - `trip_requests.status` (pending | confirmed | cancelled) — the commercial
+ *     axis. It is NEVER written again after confirm(), so it goes stale the
+ *     moment the trip starts moving.
+ *   - `trips.status` (TripStatus) — the execution axis. It does not exist at all
+ *     until a dispatcher materializes the trip on the truck board, which can be
+ *     days after the request was confirmed.
+ *
+ * Composing them (see `composeAuxStage` in @strawboss/domain) is what makes the
+ * ladder TOTAL — every request renders, including the ones with no trip yet —
+ * and HONEST: it never shows a TripStatus that an aux trip cannot reach.
+ *
+ * `unplanned` is the one stage that exists in reality but was invisible in the
+ * product: confirmed, an aux truck minted, and nobody has scheduled it yet. It
+ * has no timeout and no alert, so it needs to be visible.
+ *
+ * Ordinals are the display sort order — do not reorder casually.
+ */
+export enum AuxStage {
+  cancelled = 'cancelled',
+  /** Submitted through the portal; awaiting confirm/cancel. No trip, no truck. */
+  pending = 'pending',
+  /** Confirmed and an aux truck minted, but no dispatcher has scheduled it yet. */
+  unplanned = 'unplanned',
+  planned = 'planned',
+  loading = 'loading',
+  /** Loaded; the external driver has not signed the CMR via the public link yet. */
+  awaitingSignature = 'awaitingSignature',
+  signed = 'signed',
+  completed = 'completed',
+}
+
+/** Display/sort order of the aux ladder. Index = `stageOrder` on an aux row. */
+export const AUX_STAGE_ORDER: readonly AuxStage[] = [
+  AuxStage.pending,
+  AuxStage.unplanned,
+  AuxStage.planned,
+  AuxStage.loading,
+  AuxStage.awaitingSignature,
+  AuxStage.signed,
+  AuxStage.completed,
+  AuxStage.cancelled,
+] as const;
+
+/** Stages that are still live work — the aux table's default view. */
+export const ACTIVE_AUX_STAGES: readonly AuxStage[] = [
+  AuxStage.pending,
+  AuxStage.unplanned,
+  AuxStage.planned,
+  AuxStage.loading,
+  AuxStage.awaitingSignature,
+  AuxStage.signed,
+] as const;
+
 export interface Trip extends Timestamps, SoftDelete {
   id: string;
   tripNumber: string;

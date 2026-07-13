@@ -1076,7 +1076,17 @@
     "notes": "Note",
     "auxBadge": "AUX",
     "pendingSectionTitle": "Detalii solicitare",
-    "depositFromRequest": "Destinație setată din cerere"
+    "depositFromRequest": "Destinație setată din cerere",
+    "stage": {
+      "cancelled": "Anulată",
+      "pending": "În așteptare",
+      "unplanned": "Confirmată — neplanificată",
+      "planned": "Planificată",
+      "loading": "În încărcare",
+      "awaitingSignature": "De semnat",
+      "signed": "Semnată",
+      "completed": "Finalizată"
+    }
   },
   "alerts": {
     "title": "Alerte",

@@ -1076,7 +1076,17 @@
     "notes": "Notes",
     "auxBadge": "AUX",
     "pendingSectionTitle": "Request details",
-    "depositFromRequest": "Destination set from the request"
+    "depositFromRequest": "Destination set from the request",
+    "stage": {
+      "cancelled": "Cancelled",
+      "pending": "Pending",
+      "unplanned": "Confirmed — unplanned",
+      "planned": "Planned",
+      "loading": "Loading",
+      "awaitingSignature": "Awaiting signature",
+      "signed": "Signed",
+      "completed": "Completed"
+    }
   },
   "alerts": {
     "title": "Alerts",
