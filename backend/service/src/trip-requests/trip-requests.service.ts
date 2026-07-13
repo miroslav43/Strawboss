@@ -34,57 +34,72 @@ import type {
 } from '@strawboss/types';
 import type { CreateBeneficiaryRequestInput } from '@strawboss/validation';
 
-/** All trip_requests columns aliased to camelCase; coords → {lat,lon}. */
+/**
+ * All trip_requests columns aliased to camelCase; coords → {lat,lon}.
+ *
+ * Every column is qualified with `trip_requests.` so this fragment stays valid
+ * both in a SELECT that joins the live trip (see TR_TRIP_JOIN — `status` and
+ * `id` would otherwise be ambiguous against the joined trip) and in the two
+ * `UPDATE trip_requests … RETURNING` clauses, which cannot see a LATERAL join
+ * at all. Anything derived from the trip therefore lives in TR_TRIP_COLS, not
+ * here.
+ *
+ * Casts, not cosmetics: postgres.js only number-parses OIDs 21/23/26/700/701.
+ * A NUMERIC (1700) arrives as the string "12.00" and a DATE (1082) arrives as a
+ * JS Date that serializes to "2026-07-15T00:00:00.000Z" — while the TypeScript
+ * type declares `number` and `string`. `::float8` and `to_char` make the wire
+ * shape match the declared type, and also match what create() already returns.
+ */
 const TR_COLS = sql`
-  id,
-  organization_id          AS "organizationId",
-  status,
-  requester_name           AS "requesterName",
-  requester_phone          AS "requesterPhone",
-  requester_email          AS "requesterEmail",
-  company_name             AS "companyName",
-  company_address          AS "companyAddress",
-  company_cui              AS "companyCui",
-  truck_registration_plate AS "truckRegistrationPlate",
-  truck_make               AS "truckMake",
-  truck_model              AS "truckModel",
-  truck_capacity_tons      AS "truckCapacityTons",
-  driver_name              AS "driverName",
-  driver_phone             AS "driverPhone",
-  driver_email             AS "driverEmail",
-  crop_type                AS "cropType",
-  quality                  AS "quality",
-  needed_date              AS "neededDate",
-  tons_requested           AS "tonsRequested",
-  destination_address      AS "destinationAddress",
-  destination_locality     AS "destinationLocality",
-  CASE WHEN destination_coords IS NULL THEN NULL
-       ELSE json_build_object('lat', ST_Y(destination_coords), 'lon', ST_X(destination_coords))
+  trip_requests.id,
+  trip_requests.organization_id          AS "organizationId",
+  trip_requests.status,
+  trip_requests.requester_name           AS "requesterName",
+  trip_requests.requester_phone          AS "requesterPhone",
+  trip_requests.requester_email          AS "requesterEmail",
+  trip_requests.company_name             AS "companyName",
+  trip_requests.company_address          AS "companyAddress",
+  trip_requests.company_cui              AS "companyCui",
+  trip_requests.truck_registration_plate AS "truckRegistrationPlate",
+  trip_requests.truck_make               AS "truckMake",
+  trip_requests.truck_model              AS "truckModel",
+  trip_requests.truck_capacity_tons::float8 AS "truckCapacityTons",
+  trip_requests.driver_name              AS "driverName",
+  trip_requests.driver_phone             AS "driverPhone",
+  trip_requests.driver_email             AS "driverEmail",
+  trip_requests.crop_type                AS "cropType",
+  trip_requests.quality                  AS "quality",
+  to_char(trip_requests.needed_date, 'YYYY-MM-DD') AS "neededDate",
+  trip_requests.tons_requested::float8   AS "tonsRequested",
+  trip_requests.destination_address      AS "destinationAddress",
+  trip_requests.destination_locality     AS "destinationLocality",
+  CASE WHEN trip_requests.destination_coords IS NULL THEN NULL
+       ELSE json_build_object('lat', ST_Y(trip_requests.destination_coords),
+                              'lon', ST_X(trip_requests.destination_coords))
   END                      AS "destinationCoords",
-  notes,
-  machine_id               AS "machineId",
-  trip_id                  AS "tripId",
-  confirmed_by             AS "confirmedBy",
-  confirmed_at             AS "confirmedAt",
-  cancelled_at             AS "cancelledAt",
-  cancellation_reason      AS "cancellationReason",
-  beneficiary_id               AS "beneficiaryId",
-  trailer_registration_plate   AS "trailerRegistrationPlate",
-  transporter_cui              AS "transporterCui",
-  transporter_name             AS "transporterName",
-  transporter_address          AS "transporterAddress",
-  contact_id                   AS "contactId",
-  truck_id                     AS "truckId",
-  driver_id                    AS "driverId",
-  notify_recipients            AS "notifyRecipients",
-  source_depot_id              AS "sourceDepotId",
-  created_at               AS "createdAt",
-  updated_at               AS "updatedAt",
-  deleted_at               AS "deletedAt",
+  trip_requests.notes,
+  trip_requests.machine_id               AS "machineId",
+  trip_requests.trip_id                  AS "tripId",
+  trip_requests.confirmed_by             AS "confirmedBy",
+  trip_requests.confirmed_at             AS "confirmedAt",
+  trip_requests.cancelled_at             AS "cancelledAt",
+  trip_requests.cancellation_reason      AS "cancellationReason",
+  trip_requests.beneficiary_id               AS "beneficiaryId",
+  trip_requests.trailer_registration_plate   AS "trailerRegistrationPlate",
+  trip_requests.transporter_cui              AS "transporterCui",
+  trip_requests.transporter_name             AS "transporterName",
+  trip_requests.transporter_address          AS "transporterAddress",
+  trip_requests.contact_id                   AS "contactId",
+  trip_requests.truck_id                     AS "truckId",
+  trip_requests.driver_id                    AS "driverId",
+  trip_requests.notify_recipients            AS "notifyRecipients",
+  trip_requests.source_depot_id              AS "sourceDepotId",
+  trip_requests.created_at               AS "createdAt",
+  trip_requests.updated_at               AS "updatedAt",
+  trip_requests.deleted_at               AS "deletedAt",
   (SELECT m.make               FROM machines m WHERE m.id = trip_requests.machine_id) AS "machineMake",
   (SELECT m.model              FROM machines m WHERE m.id = trip_requests.machine_id) AS "machineModel",
   (SELECT m.registration_plate FROM machines m WHERE m.id = trip_requests.machine_id) AS "machinePlate",
-  (SELECT t.trip_number        FROM trips t    WHERE t.id = trip_requests.trip_id)    AS "tripNumber",
   (SELECT dd.name       FROM delivery_destinations dd WHERE dd.id = trip_requests.source_depot_id) AS "sourceDepotName",
   (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.confirmed_by)     AS "confirmedByName",
   EXISTS(SELECT 1 FROM documents d
@@ -96,6 +111,68 @@ const TR_COLS = sql`
          WHERE d.trip_request_id = trip_requests.id
            AND d.document_type = 'cmr_scan' AND d.deleted_at IS NULL) AS "hasCmrScan"
 `;
+
+/**
+ * The live trip attached to a request, as a FROM fragment.
+ *
+ * Joined on `trips.trip_request_id` — the STABLE direction. The reverse pointer
+ * `trip_requests.trip_id` is last-write-wins and is never cleared when a trip is
+ * soft-deleted, so the old `(SELECT trip_number FROM trips WHERE id =
+ * trip_requests.trip_id)` had no `deleted_at` guard and would happily render the
+ * number of a deleted trip. The soft-delete predicate lives INSIDE the lateral,
+ * so a deleted trip yields no row rather than filtering the request away.
+ *
+ * `ORDER BY created_at DESC LIMIT 1` picks the newest if a request somehow has
+ * more than one live trip; TR_TRIP_COLS also exposes `tripCount` so the anomaly
+ * is surfaced rather than silently hidden.
+ */
+const TR_TRIP_JOIN = sql`
+  LEFT JOIN LATERAL (
+    SELECT t.id, t.trip_number, t.status, t.bale_count,
+           t.loading_completed_at, t.completed_at, t.public_sign_token_used_at,
+           t.source_parcel_id, t.source_depot_id
+      FROM trips t
+     WHERE t.trip_request_id = trip_requests.id
+       AND t.deleted_at IS NULL
+     ORDER BY t.created_at DESC
+     LIMIT 1
+  ) lt ON TRUE
+  LEFT JOIN parcels               lp  ON lp.id  = lt.source_parcel_id
+  LEFT JOIN delivery_destinations lsd ON lsd.id = lt.source_depot_id
+`;
+
+/**
+ * Flat, camelCase read-model of that trip. Flat — not a nested `trip` object —
+ * because the admin table sorts via `row[sortKey]`, and a nested object would
+ * compare as an object and sort as garbage.
+ */
+const TR_TRIP_COLS = sql`
+  lt.id                        AS "tripLiveId",
+  lt.trip_number               AS "tripNumber",
+  lt.status                    AS "tripStatus",
+  lt.bale_count                AS "tripBaleCount",
+  lt.loading_completed_at      AS "tripLoadingCompletedAt",
+  lt.completed_at              AS "tripCompletedAt",
+  lt.public_sign_token_used_at AS "tripSignedAt",
+  lp.name                      AS "tripSourceParcelName",
+  lsd.name                     AS "tripSourceDepotName",
+  (SELECT count(*)::int FROM trips t2
+    WHERE t2.trip_request_id = trip_requests.id
+      AND t2.deleted_at IS NULL) AS "tripCount"
+`;
+
+/** A bare calendar day, as the admin date inputs send it. */
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+const DEFAULT_LIST_LIMIT = 200;
+const MAX_LIST_LIMIT = 1000;
+const MAX_LIST_OFFSET = 100_000;
+
+/** Coerce an untrusted numeric query param into a sane bound. */
+function clampInt(value: number | undefined, fallback: number, max: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(Math.trunc(value), 0), max);
+}
 
 interface OrgPortalRow {
   id: string;
@@ -131,22 +208,75 @@ export class TripRequestsService {
 
   // ── Authed (admin/dispatcher) ────────────────────────────────────────────
 
-  async list(orgId: string | null, status?: string): Promise<TripRequest[]> {
-    const conditions = [sql`deleted_at IS NULL`];
-    if (orgId) conditions.push(sql`organization_id = ${orgId}::uuid`);
-    if (status) conditions.push(sql`status = ${status}::request_status`);
+  async list(
+    orgId: string | null,
+    filters?: {
+      status?: string;
+      /** Free-text over requester / company / truck plate / external driver. */
+      search?: string;
+      /** Inclusive calendar-day bounds on created_at, in Romania's timezone. */
+      dateFrom?: string;
+      dateTo?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<TripRequest[]> {
+    const conditions = [sql`trip_requests.deleted_at IS NULL`];
+    if (orgId) conditions.push(sql`trip_requests.organization_id = ${orgId}::uuid`);
+    if (filters?.status) {
+      conditions.push(sql`trip_requests.status = ${filters.status}::request_status`);
+    }
+    if (filters?.search) {
+      const like = `%${filters.search}%`;
+      conditions.push(sql`(
+        trip_requests.requester_name           ILIKE ${like} OR
+        trip_requests.company_name             ILIKE ${like} OR
+        trip_requests.truck_registration_plate ILIKE ${like} OR
+        trip_requests.driver_name              ILIKE ${like} OR
+        trip_requests.destination_locality     ILIKE ${like}
+      )`);
+    }
+    // The admin sends a bare YYYY-MM-DD. created_at is an instant, so anchor the
+    // day boundaries to Europe/Bucharest — a plain `created_at <= '2026-07-13'`
+    // coerces to midnight and silently drops everything created that day.
+    //
+    // The `::timestamp` cast before AT TIME ZONE is load-bearing: AT TIME ZONE
+    // picks its direction from the operand's type, and a bare `date` prefers the
+    // implicit cast to timestamptz, which flips the conversion the wrong way and
+    // lands the bound 2-3h off. See the longer note in TripsService.list().
+    if (filters?.dateFrom && CALENDAR_DAY.test(filters.dateFrom)) {
+      conditions.push(
+        sql`trip_requests.created_at >= (${filters.dateFrom}::date::timestamp AT TIME ZONE 'Europe/Bucharest')`,
+      );
+    }
+    if (filters?.dateTo && CALENDAR_DAY.test(filters.dateTo)) {
+      conditions.push(
+        sql`trip_requests.created_at < ((${filters.dateTo}::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/Bucharest')`,
+      );
+    }
     const where = sql.join(conditions, sql` AND `);
+    // Bounded by default: this table is written by the PUBLIC portal, so an
+    // unbounded list is a third party's throughput problem, not just ours.
+    const limit = clampInt(filters?.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
+    const offset = clampInt(filters?.offset, 0, MAX_LIST_OFFSET);
     const rows = await this.drizzleProvider.db.execute(
-      sql`SELECT ${TR_COLS} FROM trip_requests WHERE ${where} ORDER BY created_at DESC`,
+      sql`SELECT ${TR_COLS}, ${TR_TRIP_COLS}
+            FROM trip_requests
+            ${TR_TRIP_JOIN}
+           WHERE ${where}
+           ORDER BY trip_requests.created_at DESC
+           LIMIT ${limit} OFFSET ${offset}`,
     );
     return rows as unknown as TripRequest[];
   }
 
   async findById(orgId: string | null, id: string): Promise<TripRequest> {
     const rows = (await this.drizzleProvider.db.execute(
-      sql`SELECT ${TR_COLS} FROM trip_requests
-          WHERE id = ${id}::uuid AND deleted_at IS NULL
-          ${orgId ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+      sql`SELECT ${TR_COLS}, ${TR_TRIP_COLS}
+            FROM trip_requests
+            ${TR_TRIP_JOIN}
+          WHERE trip_requests.id = ${id}::uuid AND trip_requests.deleted_at IS NULL
+          ${orgId ? sql`AND trip_requests.organization_id = ${orgId}::uuid` : sql``}
           LIMIT 1`,
     )) as unknown as TripRequest[];
     if (!rows.length) throw new NotFoundException(`Trip request ${id} not found`);

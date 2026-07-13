@@ -3,7 +3,17 @@ import type { TripRequest, OrgRequestSettings, Document } from '@strawboss/types
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
-/** Admin/dispatcher: list external trip requests (filters: status, dateFrom, dateTo). */
+/**
+ * Admin/dispatcher: list external trip requests.
+ *
+ * Filters: `status`, `search`, `dateFrom`, `dateTo` (bare `YYYY-MM-DD`), `limit`
+ * (default 200 server-side), `offset`. Rows carry the live-trip read model
+ * (`tripStatus`, `tripNumber`, `tripBaleCount`, …) joined server-side.
+ *
+ * Only pass keys you actually want in the query string: `URLSearchParams`
+ * stringifies an `undefined` value to the literal text "undefined", which the
+ * server would then try to parse.
+ */
 export function useTripRequests(client: ApiClient, filters?: Record<string, unknown>) {
   return useQuery({
     queryKey: queryKeys.tripRequests.list(filters),

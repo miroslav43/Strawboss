@@ -1,5 +1,6 @@
 import type { Timestamps, SoftDelete, GeoPoint } from '../common.js';
 import type { CropType } from './parcel.js';
+import type { TripStatus } from './trip.js';
 
 export enum RequestStatus {
   pending = 'pending',
@@ -81,10 +82,29 @@ export interface TripRequest extends Timestamps, SoftDelete {
   machineMake?: string | null;
   machineModel?: string | null;
   machinePlate?: string | null;
-  tripNumber?: string | null;
   // resolved names for the ids above (joined from delivery_destinations / users)
   sourceDepotName?: string | null;
   confirmedByName?: string | null;
+
+  // ── Live-trip read model ───────────────────────────────────────────────────
+  // Populated ONLY by list()/findById(), from a LEFT JOIN LATERAL on
+  // `trips.trip_request_id` (the stable direction — `tripId` above is a
+  // last-write-wins pointer that is never cleared when a trip is soft-deleted).
+  // All absent until a dispatcher materializes the trip on the truck board, so a
+  // confirmed-but-unplanned request legitimately has none of them.
+  /** Id of the live (non-deleted) trip, if one exists. */
+  tripLiveId?: string | null;
+  tripNumber?: string | null;
+  tripStatus?: TripStatus | null;
+  tripBaleCount?: number | null;
+  tripLoadingCompletedAt?: string | null;
+  tripCompletedAt?: string | null;
+  /** When the external driver signed via the one-time public link. */
+  tripSignedAt?: string | null;
+  tripSourceParcelName?: string | null;
+  tripSourceDepotName?: string | null;
+  /** Number of live trips on this request. >1 is an anomaly worth surfacing. */
+  tripCount?: number;
   // whether a non-deleted aviz (delivery_note document) exists for this request
   hasAviz?: boolean;
   // whether a non-deleted scanned paper CMR (cmr_scan document) exists for this
