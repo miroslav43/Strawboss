@@ -164,8 +164,19 @@ export interface Trip extends Timestamps, SoftDelete {
   externalDriverName: string | null;
   externalDriverPhone: string | null;
   externalDriverEmail: string | null;
-  /** One-time token for the public driver sign-and-leave link (/<slug>/sign/<token>). */
-  publicSignToken: string | null;
+  /**
+   * `publicSignToken` is DELIBERATELY ABSENT from this type.
+   *
+   * It is the one-time BEARER SECRET behind /<slug>/sign/<token> — whoever holds
+   * it can sign an auxiliary trip's CMR as the external driver. It used to reach
+   * every authenticated client, because GET /trips did `SELECT t.*` and carries no
+   * @Roles, so any driver or loader could read every trip's token. The read
+   * endpoints now use an explicit projection that omits it, and it is off the type
+   * so nothing can casually put it back. The token is minted server-side and the
+   * link is SMS'd straight to the driver; no client ever needs to see it.
+   *
+   * Only the "has it been used" timestamp is safe to expose.
+   */
   publicSignTokenUsedAt: string | null;
   /** The trip_request this auxiliary trip was created from. */
   tripRequestId: string | null;

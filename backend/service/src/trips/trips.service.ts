@@ -66,6 +66,96 @@ const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
  */
 const TRIP_LIST_CAP = 1000;
 
+/**
+ * The client-facing projection of a trip row. Replaces `SELECT t.*` on the two
+ * READ endpoints (list + findById), which are reachable by ANY authenticated
+ * caller — `GET /trips` carries no @Roles at all.
+ *
+ * Two things `t.*` got wrong:
+ *
+ * 1. SECURITY. It shipped `public_sign_token` — the one-time bearer secret that
+ *    lets an ACCOUNT-LESS external driver sign the CMR through a public link — to
+ *    every driver and loader in the org. Anyone who read it could sign any
+ *    auxiliary trip's transport document as the driver. It is deliberately absent
+ *    below, and the field is gone from the `Trip` type too, so it cannot be
+ *    reintroduced by accident. Nothing needs it client-side: the token is minted
+ *    server-side and the sign link is SMS'd to the driver (see sendSignLinkSms).
+ *    `public_sign_token_used_at` is NOT a secret and IS kept — the aux read model
+ *    surfaces it as "has the driver signed yet".
+ *
+ * 2. TYPE HONESTY. `destination_coords` is a PostGIS geometry, and postgres.js has
+ *    no parser for it, so `t.*` emitted raw EWKB hex ("0101000020E6100000…") while
+ *    `Trip.destinationCoords` is declared `GeoPoint | null`. Every other query in
+ *    this file already serialises geometry properly. json_build_object gives the
+ *    {lat, lon} the type actually promises.
+ *
+ * Every other column is kept verbatim, in snake_case, so the wire shape is
+ * otherwise byte-identical for the ~30 fleet phones and the admin mapper.
+ */
+const TRIP_COLS = sql`
+  t.id,
+  t.trip_number,
+  t.status,
+  t.organization_id,
+  t.source_parcel_id,
+  t.source_depot_id,
+  t.source_parcel_auto,
+  t.loader_id,
+  t.truck_id,
+  t.loader_operator_id,
+  t.driver_id,
+  t.bale_count,
+  t.delivered_bale_count,
+  t.deteriorated_bales_count,
+  t.loading_started_at,
+  t.loading_completed_at,
+  t.departure_at,
+  t.arrival_at,
+  t.gps_distance_km,
+  t.destination_id,
+  t.destination_name,
+  t.destination_address,
+  CASE WHEN t.destination_coords IS NULL THEN NULL
+       ELSE json_build_object('lat', ST_Y(t.destination_coords),
+                              'lon', ST_X(t.destination_coords))
+  END                                            AS destination_coords,
+  t.gross_weight_kg,
+  t.tare_weight_kg,
+  t.net_weight_kg,
+  t.weight_ticket_number,
+  t.weight_ticket_photo_url,
+  t.delivered_at,
+  t.delivery_notes,
+  t.receiver_name,
+  t.receiver_signature_url,
+  t.receiver_signed_at,
+  t.loader_signature_url,
+  t.driver_signature_url,
+  t.depot_operator_id,
+  t.depot_confirmed_at,
+  t.depot_operator_signature_url,
+  t.scale_broken,
+  t.completed_at,
+  t.cancelled_at,
+  t.cancellation_reason,
+  t.parent_trip_id,
+  t.iteration_index,
+  t.recall_decision,
+  t.recall_decided_at,
+  t.is_auxiliary,
+  t.external_driver_name,
+  t.external_driver_phone,
+  t.external_driver_email,
+  t.public_sign_token_used_at,
+  t.trip_request_id,
+  t.fraud_flags,
+  t.client_id,
+  t.sync_version,
+  t.created_at,
+  t.updated_at,
+  t.deleted_at
+`;
+
 /** Row shape used by recordNoRecall + alertAdminTruckReleased (P1b). */
 interface TruckReleaseRow {
   id: string;
@@ -390,7 +480,7 @@ export class TripsService implements OnModuleInit {
     const result = await this.drizzleProvider.db.execute(
       sql`
         SELECT
-          t.*,
+          ${TRIP_COLS},
           m.registration_plate                         AS truck_plate,
           m.internal_code                              AS truck_code,
           u.full_name                                  AS driver_name,
@@ -419,11 +509,13 @@ export class TripsService implements OnModuleInit {
       conditions.push(sql`t.organization_id = ${orgId}::uuid`);
     }
     const where = sql.join(conditions, sql` AND `);
-    // `t.*` keeps every trip column (internal callers rely on it); the extra
-    // LEFT JOIN labels let the admin show real names instead of raw UUIDs.
+    // TRIP_COLS keeps every trip column that internal callers rely on — it is
+    // `t.*` minus the one bearer secret (public_sign_token) and with the geometry
+    // serialised. Internal reads of the token use their own dedicated queries.
+    // The extra LEFT JOIN labels let the admin show real names, not raw UUIDs.
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT
-            t.*,
+            ${TRIP_COLS},
             m.registration_plate  AS truck_plate,
             m.internal_code       AS truck_code,
             u.full_name           AS driver_name,
@@ -501,10 +593,18 @@ export class TripsService implements OnModuleInit {
     const result = await this.drizzleProvider.db.transaction(async (tx) => {
       const tripNumber = await this.generateTripNumber(orgId, tx);
       return tx.execute(
+        // destination_id: carried so an admin-created trip is visible to the depot
+        // manager and can be depot-confirmed, like every other creation path.
+        //
+        // destination_coords: the old code bound `JSON.stringify({lat, lon})`
+        // straight into a GEOMETRY column, which Postgres cannot parse — passing
+        // coords here would always have thrown. (Nothing calls POST /trips today,
+        // which is why nobody hit it.) ST_MakePoint takes lon,lat in that order.
         sql`INSERT INTO trips (
           organization_id,
           trip_number, status, source_parcel_id, truck_id, driver_id,
-          loader_id, loader_operator_id, destination_name,
+          loader_id, loader_operator_id,
+          destination_id, destination_name,
           destination_address, destination_coords,
           bale_count, source_parcel_auto
         ) VALUES (
@@ -512,8 +612,13 @@ export class TripsService implements OnModuleInit {
           ${tripNumber}, ${TripStatus.planned}, ${dto.sourceParcelId},
           ${dto.truckId}, ${dto.driverId},
           ${dto.loaderId ?? null}, ${dto.loaderOperatorId ?? null},
+          ${dto.destinationId ? sql`${dto.destinationId}::uuid` : sql`NULL`},
           ${dto.destinationName ?? null}, ${dto.destinationAddress ?? null},
-          ${dto.destinationCoords ? JSON.stringify(dto.destinationCoords) : null},
+          ${
+            dto.destinationCoords
+              ? sql`ST_SetSRID(ST_MakePoint(${dto.destinationCoords.lon}, ${dto.destinationCoords.lat}), 4326)`
+              : sql`NULL`
+          },
           0, false
         ) RETURNING *`,
       );
@@ -820,13 +925,18 @@ export class TripsService implements OnModuleInit {
 
         const tripNumber = await this.generateTripNumber(orgId, tx);
         const insertedTrip = (await tx.execute(
+          // destination_id, not just the denormalized name/address/coords. It was
+          // resolved above and then thrown away, which left the FK NULL on every
+          // trip this path creates — and destination_id is what the depot-manager
+          // sync pull, the depot_manager RLS policies and confirmDepotDelivery all
+          // key on. Without it the entire depot-confirmation flow was dead.
           sql`INSERT INTO trips (
                 organization_id,
                 trip_number, status,
                 source_parcel_id, source_depot_id, source_parcel_auto,
                 truck_id, driver_id,
                 loader_id, loader_operator_id,
-                destination_name, destination_address, destination_coords,
+                destination_id, destination_name, destination_address, destination_coords,
                 bale_count
               ) VALUES (
                 ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
@@ -836,6 +946,7 @@ export class TripsService implements OnModuleInit {
                 ${dto.sourceDepotId ? sql`false` : sql`true`},
                 ${dto.truckId}, ${driverId},
                 ${dto.loaderMachineId}, ${callerId},
+                ${destinationId ? sql`${destinationId}::uuid` : sql`NULL`},
                 ${destName}, ${destAddress},
                 ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
                 0
@@ -1942,6 +2053,7 @@ export class TripsService implements OnModuleInit {
       const cur = (await tx.execute(sql`
         SELECT id, status, parent_trip_id, source_parcel_id, truck_id, driver_id,
                loader_id, loader_operator_id,
+               destination_id,
                destination_name, destination_address,
                ST_AsGeoJSON(destination_coords) AS destination_coords_geojson,
                recall_decided_at,
@@ -2015,7 +2127,7 @@ export class TripsService implements OnModuleInit {
           source_parcel_id, source_parcel_auto,
           truck_id, driver_id,
           loader_id, loader_operator_id,
-          destination_name, destination_address,
+          destination_id, destination_name, destination_address,
           destination_coords,
           bale_count,
           parent_trip_id, iteration_index
@@ -2025,6 +2137,7 @@ export class TripsService implements OnModuleInit {
           ${sourceParcelId}, true,
           ${t.truck_id}, ${t.driver_id},
           ${t.loader_id}, ${t.loader_operator_id},
+          ${t.destination_id ? sql`${t.destination_id as string}::uuid` : sql`NULL`},
           ${t.destination_name}, ${t.destination_address},
           ${
             t.destination_coords_geojson
@@ -2461,18 +2574,23 @@ export class TripsService implements OnModuleInit {
       const tripId = await this.drizzleProvider.db.transaction(async (tx) => {
         const tripNumber = await this.generateTripNumber(taskOrgId, tx);
         const inserted = (await tx.execute(
+          // destination_id comes straight from the task — this method already
+          // returns early unless `task.destination_id` is set, so it is always
+          // available here. Migration 00051 added trips.destination_id explicitly
+          // to MIRROR task_assignments.destination_id (00018); the mirror was just
+          // never wired up.
           sql`INSERT INTO trips (
             organization_id,
             trip_number, status, source_parcel_id, truck_id, driver_id,
             loader_id, loader_operator_id,
-            destination_name, destination_address, destination_coords,
+            destination_id, destination_name, destination_address, destination_coords,
             bale_count, source_parcel_auto
           ) VALUES (
             ${taskOrgId ? sql`${taskOrgId}::uuid` : sql`NULL`},
             ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
             ${task.machine_id}, ${driverId},
             ${loaderMachineId}, ${loaderOperatorId},
-            ${dest.name}, ${dest.address ?? null},
+            ${task.destination_id}::uuid, ${dest.name}, ${dest.address ?? null},
             ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
             0, false
           ) RETURNING id`,
@@ -2514,12 +2632,15 @@ export class TripsService implements OnModuleInit {
     }
 
     await this.drizzleProvider.db.execute(
+      // Re-planning a still-`planned` trip must move destination_id too, or the FK
+      // would keep pointing at the depot the dispatcher just changed away from.
       sql`UPDATE trips SET
         source_parcel_id = ${sourceParcelId},
         truck_id = ${task.machine_id},
         driver_id = ${driverId},
         loader_id = ${loaderMachineId},
         loader_operator_id = ${loaderOperatorId},
+        destination_id = ${task.destination_id}::uuid,
         destination_name = ${dest.name},
         destination_address = ${dest.address ?? null},
         destination_coords = ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
