@@ -59,6 +59,11 @@ export class TripsController {
     // are plain optional strings); `include` is treated the same way and is
     // only ever compared with strict equality against the literal 'refs'.
     @Query('include') include?: string,
+    // Opt-in split: 'true' = auxiliary only, 'false' = own fleet only, absent =
+    // both (unchanged). Compared with strict equality, same as `include`.
+    @Query('isAuxiliary') isAuxiliary?: string,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.tripsService.list(user.organizationId, {
       status,
@@ -69,6 +74,9 @@ export class TripsController {
       dateFrom,
       dateTo,
       include,
+      isAuxiliary,
+      search,
+      limit: limit ? Number(limit) : undefined,
     });
   }
 

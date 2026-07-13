@@ -52,6 +52,23 @@ import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss
  */
 const AUX_AUTOCOMPLETE_DELAY_MS = 5 * 60_000;
 
+/**
+ * A bare calendar day, as an <input type="date"> sends it. Mobile instead sends
+ * a full UTC ISO instant (startOfDayRomaniaISO), so the two shapes must be told
+ * apart before any `::date` cast — see the date handling in list().
+ */
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Historical hard cap on the trips list; still the ceiling a caller may ask for. */
+const DEFAULT_TRIP_LIMIT = 1000;
+const MAX_TRIP_LIMIT = 1000;
+
+/** Coerce an untrusted numeric query param into a sane bound. */
+function clampInt(value: number | undefined, fallback: number, max: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(Math.trunc(value), 1), max);
+}
+
 /** Row shape used by recordNoRecall + alertAdminTruckReleased (P1b). */
 interface TruckReleaseRow {
   id: string;
@@ -234,6 +251,15 @@ export class TripsService implements OnModuleInit {
        * keeps the response byte-identical to today.
        */
       include?: string;
+      /**
+       * Opt-in split between the two kinds of trip. Pass the literal string
+       * 'true' (auxiliary — external transporter, collapsed lifecycle) or
+       * 'false' (own fleet). Omitting it returns BOTH, unchanged.
+       */
+      isAuxiliary?: string;
+      /** Free-text over trip number / truck / driver (incl. external) / destination / parcel. */
+      search?: string;
+      limit?: number;
     },
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`t.deleted_at IS NULL`];
@@ -269,11 +295,78 @@ export class TripsService implements OnModuleInit {
     if (filters?.loaderOperatorId) {
       conditions.push(sql`t.loader_operator_id = ${filters.loaderOperatorId}`);
     }
+
+    /*
+     * `isAuxiliary` is STRICTLY opt-in: the predicate is pushed only on the
+     * literal 'true'/'false'. Absent (or anything else) leaves the result set
+     * untouched, so every existing caller keeps its current rows. This is the
+     * same opt-in contract already documented for `include=refs` above, and it
+     * is not optional here: the mobile loader's "Încărcări" tab reaches THIS
+     * generic endpoint (useMyTrucksToLoad) and legitimately expects auxiliary
+     * trips back — the aux INSERT sets loader_id/loader_operator_id. A default
+     * that excluded aux would blank ~30 fleet phones with no error anywhere.
+     */
+    if (filters?.isAuxiliary === 'true' || filters?.isAuxiliary === 'false') {
+      conditions.push(sql`t.is_auxiliary = ${filters.isAuxiliary === 'true'}`);
+    }
+
+    if (filters?.search) {
+      const like = `%${filters.search}%`;
+      // external_driver_name must be in here: an auxiliary trip has driver_id
+      // NULL, so u.full_name is always NULL and the truck's driver would
+      // otherwise be unsearchable.
+      conditions.push(sql`(
+        t.trip_number          ILIKE ${like} OR
+        t.destination_name     ILIKE ${like} OR
+        t.external_driver_name ILIKE ${like} OR
+        m.registration_plate   ILIKE ${like} OR
+        m.internal_code        ILIKE ${like} OR
+        u.full_name            ILIKE ${like} OR
+        p.name                 ILIKE ${like}
+      )`);
+    }
+
+    /*
+     * Date bounds carry TWO different wire shapes and must not be normalized
+     * into one:
+     *
+     *   admin-web  sends a bare calendar day  '2026-07-13'   (an <input type=date>)
+     *   mobile     sends a full UTC instant   '2026-07-12T21:00:00.000Z'
+     *              (startOfDayRomaniaISO() — apps/mobile/src/lib/date.ts)
+     *
+     * Casting the mobile value with `::date` would truncate it to 2026-07-12 in
+     * the UTC session and open the loader's window ~21h early, silently, on
+     * every fleet phone. So the timezone-aware treatment is applied ONLY to a
+     * bare calendar day; anything else falls through to the original predicate
+     * byte-for-byte.
+     *
+     * For a bare day the bound is anchored to Europe/Bucharest and dateTo is
+     * made INCLUSIVE (< next midnight) — `created_at <= '2026-07-13'` coerces to
+     * midnight and drops everything created during that day.
+     *
+     * The `::timestamp` cast before AT TIME ZONE is LOAD-BEARING, not noise.
+     * AT TIME ZONE picks its direction from the operand's type, and a bare
+     * `date` prefers the implicit cast to timestamptz:
+     *   date::timestamptz AT TIME ZONE z -> timestamp   ("wall-clock in z at this instant")
+     *   date::timestamp   AT TIME ZONE z -> timestamptz ("this wall-clock, read as local time in z")
+     * Only the second is what we mean. Without the cast the bound lands 2-3h off
+     * (verified against the DB). With it, `'2026-07-13'` resolves to exactly
+     * 2026-07-12T21:00:00Z — bit-identical to what mobile's startOfDayRomaniaISO()
+     * sends — and it follows DST rather than hardcoding an offset.
+     */
     if (filters?.dateFrom) {
-      conditions.push(sql`t.created_at >= ${filters.dateFrom}`);
+      conditions.push(
+        CALENDAR_DAY.test(filters.dateFrom)
+          ? sql`t.created_at >= (${filters.dateFrom}::date::timestamp AT TIME ZONE 'Europe/Bucharest')`
+          : sql`t.created_at >= ${filters.dateFrom}`,
+      );
     }
     if (filters?.dateTo) {
-      conditions.push(sql`t.created_at <= ${filters.dateTo}`);
+      conditions.push(
+        CALENDAR_DAY.test(filters.dateTo)
+          ? sql`t.created_at < ((${filters.dateTo}::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/Bucharest')`
+          : sql`t.created_at <= ${filters.dateTo}`,
+      );
     }
 
     const where = sql.join(conditions, sql` AND `);
@@ -284,14 +377,21 @@ export class TripsService implements OnModuleInit {
     //
     // `refsSelect` reuses this SAME `m` join (no extra JOIN, no extra cost) to
     // add the two `include=refs` columns. When the param is absent this is an
-    // empty fragment, so the query text — and therefore the response — is
-    // byte-identical to before this feature existed.
+    // empty fragment.
+    //
+    // `sd` (source depot) is a NEW unconditional join. Migration 00073 added
+    // trips.source_depot_id, but the name was never joined — so a depot-sourced
+    // trip has source_parcel_id NULL by construction and its Sursă cell was
+    // permanently blank. This adds exactly ONE key (`source_depot_name`) to
+    // every row: additive, and safe for the mobile callers, which map explicit
+    // named fields and ignore unknown keys.
     const refsSelect =
       filters?.include === 'refs'
         ? sql`,
           m.registration_plate                         AS truck_registration_plate,
           m.internal_code                              AS truck_internal_code`
         : sql``;
+    const limit = clampInt(filters?.limit, DEFAULT_TRIP_LIMIT, MAX_TRIP_LIMIT);
     const result = await this.drizzleProvider.db.execute(
       sql`
         SELECT
@@ -302,15 +402,17 @@ export class TripsService implements OnModuleInit {
           p.name                                       AS source_parcel_name,
           p.code                                       AS source_parcel_code,
           p.municipality                               AS source_parcel_municipality,
-          f.name                                       AS source_farm_name${refsSelect}
+          f.name                                       AS source_farm_name,
+          sd.name                                      AS source_depot_name${refsSelect}
         FROM trips t
         LEFT JOIN machines m ON m.id = t.truck_id
         LEFT JOIN users    u ON u.id = t.driver_id
         LEFT JOIN parcels  p ON p.id = t.source_parcel_id
         LEFT JOIN farms    f ON f.id = p.farm_id
+        LEFT JOIN delivery_destinations sd ON sd.id = t.source_depot_id
         WHERE ${where}
         ORDER BY t.created_at DESC
-        LIMIT 1000
+        LIMIT ${limit}
       `,
     );
     return result;
@@ -337,6 +439,7 @@ export class TripsService implements OnModuleInit {
             p.code                AS source_parcel_code,
             p.municipality        AS source_parcel_municipality,
             f.name                AS source_farm_name,
+            sd.name               AS source_depot_name,
             EXISTS(
               SELECT 1 FROM users du
               WHERE du.assigned_delivery_destination_id = t.destination_id
@@ -351,6 +454,7 @@ export class TripsService implements OnModuleInit {
           LEFT JOIN users    lo ON lo.id = t.loader_operator_id
           LEFT JOIN parcels  p  ON p.id  = t.source_parcel_id
           LEFT JOIN farms    f  ON f.id  = p.farm_id
+          LEFT JOIN delivery_destinations sd ON sd.id = t.source_depot_id
           WHERE ${where}
           LIMIT 1`,
     );
