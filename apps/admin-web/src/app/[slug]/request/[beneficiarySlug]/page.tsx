@@ -85,12 +85,23 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 type FormState = {
   quality: string;
   neededDate: string;
+  /**
+   * Where the loaded truck must actually arrive. Dropped from this form at some
+   * point, which left the dispatcher's "Destinație" column empty for every
+   * beneficiary request — they knew the truck was coming but not where it was
+   * going. The backend already persists it (trip_requests.destination_address);
+   * only the field was missing.
+   */
+  destinationAddress: string;
+  destinationLocality: string;
   notes: string;
 };
 
 const BLANK: FormState = {
   quality: '',
   neededDate: '',
+  destinationAddress: '',
+  destinationLocality: '',
   notes: '',
 };
 
@@ -537,6 +548,11 @@ export default function BeneficiaryPortalPage() {
       driverEmail: driver.email,
       quality: form.quality,
       neededDate: trim(form.neededDate),
+      // `trim()` yields null for an empty field, which matters: the schema types
+      // these as `.min(1).nullable().optional()`, so sending "" would fail
+      // validation while null is accepted.
+      destinationAddress: trim(form.destinationAddress),
+      destinationLocality: trim(form.destinationLocality),
       notes: trim(form.notes),
       contactIds: selContactIds,
       contactId: primary.id,
@@ -889,6 +905,26 @@ export default function BeneficiaryPortalPage() {
                       onChange={(e) => patch({ neededDate: e.target.value })}
                     />
                   </Field>
+                  {/* Where the truck must arrive. Without this the dispatcher sees
+                      the transport but not its destination. */}
+                  <Field label={t('beneficiaryPortal.destinationLocality')} optional>
+                    <input
+                      className={inputCls}
+                      value={form.destinationLocality}
+                      onChange={(e) => patch({ destinationLocality: e.target.value })}
+                      placeholder={t('beneficiaryPortal.destinationLocalityPlaceholder')}
+                    />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label={t('beneficiaryPortal.destinationAddress')} optional>
+                      <input
+                        className={inputCls}
+                        value={form.destinationAddress}
+                        onChange={(e) => patch({ destinationAddress: e.target.value })}
+                        placeholder={t('beneficiaryPortal.destinationAddressPlaceholder')}
+                      />
+                    </Field>
+                  </div>
                   <div className="sm:col-span-2">
                     <Field label={t('beneficiaryPortal.notes')} optional>
                       <textarea

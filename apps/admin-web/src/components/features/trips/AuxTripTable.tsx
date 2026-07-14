@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, AlertTriangle } from 'lucide-react';
+import { Eye, AlertTriangle, Trash2 } from 'lucide-react';
 import type { TripRequest } from '@strawboss/types';
 import { AuxStage } from '@strawboss/types';
 import { DataTable, type Column } from '@/components/shared/DataTable';
@@ -18,6 +18,9 @@ interface AuxTripTableProps {
   onViewDetails: (r: TripRequest) => void;
   onUploadAviz: (r: TripRequest) => void;
   onUploadCmr: (r: TripRequest) => void;
+  /** Delete the live trip, handing the request back as "confirmed — unplanned". */
+  onUnplan: (row: AuxRow) => void;
+  canUnplan?: boolean;
   emptyMessage?: string;
 }
 
@@ -42,6 +45,8 @@ export function AuxTripTable({
   onViewDetails,
   onUploadAviz,
   onUploadCmr,
+  onUnplan,
+  canUnplan = false,
   emptyMessage,
 }: AuxTripTableProps) {
   const { t } = useI18n();
@@ -119,16 +124,10 @@ export function AuxTripTable({
         return <span className="text-xs text-neutral-700">{label || EMPTY}</span>;
       },
     },
-    {
-      key: 'tonsRequested',
-      header: t('tripRequests.colTons'),
-      sortable: true,
-      render: (row) => (
-        <span className="tabular-nums text-xs text-neutral-700">
-          {row.request.tonsRequested != null ? row.request.tonsRequested : EMPTY}
-        </span>
-      ),
-    },
+    // No tonnage column: the beneficiary portal dropped `tonsRequested` from its
+    // form, so it is structurally empty for those requests — a column that is
+    // blank for most rows is worse than no column. The value still shows on the
+    // intake card and in the details modal when a request actually carries one.
     {
       key: 'pickup',
       header: t('tripRequests.colPickup'),
@@ -225,18 +224,37 @@ export function AuxTripTable({
       key: 'actions',
       header: '',
       render: (row) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onViewDetails(row.request);
-          }}
-          className="rounded p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
-          aria-label={t('tripRequests.viewDetails')}
-          title={t('tripRequests.viewDetails')}
-        >
-          <Eye className="h-4 w-4" />
-        </button>
+        <div className="flex items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewDetails(row.request);
+            }}
+            className="rounded p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+            aria-label={t('tripRequests.viewDetails')}
+            title={t('tripRequests.viewDetails')}
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+          {/* Un-plan: only offered once a trip actually exists. Deleting it hands the
+              request back as "Confirmată — neplanificată" so it can be re-assigned —
+              which is what you want when a truck breaks down. */}
+          {canUnplan && row.request.tripLiveId && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnplan(row);
+              }}
+              className="rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
+              aria-label={t('tripRequests.unplanAria')}
+              title={t('tripRequests.unplanAria')}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       ),
     },
   ];

@@ -1103,7 +1103,10 @@
     "colPickup": "Ridicare",
     "colDocuments": "Documente",
     "bales": "baloți",
-    "multipleTrips": "Mai multe curse active pe această solicitare"
+    "multipleTrips": "Mai multe curse active pe această solicitare",
+    "cui": "CUI",
+    "unplanAria": "Șterge cursa (redevine neplanificată)",
+    "unplanConfirm": "Ștergi cursa {label} pentru {who}?\n\nCursa dispare de pe telefonul încărcătorului, iar solicitarea revine la „Confirmată — neplanificată\" și poate fi replanificată pe alt camion."
   },
   "alerts": {
     "title": "Alerte",
@@ -2188,7 +2191,7 @@
     "quality2": "Calitate 2",
     "neededDate": "Data necesară",
     "tonsRequested": "Tone solicitate",
-    "destinationAddress": "Adresă destinație",
+    "destinationAddress": "Adresa de livrare",
     "pickOnMap": "Alege pe hartă (opțional)",
     "coordsSet": "Locație setată",
     "coordsClear": "Șterge locația",
@@ -2208,7 +2211,10 @@
     "trust1": "Confirmare rapidă de la echipa noastră",
     "trust2": "Securizat cu PIN — un cod nou în fiecare zi",
     "trust3": "Datele ajung direct la dispecer",
-    "poweredBy": "Susținut de StrawBoss"
+    "poweredBy": "Susținut de StrawBoss",
+    "destinationAddressPlaceholder": "Str. Gării 4, hala 2",
+    "destinationLocality": "Localitatea de livrare",
+    "destinationLocalityPlaceholder": "Lugoj"
   },
   "sign": {
     "loading": "Se încarcă…",

@@ -2617,8 +2617,12 @@ export class TripsService implements OnModuleInit {
     }
 
     // ── UPDATE path: only while trip is still in `planned`.
+    // `deleted_at IS NULL` matters: without it a soft-deleted trip still reports
+    // status 'planned', so this took the UPDATE branch on a corpse and never minted
+    // a replacement. Now a deleted trip reads as absent and the caller falls
+    // through to the INSERT path.
     const statusRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT status FROM trips WHERE id = ${task.trip_id} LIMIT 1`,
+      sql`SELECT status FROM trips WHERE id = ${task.trip_id} AND deleted_at IS NULL LIMIT 1`,
     )) as unknown as { status: string }[];
     const currentStatus = statusRows[0]?.status;
     if (!currentStatus) return;
@@ -2777,8 +2781,11 @@ export class TripsService implements OnModuleInit {
     }
 
     // UPDATE path — only while still planned (don't reshape an in-progress trip).
+    // `deleted_at IS NULL`: a soft-deleted aux trip must read as absent, not as a
+    // live `planned` one, or re-planning a deleted transport silently updates the
+    // corpse instead of creating a fresh trip.
     const statusRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT status FROM trips WHERE id = ${tripId} LIMIT 1`,
+      sql`SELECT status FROM trips WHERE id = ${tripId} AND deleted_at IS NULL LIMIT 1`,
     )) as unknown as { status: string }[];
     if (statusRows[0]?.status !== TripStatus.planned) return;
 
@@ -2973,6 +2980,30 @@ export class TripsService implements OnModuleInit {
    * already started, the UPDATE path is also gated on status = 'planned', so a
    * later task edit still can't un-delete it.)
    *
+   * AUXILIARY TRIPS ARE DIFFERENT: deleting one UN-PLANS the transport.
+   *
+   * An aux trip is owned by its `trip_request` — it is the execution of a
+   * commitment that still exists. Deleting only the trip row (the own-fleet
+   * behaviour) used to STRAND the request: `trip_requests.trip_id` kept pointing
+   * at a dead trip, the truck task kept its `trip_id`, so `autoUpsertAuxiliaryTrip`
+   * took its UPDATE branch on a corpse and never minted a replacement. The
+   * loader's phone then read "Camionul auxiliar nu are o cursă activă" forever and
+   * re-assigning the loader did nothing.
+   *
+   * So for an aux trip the delete is transactional and does three things:
+   *   1. soft-delete the trip
+   *   2. soft-delete the originating truck task (the plan died with the truck)
+   *   3. clear `trip_requests.trip_id`
+   * The request drops back to "Confirmată — neplanificată" and the dispatcher can
+   * simply re-assign it on the truck board — which is exactly what you want when a
+   * truck breaks down. The auxiliary machine is untouched (it is only retired at
+   * load time), so the same truck can be re-planned if it is fixed.
+   *
+   * This does NOT weaken the invariant above: we soft-delete the task rather than
+   * NULL-ing its `trip_id`, and both the boot backfill and autoUpsert filter
+   * `ta.deleted_at IS NULL`, so nothing resurrects it. Own-fleet deletes are
+   * completely unchanged.
+   *
    * Idempotent: if the trip is already soft-deleted, throws 404.
    *
    * Dispatchers can only delete trips in pre-execution statuses; admins may
@@ -2981,6 +3012,7 @@ export class TripsService implements OnModuleInit {
   async softDelete(id: string, orgId: string | null, userRole: UserRole) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
+    const isAuxiliary = trip.is_auxiliary === true;
 
     if (userRole !== 'admin') {
       const deletableStatuses = ['planned', 'loading', 'loaded', 'cancelled'];
@@ -2991,18 +3023,39 @@ export class TripsService implements OnModuleInit {
       }
     }
 
-    // NOTE: we intentionally do NOT clear task_assignments.trip_id here — see the
-    // doc comment above. Detaching it would let onModuleInit / autoUpsert
-    // resurrect the trip on the next backend boot.
+    // NOTE: for OWN-FLEET trips we intentionally do NOT clear
+    // task_assignments.trip_id — see the doc comment above. Detaching it would let
+    // onModuleInit / autoUpsert resurrect the trip on the next backend boot.
     // Fold the org filter into the UPDATE (not just the prior findById) so the
     // write is atomically scoped to the caller's org, matching forceStatus and
     // every other mutation in this file.
     const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
-    const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} AND deleted_at IS NULL${orgFilter} RETURNING id`,
-    );
 
-    this.logTripFlow(id, 'DELETE', from, 'deleted');
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      const deleted = await tx.execute(
+        sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW()
+             WHERE id = ${id} AND deleted_at IS NULL${orgFilter}
+         RETURNING id`,
+      );
+      if (!(deleted as unknown as unknown[]).length) return deleted;
+
+      if (isAuxiliary) {
+        // The plan died with the truck. Soft-delete the task (NOT null its
+        // trip_id) so neither the boot backfill nor autoUpsert can revive it.
+        await tx.execute(
+          sql`UPDATE task_assignments SET deleted_at = NOW(), updated_at = NOW()
+               WHERE trip_id = ${id}::uuid AND deleted_at IS NULL`,
+        );
+        // Hand the request back to the dispatcher as "confirmed, unplanned".
+        await tx.execute(
+          sql`UPDATE trip_requests SET trip_id = NULL, updated_at = NOW()
+               WHERE trip_id = ${id}::uuid AND deleted_at IS NULL`,
+        );
+      }
+      return deleted;
+    });
+
+    this.logTripFlow(id, isAuxiliary ? 'DELETE_AUX_UNPLAN' : 'DELETE', from, 'deleted');
     return result;
   }
 

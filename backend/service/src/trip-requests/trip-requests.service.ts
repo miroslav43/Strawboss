@@ -642,7 +642,8 @@ export class TripRequestsService {
             truck_registration_plate, truck_capacity_tons,
             trailer_registration_plate, transporter_name, transporter_cui, transporter_address,
             driver_name, driver_phone, driver_email,
-            crop_type, quality, needed_date, tons_requested, destination_address, destination_coords, notes,
+            crop_type, quality, needed_date, tons_requested,
+            destination_address, destination_locality, destination_coords, notes,
             beneficiary_id,
             contact_id, truck_id, driver_id, notify_recipients
           ) VALUES (
@@ -652,7 +653,8 @@ export class TripRequestsService {
             ${fields.truckRegistrationPlate}, ${fields.truckCapacityTons ?? null},
             ${fields.trailerRegistrationPlate ?? null}, ${fields.transporterName ?? null}, ${fields.transporterCui ?? null}, ${fields.transporterAddress ?? null},
             ${fields.driverName}, ${fields.driverPhone}, ${fields.driverEmail ?? null},
-            ${fields.cropType ? sql`${fields.cropType}::crop_type` : sql`NULL`}, ${fields.quality ?? null}, ${fields.neededDate ?? null}::date, ${fields.tonsRequested ?? null}, ${fields.destinationAddress ?? null},
+            ${fields.cropType ? sql`${fields.cropType}::crop_type` : sql`NULL`}, ${fields.quality ?? null}, ${fields.neededDate ?? null}::date, ${fields.tonsRequested ?? null},
+            ${fields.destinationAddress ?? null}, ${fields.destinationLocality ?? null},
             ${coords ? sql`ST_SetSRID(ST_MakePoint(${coords.lon}, ${coords.lat}), 4326)` : sql`NULL`},
             ${fields.notes ?? null},
             ${row.beneficiary.id}::uuid,

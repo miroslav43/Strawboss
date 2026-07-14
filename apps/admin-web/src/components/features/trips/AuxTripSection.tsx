@@ -1,14 +1,16 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Inbox } from 'lucide-react';
-import { useTripRequests } from '@strawboss/api';
+import { useTripRequests, useDeleteTrip, queryKeys } from '@strawboss/api';
 import type { TripRequest } from '@strawboss/types';
 import { AuxStage, ACTIVE_AUX_STAGES, AUX_STAGE_ORDER, RequestStatus } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useIsDispatcher } from '@/hooks/useIsDispatcher';
 import { normalizeList } from '@/lib/normalize-api-list';
-import { buildAuxRows } from '@/lib/aux-rows';
+import { buildAuxRows, type AuxRow } from '@/lib/aux-rows';
 import { SectionHeader } from '@/components/shared/SectionHeader';
 import { AuxTripTable } from './AuxTripTable';
 import { AuxIntakeCard } from '@/components/features/trip-requests/AuxIntakeCard';
@@ -52,6 +54,9 @@ interface AuxTripSectionProps {
  */
 export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps) {
   const { t } = useI18n();
+  const qc = useQueryClient();
+  const deleteTrip = useDeleteTrip(apiClient);
+  const { isDispatcher } = useIsDispatcher();
   const [stageFilter, setStageFilter] = useState<string>(ACTIVE);
 
   const [confirmTarget, setConfirmTarget] = useState<TripRequest | null>(null);
@@ -110,6 +115,32 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
   const handleDetails = useCallback((r: TripRequest) => setDetailsTarget(r), []);
   const handleAviz = useCallback((r: TripRequest) => setAvizTarget(r), []);
   const handleCmr = useCallback((r: TripRequest) => setCmrTarget(r), []);
+
+  /**
+   * Un-plan: delete the live trip. The server hands the request back as
+   * "Confirmată — neplanificată" (it soft-deletes the truck task and clears
+   * trip_requests.trip_id), so the row STAYS in this table and can simply be
+   * re-assigned on the truck board. That is the answer to "the truck broke down".
+   */
+  const handleUnplan = useCallback(
+    (row: AuxRow) => {
+      const tripId = row.request.tripLiveId;
+      if (!tripId || typeof window === 'undefined') return;
+      const label = row.request.tripNumber ?? tripId.slice(0, 8);
+      const who = row.request.companyName || row.request.requesterName;
+      if (!window.confirm(t('tripRequests.unplanConfirm', { label, who }))) return;
+      deleteTrip.mutate(tripId, {
+        // The trip is gone, but the REQUEST changed too — its stage falls back to
+        // `unplanned`. useDeleteTrip only invalidates trips.*, so refresh the aux
+        // ledger explicitly or the row would keep showing a dead trip number.
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
+          qc.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
+        },
+      });
+    },
+    [deleteTrip, qc, t],
+  );
 
   // A failure here must never take down the fleet table below.
   if (isError) {
@@ -184,6 +215,8 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
           onViewDetails={handleDetails}
           onUploadAviz={handleAviz}
           onUploadCmr={handleCmr}
+          onUnplan={handleUnplan}
+          canUnplan={isDispatcher && !deleteTrip.isPending}
           emptyMessage={t('trips.auxEmpty')}
         />
       )}

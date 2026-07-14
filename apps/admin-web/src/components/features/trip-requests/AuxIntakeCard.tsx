@@ -35,6 +35,13 @@ export function AuxIntakeCard({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-neutral-800">
           {request.companyName || request.requesterName}
+          {/* CUI in the header, not buried in the grid: it is how you actually
+              identify the company you are about to commit a truck to. */}
+          {request.companyCui && (
+            <span className="ml-2 rounded bg-white/70 px-1.5 py-0.5 font-mono text-[11px] font-normal text-neutral-600 ring-1 ring-inset ring-amber-200">
+              {t('tripRequests.cui')} {request.companyCui}
+            </span>
+          )}
           <span className="ml-2 font-mono text-xs font-normal text-neutral-500">
             {request.truckRegistrationPlate}
           </span>
@@ -68,6 +75,9 @@ export function AuxIntakeCard({
         <DetailField label={t('tripRequests.colRequester')} value={request.requesterName} />
         <DetailField label={t('tripRequests.requesterPhone')} value={request.requesterPhone} />
         <DetailField label={t('tripRequests.requesterEmail')} value={request.requesterEmail} />
+        <DetailField label={t('tripRequests.colCompany')} value={request.companyName} />
+        <DetailField label={t('tripRequests.companyCui')} value={request.companyCui} />
+        <DetailField label={t('tripRequests.companyAddress')} value={request.companyAddress} />
         <DetailField
           label={t('tripRequests.colTruck')}
           value={[request.truckMake, request.truckModel].filter(Boolean).join(' ') || null}

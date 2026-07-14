@@ -1013,7 +1013,7 @@
     "sectionNotify": "Notified people",
     "sectionStatus": "Status & linkage",
     "companyAddress": "Company address",
-    "companyCui": "Company CUI",
+    "companyCui": "Company VAT no.",
     "trailerPlate": "Trailer plate",
     "transporterName": "Transporter",
     "transporterCui": "Transporter CUI",
@@ -1103,7 +1103,10 @@
     "colPickup": "Pickup",
     "colDocuments": "Documents",
     "bales": "bales",
-    "multipleTrips": "More than one live trip on this request"
+    "multipleTrips": "More than one live trip on this request",
+    "cui": "VAT",
+    "unplanAria": "Delete the trip (back to unplanned)",
+    "unplanConfirm": "Delete trip {label} for {who}?\n\nThe trip disappears from the loader’s phone and the request returns to “Confirmed — unplanned”, ready to be re-assigned to another truck."
   },
   "alerts": {
     "title": "Alerts",
@@ -2188,7 +2191,7 @@
     "quality2": "Quality 2",
     "neededDate": "Needed date",
     "tonsRequested": "Tons requested",
-    "destinationAddress": "Destination address",
+    "destinationAddress": "Delivery address",
     "pickOnMap": "Pick on map (optional)",
     "coordsSet": "Location set",
     "coordsClear": "Clear location",
@@ -2208,7 +2211,10 @@
     "trust1": "Quick confirmation from our team",
     "trust2": "PIN-secured — one code per day",
     "trust3": "Your details go straight to the dispatch team",
-    "poweredBy": "Powered by StrawBoss"
+    "poweredBy": "Powered by StrawBoss",
+    "destinationAddressPlaceholder": "4 Station St, warehouse 2",
+    "destinationLocality": "Delivery locality",
+    "destinationLocalityPlaceholder": "Lugoj"
   },
   "sign": {
     "loading": "Loading…",
