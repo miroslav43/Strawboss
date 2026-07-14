@@ -146,7 +146,24 @@ export const registerLoadSchema = z
     gpsLat: z.number().min(-90).max(90).optional(),
     gpsLon: z.number().min(-180).max(180).optional(),
     idempotencyKey: uuidSchema,
-    loaderSignature: signatureUrlSchema.optional(),
+    /*
+     * NOT `signatureUrlSchema`, deliberately — unlike driverSignature /
+     * receiverSignature / depotOperatorSignature, which are drawn fresh on the phone
+     * and persisted, this is only the loader echoing back the specimen URL they
+     * cached at login. The server now RESOLVES the real specimen from
+     * `users.signature_specimen_url` and ignores this value
+     * (TripsService.resolveLoaderSignature), so it cannot reach an `<img src>` and
+     * needs no allowlist.
+     *
+     * Validating it here was actively harmful: the audit (111d4b1) swapped
+     * `z.string()` for the strict allowlist, and every phone whose cached URL no
+     * longer matched had its LOADS REJECTED at the validation boundary — the request
+     * died before the service ever ran, over a field the service was going to
+     * overwrite anyway. A loader operator was locked out for six days by it.
+     *
+     * Bounded to keep the body sane; never trusted.
+     */
+    loaderSignature: z.string().max(4096).optional(),
   })
   .refine((d) => !!d.parcelId !== !!d.sourceDepotId, {
     message: 'exactly one of parcelId or sourceDepotId is required',

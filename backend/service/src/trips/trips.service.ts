@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
+import { SIGNATURE_URL_PATTERN } from '@strawboss/validation';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -783,6 +784,11 @@ export class TripsService implements OnModuleInit {
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
+    const resolvedLoaderSignature = await this.resolveLoaderSignature(
+      callerId,
+      dto.loaderSignature,
+    );
+
     if (orgId !== null) {
       const truckCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines WHERE id = ${dto.truckId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
@@ -1062,7 +1068,7 @@ export class TripsService implements OnModuleInit {
               status = ${TripStatus.loaded}::trip_status,
               loading_started_at = COALESCE(loading_started_at, NOW()),
               loading_completed_at = NOW(),
-              loader_signature_url = ${dto.loaderSignature ?? null},
+              loader_signature_url = ${resolvedLoaderSignature},
               bale_count = (
                 SELECT COALESCE(SUM(bale_count), 0)::int
                 FROM bale_loads
@@ -1143,11 +1149,66 @@ export class TripsService implements OnModuleInit {
    * external driver is SMS'd a sign-and-leave link. The driver's later signature
    * (via signByPublicToken) finalizes stage-2 of the document.
    */
+  /**
+   * The loader's signature on a load is ALWAYS their pre-registered SPECIMEN — the
+   * phone draws nothing, it just echoes back the URL it cached at login (see
+   * load-bales.tsx: `submitLoad({ loaderSignature: signatureSpecimenUrl })`). The
+   * server already stores that specimen on `users.signature_specimen_url`, so there
+   * is no reason to trust the client's copy of it.
+   *
+   * This is not a tidy-up — it is the fix for a live field outage. Commit 111d4b1
+   * (the security audit, deployed 08.07) tightened the DTO from
+   * `loaderSignature: z.string()` to a strict URL allowlist. Any phone whose cached
+   * specimen URL no longer matched the new shape had its loads REJECTED at the
+   * validation boundary — a hard 400 which, thanks to the ZodValidationPipe bug,
+   * surfaced as "Internal server error". The one loader operator using this screen
+   * could not register a load for six days and nobody could see why.
+   *
+   * Resolving server-side makes the whole class of failure impossible: a stale,
+   * malformed or absent client value can no longer break a load, and the client can
+   * no longer smuggle an arbitrary URL into an `<img src>` — which is what the audit
+   * was defending against in the first place. The client value is used only as a
+   * fallback, and only when it already satisfies the allowlist.
+   */
+  private async resolveLoaderSignature(
+    callerId: string,
+    clientValue?: string | null,
+  ): Promise<string | null> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT signature_specimen_url FROM users
+           WHERE id = ${callerId}::uuid AND deleted_at IS NULL
+           LIMIT 1`,
+    )) as unknown as { signature_specimen_url: string | null }[];
+    const specimen = rows[0]?.signature_specimen_url ?? null;
+
+    if (specimen) {
+      if (clientValue && clientValue !== specimen) {
+        // The phone is carrying a stale specimen URL. Harmless now — but this is the
+        // fingerprint of the outage above, so it is worth seeing in the logs.
+        this.winston.warn('Loader specimen mismatch — using the stored one', {
+          context: 'TripsService',
+          userId: callerId,
+          stored: specimen,
+          sentByClient: clientValue,
+        });
+      }
+      return specimen;
+    }
+
+    // No specimen on file: fall back to the client's value ONLY if it satisfies the
+    // allowlist, so an unvalidated URL can never be persisted.
+    return clientValue && SIGNATURE_URL_PATTERN.test(clientValue) ? clientValue : null;
+  }
+
   private async registerAuxiliaryLoad(
     dto: RegisterLoadInput,
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
+    const resolvedLoaderSignature = await this.resolveLoaderSignature(
+      callerId,
+      dto.loaderSignature,
+    );
     const idempotencyTable = 'register_load';
     const existing = (await this.drizzleProvider.db.execute(
       sql`SELECT result_data FROM sync_idempotency
@@ -1219,7 +1280,7 @@ export class TripsService implements OnModuleInit {
               status = ${TripStatus.loaded}::trip_status,
               loading_started_at = COALESCE(loading_started_at, NOW()),
               loading_completed_at = NOW(),
-              loader_signature_url = ${dto.loaderSignature ?? null},
+              loader_signature_url = ${resolvedLoaderSignature},
               loader_id = ${dto.loaderMachineId},
               loader_operator_id = COALESCE(loader_operator_id, ${callerId}),
               -- record the actual pickup source (the loader's field OR depot) if
