@@ -14,17 +14,13 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 @Catch()
 @Injectable()
 export class AllExceptionsFilter implements ExceptionFilter {
-  constructor(
-    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
-  ) {}
+  constructor(@Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger) {}
 
   catch(exception: unknown, host: ArgumentsHost) {
     if (host.getType() !== 'http') {
       throw exception instanceof Error
         ? exception
-        : new Error(
-            typeof exception === 'string' ? exception : JSON.stringify(exception),
-          );
+        : new Error(typeof exception === 'string' ? exception : JSON.stringify(exception));
     }
 
     const ctx = host.switchToHttp();
@@ -38,19 +34,43 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
     let error = 'Internal Server Error';
+    /** Validation detail (Zod fieldErrors/formErrors), when the failure has any. */
+    let details: Record<string, unknown> | undefined;
 
     if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const exceptionResponse = exception.getResponse();
       if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
-      } else if (
-        typeof exceptionResponse === 'object' &&
-        exceptionResponse !== null
-      ) {
+      } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         const resp = exceptionResponse as Record<string, unknown>;
-        message = (resp.message as string) ?? message;
-        error = (resp.error as string) ?? error;
+        /*
+         * `resp.message` may legitimately be an ARRAY (Nest's own built-in
+         * ValidationPipe emits string[]), and it may be MISSING entirely — Zod's
+         * `flatten()` has no `message` key at all. The old code did
+         * `message = resp.message ?? message`, so a missing message silently kept
+         * the initial 'Internal server error' above: every validation failure went
+         * out as a 400 claiming the server had crashed, while the actual reason
+         * (fieldErrors) was never logged and never sent. That is why an operator
+         * saw "Internal server error" for what was really a bad field.
+         *
+         * Never let a 4xx inherit the 500 fallback text.
+         */
+        if (Array.isArray(resp.message)) {
+          message = (resp.message as unknown[]).join('; ');
+        } else if (typeof resp.message === 'string' && resp.message.length > 0) {
+          message = resp.message;
+        } else if (statusCode < 500) {
+          message = 'Cerere invalidă.';
+        }
+        error = (resp.error as string) ?? (statusCode < 500 ? 'Bad Request' : error);
+
+        if (resp.fieldErrors || resp.formErrors) {
+          details = {
+            fieldErrors: resp.fieldErrors,
+            formErrors: resp.formErrors,
+          };
+        }
       }
     } else if (exception instanceof Error) {
       message = exception.message;
@@ -70,15 +90,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
         error,
         path,
         requestId,
+        ...(details ? { details } : {}),
         stack: exception instanceof Error ? exception.stack : undefined,
       });
     } else {
+      // `details` is what makes a rejected request diagnosable after the fact.
+      // Without it a 400 logged only "Internal server error" and we could not tell
+      // WHICH field a phone had got wrong — the exact hole that left a loader
+      // operator staring at a server-crash dialog with nobody able to explain it.
       this.winston.warn(message, {
         context: 'AllExceptionsFilter',
         statusCode,
         error,
         path,
         requestId,
+        ...(details ? { details } : {}),
       });
     }
 
@@ -86,6 +112,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       statusCode,
       message,
       error,
+      // Sent to the client too: the phone can show "baleCount: Expected number,
+      // received string" instead of a meaningless scare.
+      ...(details ? details : {}),
       timestamp: new Date().toISOString(),
       ...(requestId ? { requestId } : {}),
     });
