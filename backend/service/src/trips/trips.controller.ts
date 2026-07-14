@@ -224,6 +224,9 @@ export class TripsController {
   }
 
   // Admin-only manual status override — bypasses the state machine.
+  // May also carry the load the override implies (source + bale count), which is
+  // written as a real bale_loads row and therefore moves stock. `user.id` is passed
+  // so that row records WHO booked it (bale_loads.operator_id).
   @Post(':id/force-status')
   @Roles('admin' as UserRole)
   forceStatus(
@@ -231,7 +234,7 @@ export class TripsController {
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(forceStatusSchema)) dto: ForceStatusDto,
   ) {
-    return this.tripsService.forceStatus(id, user.organizationId, dto);
+    return this.tripsService.forceStatus(id, user.organizationId, dto, user.id);
   }
 
   @Post(':id/dispute')

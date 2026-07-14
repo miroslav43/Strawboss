@@ -15,9 +15,15 @@ import {
 } from 'lucide-react';
 import type { Trip, Document as StrawbossDocument } from '@strawboss/types';
 import { TripStatus, AUXILIARY_TRIP_STATUSES } from '@strawboss/types';
-import { useDocuments, useForceTripStatus } from '@strawboss/api';
+import { useDocuments, useForceTripStatus, ApiError } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import {
+  ForceStatusLoadFields,
+  EMPTY_LOAD,
+  isLoadComplete,
+  type ForceStatusLoad,
+} from './ForceStatusLoadFields';
 import { TripTimeline } from '@/components/shared/TripTimeline';
 import { SignatureDisplay } from '@/components/shared/SignatureDisplay';
 import { cn } from '@/lib/utils';
@@ -63,6 +69,28 @@ function Section({
 // W25: only fetch documents when the trip is in delivered or completed state.
 const DOCS_RELEVANT_STATUSES: TripStatus[] = [TripStatus.delivered, TripStatus.completed];
 
+/**
+ * Statuses that assert the goods are already ON the truck. Forcing a trip into one
+ * of these with nothing loaded is what produced the phantom trips ("loaded", 0
+ * bales, no stock moved). Mirrors IMPLIES_LOADED on the server.
+ */
+const LOADED_OR_BEYOND: TripStatus[] = [
+  TripStatus.loaded,
+  TripStatus.in_transit,
+  TripStatus.arrived,
+  TripStatus.delivering,
+  TripStatus.delivered,
+  TripStatus.completed,
+];
+
+/** The server's machine-readable "you must tell me what was loaded" code. */
+function isLoadRequiredError(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    (err.data as { error?: string } | undefined)?.error === 'load_required'
+  );
+}
+
 export function TripDetail({ trip, className }: TripDetailProps) {
   const { t } = useI18n();
   const docsEnabled = DOCS_RELEVANT_STATUSES.includes(trip.status);
@@ -80,10 +108,43 @@ export function TripDetail({ trip, className }: TripDetailProps) {
     ? Array.from(new Set<TripStatus>([...AUXILIARY_TRIP_STATUSES, trip.status]))
     : (Object.values(TripStatus) as TripStatus[]);
   const [overrideStatus, setOverrideStatus] = useState<TripStatus>(trip.status);
+  const [load, setLoad] = useState<ForceStatusLoad>(EMPTY_LOAD);
+
+  /*
+   * Forcing a trip into any of these asserts the goods are ON the truck. If nothing
+   * was ever loaded, the admin must say where the cargo came from and how much —
+   * otherwise the trip becomes a phantom: "loaded" with 0 bales and no stock moved,
+   * which is exactly the state 4 production trips are stuck in.
+   *
+   * `baleCount > 0` is the proxy for "a real load exists" — the server recomputes it
+   * as SUM(bale_loads), so it is 0 if and only if there are no loads. The server is
+   * authoritative anyway and rejects with `load_required`.
+   */
+  const needsLoad = LOADED_OR_BEYOND.includes(overrideStatus) && (trip.baleCount ?? 0) === 0;
+  const canApply =
+    overrideStatus !== trip.status &&
+    (!needsLoad || isLoadComplete(load)) &&
+    !forceStatus.isPending;
+
   const applyForceStatus = () => {
-    if (overrideStatus === trip.status) return;
+    if (!canApply) return;
     if (!window.confirm(t('trip_detail.forceStatus.confirm'))) return;
-    forceStatus.mutate({ tripId: trip.id, data: { status: overrideStatus } });
+    forceStatus.mutate({
+      tripId: trip.id,
+      data: {
+        status: overrideStatus,
+        ...(needsLoad
+          ? {
+              baleCount: Number(load.baleCount),
+              ...(load.source === 'parcel'
+                ? { parcelId: load.parcelId }
+                : { sourceDepotId: load.depotId }),
+              // Dedupe a retried override so the bales cannot be booked twice.
+              idempotencyKey: crypto.randomUUID(),
+            }
+          : {}),
+      },
+    });
   };
 
   return (
@@ -120,14 +181,23 @@ export function TripDetail({ trip, className }: TripDetailProps) {
           <button
             type="button"
             onClick={applyForceStatus}
-            disabled={forceStatus.isPending || overrideStatus === trip.status}
+            disabled={!canApply}
             className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             {forceStatus.isPending ? '…' : t('trip_detail.forceStatus.apply')}
           </button>
         </div>
+
+        {/* The goods have to come from somewhere. Only asked when the target status
+            claims they are on the truck and nothing was ever loaded. */}
+        {needsLoad && <ForceStatusLoadFields value={load} onChange={setLoad} />}
+
         {forceStatus.isError && (
-          <p className="mt-2 text-xs text-red-600">{t('trip_detail.forceStatus.error')}</p>
+          <p className="mt-2 text-xs text-red-600">
+            {isLoadRequiredError(forceStatus.error)
+              ? t('trip_detail.forceStatus.loadRequired')
+              : t('trip_detail.forceStatus.error')}
+          </p>
         )}
       </div>
 

@@ -201,13 +201,28 @@ export class ReportsService {
         d.id AS depot_id,
         d.name AS depot_name,
         d.code AS depot_code,
-        COALESCE((
-          SELECT SUM(t.bale_count)::int
-          FROM trips t
-          WHERE t.destination_name = d.name
-            AND t.status IN ('delivered', 'completed')
-            AND t.deleted_at IS NULL ${tripOrg}
-        ), 0) AS total_stock,
+        -- Stock = INBOUND - OUTBOUND. The outbound term (bales loaded straight out
+        -- of this depot, bale_loads.source_depot_id, added in 00073) was missing
+        -- entirely, so "stock" was an all-time accumulator that never went down.
+        -- received_in_period and arriving_now below are FLOW figures, not a
+        -- balance, so they are deliberately left inbound-only.
+        GREATEST(
+          COALESCE((
+            SELECT SUM(t.bale_count)::int
+            FROM trips t
+            WHERE t.destination_name = d.name
+              AND t.status IN ('delivered', 'completed')
+              AND t.deleted_at IS NULL ${tripOrg}
+          ), 0)
+          -
+          COALESCE((
+            SELECT SUM(bl.bale_count)::int
+            FROM bale_loads bl
+            WHERE bl.source_depot_id = d.id
+              AND bl.deleted_at IS NULL ${this.orgFilter(orgId, sql`bl.organization_id`)}
+          ), 0),
+          0
+        ) AS total_stock,
         COALESCE((
           SELECT SUM(t.bale_count)::int
           FROM trips t

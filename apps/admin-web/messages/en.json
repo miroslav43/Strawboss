@@ -1975,7 +1975,15 @@
       "hint": "Manually override the trip status. Bypasses the normal workflow — use only to recover a stuck trip.",
       "apply": "Force status",
       "confirm": "Force the trip into this status? This bypasses the normal workflow.",
-      "error": "Could not change the status."
+      "error": "Could not change the status.",
+      "loadTitle": "Where does the load come from?",
+      "sourceParcel": "Parcel",
+      "sourceDepot": "Depot",
+      "pickParcel": "Pick a parcel…",
+      "pickDepot": "Pick a depot…",
+      "baleCount": "How many bales",
+      "baleCountHint": "Automatically deducted from the chosen parcel / depot stock.",
+      "loadRequired": "This trip has no load recorded. Choose where the goods came from and how many bales."
     },
     "transport": "Transport",
     "route": "Route",

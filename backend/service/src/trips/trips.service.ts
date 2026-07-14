@@ -2352,10 +2352,77 @@ export class TripsService implements OnModuleInit {
    * lifecycle timestamp (departure/arrival/delivered/…) when it is still null so
    * downstream reports and the idle/recall checks stay consistent.
    */
-  async forceStatus(id: string, orgId: string | null, dto: ForceStatusDto) {
+  /**
+   * Admin status override — now carrying the load the override implies.
+   *
+   * This used to move ONLY the status. Forcing a trip to `loaded` therefore left a
+   * PHANTOM: it looked loaded, `bale_count` stayed 0, no source was recorded, no
+   * `bale_loads` row existed, and so it moved no stock whatsoever. Four such trips
+   * exist in production.
+   *
+   * So when the target status means the goods have been picked up, and the trip has
+   * no load recorded, the admin must now say WHERE the load came from and HOW MUCH
+   * — and that is written as a real `bale_loads` row, in the same transaction as the
+   * status change.
+   *
+   * That row IS the stock deduction: parcel stock is DERIVED, never stored
+   * (`SUM(bale_productions) − SUM(bale_loads)`, see computeRemainingBalesOnParcel and
+   * ParcelsService.getBaleAvailability). Nothing needs to "subtract" anything.
+   *
+   * If the loader already registered a real load, nothing is asked and nothing is
+   * inserted — the override just moves the status, as before.
+   */
+  async forceStatus(id: string, orgId: string | null, dto: ForceStatusDto, callerId?: string) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     const target = dto.status;
+
+    // Statuses that assert "the goods are on the truck". Reaching one of these with
+    // no load recorded is what produced the phantom trips.
+    const IMPLIES_LOADED: TripStatus[] = [
+      TripStatus.loaded,
+      TripStatus.in_transit,
+      TripStatus.arrived,
+      TripStatus.delivering,
+      TripStatus.delivered,
+      TripStatus.completed,
+    ];
+
+    const existingLoads = (await this.drizzleProvider.db.execute(
+      sql`SELECT 1 FROM bale_loads
+           WHERE trip_id = ${id}::uuid AND deleted_at IS NULL
+           LIMIT 1`,
+    )) as unknown as unknown[];
+    const hasLoad = existingLoads.length > 0;
+    const wantsLoad = dto.baleCount !== undefined;
+
+    if (IMPLIES_LOADED.includes(target) && !hasLoad && !wantsLoad) {
+      throw new BadRequestException({
+        error: 'load_required',
+        message:
+          'Cursa nu are nicio încărcare înregistrată. Alege de unde vine marfa (parcelă sau depozit) și câți baloți.',
+      });
+    }
+
+    // Validate the source belongs to the caller's org before touching anything —
+    // same ownership checks registerLoad performs.
+    if (wantsLoad && orgId !== null) {
+      if (dto.sourceDepotId) {
+        const rows = (await this.drizzleProvider.db.execute(
+          sql`SELECT 1 FROM delivery_destinations
+               WHERE id = ${dto.sourceDepotId}::uuid AND organization_id = ${orgId}::uuid
+                 AND deleted_at IS NULL LIMIT 1`,
+        )) as unknown as unknown[];
+        if (!rows.length) throw new BadRequestException('Depozit invalid.');
+      } else if (dto.parcelId) {
+        const rows = (await this.drizzleProvider.db.execute(
+          sql`SELECT 1 FROM parcels
+               WHERE id = ${dto.parcelId}::uuid AND organization_id = ${orgId}::uuid
+                 AND deleted_at IS NULL LIMIT 1`,
+        )) as unknown as unknown[];
+        if (!rows.length) throw new BadRequestException('Parcelă invalidă.');
+      }
+    }
 
     // Fixed map (not user input) → safe to interpolate the column name.
     const stampColumn: Partial<Record<TripStatus, string>> = {
@@ -2377,6 +2444,28 @@ export class TripsService implements OnModuleInit {
       setClauses.push(sql`cancellation_reason = ${dto.reason}`);
     }
 
+    if (wantsLoad) {
+      /*
+       * Stamp the SOURCE ON THE TRIP as well as on the bale_load. This is
+       * load-bearing, not belt-and-braces: the reports and the dashboard compute
+       * "loaded" by joining bale_loads on `trips.source_parcel_id`
+       * (reports.service.ts, dashboard.service.ts) — NOT on `bale_loads.parcel_id`,
+       * which is what parcel *remaining* uses. Insert the bale_load without also
+       * stamping the trip and remaining moves while the reports do not: a
+       * split-brain worse than the phantom trips this is fixing.
+       *
+       * COALESCE so a real load already on the trip is never overwritten.
+       */
+      if (dto.parcelId) {
+        setClauses.push(sql`source_parcel_id = COALESCE(source_parcel_id, ${dto.parcelId}::uuid)`);
+        setClauses.push(sql`source_parcel_auto = false`);
+      } else if (dto.sourceDepotId) {
+        setClauses.push(
+          sql`source_depot_id = COALESCE(source_depot_id, ${dto.sourceDepotId}::uuid)`,
+        );
+      }
+    }
+
     const setClause = sql.join(setClauses, sql`, `);
     // Org filter folded into the UPDATE (not just the prior findById) so the
     // write is atomically scoped to the caller's org, matching every other
@@ -2387,9 +2476,51 @@ export class TripsService implements OnModuleInit {
     // status-guarded pattern used by dispute()/cancel() elsewhere in this file).
     const expectedFilter =
       dto.expectedStatus !== undefined ? sql` AND status = ${dto.expectedStatus}` : sql``;
-    const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET ${setClause} WHERE id = ${id}${orgFilter}${expectedFilter} RETURNING *`,
-    );
+
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      if (wantsLoad) {
+        // Same shape registerLoad inserts (see registerLoad's bale_loads INSERT) —
+        // the id doubles as the idempotency key, so a retried override cannot
+        // double-count the bales.
+        await tx.execute(
+          sql`INSERT INTO bale_loads (
+                organization_id, id, trip_id, parcel_id, source_depot_id,
+                loader_id, operator_id, bale_count, loaded_at, notes
+              ) VALUES (
+                ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
+                ${dto.idempotencyKey ? sql`${dto.idempotencyKey}::uuid` : sql`uuid_generate_v4()`},
+                ${id}::uuid,
+                ${dto.parcelId ? sql`${dto.parcelId}::uuid` : sql`NULL`},
+                ${dto.sourceDepotId ? sql`${dto.sourceDepotId}::uuid` : sql`NULL`},
+                ${trip.loader_id ?? null},
+                ${callerId ?? null},
+                ${dto.baleCount},
+                NOW(),
+                ${'Încărcare înregistrată manual de admin (forțare stare)'}
+              )
+              ON CONFLICT (id) DO NOTHING`,
+        );
+      }
+
+      const updated = await tx.execute(
+        sql`UPDATE trips SET ${setClause} WHERE id = ${id}${orgFilter}${expectedFilter} RETURNING *`,
+      );
+      if (!(updated as unknown as unknown[]).length) return updated;
+
+      if (wantsLoad) {
+        // Recompute from the ledger rather than adding a delta — the same thing
+        // registerLoad does, and it stays correct if several loads exist.
+        await tx.execute(
+          sql`UPDATE trips SET
+                bale_count = (SELECT COALESCE(SUM(bale_count), 0) FROM bale_loads
+                               WHERE trip_id = ${id}::uuid AND deleted_at IS NULL),
+                updated_at = NOW()
+              WHERE id = ${id}::uuid`,
+        );
+      }
+      return updated;
+    });
+
     if (!(result as unknown as unknown[]).length) {
       if (dto.expectedStatus !== undefined) {
         throw new BadRequestException('Trip status changed concurrently');
@@ -2403,6 +2534,9 @@ export class TripsService implements OnModuleInit {
       from,
       to: target,
       reason: dto.reason ?? null,
+      baleCount: dto.baleCount ?? null,
+      parcelId: dto.parcelId ?? null,
+      sourceDepotId: dto.sourceDepotId ?? null,
     });
 
     // Auxiliary force-load: an admin forcing an aux trip to `loaded` should behave

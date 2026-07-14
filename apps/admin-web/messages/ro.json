@@ -1975,7 +1975,15 @@
       "hint": "Modifică manual starea cursei. Ocolește fluxul normal — folosește doar pentru a debloca o cursă blocată.",
       "apply": "Forțează starea",
       "confirm": "Forțezi cursa în această stare? Ocolește fluxul normal.",
-      "error": "Nu s-a putut schimba starea."
+      "error": "Nu s-a putut schimba starea.",
+      "loadTitle": "De unde vine marfa?",
+      "sourceParcel": "Parcelă",
+      "sourceDepot": "Depozit",
+      "pickParcel": "Alege parcela…",
+      "pickDepot": "Alege depozitul…",
+      "baleCount": "Câți baloți",
+      "baleCountHint": "Se scad automat din stocul parcelei / depozitului ales.",
+      "loadRequired": "Cursa nu are nicio încărcare. Alege de unde vine marfa și câți baloți."
     },
     "transport": "Transport",
     "route": "Rută",
