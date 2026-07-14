@@ -122,9 +122,12 @@ const TR_COLS = sql`
  * number of a deleted trip. The soft-delete predicate lives INSIDE the lateral,
  * so a deleted trip yields no row rather than filtering the request away.
  *
- * `ORDER BY created_at DESC LIMIT 1` picks the newest if a request somehow has
- * more than one live trip; TR_TRIP_COLS also exposes `tripCount` so the anomaly
- * is surfaced rather than silently hidden.
+ * WHICH trip, when there is more than one: a NON-CANCELLED one wins, and only then
+ * the newest. Ordering by `created_at DESC` alone was wrong — a cancelled trip is
+ * still a row, so re-assigning the aux truck (cancel, plan again) leaves debris, and
+ * the newest row can easily BE the cancelled one. In production that meant a request
+ * displaying a cancelled trip while its real, live, planned trip sat hidden behind
+ * it. Cancelled trips are the graveyard, not the state of the transport.
  */
 const TR_TRIP_JOIN = sql`
   LEFT JOIN LATERAL (
@@ -134,7 +137,7 @@ const TR_TRIP_JOIN = sql`
       FROM trips t
      WHERE t.trip_request_id = trip_requests.id
        AND t.deleted_at IS NULL
-     ORDER BY t.created_at DESC
+     ORDER BY (t.status = 'cancelled'::trip_status), t.created_at DESC
      LIMIT 1
   ) lt ON TRUE
   LEFT JOIN parcels               lp  ON lp.id  = lt.source_parcel_id
@@ -156,9 +159,16 @@ const TR_TRIP_COLS = sql`
   lt.public_sign_token_used_at AS "tripSignedAt",
   lp.name                      AS "tripSourceParcelName",
   lsd.name                     AS "tripSourceDepotName",
+  -- ACTIVE trips only. Counting cancelled ones made the red "more than one trip"
+  -- badge fire on ordinary debris: cancelling a trip does not remove it, so
+  -- re-planning the aux truck (cancel -> assign again) legitimately leaves old
+  -- cancelled rows behind. 3 of the 4 badges in production were exactly that — noise.
+  -- A warning that cries wolf on normal work is worse than no warning, because the
+  -- one request that IS genuinely double-booked drowns in it.
   (SELECT count(*)::int FROM trips t2
     WHERE t2.trip_request_id = trip_requests.id
-      AND t2.deleted_at IS NULL) AS "tripCount"
+      AND t2.deleted_at IS NULL
+      AND t2.status <> 'cancelled'::trip_status) AS "tripCount"
 `;
 
 /** A bare calendar day, as the admin date inputs send it. */
