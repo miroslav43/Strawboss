@@ -2866,7 +2866,58 @@ export class TripsService implements OnModuleInit {
     const destName = req.destination_locality ?? req.company_name ?? 'Adresă solicitant';
     const destAddress = req.destination_address ?? null;
 
-    if (!tripId) {
+    /*
+     * ADOPT an existing trip instead of minting a second one.
+     *
+     * `tripId` comes from the TASK (`task_assignments.trip_id`), and a NEW task always
+     * has it NULL — so `if (!tripId)` used to mint a fresh trip every time. But
+     * re-planning a transport to another day IS a new task, while the request and its
+     * one-time truck are the SAME. The result: every re-plan silently duplicated the
+     * trip on the same request.
+     *
+     * That is exactly how Microfruit ended up with two: planned for 08.07, re-planned
+     * for 09.07, and the second task minted TR-20260709-001 alongside the still-live
+     * TR-20260708-003. Ten requests currently have a live trip and would each duplicate
+     * on the next re-plan.
+     *
+     * The identity of an auxiliary transport is the REQUEST, not the task — one
+     * request, one one-time truck, one trip. So if the request already carries a trip
+     * that has not been executed yet (planned/loading — never a loaded/completed one,
+     * whose bales and CMR are real history), the new task adopts it and the UPDATE path
+     * below simply moves it. Only a request with no live trip mints one.
+     */
+    let effectiveTripId = tripId;
+    if (!effectiveTripId) {
+      const adoptable = (await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM trips
+             WHERE trip_request_id = ${req.id}::uuid
+               AND deleted_at IS NULL
+               AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
+             ORDER BY created_at DESC
+             LIMIT 1`,
+      )) as unknown as { id: string }[];
+      const adopted = adoptable[0]?.id;
+      if (adopted) {
+        // Hand the trip to the new task, and detach it from the old one so the trip
+        // is never claimed by two tasks at once.
+        await this.drizzleProvider.db.execute(
+          sql`UPDATE task_assignments SET trip_id = NULL, updated_at = NOW()
+               WHERE trip_id = ${adopted}::uuid AND id <> ${taskId} AND deleted_at IS NULL`,
+        );
+        await this.drizzleProvider.db.execute(
+          sql`UPDATE task_assignments SET trip_id = ${adopted}::uuid, updated_at = NOW()
+               WHERE id = ${taskId}`,
+        );
+        this.winston.log(
+          'flow',
+          `Aux re-plan: task ${taskId} adopted existing trip ${adopted} (request ${req.id}) instead of minting a duplicate`,
+          { context: 'TripsService', taskId, tripId: adopted, requestId: req.id },
+        );
+        effectiveTripId = adopted;
+      }
+    }
+
+    if (!effectiveTripId) {
       const orgId = organizationId ?? null;
       const newTripId = await this.drizzleProvider.db.transaction(async (tx) => {
         const tripNumber = await this.generateTripNumber(orgId, tx);
@@ -2915,11 +2966,15 @@ export class TripsService implements OnModuleInit {
     }
 
     // UPDATE path — only while still planned (don't reshape an in-progress trip).
+    // Runs for the task's own trip AND for a trip just adopted from a re-plan, which
+    // is the whole point: the adopted trip is MOVED to the new day/loader rather than
+    // a second one being minted alongside it.
+    //
     // `deleted_at IS NULL`: a soft-deleted aux trip must read as absent, not as a
     // live `planned` one, or re-planning a deleted transport silently updates the
     // corpse instead of creating a fresh trip.
     const statusRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT status FROM trips WHERE id = ${tripId} AND deleted_at IS NULL LIMIT 1`,
+      sql`SELECT status FROM trips WHERE id = ${effectiveTripId} AND deleted_at IS NULL LIMIT 1`,
     )) as unknown as { status: string }[];
     if (statusRows[0]?.status !== TripStatus.planned) return;
 
@@ -2931,7 +2986,16 @@ export class TripsService implements OnModuleInit {
             destination_name = ${destName},
             destination_address = ${destAddress},
             updated_at = NOW()
-          WHERE id = ${tripId} AND status = ${TripStatus.planned}`,
+          WHERE id = ${effectiveTripId} AND status = ${TripStatus.planned}`,
+    );
+
+    // Keep the request's pointer on the trip that actually exists. It is
+    // last-write-wins and was only ever set at mint time, so after a re-plan it could
+    // dangle at a trip that had since been cancelled — which is how one request came
+    // to display a CANCELLED trip while its live planned one sat hidden behind it.
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE trip_requests SET trip_id = ${effectiveTripId}::uuid, updated_at = NOW()
+           WHERE id = ${req.id}::uuid AND trip_id IS DISTINCT FROM ${effectiveTripId}::uuid`,
     );
   }
 
