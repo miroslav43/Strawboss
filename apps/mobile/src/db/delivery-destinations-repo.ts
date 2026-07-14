@@ -81,4 +81,32 @@ export class DeliveryDestinationsRepo {
   async delete(id: string): Promise<void> {
     await this.db.runAsync(`DELETE FROM delivery_destinations WHERE id = ?`, [id]);
   }
+
+  /**
+   * Drop cached depots the server no longer has.
+   *
+   * Depots are not part of delta sync at all — no pull, hence no tombstones — so
+   * this REST refresh is the ONLY way a device ever learns that a depot is gone.
+   * Without it, now that the maps render from this table, a deleted depot would
+   * stay painted on the phone forever.
+   *
+   * Rows with an open `sync_queue` entry are exempt: a depot drawn offline is
+   * absent from the server list precisely because it has not been pushed yet.
+   */
+  async reconcileWithServer(serverIds: string[]): Promise<void> {
+    // Never reconcile against an empty list — see ParcelsRepo.reconcileWithServer.
+    if (serverIds.length === 0) return;
+
+    const placeholders = serverIds.map(() => '?').join(', ');
+    await this.db.runAsync(
+      `DELETE FROM delivery_destinations
+        WHERE id NOT IN (${placeholders})
+          AND id NOT IN (
+            SELECT entity_id FROM sync_queue
+             WHERE entity_type = 'delivery_destination_create'
+               AND status IN ('pending', 'in_flight', 'failed')
+          )`,
+      serverIds as SQLiteBindValue[],
+    );
+  }
 }

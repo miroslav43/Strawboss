@@ -84,6 +84,12 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   // Denormalized owning-farm name (matches server migration 00065) so the
   // "Teren activ" card shows the farm offline. Pulled as a plain parcel column.
   await addColumnIfMissing(db, 'parcels', 'farm_name', 'TEXT');
+  // Owning-farm id. `farm_name` alone cannot group parcels under their farm (two
+  // farms may share a name, and a rename would regroup the list), which the
+  // geofence-maker's farm screen needs in order to read from the local cache
+  // instead of the network. Filled from the REST endpoint and from a local create;
+  // delta sync does not carry it, and `upsertFromPull` therefore never writes it.
+  await addColumnIfMissing(db, 'parcels', 'farm_id', 'TEXT');
 
   // Create indexes for common queries
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_operations_trip_id ON operations(trip_id)`);

@@ -4,11 +4,10 @@ import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import type { Parcel, CropType } from '@strawboss/types';
-import { mobileApiClient } from '@/lib/api-client';
+import type { CropType } from '@strawboss/types';
 import {
   GeofenceEditorView,
   type GeofenceEditorViewHandle,
@@ -20,18 +19,14 @@ import { getDatabase } from '@/lib/storage';
 import { ParcelsRepo } from '@/db/parcels-repo';
 import { DeliveryDestinationsRepo } from '@/db/delivery-destinations-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { useCachedParcels, PARCELS_LOCAL_KEY } from '@/hooks/useCachedParcels';
+import { useCachedDepots, DEPOTS_LOCAL_KEY } from '@/hooks/useCachedDepots';
+import { useSync } from '@/hooks/useSync';
+import { polygonAreaHectares } from '@/utils/geo-area';
 import { generateUuid } from '@/lib/uuid';
 import { useI18n } from '@/lib/i18n';
 
 type DrawMode = 'parcel' | 'deposit' | null;
-
-interface DeliveryDestination {
-  id: string;
-  name: string;
-  code: string;
-  boundary: unknown | null;
-  coords: { lat: number; lon: number } | null;
-}
 
 function toLatLon(raw: unknown): { lat: number; lon: number } | null {
   if (raw == null || typeof raw !== 'object') return null;
@@ -43,6 +38,26 @@ function toLatLon(raw: unknown): { lat: number; lon: number } | null {
     if (typeof lon === 'number' && typeof lat === 'number') return { lat, lon };
   }
   return null;
+}
+
+/** The local depot cache stores `coords_json` as a string; parse it lazily. */
+function parseCoords(raw: string | null): { lat: number; lon: number } | null {
+  if (!raw) return null;
+  try {
+    return toLatLon(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+/** Boundaries are stored as JSON strings locally; Leaflet wants the object. */
+function parseBoundary(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 export default function GeofenceMakerMapScreen() {
@@ -64,55 +79,56 @@ export default function GeofenceMakerMapScreen() {
   const [vertexCount, setVertexCount] = useState(0);
   const { modalProps, showModal, hideModal } = useModal();
 
-  const { data: parcels } = useQuery({
-    queryKey: ['geofence-editor-parcels'],
-    queryFn: () => mobileApiClient.get<Parcel[]>('/api/v1/parcels'),
-    staleTime: 5 * 60_000,
-  });
+  // Local-first: both lists come from the SQLite cache, so a field drawn a moment
+  // ago is already in them — even offline. The server refresh happens in the
+  // background inside these hooks and rewrites the cache when it lands.
+  const { parcels } = useCachedParcels();
+  const { depots } = useCachedDepots();
+  const { triggerSync } = useSync();
 
-  const { data: deposits } = useQuery({
-    queryKey: ['geofence-editor-deposits'],
-    queryFn: () => mobileApiClient.get<DeliveryDestination[]>('/api/v1/delivery-destinations'),
-    staleTime: 5 * 60_000,
-  });
+  // Fit the camera to the data exactly once. Firing FIT_BOUNDS on every data
+  // change re-framed the map under the user's finger on each background refresh.
+  const didFitRef = useRef(false);
 
   // Push data to map when ready
   useEffect(() => {
     if (!mapReady) return;
 
-    if (parcels?.length) {
-      const parcelData: ParcelMapData[] = parcels.map((p) => ({
-        id: p.id,
-        name: p.name,
-        code: p.code,
-        harvestStatus: p.harvestStatus,
-        areaHectares: p.areaHectares,
-        boundary: p.boundary,
-      }));
-      mapRef.current?.sendCommand({ type: 'SET_PARCELS', parcels: parcelData });
-    }
+    // Send the command even when the list is EMPTY. setParcels() is what calls
+    // clearLayers() inside the WebView, so short-circuiting on an empty list left
+    // the polygons of deleted parcels painted on the map forever.
+    const parcelData: ParcelMapData[] = parcels.map((p) => ({
+      id: p.id,
+      name: p.name,
+      code: p.code,
+      harvestStatus: p.harvestStatus ?? '',
+      areaHectares: p.areaHectares ?? 0,
+      boundary: p.boundary,
+    }));
+    mapRef.current?.sendCommand({ type: 'SET_PARCELS', parcels: parcelData });
 
-    if (deposits?.length) {
-      const destData: DestinationMapData[] = deposits.map((d) => {
-        const center = toLatLon(d.coords);
-        return {
-          id: d.id,
-          name: d.name,
-          code: d.code,
-          boundary: d.boundary,
-          lat: center?.lat,
-          lon: center?.lon,
-        };
-      });
-      mapRef.current?.sendCommand({ type: 'SET_DESTINATIONS', destinations: destData });
-    }
+    const destData: DestinationMapData[] = depots.map((d) => {
+      const center = parseCoords(d.coords_json);
+      return {
+        id: d.id,
+        name: d.name,
+        code: d.code,
+        boundary: parseBoundary(d.boundary),
+        lat: center?.lat,
+        lon: center?.lon,
+      };
+    });
+    mapRef.current?.sendCommand({ type: 'SET_DESTINATIONS', destinations: destData });
 
-    mapRef.current?.sendCommand({ type: 'FIT_BOUNDS' });
-  }, [mapReady, parcels, deposits]);
+    if (!didFitRef.current && (parcelData.length > 0 || destData.length > 0)) {
+      didFitRef.current = true;
+      mapRef.current?.sendCommand({ type: 'FIT_BOUNDS' });
+    }
+  }, [mapReady, parcels, depots]);
 
   // Focus + highlight a parcel when navigated with ?focusParcelId=...
   useEffect(() => {
-    if (!mapReady || !focusParcelId || !parcels?.length) return;
+    if (!mapReady || !focusParcelId || parcels.length === 0) return;
     const parcelExists = parcels.some((p) => p.id === focusParcelId);
     if (!parcelExists) return;
     const t = setTimeout(() => {
@@ -252,11 +268,11 @@ export default function GeofenceMakerMapScreen() {
       if (!drawnGeojson) return;
       setIsSaving(true);
       try {
-        // Offline-first: generate the UUID client-side, write a draft into the
-        // local SQLite cache so the map can render it immediately, then enqueue
-        // a `parcel_create` sync entry. The SyncManager retries the dedicated
-        // REST endpoint when connectivity returns; the unique (code, org)
-        // constraint server-side makes the replay idempotent.
+        // Offline-first: mint the UUID client-side, write the parcel into the local
+        // SQLite cache — which IS what the map renders — then enqueue a
+        // `parcel_create` sync entry. The map is correct from this point on,
+        // whether or not the phone has signal. The server writes onto the same id,
+        // and the unique (code, org) constraint makes a replay idempotent.
         const id = generateUuid();
         const boundaryStr = JSON.stringify(drawnGeojson);
         const code = `P-${id.slice(0, 8).toUpperCase()}`;
@@ -279,13 +295,18 @@ export default function GeofenceMakerMapScreen() {
           id,
           name: data.name,
           code,
-          area_hectares: null,
+          // PostGIS is the authority, but its answer is a sync cycle away and the
+          // field card would read "— ha" until then. Compute it here; the server's
+          // value overwrites ours on the next refresh (they agree to <0.1%).
+          area_hectares: polygonAreaHectares(drawnGeojson),
           municipality: data.municipality || null,
           harvest_status: null,
           crop_type: data.cropType,
           // Authoritative farm_name is computed server-side (trigger 00065) from
-          // farm_id and arrives on the next pull; null until then.
+          // farm_id and arrives on the next pull; null until then. farm_id we know
+          // now, so the farm screen can group the field under its farm right away.
           farm_name: null,
+          farm_id: data.farmId,
           centroid_json: null,
           geometry: boundaryStr,
           cached_at: new Date().toISOString(),
@@ -298,9 +319,10 @@ export default function GeofenceMakerMapScreen() {
           idempotencyKey: `parcel_create_${id}`,
         });
 
-        await queryClient.invalidateQueries({ queryKey: ['geofence-editor-parcels'] });
-        await queryClient.invalidateQueries({ queryKey: ['map-parcels'] });
-        // Drop the temp draw layer so it doesn't sit on top of the refetched parcel.
+        // Re-read the local cache — the parcel is in it, so the polygon lands on
+        // the map in the same frame as the success modal. No network involved.
+        await queryClient.invalidateQueries({ queryKey: PARCELS_LOCAL_KEY });
+        // Drop the temp draw layer; the real (cached) parcel now renders in its place.
         mapRef.current?.sendCommand({ type: 'CLEAR_DRAWN' });
         setDrawMode(null);
         setDrawnGeojson(null);
@@ -311,6 +333,11 @@ export default function GeofenceMakerMapScreen() {
           onConfirm: hideModal,
           autoDismiss: true,
         });
+
+        // Fire-and-forget. A geofence_maker has no assigned machine, so no GPS task
+        // and no piggyback sync — without this the queue waits for the 15-minute
+        // WorkManager tick. The map is already right either way, so we don't await.
+        void triggerSync().catch(() => {});
       } catch {
         showModal({
           type: 'error',
@@ -322,7 +349,7 @@ export default function GeofenceMakerMapScreen() {
         setIsSaving(false);
       }
     },
-    [drawnGeojson, queryClient, showModal, hideModal],
+    [drawnGeojson, queryClient, showModal, hideModal, t, triggerSync],
   );
 
   const handleSaveDeposit = useCallback(
@@ -369,9 +396,8 @@ export default function GeofenceMakerMapScreen() {
           idempotencyKey: `delivery_destination_create_${id}`,
         });
 
-        await queryClient.invalidateQueries({ queryKey: ['geofence-editor-deposits'] });
-        await queryClient.invalidateQueries({ queryKey: ['map-destinations'] });
-        // Drop the temp draw layer so it doesn't sit on top of the refetched deposit.
+        await queryClient.invalidateQueries({ queryKey: DEPOTS_LOCAL_KEY });
+        // Drop the temp draw layer; the real (cached) depot now renders in its place.
         mapRef.current?.sendCommand({ type: 'CLEAR_DRAWN' });
         setDrawMode(null);
         setDrawnGeojson(null);
@@ -382,6 +408,8 @@ export default function GeofenceMakerMapScreen() {
           onConfirm: hideModal,
           autoDismiss: true,
         });
+
+        void triggerSync().catch(() => {});
       } catch {
         showModal({
           type: 'error',
@@ -393,7 +421,7 @@ export default function GeofenceMakerMapScreen() {
         setIsSaving(false);
       }
     },
-    [drawnGeojson, queryClient, showModal, hideModal],
+    [drawnGeojson, queryClient, showModal, hideModal, t, triggerSync],
   );
 
   const handleCloseParcelModal = useCallback(() => {

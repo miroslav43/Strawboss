@@ -18,12 +18,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import type { Farm, Parcel } from '@strawboss/types';
+import type { Farm } from '@strawboss/types';
 import { FarmEntityType } from '@strawboss/types';
 
 import { mobileApiClient } from '@/lib/api-client';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { AssignFarmModal } from '@/components/geofence-maker/AssignFarmModal';
+import { useCachedParcels, PARCELS_REFRESH_KEY, type CachedParcel } from '@/hooks/useCachedParcels';
 import { useI18n } from '@/lib/i18n';
 import { colors } from '@strawboss/ui-tokens';
 
@@ -43,13 +44,6 @@ export default function FarmsScreen() {
   const ENTITY_LABELS: Record<FarmEntityType, string> = {
     [FarmEntityType.persoana_juridica]: t('geofenceFarms.entityTypeLegal'),
     [FarmEntityType.persoana_fizica]: t('geofenceFarms.entityTypeNatural'),
-  };
-
-  const HARVEST_LABELS: Record<string, string> = {
-    planned: t('geofenceFarms.harvestStatusPlanned'),
-    to_harvest: t('geofenceFarms.harvestStatusToHarvest'),
-    harvesting: t('geofenceFarms.harvestStatusHarvesting'),
-    harvested: t('geofenceFarms.harvestStatusHarvested'),
   };
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -82,21 +76,20 @@ export default function FarmsScreen() {
     staleTime: 2 * 60_000,
   });
 
-  const {
-    data: parcels = [],
-    isLoading: parcelsLoading,
-    refetch: refetchParcels,
-  } = useQuery({
-    queryKey: ['geofence-editor-parcels'],
-    queryFn: () => mobileApiClient.get<Parcel[]>('/api/v1/parcels'),
-    staleTime: 2 * 60_000,
-  });
+  // Local-first, same source the map draws from — so a field the user just created
+  // is in this list immediately, offline included, instead of waiting for a sync
+  // cycle to carry it to the server and back.
+  const { parcels, loading: parcelsLoading } = useCachedParcels();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchFarms(), refetchParcels()]);
+    await Promise.all([
+      refetchFarms(),
+      // Re-pull the server list; its queryFn rewrites the cache and re-reads it.
+      queryClient.invalidateQueries({ queryKey: PARCELS_REFRESH_KEY }),
+    ]);
     setRefreshing(false);
-  }, [refetchFarms, refetchParcels]);
+  }, [refetchFarms, queryClient]);
 
   const parcelsByFarm = useCallback(
     (farmId: string) => parcels.filter((p) => p.farmId === farmId),
@@ -499,7 +492,7 @@ function ParcelRow({
   onViewOnMap,
   onAssign,
 }: {
-  parcel: Parcel;
+  parcel: CachedParcel;
   onViewOnMap: (parcelId: string) => void;
   onAssign?: (parcelId: string) => void;
 }) {

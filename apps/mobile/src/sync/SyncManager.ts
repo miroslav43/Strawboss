@@ -8,7 +8,7 @@ import { FuelLogsRepo, type LocalFuelLog } from '../db/fuel-logs-repo';
 import { ConsumableLogsRepo, type LocalConsumableLog } from '../db/consumable-logs-repo';
 import { BaleLoadsRepo, type LocalBaleLoad } from '../db/bale-loads-repo';
 import { TaskAssignmentsRepo, type LocalTaskAssignment } from '../db/task-assignments-repo';
-import { ParcelsRepo, type LocalParcel } from '../db/parcels-repo';
+import { ParcelsRepo } from '../db/parcels-repo';
 import { SyncCursorsRepo } from '../db/sync-cursors-repo';
 import { pushMutations } from './push';
 import { pullUpdates } from './pull';
@@ -538,11 +538,14 @@ export class SyncManager {
       return;
     }
 
-    // FM-13 — cache parcel geometry received via pull for offline map rendering
+    // FM-13 — cache parcel METADATA received via pull. Geometry deliberately does
+    // not travel on this path: the server excludes `boundary`/`centroid` from
+    // PULL_COLUMNS (they would arrive as unparseable WKB hex) and serves them over
+    // REST instead. `upsertFromPull` therefore leaves the cached geometry alone —
+    // writing it from here nulled out the offline map on every sync cycle.
     if (update.table === 'parcels' && this.parcelsRepo && update.data) {
       const d = update.data;
-      const centroid = d['centroid'] ?? d['centroid_json'] ?? null;
-      await this.parcelsRepo.upsert({
+      await this.parcelsRepo.upsertFromPull({
         id: update.recordId,
         name: String(d['name'] ?? ''),
         code: String(d['code'] ?? ''),
@@ -551,14 +554,8 @@ export class SyncManager {
         harvest_status: typeof d['harvest_status'] === 'string' ? d['harvest_status'] : null,
         crop_type: typeof d['crop_type'] === 'string' ? d['crop_type'] : null,
         farm_name: typeof d['farm_name'] === 'string' ? d['farm_name'] : null,
-        centroid_json:
-          centroid !== null && centroid !== undefined ? JSON.stringify(centroid) : null,
-        geometry:
-          d['boundary'] !== null && d['boundary'] !== undefined
-            ? JSON.stringify(d['boundary'])
-            : null,
         cached_at: new Date().toISOString(),
-      } as LocalParcel);
+      });
     }
   }
 

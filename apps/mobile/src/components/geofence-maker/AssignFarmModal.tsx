@@ -12,6 +12,7 @@ import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { PARCELS_REFRESH_KEY } from '@/hooks/useCachedParcels';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Farm } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
@@ -42,7 +43,10 @@ export function AssignFarmModal({ visible, parcelId, onClose }: Props) {
     setSavingId(farmId);
     try {
       await mobileApiClient.patch(`/api/v1/parcels/${parcelId}`, { farmId });
-      await queryClient.invalidateQueries({ queryKey: ['geofence-editor-parcels'] });
+      // This PATCH is online-only, so the server is already the source of truth for
+      // the new farm. Re-pull it: the refresh query rewrites the local cache (which
+      // is what the map and the farm list render) and re-reads it.
+      await queryClient.invalidateQueries({ queryKey: PARCELS_REFRESH_KEY });
       await queryClient.invalidateQueries({ queryKey: ['farms'] });
       onClose();
     } catch {
