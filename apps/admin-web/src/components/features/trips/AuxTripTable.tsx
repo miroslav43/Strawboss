@@ -20,6 +20,8 @@ interface AuxTripTableProps {
   onUploadCmr: (r: TripRequest) => void;
   /** Delete the live trip, handing the request back as "confirmed — unplanned". */
   onUnplan: (row: AuxRow) => void;
+  /** No trip to un-plan: cancel the request itself and retire its one-time truck. */
+  onCancelRequest: (r: TripRequest) => void;
   canUnplan?: boolean;
   emptyMessage?: string;
 }
@@ -46,6 +48,7 @@ export function AuxTripTable({
   onUploadAviz,
   onUploadCmr,
   onUnplan,
+  onCancelRequest,
   canUnplan = false,
   emptyMessage,
 }: AuxTripTableProps) {
@@ -237,19 +240,36 @@ export function AuxTripTable({
           >
             <Eye className="h-4 w-4" />
           </button>
-          {/* Un-plan: only offered once a trip actually exists. Deleting it hands the
-              request back as "Confirmată — neplanificată" so it can be re-assigned —
-              which is what you want when a truck breaks down. */}
-          {canUnplan && row.request.tripLiveId && (
+          {/*
+            One trash icon, two meanings — an escalation, not an ambiguity:
+              has a trip  -> UN-PLAN it. The request returns to "Confirmată —
+                             neplanificată" and can be re-assigned to another truck.
+                             (The truck broke down.)
+              no trip yet -> CANCEL the request outright and retire its one-time
+                             auxiliary truck. (The transport is off.)
+            So deleting a planned transport twice walks it all the way out, and you
+            can never wipe a commitment out from under a loader already working on it.
+            Nothing to delete on an already-cancelled row.
+          */}
+          {canUnplan && row.stage !== AuxStage.cancelled && (
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onUnplan(row);
+                if (row.request.tripLiveId) onUnplan(row);
+                else onCancelRequest(row.request);
               }}
               className="rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
-              aria-label={t('tripRequests.unplanAria')}
-              title={t('tripRequests.unplanAria')}
+              aria-label={
+                row.request.tripLiveId
+                  ? t('tripRequests.unplanAria')
+                  : t('tripRequests.cancelRequestAria')
+              }
+              title={
+                row.request.tripLiveId
+                  ? t('tripRequests.unplanAria')
+                  : t('tripRequests.cancelRequestAria')
+              }
             >
               <Trash2 className="h-4 w-4" />
             </button>

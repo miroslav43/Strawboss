@@ -1106,7 +1106,10 @@
     "multipleTrips": "More than one live trip on this request",
     "cui": "VAT",
     "unplanAria": "Delete the trip (back to unplanned)",
-    "unplanConfirm": "Delete trip {label} for {who}?\n\nThe trip disappears from the loader’s phone and the request returns to “Confirmed — unplanned”, ready to be re-assigned to another truck."
+    "unplanConfirm": "Delete trip {label} for {who}?\n\nThe trip disappears from the loader’s phone and the request returns to “Confirmed — unplanned”, ready to be re-assigned to another truck.",
+    "cancelRequestAria": "Cancel the request (retires the auxiliary truck)",
+    "cancelConfirmedHint": "This request is confirmed — cancelling also retires the auxiliary truck created for it. If you only want to re-plan it, delete the trip instead of the request.",
+    "cancelHasTripError": "This request already has a planned trip. Delete the trip first (the delete button on its row), then cancel the request."
   },
   "alerts": {
     "title": "Alerts",

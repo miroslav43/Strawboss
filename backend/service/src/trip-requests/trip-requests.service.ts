@@ -364,20 +364,78 @@ export class TripRequestsService {
     return updated[0];
   }
 
+  /**
+   * Cancel a request.
+   *
+   * A CONFIRMED request may now be cancelled too — but ONLY while nothing is in
+   * motion, i.e. it has no live trip. Before this, `confirmed` was a one-way door:
+   * the request could never be cancelled and, if no dispatcher ever scheduled it,
+   * it sat in "Confirmată — neplanificată" forever with a one-time auxiliary truck
+   * minted against it and no way to clear either. (There were 20 such rows in
+   * production.)
+   *
+   * If a trip HAS been planned, cancelling is refused with a specific error: delete
+   * the trip first (which un-plans it — see TripsService.softDelete), which returns
+   * the request here. That two-step is deliberate — it means you can never wipe a
+   * commitment out from under a loader who is already working on it.
+   *
+   * Cancelling also RETIRES the auxiliary truck. It is a one-time machine that
+   * exists solely for this transport, so leaving it behind would litter the fleet
+   * with phantom trucks. Same soft-delete the load path performs.
+   */
   async cancel(orgId: string | null, id: string, reason?: string) {
     const req = await this.findById(orgId, id);
-    if (req.status === RequestStatus.confirmed) {
-      throw new BadRequestException('O cerere confirmată nu mai poate fi anulată.');
+
+    if (req.status === RequestStatus.cancelled) {
+      throw new BadRequestException('Solicitarea este deja anulată.');
     }
-    const updated = (await this.drizzleProvider.db.execute(
-      sql`UPDATE trip_requests SET
-            status = ${RequestStatus.cancelled}::request_status,
-            cancelled_at = NOW(),
-            cancellation_reason = ${reason ?? null},
-            updated_at = NOW()
-          WHERE id = ${id}::uuid
-          RETURNING ${TR_COLS}`,
-    )) as unknown as TripRequest[];
+
+    if (req.status === RequestStatus.confirmed) {
+      const liveTrips = (await this.drizzleProvider.db.execute(
+        sql`SELECT 1 FROM trips
+             WHERE trip_request_id = ${id}::uuid AND deleted_at IS NULL
+             LIMIT 1`,
+      )) as unknown as unknown[];
+      if (liveTrips.length) {
+        throw new BadRequestException({
+          error: 'has_live_trip',
+          message:
+            'Solicitarea are deja o cursă planificată. Șterge întâi cursa, apoi anulează solicitarea.',
+        });
+      }
+    }
+
+    const updated = await this.drizzleProvider.db.transaction(async (tx) => {
+      const rows = (await tx.execute(
+        sql`UPDATE trip_requests SET
+              status = ${RequestStatus.cancelled}::request_status,
+              cancelled_at = NOW(),
+              cancellation_reason = ${reason ?? null},
+              updated_at = NOW()
+            WHERE id = ${id}::uuid AND deleted_at IS NULL
+            RETURNING ${TR_COLS}`,
+      )) as unknown as TripRequest[];
+
+      // Retire the one-time auxiliary truck minted at confirm(). It has no purpose
+      // beyond this transport.
+      if (req.machineId) {
+        await tx.execute(
+          sql`UPDATE machines SET deleted_at = NOW(), updated_at = NOW()
+               WHERE id = ${req.machineId}::uuid
+                 AND is_auxiliary = true
+                 AND deleted_at IS NULL`,
+        );
+      }
+      return rows;
+    });
+
+    this.winston.log('flow', `Trip request ${id} cancelled (was ${req.status})`, {
+      context: 'TripRequestsService',
+      requestId: id,
+      previousStatus: req.status,
+      retiredMachineId: req.machineId ?? null,
+    });
+
     return updated[0];
   }
 

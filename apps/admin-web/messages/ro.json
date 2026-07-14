@@ -1106,7 +1106,10 @@
     "multipleTrips": "Mai multe curse active pe această solicitare",
     "cui": "CUI",
     "unplanAria": "Șterge cursa (redevine neplanificată)",
-    "unplanConfirm": "Ștergi cursa {label} pentru {who}?\n\nCursa dispare de pe telefonul încărcătorului, iar solicitarea revine la „Confirmată — neplanificată\" și poate fi replanificată pe alt camion."
+    "unplanConfirm": "Ștergi cursa {label} pentru {who}?\n\nCursa dispare de pe telefonul încărcătorului, iar solicitarea revine la „Confirmată — neplanificată\" și poate fi replanificată pe alt camion.",
+    "cancelRequestAria": "Anulează solicitarea (retrage camionul auxiliar)",
+    "cancelConfirmedHint": "Solicitarea e confirmată — anularea retrage și camionul auxiliar creat pentru ea. Dacă vrei doar să replanifici, șterge cursa, nu solicitarea.",
+    "cancelHasTripError": "Solicitarea are deja o cursă planificată. Șterge întâi cursa (butonul de ștergere de pe rândul ei), apoi anulează solicitarea."
   },
   "alerts": {
     "title": "Alerte",

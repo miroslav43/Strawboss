@@ -216,6 +216,9 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
           onUploadAviz={handleAviz}
           onUploadCmr={handleCmr}
           onUnplan={handleUnplan}
+          // No trip to un-plan → cancel the request itself. Reuses the same modal
+          // the intake cards use, so a reason is still captured.
+          onCancelRequest={handleCancel}
           canUnplan={isDispatcher && !deleteTrip.isPending}
           emptyMessage={t('trips.auxEmpty')}
         />

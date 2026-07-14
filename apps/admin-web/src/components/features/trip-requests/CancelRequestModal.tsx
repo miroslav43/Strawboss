@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { XCircle, Loader2 } from 'lucide-react';
-import { useCancelTripRequest } from '@strawboss/api';
+import { XCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { useCancelTripRequest, ApiError } from '@strawboss/api';
 import type { TripRequest } from '@strawboss/types';
+import { RequestStatus } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,12 @@ export function CancelRequestModal({
   const { t } = useI18n();
   const [reason, setReason] = useState('');
   const cancel = useCancelTripRequest(apiClient);
+
+  // The server refuses to cancel a request whose trip is already planned, and says
+  // so with a machine-readable code — match on that, not on the message text.
+  const hasLiveTrip =
+    cancel.error instanceof ApiError &&
+    (cancel.error.data as { error?: string } | undefined)?.error === 'has_live_trip';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +61,15 @@ export function CancelRequestModal({
               {request.requesterName} — {request.truckRegistrationPlate}
             </p>
           </div>
+          {/* A confirmed request already has a one-time auxiliary truck minted
+              against it. Cancelling retires that truck — say so, rather than letting
+              it vanish from the fleet unannounced. */}
+          {request.status === RequestStatus.confirmed && (
+            <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t('tripRequests.cancelConfirmedHint')}</span>
+            </p>
+          )}
           <div>
             <label className="block text-sm font-medium text-neutral-700">
               {t('tripRequests.cancelReasonLabel')}
@@ -67,7 +83,9 @@ export function CancelRequestModal({
           </div>
           {cancel.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {t('tripRequests.cancelError')}
+              {/* The server refuses when a trip is already planned — tell the user
+                  what to do about it instead of a generic failure. */}
+              {hasLiveTrip ? t('tripRequests.cancelHasTripError') : t('tripRequests.cancelError')}
             </p>
           )}
           <div className="flex justify-end gap-3 pt-2">
