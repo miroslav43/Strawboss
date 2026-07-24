@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, ScanLine, Check, FileSignature } from 'lucide-react';
+import { FileText, ScanLine, Check, AlertTriangle } from 'lucide-react';
 import type { TripRequest } from '@strawboss/types';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
@@ -114,14 +114,15 @@ export function RequestDocChips({
           className={cn(
             'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium transition',
             request.hasComanda
-              ? 'border-cyan-600 bg-cyan-600 text-white hover:bg-cyan-700'
-              : 'border-dashed border-neutral-300 bg-white text-neutral-400 hover:border-cyan-400 hover:text-cyan-600',
+              ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
+              : // Missing comandă is a problem (usually: no order settings) — make it loud.
+                'border-red-600 bg-red-600 text-white hover:bg-red-700 animate-pulse',
           )}
         >
           {request.hasComanda ? (
             <Check className="h-3 w-3" />
           ) : (
-            <FileSignature className="h-3 w-3" />
+            <AlertTriangle className="h-3 w-3" />
           )}
           {t('tripRequests.chipComanda')}
         </button>

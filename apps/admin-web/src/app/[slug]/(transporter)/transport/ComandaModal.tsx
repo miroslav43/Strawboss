@@ -2,7 +2,15 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { FileSignature, XCircle, Loader2, RefreshCw, Download, Building2 } from 'lucide-react';
+import {
+  FileSignature,
+  XCircle,
+  Loader2,
+  RefreshCw,
+  Download,
+  Building2,
+  AlertTriangle,
+} from 'lucide-react';
 import type { TripRequest, Document } from '@strawboss/types';
 import { useTransporterComanda, useGenerateTransporterComanda } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
@@ -57,12 +65,17 @@ export function ComandaModal({ request, onClose }: { request: TripRequest; onClo
           ) : doc && resolvedUrl ? (
             <DocumentViewer document={{ ...doc, fileUrl: resolvedUrl }} />
           ) : (
-            <div className="rounded-lg border border-dashed border-neutral-200 px-4 py-6 text-center text-sm text-neutral-500">
-              <p>{t('tripRequests.comandaNone')}</p>
-              <p className="mt-1 text-neutral-400">{t('tripRequests.comandaNeedsSettings')}</p>
+            <div className="rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-6 text-center">
+              <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-amber-500" />
+              <p className="text-sm font-semibold text-amber-800">
+                {t('tripRequests.comandaNone')}
+              </p>
+              <p className="mt-1 text-sm text-amber-700">
+                {t('tripRequests.comandaNeedsSettings')}
+              </p>
               <Link
                 href={`/${slug}/beneficiari`}
-                className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary-700"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
               >
                 <Building2 className="h-4 w-4" />
                 {t('tripRequests.comandaConfigure')}
@@ -70,9 +83,10 @@ export function ComandaModal({ request, onClose }: { request: TripRequest; onClo
             </div>
           )}
           {generate.isError && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {(generate.error as Error)?.message ?? t('tripRequests.comandaError')}
-            </p>
+            <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+              <span>{(generate.error as Error)?.message ?? t('tripRequests.comandaError')}</span>
+            </div>
           )}
         </div>
 
