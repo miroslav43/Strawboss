@@ -53,7 +53,19 @@ export class MachinesService {
               WHERE tr.machine_id = machines.id
                 AND tr.deleted_at IS NULL
               ORDER BY tr.confirmed_at DESC NULLS LAST
-              LIMIT 1) AS "primaryContactName"
+              LIMIT 1) AS "primaryContactName",
+            (SELECT au.full_name
+               FROM users au
+              WHERE au.assigned_machine_id = machines.id
+                AND au.deleted_at IS NULL
+              ORDER BY au.created_at ASC
+              LIMIT 1) AS "assignedOperatorName",
+            (SELECT au.avatar_url
+               FROM users au
+              WHERE au.assigned_machine_id = machines.id
+                AND au.deleted_at IS NULL
+              ORDER BY au.created_at ASC
+              LIMIT 1) AS "assignedOperatorAvatarUrl"
           FROM machines WHERE ${where} ORDER BY created_at DESC`,
     );
     return result;

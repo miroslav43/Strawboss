@@ -5,12 +5,19 @@ import { apiClient } from '@/lib/api';
 
 interface UserAvatarProps {
   user: { fullName: string; avatarUrl?: string | null };
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   /** Optional colored ring (used on the admin accounts list to hint at role). */
   ringClassName?: string;
+  /**
+   * When true, render NOTHING (null) instead of the initials tile when there is
+   * no uploaded photo (or it fails to load). Use where only a genuine uploaded
+   * photo should appear — e.g. the tasks-page available-machine cards.
+   */
+  hideFallback?: boolean;
 }
 
 const SIZE_CLASSES: Record<NonNullable<UserAvatarProps['size']>, string> = {
+  xs: 'h-5 w-5 text-[9px]',
   sm: 'h-8 w-8 text-[11px]',
   md: 'h-12 w-12 text-sm',
   lg: 'h-24 w-24 text-2xl',
@@ -23,7 +30,7 @@ const SIZE_CLASSES: Record<NonNullable<UserAvatarProps['size']>, string> = {
  * Colors come from a deterministic hash of the full name so each user gets the
  * same colored tile across the app without us persisting a color per row.
  */
-export function UserAvatar({ user, size = 'sm', ringClassName }: UserAvatarProps) {
+export function UserAvatar({ user, size = 'sm', ringClassName, hideFallback }: UserAvatarProps) {
   const [errored, setErrored] = useState(false);
   const resolvedUrl = apiClient.resolveAssetUrl(user.avatarUrl ?? null);
 
@@ -49,6 +56,10 @@ export function UserAvatar({ user, size = 'sm', ringClassName }: UserAvatarProps
       />
     );
   }
+
+  // No uploaded photo (or it failed to load): callers that only want a real
+  // photo opt out of the initials placeholder entirely.
+  if (hideFallback) return null;
 
   return (
     <span

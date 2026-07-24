@@ -4,6 +4,7 @@ import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { ProfileService } from '../profile/profile.service';
+import { GeocodeService } from '../geocode/geocode.service';
 import { todayInRomania } from '../common/date';
 import { QUEUE_GEOFENCE_CHECK } from '../jobs/queues';
 import type {
@@ -38,6 +39,7 @@ export class LocationService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly profileService: ProfileService,
+    private readonly geocodeService: GeocodeService,
     @InjectQueue(QUEUE_GEOFENCE_CHECK) private readonly geofenceQueue: Queue,
   ) {}
 
@@ -302,7 +304,12 @@ export class LocationService {
       ${orgFilter}
     `);
 
-    return result as unknown as MachineLastLocation[];
+    const rows = result as unknown as MachineLastLocation[];
+    // Best-effort: attach a "nearest locality" label to positions whose GPS is
+    // currently fresh, served from the geocode cache. Cache misses stay null and
+    // fill asynchronously for the next poll — this never blocks on Nominatim.
+    await this.geocodeService.attachLocalities(rows);
+    return rows;
   }
 
   /**

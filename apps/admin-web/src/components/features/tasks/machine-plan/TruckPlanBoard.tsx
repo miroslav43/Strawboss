@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, Loader2, X, MapPin, Building2, User, RefreshCw } from 'lucide-react';
+import { Plus, Loader2, X, MapPin, ChevronRight, Building2, User, RefreshCw } from 'lucide-react';
 import {
   useTasksByMachineType,
   useCreateTaskAssignment,
@@ -19,7 +19,9 @@ import { clientLogger } from '@/lib/client-logger';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { DepositMapModal } from './DepositMapModal';
 import { LoaderPickMapModal } from './LoaderPickMapModal';
+import { MachineLocationMapModal } from './MachineLocationMapModal';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
+import { UserAvatar } from '@/components/shared/UserAvatar';
 import { cn } from '@/lib/utils';
 
 // Plan C — assignment shape now includes the optional presence + iterations
@@ -105,13 +107,17 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
   // 15 min GPS threshold for machines (vs ~180 s heartbeat window for users).
   const MACHINE_ONLINE_MS = MACHINE_ONLINE_WINDOW_MS;
-  const lastSeenByMachine = useMemo(() => {
-    const map = new Map<string, string>();
+  // Full last-known position per machine — powers the "nearest locality" line
+  // and the map modal on the available truck cards.
+  const locationByMachine = useMemo(() => {
+    const map = new Map<string, MachineLastLocation>();
     for (const row of normalize<MachineLastLocation>(rawLocations)) {
-      map.set(row.machineId, row.recordedAt);
+      map.set(row.machineId, row);
     }
     return map;
   }, [rawLocations]);
+  // Available card → open a read-only map centered on this truck's position.
+  const [mapMachineId, setMapMachineId] = useState<string | null>(null);
 
   const trucks = useMemo(
     () => machines.filter((m) => m.machineType === 'truck' && m.isActive),
@@ -261,31 +267,91 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
             </p>
           ) : (
             availableTrucks.map((m) => {
-              const recordedAt = lastSeenByMachine.get(m.id) ?? null;
+              const loc = locationByMachine.get(m.id) ?? null;
+              const recordedAt = loc?.recordedAt ?? null;
+              const isFresh =
+                recordedAt != null &&
+                Date.now() - new Date(recordedAt).getTime() < MACHINE_ONLINE_MS;
+              const locality = isFresh ? (loc?.locality ?? null) : null;
+              const company = m.ownerCompanyName?.trim();
+              const contact = m.primaryContactName?.trim();
               return (
-                <button
-                  key={m.id}
-                  onClick={() => handleAssignTruck(m.id)}
-                  className="flex w-full items-center gap-3 rounded-lg border border-green-200 px-4 py-3 text-left transition-colors hover:bg-green-50 hover:shadow-sm"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-1.5 truncate text-sm font-medium text-neutral-800">
-                      {m.internalCode}
+                <div key={m.id} className="overflow-hidden rounded-lg border border-green-200">
+                  <button
+                    onClick={() => handleAssignTruck(m.id)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-green-50 hover:shadow-sm"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-1.5 truncate text-sm font-medium text-neutral-800">
+                        {m.internalCode}
+                        {m.isAuxiliary ? (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                            {t('tripRequests.auxBadge')}
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="truncate text-xs text-neutral-400">
+                        {m.registrationPlate || '—'}
+                      </p>
                       {m.isAuxiliary ? (
-                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                          {t('tripRequests.auxBadge')}
-                        </span>
+                        company || contact ? (
+                          <div className="mt-1 flex flex-col gap-0.5 text-xs text-neutral-500">
+                            {company ? (
+                              <span
+                                className="flex items-center gap-1.5"
+                                title={t('tasks.auxCompany')}
+                              >
+                                <Building2 className="h-3 w-3 shrink-0 text-neutral-400" />
+                                <span className="truncate font-medium text-neutral-700">
+                                  {company}
+                                </span>
+                              </span>
+                            ) : null}
+                            {contact ? (
+                              <span
+                                className="flex items-center gap-1.5"
+                                title={t('tasks.auxContact')}
+                              >
+                                <User className="h-3 w-3 shrink-0 text-neutral-400" />
+                                <span className="truncate">{contact}</span>
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null
+                      ) : m.assignedOperatorName ? (
+                        <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-500">
+                          <UserAvatar
+                            user={{
+                              fullName: m.assignedOperatorName,
+                              avatarUrl: m.assignedOperatorAvatarUrl,
+                            }}
+                            size="xs"
+                            hideFallback
+                          />
+                          <span className="truncate">{m.assignedOperatorName}</span>
+                        </div>
                       ) : null}
-                    </p>
-                    <p className="truncate text-xs text-neutral-400">{m.registrationPlate}</p>
-                  </div>
-                  <UserPresenceDot
-                    lastSeenAt={recordedAt}
-                    variant="badge"
-                    thresholdMs={MACHINE_ONLINE_MS}
-                  />
-                  <Plus className="h-4 w-4 text-green-400" />
-                </button>
+                    </div>
+                    <UserPresenceDot
+                      lastSeenAt={recordedAt}
+                      variant="badge"
+                      thresholdMs={MACHINE_ONLINE_MS}
+                    />
+                    <Plus className="h-4 w-4 text-green-400" />
+                  </button>
+                  {locality ? (
+                    <button
+                      type="button"
+                      onClick={() => setMapMachineId(m.id)}
+                      className="flex w-full items-center gap-1 border-t border-neutral-100 px-4 py-1.5 text-left text-xs text-neutral-500 transition-colors hover:bg-neutral-50"
+                      title={t('tasks.viewOnMap')}
+                    >
+                      <MapPin className="h-3 w-3 shrink-0 text-primary" />
+                      <span className="truncate">{t('tasks.nearLocality', { locality })}</span>
+                      <ChevronRight className="ml-auto h-3 w-3 shrink-0 text-neutral-300" />
+                    </button>
+                  ) : null}
+                </div>
               );
             })
           )}
@@ -486,6 +552,14 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
             setDepositMapForTruckAssignmentId(null);
           }}
           onClose={() => setDepositMapForTruckAssignmentId(null)}
+        />
+      )}
+
+      {mapMachineId != null && (
+        <MachineLocationMapModal
+          machineId={mapMachineId}
+          machineLabel={machineById.get(mapMachineId)?.internalCode ?? mapMachineId}
+          onClose={() => setMapMachineId(null)}
         />
       )}
     </div>

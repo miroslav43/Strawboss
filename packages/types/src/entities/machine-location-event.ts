@@ -33,4 +33,7 @@ export interface MachineLastLocation {
   headingDeg: number | null;
   speedMs: number | null;
   recordedAt: string;
+  /** Reverse-geocoded nearest locality for (lat, lon), best-effort and cached
+   *  server-side. Null when not yet cached or when the position is stale. */
+  locality?: string | null;
 }

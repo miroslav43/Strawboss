@@ -40,4 +40,11 @@ export interface Machine extends Timestamps, SoftDelete {
   /** Read-only enrichment, populated by the machines list() only: the primary
    *  contact (requester_name) of the aux truck's originating trip_request. */
   primaryContactName?: string | null;
+  /** Read-only enrichment (machines list() only): full_name of the user
+   *  permanently assigned to this machine (users.assigned_machine_id). */
+  assignedOperatorName?: string | null;
+  /** Read-only enrichment (machines list() only): avatar_url of the assigned
+   *  operator. Null when no photo was uploaded — the UI must not render a
+   *  default/initials tile in that case. */
+  assignedOperatorAvatarUrl?: string | null;
 }

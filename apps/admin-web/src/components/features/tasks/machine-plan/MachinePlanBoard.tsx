@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Draggable, Droppable } from '@dnd-kit/dom';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useSortable, isSortable } from '@dnd-kit/react/sortable';
-import { Plus, X, Loader2, GripVertical, MapPin, RefreshCw } from 'lucide-react';
+import { Plus, X, Loader2, GripVertical, MapPin, ChevronRight, RefreshCw } from 'lucide-react';
 import {
   useTasksByMachineType,
   useCreateTaskAssignment,
@@ -19,6 +19,7 @@ import {
 } from '@strawboss/api';
 import type { Parcel, Machine, MachineLastLocation, User } from '@strawboss/types';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
+import { UserAvatar } from '@/components/shared/UserAvatar';
 import { AssignmentStatus, MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { clientLogger } from '@/lib/client-logger';
@@ -27,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { FarmParcelCascade } from './FarmParcelCascade';
 import { DepotSelectDropdown } from './DepotSelectDropdown';
+import { MachineLocationMapModal } from './MachineLocationMapModal';
 
 const ParcelMapModal = dynamic(
   () =>
@@ -573,13 +575,17 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
   const machines = useMemo(() => normalize<Machine>(rawMachines), [rawMachines]);
   // 15 min GPS threshold (the machine's last reported position).
   const MACHINE_ONLINE_MS = MACHINE_ONLINE_WINDOW_MS;
-  const lastSeenByMachine = useMemo(() => {
-    const map = new Map<string, string>();
+  // Full last-known position per machine (lat/lon/recordedAt/locality) — used by
+  // the available cards to show "nearest locality" and open the map modal.
+  const locationByMachine = useMemo(() => {
+    const map = new Map<string, MachineLastLocation>();
     for (const row of normalize<MachineLastLocation>(rawLocations)) {
-      map.set(row.machineId, row.recordedAt);
+      map.set(row.machineId, row);
     }
     return map;
   }, [rawLocations]);
+  // Available card → open a read-only map centered on this machine's position.
+  const [mapMachineId, setMapMachineId] = useState<string | null>(null);
 
   // Resolve the operator assigned to each machine via users.assigned_machine_id.
   // Used to render the operator's name + presence dot on each AssignedMachineCard.
@@ -860,29 +866,65 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
             </p>
           ) : (
             availableMachines.map((m) => {
-              const recordedAt = lastSeenByMachine.get(m.id) ?? null;
+              const loc = locationByMachine.get(m.id) ?? null;
+              const recordedAt = loc?.recordedAt ?? null;
+              const isFresh =
+                recordedAt != null &&
+                Date.now() - new Date(recordedAt).getTime() < MACHINE_ONLINE_MS;
+              const locality = isFresh ? (loc?.locality ?? null) : null;
               return (
-                <button
+                <div
                   key={m.id}
-                  onClick={() => handleAssignMachine(m.id)}
-                  className={cn(
-                    'flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:shadow-sm',
-                    `border-${color}-200 hover:bg-${color}-50`,
-                  )}
+                  className={cn('overflow-hidden rounded-lg border', `border-${color}-200`)}
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-neutral-800">
-                      {m.internalCode}
-                    </p>
-                    <p className="truncate text-xs text-neutral-400">{m.registrationPlate}</p>
-                  </div>
-                  <UserPresenceDot
-                    lastSeenAt={recordedAt}
-                    variant="badge"
-                    thresholdMs={MACHINE_ONLINE_MS}
-                  />
-                  <Plus className={cn('h-4 w-4', `text-${color}-400`)} />
-                </button>
+                  <button
+                    onClick={() => handleAssignMachine(m.id)}
+                    className={cn(
+                      'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:shadow-sm',
+                      `hover:bg-${color}-50`,
+                    )}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-neutral-800">
+                        {m.internalCode}
+                      </p>
+                      <p className="truncate text-xs text-neutral-400">
+                        {m.registrationPlate || '—'}
+                      </p>
+                      {m.assignedOperatorName ? (
+                        <span className="mt-1 flex items-center gap-1.5 text-xs text-neutral-500">
+                          <UserAvatar
+                            user={{
+                              fullName: m.assignedOperatorName,
+                              avatarUrl: m.assignedOperatorAvatarUrl,
+                            }}
+                            size="xs"
+                            hideFallback
+                          />
+                          <span className="truncate">{m.assignedOperatorName}</span>
+                        </span>
+                      ) : null}
+                    </div>
+                    <UserPresenceDot
+                      lastSeenAt={recordedAt}
+                      variant="badge"
+                      thresholdMs={MACHINE_ONLINE_MS}
+                    />
+                    <Plus className={cn('h-4 w-4', `text-${color}-400`)} />
+                  </button>
+                  {locality ? (
+                    <button
+                      type="button"
+                      onClick={() => setMapMachineId(m.id)}
+                      className="flex w-full items-center gap-1 border-t border-neutral-100 px-4 py-1.5 text-left text-xs text-neutral-500 transition-colors hover:bg-neutral-50"
+                      title={t('tasks.viewOnMap')}
+                    >
+                      <MapPin className="h-3 w-3 shrink-0 text-primary" />
+                      <span className="truncate">{t('tasks.nearLocality', { locality })}</span>
+                      <ChevronRight className="ml-auto h-3 w-3 shrink-0 text-neutral-300" />
+                    </button>
+                  ) : null}
+                </div>
               );
             })
           )}
@@ -921,6 +963,14 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
           </div>
         )}
       </div>
+
+      {mapMachineId != null && (
+        <MachineLocationMapModal
+          machineId={mapMachineId}
+          machineLabel={machines.find((m) => m.id === mapMachineId)?.internalCode ?? mapMachineId}
+          onClose={() => setMapMachineId(null)}
+        />
+      )}
     </div>
   );
 }

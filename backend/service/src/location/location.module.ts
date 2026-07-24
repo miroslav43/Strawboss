@@ -6,6 +6,7 @@ import { GpsRetentionProcessor } from './gps-retention.processor';
 import { DatabaseModule } from '../database/database.module';
 import { AuthModule } from '../auth/auth.module';
 import { ProfileModule } from '../profile/profile.module';
+import { GeocodeModule } from '../geocode/geocode.module';
 import { QUEUE_GEOFENCE_CHECK } from '../jobs/queues';
 
 @Module({
@@ -17,6 +18,7 @@ import { QUEUE_GEOFENCE_CHECK } from '../jobs/queues';
     DatabaseModule,
     AuthModule,
     ProfileModule,
+    GeocodeModule,
     BullModule.registerQueue({ name: QUEUE_GEOFENCE_CHECK }),
   ],
   controllers: [LocationController],
