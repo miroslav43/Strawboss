@@ -11,6 +11,10 @@ export enum DocumentType {
   delivery_note = 'delivery_note',
   weight_ticket = 'weight_ticket',
   report = 'report',
+  // `comanda` is the transport-order PDF generated (Puppeteer) when a transporter
+  // submits a request, from the per-beneficiary order settings + request data.
+  // Request-scoped (tripRequestId), like an aviz.
+  comanda = 'comanda',
 }
 
 export enum DocumentStatus {

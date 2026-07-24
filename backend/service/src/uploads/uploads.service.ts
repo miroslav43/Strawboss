@@ -9,7 +9,7 @@ import { createWriteStream, promises as fsp } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
-import type { Readable } from 'node:stream';
+import { Readable } from 'node:stream';
 import sharp from 'sharp';
 
 /** Hard upper bound enforced server-side even if a client sends a larger body. */
@@ -37,6 +37,7 @@ export const AVIZ_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
  * bigger than a single-page aviz.
  */
 export const CMR_SCAN_MAX_BYTES = 15 * 1024 * 1024; // 15 MB
+export const COMANDA_MAX_BYTES = 5 * 1024 * 1024; // 5 MB (a generated 1-page order)
 
 const PDF_ALLOWED_MIMES: Record<string, string> = {
   'application/pdf': 'pdf',
@@ -274,6 +275,19 @@ export class UploadsService {
   /** Save an uploaded aviz (delivery-note PDF) for a trip request. */
   async saveAviz(input: SaveSignatureInput): Promise<SaveSignatureResult> {
     return this.savePdf(input, 'avize', AVIZ_MAX_BYTES);
+  }
+
+  /**
+   * Save a server-GENERATED comandă PDF (Puppeteer buffer, not an upload stream).
+   * Stored on the same signed-uploads route as aviz/cmr_scan so it serves through
+   * the UploadUrlSigningInterceptor unchanged.
+   */
+  async saveComanda(buffer: Buffer): Promise<SaveSignatureResult> {
+    return this.savePdf(
+      { mimetype: 'application/pdf', stream: Readable.from(buffer) },
+      'comenzi',
+      COMANDA_MAX_BYTES,
+    );
   }
 
   /**

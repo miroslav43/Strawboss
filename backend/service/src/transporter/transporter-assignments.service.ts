@@ -9,6 +9,28 @@ import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import type { BeneficiaryOrderSettings } from '@strawboss/types';
+import type { BeneficiaryOrderSettingsInput } from '@strawboss/validation';
+
+/** camelCase projection for beneficiary_order_settings. */
+const ORDER_SETTINGS_COLS = sql`
+  id,
+  organization_id       AS "organizationId",
+  beneficiary_id        AS "beneficiaryId",
+  transport_value::float8 AS "transportValue",
+  currency,
+  payment_term_days     AS "paymentTermDays",
+  bale_count            AS "baleCount",
+  bale_dimensions       AS "baleDimensions",
+  goods_name            AS "goodsName",
+  truck_description     AS "truckDescription",
+  loading_locality      AS "loadingLocality",
+  loading_country       AS "loadingCountry",
+  obs,
+  order_counter         AS "orderCounter",
+  created_at            AS "createdAt",
+  updated_at            AS "updatedAt"
+`;
 
 /**
  * A beneficiary as shown to a transporter — deliberately PIN-FREE. The
@@ -150,5 +172,60 @@ export class TransporterAssignmentsService {
       transporterUserId: userId,
       count: ids.length,
     });
+  }
+
+  // ── Per-beneficiary comandă (order) settings ───────────────────────────────
+
+  /** The order settings for a beneficiary, or null if none configured yet. */
+  async getOrderSettings(
+    orgId: string,
+    beneficiaryId: string,
+  ): Promise<BeneficiaryOrderSettings | null> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT ${ORDER_SETTINGS_COLS} FROM beneficiary_order_settings
+          WHERE organization_id = ${orgId}::uuid
+            AND beneficiary_id = ${beneficiaryId}::uuid
+          LIMIT 1`,
+    )) as unknown as BeneficiaryOrderSettings[];
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Set-replace the order settings for a beneficiary (the form always sends the
+   * full set). Never touches `order_counter`, so the running comandă number is
+   * preserved across edits.
+   */
+  async upsertOrderSettings(
+    orgId: string,
+    beneficiaryId: string,
+    dto: BeneficiaryOrderSettingsInput,
+  ): Promise<BeneficiaryOrderSettings> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`INSERT INTO beneficiary_order_settings (
+            organization_id, beneficiary_id,
+            transport_value, currency, payment_term_days,
+            bale_count, bale_dimensions, goods_name, truck_description,
+            loading_locality, loading_country, obs, updated_at
+          ) VALUES (
+            ${orgId}::uuid, ${beneficiaryId}::uuid,
+            ${dto.transportValue ?? null}, ${dto.currency ?? 'EUR'}, ${dto.paymentTermDays ?? 30},
+            ${dto.baleCount ?? null}, ${dto.baleDimensions ?? null}, ${dto.goodsName ?? null}, ${dto.truckDescription ?? null},
+            ${dto.loadingLocality ?? null}, ${dto.loadingCountry ?? null}, ${dto.obs ?? null}, now()
+          )
+          ON CONFLICT (organization_id, beneficiary_id) DO UPDATE SET
+            transport_value   = EXCLUDED.transport_value,
+            currency          = EXCLUDED.currency,
+            payment_term_days = EXCLUDED.payment_term_days,
+            bale_count        = EXCLUDED.bale_count,
+            bale_dimensions   = EXCLUDED.bale_dimensions,
+            goods_name        = EXCLUDED.goods_name,
+            truck_description = EXCLUDED.truck_description,
+            loading_locality  = EXCLUDED.loading_locality,
+            loading_country   = EXCLUDED.loading_country,
+            obs               = EXCLUDED.obs,
+            updated_at        = now()
+          RETURNING ${ORDER_SETTINGS_COLS}`,
+    )) as unknown as BeneficiaryOrderSettings[];
+    return rows[0];
   }
 }

@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Truck, FilePlus2, LogOut } from 'lucide-react';
+import { Loader2, Truck, FilePlus2, Building2, LogOut } from 'lucide-react';
 import { ProfileLocaleHydration } from '@/components/layout/ProfileLocaleHydration';
 import { supabase } from '@/lib/supabase';
 import { resolveOrganizationSlugForSession } from '@/lib/resolve-organization-slug';
@@ -128,6 +128,12 @@ function TransporterHeader({
   const items = [
     { href: `/${slug}/transport`, label: t('nav.transportTrips'), icon: Truck, exact: true },
     { href: `/${slug}/transport/new`, label: t('nav.transportNew'), icon: FilePlus2, exact: false },
+    {
+      href: `/${slug}/beneficiari`,
+      label: t('nav.transportBeneficiaries'),
+      icon: Building2,
+      exact: false,
+    },
   ];
 
   return (

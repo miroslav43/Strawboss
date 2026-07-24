@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, ScanLine, Check } from 'lucide-react';
+import { FileText, ScanLine, Check, FileSignature } from 'lucide-react';
 import type { TripRequest } from '@strawboss/types';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
@@ -24,13 +24,17 @@ export function RequestDocChips({
   onUploadAviz,
   onUploadCmr,
   readOnly = false,
+  onViewComanda,
 }: {
   request: TripRequest;
   onUploadAviz?: (r: TripRequest) => void;
   onUploadCmr?: (r: TripRequest) => void;
-  /** Render static (non-clickable) chips — the transporter can SEE a document
-   *  exists but cannot upload. Defaults to the admin's interactive behaviour. */
+  /** Render static (non-clickable) aviz/CMR chips — the transporter can SEE a
+   *  document exists but cannot upload. Defaults to the admin's interactive UI. */
   readOnly?: boolean;
+  /** When provided, renders a 3rd view-only "Comandă" chip (the generated order).
+   *  Always clickable — it opens/generates the comandă, never an upload. */
+  onViewComanda?: (r: TripRequest) => void;
 }) {
   const { t } = useI18n();
 
@@ -93,6 +97,34 @@ export function RequestDocChips({
         t('tripRequests.chipCmr'),
         request.hasCmrScan ? t('tripRequests.cmrUploaded') : t('tripRequests.uploadCmr'),
         () => onUploadCmr?.(request),
+      )}
+      {onViewComanda && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewComanda(request);
+          }}
+          title={
+            request.hasComanda ? t('tripRequests.comandaView') : t('tripRequests.comandaGenerate')
+          }
+          aria-label={
+            request.hasComanda ? t('tripRequests.comandaView') : t('tripRequests.comandaGenerate')
+          }
+          className={cn(
+            'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium transition',
+            request.hasComanda
+              ? 'border-cyan-600 bg-cyan-600 text-white hover:bg-cyan-700'
+              : 'border-dashed border-neutral-300 bg-white text-neutral-400 hover:border-cyan-400 hover:text-cyan-600',
+          )}
+        >
+          {request.hasComanda ? (
+            <Check className="h-3 w-3" />
+          ) : (
+            <FileSignature className="h-3 w-3" />
+          )}
+          {t('tripRequests.chipComanda')}
+        </button>
       )}
     </div>
   );

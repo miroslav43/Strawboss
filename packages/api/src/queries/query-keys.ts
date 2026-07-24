@@ -127,6 +127,9 @@ export const queryKeys = {
     records: (beneficiaryId: string, kind: string) =>
       ['transporter', 'records', beneficiaryId, kind] as const,
     requests: (filters?: Record<string, unknown>) => ['transporter', 'requests', filters] as const,
+    orderSettings: (beneficiaryId: string) =>
+      ['transporter', 'orderSettings', beneficiaryId] as const,
+    comanda: (requestId: string) => ['transporter', 'comanda', requestId] as const,
   },
   /** Admin view of a transporter account's beneficiary assignments. */
   transporterAssignments: {

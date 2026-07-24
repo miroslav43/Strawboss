@@ -133,6 +133,10 @@ export {
   useDeleteTransporterRecord,
   useSubmitTransporterRequest,
   useTransporterRequests,
+  useBeneficiaryOrderSettings,
+  useSaveBeneficiaryOrderSettings,
+  useTransporterComanda,
+  useGenerateTransporterComanda,
 } from './use-transporter.js';
 export type { AssignedBeneficiary, TransporterRecordKind } from './use-transporter.js';
 

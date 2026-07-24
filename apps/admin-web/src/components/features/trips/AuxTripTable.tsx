@@ -31,6 +31,8 @@ interface AuxTripTableProps {
   readOnly?: boolean;
   /** Whole-row click (the read-only ledger uses it to open a details modal). */
   onRowClick?: (row: AuxRow) => void;
+  /** View/generate the comandă (transport order) — adds a 3rd doc chip. */
+  onViewComanda?: (r: TripRequest) => void;
   emptyMessage?: string;
 }
 
@@ -60,6 +62,7 @@ export function AuxTripTable({
   canUnplan = false,
   readOnly = false,
   onRowClick,
+  onViewComanda,
   emptyMessage,
 }: AuxTripTableProps) {
   const { t } = useI18n();
@@ -230,6 +233,7 @@ export function AuxTripTable({
           request={row.request}
           onUploadAviz={onUploadAviz}
           onUploadCmr={onUploadCmr}
+          onViewComanda={onViewComanda}
           // Static only when nobody can act on them. In the read-only ledger the
           // transporter still gets clickable chips if upload handlers are wired.
           readOnly={readOnly && !onUploadAviz && !onUploadCmr}

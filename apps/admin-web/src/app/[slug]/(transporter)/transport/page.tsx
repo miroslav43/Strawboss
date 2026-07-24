@@ -16,6 +16,7 @@ import { AuxTripTable } from '@/components/features/trips/AuxTripTable';
 import { RequestDetailsModal } from '@/components/features/trip-requests/RequestDetailsModal';
 import { AvizUploadModal } from '@/components/features/trip-requests/AvizUploadModal';
 import { CmrUploadModal } from '@/components/features/trip-requests/CmrUploadModal';
+import { ComandaModal } from './ComandaModal';
 
 const inputCls =
   'rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 ' +
@@ -40,6 +41,7 @@ export default function TransporterTripsPage() {
   const [detailsTarget, setDetailsTarget] = useState<TripRequest | null>(null);
   const [avizTarget, setAvizTarget] = useState<TripRequest | null>(null);
   const [cmrTarget, setCmrTarget] = useState<TripRequest | null>(null);
+  const [comandaTarget, setComandaTarget] = useState<TripRequest | null>(null);
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {};
@@ -112,6 +114,7 @@ export default function TransporterTripsPage() {
           onRowClick={(row) => setDetailsTarget(row.request)}
           onUploadAviz={(r) => setAvizTarget(r)}
           onUploadCmr={(r) => setCmrTarget(r)}
+          onViewComanda={(r) => setComandaTarget(r)}
           emptyMessage={t('transporter.empty')}
         />
       )}
@@ -132,6 +135,9 @@ export default function TransporterTripsPage() {
           variant="transporter"
           onClose={() => setCmrTarget(null)}
         />
+      )}
+      {comandaTarget && (
+        <ComandaModal request={comandaTarget} onClose={() => setComandaTarget(null)} />
       )}
     </div>
   );

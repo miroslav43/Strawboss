@@ -49,6 +49,12 @@ export interface TripRequest extends Timestamps, SoftDelete {
   // beneficiary portal: quality grade requested (quality_1 | quality_2), replaces cropType
   quality: string | null;
   neededDate: string | null;
+  // Comandă (transport order): the unloading/delivery date typed on the
+  // transporter form; loading date is neededDate. NULL for the public portals.
+  unloadingDate: string | null;
+  // The order number assigned to this request's comandă (per-beneficiary counter),
+  // set once at first generation so regeneration is idempotent.
+  comandaOrderNo: number | null;
   tonsRequested: number | null;
   destinationAddress: string | null;
   destinationLocality: string | null;
@@ -117,6 +123,8 @@ export interface TripRequest extends Timestamps, SoftDelete {
   // whether a non-deleted scanned paper CMR (cmr_scan document) exists for this
   // request — uploaded by the loader after an aux load, or overridden by an admin
   hasCmrScan?: boolean;
+  // whether a generated comandă (transport-order) document exists for this request
+  hasComanda?: boolean;
 }
 
 /** Public submission payload (no auth). The portal code is validated separately. */

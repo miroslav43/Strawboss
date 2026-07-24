@@ -21,7 +21,7 @@ import { DocumentsService } from '../documents/documents.service';
 import { PinThrottleService } from './pin-throttle.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
-import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
+import { QUEUE_MESSAGE_SEND, QUEUE_COMANDA_GENERATION } from '../jobs/queues';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates } from '../messaging/message-templates';
 import { MessageKind, RequestStatus } from '@strawboss/types';
@@ -79,6 +79,8 @@ const TR_COLS = sql`
   trip_requests.crop_type                AS "cropType",
   trip_requests.quality                  AS "quality",
   to_char(trip_requests.needed_date, 'YYYY-MM-DD') AS "neededDate",
+  to_char(trip_requests.unloading_date, 'YYYY-MM-DD') AS "unloadingDate",
+  trip_requests.comanda_order_no         AS "comandaOrderNo",
   trip_requests.tons_requested::float8   AS "tonsRequested",
   trip_requests.destination_address      AS "destinationAddress",
   trip_requests.destination_locality     AS "destinationLocality",
@@ -120,7 +122,11 @@ const TR_COLS = sql`
   -- the Puppeteer-generated 'cmr' — that one is trip-scoped (trip_request_id NULL).
   EXISTS(SELECT 1 FROM documents d
          WHERE d.trip_request_id = trip_requests.id
-           AND d.document_type = 'cmr_scan' AND d.deleted_at IS NULL) AS "hasCmrScan"
+           AND d.document_type = 'cmr_scan' AND d.deleted_at IS NULL) AS "hasCmrScan",
+  -- The generated transport-order (comandă) PDF, if one exists for this request.
+  EXISTS(SELECT 1 FROM documents d
+         WHERE d.trip_request_id = trip_requests.id
+           AND d.document_type = 'comanda' AND d.deleted_at IS NULL) AS "hasComanda"
 `;
 
 /**
@@ -224,6 +230,7 @@ export class TripRequestsService {
     private readonly pinThrottle: PinThrottleService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     @InjectQueue(QUEUE_MESSAGE_SEND) private readonly messageQueue: Queue,
+    @InjectQueue(QUEUE_COMANDA_GENERATION) private readonly comandaQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -781,7 +788,7 @@ export class TripRequestsService {
             truck_registration_plate, truck_capacity_tons,
             trailer_registration_plate, transporter_name, transporter_cui, transporter_address,
             driver_name, driver_phone, driver_email,
-            crop_type, quality, needed_date, tons_requested,
+            crop_type, quality, needed_date, unloading_date, tons_requested,
             destination_address, destination_locality, destination_coords, notes,
             beneficiary_id,
             contact_id, truck_id, driver_id, created_by_user_id, notify_recipients
@@ -792,7 +799,7 @@ export class TripRequestsService {
             ${fields.truckRegistrationPlate}, ${fields.truckCapacityTons ?? null},
             ${fields.trailerRegistrationPlate ?? null}, ${fields.transporterName ?? null}, ${fields.transporterCui ?? null}, ${fields.transporterAddress ?? null},
             ${fields.driverName}, ${fields.driverPhone}, ${fields.driverEmail ?? null},
-            ${fields.cropType ? sql`${fields.cropType}::crop_type` : sql`NULL`}, ${fields.quality ?? null}, ${fields.neededDate ?? null}::date, ${fields.tonsRequested ?? null},
+            ${fields.cropType ? sql`${fields.cropType}::crop_type` : sql`NULL`}, ${fields.quality ?? null}, ${fields.neededDate ?? null}::date, ${fields.unloadingDate ?? null}::date, ${fields.tonsRequested ?? null},
             ${fields.destinationAddress ?? null}, ${fields.destinationLocality ?? null},
             ${coords ? sql`ST_SetSRID(ST_MakePoint(${coords.lon}, ${coords.lat}), 4326)` : sql`NULL`},
             ${fields.notes ?? null},
@@ -803,6 +810,23 @@ export class TripRequestsService {
           RETURNING id`,
     )) as unknown as { id: string }[];
     const requestId = inserted[0]?.id;
+
+    // Best-effort: generate the transport-order (comandă) PDF from the beneficiary's
+    // order settings. The job is a no-op if the beneficiary has none configured, so
+    // this fires for both the transporter form and the public portal.
+    try {
+      await this.comandaQueue.add(
+        'generate',
+        { requestId, orgId: org.id },
+        { removeOnComplete: true, attempts: 2 },
+      );
+    } catch (err) {
+      this.winston.warn('insertBeneficiaryRequest: comandă enqueue failed', {
+        context: 'TripRequestsService',
+        requestId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
 
     // In-app alert for admins/dispatchers (parity with submitPublicRequest).
     await this.alertsService.create(org.id, {

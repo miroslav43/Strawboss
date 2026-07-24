@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Body,
   Param,
@@ -20,12 +21,15 @@ import {
   type RecordKind,
 } from '../trip-requests/beneficiary-records.service';
 import { CmrScansService } from '../cmr-scans/cmr-scans.service';
+import { DocumentsService } from '../documents/documents.service';
+import { ComandaService } from '../documents/comanda/comanda.service';
 import { Roles, CurrentUser, type RequestUser } from '../auth';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { AVIZ_MAX_BYTES, CMR_SCAN_MAX_BYTES } from '../uploads/uploads.service';
-import { UserRole } from '@strawboss/types';
+import { DocumentType, UserRole } from '@strawboss/types';
 import {
   createTransporterRequestSchema,
+  beneficiaryOrderSettingsSchema,
   createBeneficiaryContactSchema,
   updateBeneficiaryContactSchema,
   createBeneficiaryTruckSchema,
@@ -33,7 +37,10 @@ import {
   createBeneficiaryDriverSchema,
   updateBeneficiaryDriverSchema,
 } from '@strawboss/validation';
-import type { CreateTransporterRequestInput } from '@strawboss/validation';
+import type {
+  CreateTransporterRequestInput,
+  BeneficiaryOrderSettingsInput,
+} from '@strawboss/validation';
 
 /** URL segment (plural) → the service's singular RecordKind. */
 const KIND_BY_SEGMENT: Record<string, RecordKind> = {
@@ -69,6 +76,8 @@ export class TransporterController {
     private readonly records: BeneficiaryRecordsService,
     private readonly tripRequests: TripRequestsService,
     private readonly cmrScans: CmrScansService,
+    private readonly documents: DocumentsService,
+    private readonly comanda: ComandaService,
   ) {}
 
   private async requireFile(req: FastifyRequest, maxBytes: number) {
@@ -94,6 +103,31 @@ export class TransporterController {
   @Get('beneficiaries')
   listBeneficiaries(@CurrentUser() user: RequestUser) {
     return this.assignments.listAssignedBeneficiaries(this.requireOrg(user), user.id);
+  }
+
+  // ── Per-beneficiary comandă (order) settings ───────────────────────────────
+  // Declared before the generic :kind routes so the static "order-settings"
+  // segment is never captured as a record kind.
+
+  @Get('beneficiaries/:beneficiaryId/order-settings')
+  async getOrderSettings(
+    @CurrentUser() user: RequestUser,
+    @Param('beneficiaryId', new ParseUUIDPipe()) beneficiaryId: string,
+  ) {
+    const orgId = this.requireOrg(user);
+    await this.assignments.assertAssigned(orgId, user.id, beneficiaryId);
+    return this.assignments.getOrderSettings(orgId, beneficiaryId);
+  }
+
+  @Put('beneficiaries/:beneficiaryId/order-settings')
+  async putOrderSettings(
+    @CurrentUser() user: RequestUser,
+    @Param('beneficiaryId', new ParseUUIDPipe()) beneficiaryId: string,
+    @Body(new ZodValidationPipe(beneficiaryOrderSettingsSchema)) dto: BeneficiaryOrderSettingsInput,
+  ) {
+    const orgId = this.requireOrg(user);
+    await this.assignments.assertAssigned(orgId, user.id, beneficiaryId);
+    return this.assignments.upsertOrderSettings(orgId, beneficiaryId, dto);
   }
 
   // ── Saved contacts / trucks / drivers (scoped by assertAssigned) ───────────
@@ -239,5 +273,30 @@ export class TransporterController {
       scanId: null,
       source: 'admin_upload',
     });
+  }
+
+  // ── Comandă (generated transport order) — view + regenerate, own requests ──
+
+  @Get('requests/:id/comanda')
+  async listComanda(
+    @CurrentUser() user: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    const orgId = this.requireOrg(user);
+    await this.tripRequests.assertCreatedBy(orgId, id, user.id);
+    return this.documents.list(orgId, 'system', {
+      tripRequestId: id,
+      documentType: DocumentType.comanda,
+    });
+  }
+
+  @Post('requests/:id/comanda')
+  async generateComanda(
+    @CurrentUser() user: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    const orgId = this.requireOrg(user);
+    await this.tripRequests.assertCreatedBy(orgId, id, user.id);
+    return this.comanda.generateComanda(orgId, id);
   }
 }

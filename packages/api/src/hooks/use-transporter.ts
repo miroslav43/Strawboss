@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { TripRequest } from '@strawboss/types';
-import type { CreateTransporterRequestInput } from '@strawboss/validation';
+import type { TripRequest, BeneficiaryOrderSettings, Document } from '@strawboss/types';
+import type {
+  CreateTransporterRequestInput,
+  BeneficiaryOrderSettingsInput,
+} from '@strawboss/validation';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
@@ -119,6 +122,65 @@ export function useTransporterRequests(
       }
       const qs = params.toString();
       return client.get<TripRequest[]>(`/api/v1/transporter/requests${qs ? `?${qs}` : ''}`);
+    },
+  });
+}
+
+// ── Per-beneficiary comandă (order) settings ─────────────────────────────────
+
+/** The order settings for a beneficiary (null until configured). */
+export function useBeneficiaryOrderSettings(client: ApiClient, beneficiaryId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.transporter.orderSettings(beneficiaryId ?? ''),
+    queryFn: () =>
+      client.get<BeneficiaryOrderSettings | null>(
+        `/api/v1/transporter/beneficiaries/${beneficiaryId}/order-settings`,
+      ),
+    enabled: !!beneficiaryId,
+  });
+}
+
+/** Upsert (set-replace) a beneficiary's order settings. */
+export function useSaveBeneficiaryOrderSettings(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      beneficiaryId,
+      data,
+    }: {
+      beneficiaryId: string;
+      data: BeneficiaryOrderSettingsInput;
+    }) =>
+      client.put<BeneficiaryOrderSettings>(
+        `/api/v1/transporter/beneficiaries/${beneficiaryId}/order-settings`,
+        data,
+      ),
+    onSuccess: (_r, { beneficiaryId }) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.transporter.orderSettings(beneficiaryId) });
+    },
+  });
+}
+
+// ── Comandă (generated transport order) ──────────────────────────────────────
+
+/** The generated comandă document(s) for a request (0 or 1). */
+export function useTransporterComanda(client: ApiClient, requestId: string) {
+  return useQuery({
+    queryKey: queryKeys.transporter.comanda(requestId),
+    queryFn: () => client.get<Document[]>(`/api/v1/transporter/requests/${requestId}/comanda`),
+    enabled: !!requestId,
+  });
+}
+
+/** Manually (re)generate the comandă for a request. */
+export function useGenerateTransporterComanda(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId: string) =>
+      client.post(`/api/v1/transporter/requests/${requestId}/comanda`, {}),
+    onSuccess: (_r, requestId) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.transporter.comanda(requestId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.transporter.all });
     },
   });
 }

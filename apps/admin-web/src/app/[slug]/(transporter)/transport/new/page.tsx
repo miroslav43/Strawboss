@@ -120,6 +120,7 @@ function EditSelectedButton({ onClick }: { onClick: () => void }) {
 type FormState = {
   quality: string;
   neededDate: string;
+  unloadingDate: string;
   destinationAddress: string;
   destinationLocality: string;
   notes: string;
@@ -127,6 +128,7 @@ type FormState = {
 const BLANK: FormState = {
   quality: '',
   neededDate: '',
+  unloadingDate: '',
   destinationAddress: '',
   destinationLocality: '',
   notes: '',
@@ -280,6 +282,7 @@ export default function TransporterNewRequestPage() {
       driverEmail: driver.email,
       quality: form.quality as CreateTransporterRequestInput['quality'],
       neededDate: form.neededDate,
+      unloadingDate: trim(form.unloadingDate),
       destinationAddress: trim(form.destinationAddress),
       destinationLocality: trim(form.destinationLocality),
       notes: trim(form.notes),
@@ -568,6 +571,14 @@ export default function TransporterNewRequestPage() {
                     required
                     value={form.neededDate}
                     onChange={(e) => patch({ neededDate: e.target.value })}
+                  />
+                </Field>
+                <Field label={t('transporter.form.unloadingDate')} optional>
+                  <input
+                    type="date"
+                    className={inputCls}
+                    value={form.unloadingDate}
+                    onChange={(e) => patch({ unloadingDate: e.target.value })}
                   />
                 </Field>
                 <Field label={t('beneficiaryPortal.destinationLocality')} optional>

@@ -67,6 +67,9 @@ export const createBeneficiaryRequestSchema = z.object({
   quality: z.enum(['quality_1', 'quality_2']),
   cropType: cropTypeSchema.nullable().optional(),
   neededDate: isoDateSchema,
+  // Comandă: the unloading/delivery date (loading date = neededDate). Only the
+  // transporter form sends it; the public portal omits it → NULL.
+  unloadingDate: isoDateSchema.nullable().optional(),
   tonsRequested: z.number().positive().max(100000).nullable().optional(),
   destinationAddress: z.string().min(1).max(300).nullable().optional(),
   destinationLocality: z.string().min(1).max(160).nullable().optional(),
@@ -97,6 +100,25 @@ export const createTransporterRequestSchema = createBeneficiaryRequestSchema
   .omit({ pin: true })
   .extend({ beneficiaryId: uuidSchema });
 export type CreateTransporterRequestInput = z.infer<typeof createTransporterRequestSchema>;
+
+/**
+ * Per-beneficiary "comandă" (transport order) settings — upsert body for
+ * PUT /transporter/beneficiaries/:id/order-settings. All fields optional; the
+ * server applies defaults (currency EUR, paymentTermDays 30) on first insert.
+ */
+export const beneficiaryOrderSettingsSchema = z.object({
+  transportValue: z.number().nonnegative().max(1_000_000).nullable().optional(),
+  currency: z.string().min(1).max(8).optional(),
+  paymentTermDays: z.number().int().min(0).max(365).optional(),
+  baleCount: z.number().int().min(0).max(100_000).nullable().optional(),
+  baleDimensions: z.string().max(60).nullable().optional(),
+  goodsName: z.string().max(120).nullable().optional(),
+  truckDescription: z.string().max(120).nullable().optional(),
+  loadingLocality: z.string().max(120).nullable().optional(),
+  loadingCountry: z.string().max(60).nullable().optional(),
+  obs: z.string().max(500).nullable().optional(),
+});
+export type BeneficiaryOrderSettingsInput = z.infer<typeof beneficiaryOrderSettingsSchema>;
 
 /** Body for the portal code-verification endpoint. */
 export const verifyPortalCodeSchema = z.object({
