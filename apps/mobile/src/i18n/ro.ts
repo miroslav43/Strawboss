@@ -619,6 +619,19 @@ export const ro = {
       baleQualityLabel: 'Calitate baloți',
       quality1: 'Calitate 1',
       quality2: 'Calitate 2',
+      // Assignment-aware loader board
+      sectionAssignedTrucks: 'Camioane de încărcat',
+      sectionNearbyUnassigned: 'Alte camioane în zonă',
+      noAssignedTrucksTitle: 'Niciun camion asignat azi',
+      noAssignedTrucksSubtitle:
+        'Aici apar camioanele pe care dispecerul ți le-a asignat la acest loader.',
+      badgeHereNow: '● Aici acum',
+      badgeEnroute: '○ Pe drum',
+      badgePresenceLoaded: '✓ Încărcat',
+      fieldPrefix: 'Câmp: {field}',
+      tagUnassigned: 'neasignat',
+      distanceMeters: '{distance} m',
+      distanceKm: '{distance} km',
     },
     bales: {
       screenTitle: 'Încărcări',

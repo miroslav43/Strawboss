@@ -618,6 +618,18 @@ export const en = {
       baleQualityLabel: 'Bale quality',
       quality1: 'Quality 1',
       quality2: 'Quality 2',
+      // Assignment-aware loader board
+      sectionAssignedTrucks: 'Trucks to load',
+      sectionNearbyUnassigned: 'Other trucks nearby',
+      noAssignedTrucksTitle: 'No trucks assigned today',
+      noAssignedTrucksSubtitle: 'Trucks the dispatcher assigned to this loader show up here.',
+      badgeHereNow: '● Here now',
+      badgeEnroute: '○ On the way',
+      badgePresenceLoaded: '✓ Loaded',
+      fieldPrefix: 'Field: {field}',
+      tagUnassigned: 'unassigned',
+      distanceMeters: '{distance} m',
+      distanceKm: '{distance} km',
     },
     bales: {
       screenTitle: 'Loads',
