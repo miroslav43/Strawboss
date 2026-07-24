@@ -2,18 +2,35 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { REMOTE_NOTIFICATION_TASK } from './remote-notification-task';
+import { isPushForCurrentUser } from './push-recipient';
 
 /**
  * Configure notification handler defaults.
+ *
+ * Foreground pushes addressed to a different user (shared-device stale token)
+ * are suppressed entirely — no banner, sound, badge or list entry. Fail-open:
+ * anything without a mismatching `recipientUserId` shows as before.
  */
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification.request.content.data as Record<string, unknown> | undefined;
+    if (!isPushForCurrentUser(data)) {
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
+      };
+    }
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    };
+  },
 });
 
 /**

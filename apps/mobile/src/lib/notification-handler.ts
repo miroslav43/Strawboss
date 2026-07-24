@@ -6,6 +6,7 @@ import {
 } from '@/types/notifications';
 import { NotificationsRepo } from '../db/notifications-repo';
 import { getDatabase } from './storage';
+import { isPushForCurrentUser } from './push-recipient';
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -159,6 +160,12 @@ function resolveTypeAndCategory(pushType: string): {
 export async function handleIncomingPush(notification: Notification): Promise<void> {
   const content = notification.request.content;
   const data = (content.data ?? {}) as PushData;
+
+  // Shared-device recipient guard: never store a push that was addressed to a
+  // different user (a stale/other-user Expo token still receiving this device's
+  // pushes). Fail-open — see isPushForCurrentUser.
+  if (!isPushForCurrentUser(data)) return;
+
   const pushType = data.type;
 
   if (!pushType) return;

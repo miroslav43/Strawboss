@@ -119,11 +119,16 @@ export class NotificationsService {
     // here so the OS uses that channel even when the app isn't foregrounded.
     const channelId = typeof data?._channelId === 'string' ? data._channelId : undefined;
 
+    // Stamp the intended recipient on every push. The mobile client drops any
+    // push whose `recipientUserId` != the logged-in user, so a stale/other-user
+    // Expo token that still receives this push does not surface it (shared-device
+    // leak defence — see registerToken). All visible pushes route through here,
+    // so this one line covers every call site.
     const messages = tokens.map((t) => ({
       to: t.token,
       title,
       body,
-      data: data ?? {},
+      data: { ...(data ?? {}), recipientUserId: userId },
       sound: 'default' as const,
       ...(channelId ? { channelId } : {}),
     }));
@@ -223,10 +228,13 @@ export class NotificationsService {
         `)) as unknown as { id: string }[];
         userIds = rows.map((r) => r.id);
       } else {
-        const rows = (await this.drizzleProvider.db.execute(sql`
-          SELECT DISTINCT user_id::text AS id FROM device_push_tokens WHERE is_active = true
-        `)) as unknown as { id: string }[];
-        userIds = rows.map((r) => r.id);
+        // An org-less caller (e.g. a super_admin JWT with null organizationId)
+        // must NOT blast every tenant. A legitimate cross-org broadcast would be
+        // a separate, explicit super-admin path with its own flag — never the
+        // default 'all'. Fail closed.
+        throw new ForbiddenException(
+          'Cross-organization broadcast is not permitted; scope the broadcast to an organization.',
+        );
       }
     }
 
@@ -588,15 +596,20 @@ export class NotificationsService {
     idleMinutes: number,
     reason: 'idle_timeout' | 'loader_declined' = 'idle_timeout',
   ): Promise<void> {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`role IN ('admin'::user_role, 'dispatcher'::user_role)`,
-      sql`deleted_at IS NULL`,
-    ];
-    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
-    const where = sql.join(conditions, sql` AND `);
-    const rows = (await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM users WHERE ${where}`,
-    )) as unknown as { id: string }[];
+    // A null org must never expand this to an all-organization fan-out. Skip.
+    if (orgId === null) {
+      this.winston.warn('Skipping truck-idle admin alert: null organization', {
+        context: 'NotificationsService',
+        truckId,
+      });
+      return;
+    }
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      SELECT id FROM users
+      WHERE role IN ('admin'::user_role, 'dispatcher'::user_role)
+        AND deleted_at IS NULL
+        AND organization_id = ${orgId}::uuid
+    `)) as unknown as { id: string }[];
 
     const title = reason === 'loader_declined' ? 'Camion eliberat' : 'Camion inactiv';
     const body =
@@ -740,15 +753,19 @@ export class NotificationsService {
     produced: number,
     loaded: number,
   ): Promise<void> {
-    const conditions: ReturnType<typeof sql>[] = [
-      sql`role IN ('admin'::user_role, 'dispatcher'::user_role)`,
-      sql`deleted_at IS NULL`,
-    ];
-    if (orgId !== null) conditions.push(sql`organization_id = ${orgId}::uuid`);
-    const where = sql.join(conditions, sql` AND `);
-    const rows = (await this.drizzleProvider.db.execute(
-      sql`SELECT id FROM users WHERE ${where}`,
-    )) as unknown as { id: string }[];
+    // A null org must never expand this to an all-organization fan-out. Skip.
+    if (orgId === null) {
+      this.winston.warn('Skipping parcel load-mismatch alert: null organization', {
+        context: 'NotificationsService',
+      });
+      return;
+    }
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      SELECT id FROM users
+      WHERE role IN ('admin'::user_role, 'dispatcher'::user_role)
+        AND deleted_at IS NULL
+        AND organization_id = ${orgId}::uuid
+    `)) as unknown as { id: string }[];
 
     const missing = Math.max(0, produced - loaded);
     const label = parcelName ?? 'o parcelă';
