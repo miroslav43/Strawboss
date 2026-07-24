@@ -50,7 +50,13 @@ export function FarmParcelCascade({
   // Close when clicking outside the popover.
   useEffect(() => {
     function onDown(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) onClose();
+      const target = e.target as HTMLElement | null;
+      if (!wrapRef.current || wrapRef.current.contains(target as Node)) return;
+      // A sibling trigger can opt out of outside-close (e.g. the "Select on map"
+      // button rendered next to this popover): closing here on `mousedown` would
+      // unmount it before its own `click` fires, swallowing the click.
+      if (target?.closest('[data-cascade-keep-open]')) return;
+      onClose();
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
