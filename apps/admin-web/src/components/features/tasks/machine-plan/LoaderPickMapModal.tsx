@@ -4,20 +4,19 @@ import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { X, MapPin, Loader2 } from 'lucide-react';
 import { useMachineLocations } from '@strawboss/api';
+import { MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 
-const LeafletMap = dynamic(
-  () => import('@/components/map/LeafletMap').then((m) => m.LeafletMap),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-full items-center justify-center text-neutral-400">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    ),
-  },
-);
+const LeafletMap = dynamic(() => import('@/components/map/LeafletMap').then((m) => m.LeafletMap), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center text-neutral-400">
+      <Loader2 className="h-6 w-6 animate-spin" />
+    </div>
+  ),
+});
 
 export interface LoaderAssignmentRow {
   id: string;
@@ -28,12 +27,14 @@ export interface LoaderAssignmentRow {
 
 export interface LoaderPickMapModalProps {
   loaderAssignments: LoaderAssignmentRow[];
+  parcelsByLoaderMachineId?: Map<string, string[]>;
   onSelect: (loaderAssignmentId: string) => void;
   onClose: () => void;
 }
 
 export function LoaderPickMapModal({
   loaderAssignments,
+  parcelsByLoaderMachineId,
   onSelect,
   onClose,
 }: LoaderPickMapModalProps) {
@@ -47,10 +48,7 @@ export function LoaderPickMapModal({
   );
 
   const machinesOnMap = useMemo(
-    () =>
-      locations.filter(
-        (m) => m.machineType === 'loader' && allowedMachineIds.has(m.machineId),
-      ),
+    () => locations.filter((m) => m.machineType === 'loader' && allowedMachineIds.has(m.machineId)),
     [locations, allowedMachineIds],
   );
 
@@ -58,6 +56,16 @@ export function LoaderPickMapModal({
     if (!selectedMachineId) return undefined;
     return loaderAssignments.find((r) => r.machineId === selectedMachineId);
   }, [loaderAssignments, selectedMachineId]);
+
+  const selectedLocation = useMemo(
+    () => locations.find((l) => l.machineId === selectedMachineId) ?? null,
+    [locations, selectedMachineId],
+  );
+
+  const todaysFields = useMemo(
+    () => (selectedMachineId ? (parcelsByLoaderMachineId?.get(selectedMachineId) ?? []) : []),
+    [parcelsByLoaderMachineId, selectedMachineId],
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
@@ -101,9 +109,30 @@ export function LoaderPickMapModal({
         <div className="flex flex-col gap-1 border-t border-neutral-200 px-6 py-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0 space-y-1 text-sm text-neutral-500">
             {selectedRow ? (
-              <p>
-                {t('tasks.selected')}: {selectedRow.machineCode} ({selectedRow.registrationPlate})
-              </p>
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-neutral-800">
+                    {selectedRow.machineCode} ({selectedRow.registrationPlate})
+                  </span>
+                  {selectedLocation && (
+                    <UserPresenceDot
+                      lastSeenAt={selectedLocation.recordedAt}
+                      variant="badge"
+                      thresholdMs={MACHINE_ONLINE_WINDOW_MS}
+                    />
+                  )}
+                </div>
+                {selectedLocation?.operatorName && (
+                  <p className="mt-1 text-xs text-neutral-600">
+                    {t('leaflet.operatorLabel')}: {selectedLocation.operatorName}
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-neutral-500">
+                  {todaysFields.length > 0
+                    ? t('tasks.workingToday', { fields: todaysFields.join(', ') })
+                    : t('tasks.noFieldsToday')}
+                </p>
+              </div>
             ) : machinesOnMap.length === 0 ? (
               <p>{t('tasks.noLoaderOnMap')}</p>
             ) : (
