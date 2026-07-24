@@ -96,23 +96,34 @@ export class ComandaService {
 
     const r = rows[0];
     if (!r) return null;
-    if (!r.settings_id) {
-      // No order settings for this beneficiary → nothing to generate. Not an error.
-      this.winston.log('flow', `Comandă skipped: no order settings`, {
-        context: 'ComandaService',
-        requestId,
-        orgId,
-      });
-      return null;
+    // A comandă needs a beneficiary (the public 4-digit portal has none).
+    if (!r.beneficiary_id) return null;
+
+    // The comandă always generates from the trip data, even if the beneficiary
+    // hasn't configured order settings yet — the commercial fields (price, goods,
+    // loading place, OBS…) simply stay blank until filled on the Beneficiari tab.
+    // We still need a settings row so the order counter has a home, so create a
+    // defaults one when missing.
+    let settingsId = r.settings_id;
+    if (!settingsId) {
+      const created = (await this.drizzleProvider.db.execute(
+        sql`INSERT INTO beneficiary_order_settings (organization_id, beneficiary_id)
+            VALUES (${orgId}::uuid, ${r.beneficiary_id}::uuid)
+            ON CONFLICT (organization_id, beneficiary_id) DO UPDATE SET updated_at = now()
+            RETURNING id`,
+      )) as unknown as { id: string }[];
+      settingsId = created[0]?.id ?? null;
+      if (!settingsId) return null;
     }
 
-    // Assign the per-beneficiary order number ONCE (idempotent on regeneration).
+    // Assign the per-beneficiary order number ONCE (a running counter, idempotent
+    // on regeneration).
     let orderNo = r.comanda_order_no;
     if (orderNo == null) {
       const bumped = (await this.drizzleProvider.db.execute(
         sql`UPDATE beneficiary_order_settings
             SET order_counter = order_counter + 1, updated_at = now()
-            WHERE id = ${r.settings_id}::uuid
+            WHERE id = ${settingsId}::uuid
             RETURNING order_counter`,
       )) as unknown as { order_counter: number }[];
       orderNo = bumped[0]?.order_counter ?? 1;
@@ -142,7 +153,10 @@ export class ComandaService {
     const loading = [r.loading_locality, r.loading_country, r.needed_date]
       .filter(Boolean)
       .join(', ');
-    const unloading = [r.destination_locality, r.unloading_date].filter(Boolean).join(', ');
+    // Delivery (descărcare) date defaults to the loading (needed) date when the
+    // transporter didn't enter one, so the comandă always shows a date.
+    const unloadingDateStr = r.unloading_date ?? r.needed_date;
+    const unloading = [r.destination_locality, unloadingDateStr].filter(Boolean).join(', ');
     const value =
       r.transport_value != null ? `${r.transport_value} ${r.currency ?? 'EUR'}`.trim() : '';
 
