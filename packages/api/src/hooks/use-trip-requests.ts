@@ -43,12 +43,18 @@ export function useConfirmTripRequest(client: ApiClient) {
       id,
       internalCode,
       depotId,
+      parcelId,
     }: {
       id: string;
       internalCode?: string;
-      depotId: string;
+      depotId?: string;
+      parcelId?: string;
     }) =>
-      client.post<TripRequest>(`/api/v1/trip-requests/${id}/confirm`, { internalCode, depotId }),
+      client.post<TripRequest>(`/api/v1/trip-requests/${id}/confirm`, {
+        internalCode,
+        depotId,
+        parcelId,
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
       void qc.invalidateQueries({ queryKey: queryKeys.machines.all });
