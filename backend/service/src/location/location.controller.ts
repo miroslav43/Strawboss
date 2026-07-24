@@ -102,6 +102,33 @@ export class LocationController {
   }
 
   /**
+   * GET /api/v1/location/loader-board/:loaderMachineId
+   * Loader/admin-only: the loader's work board — trucks ASSIGNED to this loader
+   * (trips.loader_id) with a here/on-the-way/loaded presence badge, plus trucks
+   * merely within GPS proximity that are NOT assigned. Scoped to the caller's org.
+   * Optional `radiusM` (default 75) and `windowMinutes` (default 15) query params.
+   */
+  @Get('loader-board/:loaderMachineId')
+  @Roles(UserRole.admin, UserRole.loader_operator)
+  getLoaderBoard(
+    @Param('loaderMachineId') loaderMachineId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('radiusM') radiusMRaw?: string,
+    @Query('windowMinutes') windowMinutesRaw?: string,
+  ) {
+    const radiusM = radiusMRaw ? Number(radiusMRaw) : undefined;
+    const windowMinutes = windowMinutesRaw ? Number(windowMinutesRaw) : undefined;
+    return this.locationService.getLoaderBoard(
+      loaderMachineId,
+      {
+        radiusM: Number.isFinite(radiusM) ? radiusM : undefined,
+        windowMinutes: Number.isFinite(windowMinutes) ? windowMinutes : undefined,
+      },
+      user.organizationId,
+    );
+  }
+
+  /**
    * GET /api/v1/location/machines/:machineId/km-by-day?from=...&to=...
    * Admin-only: per-day kilometre totals for one machine (T18).
    */
