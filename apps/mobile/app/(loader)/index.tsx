@@ -18,12 +18,12 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { ActiveFieldCard } from '@/components/shared/ActiveFieldCard';
 import { useAuthStore } from '@/stores/auth-store';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
-import { useTrucksAtLoader } from '@/hooks/useTrucksAtLoader';
+import { useLoaderBoard } from '@/hooks/useLoaderBoard';
 import { useAuxiliaryTrips } from '@/hooks/useAuxiliaryTrips';
 import type { AuxiliaryTrip } from '@/hooks/useAuxiliaryTrips';
 import { useLoaderRecallPrompt } from '@/hooks/useLoaderRecallPrompt';
 import { colors, radii } from '@strawboss/ui-tokens';
-import type { TruckAtLoader } from '@strawboss/api';
+import type { TruckAtLoader, AssignedTruck } from '@strawboss/api';
 import { useTheme } from '@/lib/theme';
 import { useI18n } from '@/lib/i18n';
 
@@ -39,10 +39,27 @@ export default function LoaderHomeScreen() {
   const { t } = useI18n();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const parcel = useCurrentLoaderParcel();
-  const trucks = useTrucksAtLoader();
+  const board = useLoaderBoard();
   const auxTrips = useAuxiliaryTrips();
   const [refreshing, setRefreshing] = useState(false);
   const { modalProps } = useModal();
+
+  const [nearbyOpen, setNearbyOpen] = useState(true);
+
+  const presenceRank: Record<AssignedTruck['presence'], number> = {
+    here: 0,
+    enroute: 1,
+    unknown: 1,
+    loaded: 2,
+  };
+  const assigned = [...(board.data?.assigned ?? [])].sort((a, b) => {
+    const r = presenceRank[a.presence] - presenceRank[b.presence];
+    if (r !== 0) return r;
+    return (a.distanceM ?? Infinity) - (b.distanceM ?? Infinity);
+  });
+  const nearby = board.data?.nearbyUnassigned ?? [];
+  const auxList = auxTrips.data ?? [];
+  const toLoadCount = assigned.length + auxList.length;
 
   // Plan C — loader recall prompt card (T13/T14).
   const recall = useLoaderRecallPrompt();
@@ -50,9 +67,9 @@ export default function LoaderHomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     parcel.refresh();
-    await Promise.all([trucks.refetch(), auxTrips.refetch()]);
+    await Promise.all([board.refetch(), auxTrips.refetch()]);
     setRefreshing(false);
-  }, [parcel, trucks, auxTrips]);
+  }, [parcel, board, auxTrips]);
 
   const goToLoad = useCallback((truckId: string) => {
     router.push({
@@ -137,9 +154,14 @@ export default function LoaderHomeScreen() {
 
         <ActiveFieldCard parcel={parcel} onOpenParcel={openParcel} />
 
+        {/* ─── Camioane de încărcat (asignate + auxiliare) ───────────────── */}
         <View style={styles.trucksHeader}>
-          <Text style={styles.sectionTitle}>{t('loader.home.sectionTrucksAtLoader')}</Text>
-          {trucks.isFetching && !trucks.isLoading ? (
+          <Text style={styles.sectionTitle}>
+            {t('loader.home.sectionAssignedTrucks')}
+            {toLoadCount > 0 ? ` (${toLoadCount})` : ''}
+          </Text>
+          {(board.isFetching && !board.isLoading) ||
+          (auxTrips.isFetching && !auxTrips.isLoading) ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : null}
         </View>
@@ -150,49 +172,57 @@ export default function LoaderHomeScreen() {
             title={t('loader.home.noLoaderAssignedTitle')}
             subtitle={t('loader.home.noLoaderAssignedSubtitle')}
           />
-        ) : trucks.isLoading ? (
+        ) : board.isLoading && auxTrips.isLoading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
             <Text style={styles.loadingText}>{t('loader.home.searchingTrucks')}</Text>
           </View>
-        ) : (trucks.data ?? []).length === 0 ? (
+        ) : toLoadCount === 0 ? (
           <EmptyCard
             icon="truck-outline"
-            title={t('loader.home.noTrucksNearbyTitle')}
-            subtitle={t('loader.home.noTrucksNearbySubtitle')}
+            title={t('loader.home.noAssignedTrucksTitle')}
+            subtitle={t('loader.home.noAssignedTrucksSubtitle')}
           />
         ) : (
-          (trucks.data ?? []).map((truck) => (
-            <TruckCard key={truck.id} truck={truck} onPress={() => goToLoad(truck.id)} t={t} />
-          ))
+          <>
+            {assigned.map((truck) => (
+              <AssignedTruckCard
+                key={truck.tripId}
+                truck={truck}
+                onPress={() => goToLoad(truck.truckId)}
+                t={t}
+              />
+            ))}
+            {auxList.map((trip) => (
+              <AuxTruckCard key={trip.id} trip={trip} onPress={() => goToAuxLoad(trip)} t={t} />
+            ))}
+          </>
         )}
 
-        {/* ─── Auxiliary trucks section ─────────────────────────────────── */}
-        {assignedMachineId ? (
+        {/* ─── Alte camioane în zonă (neasignate, estompate, colapsabile) ── */}
+        {assignedMachineId && nearby.length > 0 ? (
           <>
-            <View style={styles.trucksHeader}>
-              <Text style={styles.sectionTitle}>{t('loader.home.sectionAuxTrucks')}</Text>
-              {auxTrips.isFetching && !auxTrips.isLoading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : null}
-            </View>
-
-            {auxTrips.isLoading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={colors.primary} />
-                <Text style={styles.loadingText}>{t('loader.home.searchingAuxTrucks')}</Text>
-              </View>
-            ) : (auxTrips.data ?? []).length === 0 ? (
-              <EmptyCard
-                icon="truck-plus-outline"
-                title={t('loader.home.noAuxTrucksTitle')}
-                subtitle={t('loader.home.noAuxTrucksSubtitle')}
+            <TouchableOpacity
+              style={styles.trucksHeader}
+              activeOpacity={0.7}
+              onPress={() => setNearbyOpen((v) => !v)}
+            >
+              <Text style={styles.sectionTitleMuted}>
+                {t('loader.home.sectionNearbyUnassigned')} ({nearby.length})
+              </Text>
+              <MaterialCommunityIcons
+                name={nearbyOpen ? 'chevron-up' : 'chevron-down'}
+                size={22}
+                color={colors.tertiary}
               />
-            ) : (
-              (auxTrips.data ?? []).map((trip) => (
-                <AuxTruckCard key={trip.id} trip={trip} onPress={() => goToAuxLoad(trip)} t={t} />
-              ))
-            )}
+            </TouchableOpacity>
+            {nearbyOpen
+              ? nearby.map((truck) => (
+                  <View key={truck.id} style={styles.dimmed}>
+                    <TruckCard truck={truck} onPress={() => goToLoad(truck.id)} t={t} unassigned />
+                  </View>
+                ))
+              : null}
           </>
         ) : null}
       </ScrollView>
@@ -208,10 +238,12 @@ function TruckCard({
   truck,
   onPress,
   t,
+  unassigned,
 }: {
   truck: TruckAtLoader;
   onPress: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
+  unassigned?: boolean;
 }) {
   const label =
     truck.registrationPlate ?? truck.internalCode ?? t('loader.home.truckFallbackLabel');
@@ -224,9 +256,16 @@ function TruckCard({
           <MaterialCommunityIcons name="truck" size={28} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.truckPlate} numberOfLines={1} ellipsizeMode="tail">
-            {label}
-          </Text>
+          <View style={styles.plateRowInline}>
+            <Text style={styles.truckPlate} numberOfLines={1} ellipsizeMode="tail">
+              {label}
+            </Text>
+            {unassigned ? (
+              <View style={styles.unassignedTag}>
+                <Text style={styles.unassignedTagText}>{t('loader.home.tagUnassigned')}</Text>
+              </View>
+            ) : null}
+          </View>
           {truck.driverName ? (
             <Text style={styles.truckMeta} numberOfLines={1} ellipsizeMode="tail">
               {truck.driverName}
@@ -251,6 +290,85 @@ function TruckCard({
             ]}
           >
             {isLoaded ? t('loader.home.badgeLoaded') : t('loader.home.badgeReadyToLoad')}
+          </Text>
+        </View>
+        <MaterialCommunityIcons name="chevron-right" size={28} color={colors.tertiary} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function AssignedTruckCard({
+  truck,
+  onPress,
+  t,
+}: {
+  truck: AssignedTruck;
+  onPress: () => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const label =
+    truck.registrationPlate ?? truck.internalCode ?? t('loader.home.truckFallbackLabel');
+  const isLoaded = truck.presence === 'loaded';
+
+  const distanceText =
+    truck.distanceM == null
+      ? null
+      : truck.distanceM >= 1000
+        ? t('loader.home.distanceKm', { distance: (truck.distanceM / 1000).toFixed(1) })
+        : t('loader.home.distanceMeters', { distance: Math.round(truck.distanceM) });
+
+  let badgeText: string;
+  let badgeStyle: object;
+  let badgeTextStyle: object;
+  if (truck.presence === 'loaded') {
+    badgeText = t('loader.home.badgePresenceLoaded');
+    badgeStyle = styles.presenceLoaded;
+    badgeTextStyle = styles.presenceLoadedText;
+  } else if (truck.presence === 'here') {
+    badgeText = distanceText
+      ? `${t('loader.home.badgeHereNow')} · ${distanceText}`
+      : t('loader.home.badgeHereNow');
+    badgeStyle = styles.presenceHere;
+    badgeTextStyle = styles.presenceHereText;
+  } else {
+    // enroute + unknown share the "on the way" badge (unknown = no recent GPS).
+    badgeText = distanceText
+      ? `${t('loader.home.badgeEnroute')} · ${distanceText}`
+      : t('loader.home.badgeEnroute');
+    badgeStyle = styles.presenceEnroute;
+    badgeTextStyle = styles.presenceEnrouteText;
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.truckCard, isLoaded && styles.truckCardLoaded]}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
+      <View style={styles.truckRow}>
+        <View style={styles.truckIconWrap}>
+          <MaterialCommunityIcons name="truck" size={28} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.truckPlate} numberOfLines={1} ellipsizeMode="tail">
+            {label}
+          </Text>
+          {truck.driverName ? (
+            <Text style={styles.truckMeta} numberOfLines={1} ellipsizeMode="tail">
+              {truck.driverName}
+            </Text>
+          ) : null}
+          {truck.sourceParcelName ? (
+            <Text style={styles.fieldLine} numberOfLines={1} ellipsizeMode="tail">
+              <MaterialCommunityIcons name="map-marker" size={11} color={colors.textSecondary} />{' '}
+              {t('loader.home.fieldPrefix', { field: truck.sourceParcelName })}
+            </Text>
+          ) : null}
+        </View>
+        <View style={[styles.presenceBadge, badgeStyle]}>
+          <Text numberOfLines={1} style={[styles.presenceBadgeText, badgeTextStyle]}>
+            {badgeText}
           </Text>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={28} color={colors.tertiary} />
@@ -426,6 +544,32 @@ const styles = StyleSheet.create({
 
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
   loadingText: { fontSize: 14, color: '#5D4037' },
+
+  sectionTitleMuted: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
+  truckCardLoaded: { opacity: 0.6 },
+  dimmed: { opacity: 0.55 },
+  fieldLine: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  plateRowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  unassignedTag: {
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  unassignedTagText: { fontSize: 10, fontWeight: '700', color: '#6B7280' },
+  presenceBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    maxWidth: 132,
+  },
+  presenceBadgeText: { fontSize: 12, fontWeight: '700' },
+  presenceHere: { backgroundColor: '#E8F5EE' },
+  presenceHereText: { color: '#0A5C36' },
+  presenceEnroute: { backgroundColor: '#FEF3C7' },
+  presenceEnrouteText: { color: '#92400E' },
+  presenceLoaded: { backgroundColor: '#E5E7EB' },
+  presenceLoadedText: { color: '#374151' },
 });
 
 // Plan C — loader recall prompt card styles.
