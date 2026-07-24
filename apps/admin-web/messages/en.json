@@ -31,6 +31,8 @@
     "operations": "Operations",
     "tasks": "Tasks",
     "trips": "Trips",
+    "transportTrips": "My Trips",
+    "transportNew": "New Request",
     "documents": "Documents",
     "reports": "Reports",
     "alerts": "Alerts",
@@ -378,6 +380,8 @@
     "hoursAgo": "{{n}}h ago",
     "daysAgo": "{{n}}d ago",
     "editParcelBtn": "✏️ Edit",
+    "editFieldTool": "Edit a field",
+    "pickFieldHint": "Click the field whose boundary you want to edit.",
     "deleteParcelBtn": "🗑️ Delete",
     "typeLabel": "Type",
     "operatorLabel": "Operator",
@@ -1421,7 +1425,14 @@
       "loader_operator": "Loader Operator",
       "driver": "Driver",
       "geofence_maker": "Geofence Maker",
-      "depot_manager": "Depot Manager"
+      "depot_manager": "Depot Manager",
+      "transportator": "Transporter"
+    },
+    "beneficiaries": {
+      "title": "Assigned beneficiaries",
+      "assignAction": "Beneficiaries",
+      "hint": "Choose the beneficiaries this transporter can create transport requests for.",
+      "none": "There are no active beneficiaries in this organization."
     },
     "machineType": {
       "loader": "Loader",
@@ -2121,6 +2132,22 @@
     "regenError": "Could not regenerate PIN. Try again.",
     "activate": "Activate beneficiary",
     "deactivate": "Deactivate beneficiary"
+  },
+  "transporter": {
+    "brand": "Transporter Portal",
+    "myTripsTitle": "My Trips",
+    "newRequestTitle": "New Transport Request",
+    "searchPlaceholder": "Search by truck, driver, destination…",
+    "empty": "You haven't created any trips yet.",
+    "form": {
+      "subtitle": "Submit a transport request for one of your beneficiaries.",
+      "beneficiaryLabel": "Beneficiary",
+      "beneficiaryPlaceholder": "Choose a beneficiary…",
+      "beneficiaryRequired": "Select a beneficiary.",
+      "noBeneficiaries": "No beneficiary is assigned to you. Contact your administrator.",
+      "backToTrips": "Back to trips",
+      "newAnother": "New request"
+    }
   },
   "beneficiaryPortal": {
     "pinStep1Title": "Welcome, {name}",

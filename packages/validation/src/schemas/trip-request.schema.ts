@@ -86,6 +86,18 @@ export const createBeneficiaryRequestSchema = z.object({
 });
 export type CreateBeneficiaryRequestInput = z.infer<typeof createBeneficiaryRequestSchema>;
 
+/**
+ * Authenticated transporter submission. Identical field-shape to the beneficiary
+ * portal MINUS `pin` (the logged-in session replaces the daily PIN) PLUS an
+ * explicit `beneficiaryId` — the portal carried the beneficiary in its URL slug,
+ * but the transporter *picks* one of their assigned beneficiaries in the form.
+ * Kept in lock-step with `createBeneficiaryRequestSchema` via `.omit`/`.extend`.
+ */
+export const createTransporterRequestSchema = createBeneficiaryRequestSchema
+  .omit({ pin: true })
+  .extend({ beneficiaryId: uuidSchema });
+export type CreateTransporterRequestInput = z.infer<typeof createTransporterRequestSchema>;
+
 /** Body for the portal code-verification endpoint. */
 export const verifyPortalCodeSchema = z.object({
   code: portalCodeSchema,

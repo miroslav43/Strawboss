@@ -32,6 +32,6 @@ import { DocumentsModule } from '../documents/documents.module';
     PinThrottleService,
     PinThrottleGuard,
   ],
-  exports: [TripRequestsService],
+  exports: [TripRequestsService, BeneficiaryRecordsService],
 })
 export class TripRequestsModule {}

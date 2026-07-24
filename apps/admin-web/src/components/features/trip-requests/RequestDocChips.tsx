@@ -23,10 +23,14 @@ export function RequestDocChips({
   request,
   onUploadAviz,
   onUploadCmr,
+  readOnly = false,
 }: {
   request: TripRequest;
-  onUploadAviz: (r: TripRequest) => void;
-  onUploadCmr: (r: TripRequest) => void;
+  onUploadAviz?: (r: TripRequest) => void;
+  onUploadCmr?: (r: TripRequest) => void;
+  /** Render static (non-clickable) chips — the transporter can SEE a document
+   *  exists but cannot upload. Defaults to the admin's interactive behaviour. */
+  readOnly?: boolean;
 }) {
   const { t } = useI18n();
 
@@ -36,26 +40,43 @@ export function RequestDocChips({
     label: string,
     title: string,
     onClick: () => void,
-  ) => (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      title={title}
-      aria-label={title}
-      className={cn(
-        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium transition',
-        has
-          ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
-          : 'border-dashed border-neutral-300 bg-white text-neutral-400 hover:border-neutral-400 hover:text-neutral-600',
-      )}
-    >
-      {has ? <Check className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
-      {label}
-    </button>
-  );
+  ) => {
+    const inner = (
+      <>
+        {has ? <Check className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
+        {label}
+      </>
+    );
+    const base =
+      'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium transition';
+    const tone = has
+      ? cn('border-green-600 bg-green-600 text-white', !readOnly && 'hover:bg-green-700')
+      : cn(
+          'border-dashed border-neutral-300 bg-white text-neutral-400',
+          !readOnly && 'hover:border-neutral-400 hover:text-neutral-600',
+        );
+    if (readOnly) {
+      return (
+        <span title={title} aria-label={title} className={cn(base, tone)}>
+          {inner}
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        title={title}
+        aria-label={title}
+        className={cn(base, tone)}
+      >
+        {inner}
+      </button>
+    );
+  };
 
   return (
     <div className="flex items-center gap-1">
@@ -64,14 +85,14 @@ export function RequestDocChips({
         FileText,
         t('tripRequests.chipAviz'),
         request.hasAviz ? t('tripRequests.avizUploaded') : t('tripRequests.uploadAviz'),
-        () => onUploadAviz(request),
+        () => onUploadAviz?.(request),
       )}
       {chip(
         !!request.hasCmrScan,
         ScanLine,
         t('tripRequests.chipCmr'),
         request.hasCmrScan ? t('tripRequests.cmrUploaded') : t('tripRequests.uploadCmr'),
-        () => onUploadCmr(request),
+        () => onUploadCmr?.(request),
       )}
     </div>
   );

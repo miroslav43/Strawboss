@@ -15,14 +15,22 @@ import { qualityLabelKey, truckLabel } from '@/components/features/trip-requests
 
 interface AuxTripTableProps {
   rows: AuxRow[];
-  onViewDetails: (r: TripRequest) => void;
-  onUploadAviz: (r: TripRequest) => void;
-  onUploadCmr: (r: TripRequest) => void;
+  onViewDetails?: (r: TripRequest) => void;
+  onUploadAviz?: (r: TripRequest) => void;
+  onUploadCmr?: (r: TripRequest) => void;
   /** Delete the live trip, handing the request back as "confirmed — unplanned". */
-  onUnplan: (row: AuxRow) => void;
+  onUnplan?: (row: AuxRow) => void;
   /** No trip to un-plan: cancel the request itself and retire its one-time truck. */
-  onCancelRequest: (r: TripRequest) => void;
+  onCancelRequest?: (r: TripRequest) => void;
   canUnplan?: boolean;
+  /**
+   * Read-only view (the transporter's ledger): no actions column, and the doc
+   * chips render static. Every handler prop is ignored. Defaults to the admin's
+   * interactive ledger.
+   */
+  readOnly?: boolean;
+  /** Whole-row click (the read-only ledger uses it to open a details modal). */
+  onRowClick?: (row: AuxRow) => void;
   emptyMessage?: string;
 }
 
@@ -50,6 +58,8 @@ export function AuxTripTable({
   onUnplan,
   onCancelRequest,
   canUnplan = false,
+  readOnly = false,
+  onRowClick,
   emptyMessage,
 }: AuxTripTableProps) {
   const { t } = useI18n();
@@ -220,6 +230,7 @@ export function AuxTripTable({
           request={row.request}
           onUploadAviz={onUploadAviz}
           onUploadCmr={onUploadCmr}
+          readOnly={readOnly}
         />
       ),
     },
@@ -232,7 +243,7 @@ export function AuxTripTable({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onViewDetails(row.request);
+              onViewDetails?.(row.request);
             }}
             className="rounded p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
             aria-label={t('tripRequests.viewDetails')}
@@ -256,8 +267,8 @@ export function AuxTripTable({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (row.request.tripLiveId) onUnplan(row);
-                else onCancelRequest(row.request);
+                if (row.request.tripLiveId) onUnplan?.(row);
+                else onCancelRequest?.(row.request);
               }}
               className="rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
               aria-label={
@@ -279,11 +290,15 @@ export function AuxTripTable({
     },
   ];
 
+  // Read-only ledger (transporter): no actions column at all.
+  const visibleColumns = readOnly ? columns.filter((c) => c.key !== 'actions') : columns;
+
   return (
     <DataTable<AuxRow>
-      columns={columns}
+      columns={visibleColumns}
       data={rows}
       keyExtractor={(row) => row.id}
+      onRowClick={onRowClick}
       emptyMessage={emptyMessage}
       rowClassName={(row) =>
         row.stage === AuxStage.cancelled

@@ -23,6 +23,7 @@ export * from './entities/alert.js';
 export * from './entities/audit-log.js';
 export * from './entities/task-assignment.js';
 export * from './entities/trip-request.js';
+export * from './entities/transporter.js';
 export * from './entities/beneficiary.js';
 export * from './entities/outbound-message.js';
 export * from './entities/beneficiary-contact.js';

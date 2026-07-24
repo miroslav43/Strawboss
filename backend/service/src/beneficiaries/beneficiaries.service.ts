@@ -150,6 +150,70 @@ export class BeneficiariesService {
     };
   }
 
+  /**
+   * Resolve one active beneficiary by id within an org, returning the same
+   * {beneficiary, org} shape as findBySlugPublic so the shared
+   * TripRequestsService.insertBeneficiaryRequest works for the authenticated
+   * transporter path unchanged. The caller (TransporterController) has already
+   * verified the transporter is ASSIGNED to this beneficiary.
+   */
+  async findByIdWithOrg(orgId: string, beneficiaryId: string): Promise<OrgBeneficiaryRow | null> {
+    const rows = await this.drizzleProvider.db.execute(
+      sql`SELECT
+            b.id,
+            b.organization_id,
+            b.slug,
+            b.display_name,
+            b.company_name,
+            b.company_address,
+            b.company_cui,
+            b.email,
+            b.daily_pin,
+            b.pin_generated_at,
+            b.is_active,
+            b.created_at,
+            b.updated_at,
+            b.deleted_at,
+            o.id         AS org_id,
+            o.name       AS org_name,
+            o.allowed_crop_types AS org_allowed_crop_types
+          FROM beneficiaries b
+          JOIN organizations o ON o.id = b.organization_id
+          WHERE b.id = ${beneficiaryId}::uuid
+            AND b.organization_id = ${orgId}::uuid
+            AND o.deleted_at IS NULL
+            AND b.deleted_at IS NULL
+            AND b.is_active = TRUE
+          LIMIT 1`,
+    );
+    const list = rows as unknown as OrgJoinRow[];
+    if (!list.length) return null;
+    const r = list[0];
+    return {
+      beneficiary: {
+        id: r.id,
+        organizationId: r.organization_id,
+        slug: r.slug,
+        displayName: r.display_name,
+        companyName: r.company_name,
+        companyAddress: r.company_address,
+        companyCui: r.company_cui,
+        email: r.email,
+        dailyPin: r.daily_pin,
+        pinGeneratedAt: r.pin_generated_at,
+        isActive: r.is_active,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        deletedAt: r.deleted_at,
+      },
+      org: {
+        id: r.org_id,
+        name: r.org_name,
+        allowedCropTypes: r.org_allowed_crop_types ?? [],
+      },
+    };
+  }
+
   async create(orgId: string, dto: CreateBeneficiaryDto): Promise<Beneficiary> {
     const pin = generatePin();
     let rows: unknown;

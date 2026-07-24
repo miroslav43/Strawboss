@@ -17,6 +17,7 @@ import {
   EyeOff,
   Copy,
   Pencil,
+  Truck,
 } from 'lucide-react';
 import {
   useSuperAdminUsers,
@@ -42,6 +43,7 @@ const ALL_ROLES: UserRole[] = [
   UserRole.driver,
   UserRole.geofence_maker,
   UserRole.depot_manager,
+  UserRole.transportator,
 ];
 
 /** i18n keys for each role — resolved via t() at render time. */
@@ -54,6 +56,7 @@ const ROLE_LABEL_KEYS: Record<UserRole, string> = {
   [UserRole.driver]: 'accounts.role.driver',
   [UserRole.geofence_maker]: 'accounts.role.geofence_maker',
   [UserRole.depot_manager]: 'accounts.role.depot_manager',
+  [UserRole.transportator]: 'accounts.role.transportator',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -65,6 +68,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.driver]: 'bg-green-100 text-green-700',
   [UserRole.geofence_maker]: 'bg-teal-100 text-teal-700',
   [UserRole.depot_manager]: 'bg-orange-100 text-orange-700',
+  [UserRole.transportator]: 'bg-cyan-100 text-cyan-700',
 };
 
 const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
@@ -76,6 +80,7 @@ const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
   [UserRole.driver]: <span className="text-sm">&gt;</span>,
   [UserRole.geofence_maker]: <span className="text-sm">&#9676;</span>,
   [UserRole.depot_manager]: <span className="text-sm">&#9636;</span>,
+  [UserRole.transportator]: <Truck className="h-3.5 w-3.5 text-cyan-500" />,
 };
 
 // ── Shared UI atoms ───────────────────────────────────────────────────────

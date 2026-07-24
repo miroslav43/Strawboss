@@ -107,7 +107,8 @@ export default function LoginPage() {
       }
       const orgSlug =
         appMeta.organization_slug ?? (await resolveOrganizationSlugForSession(session));
-      if (orgSlug) router.replace(`/${orgSlug}/`);
+      if (!orgSlug) return;
+      router.replace(appMeta.role === 'transportator' ? `/${orgSlug}/transport` : `/${orgSlug}/`);
     });
   }, [router]);
 
@@ -168,7 +169,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(`/${orgSlug}/`);
+    router.push(appMeta?.role === 'transportator' ? `/${orgSlug}/transport` : `/${orgSlug}/`);
   }
 
   return (

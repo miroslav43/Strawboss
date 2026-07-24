@@ -64,6 +64,11 @@ export interface TripRequest extends Timestamps, SoftDelete {
   contactId: string | null;
   truckId: string | null;
   driverId: string | null;
+  // Provenance: the logged-in transporter (UserRole.transportator) who submitted
+  // this request through the authenticated form. NULL for the public portals
+  // (4-digit-code and beneficiary-PIN). Backs the transporter's "my trips" ledger,
+  // which is filtered to `created_by_user_id = <the transporter's own id>`.
+  createdByUserId: string | null;
   // Denormalized snapshot of ALL selected contacts (beneficiary portal), used to
   // fan out the transport-confirmation email + SMS on confirm. First entry =
   // primary (mirrors requesterName/Phone/Email). Empty for legacy requests and
@@ -85,6 +90,8 @@ export interface TripRequest extends Timestamps, SoftDelete {
   // resolved names for the ids above (joined from delivery_destinations / users)
   sourceDepotName?: string | null;
   confirmedByName?: string | null;
+  /** Full name of the transporter who created this request (joined from users). */
+  createdByName?: string | null;
 
   // ── Live-trip read model ───────────────────────────────────────────────────
   // Populated ONLY by list()/findById(), from a LEFT JOIN LATERAL on

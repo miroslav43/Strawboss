@@ -31,6 +31,8 @@
     "operations": "Operațiuni",
     "tasks": "Sarcini",
     "trips": "Curse",
+    "transportTrips": "Cursele mele",
+    "transportNew": "Cerere nouă",
     "documents": "Documente",
     "reports": "Rapoarte",
     "alerts": "Alerte",
@@ -378,6 +380,8 @@
     "hoursAgo": "acum {{n}} h",
     "daysAgo": "acum {{n}} z",
     "editParcelBtn": "✏️ Editează",
+    "editFieldTool": "Editează un câmp",
+    "pickFieldHint": "Apasă câmpul căruia vrei să-i editezi limita.",
     "deleteParcelBtn": "🗑️ Șterge",
     "typeLabel": "Tip",
     "operatorLabel": "Operator",
@@ -1421,7 +1425,14 @@
       "loader_operator": "Operator încărcător",
       "driver": "Șofer",
       "geofence_maker": "Creator geofence",
-      "depot_manager": "Operator depozit"
+      "depot_manager": "Operator depozit",
+      "transportator": "Transportator"
+    },
+    "beneficiaries": {
+      "title": "Beneficiari asignați",
+      "assignAction": "Beneficiari",
+      "hint": "Alegeți beneficiarii pentru care acest transportator poate crea cereri de transport.",
+      "none": "Nu există beneficiari activi în această organizație."
     },
     "machineType": {
       "loader": "Încărcător",
@@ -2121,6 +2132,22 @@
     "regenError": "Nu s-a putut regenera PIN-ul. Încearcă din nou.",
     "activate": "Activează beneficiarul",
     "deactivate": "Dezactivează beneficiarul"
+  },
+  "transporter": {
+    "brand": "Portal Transportator",
+    "myTripsTitle": "Cursele mele",
+    "newRequestTitle": "Cerere nouă de transport",
+    "searchPlaceholder": "Caută după camion, șofer, destinație…",
+    "empty": "Nu ați creat încă nicio cursă.",
+    "form": {
+      "subtitle": "Completați o cerere de transport pentru unul dintre beneficiarii dvs.",
+      "beneficiaryLabel": "Beneficiar",
+      "beneficiaryPlaceholder": "Alegeți un beneficiar…",
+      "beneficiaryRequired": "Selectați un beneficiar.",
+      "noBeneficiaries": "Nu vă este asignat niciun beneficiar. Contactați administratorul.",
+      "backToTrips": "Înapoi la curse",
+      "newAnother": "Cerere nouă"
+    }
   },
   "beneficiaryPortal": {
     "pinStep1Title": "Bun venit, {name}",

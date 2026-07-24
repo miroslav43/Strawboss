@@ -120,8 +120,21 @@ export {
   useUpdateUser,
   useDeactivateUser,
   useUploadUserAvatar,
+  useTransporterAssignments,
+  useSetTransporterAssignments,
 } from './use-admin-users.js';
 export type { CreateUserPayload, UpdateUserPayload } from './use-admin-users.js';
+
+export {
+  useTransporterBeneficiaries,
+  useTransporterRecords,
+  useCreateTransporterRecord,
+  useUpdateTransporterRecord,
+  useDeleteTransporterRecord,
+  useSubmitTransporterRequest,
+  useTransporterRequests,
+} from './use-transporter.js';
+export type { AssignedBeneficiary, TransporterRecordKind } from './use-transporter.js';
 
 export {
   useSuperAdminUsers,

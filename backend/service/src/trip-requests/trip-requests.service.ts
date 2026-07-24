@@ -32,7 +32,16 @@ import type {
   PublicBeneficiaryInfo,
   CropType,
 } from '@strawboss/types';
-import type { CreateBeneficiaryRequestInput } from '@strawboss/validation';
+import type {
+  CreateBeneficiaryRequestInput,
+  CreateTransporterRequestInput,
+} from '@strawboss/validation';
+import type { OrgBeneficiaryRow } from '../beneficiaries/beneficiaries.service';
+import type { Beneficiary } from '@strawboss/types';
+
+/** The request fields shared by the PIN portal and the authenticated transporter
+ *  form — everything except the PIN (portal) / beneficiaryId (transporter). */
+type BeneficiaryRequestFields = Omit<CreateBeneficiaryRequestInput, 'pin'>;
 
 /**
  * All trip_requests columns aliased to camelCase; coords → {lat,lon}.
@@ -92,6 +101,7 @@ const TR_COLS = sql`
   trip_requests.contact_id                   AS "contactId",
   trip_requests.truck_id                     AS "truckId",
   trip_requests.driver_id                    AS "driverId",
+  trip_requests.created_by_user_id           AS "createdByUserId",
   trip_requests.notify_recipients            AS "notifyRecipients",
   trip_requests.source_depot_id              AS "sourceDepotId",
   trip_requests.created_at               AS "createdAt",
@@ -102,6 +112,7 @@ const TR_COLS = sql`
   (SELECT m.registration_plate FROM machines m WHERE m.id = trip_requests.machine_id) AS "machinePlate",
   (SELECT dd.name       FROM delivery_destinations dd WHERE dd.id = trip_requests.source_depot_id) AS "sourceDepotName",
   (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.confirmed_by)     AS "confirmedByName",
+  (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.created_by_user_id) AS "createdByName",
   EXISTS(SELECT 1 FROM documents d
          WHERE d.trip_request_id = trip_requests.id
            AND d.document_type = 'delivery_note' AND d.deleted_at IS NULL) AS "hasAviz",
@@ -227,6 +238,12 @@ export class TripRequestsService {
       /** Inclusive calendar-day bounds on created_at, in Romania's timezone. */
       dateFrom?: string;
       dateTo?: string;
+      /**
+       * Scope to requests SUBMITTED by this user (the transporter's own ledger).
+       * Fail-closed: the transporter controller always passes its own user id, so
+       * a transporter can never widen this to another creator's requests.
+       */
+      createdByUserId?: string;
       limit?: number;
       offset?: number;
     },
@@ -235,6 +252,9 @@ export class TripRequestsService {
     if (orgId) conditions.push(sql`trip_requests.organization_id = ${orgId}::uuid`);
     if (filters?.status) {
       conditions.push(sql`trip_requests.status = ${filters.status}::request_status`);
+    }
+    if (filters?.createdByUserId) {
+      conditions.push(sql`trip_requests.created_by_user_id = ${filters.createdByUserId}::uuid`);
     }
     if (filters?.search) {
       const like = `%${filters.search}%`;
@@ -661,9 +681,43 @@ export class TripRequestsService {
     // Clear the counter only after the freshness check (see verifyBeneficiaryPin).
     await this.pinThrottle.recordSuccess(orgSlug, beneficiarySlug);
     const { pin: _pin, ...fields } = dto;
+    return this.insertBeneficiaryRequest(row.org, row.beneficiary, fields, null);
+  }
 
+  /**
+   * Submit a request on behalf of one of the transporter's ASSIGNED beneficiaries.
+   * The authenticated analogue of submitBeneficiaryRequest: the logged-in session
+   * replaces the daily PIN, the controller's assignment check
+   * (TransporterAssignmentsService.assertAssigned) replaces the portal slug, and the
+   * row is stamped with created_by_user_id so it surfaces in the transporter's
+   * read-only ledger.
+   */
+  async submitTransporterRequest(
+    orgId: string,
+    userId: string,
+    dto: CreateTransporterRequestInput,
+  ): Promise<{ ok: true }> {
+    const { beneficiaryId, ...fields } = dto;
+    const row = await this.beneficiariesService.findByIdWithOrg(orgId, beneficiaryId);
+    if (!row) throw new NotFoundException('Beneficiar inexistent.');
+    return this.insertBeneficiaryRequest(row.org, row.beneficiary, fields, userId);
+  }
+
+  /**
+   * The INSERT shared by the public PIN portal (createdByUserId = null) and the
+   * authenticated transporter form (createdByUserId = the transporter's id).
+   * Everything upstream differs — PIN verify vs assignment check + beneficiary
+   * resolution — but from here the crop check, saved-record ownership, contact
+   * resolution, insert and admin notifications are identical.
+   */
+  private async insertBeneficiaryRequest(
+    org: OrgBeneficiaryRow['org'],
+    beneficiary: Beneficiary,
+    fields: BeneficiaryRequestFields,
+    createdByUserId: string | null,
+  ): Promise<{ ok: true }> {
     // Enforce the org's accepted crop types (parity with submitPublicRequest).
-    const allowed = row.org.allowedCropTypes ?? [];
+    const allowed = org.allowedCropTypes ?? [];
     if (fields.cropType && allowed.length && !allowed.includes(fields.cropType)) {
       throw new BadRequestException('Recoltă neacceptată.');
     }
@@ -672,17 +726,17 @@ export class TripRequestsService {
     // beneficiary (the composite FK only enforces same-org). This both prevents a
     // crafted body from mislabeling a request with a sibling's record, and stops a
     // bad id from reaching the FK as an unhandled 23503 → 500.
-    await this.assertOwnedRecords(row.org.id, row.beneficiary.id, fields);
+    await this.assertOwnedRecords(org.id, beneficiary.id, fields);
 
     // Resolve the selected contacts (1..10) to their saved name/phone/email and
     // verify EVERY id belongs to this beneficiary in one round-trip. The
     // count-match below is a stronger ownership check than a per-id lookup: the
-    // portal only ever sends ids (never raw addresses), so a public submission
-    // can only notify this beneficiary's own saved contacts.
+    // client only ever sends ids (never raw addresses), so a submission can only
+    // notify this beneficiary's own saved contacts.
     const contactRows = (await this.drizzleProvider.db.execute(
       sql`SELECT id, name, phone, email FROM beneficiary_contacts
-          WHERE organization_id = ${row.org.id}::uuid
-            AND beneficiary_id = ${row.beneficiary.id}::uuid
+          WHERE organization_id = ${org.id}::uuid
+            AND beneficiary_id = ${beneficiary.id}::uuid
             AND id IN (${sql.join(
               fields.contactIds.map((id) => sql`${id}::uuid`),
               sql`, `,
@@ -713,11 +767,11 @@ export class TripRequestsService {
             crop_type, quality, needed_date, tons_requested,
             destination_address, destination_locality, destination_coords, notes,
             beneficiary_id,
-            contact_id, truck_id, driver_id, notify_recipients
+            contact_id, truck_id, driver_id, created_by_user_id, notify_recipients
           ) VALUES (
-            ${row.org.id}::uuid, 'pending',
+            ${org.id}::uuid, 'pending',
             ${primaryContact.name}, ${primaryContact.phone ?? fields.requesterPhone}, ${primaryContact.email ?? fields.requesterEmail ?? null},
-            ${row.beneficiary.companyName}, ${row.beneficiary.companyAddress ?? null}, ${row.beneficiary.companyCui ?? null},
+            ${beneficiary.companyName}, ${beneficiary.companyAddress ?? null}, ${beneficiary.companyCui ?? null},
             ${fields.truckRegistrationPlate}, ${fields.truckCapacityTons ?? null},
             ${fields.trailerRegistrationPlate ?? null}, ${fields.transporterName ?? null}, ${fields.transporterCui ?? null}, ${fields.transporterAddress ?? null},
             ${fields.driverName}, ${fields.driverPhone}, ${fields.driverEmail ?? null},
@@ -725,8 +779,8 @@ export class TripRequestsService {
             ${fields.destinationAddress ?? null}, ${fields.destinationLocality ?? null},
             ${coords ? sql`ST_SetSRID(ST_MakePoint(${coords.lon}, ${coords.lat}), 4326)` : sql`NULL`},
             ${fields.notes ?? null},
-            ${row.beneficiary.id}::uuid,
-            ${fields.contactIds[0]}::uuid, ${fields.truckId ?? null}::uuid, ${fields.driverId ?? null}::uuid,
+            ${beneficiary.id}::uuid,
+            ${fields.contactIds[0]}::uuid, ${fields.truckId ?? null}::uuid, ${fields.driverId ?? null}::uuid, ${createdByUserId ?? null}::uuid,
             ${JSON.stringify(notifyRecipients)}::jsonb
           )
           RETURNING id`,
@@ -734,24 +788,24 @@ export class TripRequestsService {
     const requestId = inserted[0]?.id;
 
     // In-app alert for admins/dispatchers (parity with submitPublicRequest).
-    await this.alertsService.create(row.org.id, {
+    await this.alertsService.create(org.id, {
       category: 'system',
       severity: 'medium',
       title: 'Cerere nouă de transport',
-      description: `${fields.requesterName} (${row.beneficiary.companyName}) a trimis o cerere de transport prin portalul de beneficiar.`,
+      description: `${fields.requesterName} (${beneficiary.companyName}) a trimis o cerere de transport.`,
     });
 
     // Email each org admin (stubbed). Best-effort.
     try {
       const admins = (await this.drizzleProvider.db.execute(
         sql`SELECT email FROM users
-            WHERE organization_id = ${row.org.id}::uuid
+            WHERE organization_id = ${org.id}::uuid
               AND role = 'admin'::user_role
               AND deleted_at IS NULL
               AND email IS NOT NULL`,
       )) as unknown as { email: string }[];
       const tpl = messageTemplates[MessageKind.new_request_admin]({
-        companyName: row.beneficiary.companyName,
+        companyName: beneficiary.companyName,
         requesterName: fields.requesterName,
         requesterPhone: fields.requesterPhone,
         cropType: fields.cropType ?? null,
@@ -766,11 +820,11 @@ export class TripRequestsService {
           subject: tpl.subject,
           body: tpl.body,
           kind: MessageKind.new_request_admin,
-          metadata: { requestId, beneficiaryId: row.beneficiary.id },
+          metadata: { requestId, beneficiaryId: beneficiary.id },
         });
       }
     } catch (err) {
-      this.winston.warn('submitBeneficiaryRequest: admin notify failed', {
+      this.winston.warn('insertBeneficiaryRequest: admin notify failed', {
         context: 'TripRequestsService',
         requestId,
         err: err instanceof Error ? { message: err.message } : err,
@@ -779,12 +833,13 @@ export class TripRequestsService {
 
     this.winston.log(
       'flow',
-      `Beneficiary request submitted: beneficiary=${row.beneficiary.id} org=${row.org.id}`,
+      `Beneficiary request submitted: beneficiary=${beneficiary.id} org=${org.id} createdBy=${createdByUserId ?? 'portal'}`,
       {
         context: 'TripRequestsService',
-        beneficiaryId: row.beneficiary.id,
-        orgId: row.org.id,
+        beneficiaryId: beneficiary.id,
+        orgId: org.id,
         tripRequestId: requestId,
+        createdByUserId,
       },
     );
     return { ok: true };

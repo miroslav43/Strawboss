@@ -14,6 +14,7 @@ export const ROLE_LABEL_KEYS: Record<UserRole, string> = {
   [UserRole.driver]: 'accounts.role.driver',
   [UserRole.geofence_maker]: 'accounts.role.geofence_maker',
   [UserRole.depot_manager]: 'accounts.role.depot_manager',
+  [UserRole.transportator]: 'accounts.role.transportator',
 };
 
 /**

@@ -1,0 +1,154 @@
+import {
+  Injectable,
+  Inject,
+  ForbiddenException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { sql } from 'drizzle-orm';
+import type { Logger } from 'winston';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { DrizzleProvider } from '../database/drizzle.provider';
+
+/**
+ * A beneficiary as shown to a transporter — deliberately PIN-FREE. The
+ * beneficiary's `daily_pin` is a portal secret and must never reach a transporter
+ * account (the transporter authenticates with their own session, not the PIN).
+ */
+export interface AssignedBeneficiary {
+  id: string;
+  slug: string;
+  displayName: string;
+  companyName: string;
+  companyCui: string | null;
+  companyAddress: string | null;
+  email: string | null;
+}
+
+/**
+ * Owns the transporter ↔ beneficiary assignment (transporter_beneficiaries).
+ *
+ * `assertAssigned` is the authenticated analogue of the public portal's daily-PIN
+ * check: it is the single gate every transporter write goes through before it can
+ * touch a beneficiary's saved records or submit a request on their behalf. The
+ * backend bypasses RLS, so this service — not the DB policy — is the real boundary.
+ */
+@Injectable()
+export class TransporterAssignmentsService {
+  constructor(
+    private readonly drizzleProvider: DrizzleProvider,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
+  ) {}
+
+  /** The beneficiaries a transporter may act for (PIN-free), for their own form. */
+  async listAssignedBeneficiaries(orgId: string, userId: string): Promise<AssignedBeneficiary[]> {
+    const rows = await this.drizzleProvider.db.execute(
+      sql`SELECT
+            b.id,
+            b.slug,
+            b.display_name    AS "displayName",
+            b.company_name    AS "companyName",
+            b.company_cui     AS "companyCui",
+            b.company_address AS "companyAddress",
+            b.email
+          FROM transporter_beneficiaries tb
+          JOIN beneficiaries b
+            ON b.id = tb.beneficiary_id
+           AND b.organization_id = tb.organization_id
+          WHERE tb.organization_id = ${orgId}::uuid
+            AND tb.transporter_user_id = ${userId}::uuid
+            AND b.deleted_at IS NULL
+            AND b.is_active = TRUE
+          ORDER BY b.display_name ASC`,
+    );
+    return rows as unknown as AssignedBeneficiary[];
+  }
+
+  /** The raw beneficiary ids assigned to a transporter — for the admin modal. */
+  async listBeneficiaryIds(orgId: string, userId: string): Promise<string[]> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT beneficiary_id AS "beneficiaryId"
+          FROM transporter_beneficiaries
+          WHERE organization_id = ${orgId}::uuid
+            AND transporter_user_id = ${userId}::uuid`,
+    )) as unknown as { beneficiaryId: string }[];
+    return rows.map((r) => r.beneficiaryId);
+  }
+
+  /** Throws unless the transporter is assigned to this beneficiary (same org). */
+  async assertAssigned(orgId: string, userId: string, beneficiaryId: string): Promise<void> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT 1 FROM transporter_beneficiaries
+          WHERE organization_id = ${orgId}::uuid
+            AND transporter_user_id = ${userId}::uuid
+            AND beneficiary_id = ${beneficiaryId}::uuid
+          LIMIT 1`,
+    )) as unknown as unknown[];
+    if (!rows.length) {
+      throw new ForbiddenException('Nu aveți acces la acest beneficiar.');
+    }
+  }
+
+  /**
+   * Replace the whole assignment set for a transporter (admin action). Validates
+   * the target is a transportator in this org and that every beneficiary belongs
+   * to it, then swaps the rows atomically (hard delete → bulk insert).
+   */
+  async setBeneficiaries(orgId: string, userId: string, beneficiaryIds: string[]): Promise<void> {
+    // Target must be a transportator account in the caller's org.
+    const userRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT 1 FROM users
+          WHERE id = ${userId}::uuid
+            AND organization_id = ${orgId}::uuid
+            AND role = 'transportator'::user_role
+            AND deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as unknown[];
+    if (!userRows.length) {
+      throw new NotFoundException('Cont de transportator inexistent.');
+    }
+
+    // De-dup and (if any) verify every beneficiary belongs to this org.
+    const ids = Array.from(new Set(beneficiaryIds));
+    if (ids.length) {
+      const countRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT count(*)::int AS n FROM beneficiaries
+            WHERE organization_id = ${orgId}::uuid
+              AND deleted_at IS NULL
+              AND id IN (${sql.join(
+                ids.map((id) => sql`${id}::uuid`),
+                sql`, `,
+              )})`,
+      )) as unknown as { n: number }[];
+      if ((countRows[0]?.n ?? 0) !== ids.length) {
+        throw new BadRequestException('Beneficiar invalid.');
+      }
+    }
+
+    // Set-replace, atomically: an INSERT failure must not leave the set half-wiped.
+    await this.drizzleProvider.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`DELETE FROM transporter_beneficiaries
+            WHERE organization_id = ${orgId}::uuid
+              AND transporter_user_id = ${userId}::uuid`,
+      );
+      if (ids.length) {
+        const values = sql.join(
+          ids.map((id) => sql`(${orgId}::uuid, ${userId}::uuid, ${id}::uuid)`),
+          sql`, `,
+        );
+        await tx.execute(
+          sql`INSERT INTO transporter_beneficiaries (organization_id, transporter_user_id, beneficiary_id)
+              VALUES ${values}`,
+        );
+      }
+    });
+
+    this.winston.log('flow', `Transporter assignments set: user=${userId} count=${ids.length}`, {
+      context: 'TransporterAssignmentsService',
+      orgId,
+      transporterUserId: userId,
+      count: ids.length,
+    });
+  }
+}
