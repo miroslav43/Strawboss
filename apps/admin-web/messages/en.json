@@ -1032,6 +1032,7 @@
     "transporterCui": "Transporter CUI",
     "transporterAddress": "Transporter address",
     "sourceDepot": "Pickup depot",
+    "sourceField": "Pickup field",
     "cancellationReason": "Cancellation reason",
     "createdAt": "Created at",
     "destinationCoords": "Coordinates",

@@ -206,6 +206,7 @@ export function RequestDetailsModal({
 
           <Section title={t('tripRequests.sectionStatus')}>
             <Detail label={t('tripRequests.sourceDepot')} value={r.sourceDepotName} />
+            <Detail label={t('tripRequests.sourceField')} value={r.sourceParcelName} />
             <Detail
               label={t('tripRequests.colMachine')}
               value={

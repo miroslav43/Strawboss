@@ -149,7 +149,7 @@ export function AuxTripTable({
       header: t('tripRequests.colPickup'),
       render: (row) => {
         // What actually happened beats what was planned; show both when both exist.
-        const parcel = row.request.tripSourceParcelName;
+        const parcel = row.request.tripSourceParcelName ?? row.request.sourceParcelName;
         const depot = row.request.tripSourceDepotName ?? row.request.sourceDepotName;
         const label = [parcel, depot].filter(Boolean).join(' · ');
         return <span className="text-xs text-neutral-700">{label || EMPTY}</span>;

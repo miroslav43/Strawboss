@@ -1032,6 +1032,7 @@
     "transporterCui": "CUI transportator",
     "transporterAddress": "Adresă transportator",
     "sourceDepot": "Depozit ridicare",
+    "sourceField": "Câmp ridicare",
     "cancellationReason": "Motiv anulare",
     "createdAt": "Creat la",
     "destinationCoords": "Coordonate",
