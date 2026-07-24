@@ -139,13 +139,25 @@ export const updateOrgRequestSettingsSchema = z.object({
 });
 export type UpdateOrgRequestSettingsInput = z.infer<typeof updateOrgRequestSettingsSchema>;
 
-/** Body for confirming a request (admin/dispatcher). */
-export const confirmTripRequestSchema = z.object({
-  // Optional override of the internal code for the spawned auxiliary truck.
-  internalCode: z.string().min(1).max(40).optional(),
-  // Source depot (delivery_destination) the driver picks the goods up from.
-  depotId: uuidSchema,
-});
+/**
+ * Body for confirming a request (admin/dispatcher).
+ *
+ * The pickup source is EITHER a depot or a field, never both — mirrors the XOR
+ * already established for `registerLoadSchema`/`forceStatusSchema` in
+ * trip-transition.schema.ts (goods come off a field or out of a depot, never both).
+ */
+export const confirmTripRequestSchema = z
+  .object({
+    // Optional override of the internal code for the spawned auxiliary truck.
+    internalCode: z.string().min(1).max(40).optional(),
+    // Source depot (delivery_destination) the driver picks the goods up from.
+    depotId: uuidSchema.optional(),
+    // Source field (parcel) the driver picks the goods up from directly.
+    parcelId: uuidSchema.optional(),
+  })
+  .refine((d) => !!d.depotId !== !!d.parcelId, {
+    message: 'exactly one of depotId or parcelId is required',
+  });
 export type ConfirmTripRequestInput = z.infer<typeof confirmTripRequestSchema>;
 
 /** Body for cancelling a request (admin/dispatcher). */
