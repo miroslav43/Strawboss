@@ -569,6 +569,135 @@ export class LocationService {
   }
 
   /**
+   * The loader's work board (drives the loader home screen).
+   *
+   *  • `assigned` — NON-auxiliary trips whose loader_id is this machine, still
+   *    to-load (planned/loading/loaded), each with a GPS-derived presence
+   *    (here / enroute / loaded / unknown). Keyed on loader_id (the MACHINE):
+   *    loader_operator_id is nullable on dispatcher-planned trips.
+   *  • `nearbyUnassigned` — the proximity result minus the assigned trucks, so
+   *    no truck appears twice (assigned wins).
+   *
+   * Auxiliary trips are intentionally excluded (is_auxiliary = false): the
+   * mobile screen renders them from the dedicated auxiliary endpoint so the
+   * offline aux-load flow is preserved.
+   */
+  async getLoaderBoard(
+    loaderMachineId: string,
+    options: { radiusM?: number; windowMinutes?: number } = {},
+    orgId: string | null,
+  ): Promise<{
+    assigned: Array<{
+      tripId: string;
+      truckId: string;
+      registrationPlate: string | null;
+      internalCode: string | null;
+      driverName: string | null;
+      sourceParcelName: string | null;
+      sourceParcelMunicipality: string | null;
+      tripStatus: 'planned' | 'loading' | 'loaded';
+      isAuxiliary: boolean;
+      presence: 'here' | 'enroute' | 'loaded' | 'unknown';
+      distanceM: number | null;
+      lastSeenAt: string | null;
+      loadState: 'loaded' | 'empty';
+    }>;
+    nearbyUnassigned: Array<{
+      id: string;
+      registrationPlate: string | null;
+      internalCode: string | null;
+      driverName: string | null;
+      distanceM: number;
+      lastSeenAt: string;
+      lat: number;
+      lon: number;
+      tripStatus: string | null;
+      loadState: 'loaded' | 'empty';
+    }>;
+  }> {
+    const radiusM = options.radiusM ?? 75;
+    const windowMinutes = options.windowMinutes ?? 15;
+
+    // Proximity set (also validates windowMinutes + loader-in-org membership).
+    const nearby = await this.getTrucksAtLoader(loaderMachineId, { radiusM, windowMinutes }, orgId);
+
+    const orgFilter = orgId !== null ? sql`AND t.organization_id = ${orgId}::uuid` : sql``;
+
+    const assignedRows = (await this.drizzleProvider.db.execute(sql`
+      WITH loader_pos AS (
+        SELECT coords
+        FROM machine_location_events
+        WHERE machine_id = ${loaderMachineId}::uuid
+          AND recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
+        ORDER BY recorded_at DESC
+        LIMIT 1
+      ),
+      truck_pos AS (
+        SELECT DISTINCT ON (mle.machine_id)
+          mle.machine_id, mle.coords, mle.recorded_at
+        FROM machine_location_events mle
+        WHERE mle.recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
+        ORDER BY mle.machine_id, mle.recorded_at DESC
+      )
+      SELECT DISTINCT ON (t.truck_id)
+        t.id                          AS "tripId",
+        t.truck_id                    AS "truckId",
+        m.registration_plate          AS "registrationPlate",
+        m.internal_code               AS "internalCode",
+        u.full_name                   AS "driverName",
+        p.name                        AS "sourceParcelName",
+        p.municipality                AS "sourceParcelMunicipality",
+        t.status                      AS "tripStatus",
+        t.is_auxiliary                AS "isAuxiliary",
+        CASE
+          WHEN tp.coords IS NOT NULL AND lp.coords IS NOT NULL
+            THEN ROUND(ST_Distance(tp.coords::geography, lp.coords::geography)::numeric, 1)::float
+          ELSE NULL
+        END                           AS "distanceM",
+        tp.recorded_at                AS "lastSeenAt",
+        CASE
+          WHEN t.status = 'loaded' THEN 'loaded'
+          WHEN tp.coords IS NOT NULL AND lp.coords IS NOT NULL
+               AND ST_DWithin(tp.coords::geography, lp.coords::geography, ${radiusM}) THEN 'here'
+          WHEN tp.coords IS NOT NULL AND lp.coords IS NOT NULL THEN 'enroute'
+          ELSE 'unknown'
+        END                           AS "presence",
+        CASE WHEN t.status = 'loaded' THEN 'loaded' ELSE 'empty' END AS "loadState"
+      FROM trips t
+      JOIN machines m           ON m.id = t.truck_id
+      LEFT JOIN users u         ON u.id = t.driver_id
+      LEFT JOIN parcels p       ON p.id = t.source_parcel_id
+      LEFT JOIN truck_pos tp    ON tp.machine_id = t.truck_id
+      LEFT JOIN loader_pos lp   ON TRUE
+      WHERE t.loader_id = ${loaderMachineId}::uuid
+        AND t.deleted_at IS NULL
+        AND t.is_auxiliary = false
+        AND t.status IN ('planned', 'loading', 'loaded')
+        ${orgFilter}
+      ORDER BY t.truck_id, t.updated_at DESC
+    `)) as unknown as Array<{
+      tripId: string;
+      truckId: string;
+      registrationPlate: string | null;
+      internalCode: string | null;
+      driverName: string | null;
+      sourceParcelName: string | null;
+      sourceParcelMunicipality: string | null;
+      tripStatus: 'planned' | 'loading' | 'loaded';
+      isAuxiliary: boolean;
+      presence: 'here' | 'enroute' | 'loaded' | 'unknown';
+      distanceM: number | null;
+      lastSeenAt: string | null;
+      loadState: 'loaded' | 'empty';
+    }>;
+
+    const assignedTruckIds = new Set(assignedRows.map((r) => r.truckId));
+    const nearbyUnassigned = nearby.filter((truck) => !assignedTruckIds.has(truck.id));
+
+    return { assigned: assignedRows, nearbyUnassigned };
+  }
+
+  /**
    * Return loaders currently within proximity of the given truck machine,
    * scoped to the caller's organization. Mirror of getTrucksAtLoader, inverted:
    * lets a driver see the loaders parked nearby.
