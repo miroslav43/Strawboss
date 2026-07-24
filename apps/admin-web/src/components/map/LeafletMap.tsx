@@ -479,6 +479,7 @@ export function LeafletMap({
           dragMode: true,
           cutPolygon: false,
           removalMode: false,
+          rotateMode: false,
         });
 
         // Custom "Edit a field" control — same pencil icon as Geoman's edit
@@ -638,7 +639,13 @@ export function LeafletMap({
           sticky: false,
         });
 
-        if (showParcels && !hiddenParcelIds?.has(parcel.id)) layer.addTo(map);
+        // While this field's boundary is under edit, hide its base polygon.
+        // handleStartEdit renders the live (draggable) shape as a separate
+        // orange layer on top; leaving the original visible lets it fill the
+        // old shape under — and, after any parcels refetch, re-paint on top of —
+        // the edit layer, so a dragged vertex looks like it "snaps back".
+        if (showParcels && !hiddenParcelIds?.has(parcel.id) && parcel.id !== editingId)
+          layer.addTo(map);
         parcelLayersRef.current.set(parcel.id, layer);
 
         const b = layer.getBounds();
@@ -661,6 +668,7 @@ export function LeafletMap({
     mapReady,
     mapStrings,
     selectionOnly,
+    editingId,
   ]);
 
   // ── 3. Sync machine markers ──────────────────────────────────────────────
@@ -790,13 +798,15 @@ export function LeafletMap({
           { permanent: false, direction: 'center', className: 'deposit-label', sticky: false },
         );
 
-        if (showDeposits && !hiddenDepositIds?.has(d.id)) layer.addTo(map);
+        // Hide the base polygon of the depot under edit — same reason as parcels:
+        // the orange edit layer renders the live shape on top.
+        if (showDeposits && !hiddenDepositIds?.has(d.id) && d.id !== editingId) layer.addTo(map);
         depositLayersRef.current.set(d.id, layer);
       });
     };
 
     void render();
-  }, [deposits, showDeposits, hiddenDepositIds, mapReady, selectedDepositId]);
+  }, [deposits, showDeposits, hiddenDepositIds, mapReady, selectedDepositId, editingId]);
 
   // ── 4. Start boundary-edit when editParcel changes ──────────────────────
   useEffect(() => {
