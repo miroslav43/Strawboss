@@ -12,6 +12,7 @@ import {
   QUEUE_PIN_REGEN,
   QUEUE_PRESENCE_DEADMAN,
   QUEUE_GPS_RETENTION,
+  QUEUE_STALE_PLAN_SWEEP,
 } from './queues';
 import { PRESENCE_DEADMAN_RUN_MS } from '@strawboss/types';
 
@@ -30,6 +31,7 @@ export class JobSchedulerService implements OnModuleInit {
     @InjectQueue(QUEUE_PIN_REGEN) private readonly pinRegenQueue: Queue,
     @InjectQueue(QUEUE_PRESENCE_DEADMAN) private readonly presenceDeadmanQueue: Queue,
     @InjectQueue(QUEUE_GPS_RETENTION) private readonly gpsRetentionQueue: Queue,
+    @InjectQueue(QUEUE_STALE_PLAN_SWEEP) private readonly stalePlanSweepQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -97,8 +99,18 @@ export class JobSchedulerService implements OnModuleInit {
       { name: 'cleanup', data: {} },
     );
 
+    // Stale-plan sweep — auto-cancel own-fleet planned trips whose planned day
+    // has passed and that were never started. 00:15 Europe/Bucharest so the
+    // previous operational day's un-started plans are gone by morning (they
+    // would otherwise re-appear on the phone forever via the pull force-include).
+    await this.stalePlanSweepQueue.upsertJobScheduler(
+      'stale-plan-sweep-daily',
+      { pattern: '15 0 * * *', tz: 'Europe/Bucharest' },
+      { name: 'sweep', data: {} },
+    );
+
     this.winston.info(
-      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m), pin-regen (daily 02:00), presence-deadman (2m), gps-retention (daily 02:30)',
+      'Repeating jobs seeded: geofence (2m + event-driven), alerts (15m), reconciliation (1h), sync-cleanup (daily 02:00), truck-idle (5m), pin-regen (daily 02:00), presence-deadman (2m), gps-retention (daily 02:30), stale-plan-sweep (daily 00:15)',
       {
         context: 'JobSchedulerService',
       },

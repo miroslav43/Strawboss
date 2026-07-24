@@ -17,6 +17,7 @@ import {
   QUEUE_TRIP_AUTOCOMPLETE,
   QUEUE_PRESENCE_DEADMAN,
   QUEUE_GPS_RETENTION,
+  QUEUE_STALE_PLAN_SWEEP,
 } from './queues';
 
 @Module({
@@ -43,6 +44,7 @@ import {
       { name: QUEUE_TRIP_AUTOCOMPLETE },
       { name: QUEUE_PRESENCE_DEADMAN },
       { name: QUEUE_GPS_RETENTION },
+      { name: QUEUE_STALE_PLAN_SWEEP },
     ),
   ],
   providers: [JobSchedulerService],

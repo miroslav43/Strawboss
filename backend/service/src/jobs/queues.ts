@@ -21,3 +21,7 @@ export const QUEUE_TRIP_AUTOCOMPLETE = 'trip-autocomplete';
 export const QUEUE_PRESENCE_DEADMAN = 'presence-deadman';
 // Daily retention/downsampling of machine_location_events (02:30).
 export const QUEUE_GPS_RETENTION = 'gps-retention';
+// Daily sweep — auto-cancel own-fleet planned trips whose planned day has
+// passed and that were never started (00:15 Europe/Bucharest), so an abandoned
+// plan stops re-appearing on the driver's/loader's phone.
+export const QUEUE_STALE_PLAN_SWEEP = 'stale-plan-sweep';

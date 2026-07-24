@@ -4,10 +4,12 @@ import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 import { TruckIdleProcessor } from './truck-idle.processor';
 import { TripAutocompleteProcessor } from './trip-autocomplete.processor';
+import { StalePlanSweepProcessor } from './stale-plan-sweep.processor';
 import {
   QUEUE_CMR_GENERATION,
   QUEUE_TRUCK_IDLE_CHECK,
   QUEUE_TRIP_AUTOCOMPLETE,
+  QUEUE_STALE_PLAN_SWEEP,
 } from '../jobs/queues';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DeliveryDestinationsModule } from '../delivery-destinations/delivery-destinations.module';
@@ -20,6 +22,7 @@ import { ParcelsModule } from '../parcels/parcels.module';
       { name: QUEUE_CMR_GENERATION },
       { name: QUEUE_TRUCK_IDLE_CHECK },
       { name: QUEUE_TRIP_AUTOCOMPLETE },
+      { name: QUEUE_STALE_PLAN_SWEEP },
     ),
     forwardRef(() => NotificationsModule),
     DeliveryDestinationsModule,
@@ -27,7 +30,7 @@ import { ParcelsModule } from '../parcels/parcels.module';
     ParcelsModule,
   ],
   controllers: [TripsController],
-  providers: [TripsService, TruckIdleProcessor, TripAutocompleteProcessor],
+  providers: [TripsService, TruckIdleProcessor, TripAutocompleteProcessor, StalePlanSweepProcessor],
   exports: [TripsService],
 })
 export class TripsModule {}

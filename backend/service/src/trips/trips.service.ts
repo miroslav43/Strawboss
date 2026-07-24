@@ -3241,6 +3241,81 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
+   * Daily sweep — auto-cancel own-fleet planned trips whose planned day has
+   * already passed and that were never started.
+   *
+   * WHY THIS EXISTS: the sync pull force-includes every non-terminal trip on
+   * every pull (sync.service `versionFilter`: `status NOT IN
+   * ('completed','cancelled')`), scoped to `driver_id`/`loader_operator_id`. A
+   * `planned` trip never reaches a terminal status on its own, so an abandoned
+   * plan stays glued to the phone day after day — exactly the "a DJ keeps
+   * showing up" ghost. Nothing ever cancelled it; this job does.
+   *
+   * Scope is deliberately narrow (decided with the operator):
+   *   - own-fleet only (`is_auxiliary = false`) — auxiliary/external pickups may
+   *     legitimately wait days for the external truck, so they are left alone;
+   *   - "planned day passed" = the latest live task-assignment date for the trip
+   *     (fallback: the trip's creation date in Romania tz) is strictly before
+   *     today in Europe/Bucharest — so a plan created today for tomorrow, or one
+   *     dispatched for a future day, survives until its own day has elapsed.
+   *
+   * Each cancelled trip also has its still-live task_assignments soft-deleted so
+   * the truck drops off the tasks board (both the boot backfill and
+   * `autoUpsertFromTruckTask` filter `deleted_at IS NULL`, so nothing
+   * resurrects them). Cancelling bumps `sync_version` via trigger, so the phone
+   * pulls the terminal row and the ghost disappears on the next sync.
+   */
+  async sweepStalePlannedTrips(): Promise<{ cancelled: number; tasksRemoved: number }> {
+    const today = todayInRomania();
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      WITH stale AS (
+        SELECT t.id
+          FROM trips t
+         WHERE t.status = ${TripStatus.planned}
+           AND t.deleted_at IS NULL
+           AND t.is_auxiliary = false
+           AND COALESCE(
+                 (SELECT MAX(ta.assignment_date) FROM task_assignments ta
+                   WHERE ta.trip_id = t.id AND ta.deleted_at IS NULL),
+                 (t.created_at AT TIME ZONE 'Europe/Bucharest')::date
+               ) < ${today}::date
+      ),
+      cancelled AS (
+        UPDATE trips SET
+          status = ${TripStatus.cancelled},
+          cancelled_at = NOW(),
+          cancellation_reason = 'Auto-anulat: plan neînceput, ziua planificată a trecut',
+          updated_at = NOW()
+        WHERE id IN (SELECT id FROM stale) AND status = ${TripStatus.planned}
+        RETURNING id
+      ),
+      tasks AS (
+        UPDATE task_assignments SET deleted_at = NOW(), updated_at = NOW()
+        WHERE trip_id IN (SELECT id FROM cancelled) AND deleted_at IS NULL
+        RETURNING id
+      )
+      SELECT
+        (SELECT COALESCE(json_agg(id), '[]'::json) FROM cancelled) AS cancelled_ids,
+        (SELECT COUNT(*)::int FROM tasks) AS tasks_removed
+    `)) as unknown as { cancelled_ids: string[]; tasks_removed: number }[];
+
+    const cancelledIds = rows[0]?.cancelled_ids ?? [];
+    const tasksRemoved = Number(rows[0]?.tasks_removed ?? 0);
+
+    for (const id of cancelledIds) {
+      this.logTripFlow(id, 'AUTO_CANCEL_STALE_PLAN', TripStatus.planned, TripStatus.cancelled);
+    }
+    if (cancelledIds.length > 0) {
+      this.winston.log(
+        'flow',
+        `Stale-plan sweep: cancelled ${cancelledIds.length} own-fleet planned trip(s), removed ${tasksRemoved} task assignment(s)`,
+        { context: 'TripsService', cancelled: cancelledIds.length, tasksRemoved },
+      );
+    }
+    return { cancelled: cancelledIds.length, tasksRemoved };
+  }
+
+  /**
    * Soft-delete a trip.
    *
    * The originating truck task_assignment KEEPS its `trip_id` pointing at the
