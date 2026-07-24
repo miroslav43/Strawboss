@@ -83,9 +83,7 @@ export function AssignmentModal({
     parentsByParcel.get(key)!.push(a);
   }
 
-  const canSubmit = isBaler
-    ? !!selectedParcelId
-    : !!selectedParentId;
+  const canSubmit = isBaler ? !!selectedParcelId : !!selectedParentId;
 
   const handleSubmit = () => {
     if (isBaler && selectedParcelId) {
@@ -104,8 +102,8 @@ export function AssignmentModal({
     return (
       <ParcelMapModal
         parcels={parcels.filter((p) => p.isActive)}
-        onSelect={(id) => {
-          setSelectedParcelId(id);
+        onSelect={(ids) => {
+          setSelectedParcelId(ids[0] ?? null);
           setShowMap(false);
         }}
         onClose={() => setShowMap(false)}
@@ -122,7 +120,10 @@ export function AssignmentModal({
             <Icon className="h-5 w-5 text-primary" />
             {t('tasks.assignMachine')}
           </h2>
-          <button onClick={onClose} className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100">
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -130,18 +131,21 @@ export function AssignmentModal({
         {/* Machine info */}
         <div className="shrink-0 border-b border-neutral-100 bg-neutral-50 px-6 py-3">
           <div className="flex items-center gap-3">
-            <div className={cn(
-              'flex h-10 w-10 items-center justify-center rounded-full',
-              machine.machineType === 'baler' && 'bg-amber-100 text-amber-600',
-              machine.machineType === 'loader' && 'bg-blue-100 text-blue-600',
-              machine.machineType === 'truck' && 'bg-green-100 text-green-600',
-            )}>
+            <div
+              className={cn(
+                'flex h-10 w-10 items-center justify-center rounded-full',
+                machine.machineType === 'baler' && 'bg-amber-100 text-amber-600',
+                machine.machineType === 'loader' && 'bg-blue-100 text-blue-600',
+                machine.machineType === 'truck' && 'bg-green-100 text-green-600',
+              )}
+            >
               <Icon className="h-5 w-5" />
             </div>
             <div>
               <p className="font-medium text-neutral-800">{machine.internalCode}</p>
               <p className="text-sm text-neutral-500">
-                {machine.registrationPlate} - {t(machineLabels[machine.machineType] ?? 'tasks.machines')}
+                {machine.registrationPlate} -{' '}
+                {t(machineLabels[machine.machineType] ?? 'tasks.machines')}
               </p>
             </div>
           </div>

@@ -164,7 +164,13 @@ export function BaleProductionCard({ machineId }: { machineId: string }) {
   return (
     <div className="rounded-xl bg-white p-6 shadow-sm">
       {showMap && (
-        <ParcelMapModal parcels={parcels} onSelect={onPick} onClose={() => setShowMap(false)} />
+        <ParcelMapModal
+          parcels={parcels}
+          onSelect={(ids) => {
+            if (ids[0]) onPick(ids[0]);
+          }}
+          onClose={() => setShowMap(false)}
+        />
       )}
 
       {/* Header */}
