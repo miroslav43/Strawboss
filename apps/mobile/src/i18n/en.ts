@@ -1105,6 +1105,7 @@ export const en = {
         grossWeight: 'Gross weight',
         tare: 'Tare',
         netWeight: 'Net weight',
+        notWeighed: 'Not weighed',
         receiver: 'Receiver',
         signature: 'Signature',
       },
@@ -1121,6 +1122,13 @@ export const en = {
         confirmation: 'Delivery confirmation',
       },
       receiverFallback: 'Receiver',
+      deliverWithoutWeighing: {
+        action: 'Deliver without weighing',
+        confirmTitle: 'Deliver without weighing?',
+        confirmMessage:
+          'Only use this if the depot has no working scale. The trip will be recorded with no weight.',
+        confirmAction: 'Yes, deliver without weighing',
+      },
       operatorWait: {
         title: 'Awaiting depot confirmation',
         confirmedTitle: 'Delivery confirmed by operator',

@@ -51,11 +51,12 @@ export interface StartDeliveryDto {
 }
 
 export interface ConfirmDeliveryDto {
-  grossWeightKg: number;
-  tareWeightKg: number;
+  grossWeightKg?: number | null;
+  tareWeightKg?: number | null;
   weightTicketNumber?: string;
   weightTicketPhotoUrl?: string;
   deterioratedBalesCount?: number | null;
+  scaleBroken?: boolean;
 }
 
 export interface CompleteDto {

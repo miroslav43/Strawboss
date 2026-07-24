@@ -1108,6 +1108,7 @@ export const ro = {
         grossWeight: 'Greutate brută',
         tare: 'Tară',
         netWeight: 'Greutate netă',
+        notWeighed: 'Fără cântărire',
         receiver: 'Primitor',
         signature: 'Semnătură',
       },
@@ -1124,6 +1125,13 @@ export const ro = {
         confirmation: 'Confirmare livrare',
       },
       receiverFallback: 'Primitor',
+      deliverWithoutWeighing: {
+        action: 'Livrează fără cântărire',
+        confirmTitle: 'Livrezi fără cântărire?',
+        confirmMessage:
+          'Folosește doar dacă depozitul nu are cântar funcțional. Cursa va fi înregistrată fără greutate.',
+        confirmAction: 'Da, livrează fără cântărire',
+      },
       operatorWait: {
         title: 'Aștepți confirmarea depozitului',
         confirmedTitle: 'Livrare confirmată de operator',

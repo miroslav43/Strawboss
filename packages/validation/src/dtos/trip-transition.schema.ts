@@ -24,22 +24,33 @@ export const startDeliverySchema = z.object({
 export const confirmDeliverySchema = z
   .object({
     // Driver weighs the loaded truck (gross) and the empty truck (tare) at the
-    // depot weighbridge; net = gross - tare is computed in the DB.
-    grossWeightKg: z.number().positive(),
-    tareWeightKg: z.number().nonnegative(),
+    // depot weighbridge; net = gross - tare is computed in the DB. Both are
+    // nullable — a driver delivering to a depot with no working scale sets
+    // `scaleBroken` instead, mirroring confirmDepotDeliverySchema.
+    grossWeightKg: z.number().positive().nullable().optional(),
+    tareWeightKg: z.number().nonnegative().nullable().optional(),
     weightTicketNumber: z.string().optional(),
     // Weight-ticket photo was removed from the flow; kept optional for back-compat.
     weightTicketPhotoUrl: z.string().optional(),
     // Mobile sends `null` when the (now-removed) damaged-bales step is skipped —
     // accept null as well as a number/absent, otherwise confirm-delivery 400s.
     deterioratedBalesCount: z.number().int().min(0).nullable().optional(),
+    scaleBroken: z.boolean().optional(),
+  })
+  // Either the scale was skipped, or a gross weight was actually captured.
+  .refine((d) => d.scaleBroken === true || d.grossWeightKg != null, {
+    message: 'Este necesară greutatea brută (sau livrare fără cântărire)',
+    path: ['grossWeightKg'],
   })
   // Tare can never exceed gross (net would be negative). Reject instead of
   // letting the backend clamp it to net=0 on a legally binding CMR.
-  .refine((d) => d.tareWeightKg <= d.grossWeightKg, {
-    message: 'Tara nu poate depăși greutatea brută',
-    path: ['tareWeightKg'],
-  });
+  .refine(
+    (d) => d.grossWeightKg == null || d.tareWeightKg == null || d.tareWeightKg <= d.grossWeightKg,
+    {
+      message: 'Tara nu poate depăși greutatea brută',
+      path: ['tareWeightKg'],
+    },
+  );
 
 export const completeSchema = z.object({
   receiverName: z.string().min(1),

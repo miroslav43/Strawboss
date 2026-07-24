@@ -16,6 +16,8 @@ interface CmrConfirmationProps {
   grossWeightKg: number;
   tareWeightKg: number;
   netWeightKg: number;
+  /** Depot had no working scale — the driver delivered without weighing. */
+  scaleBroken?: boolean;
   receiverName: string;
   destinationName: string;
   destinationAddress?: string | null;
@@ -46,6 +48,7 @@ export function CmrConfirmation({
   grossWeightKg,
   tareWeightKg,
   netWeightKg,
+  scaleBroken = false,
   receiverName,
   destinationName,
   destinationAddress,
@@ -56,6 +59,8 @@ export function CmrConfirmation({
 }: CmrConfirmationProps) {
   const { t } = useI18n();
   const signatureDisplay = hasSignature ? '✓' : '✗';
+  const weightDisplay = (kg: number) =>
+    scaleBroken ? t('delivery.cmr.row.notWeighed') : `${kg} kg`;
 
   // FM-6: countdown before executing the irreversible CMR confirmation
   const [countdownVisible, setCountdownVisible] = useState(false);
@@ -89,9 +94,12 @@ export function CmrConfirmation({
             <SummaryRow label={t('delivery.cmr.row.locality')} value={destinationAddress} />
           ) : null}
           <SummaryRow label={t('delivery.cmr.row.bales')} value={String(baleCount)} />
-          <SummaryRow label={t('delivery.cmr.row.grossWeight')} value={`${grossWeightKg} kg`} />
-          <SummaryRow label={t('delivery.cmr.row.tare')} value={`${tareWeightKg} kg`} />
-          <SummaryRow label={t('delivery.cmr.row.netWeight')} value={`${netWeightKg} kg`} />
+          <SummaryRow
+            label={t('delivery.cmr.row.grossWeight')}
+            value={weightDisplay(grossWeightKg)}
+          />
+          <SummaryRow label={t('delivery.cmr.row.tare')} value={weightDisplay(tareWeightKg)} />
+          <SummaryRow label={t('delivery.cmr.row.netWeight')} value={weightDisplay(netWeightKg)} />
           <SummaryRow label={t('delivery.cmr.row.receiver')} value={receiverName} />
           <SummaryRow
             label={t('delivery.cmr.row.signature')}

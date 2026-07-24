@@ -1663,16 +1663,29 @@ export class TripsService implements OnModuleInit {
     // chk_net_weight_sane (gross >= tare). The mobile validates gross >= tare
     // before submit. Reject (not silently clamp) a swapped/typo'd payload — a
     // clamp would write net=0 to a legally binding CMR without any error.
-    const grossWeightKg = dto.grossWeightKg;
-    if (dto.tareWeightKg > grossWeightKg) {
-      throw new BadRequestException({
-        error: 'tare_exceeds_gross',
-        message: 'Tara nu poate depăși greutatea brută.',
-        grossWeightKg,
-        tareWeightKg: dto.tareWeightKg,
-      });
+    // scaleBroken (mirrors confirmDepotDelivery) — the depot has no working
+    // scale, so the driver delivers without weighing and both columns stay NULL.
+    const scaleBroken = dto.scaleBroken === true;
+    let grossWeightKg: number | null = null;
+    let tareWeightKg: number | null = null;
+    if (!scaleBroken) {
+      if (typeof dto.grossWeightKg !== 'number' || dto.grossWeightKg <= 0) {
+        throw new BadRequestException({
+          error: 'gross_weight_required',
+          message: 'Este necesară greutatea brută (sau marcați livrarea fără cântărire).',
+        });
+      }
+      grossWeightKg = dto.grossWeightKg;
+      tareWeightKg = typeof dto.tareWeightKg === 'number' ? dto.tareWeightKg : 0;
+      if (tareWeightKg > grossWeightKg) {
+        throw new BadRequestException({
+          error: 'tare_exceeds_gross',
+          message: 'Tara nu poate depăși greutatea brută.',
+          grossWeightKg,
+          tareWeightKg,
+        });
+      }
     }
-    const tareWeightKg = dto.tareWeightKg;
 
     // M8 — delivered_bale_count (distinct from the loaded bale_count) so
     // reconciliation can see damage/loss on this non-depot path: the depot
@@ -1689,6 +1702,7 @@ export class TripsService implements OnModuleInit {
         status = ${TripStatus.delivered},
         gross_weight_kg = ${grossWeightKg},
         tare_weight_kg = ${tareWeightKg},
+        scale_broken = ${scaleBroken},
         weight_ticket_number = ${dto.weightTicketNumber ?? null},
         weight_ticket_photo_url = ${dto.weightTicketPhotoUrl ?? null},
         deteriorated_bales_count = ${dto.deterioratedBalesCount ?? null},

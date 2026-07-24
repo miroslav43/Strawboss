@@ -1,5 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Animated,
+  Dimensions,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -15,7 +23,6 @@ import { StepIndicator } from '@/components/ui/StepIndicator';
 import { WeightInput } from './WeightInput';
 import { SignatureStep } from './SignatureStep';
 import { CmrConfirmation } from './CmrConfirmation';
-import { WhatsAppLink } from '@/components/shared/WhatsAppLink';
 import { uploadSignature } from '@/lib/signatureUpload';
 import { mobileLogger } from '@/lib/logger';
 import { mobileApiClient } from '@/lib/api-client';
@@ -65,6 +72,8 @@ interface DeliveryDraft {
   grossWeightValue: string;
   tareWeightValue: string;
   receiverSignature: string | null;
+  /** Driver chose "Livrează fără cântărire" — depot scale is unavailable. */
+  scaleBroken?: boolean;
 }
 
 /**
@@ -104,6 +113,7 @@ export function EnhancedDeliveryFlow({
   const [grossWeightValue, setGrossWeightValue] = useState('');
   const [tareWeightValue, setTareWeightValue] = useState('');
   const [receiverSignature, setReceiverSignature] = useState<string | null>(null);
+  const [scaleBroken, setScaleBroken] = useState(false);
   const [loading, setLoading] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
   // M11 — real sync_queue status for this trip's pending transition (e.g. a
@@ -129,7 +139,6 @@ export function EnhancedDeliveryFlow({
     destinationName ||
     t('delivery.enhancedFlow.receiverFallback')
   ).trim();
-  const contactPhone = depot?.contactPhone ?? undefined;
 
   const grossWeightKg = parseFloat(grossWeightValue) || 0;
   const tareWeightKg = parseFloat(tareWeightValue) || 0;
@@ -151,6 +160,7 @@ export function EnhancedDeliveryFlow({
           if (draft.grossWeightValue != null) setGrossWeightValue(draft.grossWeightValue);
           if (draft.tareWeightValue != null) setTareWeightValue(draft.tareWeightValue);
           if (draft.receiverSignature != null) setReceiverSignature(draft.receiverSignature);
+          if (draft.scaleBroken != null) setScaleBroken(draft.scaleBroken);
           // Resume after the last completed step, clamped to the new total.
           // Pre-redesign drafts (single weight + photo) carry no gross/tare — if
           // weight data is missing, force step 0 so the driver re-enters it
@@ -180,6 +190,7 @@ export function EnhancedDeliveryFlow({
         grossWeightValue,
         tareWeightValue,
         receiverSignature,
+        scaleBroken,
       };
       try {
         const db = await getDatabase();
@@ -193,7 +204,7 @@ export function EnhancedDeliveryFlow({
         });
       }
     },
-    [tripId, grossWeightValue, tareWeightValue, receiverSignature],
+    [tripId, grossWeightValue, tareWeightValue, receiverSignature, scaleBroken],
   );
 
   const goToStep = useCallback(
@@ -210,6 +221,26 @@ export function EnhancedDeliveryFlow({
     },
     [slideAnim],
   );
+
+  // Depot has no working scale — skip weighing entirely (mirrors the depot
+  // operator's own "scaleBroken" confirm path, see confirmDepotDeliverySchema).
+  const handleDeliverWithoutWeighing = useCallback(() => {
+    showModal({
+      type: 'confirm',
+      title: t('delivery.enhancedFlow.deliverWithoutWeighing.confirmTitle'),
+      message: t('delivery.enhancedFlow.deliverWithoutWeighing.confirmMessage'),
+      confirmText: t('delivery.enhancedFlow.deliverWithoutWeighing.confirmAction'),
+      onConfirm: () => {
+        hideModal();
+        setScaleBroken(true);
+        setGrossWeightValue('');
+        setTareWeightValue('');
+        void persistDraft(0);
+        goToStep(1);
+      },
+      onCancel: hideModal,
+    });
+  }, [showModal, hideModal, t, persistDraft, goToStep]);
 
   // M11 — refresh the real transition status whenever the confirm step is
   // shown (covers resuming a delivery whose previous confirm attempt failed).
@@ -276,16 +307,19 @@ export function EnhancedDeliveryFlow({
       await tripsRepo.applyTransitionLocally(tripId, 'delivering');
       await enqueueTripTransition(tripId, 'start-delivery', {});
 
-      // confirm-delivery: delivering → delivered (gross + tare; net = gross - tare server-side)
+      // confirm-delivery: delivering → delivered (gross + tare; net = gross - tare server-side).
+      // scaleBroken (depot has no working scale) keeps both weights NULL.
       await tripsRepo.applyTransitionLocally(tripId, 'delivered', {
-        gross_weight_kg: grossWeightKg,
-        tare_weight_kg: tareWeightKg,
+        gross_weight_kg: scaleBroken ? null : grossWeightKg,
+        tare_weight_kg: scaleBroken ? null : tareWeightKg,
+        scale_broken: scaleBroken ? 1 : 0,
         delivered_at: new Date().toISOString(),
       });
       await enqueueTripTransition(tripId, 'confirm-delivery', {
-        grossWeightKg,
-        tareWeightKg,
+        grossWeightKg: scaleBroken ? null : grossWeightKg,
+        tareWeightKg: scaleBroken ? null : tareWeightKg,
         deterioratedBalesCount: null,
+        scaleBroken,
       });
 
       // complete: delivered → completed (receiver = depot contact, signature only)
@@ -328,6 +362,7 @@ export function EnhancedDeliveryFlow({
   }, [
     grossWeightKg,
     tareWeightKg,
+    scaleBroken,
     receiverName,
     receiverSignature,
     tripId,
@@ -387,12 +422,25 @@ export function EnhancedDeliveryFlow({
     switch (currentStep) {
       case 0:
         return (
-          <>
-            {contactPhone ? (
-              <View style={styles.whatsappRow}>
-                <WhatsAppLink phone={contactPhone} />
-              </View>
-            ) : null}
+          <ScrollView
+            style={styles.stepScroll}
+            contentContainerStyle={styles.stepScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.skipWeighingRow}>
+              <TouchableOpacity
+                style={styles.skipWeighingButton}
+                activeOpacity={0.7}
+                onPress={handleDeliverWithoutWeighing}
+                accessibilityRole="button"
+                accessibilityLabel={t('delivery.enhancedFlow.deliverWithoutWeighing.action')}
+              >
+                <MaterialCommunityIcons name="scale-off" size={20} color={colors.white} />
+                <Text style={styles.skipWeighingLabel}>
+                  {t('delivery.enhancedFlow.deliverWithoutWeighing.action')}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <WeightInput
               grossValue={grossWeightValue}
               onGrossChange={setGrossWeightValue}
@@ -403,7 +451,7 @@ export function EnhancedDeliveryFlow({
                 goToStep(1);
               }}
             />
-          </>
+          </ScrollView>
         );
       case 1:
         return (
@@ -436,6 +484,7 @@ export function EnhancedDeliveryFlow({
               grossWeightKg={grossWeightKg}
               tareWeightKg={tareWeightKg}
               netWeightKg={netWeightKg}
+              scaleBroken={scaleBroken}
               receiverName={receiverName}
               destinationName={destinationName}
               destinationAddress={destinationAddress}
@@ -469,10 +518,31 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
   },
-  whatsappRow: {
+  stepScroll: {
+    flex: 1,
+  },
+  stepScrollContent: {
+    flexGrow: 1,
+  },
+  skipWeighingRow: {
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 4,
+  },
+  skipWeighingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#B7791F',
+    borderRadius: 12,
+    height: 48,
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  skipWeighingLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.white,
   },
   pendingBadgeRow: {
     paddingHorizontal: 24,
