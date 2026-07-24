@@ -378,6 +378,8 @@
     "hoursAgo": "{{n}}h ago",
     "daysAgo": "{{n}}d ago",
     "editParcelBtn": "✏️ Edit",
+    "editFieldTool": "Edit a field",
+    "pickFieldHint": "Click the field whose boundary you want to edit.",
     "deleteParcelBtn": "🗑️ Delete",
     "typeLabel": "Type",
     "operatorLabel": "Operator",

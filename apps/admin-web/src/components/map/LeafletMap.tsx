@@ -366,6 +366,15 @@ export function LeafletMap({
 
   const drawToolsDisabled = !!editParcel || !!editDeposit || !!editingId;
 
+  // Pick-to-edit: the toolbar "Edit a field" button arms this mode; the next
+  // click on a parcel starts a boundary edit for THAT field only (instead of
+  // Geoman's global edit mode, which drops vertices on every field at once).
+  const [pickEditMode, setPickEditMode] = useState(false);
+  const pickEditModeRef = useRef(pickEditMode);
+  useEffect(() => {
+    pickEditModeRef.current = pickEditMode;
+  }, [pickEditMode]);
+
   // Ref so the global pm:create handler (registered once in map init) can read current editingId.
   const editingIdRef = useRef(editingId);
   useEffect(() => {
@@ -375,6 +384,16 @@ export function LeafletMap({
   // Which entity the current boundary-edit belongs to — drives which mutation
   // handleSave() calls and how the save overlay resolves the item's label.
   const editKindRef = useRef<'parcel' | 'deposit'>('parcel');
+
+  // Toolbar-button title, kept fresh in a ref so the once-registered custom
+  // control (in the map-init effect) always reads the current locale.
+  const editFieldTitleRef = useRef('');
+  editFieldTitleRef.current = t('leaflet.editFieldTool');
+
+  // Starts a single-field boundary edit for a picked parcel. Held in a ref so
+  // the parcel-layer click handlers (created inside an effect) always call the
+  // latest handleStartEdit closure.
+  const startPickedEditRef = useRef<(parcel: Parcel) => void>(() => {});
 
   const updateBoundary = useUpdateParcelBoundary(apiClient);
   const updateDeposit = useUpdateDeliveryDestination(apiClient);
@@ -452,10 +471,30 @@ export function LeafletMap({
           drawPolyline: false,
           drawRectangle: true,
           drawPolygon: true,
-          editMode: true,
+          // Geoman's global edit button is intentionally hidden: it drops
+          // draggable vertices on EVERY field at once. The custom "Edit a
+          // field" control below arms pick-mode instead — click one field,
+          // edit only that field's points.
+          editMode: false,
           dragMode: true,
           cutPolygon: false,
           removalMode: false,
+        });
+
+        // Custom "Edit a field" control — same pencil icon as Geoman's edit
+        // button, but instead of global edit it toggles pickEditMode. The
+        // parcel-layer click handler then routes the next click into a
+        // single-field boundary edit. toggle:false keeps React state the sole
+        // source of truth (the .active highlight is applied by the effect that
+        // watches pickEditMode).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (map as any).pm.Toolbar.createCustomControl({
+          name: 'editField',
+          block: 'edit',
+          className: 'leaflet-pm-icon-edit strawboss-pick-edit-btn',
+          title: editFieldTitleRef.current,
+          toggle: false,
+          onClick: () => setPickEditMode((prev) => !prev),
         });
 
         // Global pm:create handler — catches draws from the Geoman toolbar directly,
@@ -570,7 +609,19 @@ export function LeafletMap({
           style: () => getParcelPolygonStyle(parcel, isSelected),
         })
           .bindPopup(parcelPopupHtml(parcel, mapStrings, selectionOnly), { maxWidth: 280 })
-          .on('click', () => onParcelSelectRef.current(parcel.id));
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .on('click', (ev: any) => {
+            // Pick-to-edit: arm a boundary edit for THIS field only, then leave
+            // pick-mode. Suppress the popup that the layer would otherwise open.
+            if (pickEditModeRef.current) {
+              if (ev?.originalEvent) L.DomEvent.stop(ev.originalEvent);
+              map.closePopup();
+              setPickEditMode(false);
+              startPickedEditRef.current(parcel);
+              return;
+            }
+            onParcelSelectRef.current(parcel.id);
+          });
 
         // Permanent label: name (if set) on line 1, code smaller below.
         const labelLine1 = parcel.name ?? null;
@@ -764,6 +815,30 @@ export function LeafletMap({
       void handleStartEdit(editDeposit);
     }
   }, [editDeposit, selectionOnly]);
+
+  // ── 4c. Pick-to-edit plumbing ────────────────────────────────────────────
+  // Refresh the picked-edit callback every render so it closes over the latest
+  // handleStartEdit; a parcel click in pick-mode starts a single-field edit.
+  useEffect(() => {
+    startPickedEditRef.current = (parcel: Parcel) => {
+      editKindRef.current = 'parcel';
+      void handleStartEdit(parcel);
+    };
+  });
+
+  // Reflect pick-mode in the UI: highlight the toolbar button, show a crosshair
+  // cursor over the map + fields, and cancel any in-progress draw.
+  useEffect(() => {
+    const container = mapRef.current;
+    if (!container) return;
+    container.classList.toggle('pick-edit-cursor', pickEditMode);
+    const btn = container.querySelector('.strawboss-pick-edit-btn')?.closest('.button-container');
+    btn?.classList.toggle('active', pickEditMode);
+    if (pickEditMode) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mapInstanceRef.current as any)?.pm?.disableDraw?.();
+    }
+  }, [pickEditMode, mapReady]);
 
   // ── 5. Draw mode (parcel or deposit) ─────────────────────────────────────
   // Auto-enable polygon draw when a mode is selected; Geoman toolbar still works
@@ -1245,6 +1320,20 @@ export function LeafletMap({
       {!selectionOnly && locateError && (
         <div className="absolute bottom-6 left-1/2 z-[1000] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-5 py-3 shadow-xl">
           <span className="text-sm font-medium text-red-700">{locateError}</span>
+        </div>
+      )}
+
+      {/* Pick-a-field hint bar — shown after the "Edit a field" tool is armed */}
+      {!selectionOnly && pickEditMode && !editingId && (
+        <div className="absolute bottom-6 left-1/2 z-[1000] -translate-x-1/2 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 shadow-xl">
+          <span className="text-sm font-medium text-amber-800">{t('leaflet.pickFieldHint')}</span>
+          <button
+            type="button"
+            onClick={() => setPickEditMode(false)}
+            className="rounded-lg border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100"
+          >
+            {t('common.cancel')}
+          </button>
         </div>
       )}
 

@@ -60,6 +60,13 @@
   display: none;
 }
 
+/* Pick-a-field-to-edit mode — crosshair over the map and its fields so it's
+   clear the next click selects a single field to edit. */
+.pick-edit-cursor .leaflet-container,
+.pick-edit-cursor .leaflet-interactive {
+  cursor: crosshair !important;
+}
+
 /* T8 — Pulse ring on machine markers whose recordedAt updated within 60 s. */
 @keyframes pulseRing {
   0% {

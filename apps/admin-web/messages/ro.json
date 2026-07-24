@@ -378,6 +378,8 @@
     "hoursAgo": "acum {{n}} h",
     "daysAgo": "acum {{n}} z",
     "editParcelBtn": "✏️ Editează",
+    "editFieldTool": "Editează un câmp",
+    "pickFieldHint": "Apasă câmpul căruia vrei să-i editezi limita.",
     "deleteParcelBtn": "🗑️ Șterge",
     "typeLabel": "Tip",
     "operatorLabel": "Operator",
