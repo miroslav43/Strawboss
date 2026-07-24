@@ -1107,7 +1107,6 @@ export const en = {
         netWeight: 'Net weight',
         notWeighed: 'Not weighed',
         receiver: 'Receiver',
-        signature: 'Signature',
       },
       action: {
         confirm: 'Confirm delivery',
@@ -1118,7 +1117,6 @@ export const en = {
     enhancedFlow: {
       step: {
         weighing: 'Weighing',
-        signature: 'Receiver signature',
         confirmation: 'Delivery confirmation',
       },
       receiverFallback: 'Receiver',
@@ -1141,15 +1139,6 @@ export const en = {
       error: {
         title: 'Error',
         confirmFailed: 'Could not confirm the delivery.',
-      },
-    },
-    signatureStep: {
-      receiverLabel: 'Receiver (depot contact person)',
-      signatureCapture: "Receiver's signature",
-      signedConfirmation: 'Signature captured',
-      hint: 'Sign in the box, then tap "Confirm".',
-      action: {
-        continue: 'Continue',
       },
     },
     weightInput: {

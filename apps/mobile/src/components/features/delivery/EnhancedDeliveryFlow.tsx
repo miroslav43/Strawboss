@@ -21,9 +21,7 @@ import {
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { StepIndicator } from '@/components/ui/StepIndicator';
 import { WeightInput } from './WeightInput';
-import { SignatureStep } from './SignatureStep';
 import { CmrConfirmation } from './CmrConfirmation';
-import { uploadSignature } from '@/lib/signatureUpload';
 import { mobileLogger } from '@/lib/logger';
 import { mobileApiClient } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
@@ -56,22 +54,24 @@ interface EnhancedDeliveryFlowProps {
   onCancel: () => void;
 }
 
-type Step = 0 | 1 | 2;
+// Receiver signature step was removed entirely (see EnhancedDeliveryFlow's
+// git history) — a failed signature upload used to strand the trip forever
+// retrying an unfixable "Invalid signature URL" error in the sync queue.
+// Weighing now goes straight to the CMR confirmation.
+type Step = 0 | 1;
 
-const TOTAL_STEPS = 3;
-const LAST_STEP: Step = 2;
+const TOTAL_STEPS = 2;
+const LAST_STEP: Step = 1;
 
 const STEP_TITLE_KEYS: Record<Step, string> = {
   0: 'delivery.enhancedFlow.step.weighing',
-  1: 'delivery.enhancedFlow.step.signature',
-  2: 'delivery.enhancedFlow.step.confirmation',
+  1: 'delivery.enhancedFlow.step.confirmation',
 };
 
 /** Delivery draft — persisted to SQLite so the flow can resume after a crash. */
 interface DeliveryDraft {
   grossWeightValue: string;
   tareWeightValue: string;
-  receiverSignature: string | null;
   /** Driver chose "Livrează fără cântărire" — depot scale is unavailable. */
   scaleBroken?: boolean;
 }
@@ -112,7 +112,6 @@ export function EnhancedDeliveryFlow({
   const [currentStep, setCurrentStep] = useState<Step>(0);
   const [grossWeightValue, setGrossWeightValue] = useState('');
   const [tareWeightValue, setTareWeightValue] = useState('');
-  const [receiverSignature, setReceiverSignature] = useState<string | null>(null);
   const [scaleBroken, setScaleBroken] = useState(false);
   const [loading, setLoading] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -159,7 +158,6 @@ export function EnhancedDeliveryFlow({
           const draft = JSON.parse(trip.delivery_draft_json) as Partial<DeliveryDraft>;
           if (draft.grossWeightValue != null) setGrossWeightValue(draft.grossWeightValue);
           if (draft.tareWeightValue != null) setTareWeightValue(draft.tareWeightValue);
-          if (draft.receiverSignature != null) setReceiverSignature(draft.receiverSignature);
           if (draft.scaleBroken != null) setScaleBroken(draft.scaleBroken);
           // Resume after the last completed step, clamped to the new total.
           // Pre-redesign drafts (single weight + photo) carry no gross/tare — if
@@ -189,7 +187,6 @@ export function EnhancedDeliveryFlow({
       const draft: DeliveryDraft = {
         grossWeightValue,
         tareWeightValue,
-        receiverSignature,
         scaleBroken,
       };
       try {
@@ -204,7 +201,7 @@ export function EnhancedDeliveryFlow({
         });
       }
     },
-    [tripId, grossWeightValue, tareWeightValue, receiverSignature, scaleBroken],
+    [tripId, grossWeightValue, tareWeightValue, scaleBroken],
   );
 
   const goToStep = useCallback(
@@ -288,18 +285,6 @@ export function EnhancedDeliveryFlow({
     setLoading(true);
     mobileLogger.flow('Driver delivery: confirming offline-first', { tripId, tripNumber });
     try {
-      // Upload the receiver signature PNG (falls back to base64 on failure).
-      let receiverSignatureValue = receiverSignature ?? '';
-      if (receiverSignature) {
-        try {
-          receiverSignatureValue = await uploadSignature(receiverSignature, 'receiver');
-        } catch {
-          mobileLogger.info('EnhancedDeliveryFlow: signature upload failed, using base64', {
-            tripId,
-          });
-        }
-      }
-
       const db = await getDatabase();
       const tripsRepo = new TripsRepo(db);
 
@@ -322,14 +307,13 @@ export function EnhancedDeliveryFlow({
         scaleBroken,
       });
 
-      // complete: delivered → completed (receiver = depot contact, signature only)
+      // complete: delivered → completed (receiver = depot contact, no signature)
       await tripsRepo.applyTransitionLocally(tripId, 'completed', {
         receiver_name: receiverName,
         completed_at: new Date().toISOString(),
       });
       await enqueueTripTransition(tripId, 'complete', {
         receiverName,
-        receiverSignature: receiverSignatureValue,
       });
 
       await tripsRepo.clearDeliveryDraft(tripId);
@@ -364,7 +348,6 @@ export function EnhancedDeliveryFlow({
     tareWeightKg,
     scaleBroken,
     receiverName,
-    receiverSignature,
     tripId,
     tripNumber,
     onComplete,
@@ -455,18 +438,6 @@ export function EnhancedDeliveryFlow({
         );
       case 1:
         return (
-          <SignatureStep
-            receiverName={receiverName}
-            receiverSignature={receiverSignature}
-            onSign={setReceiverSignature}
-            onComplete={() => {
-              void persistDraft(1);
-              goToStep(2);
-            }}
-          />
-        );
-      case 2:
-        return (
           <>
             <View style={styles.pendingBadgeRow}>
               <PendingTransitionBadge
@@ -488,9 +459,8 @@ export function EnhancedDeliveryFlow({
               receiverName={receiverName}
               destinationName={destinationName}
               destinationAddress={destinationAddress}
-              hasSignature={receiverSignature !== null}
               onConfirm={handleConfirm}
-              onBack={() => goToStep(1)}
+              onBack={() => goToStep(0)}
               loading={loading}
             />
           </>

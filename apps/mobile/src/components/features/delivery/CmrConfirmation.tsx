@@ -6,8 +6,6 @@ import { useI18n } from '@/lib/i18n';
 
 const PRIMARY = '#0A5C36';
 const BACKGROUND = '#F3DED8';
-const DANGER = '#C62828';
-const SUCCESS = '#2E7D32';
 const ROW_BORDER = '#D0C8C2';
 
 interface CmrConfirmationProps {
@@ -21,7 +19,6 @@ interface CmrConfirmationProps {
   receiverName: string;
   destinationName: string;
   destinationAddress?: string | null;
-  hasSignature: boolean;
   onConfirm: () => void;
   onBack: () => void;
   loading: boolean;
@@ -52,13 +49,11 @@ export function CmrConfirmation({
   receiverName,
   destinationName,
   destinationAddress,
-  hasSignature,
   onConfirm,
   onBack,
   loading,
 }: CmrConfirmationProps) {
   const { t } = useI18n();
-  const signatureDisplay = hasSignature ? '✓' : '✗';
   const weightDisplay = (kg: number) =>
     scaleBroken ? t('delivery.cmr.row.notWeighed') : `${kg} kg`;
 
@@ -101,11 +96,6 @@ export function CmrConfirmation({
           <SummaryRow label={t('delivery.cmr.row.tare')} value={weightDisplay(tareWeightKg)} />
           <SummaryRow label={t('delivery.cmr.row.netWeight')} value={weightDisplay(netWeightKg)} />
           <SummaryRow label={t('delivery.cmr.row.receiver')} value={receiverName} />
-          <SummaryRow
-            label={t('delivery.cmr.row.signature')}
-            value={signatureDisplay}
-            valueStyle={hasSignature ? styles.successText : styles.dangerText}
-          />
         </View>
       </ScrollView>
 
@@ -178,12 +168,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111111',
     textAlign: 'right',
-  },
-  successText: {
-    color: SUCCESS,
-  },
-  dangerText: {
-    color: DANGER,
   },
   actions: {
     gap: 12,

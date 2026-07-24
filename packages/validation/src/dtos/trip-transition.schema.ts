@@ -52,9 +52,14 @@ export const confirmDeliverySchema = z
     },
   );
 
+// Receiver signature was dropped from the driver's self-confirm delivery flow —
+// a failed binary upload used to fall back to a raw base64 string that could
+// never pass signatureUrlSchema, permanently stuck-retrying `complete` in the
+// sync queue. The field is intentionally absent (not just optional) so a
+// stale queued payload from an old app build gets it silently stripped by
+// zod's default strip behavior instead of rejected.
 export const completeSchema = z.object({
   receiverName: z.string().min(1),
-  receiverSignature: signatureUrlSchema,
 });
 
 /**

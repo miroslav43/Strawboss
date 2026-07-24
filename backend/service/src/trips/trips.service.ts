@@ -1723,12 +1723,12 @@ export class TripsService implements OnModuleInit {
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'COMPLETE');
 
+    // No receiver signature is collected in the driver's self-confirm flow
+    // anymore — receiver_signature_url/receiver_signed_at stay NULL.
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.completed},
         receiver_name = ${dto.receiverName},
-        receiver_signature_url = ${dto.receiverSignature},
-        receiver_signed_at = NOW(),
         completed_at = NOW(),
         updated_at = NOW()
       WHERE id = ${id} AND status = ${from} RETURNING *`,

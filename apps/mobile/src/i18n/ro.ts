@@ -1110,7 +1110,6 @@ export const ro = {
         netWeight: 'Greutate netă',
         notWeighed: 'Fără cântărire',
         receiver: 'Primitor',
-        signature: 'Semnătură',
       },
       action: {
         confirm: 'Confirmă livrare',
@@ -1121,7 +1120,6 @@ export const ro = {
     enhancedFlow: {
       step: {
         weighing: 'Cântărire',
-        signature: 'Semnătură primitor',
         confirmation: 'Confirmare livrare',
       },
       receiverFallback: 'Primitor',
@@ -1144,15 +1142,6 @@ export const ro = {
       error: {
         title: 'Eroare',
         confirmFailed: 'Nu s-a putut confirma livrarea.',
-      },
-    },
-    signatureStep: {
-      receiverLabel: 'Primitor (persoană de contact depozit)',
-      signatureCapture: 'Semnătura primitorului',
-      signedConfirmation: 'Semnătură capturată',
-      hint: 'Semnați în chenar, apoi apăsați „Confirm\".',
-      action: {
-        continue: 'Continuă',
       },
     },
     weightInput: {

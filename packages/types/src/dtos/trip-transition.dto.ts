@@ -61,7 +61,6 @@ export interface ConfirmDeliveryDto {
 
 export interface CompleteDto {
   receiverName: string;
-  receiverSignature: string;
 }
 
 /**
