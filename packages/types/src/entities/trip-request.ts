@@ -82,6 +82,8 @@ export interface TripRequest extends Timestamps, SoftDelete {
   notifyRecipients: NotifyRecipient[];
   // pickup source depot chosen by the dispatcher on confirm
   sourceDepotId: string | null;
+  // pickup source field chosen by the dispatcher on confirm (alternative to sourceDepotId)
+  sourceParcelId: string | null;
   // linkage, filled on confirm
   machineId: string | null;
   tripId: string | null;
@@ -93,8 +95,9 @@ export interface TripRequest extends Timestamps, SoftDelete {
   machineMake?: string | null;
   machineModel?: string | null;
   machinePlate?: string | null;
-  // resolved names for the ids above (joined from delivery_destinations / users)
+  // resolved names for the ids above (joined from delivery_destinations / users / parcels)
   sourceDepotName?: string | null;
+  sourceParcelName?: string | null;
   confirmedByName?: string | null;
   /** Full name of the transporter who created this request (joined from users). */
   createdByName?: string | null;
