@@ -149,6 +149,9 @@ export interface LeafletMapProps {
   parcels: Parcel[];
   machines: MachineLastLocation[];
   selectedParcelId: string | null;
+  /** When set, highlights ALL of these parcels (multi-select map pickers). Takes
+   *  precedence over selectedParcelId. */
+  selectedParcelIds?: Set<string>;
   onParcelSelect: (id: string) => void;
   onParcelEdit: (parcel: Parcel) => void;
   onParcelDelete: (id: string) => void;
@@ -199,6 +202,7 @@ export function LeafletMap({
   parcels,
   machines,
   selectedParcelId,
+  selectedParcelIds,
   onParcelSelect,
   onParcelEdit,
   onParcelDelete,
@@ -605,7 +609,9 @@ export function LeafletMap({
         const boundary = parcel.boundary as unknown as GeoJSON.Geometry | null;
         if (!boundary) return;
 
-        const isSelected = parcel.id === selectedParcelId;
+        const isSelected = selectedParcelIds
+          ? selectedParcelIds.has(parcel.id)
+          : parcel.id === selectedParcelId;
         const layer = L.geoJSON(boundary as GeoJSON.GeoJsonObject, {
           style: () => getParcelPolygonStyle(parcel, isSelected),
         })
@@ -663,6 +669,7 @@ export function LeafletMap({
   }, [
     parcels,
     selectedParcelId,
+    selectedParcelIds,
     showParcels,
     hiddenParcelIds,
     mapReady,
