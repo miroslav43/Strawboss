@@ -106,6 +106,7 @@ const TR_COLS = sql`
   trip_requests.created_by_user_id           AS "createdByUserId",
   trip_requests.notify_recipients            AS "notifyRecipients",
   trip_requests.source_depot_id              AS "sourceDepotId",
+  trip_requests.source_parcel_id             AS "sourceParcelId",
   trip_requests.created_at               AS "createdAt",
   trip_requests.updated_at               AS "updatedAt",
   trip_requests.deleted_at               AS "deletedAt",
@@ -113,6 +114,8 @@ const TR_COLS = sql`
   (SELECT m.model              FROM machines m WHERE m.id = trip_requests.machine_id) AS "machineModel",
   (SELECT m.registration_plate FROM machines m WHERE m.id = trip_requests.machine_id) AS "machinePlate",
   (SELECT dd.name       FROM delivery_destinations dd WHERE dd.id = trip_requests.source_depot_id) AS "sourceDepotName",
+  (SELECT p.code || COALESCE(', ' || p.farm_name, '')
+                        FROM parcels p                WHERE p.id = trip_requests.source_parcel_id) AS "sourceParcelName",
   (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.confirmed_by)     AS "confirmedByName",
   (SELECT u.full_name   FROM users u                  WHERE u.id = trip_requests.created_by_user_id) AS "createdByName",
   EXISTS(SELECT 1 FROM documents d
@@ -336,22 +339,35 @@ export class TripRequestsService {
     orgId: string | null,
     id: string,
     userId: string,
-    depotId: string,
+    depotId?: string,
+    parcelId?: string,
     internalCode?: string,
   ) {
     const req = await this.findById(orgId, id);
     if (req.status !== RequestStatus.pending) {
       throw new BadRequestException('Cererea a fost deja procesată.');
     }
-    // The pickup depot must belong to the request's org.
-    const depotRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT 1 FROM delivery_destinations
-          WHERE id = ${depotId}::uuid
-            AND organization_id = ${req.organizationId}::uuid
-            AND deleted_at IS NULL
-          LIMIT 1`,
-    )) as unknown as unknown[];
-    if (!depotRows.length) throw new BadRequestException('Depozit invalid.');
+    if (depotId) {
+      // The pickup depot must belong to the request's org.
+      const depotRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT 1 FROM delivery_destinations
+            WHERE id = ${depotId}::uuid
+              AND organization_id = ${req.organizationId}::uuid
+              AND deleted_at IS NULL
+            LIMIT 1`,
+      )) as unknown as unknown[];
+      if (!depotRows.length) throw new BadRequestException('Depozit invalid.');
+    } else if (parcelId) {
+      // The pickup field must belong to the request's org.
+      const parcelRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT 1 FROM parcels
+            WHERE id = ${parcelId}::uuid
+              AND organization_id = ${req.organizationId}::uuid
+              AND deleted_at IS NULL
+            LIMIT 1`,
+      )) as unknown as unknown[];
+      if (!parcelRows.length) throw new BadRequestException('Parcelă invalidă.');
+    }
 
     const code = internalCode ?? `AUX-${randomUUID().slice(0, 6).toUpperCase()}`;
 
@@ -375,7 +391,8 @@ export class TripRequestsService {
       sql`UPDATE trip_requests SET
             status = ${RequestStatus.confirmed}::request_status,
             machine_id = ${machineId}::uuid,
-            source_depot_id = ${depotId}::uuid,
+            source_depot_id = ${depotId ?? null}::uuid,
+            source_parcel_id = ${parcelId ?? null}::uuid,
             confirmed_by = ${userId}::uuid,
             confirmed_at = NOW(),
             updated_at = NOW()
@@ -394,7 +411,7 @@ export class TripRequestsService {
     // the processor so confirm() stays fast.
     await this.messageQueue.add(
       'transport-confirmation',
-      { requestId: id, depotId },
+      { requestId: id, depotId, parcelId },
       { removeOnComplete: true, attempts: 1 },
     );
 
