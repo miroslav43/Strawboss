@@ -297,6 +297,14 @@ export class TransporterController {
   ) {
     const orgId = this.requireOrg(user);
     await this.tripRequests.assertCreatedBy(orgId, id, user.id);
-    return this.comanda.generateComanda(orgId, id);
+    const doc = await this.comanda.generateComanda(orgId, id);
+    if (!doc) {
+      // Generation is a no-op when the beneficiary has no order settings — tell
+      // the user how to fix it instead of returning a silent empty success.
+      throw new BadRequestException(
+        'Completați mai întâi datele de comandă pentru acest beneficiar în tab-ul „Beneficiari”, apoi generați comanda.',
+      );
+    }
+    return doc;
   }
 }

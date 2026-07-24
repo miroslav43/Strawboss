@@ -1,11 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { FileSignature, XCircle, Loader2, RefreshCw, Download } from 'lucide-react';
+import Link from 'next/link';
+import { FileSignature, XCircle, Loader2, RefreshCw, Download, Building2 } from 'lucide-react';
 import type { TripRequest, Document } from '@strawboss/types';
 import { useTransporterComanda, useGenerateTransporterComanda } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { DocumentViewer } from '@/components/shared/DocumentViewer';
 
@@ -16,6 +18,7 @@ import { DocumentViewer } from '@/components/shared/DocumentViewer';
  */
 export function ComandaModal({ request, onClose }: { request: TripRequest; onClose: () => void }) {
   const { t } = useI18n();
+  const slug = useOrgSlug();
   const comanda = useTransporterComanda(apiClient, request.id);
   const generate = useGenerateTransporterComanda(apiClient);
 
@@ -54,13 +57,21 @@ export function ComandaModal({ request, onClose }: { request: TripRequest; onClo
           ) : doc && resolvedUrl ? (
             <DocumentViewer document={{ ...doc, fileUrl: resolvedUrl }} />
           ) : (
-            <p className="rounded-lg border border-dashed border-neutral-200 py-6 text-center text-sm text-neutral-400">
-              {t('tripRequests.comandaNone')}
-            </p>
+            <div className="rounded-lg border border-dashed border-neutral-200 px-4 py-6 text-center text-sm text-neutral-500">
+              <p>{t('tripRequests.comandaNone')}</p>
+              <p className="mt-1 text-neutral-400">{t('tripRequests.comandaNeedsSettings')}</p>
+              <Link
+                href={`/${slug}/beneficiari`}
+                className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary-700"
+              >
+                <Building2 className="h-4 w-4" />
+                {t('tripRequests.comandaConfigure')}
+              </Link>
+            </div>
           )}
           {generate.isError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {t('tripRequests.comandaError')}
+              {(generate.error as Error)?.message ?? t('tripRequests.comandaError')}
             </p>
           )}
         </div>

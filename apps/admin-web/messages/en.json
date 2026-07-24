@@ -1115,6 +1115,8 @@
     "comandaRegenerate": "Regenerate",
     "comandaDownload": "Download",
     "comandaNone": "No order generated yet.",
+    "comandaNeedsSettings": "Set the order data for this beneficiary in the Beneficiaries tab.",
+    "comandaConfigure": "Configure order data",
     "comandaError": "Order generation failed.",
     "colPickup": "Pickup",
     "colDocuments": "Documents",

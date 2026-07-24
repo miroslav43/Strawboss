@@ -1115,6 +1115,8 @@
     "comandaRegenerate": "Regenerează",
     "comandaDownload": "Descarcă",
     "comandaNone": "Nicio comandă generată încă.",
+    "comandaNeedsSettings": "Completați datele de comandă pentru acest beneficiar în tab-ul Beneficiari.",
+    "comandaConfigure": "Configurează datele de comandă",
     "comandaError": "Generarea comenzii a eșuat.",
     "colPickup": "Ridicare",
     "colDocuments": "Documente",
