@@ -50,7 +50,7 @@ de-emphasized secondary group.
 | Assignment key | `trips.loader_id = <my loader machine>` (NOT `loader_operator_id`). |
 | Active statuses shown | `planned`, `loading`, `loaded`. |
 | Truck already `loaded` | Stays on card, dimmed, sorted to the bottom, badge "✓ Încărcat", until it departs (status advances past `loaded`). |
-| Auxiliary trucks | Merged into the single assigned list with an "auxiliar" tag (no presence badge — they usually have no GPS). The separate aux section on the home screen is removed. |
+| Auxiliary trucks | Merged into the single "to load" list, tagged. **Implemented at the UI layer** (refined during planning): the endpoint returns non-auxiliary trips only; the existing `useAuxiliaryTrips` + `AuxTruckCard` (purple AUX badge = the tag) render inside the same section. Rationale: the aux card carries crop/quality fields and `goToAuxLoad` passes `auxTripId`/`isAuxiliary` needed for the offline CMR scan — data the flat `AssignedTruck` shape does not carry — so folding aux into the endpoint would lose the proven aux load flow. Same visual outcome. |
 | Backend shape | One new endpoint returning both groups in a single response (one poll per 15 s). |
 | DB migration | None. |
 
@@ -102,8 +102,9 @@ interface AssignedTruck {
    joined to `machines` (truck plate/internal code), `users` (driver name via `t.driver_id`),
    `parcels` (source field via `t.source_parcel_id`), and a `LEFT JOIN LATERAL` to the truck's
    latest GPS ping within `windowMinutes`. Distinct by truck (latest trip wins if a truck somehow
-   has two active trips). Includes auxiliary trips (`is_auxiliary = true`) naturally — they match
-   `loader_id`.
+   has two active trips). **Excludes auxiliary trips (`is_auxiliary = false`)** — they are rendered
+   separately at the UI layer from the existing auxiliary endpoint (see §3 aux row and §5.1), so the
+   offline aux-load flow stays intact.
 3. **Presence** per assigned truck:
    - `tripStatus = 'loaded'` → `'loaded'`.
    - else has recent GPS ping AND `ST_DWithin(truck, loader, radiusM)` → `'here'` (`distanceM` set).
@@ -125,9 +126,10 @@ one client poll.
 - New hook `useLoaderBoard()` in `apps/mobile/src/hooks/` — reads `assignedMachineId` from the auth
   store, polls `GET /location/loader-board/:id` every 15 s (same cadence/gating as the current
   `useTrucksAtLoader`). It **replaces** `useTrucksAtLoader` on the home screen.
-- `useAuxiliaryTrips` is **removed from the home screen** (its trucks now arrive via the board's
-  `assigned` array). Verify during implementation that the old aux section had no extra behavior
-  beyond listing (e.g. a request/link action); if it did, preserve that action on the merged rows.
+- `useAuxiliaryTrips` is **kept** — its `AuxTruckCard` rows now render *inside* the merged "to
+  load" section (UI-layer merge), not in a separate section below. The board endpoint deliberately
+  does not carry auxiliary trips, so the existing aux path (`AuxTruckCard` + `goToAuxLoad` offline
+  CMR) is reused unchanged.
 
 ### 5.2 Screen (`apps/mobile/app/(loader)/index.tsx`)
 
