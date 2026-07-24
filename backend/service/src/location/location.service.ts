@@ -628,7 +628,7 @@ export class LocationService {
         SELECT coords
         FROM machine_location_events
         WHERE machine_id = ${loaderMachineId}::uuid
-          AND recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
+          AND recorded_at >= NOW() - (${windowMinutes} * INTERVAL '1 minute')
         ORDER BY recorded_at DESC
         LIMIT 1
       ),
@@ -636,7 +636,7 @@ export class LocationService {
         SELECT DISTINCT ON (mle.machine_id)
           mle.machine_id, mle.coords, mle.recorded_at
         FROM machine_location_events mle
-        WHERE mle.recorded_at >= NOW() - INTERVAL '${sql.raw(String(windowMinutes))} minutes'
+        WHERE mle.recorded_at >= NOW() - (${windowMinutes} * INTERVAL '1 minute')
         ORDER BY mle.machine_id, mle.recorded_at DESC
       )
       SELECT DISTINCT ON (t.truck_id)
@@ -664,9 +664,9 @@ export class LocationService {
         END                           AS "presence",
         CASE WHEN t.status = 'loaded' THEN 'loaded' ELSE 'empty' END AS "loadState"
       FROM trips t
-      JOIN machines m           ON m.id = t.truck_id
+      JOIN machines m           ON m.id = t.truck_id AND m.deleted_at IS NULL
       LEFT JOIN users u         ON u.id = t.driver_id
-      LEFT JOIN parcels p       ON p.id = t.source_parcel_id
+      LEFT JOIN parcels p       ON p.id = t.source_parcel_id AND p.deleted_at IS NULL
       LEFT JOIN truck_pos tp    ON tp.machine_id = t.truck_id
       LEFT JOIN loader_pos lp   ON TRUE
       WHERE t.loader_id = ${loaderMachineId}::uuid
