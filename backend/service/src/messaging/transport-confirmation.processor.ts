@@ -49,7 +49,7 @@ interface RequestRow {
   dest_lon: number | null;
 }
 
-interface DepotRow {
+interface PickupSourceRow {
   name: string;
   address: string | null;
   lat: number | null;
@@ -81,7 +81,11 @@ export class TransportConfirmationProcessor extends WorkerHost {
       return;
     }
     if (job.name !== 'transport-confirmation') return;
-    const { requestId, depotId } = job.data as { requestId: string; depotId: string };
+    const { requestId, depotId, parcelId } = job.data as {
+      requestId: string;
+      depotId?: string;
+      parcelId?: string;
+    };
 
     const reqRows = (await this.drizzleProvider.db.execute(
       sql`SELECT tr.requester_name, tr.requester_email, tr.requester_phone,
@@ -104,13 +108,25 @@ export class TransportConfirmationProcessor extends WorkerHost {
     const req = reqRows[0];
     if (!req) return;
 
-    const depotRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT name, address,
-                 COALESCE(ST_Y(coords), ST_Y(ST_Centroid(boundary))) AS lat,
-                 COALESCE(ST_X(coords), ST_X(ST_Centroid(boundary))) AS lon
-          FROM delivery_destinations WHERE id = ${depotId}::uuid LIMIT 1`,
-    )) as unknown as DepotRow[];
-    const depot = depotRows[0];
+    let source: PickupSourceRow | undefined;
+    if (depotId) {
+      const depotRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT name, address,
+                   COALESCE(ST_Y(coords), ST_Y(ST_Centroid(boundary))) AS lat,
+                   COALESCE(ST_X(coords), ST_X(ST_Centroid(boundary))) AS lon
+            FROM delivery_destinations WHERE id = ${depotId}::uuid LIMIT 1`,
+      )) as unknown as PickupSourceRow[];
+      source = depotRows[0];
+    } else if (parcelId) {
+      // Field-sourced pickup: label only, no coordinates — the route/map block
+      // below is gated on `pickupCoords`, so it naturally skips for a field.
+      const parcelRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT (code || COALESCE(', ' || farm_name, '')) AS name,
+                   NULL::text AS address, NULL::float8 AS lat, NULL::float8 AS lon
+            FROM parcels WHERE id = ${parcelId}::uuid LIMIT 1`,
+      )) as unknown as PickupSourceRow[];
+      source = parcelRows[0];
+    }
 
     const orgRows = (await this.drizzleProvider.db.execute(
       sql`SELECT name FROM organizations WHERE id = ${req.organization_id}::uuid LIMIT 1`,
@@ -118,7 +134,7 @@ export class TransportConfirmationProcessor extends WorkerHost {
     const orgName = orgRows[0]?.name ?? 'StrawBoss';
 
     const pickupCoords: LatLon | null =
-      depot?.lat != null && depot?.lon != null ? { lat: depot.lat, lon: depot.lon } : null;
+      source?.lat != null && source?.lon != null ? { lat: source.lat, lon: source.lon } : null;
     const deliveryCoords: LatLon | null =
       req.dest_lat != null && req.dest_lon != null
         ? { lat: req.dest_lat, lon: req.dest_lon }
@@ -148,8 +164,8 @@ export class TransportConfirmationProcessor extends WorkerHost {
 
     const meta = { orgId: req.organization_id, requestId };
     const pickup = {
-      label: depot?.name ?? 'Depozit',
-      address: depot?.address ?? null,
+      label: source?.name ?? 'Depozit',
+      address: source?.address ?? null,
       mapsUrl: pickupCoords ? fmtCoordsUrl(pickupCoords.lat, pickupCoords.lon) : null,
     };
     const delivery = {
