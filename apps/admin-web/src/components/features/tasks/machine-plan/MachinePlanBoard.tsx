@@ -462,6 +462,20 @@ function AssignedMachineCard({
             >
               {t('tasks.addDepot')}
             </button>
+            {/* Always-visible map picker — lives in the chooser row (not inside the
+                addMode==='field' block) so FarmParcelCascade's mousedown outside-close
+                can't unmount it before its click fires. */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowParcelMap(true);
+                setAddMode(null);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-700 transition-colors hover:border-primary hover:text-primary"
+            >
+              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {t('tasks.selectOnMap')}
+            </button>
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -491,27 +505,14 @@ function AssignedMachineCard({
         )}
 
         {addMode === 'field' && (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                setShowParcelMap(true);
-                setAddMode(null);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-700 transition-colors hover:border-primary hover:text-primary"
-            >
-              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              {t('tasks.selectOnMap')}
-            </button>
-            <FarmParcelCascade
-              parcels={parcels}
-              excludeParcelIds={machineParcelIds}
-              assignedCountByParcel={assignedCountByParcel}
-              color={color}
-              onSelect={(parcelId) => onAddParcel(machine.id, parcelId)}
-              onClose={() => setAddMode(null)}
-            />
-          </>
+          <FarmParcelCascade
+            parcels={parcels}
+            excludeParcelIds={machineParcelIds}
+            assignedCountByParcel={assignedCountByParcel}
+            color={color}
+            onSelect={(parcelId) => onAddParcel(machine.id, parcelId)}
+            onClose={() => setAddMode(null)}
+          />
         )}
 
         {addMode === 'depot' && (
