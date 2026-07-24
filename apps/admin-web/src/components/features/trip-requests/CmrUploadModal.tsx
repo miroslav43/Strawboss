@@ -25,14 +25,17 @@ const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 export function CmrUploadModal({
   request,
   onClose,
+  variant = 'admin',
 }: {
   request: TripRequest;
   onClose: () => void;
+  /** 'transporter' targets the ownership-scoped transporter endpoints. */
+  variant?: 'admin' | 'transporter';
 }) {
   const { t } = useI18n();
   const [file, setFile] = useState<File | null>(null);
-  const upload = useUploadCmrScan(apiClient);
-  const scans = useRequestCmrScans(apiClient, request.id);
+  const upload = useUploadCmrScan(apiClient, variant);
+  const scans = useRequestCmrScans(apiClient, request.id, variant);
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);

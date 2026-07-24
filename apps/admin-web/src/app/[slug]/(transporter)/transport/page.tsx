@@ -14,6 +14,8 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { AuxTripTable } from '@/components/features/trips/AuxTripTable';
 import { RequestDetailsModal } from '@/components/features/trip-requests/RequestDetailsModal';
+import { AvizUploadModal } from '@/components/features/trip-requests/AvizUploadModal';
+import { CmrUploadModal } from '@/components/features/trip-requests/CmrUploadModal';
 
 const inputCls =
   'rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 ' +
@@ -36,6 +38,8 @@ export default function TransporterTripsPage() {
   const [dateTo, setDateTo] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('');
   const [detailsTarget, setDetailsTarget] = useState<TripRequest | null>(null);
+  const [avizTarget, setAvizTarget] = useState<TripRequest | null>(null);
+  const [cmrTarget, setCmrTarget] = useState<TripRequest | null>(null);
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {};
@@ -106,12 +110,28 @@ export default function TransporterTripsPage() {
           rows={rows}
           readOnly
           onRowClick={(row) => setDetailsTarget(row.request)}
+          onUploadAviz={(r) => setAvizTarget(r)}
+          onUploadCmr={(r) => setCmrTarget(r)}
           emptyMessage={t('transporter.empty')}
         />
       )}
 
       {detailsTarget && (
         <RequestDetailsModal request={detailsTarget} onClose={() => setDetailsTarget(null)} />
+      )}
+      {avizTarget && (
+        <AvizUploadModal
+          request={avizTarget}
+          variant="transporter"
+          onClose={() => setAvizTarget(null)}
+        />
+      )}
+      {cmrTarget && (
+        <CmrUploadModal
+          request={cmrTarget}
+          variant="transporter"
+          onClose={() => setCmrTarget(null)}
+        />
       )}
     </div>
   );

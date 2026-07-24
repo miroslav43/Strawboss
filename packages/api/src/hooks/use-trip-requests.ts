@@ -82,26 +82,49 @@ export function useCancelTripRequest(client: ApiClient) {
  * List the aviz (delivery-note PDF) document(s) attached to a request. With the
  * single-aviz model this returns 0 or 1 document.
  */
-export function useRequestAvize(client: ApiClient, requestId: string) {
+/**
+ * Which surface the aviz/CMR hooks target. 'admin' hits the admin trip-requests /
+ * cmr-scans endpoints; 'transporter' hits the ownership-scoped
+ * /transporter/requests/:id/... endpoints (the transporter uploads docs for their
+ * OWN requests). Default 'admin' keeps every existing call site unchanged.
+ */
+export type DocVariant = 'admin' | 'transporter';
+
+const avizPath = (variant: DocVariant, requestId: string) =>
+  variant === 'transporter'
+    ? `/api/v1/transporter/requests/${requestId}/aviz`
+    : `/api/v1/trip-requests/${requestId}/aviz`;
+const cmrPath = (variant: DocVariant, requestId: string) =>
+  variant === 'transporter'
+    ? `/api/v1/transporter/requests/${requestId}/cmr`
+    : `/api/v1/cmr-scans/trip-request/${requestId}`;
+
+export function useRequestAvize(
+  client: ApiClient,
+  requestId: string,
+  variant: DocVariant = 'admin',
+) {
   return useQuery({
     queryKey: queryKeys.tripRequests.avize(requestId),
-    queryFn: () => client.get<Document[]>(`/api/v1/trip-requests/${requestId}/aviz`),
+    queryFn: () => client.get<Document[]>(avizPath(variant, requestId)),
     enabled: !!requestId,
   });
 }
 
 /**
  * Upload (or replace) the aviz PDF for a request. Invalidates that request's
- * avize list so the fresh PDF appears immediately, plus the request list.
+ * avize list so the fresh PDF appears immediately, plus the request list (both
+ * the admin and transporter ledgers, so `hasAviz` flips wherever it's shown).
  */
-export function useUploadAviz(client: ApiClient) {
+export function useUploadAviz(client: ApiClient, variant: DocVariant = 'admin') {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ requestId, formData }: { requestId: string; formData: FormData }) =>
-      client.upload<Document>(`/api/v1/trip-requests/${requestId}/aviz`, formData),
+      client.upload<Document>(avizPath(variant, requestId), formData),
     onSuccess: (_doc, { requestId }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.avize(requestId) });
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.transporter.all });
     },
   });
 }
@@ -110,30 +133,35 @@ export function useUploadAviz(client: ApiClient) {
  * List the scanned paper CMR attached to a request. Like the aviz, only one is
  * kept active at a time, so this returns 0 or 1 document.
  */
-export function useRequestCmrScans(client: ApiClient, requestId: string) {
+export function useRequestCmrScans(
+  client: ApiClient,
+  requestId: string,
+  variant: DocVariant = 'admin',
+) {
   return useQuery({
     queryKey: queryKeys.tripRequests.cmrScans(requestId),
-    queryFn: () => client.get<Document[]>(`/api/v1/cmr-scans/trip-request/${requestId}`),
+    queryFn: () => client.get<Document[]>(cmrPath(variant, requestId)),
     enabled: !!requestId,
   });
 }
 
 /**
- * Admin override: upload (or replace) the scanned CMR for a request — the loader
- * normally posts it from the phone against the trip instead.
+ * Upload (or replace) the scanned CMR for a request — the loader normally posts it
+ * from the phone against the trip instead; admins and the transporter can override.
  *
- * Invalidating `tripRequests.all` is what flips the button green: `hasCmrScan` is
- * computed server-side on the *list* row, not on the document, so refetching the
- * scan alone would leave the button grey.
+ * Invalidating `tripRequests.all` (+ `transporter.all`) is what flips the button
+ * green: `hasCmrScan` is computed server-side on the *list* row, not on the
+ * document, so refetching the scan alone would leave the button grey.
  */
-export function useUploadCmrScan(client: ApiClient) {
+export function useUploadCmrScan(client: ApiClient, variant: DocVariant = 'admin') {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ requestId, formData }: { requestId: string; formData: FormData }) =>
-      client.upload<Document>(`/api/v1/cmr-scans/trip-request/${requestId}`, formData),
+      client.upload<Document>(cmrPath(variant, requestId), formData),
     onSuccess: (_doc, { requestId }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.cmrScans(requestId) });
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.transporter.all });
     },
   });
 }

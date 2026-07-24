@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { TripRequestsModule } from '../trip-requests/trip-requests.module';
+import { CmrScansModule } from '../cmr-scans/cmr-scans.module';
 import { TransporterController } from './transporter.controller';
 import { TransporterAdminController } from './transporter-admin.controller';
 import { TransporterAssignmentsService } from './transporter-assignments.service';
@@ -14,7 +15,7 @@ import { TransporterAssignmentsService } from './transporter-assignments.service
  * records), both exported from TripRequestsModule.
  */
 @Module({
-  imports: [DatabaseModule, TripRequestsModule],
+  imports: [DatabaseModule, TripRequestsModule, CmrScansModule],
   controllers: [TransporterController, TransporterAdminController],
   providers: [TransporterAssignmentsService],
 })

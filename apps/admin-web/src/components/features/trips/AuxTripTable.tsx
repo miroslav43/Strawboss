@@ -230,7 +230,9 @@ export function AuxTripTable({
           request={row.request}
           onUploadAviz={onUploadAviz}
           onUploadCmr={onUploadCmr}
-          readOnly={readOnly}
+          // Static only when nobody can act on them. In the read-only ledger the
+          // transporter still gets clickable chips if upload handlers are wired.
+          readOnly={readOnly && !onUploadAviz && !onUploadCmr}
         />
       ),
     },

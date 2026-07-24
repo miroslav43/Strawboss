@@ -6,10 +6,12 @@ import {
   Body,
   Param,
   Query,
+  Req,
   ParseUUIDPipe,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import type { ZodSchema } from 'zod';
 import { TransporterAssignmentsService } from './transporter-assignments.service';
 import { TripRequestsService } from '../trip-requests/trip-requests.service';
@@ -17,8 +19,10 @@ import {
   BeneficiaryRecordsService,
   type RecordKind,
 } from '../trip-requests/beneficiary-records.service';
+import { CmrScansService } from '../cmr-scans/cmr-scans.service';
 import { Roles, CurrentUser, type RequestUser } from '../auth';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { AVIZ_MAX_BYTES, CMR_SCAN_MAX_BYTES } from '../uploads/uploads.service';
 import { UserRole } from '@strawboss/types';
 import {
   createTransporterRequestSchema,
@@ -64,7 +68,15 @@ export class TransporterController {
     private readonly assignments: TransporterAssignmentsService,
     private readonly records: BeneficiaryRecordsService,
     private readonly tripRequests: TripRequestsService,
+    private readonly cmrScans: CmrScansService,
   ) {}
+
+  private async requireFile(req: FastifyRequest, maxBytes: number) {
+    if (!req.isMultipart()) throw new BadRequestException('Expected multipart/form-data');
+    const file = await req.file({ limits: { fileSize: maxBytes } });
+    if (!file) throw new BadRequestException('Missing "file" part');
+    return file;
+  }
 
   private requireOrg(user: RequestUser): string {
     if (!user.organizationId) throw new ForbiddenException('No organization');
@@ -174,6 +186,58 @@ export class TransporterController {
       createdByUserId: user.id,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
+    });
+  }
+
+  // ── Documents: aviz + CMR, only on the transporter's OWN requests ──────────
+  // Every handler first asserts the request was created by this transporter, so
+  // a transporter can only see/upload documents for their own transports.
+
+  @Get('requests/:id/aviz')
+  async listAviz(@CurrentUser() user: RequestUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    const orgId = this.requireOrg(user);
+    await this.tripRequests.assertCreatedBy(orgId, id, user.id);
+    return this.tripRequests.listAvize(orgId, id);
+  }
+
+  @Post('requests/:id/aviz')
+  async uploadAviz(
+    @CurrentUser() user: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const orgId = this.requireOrg(user);
+    await this.tripRequests.assertCreatedBy(orgId, id, user.id);
+    const file = await this.requireFile(req, AVIZ_MAX_BYTES);
+    return this.tripRequests.uploadAviz(orgId, id, {
+      mimetype: file.mimetype,
+      filename: file.filename,
+      stream: file.file,
+    });
+  }
+
+  @Get('requests/:id/cmr')
+  async listCmr(@CurrentUser() user: RequestUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    const orgId = this.requireOrg(user);
+    await this.tripRequests.assertCreatedBy(orgId, id, user.id);
+    return this.cmrScans.listForRequest(orgId, id);
+  }
+
+  @Post('requests/:id/cmr')
+  async uploadCmr(
+    @CurrentUser() user: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const orgId = this.requireOrg(user);
+    await this.tripRequests.assertCreatedBy(orgId, id, user.id);
+    const file = await this.requireFile(req, CMR_SCAN_MAX_BYTES);
+    return this.cmrScans.uploadForRequest(orgId, id, {
+      mimetype: file.mimetype,
+      stream: file.file,
+      pageCount: null,
+      scanId: null,
+      source: 'admin_upload',
     });
   }
 }

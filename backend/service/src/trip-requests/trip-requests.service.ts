@@ -476,6 +476,23 @@ export class TripRequestsService {
    * one (if any) is soft-deleted before the new `documents` row is inserted.
    * The stored file is served via the signed /api/v1/uploads/ static route.
    */
+  /**
+   * Fail-closed ownership check for the transporter surface: the request must
+   * exist in this org AND have been created by this user. Used before letting a
+   * transporter read/upload the aviz/CMR of one of their own requests.
+   */
+  async assertCreatedBy(orgId: string, requestId: string, userId: string): Promise<void> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT 1 FROM trip_requests
+          WHERE id = ${requestId}::uuid
+            AND organization_id = ${orgId}::uuid
+            AND created_by_user_id = ${userId}::uuid
+            AND deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as unknown[];
+    if (!rows.length) throw new ForbiddenException('Cerere inexistentă.');
+  }
+
   async uploadAviz(
     orgId: string,
     requestId: string,
