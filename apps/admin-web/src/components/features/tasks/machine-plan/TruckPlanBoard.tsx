@@ -52,6 +52,8 @@ interface Assignment {
   assignedUserLastSeenAt?: string | null;
   tripId?: string | null;
   iterations?: TripIteration[];
+  parcelId?: string | null;
+  parcelName?: string | null;
 }
 
 // Compact badge colors per trip status, used by the iteration list.
@@ -149,6 +151,20 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
       seen.add(a.machineId);
       return true;
     });
+  }, [loaderAssignments]);
+
+  // All parcel names each loader machine is assigned to today — used by the
+  // loader-picker map modal's info panel. Built from the FULL (pre-dedup)
+  // loaderAssignments so a loader working several fields shows all of them.
+  const parcelsByLoaderMachineId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const a of loaderAssignments) {
+      if (!a.parcelName) continue;
+      const list = map.get(a.machineId) ?? [];
+      list.push(a.parcelName);
+      map.set(a.machineId, list);
+    }
+    return map;
   }, [loaderAssignments]);
 
   const activeDeposits = useMemo(() => deposits.filter((d) => d.isActive), [deposits]);
@@ -536,6 +552,7 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
             machineCode: la.machineCode,
             registrationPlate: la.registrationPlate,
           }))}
+          parcelsByLoaderMachineId={parcelsByLoaderMachineId}
           onSelect={(loaderAssignmentId) => {
             handleSetLoader(loaderMapForTruckAssignmentId, loaderAssignmentId);
             setLoaderMapForTruckAssignmentId(null);
