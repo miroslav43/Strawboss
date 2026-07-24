@@ -10,6 +10,7 @@ import { Plus, X, Loader2, GripVertical, MapPin, ChevronRight, RefreshCw } from 
 import {
   useTasksByMachineType,
   useCreateTaskAssignment,
+  useBulkCreateTaskAssignments,
   useDeleteTaskAssignment,
   useParcels,
   useMachines,
@@ -310,6 +311,7 @@ function AssignedMachineCard({
   assignedCountByParcel,
   allowDepot,
   onAddParcel,
+  onAddParcels,
   onAddDepot,
   onRemoveAssignment,
   onReorderParcels,
@@ -323,6 +325,7 @@ function AssignedMachineCard({
   assignedCountByParcel: Map<string, number>;
   allowDepot: boolean;
   onAddParcel: (machineId: string, parcelId: string) => void;
+  onAddParcels: (machineId: string, parcelIds: string[]) => void;
   onAddDepot: (machineId: string, destinationId: string) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onReorderParcels: (fromIndex: number, toIndex: number) => void;
@@ -534,8 +537,8 @@ function AssignedMachineCard({
       {showParcelMap && (
         <ParcelMapModal
           parcels={eligibleParcelsForMap}
-          onSelect={(parcelId) => {
-            onAddParcel(machine.id, parcelId);
+          onSelect={(parcelIds) => {
+            onAddParcels(machine.id, parcelIds);
             setShowParcelMap(false);
           }}
           onClose={() => setShowParcelMap(false)}
@@ -568,6 +571,7 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
   const { data: rawUsers } = useAdminUsers(apiClient, { refetchInterval: 30_000 });
 
   const createAssignment = useCreateTaskAssignment(apiClient);
+  const bulkCreateAssignment = useBulkCreateTaskAssignments(apiClient);
   const deleteAssignment = useDeleteTaskAssignment(apiClient);
 
   const assignments = useMemo(() => normalize<Assignment>(rawAssignments), [rawAssignments]);
@@ -698,6 +702,29 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
       });
     },
     [date, machineType, createAssignment],
+  );
+
+  const handleAddParcels = useCallback(
+    (machineId: string, parcelIds: string[]) => {
+      if (parcelIds.length === 0) return;
+      clientLogger.flow('Machine plan: bulk add parcels to machine', {
+        board: 'machine-plan',
+        planDate: date,
+        machineType,
+        machineId,
+        parcelCount: parcelIds.length,
+      });
+      bulkCreateAssignment.mutate(
+        parcelIds.map((parcelId) => ({
+          assignmentDate: date,
+          machineId,
+          parcelId,
+          status: AssignmentStatus.in_progress,
+          sequenceOrder: 0,
+        })),
+      );
+    },
+    [date, machineType, bulkCreateAssignment],
   );
 
   const handleAddDepot = useCallback(
@@ -953,6 +980,7 @@ export function MachinePlanBoard({ date, machineType, color }: MachinePlanBoardP
                 assignedCountByParcel={assignedCountByParcel}
                 allowDepot={machineType === 'loader' || machineType === 'baler'}
                 onAddParcel={handleAddParcel}
+                onAddParcels={handleAddParcels}
                 onAddDepot={handleAddDepot}
                 onRemoveAssignment={handleRemoveAssignment}
                 onReorderParcels={(from, to) => handleReorderParcels(m.id, from, to)}
