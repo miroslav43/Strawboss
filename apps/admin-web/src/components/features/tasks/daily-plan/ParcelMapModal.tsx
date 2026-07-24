@@ -6,29 +6,41 @@ import { X, MapPin, Loader2 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import type { Parcel } from '@strawboss/types';
 
-const LeafletMap = dynamic(
-  () => import('@/components/map/LeafletMap').then((m) => m.LeafletMap),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-full items-center justify-center text-neutral-400">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    ),
-  },
-);
+const LeafletMap = dynamic(() => import('@/components/map/LeafletMap').then((m) => m.LeafletMap), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center text-neutral-400">
+      <Loader2 className="h-6 w-6 animate-spin" />
+    </div>
+  ),
+});
 
 interface ParcelMapModalProps {
   parcels: Parcel[];
-  onSelect: (parcelId: string) => void;
+  onSelect: (parcelIds: string[]) => void;
   onClose: () => void;
 }
 
+const MAX_NAMES_SHOWN = 3;
+
 export function ParcelMapModal({ parcels, onSelect, onClose }: ParcelMapModalProps) {
   const { t } = useI18n();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const selectedParcel = parcels.find((p) => p.id === selectedId);
+  const names = parcels.filter((p) => selectedIds.has(p.id)).map((p) => p.name ?? p.code);
+  const namesLabel =
+    names.length > MAX_NAMES_SHOWN
+      ? `${names.slice(0, MAX_NAMES_SHOWN).join(', ')} +${names.length - MAX_NAMES_SHOWN}`
+      : names.join(', ');
+
+  const toggleParcel = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
@@ -52,8 +64,9 @@ export function ParcelMapModal({ parcels, onSelect, onClose }: ParcelMapModalPro
           <LeafletMap
             parcels={parcels}
             machines={[]}
-            selectedParcelId={selectedId}
-            onParcelSelect={(id) => setSelectedId(id)}
+            selectedParcelId={null}
+            selectedParcelIds={selectedIds}
+            onParcelSelect={toggleParcel}
             onParcelEdit={() => {}}
             onParcelDelete={() => {}}
             hiddenParcelIds={new Set()}
@@ -65,14 +78,25 @@ export function ParcelMapModal({ parcels, onSelect, onClose }: ParcelMapModalPro
         {/* Footer */}
         <div className="flex flex-col gap-1 border-t border-neutral-200 px-6 py-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0 space-y-1 text-sm text-neutral-500">
-            <p>
-              {selectedParcel
-                ? `${t('tasks.selected')}: ${selectedParcel.name ?? selectedParcel.code}`
-                : t('tasks.clickParcelOnMap')}
-            </p>
+            {selectedIds.size > 0 ? (
+              <p className="truncate">
+                {t('tasks.fieldsSelectedList', { n: selectedIds.size, names: namesLabel })}
+              </p>
+            ) : (
+              <p>{t('tasks.clickParcelOnMap')}</p>
+            )}
             <p className="text-xs text-neutral-400">{t('tasks.mapParcelsNeedBoundary')}</p>
           </div>
-          <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            {selectedIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="text-sm font-medium text-neutral-500 hover:text-neutral-700"
+              >
+                {t('tasks.clearSelection')}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
@@ -81,15 +105,15 @@ export function ParcelMapModal({ parcels, onSelect, onClose }: ParcelMapModalPro
             </button>
             <button
               onClick={() => {
-                if (selectedId) {
-                  onSelect(selectedId);
+                if (selectedIds.size > 0) {
+                  onSelect(Array.from(selectedIds));
                   onClose();
                 }
               }}
-              disabled={!selectedId}
+              disabled={selectedIds.size === 0}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {t('tasks.confirm')}
+              {t('tasks.confirmNFields', { n: selectedIds.size })}
             </button>
           </div>
         </div>
