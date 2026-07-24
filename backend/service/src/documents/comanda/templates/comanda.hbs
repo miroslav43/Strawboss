@@ -6,53 +6,55 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Calibri', 'Carlito', 'Liberation Sans', Arial, sans-serif;
-      font-size: 12pt;
+      font-family: 'Trebuchet MS', 'DejaVu Sans', Verdana, Tahoma, sans-serif;
+      font-size: 10pt;
+      line-height: 1.18;
       color: #000;
-      line-height: 1.15;
     }
+    .hdr { font-size: 12pt; font-weight: bold; }
     .b { font-weight: bold; }
-    .spacer { height: 12pt; }
-    .spacer-sm { height: 6pt; }
-    .intro { text-align: justify; margin: 12pt 0; }
-    .data-line { text-align: justify; }
-    .clauses { text-align: justify; }
-    .clauses p { margin-bottom: 2pt; }
-    .sign { margin-top: 28pt; }
+    /* one empty ~10pt line, used to reproduce the document's vertical rhythm */
+    .sp { height: 11.8pt; }
+    /* COMANDA sits indented toward the middle of the page */
+    .order { font-weight: bold; margin-left: 58mm; }
+    /* transport data: label column + a value column aligned just past the
+       longest label ("Valoare transport:") — matches the tab-stop in the source */
+    .row { display: grid; grid-template-columns: 44mm 1fr; }
+    .intro { text-align: justify; }
+    .clauses p { text-align: justify; margin: 0; }
   </style>
 </head>
 <body>
-  <!-- Expeditor header -->
-  <div class="b">{{expeditorName}}</div>
-  <div class="b">{{expeditorVat}}</div>
+  <div class="hdr">{{expeditorName}}</div>
+  <div class="hdr">{{expeditorVat}}</div>
 
-  <div class="spacer"></div>
-  <div class="b">COMANDA {{orderNo}}/{{date}}</div>
+  <div class="sp"></div><div class="sp"></div><div class="sp"></div>
+  <div class="order">COMANDA {{orderNo}}/{{date}}</div>
 
-  <div class="spacer"></div>
-  <!-- Recipient -->
-  <div class="b">Către: {{carrierName}}</div>
-  <div class="b">În atenția {{contactName}} / {{contactPhone}}</div>
-  <div class="spacer-sm"></div>
+  <div class="sp"></div><div class="sp"></div><div class="sp"></div><div class="sp"></div>
+  <div class="b">Către:&emsp;{{carrierName}}</div>
+  <div class="b">În atenția&emsp;{{contactName}} / {{contactPhone}}</div>
+  <div class="sp"></div>
   <div class="b">{{contactEmail}}</div>
 
+  <div class="sp"></div><div class="sp"></div><div class="sp"></div>
   <p class="intro">În urma discuției telefonice avute cu dumneavoastră, vă comandam ferm un
     autocamion pentru un transport cu urmatoarele date:</p>
 
-  <!-- Transport data -->
-  <div class="data-line">Denumirea marfii: {{goods}}</div>
-  <div class="data-line">Nr. auto: {{truckDescription}}</div>
-  <div class="data-line b">{{plates}}</div>
-  <div class="data-line">Șofer: {{driverName}}</div>
-  <div class="data-line">Încarcare: {{loading}}</div>
-  <div class="data-line">Descarcare: {{unloading}}</div>
-  <div class="data-line">Valoare transport: {{value}}</div>
-  <div class="data-line">Modalitatea de plată: OP la {{paymentDays}} de zile de la primirea actelor în original</div>
+  <div class="sp"></div>
+  <div class="row"><span>Denumirea marfii:</span><span>{{goods}}</span></div>
+  <div class="row"><span>Nr. auto:</span><span>{{truckDescription}}</span></div>
+  <div class="row"><span></span><span class="b">{{plates}}</span></div>
+  <div class="row"><span>Șofer:</span><span>{{driverName}}</span></div>
+  <div class="row"><span>Încarcare:</span><span>{{loading}}</span></div>
+  <div class="row"><span>Descarcare:</span><span>{{unloading}}</span></div>
+  <div class="row"><span>Valoare transport:</span><span>{{value}}</span></div>
+  <div>Modalitatea de plată: OP la {{paymentDays}} de zile de la primirea actelor în original</div>
 
-  <div class="spacer"></div>
-  <div class="data-line b">OBS: {{obs}}</div>
+  <div class="sp"></div>
+  <div class="b">OBS: {{obs}}</div>
 
-  <div class="spacer"></div>
+  <div class="sp"></div><div class="sp"></div>
   <div>ALTE CLAUZE:</div>
   <div class="clauses">
     <p>Transportatorul trebuie sa să dispună de documente de transport și va raspunde de întocmirea acestora în conformitate cu prezenta comandă de transport, orice neconcordanță fiind anunțată imediat la EXPEDITOR.</p>
@@ -66,7 +68,8 @@
     <p class="b">Vă rugam sa ne trimiteți asigurarea CMR.</p>
   </div>
 
-  <div class="sign b">CONFIRMARE,</div>
+  <div class="sp"></div><div class="sp"></div><div class="sp"></div>
+  <div class="b">CONFIRMARE,</div>
   <div class="b">TRANSPORTATOR</div>
 </body>
 </html>
