@@ -17,6 +17,32 @@ export interface TruckAtLoader {
   loadState: 'loaded' | 'empty';
 }
 
+export interface AssignedTruck {
+  tripId: string;
+  truckId: string;
+  registrationPlate: string | null;
+  internalCode: string | null;
+  driverName: string | null;
+  sourceParcelName: string | null;
+  sourceParcelMunicipality: string | null;
+  tripStatus: 'planned' | 'loading' | 'loaded';
+  isAuxiliary: boolean;
+  /** 'here' = within radius; 'enroute' = has GPS but outside radius; 'loaded' = load done; 'unknown' = no recent GPS. */
+  presence: 'here' | 'enroute' | 'loaded' | 'unknown';
+  /** Truck→loader distance when a recent GPS ping exists; null otherwise. */
+  distanceM: number | null;
+  lastSeenAt: string | null;
+  /** 'loaded' once the trip is loaded; 'empty' while planned/loading. */
+  loadState: 'loaded' | 'empty';
+}
+
+export interface LoaderBoardResponse {
+  /** Non-auxiliary trucks assigned to this loader machine (trips.loader_id), still to-load. */
+  assigned: AssignedTruck[];
+  /** Trucks within GPS proximity that are NOT in `assigned`. */
+  nearbyUnassigned: TruckAtLoader[];
+}
+
 /**
  * Loader-only: trucks currently within proximity of the loader machine.
  * Polls every 10s so the loader sees arrivals/departures without manual refresh.

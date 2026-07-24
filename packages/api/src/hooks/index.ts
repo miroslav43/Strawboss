@@ -18,6 +18,7 @@ export {
 
 export { useTrucksAtLoader } from './use-trucks-at-loader.js';
 export type { TruckAtLoader } from './use-trucks-at-loader.js';
+export type { AssignedTruck, LoaderBoardResponse } from './use-trucks-at-loader.js';
 
 export {
   useParcels,
