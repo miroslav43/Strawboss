@@ -14,6 +14,8 @@ import { ParcelsRepo } from '../db/parcels-repo';
 import { SyncCursorsRepo } from '../db/sync-cursors-repo';
 import { SyncManager } from '../sync/SyncManager';
 import { useNetworkStatus } from './useNetworkStatus';
+import { PARCELS_LOCAL_KEY, PARCELS_REFRESH_KEY } from './useCachedParcels';
+import { DEPOTS_LOCAL_KEY, DEPOTS_REFRESH_KEY } from './useCachedDepots';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -108,6 +110,14 @@ export function useSync() {
         queryClient.invalidateQueries({ queryKey: ['bale-loads'] });
         queryClient.invalidateQueries({ queryKey: ['trips'] });
         queryClient.invalidateQueries({ queryKey: ['operator-stats'] });
+        // The maps render from the local cache, which a pull has just rewritten —
+        // re-read it. And re-pull the server list, so a parcel we have just pushed
+        // comes back with the values only the server can produce (the PostGIS area,
+        // the farm_name from trigger 00065) instead of our local approximations.
+        queryClient.invalidateQueries({ queryKey: PARCELS_LOCAL_KEY });
+        queryClient.invalidateQueries({ queryKey: PARCELS_REFRESH_KEY });
+        queryClient.invalidateQueries({ queryKey: DEPOTS_LOCAL_KEY });
+        queryClient.invalidateQueries({ queryKey: DEPOTS_REFRESH_KEY });
       }
 
       await refreshPendingCount();

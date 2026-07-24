@@ -1,19 +1,16 @@
 /**
- * useCachedDepots — depot (delivery_destinations) geometry cache.
+ * useCachedDepots — the depot (delivery_destinations) list the maps render.
  *
- * Mirrors `useCachedParcels`: fetches the depot list from the API when online
- * and falls back to the local SQLite cache when offline / on error. After a
- * successful fetch it persists each depot's geometry (boundary polygon + point
- * coords + confirm radius) into the local `delivery_destinations` table so
- * in-depot presence (`useCurrentLoaderParcel`), the driver's destination
- * proximity, and geofence-wake can read it offline.
+ * Local-first, mirroring `useCachedParcels`: the SQLite `delivery_destinations`
+ * table is the source of truth for what gets drawn, and the REST endpoint is a
+ * background refresher that writes into it. A depot drawn by the geofence-maker
+ * is therefore on the map immediately, offline included, instead of waiting for
+ * the sync queue to reach the server and a remount to happen to coincide.
  *
- * This restores the intended REST-cache path — before this, nothing wrote
- * server depot geometry into SQLite (the table is excluded from delta sync and
- * `DeliveryDestinationsRepo.upsert` had no callers), so depot presence was stuck
- * on "unknown" forever.
+ * The cache also feeds in-depot presence (`useCurrentLoaderParcel`), the driver's
+ * destination proximity, and geofence-wake — all of which need it offline.
  */
-import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DeliveryDestination } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
@@ -21,7 +18,11 @@ import {
   DeliveryDestinationsRepo,
   type LocalDeliveryDestination,
 } from '@/db/delivery-destinations-repo';
-import { mobileLogger } from '@/lib/logger';
+
+/** What the maps read. Invalidate after any local write to `delivery_destinations`. */
+export const DEPOTS_LOCAL_KEY = ['depots-local'] as const;
+/** The background server refresh. */
+export const DEPOTS_REFRESH_KEY = ['depots-remote-refresh'] as const;
 
 /**
  * The backend serialises coords with PostGIS `ST_AsGeoJSON(...)::json`, so we
@@ -64,83 +65,59 @@ function apiDepotToLocal(d: DeliveryDestination): LocalDeliveryDestination {
   };
 }
 
-async function persistDepotsToCache(depots: LocalDeliveryDestination[]): Promise<void> {
-  try {
-    const db = await getDatabase();
-    const repo = new DeliveryDestinationsRepo(db);
-    for (const d of depots) {
-      await repo.upsert(d);
-    }
-  } catch (err) {
-    mobileLogger.warn('useCachedDepots: failed to persist depots to SQLite', {
-      message: err instanceof Error ? err.message : String(err),
-    });
+export async function persistDepotsToCache(depots: DeliveryDestination[]): Promise<void> {
+  const db = await getDatabase();
+  const repo = new DeliveryDestinationsRepo(db);
+  // Depots never travel on delta sync, so this is the only channel through which a
+  // device can learn that one was deleted. See DeliveryDestinationsRepo.reconcileWithServer.
+  await repo.reconcileWithServer(depots.map((d) => d.id));
+  for (const d of depots) {
+    await repo.upsert(apiDepotToLocal(d));
   }
 }
 
-async function loadDepotsFromCache(): Promise<LocalDeliveryDestination[]> {
-  try {
-    const db = await getDatabase();
-    const repo = new DeliveryDestinationsRepo(db);
-    return await repo.listAll();
-  } catch {
-    return [];
-  }
+async function readDepotsFromSqlite(): Promise<LocalDeliveryDestination[]> {
+  const db = await getDatabase();
+  const repo = new DeliveryDestinationsRepo(db);
+  return repo.listAll();
 }
 
 export interface UseCachedDepotsResult {
   depots: LocalDeliveryDestination[];
   loading: boolean;
-  /** True when data came from the local cache (offline fallback). */
+  /** True until the server has confirmed the list at least once this session. */
   fromCache: boolean;
 }
 
-/**
- * Returns the depot list from API (online) or SQLite cache (offline), updating
- * the cache after each successful fetch. Poll cadence is gentle — depot geometry
- * is near-static.
- */
-export function useCachedDepots(pollMs = 5 * 60_000): UseCachedDepotsResult {
-  const [depots, setDepots] = useState<LocalDeliveryDestination[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fromCache, setFromCache] = useState(false);
+export function useCachedDepots(refreshMs = 5 * 60_000): UseCachedDepotsResult {
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    let cancelled = false;
+  // See useCachedParcels for why `networkMode: 'always'` matters on the local read.
+  const local = useQuery({
+    queryKey: DEPOTS_LOCAL_KEY,
+    queryFn: readDepotsFromSqlite,
+    staleTime: Infinity,
+    networkMode: 'always',
+  });
 
-    async function load() {
-      try {
-        const apiDepots = await mobileApiClient.get<DeliveryDestination[]>(
-          '/api/v1/delivery-destinations',
-        );
-        if (cancelled) return;
-        const mapped = apiDepots.map(apiDepotToLocal);
-        setDepots(mapped);
-        setFromCache(false);
-        void persistDepotsToCache(mapped);
-      } catch {
-        if (cancelled) return;
-        const cached = await loadDepotsFromCache();
-        if (cancelled) return;
-        setDepots(cached);
-        setFromCache(true);
-        if (cached.length > 0) {
-          mobileLogger.flow('useCachedDepots: offline, loaded from SQLite cache', {
-            count: cached.length,
-          });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
+  // Depot geometry is near-static, so the refresh cadence stays gentle.
+  const refresh = useQuery({
+    queryKey: DEPOTS_REFRESH_KEY,
+    queryFn: async () => {
+      const server = await mobileApiClient.get<DeliveryDestination[]>(
+        '/api/v1/delivery-destinations',
+      );
+      await persistDepotsToCache(server);
+      await queryClient.invalidateQueries({ queryKey: DEPOTS_LOCAL_KEY });
+      return server.length;
+    },
+    staleTime: refreshMs,
+    retry: false,
+  });
 
-    void load();
-    const interval = setInterval(() => void load(), pollMs);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [pollMs]);
-
-  return { depots, loading, fromCache };
+  return {
+    depots: local.data ?? [],
+    loading: local.isPending,
+    fromCache: !refresh.isSuccess,
+  };
 }

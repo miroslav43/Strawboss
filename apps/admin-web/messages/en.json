@@ -31,6 +31,8 @@
     "operations": "Operations",
     "tasks": "Tasks",
     "trips": "Trips",
+    "transportTrips": "My Trips",
+    "transportNew": "New Request",
     "documents": "Documents",
     "reports": "Reports",
     "alerts": "Alerts",
@@ -676,7 +678,7 @@
   },
   "tasks": {
     "title": "Tasks",
-    "loadError": "Failed to load tasks. The backend may not be running.",
+    "loadError": "Failed to load data. The backend may not be running.",
     "retry": "Retry",
     "boardTitle": "Task board",
     "dailyPlanTitle": "Daily Task Planning",
@@ -715,7 +717,6 @@
     "mapDepositsNeedBoundary": "Only deposits with a boundary polygon appear on the map.",
     "noLoaderOnMap": "No loaders with GPS on the map — use the dropdown.",
     "confirm": "Confirm",
-    "loadError": "Failed to load data. The backend may not be running.",
     "hintBefore": "Drag machines between columns to assign them to parcels for",
     "hintAfter": ".",
     "overview": "Overview",
@@ -783,6 +784,7 @@
   "trips": {
     "title": "Trips",
     "allStatuses": "All statuses",
+    "searchPlaceholder": "Search by trip, truck, driver, destination…",
     "detailTitle": "Trip detail",
     "backToTrips": "Back to trips",
     "loadingDetail": "Loading trip details…",
@@ -799,7 +801,18 @@
       "completed": "Completed",
       "cancelled": "Cancelled",
       "disputed": "Disputed"
-    }
+    },
+    "sectionIntake": "To confirm",
+    "sectionIntakeHint": "New portal requests",
+    "sectionAux": "Auxiliary trips",
+    "sectionAuxHint": "External transporters",
+    "sectionNormal": "Fleet trips",
+    "sectionNormalHint": "Own fleet",
+    "auxEmpty": "No auxiliary trips.",
+    "normalEmpty": "No trips.",
+    "stageActive": "Active",
+    "stageAll": "All stages",
+    "dateTo": "to"
   },
   "reports": {
     "title": "Reports",
@@ -1004,7 +1017,7 @@
     "sectionNotify": "Notified people",
     "sectionStatus": "Status & linkage",
     "companyAddress": "Company address",
-    "companyCui": "Company CUI",
+    "companyCui": "Company VAT no.",
     "trailerPlate": "Trailer plate",
     "transporterName": "Transporter",
     "transporterCui": "Transporter CUI",
@@ -1078,7 +1091,29 @@
     "notes": "Notes",
     "auxBadge": "AUX",
     "pendingSectionTitle": "Request details",
-    "depositFromRequest": "Destination set from the request"
+    "depositFromRequest": "Destination set from the request",
+    "stage": {
+      "cancelled": "Cancelled",
+      "pending": "Pending",
+      "unplanned": "Confirmed — unplanned",
+      "planned": "Planned",
+      "loading": "Loading",
+      "awaitingSignature": "Awaiting signature",
+      "signed": "Signed",
+      "completed": "Completed"
+    },
+    "chipAviz": "Aviz",
+    "chipCmr": "CMR",
+    "colPickup": "Pickup",
+    "colDocuments": "Documents",
+    "bales": "bales",
+    "multipleTrips": "More than one live trip on this request",
+    "cui": "VAT",
+    "unplanAria": "Delete the trip (back to unplanned)",
+    "unplanConfirm": "Delete trip {label} for {who}?\n\nThe trip disappears from the loader’s phone and the request returns to “Confirmed — unplanned”, ready to be re-assigned to another truck.",
+    "cancelRequestAria": "Cancel the request (retires the auxiliary truck)",
+    "cancelConfirmedHint": "This request is confirmed — cancelling also retires the auxiliary truck created for it. If you only want to re-plan it, delete the trip instead of the request.",
+    "cancelHasTripError": "This request already has a planned trip. Delete the trip first (the delete button on its row), then cancel the request."
   },
   "alerts": {
     "title": "Alerts",
@@ -1390,7 +1425,14 @@
       "loader_operator": "Loader Operator",
       "driver": "Driver",
       "geofence_maker": "Geofence Maker",
-      "depot_manager": "Depot Manager"
+      "depot_manager": "Depot Manager",
+      "transportator": "Transporter"
+    },
+    "beneficiaries": {
+      "title": "Assigned beneficiaries",
+      "assignAction": "Beneficiaries",
+      "hint": "Choose the beneficiaries this transporter can create transport requests for.",
+      "none": "There are no active beneficiaries in this organization."
     },
     "machineType": {
       "loader": "Loader",
@@ -1944,7 +1986,15 @@
       "hint": "Manually override the trip status. Bypasses the normal workflow — use only to recover a stuck trip.",
       "apply": "Force status",
       "confirm": "Force the trip into this status? This bypasses the normal workflow.",
-      "error": "Could not change the status."
+      "error": "Could not change the status.",
+      "loadTitle": "Where does the load come from?",
+      "sourceParcel": "Parcel",
+      "sourceDepot": "Depot",
+      "pickParcel": "Pick a parcel…",
+      "pickDepot": "Pick a depot…",
+      "baleCount": "How many bales",
+      "baleCountHint": "Automatically deducted from the chosen parcel / depot stock.",
+      "loadRequired": "This trip has no load recorded. Choose where the goods came from and how many bales."
     },
     "transport": "Transport",
     "route": "Route",
@@ -1987,6 +2037,7 @@
     "colSource": "Source",
     "colDestination": "Destination",
     "colBales": "Bales",
+    "colNetWeight": "Net weight",
     "colCreated": "Created",
     "deleteConfirm": "Delete trip {{label}}?",
     "deleteAriaLabel": "Delete trip"
@@ -2082,6 +2133,22 @@
     "activate": "Activate beneficiary",
     "deactivate": "Deactivate beneficiary"
   },
+  "transporter": {
+    "brand": "Transporter Portal",
+    "myTripsTitle": "My Trips",
+    "newRequestTitle": "New Transport Request",
+    "searchPlaceholder": "Search by truck, driver, destination…",
+    "empty": "You haven't created any trips yet.",
+    "form": {
+      "subtitle": "Submit a transport request for one of your beneficiaries.",
+      "beneficiaryLabel": "Beneficiary",
+      "beneficiaryPlaceholder": "Choose a beneficiary…",
+      "beneficiaryRequired": "Select a beneficiary.",
+      "noBeneficiaries": "No beneficiary is assigned to you. Contact your administrator.",
+      "backToTrips": "Back to trips",
+      "newAnother": "New request"
+    }
+  },
   "beneficiaryPortal": {
     "pinStep1Title": "Welcome, {name}",
     "pinStep1Hint": "Enter your 4-digit PIN to continue.",
@@ -2162,7 +2229,7 @@
     "quality2": "Quality 2",
     "neededDate": "Needed date",
     "tonsRequested": "Tons requested",
-    "destinationAddress": "Destination address",
+    "destinationAddress": "Delivery address",
     "pickOnMap": "Pick on map (optional)",
     "coordsSet": "Location set",
     "coordsClear": "Clear location",
@@ -2182,7 +2249,10 @@
     "trust1": "Quick confirmation from our team",
     "trust2": "PIN-secured — one code per day",
     "trust3": "Your details go straight to the dispatch team",
-    "poweredBy": "Powered by StrawBoss"
+    "poweredBy": "Powered by StrawBoss",
+    "destinationAddressPlaceholder": "4 Station St, warehouse 2",
+    "destinationLocality": "Delivery locality",
+    "destinationLocalityPlaceholder": "Lugoj"
   },
   "sign": {
     "loading": "Loading…",

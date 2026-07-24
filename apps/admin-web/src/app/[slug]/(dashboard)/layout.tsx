@@ -75,6 +75,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return;
       }
 
+      // A transporter has a dedicated minimal shell, never the admin dashboard.
+      if (appMeta.role === 'transportator') {
+        router.replace(`/${params.slug}/transport`);
+        return;
+      }
+
       setReady(true);
     });
 
@@ -114,6 +120,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
         if (userSlug !== params.slug) {
           router.replace(`/${userSlug}/`);
+          return;
+        }
+
+        // A transporter has a dedicated minimal shell, never the admin dashboard.
+        if (appMeta.role === 'transportator') {
+          router.replace(`/${params.slug}/transport`);
           return;
         }
 

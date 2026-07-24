@@ -68,9 +68,32 @@ export class DepositInventoryService {
     if (orgId !== null) tripScopeConditions.push(sql`t.organization_id = ${orgId}::uuid`);
     const tripScopeWhere = sql.join(tripScopeConditions, sql` AND `);
 
+    /*
+     * OUTBOUND — bales taken back OUT of this depot.
+     *
+     * Depot stock used to be inbound-only: an accumulator of everything ever
+     * delivered here, with no term for what left. `bale_loads.source_depot_id` has
+     * existed since 00073 and a loader can genuinely load a truck straight out of a
+     * depot — 12 such rows exist in production — but NOTHING read them for stock, so
+     * the number shown was permanently overstated. (The registerLoad comment called
+     * depot-inventory reconciliation "a future enhancement".)
+     *
+     * Keyed on the FK, not on the 50 m spatial match the inbound term uses: a load
+     * knows exactly which depot it came from, so there is nothing to infer.
+     */
+    const outboundConditions: ReturnType<typeof sql>[] = [
+      sql`bl.source_depot_id = ${depotId}::uuid`,
+      sql`bl.deleted_at IS NULL`,
+    ];
+    if (orgId !== null) outboundConditions.push(sql`bl.organization_id = ${orgId}::uuid`);
+    const outboundWhere = sql.join(outboundConditions, sql` AND `);
+    const outboundBales = sql`(
+      SELECT COALESCE(SUM(bl.bale_count), 0)::int FROM bale_loads bl WHERE ${outboundWhere}
+    )`;
+
     const inv = (await this.drizzleProvider.db.execute(sql`
       SELECT
-        COALESCE(SUM(t.bale_count), 0)::int                                AS "totalBales",
+        GREATEST(COALESCE(SUM(t.bale_count), 0)::int - ${outboundBales}, 0)::int AS "totalBales",
         COALESCE(SUM(GREATEST(COALESCE(t.gross_weight_kg, 0) - COALESCE(t.tare_weight_kg, 0), 0)), 0)::int AS "totalNetWeightKg",
         MAX(t.completed_at)                                                AS "lastUpdate"
         FROM trips t

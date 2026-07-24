@@ -15,6 +15,25 @@ export interface ForceStatusDto {
    * status confirm it hasn't changed concurrently before overriding it.
    */
   expectedStatus?: TripStatus;
+
+  // ── The load ───────────────────────────────────────────────────────────────
+  // Forcing a trip to `loaded` (or beyond) used to move ONLY the status: no
+  // cargo, no source, no `bale_loads` row. The result was a phantom trip that
+  // looked loaded, carried 0 bales and moved no stock — and 4 of them exist in
+  // production. So when the target status implies the goods have been picked up
+  // and the trip carries no load yet, these become REQUIRED (the server rejects
+  // with `load_required`); when the loader already registered a real load, they
+  // are ignored.
+  //
+  // Exactly one source. Inserting the `bale_loads` row IS the stock deduction —
+  // parcel remaining is derived as SUM(bale_productions) − SUM(bale_loads).
+  baleCount?: number;
+  /** XOR with `sourceDepotId`. */
+  parcelId?: string;
+  /** XOR with `parcelId`. */
+  sourceDepotId?: string;
+  /** Client-side bale_load UUID, so a retried override doesn't double-count. */
+  idempotencyKey?: string;
 }
 
 export interface CompleteLoadingDto {}
@@ -111,7 +130,15 @@ export interface ResolveDisputeDto {
 export interface RegisterLoadDto {
   truckId: string;
   loaderMachineId: string;
-  parcelId: string;
+  /**
+   * Exactly one of `parcelId` / `sourceDepotId` — the goods come off a field or
+   * out of a depot. This type used to require `parcelId` and omit `sourceDepotId`
+   * entirely, three migrations after 00073 added depot sourcing, so the service
+   * had to widen it back with a local type. It now matches `registerLoadSchema`,
+   * which enforces the XOR.
+   */
+  parcelId?: string;
+  sourceDepotId?: string;
   baleCount: number;
   gpsLat?: number;
   gpsLon?: number;

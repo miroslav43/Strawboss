@@ -8,6 +8,11 @@ COPY packages/types/package.json packages/types/
 COPY packages/validation/package.json packages/validation/
 COPY packages/api/package.json packages/api/
 COPY packages/ui-tokens/package.json packages/ui-tokens/
+# admin-web imports composeAuxStage() from @strawboss/domain (the aux-stage
+# ladder on the Curse page). Local `tsc` resolves it by walking up to the root
+# node_modules whether or not it is declared — Docker installs only the declared
+# graph, so omitting it here fails the build with "Module not found".
+COPY packages/domain/package.json packages/domain/
 COPY apps/admin-web/package.json apps/admin-web/
 RUN --mount=type=cache,id=pnpm-admin,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
@@ -18,17 +23,21 @@ COPY --from=deps /app/packages/types/node_modules ./packages/types/node_modules
 COPY --from=deps /app/packages/validation/node_modules ./packages/validation/node_modules
 COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
 COPY --from=deps /app/packages/ui-tokens/node_modules ./packages/ui-tokens/node_modules
+COPY --from=deps /app/packages/domain/node_modules ./packages/domain/node_modules
 COPY --from=deps /app/apps/admin-web/node_modules ./apps/admin-web/node_modules
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
 COPY packages/types/ packages/types/
 COPY packages/validation/ packages/validation/
 COPY packages/api/ packages/api/
 COPY packages/ui-tokens/ packages/ui-tokens/
+COPY packages/domain/ packages/domain/
 COPY apps/admin-web/ apps/admin-web/
-# Build dependencies first
+# Build dependencies first, in dependency order:
+#   types -> validation -> ui-tokens -> domain -> api
 RUN pnpm --filter @strawboss/types build
 RUN pnpm --filter @strawboss/validation build
 RUN pnpm --filter @strawboss/ui-tokens build
+RUN pnpm --filter @strawboss/domain build
 RUN pnpm --filter @strawboss/api build
 # Build Next.js — NEXT_PUBLIC_* vars must be present at build time
 ARG NEXT_PUBLIC_SUPABASE_URL

@@ -16,7 +16,9 @@ export {
   userSchema,
   createUserSchema,
   updateUserSchema,
+  setTransporterBeneficiariesSchema,
 } from './schemas/user.schema.js';
+export type { SetTransporterBeneficiariesInput } from './schemas/user.schema.js';
 
 export {
   updateProfileLocaleSchema,
@@ -110,6 +112,7 @@ export {
   portalCodeSchema,
   createTripRequestSchema,
   createBeneficiaryRequestSchema,
+  createTransporterRequestSchema,
   verifyPortalCodeSchema,
   signTripSchema,
   updateOrgRequestSettingsSchema,
@@ -119,6 +122,7 @@ export {
 export type {
   CreateTripRequestInput,
   CreateBeneficiaryRequestInput,
+  CreateTransporterRequestInput,
   VerifyPortalCodeInput,
   SignTripInput,
   UpdateOrgRequestSettingsInput,

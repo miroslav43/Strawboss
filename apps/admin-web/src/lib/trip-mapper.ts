@@ -57,7 +57,8 @@ export function toTripCamel(raw: unknown): Trip | null {
     externalDriverName: (r.external_driver_name as string | null) ?? null,
     externalDriverPhone: (r.external_driver_phone as string | null) ?? null,
     externalDriverEmail: (r.external_driver_email as string | null) ?? null,
-    publicSignToken: (r.public_sign_token as string | null) ?? null,
+    // public_sign_token is intentionally NOT mapped — the server no longer sends
+    // it (it is a bearer secret; see the note on Trip in @strawboss/types).
     publicSignTokenUsedAt: (r.public_sign_token_used_at as string | null) ?? null,
     tripRequestId: (r.trip_request_id as string | null) ?? null,
     fraudFlags: (r.fraud_flags as Record<string, unknown> | null) ?? null,
@@ -77,6 +78,7 @@ export function toTripCamel(raw: unknown): Trip | null {
     sourceParcelCode: (r.source_parcel_code as string | null) ?? null,
     sourceParcelMunicipality: (r.source_parcel_municipality as string | null) ?? null,
     sourceFarmName: (r.source_farm_name as string | null) ?? null,
+    sourceDepotName: (r.source_depot_name as string | null) ?? null,
     // Depot-operator delivery confirmation fields.
     depotOperatorId: (r.depot_operator_id as string | null) ?? null,
     depotConfirmedAt: (r.depot_confirmed_at as string | null) ?? null,

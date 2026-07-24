@@ -147,7 +147,7 @@ export const messageTemplates = {
       (qualityLabel(ctx.quality) ? `Calitate: ${qualityLabel(ctx.quality)}\n` : '') +
       (ctx.neededDate ? `Data necesară: ${ctx.neededDate}\n` : '') +
       (ctx.destinationAddress ? `Livrare la: ${ctx.destinationAddress}\n` : '') +
-      `\nConfirmați sau anulați cererea din pagina Cereri transport.`,
+      `\nConfirmați sau anulați cererea din pagina Curse, secțiunea „De confirmat".`,
   }),
 
   [MessageKind.request_confirmed_requester]: (ctx: RequestConfirmedCtx) => ({

@@ -86,7 +86,7 @@ const ROLE_ROUTES: Record<string, string> = {
 // flow). Without an explicit check they fell through ROLE_ROUTES to the
 // `/(tabs)` operator fallback and saw a perpetual "no machine assigned" card.
 // Route them to a clear "managed from the web dashboard" screen instead.
-const NON_FIELD_ROLES = new Set(['dispatcher', 'admin', 'super_admin']);
+const NON_FIELD_ROLES = new Set(['dispatcher', 'admin', 'super_admin', 'transportator']);
 
 function LoadingSplash() {
   return (

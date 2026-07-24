@@ -16,6 +16,7 @@ import {
   EyeOff,
   Copy,
   Pencil,
+  Truck,
 } from 'lucide-react';
 import {
   useAdminUsers,
@@ -36,6 +37,7 @@ import { UserAvatar } from '@/components/shared/UserAvatar';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { AssignBeneficiariesModal } from './AssignBeneficiariesModal';
 
 // ── Role config ───────────────────────────────────────────────────────────
 
@@ -46,6 +48,7 @@ const ALL_ROLES: UserRole[] = [
   UserRole.driver,
   UserRole.geofence_maker,
   UserRole.depot_manager,
+  UserRole.transportator,
 ];
 
 const GROUP_ORDER: UserRole[] = [
@@ -55,6 +58,7 @@ const GROUP_ORDER: UserRole[] = [
   UserRole.driver,
   UserRole.geofence_maker,
   UserRole.depot_manager,
+  UserRole.transportator,
 ];
 
 /** i18n key suffixes for each role — resolved via t('accounts.role.<key>') */
@@ -67,6 +71,7 @@ const ROLE_LABEL_KEYS: Record<UserRole, string> = {
   [UserRole.driver]: 'accounts.role.driver',
   [UserRole.geofence_maker]: 'accounts.role.geofence_maker',
   [UserRole.depot_manager]: 'accounts.role.depot_manager',
+  [UserRole.transportator]: 'accounts.role.transportator',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -78,6 +83,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.driver]: 'bg-green-100 text-green-700',
   [UserRole.geofence_maker]: 'bg-teal-100 text-teal-700',
   [UserRole.depot_manager]: 'bg-orange-100 text-orange-700',
+  [UserRole.transportator]: 'bg-cyan-100 text-cyan-700',
 };
 
 const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
@@ -89,6 +95,7 @@ const ROLE_GROUP_ICONS: Record<UserRole, React.ReactNode> = {
   [UserRole.driver]: <span className="text-sm">&gt;</span>,
   [UserRole.geofence_maker]: <span className="text-sm">&#9676;</span>,
   [UserRole.depot_manager]: <span className="text-sm">&#9636;</span>,
+  [UserRole.transportator]: <Truck className="h-3.5 w-3.5 text-cyan-500" />,
 };
 
 /** Machine type required for each operator role. */
@@ -999,6 +1006,7 @@ export default function AccountsPage() {
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [assignTarget, setAssignTarget] = useState<User | null>(null);
   const [assignDepotTarget, setAssignDepotTarget] = useState<User | null>(null);
+  const [assignBenTarget, setAssignBenTarget] = useState<User | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -1200,8 +1208,11 @@ export default function AccountsPage() {
                       user.role !== UserRole.dispatcher &&
                       user.role !== UserRole.geofence_maker &&
                       user.role !== UserRole.depot_manager &&
+                      user.role !== UserRole.transportator &&
                       user.isActive;
                     const canAssignDepot = ROLE_REQUIRES_DEPOT.includes(user.role) && user.isActive;
+                    const canAssignBeneficiaries =
+                      user.role === UserRole.transportator && user.isActive;
 
                     return (
                       <tr
@@ -1237,7 +1248,16 @@ export default function AccountsPage() {
                           <RoleBadge role={user.role} />
                         </td>
                         <td className="px-4 py-3">
-                          {canAssignDepot ? (
+                          {canAssignBeneficiaries ? (
+                            <button
+                              onClick={() => setAssignBenTarget(user)}
+                              className="flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-500 hover:border-cyan-400 hover:text-cyan-600 transition-colors"
+                              title={t('accounts.beneficiaries.assignAction')}
+                            >
+                              <Users className="h-3 w-3" />
+                              {t('accounts.beneficiaries.assignAction')}
+                            </button>
+                          ) : canAssignDepot ? (
                             assignedDepot ? (
                               <button
                                 onClick={() => setAssignDepotTarget(user)}
@@ -1329,6 +1349,9 @@ export default function AccountsPage() {
       )}
       {assignDepotTarget && (
         <AssignDepotModal user={assignDepotTarget} onClose={() => setAssignDepotTarget(null)} />
+      )}
+      {assignBenTarget && (
+        <AssignBeneficiariesModal user={assignBenTarget} onClose={() => setAssignBenTarget(null)} />
       )}
       {deactivateTarget && (
         <DeactivateDialog

@@ -26,6 +26,63 @@ export const AUXILIARY_TRIP_STATUSES = [
   TripStatus.completed,
 ] as const;
 
+/**
+ * The single, honest status of an auxiliary transport.
+ *
+ * An aux transport lives on TWO axes that neither alone can describe:
+ *   - `trip_requests.status` (pending | confirmed | cancelled) — the commercial
+ *     axis. It is NEVER written again after confirm(), so it goes stale the
+ *     moment the trip starts moving.
+ *   - `trips.status` (TripStatus) — the execution axis. It does not exist at all
+ *     until a dispatcher materializes the trip on the truck board, which can be
+ *     days after the request was confirmed.
+ *
+ * Composing them (see `composeAuxStage` in @strawboss/domain) is what makes the
+ * ladder TOTAL — every request renders, including the ones with no trip yet —
+ * and HONEST: it never shows a TripStatus that an aux trip cannot reach.
+ *
+ * `unplanned` is the one stage that exists in reality but was invisible in the
+ * product: confirmed, an aux truck minted, and nobody has scheduled it yet. It
+ * has no timeout and no alert, so it needs to be visible.
+ *
+ * Ordinals are the display sort order — do not reorder casually.
+ */
+export enum AuxStage {
+  cancelled = 'cancelled',
+  /** Submitted through the portal; awaiting confirm/cancel. No trip, no truck. */
+  pending = 'pending',
+  /** Confirmed and an aux truck minted, but no dispatcher has scheduled it yet. */
+  unplanned = 'unplanned',
+  planned = 'planned',
+  loading = 'loading',
+  /** Loaded; the external driver has not signed the CMR via the public link yet. */
+  awaitingSignature = 'awaitingSignature',
+  signed = 'signed',
+  completed = 'completed',
+}
+
+/** Display/sort order of the aux ladder. Index = `stageOrder` on an aux row. */
+export const AUX_STAGE_ORDER: readonly AuxStage[] = [
+  AuxStage.pending,
+  AuxStage.unplanned,
+  AuxStage.planned,
+  AuxStage.loading,
+  AuxStage.awaitingSignature,
+  AuxStage.signed,
+  AuxStage.completed,
+  AuxStage.cancelled,
+] as const;
+
+/** Stages that are still live work — the aux table's default view. */
+export const ACTIVE_AUX_STAGES: readonly AuxStage[] = [
+  AuxStage.pending,
+  AuxStage.unplanned,
+  AuxStage.planned,
+  AuxStage.loading,
+  AuxStage.awaitingSignature,
+  AuxStage.signed,
+] as const;
+
 export interface Trip extends Timestamps, SoftDelete {
   id: string;
   tripNumber: string;
@@ -107,8 +164,19 @@ export interface Trip extends Timestamps, SoftDelete {
   externalDriverName: string | null;
   externalDriverPhone: string | null;
   externalDriverEmail: string | null;
-  /** One-time token for the public driver sign-and-leave link (/<slug>/sign/<token>). */
-  publicSignToken: string | null;
+  /**
+   * `publicSignToken` is DELIBERATELY ABSENT from this type.
+   *
+   * It is the one-time BEARER SECRET behind /<slug>/sign/<token> — whoever holds
+   * it can sign an auxiliary trip's CMR as the external driver. It used to reach
+   * every authenticated client, because GET /trips did `SELECT t.*` and carries no
+   * @Roles, so any driver or loader could read every trip's token. The read
+   * endpoints now use an explicit projection that omits it, and it is off the type
+   * so nothing can casually put it back. The token is minted server-side and the
+   * link is SMS'd straight to the driver; no client ever needs to see it.
+   *
+   * Only the "has it been used" timestamp is safe to expose.
+   */
   publicSignTokenUsedAt: string | null;
   /** The trip_request this auxiliary trip was created from. */
   tripRequestId: string | null;
@@ -138,4 +206,10 @@ export interface Trip extends Timestamps, SoftDelete {
   sourceParcelMunicipality?: string | null;
   /** Name of the farm the source parcel belongs to — enriched join label. */
   sourceFarmName?: string | null;
+  /**
+   * Name of the depot the trip was loaded from — enriched join label.
+   * A trip may carry a source depot instead of (or alongside) a source parcel;
+   * migration 00073's CHECK is a disjunction, not an exclusive-or.
+   */
+  sourceDepotName?: string | null;
 }

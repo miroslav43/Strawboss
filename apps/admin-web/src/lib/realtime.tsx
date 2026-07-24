@@ -35,6 +35,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       .channel('db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, (payload) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.trips.all });
+        // A trip change also mutates the AUX read model: the Curse Aux rows join
+        // their live trip server-side, so a status change there must refresh the
+        // request list too, not just the trips list.
+        queryClient.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
         const recordId =
           (payload.new as { id?: string } | undefined)?.id ??
           (payload.old as { id?: string } | undefined)?.id;
@@ -42,6 +46,28 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           queryClient.invalidateQueries({ queryKey: queryKeys.trips.detail(recordId) });
         }
       })
+      // trip_requests was never in this channel. Now that the merged Curse page
+      // is the ONLY place a new portal request surfaces, the amber intake card
+      // must appear without a refresh.
+      //
+      // Fail-safe by design: if trip_requests turns out not to be in the
+      // supabase_realtime publication, this handler is simply an inert no-op —
+      // the list still self-heals on window focus (60s staleTime +
+      // refetchOnWindowFocus) and every mutation already invalidates on success.
+      // So it cannot make anything worse.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'trip_requests' },
+        (payload) => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
+          const recordId =
+            (payload.new as { id?: string } | undefined)?.id ??
+            (payload.old as { id?: string } | undefined)?.id;
+          if (recordId) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.tripRequests.detail(recordId) });
+          }
+        },
+      )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task_assignments' }, () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
       })

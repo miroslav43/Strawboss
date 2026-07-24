@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
+import { SIGNATURE_URL_PATTERN } from '@strawboss/validation';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -51,6 +52,110 @@ import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss
  * `completed`. Fixed at 5 minutes.
  */
 const AUX_AUTOCOMPLETE_DELAY_MS = 5 * 60_000;
+
+/**
+ * A bare calendar day, as an <input type="date"> sends it. Mobile instead sends
+ * a full UTC ISO instant (startOfDayRomaniaISO), so the two shapes must be told
+ * apart before any `::date` cast — see the date handling in list().
+ */
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Hard cap on the trips list. NOT caller-overridable — see the note on the
+ * controller: several admin pages fetch a wide window and filter it client-side,
+ * so a caller-supplied limit would truncate before their filter runs.
+ */
+const TRIP_LIST_CAP = 1000;
+
+/**
+ * The client-facing projection of a trip row. Replaces `SELECT t.*` on the two
+ * READ endpoints (list + findById), which are reachable by ANY authenticated
+ * caller — `GET /trips` carries no @Roles at all.
+ *
+ * Two things `t.*` got wrong:
+ *
+ * 1. SECURITY. It shipped `public_sign_token` — the one-time bearer secret that
+ *    lets an ACCOUNT-LESS external driver sign the CMR through a public link — to
+ *    every driver and loader in the org. Anyone who read it could sign any
+ *    auxiliary trip's transport document as the driver. It is deliberately absent
+ *    below, and the field is gone from the `Trip` type too, so it cannot be
+ *    reintroduced by accident. Nothing needs it client-side: the token is minted
+ *    server-side and the sign link is SMS'd to the driver (see sendSignLinkSms).
+ *    `public_sign_token_used_at` is NOT a secret and IS kept — the aux read model
+ *    surfaces it as "has the driver signed yet".
+ *
+ * 2. TYPE HONESTY. `destination_coords` is a PostGIS geometry, and postgres.js has
+ *    no parser for it, so `t.*` emitted raw EWKB hex ("0101000020E6100000…") while
+ *    `Trip.destinationCoords` is declared `GeoPoint | null`. Every other query in
+ *    this file already serialises geometry properly. json_build_object gives the
+ *    {lat, lon} the type actually promises.
+ *
+ * Every other column is kept verbatim, in snake_case, so the wire shape is
+ * otherwise byte-identical for the ~30 fleet phones and the admin mapper.
+ */
+const TRIP_COLS = sql`
+  t.id,
+  t.trip_number,
+  t.status,
+  t.organization_id,
+  t.source_parcel_id,
+  t.source_depot_id,
+  t.source_parcel_auto,
+  t.loader_id,
+  t.truck_id,
+  t.loader_operator_id,
+  t.driver_id,
+  t.bale_count,
+  t.delivered_bale_count,
+  t.deteriorated_bales_count,
+  t.loading_started_at,
+  t.loading_completed_at,
+  t.departure_at,
+  t.arrival_at,
+  t.gps_distance_km,
+  t.destination_id,
+  t.destination_name,
+  t.destination_address,
+  CASE WHEN t.destination_coords IS NULL THEN NULL
+       ELSE json_build_object('lat', ST_Y(t.destination_coords),
+                              'lon', ST_X(t.destination_coords))
+  END                                            AS destination_coords,
+  t.gross_weight_kg,
+  t.tare_weight_kg,
+  t.net_weight_kg,
+  t.weight_ticket_number,
+  t.weight_ticket_photo_url,
+  t.delivered_at,
+  t.delivery_notes,
+  t.receiver_name,
+  t.receiver_signature_url,
+  t.receiver_signed_at,
+  t.loader_signature_url,
+  t.driver_signature_url,
+  t.depot_operator_id,
+  t.depot_confirmed_at,
+  t.depot_operator_signature_url,
+  t.scale_broken,
+  t.completed_at,
+  t.cancelled_at,
+  t.cancellation_reason,
+  t.parent_trip_id,
+  t.iteration_index,
+  t.recall_decision,
+  t.recall_decided_at,
+  t.is_auxiliary,
+  t.external_driver_name,
+  t.external_driver_phone,
+  t.external_driver_email,
+  t.public_sign_token_used_at,
+  t.trip_request_id,
+  t.fraud_flags,
+  t.client_id,
+  t.sync_version,
+  t.created_at,
+  t.updated_at,
+  t.deleted_at
+`;
 
 /** Row shape used by recordNoRecall + alertAdminTruckReleased (P1b). */
 interface TruckReleaseRow {
@@ -234,6 +339,14 @@ export class TripsService implements OnModuleInit {
        * keeps the response byte-identical to today.
        */
       include?: string;
+      /**
+       * Opt-in split between the two kinds of trip. Pass the literal string
+       * 'true' (auxiliary — external transporter, collapsed lifecycle) or
+       * 'false' (own fleet). Omitting it returns BOTH, unchanged.
+       */
+      isAuxiliary?: string;
+      /** Free-text over trip number / truck / driver (incl. external) / destination / parcel. */
+      search?: string;
     },
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`t.deleted_at IS NULL`];
@@ -269,11 +382,78 @@ export class TripsService implements OnModuleInit {
     if (filters?.loaderOperatorId) {
       conditions.push(sql`t.loader_operator_id = ${filters.loaderOperatorId}`);
     }
+
+    /*
+     * `isAuxiliary` is STRICTLY opt-in: the predicate is pushed only on the
+     * literal 'true'/'false'. Absent (or anything else) leaves the result set
+     * untouched, so every existing caller keeps its current rows. This is the
+     * same opt-in contract already documented for `include=refs` above, and it
+     * is not optional here: the mobile loader's "Încărcări" tab reaches THIS
+     * generic endpoint (useMyTrucksToLoad) and legitimately expects auxiliary
+     * trips back — the aux INSERT sets loader_id/loader_operator_id. A default
+     * that excluded aux would blank ~30 fleet phones with no error anywhere.
+     */
+    if (filters?.isAuxiliary === 'true' || filters?.isAuxiliary === 'false') {
+      conditions.push(sql`t.is_auxiliary = ${filters.isAuxiliary === 'true'}`);
+    }
+
+    if (filters?.search) {
+      const like = `%${filters.search}%`;
+      // external_driver_name must be in here: an auxiliary trip has driver_id
+      // NULL, so u.full_name is always NULL and the truck's driver would
+      // otherwise be unsearchable.
+      conditions.push(sql`(
+        t.trip_number          ILIKE ${like} OR
+        t.destination_name     ILIKE ${like} OR
+        t.external_driver_name ILIKE ${like} OR
+        m.registration_plate   ILIKE ${like} OR
+        m.internal_code        ILIKE ${like} OR
+        u.full_name            ILIKE ${like} OR
+        p.name                 ILIKE ${like}
+      )`);
+    }
+
+    /*
+     * Date bounds carry TWO different wire shapes and must not be normalized
+     * into one:
+     *
+     *   admin-web  sends a bare calendar day  '2026-07-13'   (an <input type=date>)
+     *   mobile     sends a full UTC instant   '2026-07-12T21:00:00.000Z'
+     *              (startOfDayRomaniaISO() — apps/mobile/src/lib/date.ts)
+     *
+     * Casting the mobile value with `::date` would truncate it to 2026-07-12 in
+     * the UTC session and open the loader's window ~21h early, silently, on
+     * every fleet phone. So the timezone-aware treatment is applied ONLY to a
+     * bare calendar day; anything else falls through to the original predicate
+     * byte-for-byte.
+     *
+     * For a bare day the bound is anchored to Europe/Bucharest and dateTo is
+     * made INCLUSIVE (< next midnight) — `created_at <= '2026-07-13'` coerces to
+     * midnight and drops everything created during that day.
+     *
+     * The `::timestamp` cast before AT TIME ZONE is LOAD-BEARING, not noise.
+     * AT TIME ZONE picks its direction from the operand's type, and a bare
+     * `date` prefers the implicit cast to timestamptz:
+     *   date::timestamptz AT TIME ZONE z -> timestamp   ("wall-clock in z at this instant")
+     *   date::timestamp   AT TIME ZONE z -> timestamptz ("this wall-clock, read as local time in z")
+     * Only the second is what we mean. Without the cast the bound lands 2-3h off
+     * (verified against the DB). With it, `'2026-07-13'` resolves to exactly
+     * 2026-07-12T21:00:00Z — bit-identical to what mobile's startOfDayRomaniaISO()
+     * sends — and it follows DST rather than hardcoding an offset.
+     */
     if (filters?.dateFrom) {
-      conditions.push(sql`t.created_at >= ${filters.dateFrom}`);
+      conditions.push(
+        CALENDAR_DAY.test(filters.dateFrom)
+          ? sql`t.created_at >= (${filters.dateFrom}::date::timestamp AT TIME ZONE 'Europe/Bucharest')`
+          : sql`t.created_at >= ${filters.dateFrom}`,
+      );
     }
     if (filters?.dateTo) {
-      conditions.push(sql`t.created_at <= ${filters.dateTo}`);
+      conditions.push(
+        CALENDAR_DAY.test(filters.dateTo)
+          ? sql`t.created_at < ((${filters.dateTo}::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/Bucharest')`
+          : sql`t.created_at <= ${filters.dateTo}`,
+      );
     }
 
     const where = sql.join(conditions, sql` AND `);
@@ -284,8 +464,14 @@ export class TripsService implements OnModuleInit {
     //
     // `refsSelect` reuses this SAME `m` join (no extra JOIN, no extra cost) to
     // add the two `include=refs` columns. When the param is absent this is an
-    // empty fragment, so the query text — and therefore the response — is
-    // byte-identical to before this feature existed.
+    // empty fragment.
+    //
+    // `sd` (source depot) is a NEW unconditional join. Migration 00073 added
+    // trips.source_depot_id, but the name was never joined — so a depot-sourced
+    // trip has source_parcel_id NULL by construction and its Sursă cell was
+    // permanently blank. This adds exactly ONE key (`source_depot_name`) to
+    // every row: additive, and safe for the mobile callers, which map explicit
+    // named fields and ignore unknown keys.
     const refsSelect =
       filters?.include === 'refs'
         ? sql`,
@@ -295,22 +481,24 @@ export class TripsService implements OnModuleInit {
     const result = await this.drizzleProvider.db.execute(
       sql`
         SELECT
-          t.*,
+          ${TRIP_COLS},
           m.registration_plate                         AS truck_plate,
           m.internal_code                              AS truck_code,
           u.full_name                                  AS driver_name,
           p.name                                       AS source_parcel_name,
           p.code                                       AS source_parcel_code,
           p.municipality                               AS source_parcel_municipality,
-          f.name                                       AS source_farm_name${refsSelect}
+          f.name                                       AS source_farm_name,
+          sd.name                                      AS source_depot_name${refsSelect}
         FROM trips t
         LEFT JOIN machines m ON m.id = t.truck_id
         LEFT JOIN users    u ON u.id = t.driver_id
         LEFT JOIN parcels  p ON p.id = t.source_parcel_id
         LEFT JOIN farms    f ON f.id = p.farm_id
+        LEFT JOIN delivery_destinations sd ON sd.id = t.source_depot_id
         WHERE ${where}
         ORDER BY t.created_at DESC
-        LIMIT 1000
+        LIMIT ${TRIP_LIST_CAP}
       `,
     );
     return result;
@@ -322,11 +510,13 @@ export class TripsService implements OnModuleInit {
       conditions.push(sql`t.organization_id = ${orgId}::uuid`);
     }
     const where = sql.join(conditions, sql` AND `);
-    // `t.*` keeps every trip column (internal callers rely on it); the extra
-    // LEFT JOIN labels let the admin show real names instead of raw UUIDs.
+    // TRIP_COLS keeps every trip column that internal callers rely on — it is
+    // `t.*` minus the one bearer secret (public_sign_token) and with the geometry
+    // serialised. Internal reads of the token use their own dedicated queries.
+    // The extra LEFT JOIN labels let the admin show real names, not raw UUIDs.
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT
-            t.*,
+            ${TRIP_COLS},
             m.registration_plate  AS truck_plate,
             m.internal_code       AS truck_code,
             u.full_name           AS driver_name,
@@ -337,6 +527,7 @@ export class TripsService implements OnModuleInit {
             p.code                AS source_parcel_code,
             p.municipality        AS source_parcel_municipality,
             f.name                AS source_farm_name,
+            sd.name               AS source_depot_name,
             EXISTS(
               SELECT 1 FROM users du
               WHERE du.assigned_delivery_destination_id = t.destination_id
@@ -351,6 +542,7 @@ export class TripsService implements OnModuleInit {
           LEFT JOIN users    lo ON lo.id = t.loader_operator_id
           LEFT JOIN parcels  p  ON p.id  = t.source_parcel_id
           LEFT JOIN farms    f  ON f.id  = p.farm_id
+          LEFT JOIN delivery_destinations sd ON sd.id = t.source_depot_id
           WHERE ${where}
           LIMIT 1`,
     );
@@ -402,10 +594,18 @@ export class TripsService implements OnModuleInit {
     const result = await this.drizzleProvider.db.transaction(async (tx) => {
       const tripNumber = await this.generateTripNumber(orgId, tx);
       return tx.execute(
+        // destination_id: carried so an admin-created trip is visible to the depot
+        // manager and can be depot-confirmed, like every other creation path.
+        //
+        // destination_coords: the old code bound `JSON.stringify({lat, lon})`
+        // straight into a GEOMETRY column, which Postgres cannot parse — passing
+        // coords here would always have thrown. (Nothing calls POST /trips today,
+        // which is why nobody hit it.) ST_MakePoint takes lon,lat in that order.
         sql`INSERT INTO trips (
           organization_id,
           trip_number, status, source_parcel_id, truck_id, driver_id,
-          loader_id, loader_operator_id, destination_name,
+          loader_id, loader_operator_id,
+          destination_id, destination_name,
           destination_address, destination_coords,
           bale_count, source_parcel_auto
         ) VALUES (
@@ -413,8 +613,13 @@ export class TripsService implements OnModuleInit {
           ${tripNumber}, ${TripStatus.planned}, ${dto.sourceParcelId},
           ${dto.truckId}, ${dto.driverId},
           ${dto.loaderId ?? null}, ${dto.loaderOperatorId ?? null},
+          ${dto.destinationId ? sql`${dto.destinationId}::uuid` : sql`NULL`},
           ${dto.destinationName ?? null}, ${dto.destinationAddress ?? null},
-          ${dto.destinationCoords ? JSON.stringify(dto.destinationCoords) : null},
+          ${
+            dto.destinationCoords
+              ? sql`ST_SetSRID(ST_MakePoint(${dto.destinationCoords.lon}, ${dto.destinationCoords.lat}), 4326)`
+              : sql`NULL`
+          },
           0, false
         ) RETURNING *`,
       );
@@ -579,6 +784,11 @@ export class TripsService implements OnModuleInit {
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
+    const resolvedLoaderSignature = await this.resolveLoaderSignature(
+      callerId,
+      dto.loaderSignature,
+    );
+
     if (orgId !== null) {
       const truckCheck = (await this.drizzleProvider.db.execute(sql`
         SELECT id FROM machines WHERE id = ${dto.truckId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
@@ -721,13 +931,18 @@ export class TripsService implements OnModuleInit {
 
         const tripNumber = await this.generateTripNumber(orgId, tx);
         const insertedTrip = (await tx.execute(
+          // destination_id, not just the denormalized name/address/coords. It was
+          // resolved above and then thrown away, which left the FK NULL on every
+          // trip this path creates — and destination_id is what the depot-manager
+          // sync pull, the depot_manager RLS policies and confirmDepotDelivery all
+          // key on. Without it the entire depot-confirmation flow was dead.
           sql`INSERT INTO trips (
                 organization_id,
                 trip_number, status,
                 source_parcel_id, source_depot_id, source_parcel_auto,
                 truck_id, driver_id,
                 loader_id, loader_operator_id,
-                destination_name, destination_address, destination_coords,
+                destination_id, destination_name, destination_address, destination_coords,
                 bale_count
               ) VALUES (
                 ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
@@ -737,6 +952,7 @@ export class TripsService implements OnModuleInit {
                 ${dto.sourceDepotId ? sql`false` : sql`true`},
                 ${dto.truckId}, ${driverId},
                 ${dto.loaderMachineId}, ${callerId},
+                ${destinationId ? sql`${destinationId}::uuid` : sql`NULL`},
                 ${destName}, ${destAddress},
                 ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
                 0
@@ -852,7 +1068,7 @@ export class TripsService implements OnModuleInit {
               status = ${TripStatus.loaded}::trip_status,
               loading_started_at = COALESCE(loading_started_at, NOW()),
               loading_completed_at = NOW(),
-              loader_signature_url = ${dto.loaderSignature ?? null},
+              loader_signature_url = ${resolvedLoaderSignature},
               bale_count = (
                 SELECT COALESCE(SUM(bale_count), 0)::int
                 FROM bale_loads
@@ -933,11 +1149,66 @@ export class TripsService implements OnModuleInit {
    * external driver is SMS'd a sign-and-leave link. The driver's later signature
    * (via signByPublicToken) finalizes stage-2 of the document.
    */
+  /**
+   * The loader's signature on a load is ALWAYS their pre-registered SPECIMEN — the
+   * phone draws nothing, it just echoes back the URL it cached at login (see
+   * load-bales.tsx: `submitLoad({ loaderSignature: signatureSpecimenUrl })`). The
+   * server already stores that specimen on `users.signature_specimen_url`, so there
+   * is no reason to trust the client's copy of it.
+   *
+   * This is not a tidy-up — it is the fix for a live field outage. Commit 111d4b1
+   * (the security audit, deployed 08.07) tightened the DTO from
+   * `loaderSignature: z.string()` to a strict URL allowlist. Any phone whose cached
+   * specimen URL no longer matched the new shape had its loads REJECTED at the
+   * validation boundary — a hard 400 which, thanks to the ZodValidationPipe bug,
+   * surfaced as "Internal server error". The one loader operator using this screen
+   * could not register a load for six days and nobody could see why.
+   *
+   * Resolving server-side makes the whole class of failure impossible: a stale,
+   * malformed or absent client value can no longer break a load, and the client can
+   * no longer smuggle an arbitrary URL into an `<img src>` — which is what the audit
+   * was defending against in the first place. The client value is used only as a
+   * fallback, and only when it already satisfies the allowlist.
+   */
+  private async resolveLoaderSignature(
+    callerId: string,
+    clientValue?: string | null,
+  ): Promise<string | null> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT signature_specimen_url FROM users
+           WHERE id = ${callerId}::uuid AND deleted_at IS NULL
+           LIMIT 1`,
+    )) as unknown as { signature_specimen_url: string | null }[];
+    const specimen = rows[0]?.signature_specimen_url ?? null;
+
+    if (specimen) {
+      if (clientValue && clientValue !== specimen) {
+        // The phone is carrying a stale specimen URL. Harmless now — but this is the
+        // fingerprint of the outage above, so it is worth seeing in the logs.
+        this.winston.warn('Loader specimen mismatch — using the stored one', {
+          context: 'TripsService',
+          userId: callerId,
+          stored: specimen,
+          sentByClient: clientValue,
+        });
+      }
+      return specimen;
+    }
+
+    // No specimen on file: fall back to the client's value ONLY if it satisfies the
+    // allowlist, so an unvalidated URL can never be persisted.
+    return clientValue && SIGNATURE_URL_PATTERN.test(clientValue) ? clientValue : null;
+  }
+
   private async registerAuxiliaryLoad(
     dto: RegisterLoadInput,
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
+    const resolvedLoaderSignature = await this.resolveLoaderSignature(
+      callerId,
+      dto.loaderSignature,
+    );
     const idempotencyTable = 'register_load';
     const existing = (await this.drizzleProvider.db.execute(
       sql`SELECT result_data FROM sync_idempotency
@@ -1009,7 +1280,7 @@ export class TripsService implements OnModuleInit {
               status = ${TripStatus.loaded}::trip_status,
               loading_started_at = COALESCE(loading_started_at, NOW()),
               loading_completed_at = NOW(),
-              loader_signature_url = ${dto.loaderSignature ?? null},
+              loader_signature_url = ${resolvedLoaderSignature},
               loader_id = ${dto.loaderMachineId},
               loader_operator_id = COALESCE(loader_operator_id, ${callerId}),
               -- record the actual pickup source (the loader's field OR depot) if
@@ -1843,6 +2114,7 @@ export class TripsService implements OnModuleInit {
       const cur = (await tx.execute(sql`
         SELECT id, status, parent_trip_id, source_parcel_id, truck_id, driver_id,
                loader_id, loader_operator_id,
+               destination_id,
                destination_name, destination_address,
                ST_AsGeoJSON(destination_coords) AS destination_coords_geojson,
                recall_decided_at,
@@ -1916,7 +2188,7 @@ export class TripsService implements OnModuleInit {
           source_parcel_id, source_parcel_auto,
           truck_id, driver_id,
           loader_id, loader_operator_id,
-          destination_name, destination_address,
+          destination_id, destination_name, destination_address,
           destination_coords,
           bale_count,
           parent_trip_id, iteration_index
@@ -1926,6 +2198,7 @@ export class TripsService implements OnModuleInit {
           ${sourceParcelId}, true,
           ${t.truck_id}, ${t.driver_id},
           ${t.loader_id}, ${t.loader_operator_id},
+          ${t.destination_id ? sql`${t.destination_id as string}::uuid` : sql`NULL`},
           ${t.destination_name}, ${t.destination_address},
           ${
             t.destination_coords_geojson
@@ -2140,10 +2413,77 @@ export class TripsService implements OnModuleInit {
    * lifecycle timestamp (departure/arrival/delivered/…) when it is still null so
    * downstream reports and the idle/recall checks stay consistent.
    */
-  async forceStatus(id: string, orgId: string | null, dto: ForceStatusDto) {
+  /**
+   * Admin status override — now carrying the load the override implies.
+   *
+   * This used to move ONLY the status. Forcing a trip to `loaded` therefore left a
+   * PHANTOM: it looked loaded, `bale_count` stayed 0, no source was recorded, no
+   * `bale_loads` row existed, and so it moved no stock whatsoever. Four such trips
+   * exist in production.
+   *
+   * So when the target status means the goods have been picked up, and the trip has
+   * no load recorded, the admin must now say WHERE the load came from and HOW MUCH
+   * — and that is written as a real `bale_loads` row, in the same transaction as the
+   * status change.
+   *
+   * That row IS the stock deduction: parcel stock is DERIVED, never stored
+   * (`SUM(bale_productions) − SUM(bale_loads)`, see computeRemainingBalesOnParcel and
+   * ParcelsService.getBaleAvailability). Nothing needs to "subtract" anything.
+   *
+   * If the loader already registered a real load, nothing is asked and nothing is
+   * inserted — the override just moves the status, as before.
+   */
+  async forceStatus(id: string, orgId: string | null, dto: ForceStatusDto, callerId?: string) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     const target = dto.status;
+
+    // Statuses that assert "the goods are on the truck". Reaching one of these with
+    // no load recorded is what produced the phantom trips.
+    const IMPLIES_LOADED: TripStatus[] = [
+      TripStatus.loaded,
+      TripStatus.in_transit,
+      TripStatus.arrived,
+      TripStatus.delivering,
+      TripStatus.delivered,
+      TripStatus.completed,
+    ];
+
+    const existingLoads = (await this.drizzleProvider.db.execute(
+      sql`SELECT 1 FROM bale_loads
+           WHERE trip_id = ${id}::uuid AND deleted_at IS NULL
+           LIMIT 1`,
+    )) as unknown as unknown[];
+    const hasLoad = existingLoads.length > 0;
+    const wantsLoad = dto.baleCount !== undefined;
+
+    if (IMPLIES_LOADED.includes(target) && !hasLoad && !wantsLoad) {
+      throw new BadRequestException({
+        error: 'load_required',
+        message:
+          'Cursa nu are nicio încărcare înregistrată. Alege de unde vine marfa (parcelă sau depozit) și câți baloți.',
+      });
+    }
+
+    // Validate the source belongs to the caller's org before touching anything —
+    // same ownership checks registerLoad performs.
+    if (wantsLoad && orgId !== null) {
+      if (dto.sourceDepotId) {
+        const rows = (await this.drizzleProvider.db.execute(
+          sql`SELECT 1 FROM delivery_destinations
+               WHERE id = ${dto.sourceDepotId}::uuid AND organization_id = ${orgId}::uuid
+                 AND deleted_at IS NULL LIMIT 1`,
+        )) as unknown as unknown[];
+        if (!rows.length) throw new BadRequestException('Depozit invalid.');
+      } else if (dto.parcelId) {
+        const rows = (await this.drizzleProvider.db.execute(
+          sql`SELECT 1 FROM parcels
+               WHERE id = ${dto.parcelId}::uuid AND organization_id = ${orgId}::uuid
+                 AND deleted_at IS NULL LIMIT 1`,
+        )) as unknown as unknown[];
+        if (!rows.length) throw new BadRequestException('Parcelă invalidă.');
+      }
+    }
 
     // Fixed map (not user input) → safe to interpolate the column name.
     const stampColumn: Partial<Record<TripStatus, string>> = {
@@ -2165,6 +2505,28 @@ export class TripsService implements OnModuleInit {
       setClauses.push(sql`cancellation_reason = ${dto.reason}`);
     }
 
+    if (wantsLoad) {
+      /*
+       * Stamp the SOURCE ON THE TRIP as well as on the bale_load. This is
+       * load-bearing, not belt-and-braces: the reports and the dashboard compute
+       * "loaded" by joining bale_loads on `trips.source_parcel_id`
+       * (reports.service.ts, dashboard.service.ts) — NOT on `bale_loads.parcel_id`,
+       * which is what parcel *remaining* uses. Insert the bale_load without also
+       * stamping the trip and remaining moves while the reports do not: a
+       * split-brain worse than the phantom trips this is fixing.
+       *
+       * COALESCE so a real load already on the trip is never overwritten.
+       */
+      if (dto.parcelId) {
+        setClauses.push(sql`source_parcel_id = COALESCE(source_parcel_id, ${dto.parcelId}::uuid)`);
+        setClauses.push(sql`source_parcel_auto = false`);
+      } else if (dto.sourceDepotId) {
+        setClauses.push(
+          sql`source_depot_id = COALESCE(source_depot_id, ${dto.sourceDepotId}::uuid)`,
+        );
+      }
+    }
+
     const setClause = sql.join(setClauses, sql`, `);
     // Org filter folded into the UPDATE (not just the prior findById) so the
     // write is atomically scoped to the caller's org, matching every other
@@ -2175,9 +2537,51 @@ export class TripsService implements OnModuleInit {
     // status-guarded pattern used by dispute()/cancel() elsewhere in this file).
     const expectedFilter =
       dto.expectedStatus !== undefined ? sql` AND status = ${dto.expectedStatus}` : sql``;
-    const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET ${setClause} WHERE id = ${id}${orgFilter}${expectedFilter} RETURNING *`,
-    );
+
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      if (wantsLoad) {
+        // Same shape registerLoad inserts (see registerLoad's bale_loads INSERT) —
+        // the id doubles as the idempotency key, so a retried override cannot
+        // double-count the bales.
+        await tx.execute(
+          sql`INSERT INTO bale_loads (
+                organization_id, id, trip_id, parcel_id, source_depot_id,
+                loader_id, operator_id, bale_count, loaded_at, notes
+              ) VALUES (
+                ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
+                ${dto.idempotencyKey ? sql`${dto.idempotencyKey}::uuid` : sql`uuid_generate_v4()`},
+                ${id}::uuid,
+                ${dto.parcelId ? sql`${dto.parcelId}::uuid` : sql`NULL`},
+                ${dto.sourceDepotId ? sql`${dto.sourceDepotId}::uuid` : sql`NULL`},
+                ${trip.loader_id ?? null},
+                ${callerId ?? null},
+                ${dto.baleCount},
+                NOW(),
+                ${'Încărcare înregistrată manual de admin (forțare stare)'}
+              )
+              ON CONFLICT (id) DO NOTHING`,
+        );
+      }
+
+      const updated = await tx.execute(
+        sql`UPDATE trips SET ${setClause} WHERE id = ${id}${orgFilter}${expectedFilter} RETURNING *`,
+      );
+      if (!(updated as unknown as unknown[]).length) return updated;
+
+      if (wantsLoad) {
+        // Recompute from the ledger rather than adding a delta — the same thing
+        // registerLoad does, and it stays correct if several loads exist.
+        await tx.execute(
+          sql`UPDATE trips SET
+                bale_count = (SELECT COALESCE(SUM(bale_count), 0) FROM bale_loads
+                               WHERE trip_id = ${id}::uuid AND deleted_at IS NULL),
+                updated_at = NOW()
+              WHERE id = ${id}::uuid`,
+        );
+      }
+      return updated;
+    });
+
     if (!(result as unknown as unknown[]).length) {
       if (dto.expectedStatus !== undefined) {
         throw new BadRequestException('Trip status changed concurrently');
@@ -2191,6 +2595,9 @@ export class TripsService implements OnModuleInit {
       from,
       to: target,
       reason: dto.reason ?? null,
+      baleCount: dto.baleCount ?? null,
+      parcelId: dto.parcelId ?? null,
+      sourceDepotId: dto.sourceDepotId ?? null,
     });
 
     // Auxiliary force-load: an admin forcing an aux trip to `loaded` should behave
@@ -2362,18 +2769,23 @@ export class TripsService implements OnModuleInit {
       const tripId = await this.drizzleProvider.db.transaction(async (tx) => {
         const tripNumber = await this.generateTripNumber(taskOrgId, tx);
         const inserted = (await tx.execute(
+          // destination_id comes straight from the task — this method already
+          // returns early unless `task.destination_id` is set, so it is always
+          // available here. Migration 00051 added trips.destination_id explicitly
+          // to MIRROR task_assignments.destination_id (00018); the mirror was just
+          // never wired up.
           sql`INSERT INTO trips (
             organization_id,
             trip_number, status, source_parcel_id, truck_id, driver_id,
             loader_id, loader_operator_id,
-            destination_name, destination_address, destination_coords,
+            destination_id, destination_name, destination_address, destination_coords,
             bale_count, source_parcel_auto
           ) VALUES (
             ${taskOrgId ? sql`${taskOrgId}::uuid` : sql`NULL`},
             ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
             ${task.machine_id}, ${driverId},
             ${loaderMachineId}, ${loaderOperatorId},
-            ${dest.name}, ${dest.address ?? null},
+            ${task.destination_id}::uuid, ${dest.name}, ${dest.address ?? null},
             ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
             0, false
           ) RETURNING id`,
@@ -2400,8 +2812,12 @@ export class TripsService implements OnModuleInit {
     }
 
     // ── UPDATE path: only while trip is still in `planned`.
+    // `deleted_at IS NULL` matters: without it a soft-deleted trip still reports
+    // status 'planned', so this took the UPDATE branch on a corpse and never minted
+    // a replacement. Now a deleted trip reads as absent and the caller falls
+    // through to the INSERT path.
     const statusRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT status FROM trips WHERE id = ${task.trip_id} LIMIT 1`,
+      sql`SELECT status FROM trips WHERE id = ${task.trip_id} AND deleted_at IS NULL LIMIT 1`,
     )) as unknown as { status: string }[];
     const currentStatus = statusRows[0]?.status;
     if (!currentStatus) return;
@@ -2415,12 +2831,15 @@ export class TripsService implements OnModuleInit {
     }
 
     await this.drizzleProvider.db.execute(
+      // Re-planning a still-`planned` trip must move destination_id too, or the FK
+      // would keep pointing at the depot the dispatcher just changed away from.
       sql`UPDATE trips SET
         source_parcel_id = ${sourceParcelId},
         truck_id = ${task.machine_id},
         driver_id = ${driverId},
         loader_id = ${loaderMachineId},
         loader_operator_id = ${loaderOperatorId},
+        destination_id = ${task.destination_id}::uuid,
         destination_name = ${dest.name},
         destination_address = ${dest.address ?? null},
         destination_coords = ${destCoordsGeoJson ? sql`ST_GeomFromGeoJSON(${destCoordsGeoJson})` : sql`NULL`},
@@ -2508,7 +2927,58 @@ export class TripsService implements OnModuleInit {
     const destName = req.destination_locality ?? req.company_name ?? 'Adresă solicitant';
     const destAddress = req.destination_address ?? null;
 
-    if (!tripId) {
+    /*
+     * ADOPT an existing trip instead of minting a second one.
+     *
+     * `tripId` comes from the TASK (`task_assignments.trip_id`), and a NEW task always
+     * has it NULL — so `if (!tripId)` used to mint a fresh trip every time. But
+     * re-planning a transport to another day IS a new task, while the request and its
+     * one-time truck are the SAME. The result: every re-plan silently duplicated the
+     * trip on the same request.
+     *
+     * That is exactly how Microfruit ended up with two: planned for 08.07, re-planned
+     * for 09.07, and the second task minted TR-20260709-001 alongside the still-live
+     * TR-20260708-003. Ten requests currently have a live trip and would each duplicate
+     * on the next re-plan.
+     *
+     * The identity of an auxiliary transport is the REQUEST, not the task — one
+     * request, one one-time truck, one trip. So if the request already carries a trip
+     * that has not been executed yet (planned/loading — never a loaded/completed one,
+     * whose bales and CMR are real history), the new task adopts it and the UPDATE path
+     * below simply moves it. Only a request with no live trip mints one.
+     */
+    let effectiveTripId = tripId;
+    if (!effectiveTripId) {
+      const adoptable = (await this.drizzleProvider.db.execute(
+        sql`SELECT id FROM trips
+             WHERE trip_request_id = ${req.id}::uuid
+               AND deleted_at IS NULL
+               AND status IN (${TripStatus.planned}::trip_status, ${TripStatus.loading}::trip_status)
+             ORDER BY created_at DESC
+             LIMIT 1`,
+      )) as unknown as { id: string }[];
+      const adopted = adoptable[0]?.id;
+      if (adopted) {
+        // Hand the trip to the new task, and detach it from the old one so the trip
+        // is never claimed by two tasks at once.
+        await this.drizzleProvider.db.execute(
+          sql`UPDATE task_assignments SET trip_id = NULL, updated_at = NOW()
+               WHERE trip_id = ${adopted}::uuid AND id <> ${taskId} AND deleted_at IS NULL`,
+        );
+        await this.drizzleProvider.db.execute(
+          sql`UPDATE task_assignments SET trip_id = ${adopted}::uuid, updated_at = NOW()
+               WHERE id = ${taskId}`,
+        );
+        this.winston.log(
+          'flow',
+          `Aux re-plan: task ${taskId} adopted existing trip ${adopted} (request ${req.id}) instead of minting a duplicate`,
+          { context: 'TripsService', taskId, tripId: adopted, requestId: req.id },
+        );
+        effectiveTripId = adopted;
+      }
+    }
+
+    if (!effectiveTripId) {
       const orgId = organizationId ?? null;
       const newTripId = await this.drizzleProvider.db.transaction(async (tx) => {
         const tripNumber = await this.generateTripNumber(orgId, tx);
@@ -2557,8 +3027,15 @@ export class TripsService implements OnModuleInit {
     }
 
     // UPDATE path — only while still planned (don't reshape an in-progress trip).
+    // Runs for the task's own trip AND for a trip just adopted from a re-plan, which
+    // is the whole point: the adopted trip is MOVED to the new day/loader rather than
+    // a second one being minted alongside it.
+    //
+    // `deleted_at IS NULL`: a soft-deleted aux trip must read as absent, not as a
+    // live `planned` one, or re-planning a deleted transport silently updates the
+    // corpse instead of creating a fresh trip.
     const statusRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT status FROM trips WHERE id = ${tripId} LIMIT 1`,
+      sql`SELECT status FROM trips WHERE id = ${effectiveTripId} AND deleted_at IS NULL LIMIT 1`,
     )) as unknown as { status: string }[];
     if (statusRows[0]?.status !== TripStatus.planned) return;
 
@@ -2570,7 +3047,16 @@ export class TripsService implements OnModuleInit {
             destination_name = ${destName},
             destination_address = ${destAddress},
             updated_at = NOW()
-          WHERE id = ${tripId} AND status = ${TripStatus.planned}`,
+          WHERE id = ${effectiveTripId} AND status = ${TripStatus.planned}`,
+    );
+
+    // Keep the request's pointer on the trip that actually exists. It is
+    // last-write-wins and was only ever set at mint time, so after a re-plan it could
+    // dangle at a trip that had since been cancelled — which is how one request came
+    // to display a CANCELLED trip while its live planned one sat hidden behind it.
+    await this.drizzleProvider.db.execute(
+      sql`UPDATE trip_requests SET trip_id = ${effectiveTripId}::uuid, updated_at = NOW()
+           WHERE id = ${req.id}::uuid AND trip_id IS DISTINCT FROM ${effectiveTripId}::uuid`,
     );
   }
 
@@ -2753,6 +3239,30 @@ export class TripsService implements OnModuleInit {
    * already started, the UPDATE path is also gated on status = 'planned', so a
    * later task edit still can't un-delete it.)
    *
+   * AUXILIARY TRIPS ARE DIFFERENT: deleting one UN-PLANS the transport.
+   *
+   * An aux trip is owned by its `trip_request` — it is the execution of a
+   * commitment that still exists. Deleting only the trip row (the own-fleet
+   * behaviour) used to STRAND the request: `trip_requests.trip_id` kept pointing
+   * at a dead trip, the truck task kept its `trip_id`, so `autoUpsertAuxiliaryTrip`
+   * took its UPDATE branch on a corpse and never minted a replacement. The
+   * loader's phone then read "Camionul auxiliar nu are o cursă activă" forever and
+   * re-assigning the loader did nothing.
+   *
+   * So for an aux trip the delete is transactional and does three things:
+   *   1. soft-delete the trip
+   *   2. soft-delete the originating truck task (the plan died with the truck)
+   *   3. clear `trip_requests.trip_id`
+   * The request drops back to "Confirmată — neplanificată" and the dispatcher can
+   * simply re-assign it on the truck board — which is exactly what you want when a
+   * truck breaks down. The auxiliary machine is untouched (it is only retired at
+   * load time), so the same truck can be re-planned if it is fixed.
+   *
+   * This does NOT weaken the invariant above: we soft-delete the task rather than
+   * NULL-ing its `trip_id`, and both the boot backfill and autoUpsert filter
+   * `ta.deleted_at IS NULL`, so nothing resurrects it. Own-fleet deletes are
+   * completely unchanged.
+   *
    * Idempotent: if the trip is already soft-deleted, throws 404.
    *
    * Dispatchers can only delete trips in pre-execution statuses; admins may
@@ -2761,6 +3271,7 @@ export class TripsService implements OnModuleInit {
   async softDelete(id: string, orgId: string | null, userRole: UserRole) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
+    const isAuxiliary = trip.is_auxiliary === true;
 
     if (userRole !== 'admin') {
       const deletableStatuses = ['planned', 'loading', 'loaded', 'cancelled'];
@@ -2771,18 +3282,39 @@ export class TripsService implements OnModuleInit {
       }
     }
 
-    // NOTE: we intentionally do NOT clear task_assignments.trip_id here — see the
-    // doc comment above. Detaching it would let onModuleInit / autoUpsert
-    // resurrect the trip on the next backend boot.
+    // NOTE: for OWN-FLEET trips we intentionally do NOT clear
+    // task_assignments.trip_id — see the doc comment above. Detaching it would let
+    // onModuleInit / autoUpsert resurrect the trip on the next backend boot.
     // Fold the org filter into the UPDATE (not just the prior findById) so the
     // write is atomically scoped to the caller's org, matching forceStatus and
     // every other mutation in this file.
     const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
-    const result = await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${id} AND deleted_at IS NULL${orgFilter} RETURNING id`,
-    );
 
-    this.logTripFlow(id, 'DELETE', from, 'deleted');
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      const deleted = await tx.execute(
+        sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW()
+             WHERE id = ${id} AND deleted_at IS NULL${orgFilter}
+         RETURNING id`,
+      );
+      if (!(deleted as unknown as unknown[]).length) return deleted;
+
+      if (isAuxiliary) {
+        // The plan died with the truck. Soft-delete the task (NOT null its
+        // trip_id) so neither the boot backfill nor autoUpsert can revive it.
+        await tx.execute(
+          sql`UPDATE task_assignments SET deleted_at = NOW(), updated_at = NOW()
+               WHERE trip_id = ${id}::uuid AND deleted_at IS NULL`,
+        );
+        // Hand the request back to the dispatcher as "confirmed, unplanned".
+        await tx.execute(
+          sql`UPDATE trip_requests SET trip_id = NULL, updated_at = NOW()
+               WHERE trip_id = ${id}::uuid AND deleted_at IS NULL`,
+        );
+      }
+      return deleted;
+    });
+
+    this.logTripFlow(id, isAuxiliary ? 'DELETE_AUX_UNPLAN' : 'DELETE', from, 'deleted');
     return result;
   }
 

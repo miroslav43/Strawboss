@@ -59,6 +59,17 @@ export class TripsController {
     // are plain optional strings); `include` is treated the same way and is
     // only ever compared with strict equality against the literal 'refs'.
     @Query('include') include?: string,
+    // Opt-in split: 'true' = auxiliary only, 'false' = own fleet only, absent =
+    // both (unchanged). Compared with strict equality, same as `include`.
+    @Query('isAuxiliary') isAuxiliary?: string,
+    @Query('search') search?: string,
+    // NOTE: `limit` is deliberately NOT accepted. Several admin pages
+    // (command-center, machines/[machineId], the dashboard) have always passed
+    // `limit=...` and the backend has always IGNORED it — they rely on getting
+    // the full window and then filtering client-side. Honouring it would
+    // truncate BEFORE their filter runs and silently drop, e.g., a truck that
+    // has been in_transit since Monday from the Command Center. Fix those
+    // callers to filter server-side first; only then is a limit safe to add.
   ) {
     return this.tripsService.list(user.organizationId, {
       status,
@@ -69,6 +80,8 @@ export class TripsController {
       dateFrom,
       dateTo,
       include,
+      isAuxiliary,
+      search,
     });
   }
 
@@ -211,6 +224,9 @@ export class TripsController {
   }
 
   // Admin-only manual status override — bypasses the state machine.
+  // May also carry the load the override implies (source + bale count), which is
+  // written as a real bale_loads row and therefore moves stock. `user.id` is passed
+  // so that row records WHO booked it (bale_loads.operator_id).
   @Post(':id/force-status')
   @Roles('admin' as UserRole)
   forceStatus(
@@ -218,7 +234,7 @@ export class TripsController {
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(forceStatusSchema)) dto: ForceStatusDto,
   ) {
-    return this.tripsService.forceStatus(id, user.organizationId, dto);
+    return this.tripsService.forceStatus(id, user.organizationId, dto, user.id);
   }
 
   @Post(':id/dispute')

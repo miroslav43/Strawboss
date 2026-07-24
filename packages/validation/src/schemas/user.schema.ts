@@ -16,7 +16,18 @@ const adminAssignableRoleSchema = z.enum([
   'baler_operator',
   'geofence_maker',
   'depot_manager',
+  'transportator',
 ] as const);
+
+/**
+ * Body for PUT /admin/users/:id/beneficiaries — the set of beneficiaries an admin
+ * allows a transporter account to act for (set-replace semantics). Empty array is
+ * valid (revokes all). Capped generously; a real org has far fewer beneficiaries.
+ */
+export const setTransporterBeneficiariesSchema = z.object({
+  beneficiaryIds: z.array(uuidSchema).max(500),
+});
+export type SetTransporterBeneficiariesInput = z.infer<typeof setTransporterBeneficiariesSchema>;
 
 export const userSchema = z
   .object({

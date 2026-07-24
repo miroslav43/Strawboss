@@ -3,7 +3,17 @@ import type { TripRequest, OrgRequestSettings, Document } from '@strawboss/types
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
-/** Admin/dispatcher: list external trip requests (filters: status, dateFrom, dateTo). */
+/**
+ * Admin/dispatcher: list external trip requests.
+ *
+ * Filters: `status`, `search`, `dateFrom`, `dateTo` (bare `YYYY-MM-DD`), `limit`
+ * (default 200 server-side), `offset`. Rows carry the live-trip read model
+ * (`tripStatus`, `tripNumber`, `tripBaleCount`, …) joined server-side.
+ *
+ * Only pass keys you actually want in the query string: `URLSearchParams`
+ * stringifies an `undefined` value to the literal text "undefined", which the
+ * server would then try to parse.
+ */
 export function useTripRequests(client: ApiClient, filters?: Record<string, unknown>) {
   return useQuery({
     queryKey: queryKeys.tripRequests.list(filters),
@@ -47,6 +57,12 @@ export function useConfirmTripRequest(client: ApiClient) {
   });
 }
 
+/**
+ * Cancel a request. Allowed for a pending one, and for a CONFIRMED one that has no
+ * live trip yet — cancelling then also RETIRES the one-time auxiliary truck, hence
+ * the machines invalidation. If a trip is already planned the server refuses with
+ * `has_live_trip`: delete the trip first (which un-plans it), then cancel.
+ */
 export function useCancelTripRequest(client: ApiClient) {
   const qc = useQueryClient();
   return useMutation({
@@ -54,6 +70,10 @@ export function useCancelTripRequest(client: ApiClient) {
       client.post<TripRequest>(`/api/v1/trip-requests/${id}/cancel`, { reason }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
+      // The auxiliary truck is soft-deleted on cancel — drop it from the fleet and
+      // the task board too, or it lingers as a phantom truck you can still plan.
+      void qc.invalidateQueries({ queryKey: queryKeys.machines.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
     },
   });
 }

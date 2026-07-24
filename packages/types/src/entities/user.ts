@@ -9,6 +9,13 @@ export enum UserRole {
   driver = 'driver',
   geofence_maker = 'geofence_maker',
   depot_manager = 'depot_manager',
+  /**
+   * External hauler with a WEB-only account. No mobile app, no machine, no depot.
+   * Submits auxiliary-transport requests through an authenticated copy of the
+   * beneficiary portal (scoped to admin-assigned beneficiaries) and watches their
+   * status read-only. See `TransporterBeneficiary` for the assignment link.
+   */
+  transportator = 'transportator',
 }
 
 export interface User extends Timestamps, SoftDelete {

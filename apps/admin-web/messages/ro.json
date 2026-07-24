@@ -31,6 +31,8 @@
     "operations": "Operațiuni",
     "tasks": "Sarcini",
     "trips": "Curse",
+    "transportTrips": "Cursele mele",
+    "transportNew": "Cerere nouă",
     "documents": "Documente",
     "reports": "Rapoarte",
     "alerts": "Alerte",
@@ -676,7 +678,7 @@
   },
   "tasks": {
     "title": "Sarcini",
-    "loadError": "Nu s-au putut încărca sarcinile. Backend-ul poate fi oprit.",
+    "loadError": "Nu s-au putut încărca datele. Backend-ul poate fi oprit.",
     "retry": "Reîncearcă",
     "boardTitle": "Panou sarcini",
     "dailyPlanTitle": "Planificare zilnică",
@@ -715,7 +717,6 @@
     "mapDepositsNeedBoundary": "Pe hartă apar doar depozitele cu poligon de contur.",
     "noLoaderOnMap": "Niciun încărcător cu GPS pe hartă — folosește lista.",
     "confirm": "Confirmă",
-    "loadError": "Nu s-au putut încărca datele. Backend-ul poate fi oprit.",
     "hintBefore": "Trage mașinile între coloane pentru a le asigna la câmpuri pentru",
     "hintAfter": ".",
     "overview": "Prezentare",
@@ -783,6 +784,7 @@
   "trips": {
     "title": "Curse",
     "allStatuses": "Toate stările",
+    "searchPlaceholder": "Caută după cursă, camion, șofer, destinație…",
     "detailTitle": "Detaliu cursă",
     "backToTrips": "Înapoi la curse",
     "loadingDetail": "Se încarcă detaliile cursei…",
@@ -799,7 +801,18 @@
       "completed": "Finalizată",
       "cancelled": "Anulată",
       "disputed": "Contestată"
-    }
+    },
+    "sectionIntake": "De confirmat",
+    "sectionIntakeHint": "Solicitări noi din portal",
+    "sectionAux": "Curse Aux",
+    "sectionAuxHint": "Transportatori externi",
+    "sectionNormal": "Curse normale",
+    "sectionNormalHint": "Flota proprie",
+    "auxEmpty": "Nicio cursă auxiliară.",
+    "normalEmpty": "Nicio cursă.",
+    "stageActive": "Active",
+    "stageAll": "Toate stările",
+    "dateTo": "până la"
   },
   "reports": {
     "title": "Rapoarte",
@@ -1078,7 +1091,29 @@
     "notes": "Note",
     "auxBadge": "AUX",
     "pendingSectionTitle": "Detalii solicitare",
-    "depositFromRequest": "Destinație setată din cerere"
+    "depositFromRequest": "Destinație setată din cerere",
+    "stage": {
+      "cancelled": "Anulată",
+      "pending": "În așteptare",
+      "unplanned": "Confirmată — neplanificată",
+      "planned": "Planificată",
+      "loading": "În încărcare",
+      "awaitingSignature": "De semnat",
+      "signed": "Semnată",
+      "completed": "Finalizată"
+    },
+    "chipAviz": "Aviz",
+    "chipCmr": "CMR",
+    "colPickup": "Ridicare",
+    "colDocuments": "Documente",
+    "bales": "baloți",
+    "multipleTrips": "Mai multe curse active pe această solicitare",
+    "cui": "CUI",
+    "unplanAria": "Șterge cursa (redevine neplanificată)",
+    "unplanConfirm": "Ștergi cursa {label} pentru {who}?\n\nCursa dispare de pe telefonul încărcătorului, iar solicitarea revine la „Confirmată — neplanificată\" și poate fi replanificată pe alt camion.",
+    "cancelRequestAria": "Anulează solicitarea (retrage camionul auxiliar)",
+    "cancelConfirmedHint": "Solicitarea e confirmată — anularea retrage și camionul auxiliar creat pentru ea. Dacă vrei doar să replanifici, șterge cursa, nu solicitarea.",
+    "cancelHasTripError": "Solicitarea are deja o cursă planificată. Șterge întâi cursa (butonul de ștergere de pe rândul ei), apoi anulează solicitarea."
   },
   "alerts": {
     "title": "Alerte",
@@ -1390,7 +1425,14 @@
       "loader_operator": "Operator încărcător",
       "driver": "Șofer",
       "geofence_maker": "Creator geofence",
-      "depot_manager": "Operator depozit"
+      "depot_manager": "Operator depozit",
+      "transportator": "Transportator"
+    },
+    "beneficiaries": {
+      "title": "Beneficiari asignați",
+      "assignAction": "Beneficiari",
+      "hint": "Alegeți beneficiarii pentru care acest transportator poate crea cereri de transport.",
+      "none": "Nu există beneficiari activi în această organizație."
     },
     "machineType": {
       "loader": "Încărcător",
@@ -1944,7 +1986,15 @@
       "hint": "Modifică manual starea cursei. Ocolește fluxul normal — folosește doar pentru a debloca o cursă blocată.",
       "apply": "Forțează starea",
       "confirm": "Forțezi cursa în această stare? Ocolește fluxul normal.",
-      "error": "Nu s-a putut schimba starea."
+      "error": "Nu s-a putut schimba starea.",
+      "loadTitle": "De unde vine marfa?",
+      "sourceParcel": "Parcelă",
+      "sourceDepot": "Depozit",
+      "pickParcel": "Alege parcela…",
+      "pickDepot": "Alege depozitul…",
+      "baleCount": "Câți baloți",
+      "baleCountHint": "Se scad automat din stocul parcelei / depozitului ales.",
+      "loadRequired": "Cursa nu are nicio încărcare. Alege de unde vine marfa și câți baloți."
     },
     "transport": "Transport",
     "route": "Rută",
@@ -1987,6 +2037,7 @@
     "colSource": "Sursă",
     "colDestination": "Destinație",
     "colBales": "Baloți",
+    "colNetWeight": "Greutate netă",
     "colCreated": "Creat",
     "deleteConfirm": "Ștergi cursa {{label}}?",
     "deleteAriaLabel": "Șterge cursa"
@@ -2082,6 +2133,22 @@
     "activate": "Activează beneficiarul",
     "deactivate": "Dezactivează beneficiarul"
   },
+  "transporter": {
+    "brand": "Portal Transportator",
+    "myTripsTitle": "Cursele mele",
+    "newRequestTitle": "Cerere nouă de transport",
+    "searchPlaceholder": "Caută după camion, șofer, destinație…",
+    "empty": "Nu ați creat încă nicio cursă.",
+    "form": {
+      "subtitle": "Completați o cerere de transport pentru unul dintre beneficiarii dvs.",
+      "beneficiaryLabel": "Beneficiar",
+      "beneficiaryPlaceholder": "Alegeți un beneficiar…",
+      "beneficiaryRequired": "Selectați un beneficiar.",
+      "noBeneficiaries": "Nu vă este asignat niciun beneficiar. Contactați administratorul.",
+      "backToTrips": "Înapoi la curse",
+      "newAnother": "Cerere nouă"
+    }
+  },
   "beneficiaryPortal": {
     "pinStep1Title": "Bun venit, {name}",
     "pinStep1Hint": "Introdu PIN-ul de 4 cifre pentru a continua.",
@@ -2162,7 +2229,7 @@
     "quality2": "Calitate 2",
     "neededDate": "Data necesară",
     "tonsRequested": "Tone solicitate",
-    "destinationAddress": "Adresă destinație",
+    "destinationAddress": "Adresa de livrare",
     "pickOnMap": "Alege pe hartă (opțional)",
     "coordsSet": "Locație setată",
     "coordsClear": "Șterge locația",
@@ -2182,7 +2249,10 @@
     "trust1": "Confirmare rapidă de la echipa noastră",
     "trust2": "Securizat cu PIN — un cod nou în fiecare zi",
     "trust3": "Datele ajung direct la dispecer",
-    "poweredBy": "Susținut de StrawBoss"
+    "poweredBy": "Susținut de StrawBoss",
+    "destinationAddressPlaceholder": "Str. Gării 4, hala 2",
+    "destinationLocality": "Localitatea de livrare",
+    "destinationLocalityPlaceholder": "Lugoj"
   },
   "sign": {
     "loading": "Se încarcă…",

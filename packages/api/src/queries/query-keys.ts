@@ -120,6 +120,18 @@ export const queryKeys = {
     list: () => ['beneficiaries', 'list'] as const,
     detail: (id: string) => ['beneficiaries', 'detail', id] as const,
   },
+  /** The authenticated transporter's own surface. */
+  transporter: {
+    all: ['transporter'] as const,
+    beneficiaries: () => ['transporter', 'beneficiaries'] as const,
+    records: (beneficiaryId: string, kind: string) =>
+      ['transporter', 'records', beneficiaryId, kind] as const,
+    requests: (filters?: Record<string, unknown>) => ['transporter', 'requests', filters] as const,
+  },
+  /** Admin view of a transporter account's beneficiary assignments. */
+  transporterAssignments: {
+    byUser: (id: string) => ['transporterAssignments', 'user', id] as const,
+  },
   devices: {
     all: ['devices'] as const,
     list: (filters?: Record<string, unknown>) => ['devices', 'list', filters] as const,

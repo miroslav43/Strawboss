@@ -39,3 +39,48 @@ export function addDays(dateStr: string, days: number): string {
 export function tomorrowInRomania(): string {
   return addDays(todayInRomania(), 1);
 }
+
+/** Em-dash placeholder for an absent value, shared by the table label helpers. */
+export const EMPTY = '—';
+
+const BARE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Render a date for display as `dd.MM.yyyy`.
+ *
+ * Accepts both wire shapes the API produces for a DATE column: the bare
+ * `YYYY-MM-DD` string and a full ISO instant. A bare date is formatted by
+ * string surgery rather than through `Date`, because `new Date('2026-07-15')`
+ * parses as UTC midnight and would render as the 14th for any viewer west of
+ * Greenwich.
+ */
+export function fmtDate(value: string | null | undefined): string {
+  if (!value) return EMPTY;
+  if (BARE_DATE.test(value)) {
+    const [y, m, d] = value.split('-');
+    return `${d}.${m}.${y}`;
+  }
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return EMPTY;
+  return new Intl.DateTimeFormat('ro-RO', {
+    timeZone: ROMANIA_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(dt);
+}
+
+/** Render an instant for display as `dd.MM.yyyy HH:mm`, in Romania's timezone. */
+export function fmtDateTime(value: string | null | undefined): string {
+  if (!value) return EMPTY;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return EMPTY;
+  return new Intl.DateTimeFormat('ro-RO', {
+    timeZone: ROMANIA_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(dt);
+}

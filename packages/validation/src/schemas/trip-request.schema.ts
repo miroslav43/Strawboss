@@ -56,14 +56,20 @@ export const createBeneficiaryRequestSchema = z.object({
   driverName: z.string().min(1).max(120),
   driverPhone: z.string().min(4).max(40),
   driverEmail: z.string().email().max(160).nullable().optional(),
-  // the ask — the beneficiary portal now captures a quality grade + date + notes.
-  // cropType / tonsRequested / destinationAddress were dropped from the form and
-  // are left optional (inserted as NULL) so older clients / data stay valid.
+  // the ask — the beneficiary portal captures a quality grade + date + destination
+  // + notes. cropType / tonsRequested were dropped from the form and stay optional
+  // (inserted as NULL) so older clients / data remain valid.
+  //
+  // The destination came BACK: without it the dispatcher could see that a truck was
+  // coming but not where it had to go, and the "Destinație" column on the Curse
+  // page was empty for every beneficiary request. Optional, because older clients
+  // still post without it.
   quality: z.enum(['quality_1', 'quality_2']),
   cropType: cropTypeSchema.nullable().optional(),
   neededDate: isoDateSchema,
   tonsRequested: z.number().positive().max(100000).nullable().optional(),
   destinationAddress: z.string().min(1).max(300).nullable().optional(),
+  destinationLocality: z.string().min(1).max(160).nullable().optional(),
   destinationCoords: geoPointSchema.nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   // Which saved contacts to notify (email + SMS) on confirm, 1..10. The first is
@@ -79,6 +85,18 @@ export const createBeneficiaryRequestSchema = z.object({
   pin: z.string().regex(/^\d{4}$/),
 });
 export type CreateBeneficiaryRequestInput = z.infer<typeof createBeneficiaryRequestSchema>;
+
+/**
+ * Authenticated transporter submission. Identical field-shape to the beneficiary
+ * portal MINUS `pin` (the logged-in session replaces the daily PIN) PLUS an
+ * explicit `beneficiaryId` — the portal carried the beneficiary in its URL slug,
+ * but the transporter *picks* one of their assigned beneficiaries in the form.
+ * Kept in lock-step with `createBeneficiaryRequestSchema` via `.omit`/`.extend`.
+ */
+export const createTransporterRequestSchema = createBeneficiaryRequestSchema
+  .omit({ pin: true })
+  .extend({ beneficiaryId: uuidSchema });
+export type CreateTransporterRequestInput = z.infer<typeof createTransporterRequestSchema>;
 
 /** Body for the portal code-verification endpoint. */
 export const verifyPortalCodeSchema = z.object({

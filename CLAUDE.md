@@ -83,7 +83,24 @@ An abstract `IFarmTrackService` interface in the backend is implemented by `Stub
 
 ### Mobile Offline Sync
 
-Local SQLite tables: `operations`, `trips`, `sync_queue`. Sync triggers: app foreground, network reconnect, after local write (2s debounce), periodic 60s. Push uploads binary files first (photos/signatures), then structured data via `POST /api/v1/sync/push`. Pull uses `POST /api/v1/sync/pull` with last `sync_version` per table. Every sync queue entry carries a UUID idempotency key — the server's `sync_idempotency` table prevents duplicate processing.
+Local SQLite holds 13 tables (`src/db/schema.ts`) — beyond `operations` / `trips` / `sync_queue` it caches `parcels`, `delivery_destinations`, `task_assignments`, `bale_loads`, `bale_productions`, `fuel_logs`, `consumable_logs`, `notifications`, `sync_cursors`, `deposit_inventory_cache`.
+
+**Sync triggers** (verify before relying on them — there is no foreground trigger, no post-write debounce, and no 60s timer):
+
+| Trigger | Where | Cadence |
+|---|---|---|
+| WorkManager / BGTaskScheduler | `lib/background-sync.ts` | **15 min minimum**, OS-batched — the only automatic trigger for a role with no assigned machine |
+| GPS piggyback | `lib/location.ts` (`maybePiggybackSync`) | 60–180 s, but **only for machine-assigned roles** (it rides the location task) |
+| Network reconnect | `hooks/useSync.ts` | edge-triggered, and only when `pendingCount > 0` |
+| Manual / after a write | `triggerSync()` | wherever a screen calls it explicitly — most do not |
+
+A failed push backs off quadratically (30 s → 2 min → 4.5 min → 8 min…), and a backed-off row is invisible to `dequeue()` until its window opens.
+
+Push uploads binary files first (photos/signatures), then structured data via `POST /api/v1/sync/push`. `parcel_create`, `delivery_destination_create`, `register_load`, `trip_transition` and `cmr_scan` bypass it for dedicated REST endpoints (`sync/push.ts`, `DIRECT_ENDPOINT_TYPES`). Pull uses `POST /api/v1/sync/pull` with the last `sync_version` per table. Every sync queue entry carries a UUID idempotency key — the server's `sync_idempotency` table prevents duplicate processing.
+
+**Pull carries no geometry.** `PULL_COLUMNS.parcels` deliberately omits `boundary`/`centroid` (a raw projection would surface WKB hex). Map geometry reaches the phone *only* over the REST endpoints, which serialise via `ST_AsGeoJSON`. Anything writing the local `parcels` table from a pull payload must therefore leave `geometry` alone — see `ParcelsRepo.upsertFromPull`.
+
+**The maps are local-first.** `useCachedParcels` / `useCachedDepots` render from SQLite and refresh from REST in the background, so a field drawn offline is on the map immediately. After any local write to `parcels` / `delivery_destinations`, invalidate `PARCELS_LOCAL_KEY` / `DEPOTS_LOCAL_KEY`.
 
 ### Database
 

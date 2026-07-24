@@ -91,11 +91,34 @@ const tripStatusEnum = z.enum([
   'disputed',
 ]);
 
-export const forceStatusSchema = z.object({
-  status: tripStatusEnum,
-  reason: z.string().optional(),
-  expectedStatus: tripStatusEnum.optional(),
-});
+/**
+ * Admin status override, optionally carrying the load that the override implies.
+ *
+ * Forcing a trip to `loaded` (or beyond) used to move only the status — leaving a
+ * phantom trip with 0 bales, no source and no stock movement. Supplying the load
+ * here makes the override insert a real `bale_loads` row, which IS the stock
+ * deduction (parcel remaining is derived, not stored).
+ *
+ * The XOR mirrors `registerLoadSchema` below: goods come off a field or out of a
+ * depot, never both. `baleCount` and a source travel together — a count with no
+ * source cannot be attributed, and a source with no count deducts nothing.
+ */
+export const forceStatusSchema = z
+  .object({
+    status: tripStatusEnum,
+    reason: z.string().optional(),
+    expectedStatus: tripStatusEnum.optional(),
+    baleCount: z.number().int().positive().optional(),
+    parcelId: uuidSchema.optional(),
+    sourceDepotId: uuidSchema.optional(),
+    idempotencyKey: uuidSchema.optional(),
+  })
+  .refine((d) => (d.baleCount === undefined ? true : !!d.parcelId !== !!d.sourceDepotId), {
+    message: 'exactly one of parcelId or sourceDepotId is required when baleCount is given',
+  })
+  .refine((d) => (d.parcelId || d.sourceDepotId ? d.baleCount !== undefined : true), {
+    message: 'baleCount is required when a source is given',
+  });
 
 export const disputeSchema = z.object({
   reason: z.string().min(1),
@@ -123,7 +146,24 @@ export const registerLoadSchema = z
     gpsLat: z.number().min(-90).max(90).optional(),
     gpsLon: z.number().min(-180).max(180).optional(),
     idempotencyKey: uuidSchema,
-    loaderSignature: signatureUrlSchema.optional(),
+    /*
+     * NOT `signatureUrlSchema`, deliberately — unlike driverSignature /
+     * receiverSignature / depotOperatorSignature, which are drawn fresh on the phone
+     * and persisted, this is only the loader echoing back the specimen URL they
+     * cached at login. The server now RESOLVES the real specimen from
+     * `users.signature_specimen_url` and ignores this value
+     * (TripsService.resolveLoaderSignature), so it cannot reach an `<img src>` and
+     * needs no allowlist.
+     *
+     * Validating it here was actively harmful: the audit (111d4b1) swapped
+     * `z.string()` for the strict allowlist, and every phone whose cached URL no
+     * longer matched had its LOADS REJECTED at the validation boundary — the request
+     * died before the service ever ran, over a field the service was going to
+     * overwrite anyway. A loader operator was locked out for six days by it.
+     *
+     * Bounded to keep the body sane; never trusted.
+     */
+    loaderSignature: z.string().max(4096).optional(),
   })
   .refine((d) => !!d.parcelId !== !!d.sourceDepotId, {
     message: 'exactly one of parcelId or sourceDepotId is required',

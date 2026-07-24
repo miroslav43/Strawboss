@@ -33,8 +33,23 @@ export class TripRequestsController {
 
   @Get()
   @Roles(UserRole.admin, UserRole.dispatcher)
-  list(@CurrentUser() user: RequestUser, @Query('status') status?: string) {
-    return this.service.list(this.requireOrg(user), status);
+  list(
+    @CurrentUser() user: RequestUser,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.service.list(this.requireOrg(user), {
+      status,
+      search,
+      dateFrom,
+      dateTo,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
   }
 
   @Get(':id')

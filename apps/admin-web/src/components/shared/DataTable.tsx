@@ -19,6 +19,11 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** Optional override for the empty-state message. Falls back to i18n key `common_table.noData`. */
   emptyMessage?: string;
+  /**
+   * Optional per-row classes, e.g. to tint a row by its state. Purely additive —
+   * omitting it leaves every existing call site rendering byte-identically.
+   */
+  rowClassName?: (row: T) => string | undefined;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -29,6 +34,7 @@ export function DataTable<T extends Record<string, unknown>>({
   keyExtractor,
   onRowClick,
   emptyMessage,
+  rowClassName,
 }: DataTableProps<T>) {
   const { t } = useI18n();
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -111,6 +117,7 @@ export function DataTable<T extends Record<string, unknown>>({
               className={cn(
                 'transition-colors',
                 onRowClick && 'cursor-pointer hover:bg-neutral-50',
+                rowClassName?.(row),
               )}
             >
               {columns.map((col) => (

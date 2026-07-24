@@ -56,6 +56,9 @@ importers:
       '@strawboss/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@strawboss/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@strawboss/types':
         specifier: workspace:*
         version: link:../../packages/types

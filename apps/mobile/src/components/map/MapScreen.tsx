@@ -13,6 +13,7 @@ import { calculateRoute, haversineKm } from '@/lib/routing';
 import { MapView, type MapViewHandle } from './MapView';
 import { ParcelInfoSheet } from './ParcelInfoSheet';
 import { useCachedParcels } from '@/hooks/useCachedParcels';
+import { useCachedDepots } from '@/hooks/useCachedDepots';
 import { useI18n } from '@/lib/i18n';
 import type {
   MapEvent,
@@ -68,6 +69,16 @@ function toLatLon(raw: unknown): { lat: number; lon: number } | null {
   return null;
 }
 
+/** The local depot cache stores boundary/coords as JSON strings; Leaflet wants objects. */
+function parseJson(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 const MAP_USER_ZOOM = 16;
 
 export function MapScreen({ focusId }: MapScreenProps) {
@@ -95,12 +106,21 @@ export function MapScreen({ focusId }: MapScreenProps) {
   // FM-13: Use cached parcels (API when online, SQLite cache when offline).
   const { parcels: cachedParcels, fromCache: parcelsFromCache } = useCachedParcels();
 
-  // Fetch delivery destinations
-  const { data: destinations } = useQuery({
-    queryKey: ['map-destinations'],
-    queryFn: () => mobileApiClient.get<DeliveryDestination[]>('/api/v1/delivery-destinations'),
-    staleTime: 5 * 60_000,
-  });
+  // Local-first, like the parcels above: render from the SQLite cache and let the
+  // server refresh land in the background. Offline, this is the difference between
+  // a map that draws instantly and one that waits out an HTTP timeout first.
+  const { depots } = useCachedDepots();
+  const destinations = useMemo<DeliveryDestination[]>(
+    () =>
+      depots.map((d) => ({
+        id: d.id,
+        name: d.name,
+        code: d.code,
+        boundary: parseJson(d.boundary),
+        coords: toLatLon(parseJson(d.coords_json)),
+      })),
+    [depots],
+  );
 
   // Fetch related machine locations (trucks for loaders, parent baler for drivers, etc.)
   const { data: relatedMachines } = useQuery({
@@ -256,32 +276,31 @@ export function MapScreen({ focusId }: MapScreenProps) {
   useEffect(() => {
     if (!mapReady) return;
 
-    if (cachedParcels.length) {
-      const parcelData: ParcelMapData[] = cachedParcels.map((p) => ({
-        id: p.id,
-        name: p.name,
-        code: p.code,
-        harvestStatus: p.harvestStatus ?? '',
-        areaHectares: p.areaHectares ?? 0,
-        boundary: p.boundary,
-      }));
-      mapRef.current?.sendCommand({ type: 'SET_PARCELS', parcels: parcelData });
-    }
+    // Send the commands even on an EMPTY list. setParcels()/setDestinations() are
+    // what call clearLayers() inside the WebView, so short-circuiting on empty left
+    // the polygons of deleted parcels and depots painted on the map forever.
+    const parcelData: ParcelMapData[] = cachedParcels.map((p) => ({
+      id: p.id,
+      name: p.name,
+      code: p.code,
+      harvestStatus: p.harvestStatus ?? '',
+      areaHectares: p.areaHectares ?? 0,
+      boundary: p.boundary,
+    }));
+    mapRef.current?.sendCommand({ type: 'SET_PARCELS', parcels: parcelData });
 
-    if (destinations?.length) {
-      const destData: DestinationMapData[] = destinations.map((d) => {
-        const center = toLatLon(d.coords);
-        return {
-          id: d.id,
-          name: d.name,
-          code: d.code,
-          boundary: d.boundary,
-          lat: center?.lat,
-          lon: center?.lon,
-        };
-      });
-      mapRef.current?.sendCommand({ type: 'SET_DESTINATIONS', destinations: destData });
-    }
+    const destData: DestinationMapData[] = destinations.map((d) => {
+      const center = toLatLon(d.coords);
+      return {
+        id: d.id,
+        name: d.name,
+        code: d.code,
+        boundary: d.boundary,
+        lat: center?.lat,
+        lon: center?.lon,
+      };
+    });
+    mapRef.current?.sendCommand({ type: 'SET_DESTINATIONS', destinations: destData });
   }, [mapReady, cachedParcels, destinations]);
 
   // Send machine markers to map (others only; distance label updates with userLocation)
@@ -334,7 +353,7 @@ export function MapScreen({ focusId }: MapScreenProps) {
           mapRef.current?.sendCommand({ type: 'HIGHLIGHT_PARCEL', parcelId: parcel.id });
         }
       } else if (event.type === 'DESTINATION_TAPPED') {
-        const dest = destinations?.find((d) => d.id === event.destinationId);
+        const dest = destinations.find((d) => d.id === event.destinationId);
         if (dest) {
           mapRef.current?.sendCommand({ type: 'CLEAR_ROUTE' });
           setRouteInfo(null);
