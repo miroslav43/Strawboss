@@ -38,9 +38,8 @@ export interface ForceStatusDto {
 
 export interface CompleteLoadingDto {}
 
-export interface DepartDto {
-  driverSignature: string;
-}
+// No driver signature is collected at departure anymore (see departSchema).
+export interface DepartDto {}
 
 // Trip distance is derived entirely from the GPS track (depart → arrive),
 // so the arrive payload carries no fields.

@@ -9,9 +9,15 @@ export const startLoadingSchema = z.object({
 
 export const completeLoadingSchema = z.object({});
 
-export const departSchema = z.object({
-  driverSignature: signatureUrlSchema,
-});
+// Driver signature was dropped from departure too — the mobile screen resends
+// the driver's saved specimen verbatim on every attempt (never a fresh
+// capture), so a specimen that predates a signatureUrlSchema tightening (or
+// is otherwise malformed) fails the same way on every retry forever, wedging
+// the trip on 'loaded' and cascading "transition not allowed" onto every
+// later step. The field is intentionally absent (not just optional) so a
+// stale queued payload gets it silently stripped by zod's default strip
+// behavior instead of rejected. Mirrors completeSchema's receiverSignature removal.
+export const departSchema = z.object({});
 
 // Trip distance comes entirely from the GPS track (depart → arrive), so the
 // arrive payload carries no fields.

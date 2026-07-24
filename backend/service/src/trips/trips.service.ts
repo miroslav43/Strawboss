@@ -1537,15 +1537,15 @@ export class TripsService implements OnModuleInit {
     return rows as unknown as Record<string, unknown>[];
   }
 
-  async depart(id: string, orgId: string | null, dto: DepartDto) {
+  async depart(id: string, orgId: string | null, _dto: DepartDto) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'DEPART');
 
+    // No driver signature is collected anymore — driver_signature_url stays NULL.
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
         status = ${TripStatus.in_transit},
-        driver_signature_url = ${dto.driverSignature},
         departure_at = NOW(),
         updated_at = NOW()
       WHERE id = ${id} AND status = ${from} RETURNING *`,
