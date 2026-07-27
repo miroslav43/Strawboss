@@ -2,7 +2,7 @@
 type: meta
 title: "StrawBoss Docs Index"
 created: 2026-05-25
-updated: 2026-06-28
+updated: 2026-07-27
 tags: [meta, index]
 status: mature
 ---
@@ -24,7 +24,7 @@ This vault is the canonical knowledge base for the StrawBoss monorepo. Start wit
 | Backend | [[backend]] | NestJS 11 + Fastify, `/api/v1/*`, Drizzle ORM, BullMQ jobs |
 | Admin Web | [[admin-web]] | Next.js 15 App Router, TanStack Query, Supabase Realtime, Leaflet maps |
 | Mobile | [[mobile]] | Expo SDK 54, offline-first SQLite + sync queue, geofence, FCM |
-| Database | [[database]] | PostgreSQL + PostGIS on Supabase Cloud, migrations 00001–00043, RLS |
+| Database | [[database]] | PostgreSQL + PostGIS on Supabase Cloud, migrations 00001–00091, RLS |
 | Sync | [[sync-protocol]] | Push/pull protocol, idempotency keys, sync_version delta |
 | Infrastructure | [[infrastructure]] | Docker Compose, nginx, Let's Encrypt, Redis, Winston logs |
 | Scripts | [[scripts]] | `strawboss.sh` orchestrator + scripts/_lib.sh dispatcher |
@@ -36,7 +36,7 @@ This vault is the canonical knowledge base for the StrawBoss monorepo. Start wit
 | `@strawboss/types` | [[packages-types]] | TypeScript interfaces + enums (zero deps) |
 | `@strawboss/validation` | [[packages-validation]] | Zod schemas mirroring every type |
 | `@strawboss/domain` | [[packages-domain]] | Pure business logic, XState trip machine, fraud/reconciliation |
-| `@strawboss/api` | [[packages-api]] | Shared data layer, ApiClient, 24 React Query hook files |
+| `@strawboss/api` | [[packages-api]] | Shared data layer, ApiClient, 28 React Query hook files |
 | `@strawboss/ui-tokens` | [[packages-ui-tokens]] | Design tokens, Tailwind preset, RN helpers |
 
 ## Cross-cutting Topics

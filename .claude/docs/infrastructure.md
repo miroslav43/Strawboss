@@ -2,7 +2,7 @@
 type: doc
 title: "Infrastructure"
 created: 2026-04-16
-updated: 2026-07-12
+updated: 2026-07-27
 tags: [doc, devops, infra, docker, nginx, redis, fleet, tailscale]
 status: mature
 related:
@@ -82,9 +82,11 @@ Health check: `wget --spider -q http://127.0.0.1:3001/api/v1/health` (interval 1
 
 Multi-stage build (node:22-alpine):
 
-1. **deps**: Copy package.json files for types, validation, api, ui-tokens, admin-web. `pnpm install --frozen-lockfile`.
-2. **builder**: Build packages in order: `types -> validation -> ui-tokens -> api -> admin-web`. `NEXT_PUBLIC_*` vars passed as build args (baked into client bundle).
+1. **deps**: Copy package.json files for types, validation, ui-tokens, **domain**, api, admin-web. `pnpm install --frozen-lockfile`.
+2. **builder**: Build packages in order: `types -> validation -> ui-tokens -> domain -> api -> admin-web`. `NEXT_PUBLIC_*` vars passed as build args (baked into client bundle).
 3. **runner**: Uses Next.js standalone output. Copies `.next/standalone`, `.next/static`, `public`. Runs `node apps/admin-web/server.js`. Requires `HOSTNAME=0.0.0.0` at runtime — Swarm sets `HOSTNAME` to the container name by default; Next.js standalone would bind only that IP, causing healthchecks on `127.0.0.1` to fail. `experimental.preloadEntriesOnStart: false` in `next.config.ts` prevents slow binds under task-start contention.
+
+**`@strawboss/domain` gotcha (fixed 2026-07-13, commit `7e9c915`):** admin-web imports `composeAuxStage()` from `@strawboss/domain` (see [[architecture]] Auxiliary Trips) but for a while did not declare the dependency in `apps/admin-web/package.json`, and `Dockerfile.admin` did not copy `packages/domain/` at all. This was invisible locally — `tsc`/Node module resolution walks *up* the directory tree and silently found `@strawboss/domain` in the monorepo-root `node_modules`, so every local typecheck and `pnpm --filter @strawboss/admin-web build` outside Docker passed — but fatal in the Docker build, which installs only the explicitly declared dependency graph (`Module not found: @strawboss/domain`). Lesson: an undeclared workspace dependency only surfaces in the one environment (Docker) that actually enforces the package manifest: don't trust a green local typecheck alone when a package boundary changes. Fixed by declaring `@strawboss/domain` in `apps/admin-web/package.json` and adding it to both the `deps` and `builder` stages above.
 
 ### Build Args
 

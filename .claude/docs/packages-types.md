@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/types"
 created: 2026-04-16
-updated: 2026-07-12
+updated: 2026-07-27
 tags: [doc, package, types, typescript]
 status: mature
 related:
@@ -37,7 +37,9 @@ Defined in `packages/types/src/common.ts`:
 
 Extends `Timestamps`, `SoftDelete`.
 
-**Enum `UserRole`:** `super_admin`, `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`, `depot_manager`
+**Enum `UserRole`:** `super_admin`, `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`, `depot_manager`, `transportator`
+
+`transportator` (added Jul 2026): an external hauler with a **WEB-only** account — no mobile app, no machine, no depot. Submits auxiliary-transport requests through an authenticated copy of the beneficiary portal (scoped to admin-assigned beneficiaries via `TransporterBeneficiary`, see below) and watches request status read-only, filtered to `trip_requests.created_by_user_id = <self>`.
 
 | Field | Type |
 |---|---|
@@ -83,7 +85,9 @@ Extends `Timestamps`, `SoftDelete`.
 **Enum `MachineType`:** `truck`, `loader`, `baler`
 **Enum `FuelType`:** `diesel`, `gasoline`, `electric`
 
-Fields: `id`, `machineType`, `registrationPlate`, `internalCode`, `make`, `model`, `year`, `fuelType`, `tankCapacityLiters`, `farmtrackDeviceId`, `currentOdometerKm`, `currentHourmeterHrs`, `isActive`, `maxPayloadKg`, `maxBaleCount`, `tareWeightKg`, `balesPerHourAvg`, `baleWeightAvgKg`, `reachMeters`, `companyName`, `companyAddress`.
+Fields: `id`, `machineType`, `registrationPlate`, `internalCode`, `make`, `model`, `year`, `fuelType`, `tankCapacityLiters`, `farmtrackDeviceId`, `currentOdometerKm`, `currentHourmeterHrs`, `isActive`, `maxPayloadKg`, `maxBaleCount`, `tareWeightKg`, `balesPerHourAvg`, `baleWeightAvgKg`, `reachMeters`, `companyName`, `companyAddress`, `ownerCompanyName`, `ownerCompanyAddress`, `ownerCompanyCui`, `isAuxiliary: boolean` (one-time truck spun up from a confirmed `trip_request`; no linked driver user; auto-deactivated once its trip completes).
+
+Read-only enrichment (`machines` `list()` only, optional): `primaryContactName?` (the aux truck's originating request's `requester_name`), `assignedOperatorName?` (full name of the user permanently assigned via `users.assigned_machine_id`), `assignedOperatorAvatarUrl?` (that user's `avatar_url`; `null` when no photo was uploaded — the UI must not render a default/initials tile in that case).
 
 ### Trip (`entities/trip.ts`)
 
@@ -91,7 +95,9 @@ Extends `Timestamps`, `SoftDelete`. The core domain entity.
 
 **Enum `TripStatus`:** `planned`, `loading`, `loaded`, `in_transit`, `arrived`, `delivering`, `delivered`, `completed`, `cancelled`, `disputed`
 
-Key fields: `tripNumber`, `status`, `sourceParcelId`, `sourceParcelAuto`, `loaderId`, `truckId`, `loaderOperatorId`, `driverId`, `baleCount`, timestamps for each phase (`loadingStartedAt` through `completedAt`), odometer readings (`departureOdometerKm`, `arrivalOdometerKm`), destination info, weight data (`grossWeightKg`, `tareWeightKg`, `netWeightKg`), receiver info (`receiverName`, `receiverSignatureUrl`), `loaderSignatureUrl` (set at complete-loading), `driverSignatureUrl` (set at depart), `deterioratedBalesCount` (set at confirm-delivery), `fraudFlags`, `clientId`, `syncVersion`, `parentTripId: string | null` (Plan C multi-iteration), `iterationIndex: number` (1-based, default 1).
+**Enum `AuxStage`** (added Jul 2026, `entities/trip.ts`): the single, honest status of an auxiliary transport — collapses the two axes that neither alone describes it (`trip_requests.status`, frozen after confirm, and `trips.status`, which may not exist yet). Values, in display order (`AUX_STAGE_ORDER`): `pending`, `unplanned` (confirmed + aux truck minted, not yet scheduled by a dispatcher — previously invisible), `planned`, `loading`, `awaitingSignature` (loaded; external driver hasn't signed the CMR via the public link), `signed`, `completed`, `cancelled`. `ACTIVE_AUX_STAGES` is the same list minus `completed`/`cancelled` — the aux table's default view. Composed by `composeAuxStage()` / sorted by `auxStageOrder()` in `@strawboss/domain` (see [[packages-domain]]); never emits `in_transit`/`arrived`/`delivering`/`delivered` since an aux trip cannot reach them. `AUXILIARY_TRIP_STATUSES` (pre-existing) is the raw 3-value `TripStatus` subset (`planned`, `loaded`, `completed`) an aux trip's own `status` column can hold — `AuxStage` is the richer, request-aware ladder built on top of it.
+
+Key fields: `tripNumber`, `status`, `sourceParcelId`, `sourceDepotId` (depot source — exactly one of `sourceParcelId`/`sourceDepotId` set), `sourceParcelAuto`, `loaderId`, `truckId`, `loaderOperatorId`, `driverId` (null for an auxiliary trip), `baleCount`, `deliveredBaleCount` (bales actually delivered, `baleCount - deterioratedBalesCount`; null for depot-confirmed trips), timestamps for each phase (`loadingStartedAt` through `completedAt`), destination info, weight data (`grossWeightKg`, `tareWeightKg`, `netWeightKg`), `scaleBroken: boolean` (count-only confirmation, no scale), receiver info (`receiverName`, `receiverSignatureUrl`), `loaderSignatureUrl` (set at complete-loading), `driverSignatureUrl` (no longer set at depart — see DTOs below), `deterioratedBalesCount` (set at confirm-delivery), `fraudFlags`, `clientId`, `syncVersion`, `parentTripId: string | null` (Plan C multi-iteration), `iterationIndex: number` (1-based, default 1), `isAuxiliary: boolean`, `externalDriverName/Phone/Email`, `publicSignTokenUsedAt` (the bearer token itself, `publicSignToken`, is **deliberately absent** from this type — fixed Jul 2026 after `GET /trips` leaked it to every authenticated client via `SELECT t.*`; only the "used" timestamp is safe to expose), `tripRequestId`, `destinationHasOperator?` (read-model flag, depot has a `depot_manager`), and depot-operator confirmation fields `depotOperatorId`, `depotConfirmedAt`, `depotOperatorSignatureUrl`. Enriched join labels (optional, `GET /trips/:id` only) include `sourceDepotName?` (name of the depot the trip was loaded from, alongside the pre-existing `sourceParcelName`/`sourceFarmName`/`sourceParcelMunicipality`).
 
 ### TaskAssignment (`entities/task-assignment.ts`)
 
@@ -138,10 +144,10 @@ Fields: `id`, `code`, `name`, `address`, `coords` (GeoPoint), `contactName`, `co
 
 Extends `Timestamps`, `SoftDelete`.
 
-**Enum `DocumentType`:** `cmr`, `cmr_scan`, `invoice`, `delivery_note`, `weight_ticket`, `report` — `cmr` is the CMR the backend generates itself (Puppeteer); `cmr_scan` is the physical paper CMR the loader photographs at the end of an auxiliary load, a separate artefact with its own slot rather than competing with the generated one.
+**Enum `DocumentType`:** `cmr`, `cmr_scan`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `comanda` — `cmr` is the CMR the backend generates itself (Puppeteer); `cmr_scan` is the physical paper CMR the loader photographs at the end of an auxiliary load, a separate artefact with its own slot rather than competing with the generated one; `comanda` (added Jul 2026) is the transport-order PDF generated (Puppeteer) when a transporter submits a request, built from the per-beneficiary `BeneficiaryOrderSettings` + request data — request-scoped like an aviz.
 **Enum `DocumentStatus`:** `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
 
-Fields: `id`, `tripId`, `documentType`, `status`, `title`, `fileUrl`, `fileSizeBytes`, `mimeType`, `metadata` (JSONB), `generatedAt`, `sentAt`, `sentTo` (string array).
+Fields: `id`, `tripId` (nullable), `tripRequestId` (nullable — a document is scoped to a trip, e.g. a generated CMR/weight-ticket, OR to a trip request, e.g. an aviz/comandă), `documentType`, `status`, `title`, `fileUrl`, `fileSizeBytes`, `mimeType`, `metadata` (JSONB), `generatedAt`, `sentAt`, `sentTo` (string array).
 
 ### TripRequest (`entities/trip-request.ts`)
 
@@ -149,11 +155,25 @@ Extends `Timestamps`, `SoftDelete`. An external pickup request submitted through
 
 **Enum `RequestStatus`:** `pending`, `confirmed`, `cancelled`
 
-Key fields: `organizationId`, `status`; requester (`requesterName/Phone/Email`, `companyName/Address/Cui`); their truck (`truckRegistrationPlate`, `truckMake/Model/CapacityTons`); their driver, no app account (`driverName/Phone/Email`); the ask (`cropType`, `quality`, `neededDate`, `tonsRequested`, `destinationAddress/Locality/Coords`); beneficiary-portal transporter fields (`beneficiaryId`, `trailerRegistrationPlate`, `transporterCui/Name/Address`); `notifyRecipients: NotifyRecipient[]` — denormalized snapshot of the selected contacts, fanned out (email + SMS) on confirm; `sourceDepotId` (pickup depot chosen by the dispatcher on confirm); linkage filled on confirm (`machineId`, `tripId`, `confirmedBy`, `confirmedAt`, `cancelledAt`, `cancellationReason`); read-only join enrichment (`machineMake/Model/Plate`, `tripNumber`, `sourceDepotName`, `confirmedByName`); `hasAviz?: boolean` (non-deleted `delivery_note` document exists); `hasCmrScan?: boolean` (non-deleted `cmr_scan` document exists — uploaded by the loader after an aux load, or overridden by an admin).
+Key fields: `organizationId`, `status`; requester (`requesterName/Phone/Email`, `companyName/Address/Cui`); their truck (`truckRegistrationPlate`, `truckMake/Model/CapacityTons`); their driver, no app account (`driverName/Phone/Email`); the ask (`cropType`, `quality`, `neededDate`, `tonsRequested`, `destinationAddress/Locality/Coords`); comandă fields (added Jul 2026): `unloadingDate` (delivery date typed on the transporter form; `neededDate` is the loading date; NULL for the public portals) and `comandaOrderNo` (per-beneficiary order counter, set once at first generation so regeneration is idempotent); beneficiary-portal transporter fields (`beneficiaryId`, `trailerRegistrationPlate`, `transporterCui/Name/Address`); `notifyRecipients: NotifyRecipient[]` — denormalized snapshot of the selected contacts, fanned out (email + SMS) on confirm; **pickup source, exactly one of** `sourceDepotId` / `sourceParcelId` (field-sourced pickup added Jul 2026 — the dispatcher can now confirm a request against a field instead of a depot); `createdByUserId` (added Jul 2026 — the logged-in `transportator` who submitted this request through the authenticated form; NULL for the public/beneficiary portals; backs the transporter's own read-only ledger via `created_by_user_id = <self>`) and its resolved `createdByName?`; linkage filled on confirm (`machineId`, `tripId`, `confirmedBy`, `confirmedAt`, `cancelledAt`, `cancellationReason`); read-only join enrichment (`machineMake/Model/Plate`, `sourceDepotName`, `sourceParcelName`, `confirmedByName`); `hasAviz?: boolean` (non-deleted `delivery_note` document exists); `hasCmrScan?: boolean` (non-deleted `cmr_scan` document exists — uploaded by the loader after an aux load, or overridden by an admin); `hasComanda?: boolean` (added Jul 2026 — a generated `comanda` document exists).
+
+**Live-trip read model** (added Jul 2026): populated ONLY by `list()`/`findById()`, from a `LEFT JOIN LATERAL` on `trips.trip_request_id` (the stable direction — `tripId` above is a last-write-wins pointer never cleared when a trip is soft-deleted). All fields are absent until a dispatcher materializes the trip on the truck board. `tripLiveId?`, `tripNumber?`, `tripStatus?: TripStatus`, `tripBaleCount?`, `tripLoadingCompletedAt?`, `tripCompletedAt?`, `tripSignedAt?` (when the external driver signed via the public link), `tripSourceParcelName?`, `tripSourceDepotName?`, `tripCount?` (number of live trips on this request — >1 is an anomaly worth surfacing). This read model is exactly what `composeAuxStage()` in `@strawboss/domain` consumes to compute `AuxStage` (see the Trip entity above and [[packages-domain]]).
 
 `NotifyRecipient`: `{ name: string; phone: string | null; email: string | null }`.
 
 Related DTOs (same file): `CreateTripRequestDto` (public submission payload, no auth), `PortalInfo` (org name + allowed crop types, returned after portal code verification), `PublicSignInfo` (load summary shown to the driver on the public sign page).
+
+### TransporterBeneficiary (`entities/transporter.ts`) — added Jul 2026
+
+The many-to-many link between a transporter user (`UserRole.transportator`) and the beneficiaries an admin has allowed them to act for. A transporter may only submit requests — and only sees saved contacts/trucks/drivers — for beneficiaries they are assigned to; the backend enforces this on every write via `assertAssigned(orgId, userId, beneficiaryId)`, the authenticated analogue of the public portal's daily-PIN check. Membership is set-replace (hard delete — no soft-delete, since nothing FKs to this table; a submitted `trip_requests` row keeps its beneficiary snapshot regardless of later membership changes).
+
+Fields: `id`, `organizationId`, `transporterUserId`, `beneficiaryId`, `createdAt`.
+
+### BeneficiaryOrderSettings (`entities/beneficiary-order-settings.ts`) — added Jul 2026
+
+Per-beneficiary "comandă" (transport order) settings — the fields of the order that are constant for a beneficiary and don't exist on a trip. A transporter fills these once per assigned beneficiary (Beneficiari tab); the comandă generator merges them with the request data. Singleton per beneficiary (no `Timestamps`/`SoftDelete` mixin — inline `createdAt`/`updatedAt` only).
+
+Fields: `id`, `organizationId`, `beneficiaryId`, `transportValue: number | null` ("Valoare transport" amount, e.g. 680), `currency` (e.g. "EUR"), `paymentTermDays` ("OP la {N} de zile de la primirea actelor în original"), `baleCount: number | null` (standard bale count for this beneficiary), `baleDimensions: string | null` (e.g. "240X120X90"), `goodsName: string | null` (e.g. "PAIE"), `truckDescription: string | null` (e.g. "CAMION CU REMORCA MEGA/VARIO"), `loadingLocality`/`loadingCountry`, `obs: string | null` (e.g. "Actele în original se vor trimite la adresa: NU"), `orderCounter` (per-beneficiary running order counter — the next comandă is `orderCounter + 1`), `createdAt`, `updatedAt`.
 
 ### Alert (`entities/alert.ts`)
 
@@ -176,7 +196,7 @@ Fields: `id`, `tableName`, `recordId`, `operation`, `oldValues`, `newValues`, `c
 
 - **ParcelDailyStatus** (`entities/parcel-daily-status.ts`): `id`, `parcelId`, `statusDate`, `isDone`, `notes`, timestamps.
 - **MachineLocationEvent** (`entities/machine-location-event.ts`): `id`, `machineId`, `operatorId`, `lat`, `lon`, `coords`, `accuracyM`, `headingDeg`, `speedMs`, `recordedAt`, `createdAt`.
-- **MachineLastLocation** (same file): aggregated view with `machineCode`, `machineType`, `operatorName`, `assignedUserId`, `assignedUserName`.
+- **MachineLastLocation** (same file): aggregated view with `machineCode`, `machineType`, `operatorName`, `assignedUserId`, `assignedUserName`, `locality?: string | null` (added Jul 2026 — reverse-geocoded nearest locality for `(lat, lon)`, best-effort and cached server-side; `null` when not yet cached or the position is stale).
 - **DevicePushToken** (`entities/device-push-token.ts`): `id`, `userId`, `machineId`, `token`, `platform`, `isActive`, timestamps.
 - **GeofenceEvent** (`entities/geofence-event.ts`): `id`, `machineId`, `assignmentId`, `geofenceType` (`'parcel' | 'deposit'`), `geofenceId`, `eventType` (`'enter' | 'exit'`), `lat`, `lon`, `createdAt`.
 
@@ -267,8 +287,9 @@ See [[database]] for the backing SQL enums and [[packages-validation]] for the c
 
 ## DTOs
 
-- **TripCreateDto** (`dtos/trip-create.dto.ts`): `sourceParcelId`, `truckId`, `driverId`, optional `loaderId`, `loaderOperatorId`, `destinationName`, `destinationAddress`, `destinationCoords`.
-- **Trip transition DTOs** (`dtos/trip-transition.dto.ts`): `StartLoadingDto`, `CompleteLoadingDto`, `DepartDto`, `ArriveDto`, `StartDeliveryDto`, `ConfirmDeliveryDto`, `CompleteDto`, `CancelDto`, `DisputeDto`, `ResolveDisputeDto`.
+- **TripCreateDto** (`dtos/trip-create.dto.ts`): `sourceParcelId`, `truckId`, `driverId`, optional `loaderId`, `loaderOperatorId`, `destinationId` (added Jul 2026 — FK to the destination depot; without it the trip is invisible to the depot manager's sync pull and cannot be depot-confirmed, `destinationName`/`destinationAddress` are only a display snapshot), `destinationName`, `destinationAddress`, `destinationCoords`.
+- **Trip transition DTOs** (`dtos/trip-transition.dto.ts`): `StartLoadingDto`, `ForceStatusDto` (admin-only manual status override — see below), `CompleteLoadingDto`, `DepartDto` (**empty as of Jul 2026** — the driver signature requirement was removed from `/depart`), `ArriveDto` (empty — distance is derived from the GPS track), `StartDeliveryDto`, `ConfirmDeliveryDto` (`grossWeightKg`/`tareWeightKg` now `number | null | undefined`, plus `scaleBroken?: boolean` for a delivery with no working scale — Jul 2026), `CompleteDto` (**receiver signature removed as of Jul 2026** — now just `receiverName`), `ConfirmDepotDeliveryDto` (added Jul 2026 — the depot-operator delivery confirmation: `baleCount` required, optional `grossWeightKg`/`tareWeightKg`/`scaleBroken`, `depotOperatorSignature`, `idempotencyKey`; a `depot_manager` assigned to the trip's destination confirms the arriving bale count and signs, driving the trip `arrived→delivered→completed` server-side in one action — the signature is stored as both the depot-operator and receiver signature), `DepotIncomingTruck` (one inbound truck as shown to the depot operator: `distanceM`, `isInsideGeofence`, `awaitingConfirmation`), `CancelDto`, `DisputeDto`, `ResolveDisputeDto`, `RegisterLoadDto` (atomic loader "register load" payload; `parcelId`/`sourceDepotId` are now both optional but exactly one is required — XOR, matching `registerLoadSchema`), `RegisterLoadResult`.
+  - **`ForceStatusDto`** (added Jul 2026): `status`, optional `reason`, optional `expectedStatus` (optimistic-lock guard). Forcing a trip to `loaded` or beyond used to move only the status, leaving a phantom trip with 0 bales and no stock movement (4 existed in production). Now, when the target status implies goods were picked up and the trip carries no load yet, `baleCount` + exactly one of `parcelId`/`sourceDepotId` become **required** (server rejects with `load_required`); inserting the `bale_loads` row IS the stock deduction. Also carries an optional `idempotencyKey` (client-side `bale_load` UUID) so a retried override doesn't double-count.
 - **SyncPushRequest / SyncPullRequest / SyncResponse** (`dtos/sync-payload.dto.ts`): See [sync-protocol.md](sync-protocol.md).
 - **Dashboard DTOs** (`dtos/dashboard.dto.ts`): `DashboardOverview`, `ProductionReport`, `CostReport`, `AntiFraudReport`.
 - **LocationReportDto** (`dtos/location-report.dto.ts`): `machineId`, `lat`, `lon`, optional `accuracyM`, `headingDeg`, `speedMs`, `recordedAt`.

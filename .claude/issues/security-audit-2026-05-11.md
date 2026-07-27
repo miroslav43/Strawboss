@@ -290,6 +290,67 @@ The owner filter restricts loader operators to seeing only `bale_loads` they per
 
 ---
 
+## Post-Audit Additions (self-discovered, not part of the original 2026-05-11 count)
+
+> Found and fixed independently of this audit, same class of multi-tenancy/security defect.
+> Not included in the Summary table counts above (which track only the original 8/8/3 findings).
+
+### CR-9 — global-unique `trip_number` index silently blocked every second organization from creating trips ✅ FIXED
+
+> Fixed in commit `7137391` (migration `00086_trip_number_unique_per_org.sql`, 2026-07-14).
+
+**File:** `supabase/migrations/00086_trip_number_unique_per_org.sql`
+
+`trips.trip_number` carried a globally-unique index (`trips_trip_number_key`, from the
+pre-multi-tenancy `00003`), while `generateTripNumber()` mints the number by counting **per
+organization**. On any day where org A had already created a trip, org B's counter started back at
+0, minted the same `TR-<date>-001`, and collided — every trip/truck-task creation for whichever org
+was not first that day failed with `duplicate key value violates unique constraint
+"trips_trip_number_key"`. A full, silent multi-tenant outage, latent since organizations were
+introduced (`00036`); it only surfaced when a second org's daily volume caught up.
+
+**Fix:** Rescope the constraint the way the generator already scopes counting —
+`UNIQUE (organization_id, trip_number)`. Strictly more permissive than the constraint it replaces
+(every globally-unique set is also unique per-org), so it could not fail on existing rows.
+
+---
+
+### CR-10 — CMR public sign token (`trips.public_sign_token`) leaked to every authenticated user via `GET /trips` ✅ FIXED
+
+> Fixed in commit `ef7ec6e`, 2026-07-14.
+
+**File:** `backend/service/src/trips/trips.service.ts` (`list()`, `findById()`)
+
+`GET /trips` carries no `@Roles` at all, and both read paths did `SELECT t.*`, which shipped
+`public_sign_token` — the one-time secret that lets an account-less external driver sign an
+auxiliary trip's CMR through a public link. Any driver or loader in the org could read every trip's
+token and sign that transport document as if they were the assigned driver.
+
+**Fix:** Both endpoints now use an explicit column projection instead of `SELECT *`. The field was
+also removed from the `Trip` type (`packages/types`) and the admin mapper (`trip-mapper.ts`) so it
+cannot be reintroduced by accident. Verified against the DB that the projection removes exactly one
+key and adds none.
+
+---
+
+### H-18 — missing cross-org composite FK on parcel references (`trips`, `bale_loads`, `task_assignments`, `trip_requests`) ✅ FIXED
+
+> Fixed in commit `391fa6e` (migration `00091_parcel_cross_org_fk_hardening.sql`, 2026-07-24).
+
+**File:** `supabase/migrations/00091_parcel_cross_org_fk_hardening.sql`
+
+Unlike `trip_requests.source_depot_id` (composite FK since `00070`), `trip_requests.source_parcel_id`
+(added `00090`) had no cross-org guard — flagged by automated review. The same gap existed, never
+hardened, on `trips.source_parcel_id`, `bale_loads.parcel_id`, and `task_assignments.parcel_id`. Same
+class of defect as H-7/H-8/H-9/H-10 above (cross-org FK not verified), but at the DB constraint layer
+rather than application-service layer. Verified zero existing cross-org violations across all four
+columns before adding the constraints.
+
+**Fix:** Composite FK `(organization_id, parcel_id) REFERENCES parcels(organization_id, id)` (or
+`source_parcel_id` equivalent) added to all four columns.
+
+---
+
 ## Already Fixed (reference)
 
 | ID | Description |
@@ -309,3 +370,6 @@ The owner filter restricts loader operators to seeing only `bale_loads` they per
 | H15 | `task-assignments.service.ts` — FK org verification on create/update (commit `2ff6194`) |
 | H16 | `trips.service.ts` — FK org verification on create/registerLoad (commit `9d59495`) |
 | M1 | `alerts.controller.ts` — `ZodValidationPipe` + `createAlertSchema` (commit `2ff6194`) |
+| CR9 | `00086_trip_number_unique_per_org.sql` — trip_number UNIQUE rescoped per-org, fixed 2nd-org trip creation outage (commit `7137391`) |
+| CR10 | `trips.service.ts` — `public_sign_token` dropped from `GET /trips` projection + type (commit `ef7ec6e`) |
+| H18 | `00091_parcel_cross_org_fk_hardening.sql` — composite cross-org FK on every parcel reference (commit `391fa6e`) |

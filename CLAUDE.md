@@ -168,3 +168,14 @@ A weekly routine runs `/strawboss-sync-docs` automatically to catch any document
 The `.claude/docs/` directory is an Obsidian-compatible knowledge vault for this project. **Start every session by reading `.claude/docs/hot.md`** — it contains the five invariants, what's changing now, and quick-reference pointers. For deeper context, follow the `[[wikilinks]]` to layer-specific docs.
 
 After non-trivial code changes, run `/strawboss-sync-docs` so future sessions read accurate context. That skill also bumps `updated:` frontmatter and appends to `.claude/docs/log.md`. MCP plugins available: `context7` (live library docs), `playwright` (browser), `supabase` (after one-time auth).
+
+### Personal wiki (cross-project, separate from `.claude/docs/`)
+
+The user also keeps a personal Obsidian vault at `~/claude-obsidian` (git repo, managed by the `claude-obsidian` plugin — `/wiki`, `/save`, `/autoresearch`, `/canvas`, `wiki-query`, `mcp__obsidian-vault__*`). It is **not** Strawboss-specific and is not auto-loaded here — its `SessionStart` hot-cache hook only fires when the vault itself is the working directory, so it never triggers from a Strawboss session.
+
+When the user asks about prior research, personal notes, or "what do I know about X" that is **not** about Strawboss code/architecture:
+1. Read `~/claude-obsidian/wiki/hot.md` first (recent context cache)
+2. If not enough, read `~/claude-obsidian/wiki/index.md`
+3. Only then drill into specific wiki pages — via `mcp__obsidian-vault__*` tools or the `claude-obsidian:wiki-query` skill
+
+Do NOT read this personal vault for Strawboss code questions — use `.claude/docs/` above instead.

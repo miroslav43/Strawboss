@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/api"
 created: 2026-04-16
-updated: 2026-07-12
+updated: 2026-07-27
 tags: [doc, package, api, tanstack-query, supabase]
 status: mature
 related:
@@ -16,7 +16,7 @@ related:
 
 # @strawboss/api
 
-Shared data layer consumed by both `admin-web` and `mobile`. Provides the `ApiClient` class, Supabase client factory, TanStack Query key factory, and 25 React Query hook files (index counts as one file; includes `useLocationKmByDay` added in Plan C, `use-fleet.ts` added in fleet feature).
+Shared data layer consumed by both `admin-web` and `mobile`. Provides the `ApiClient` class, Supabase client factory, server-clock offset helper, TanStack Query key factory, and 28 React Query hook files (excluding `index.ts`; includes `useLocationKmByDay` added in Plan C, `use-fleet.ts` added in fleet feature, `use-transporter.ts` added Jul 2026 for the `transportator` role).
 
 **Source:** `packages/api/src/`
 
@@ -49,6 +49,19 @@ interface ApiClientConfig {
 - On 401, retries once after re-calling `getToken()` (token refresh).
 - On non-OK responses, throws `ApiError(status, message, data)` and calls `onApiError` hook.
 - 204 responses return `undefined`.
+- Every response is fed to `captureServerDate()` (see below) to keep the client's server-clock offset fresh.
+
+## Server Clock Offset (`client/server-clock.ts`)
+
+Corrects presence-dot staleness math (`now - lastSeen < window`) against **server** time instead of a possibly-skewed browser/device clock. `ApiClient.request()` calls the module-private `captureServerDate(res)` on every response (success or 401-retry), which reads the standard `Date` response header (set by nginx on the same NTP-synced VM as Postgres) and feeds it in via `setServerClockOffset(serverMs - Date.now())`.
+
+| Export | Signature | Notes |
+|---|---|---|
+| `setServerClockOffset(candidateOffsetMs)` | `(number) => void` | Ignores non-finite values and offsets larger than `MAX_PLAUSIBLE_OFFSET_MS` (24h) — a value that large means a broken clock/proxy, not sub-minute skew, so it's dropped rather than applied. |
+| `serverNow()` | `() => number` | `Date.now() + offsetMs` — best estimate of the server's wall-clock time (ms since epoch). Presence dots use this instead of `Date.now()`. |
+| `getServerClockOffset()` | `() => number` | Current offset (server − client) in ms; exposed for tests/diagnostics. |
+
+Requires the API and the consuming app to be same-origin (or `Access-Control-Expose-Headers: Date` for a cross-origin deployment) — StrawBoss serves `admin-web` and the API from the same origin, so the header is visible; if it ever isn't, the offset silently stays 0 (today's browser-clock behavior). See [[packages-types]] `presence.ts` for the cadence constants this offset feeds.
 
 ## Supabase Client Factory (`client/supabase.ts`)
 
@@ -97,6 +110,8 @@ Centralized TanStack Query key definitions. Every hook references these for cach
 | `deliveryDestinations` | `.all`, `.list(filters?)`, `.detail(id)` |
 | `tripRequests` | `.all`, `.list(filters?)`, `.detail(id)`, `.avize(id)`, `.cmrScans(id)` |
 | `orgRequestSettings` | `.all` |
+| `transporter` | `.all`, `.beneficiaries()`, `.records(beneficiaryId, kind)`, `.requests(filters?)`, `.orderSettings(beneficiaryId)`, `.comanda(requestId)` — added Jul 2026, the authenticated transporter's own surface |
+| `transporterAssignments` | `.byUser(id)` — added Jul 2026, admin view of a transporter account's beneficiary assignments |
 | `devices` | `.all`, `.list(filters?)`, `.detail(id)`, `.otaStatus(id)`, `.logs(id, filters?)` |
 | `releases` | `.all` |
 | `deployments` | `.all` |
@@ -190,20 +205,28 @@ Mutations auto-invalidate related query keys on success.
 | `useDeleteFarm(client)` | `DELETE /api/v1/farms/:id` |
 | `useAssignParcelToFarm(client)` | `PATCH /api/v1/parcels/:id` (farmId only) |
 
+### Trucks at Loader (`hooks/use-trucks-at-loader.ts`)
+
+| Hook | Type | Endpoint | Notes |
+|---|---|---|---|
+| `useTrucksAtLoader(client, loaderMachineId, options?)` | Query | `GET /api/v1/location/trucks-at-loader/:loaderMachineId` | Loader-only: trucks currently within GPS proximity of the loader machine. `options`: `radiusM`, `windowMinutes`, `pollMs` (default 10s poll). `enabled: !!loaderMachineId`. Returns `TruckAtLoader[]` |
+
+Local interfaces: `TruckAtLoader` (`id`, `registrationPlate`, `internalCode`, `driverName`, `distanceM`, `lastSeenAt`, `lat`, `lon`, `tripStatus: string \| null`, `loadState: 'loaded' \| 'empty'`). Added Jul 2026 for the assignment-aware loader-board feature (consumed by the mobile app, not by an api-package hook): **`AssignedTruck`** (`tripId`, `truckId`, `registrationPlate`, `internalCode`, `driverName`, `sourceParcelName`, `sourceParcelMunicipality`, `tripStatus: 'planned' | 'loading' | 'loaded'`, `isAuxiliary`, `presence: 'here' | 'enroute' | 'loaded' | 'unknown'`, `distanceM: number | null`, `lastSeenAt`, `loadState`) and **`LoaderBoardResponse`** (`{ assigned: AssignedTruck[]; nearbyUnassigned: TruckAtLoader[] }`) — the wire shape of the (backend/mobile) `GET .../loader-board/:loaderMachineId` route: trucks actually assigned to this loader (`trips.loader_id`) vs. trucks merely nearby.
+
 ### Trip Requests (`hooks/use-trip-requests.ts`)
 
-External pickup requests submitted through the public per-org portal (`/<slug>/request`). See [[packages-types]] for the `TripRequest` entity.
+External pickup requests submitted through the public per-org portal (`/<slug>/request`). See [[packages-types]] for the `TripRequest` entity. `useTripRequests` filters also include `search` and pagination (`limit`/`offset`) server-side — rows carry the live-trip read model (`tripStatus`, `tripNumber`, `tripBaleCount`, …) joined server-side. The aviz/CMR hooks take an optional `variant: 'admin' | 'transporter'` (`DocVariant`, added Jul 2026, default `'admin'`) that switches between the admin trip-requests endpoints and the ownership-scoped `/api/v1/transporter/requests/:id/...` endpoints used by the transporter's own upload UI.
 
 | Hook | Type | Endpoint | Notes |
 |---|---|---|---|
 | `useTripRequests(client, filters?)` | Query | `GET /api/v1/trip-requests` | filters: `status`, `dateFrom`, `dateTo` |
 | `useTripRequest(client, id)` | Query | `GET /api/v1/trip-requests/:id` | |
-| `useConfirmTripRequest(client)` | Mutation | `POST /api/v1/trip-requests/:id/confirm` | Spins up a one-time auxiliary truck (machine); invalidates `tripRequests.all` + `machines.all` + `taskAssignments.all` |
-| `useCancelTripRequest(client)` | Mutation | `POST /api/v1/trip-requests/:id/cancel` | |
-| `useRequestAvize(client, requestId)` | Query | `GET /api/v1/trip-requests/:id/aviz` | Returns 0 or 1 `Document` (single-aviz model) |
-| `useUploadAviz(client)` | Mutation | `POST /api/v1/trip-requests/:id/aviz` (multipart) | Invalidates that request's avize + `tripRequests.all` |
-| `useRequestCmrScans(client, requestId)` | Query | `GET /api/v1/cmr-scans/trip-request/:id` | Returns 0 or 1 `Document` of type `cmr_scan` — the scanned paper CMR for an auxiliary load |
-| `useUploadCmrScan(client)` | Mutation | `POST /api/v1/cmr-scans/trip-request/:id` (multipart) | Admin override upload — the loader normally posts the scan from the phone against the trip instead. Invalidates `tripRequests.cmrScans(id)` **and** `tripRequests.all`, since `hasCmrScan` is computed server-side on the list row, not the document |
+| `useConfirmTripRequest(client)` | Mutation | `POST /api/v1/trip-requests/:id/confirm` | Body: `{ id, internalCode?, depotId?, parcelId? }` — as of Jul 2026 accepts a field (`parcelId`) pickup source as an alternative to a depot (`depotId`), matching the backend's XOR. Spins up a one-time auxiliary truck (machine); invalidates `tripRequests.all` + `machines.all` + `taskAssignments.all` |
+| `useCancelTripRequest(client)` | Mutation | `POST /api/v1/trip-requests/:id/cancel` | Allowed for a `pending` request, and for a `confirmed` one with no live trip yet (cancel also retires the one-time aux truck, hence the `machines.all` invalidation). If a trip is already planned the server refuses with `has_live_trip` — delete the trip first (un-plans it), then cancel. |
+| `useRequestAvize(client, requestId, variant?)` | Query | `GET /api/v1/trip-requests/:id/aviz` (`variant='admin'`, default) or `GET /api/v1/transporter/requests/:id/aviz` (`variant='transporter'`, added Jul 2026) | Returns 0 or 1 `Document` (single-aviz model) |
+| `useUploadAviz(client, variant?)` | Mutation | `POST .../aviz` (multipart), same variant split | Invalidates that request's avize + `tripRequests.all` + `transporter.all` (added Jul 2026, so the transporter's own ledger flips too) |
+| `useRequestCmrScans(client, requestId, variant?)` | Query | `GET /api/v1/cmr-scans/trip-request/:id` (`variant='admin'`) or `GET /api/v1/transporter/requests/:id/cmr` (`variant='transporter'`, added Jul 2026) | Returns 0 or 1 `Document` of type `cmr_scan` — the scanned paper CMR for an auxiliary load |
+| `useUploadCmrScan(client, variant?)` | Mutation | `POST .../cmr` or `.../cmr-scans/trip-request/:id`, same variant split | Admin/transporter override upload — the loader normally posts the scan from the phone against the trip instead. Invalidates `tripRequests.cmrScans(id)` + `tripRequests.all` + `transporter.all`, since `hasCmrScan` is computed server-side on the list row, not the document |
 | `useOrgRequestSettings(client)` | Query | `GET /api/v1/organizations/me/request-settings` | Admin: caller's own org portal code + allowed crop list |
 | `useUpdateOrgRequestSettings(client)` | Mutation | `PATCH /api/v1/organizations/me/request-settings` | Sets `orgRequestSettings.all` query data on success |
 
@@ -222,6 +245,8 @@ External pickup requests submitted through the public per-org portal (`/<slug>/r
 | `useCreateUser(client)` | `POST /api/v1/admin/users` | |
 | `useUpdateUser(client)` | `PATCH /api/v1/admin/users/:id` | |
 | `useDeactivateUser(client)` | `DELETE /api/v1/admin/users/:id` | Soft-delete |
+| `useTransporterAssignments(client, userId)` | `GET /api/v1/admin/users/:id/beneficiaries` | Added Jul 2026. Returns `string[]` of beneficiary ids a `transportator` account is assigned to; `enabled: !!userId` |
+| `useSetTransporterAssignments(client)` | `PUT /api/v1/admin/users/:id/beneficiaries` | Added Jul 2026. Set-replace; body `{ beneficiaryIds }`; invalidates `transporterAssignments.byUser(id)` + the admin users list |
 | `useMachineLocations(client)` | `GET /api/v1/location/machines` | Polls every 30s |
 | `useRouteHistory(client, machineId, from, to)` | `GET /api/v1/location/machines/:id/route` | |
 | `useLocationKmByDay(client, machineId, from, to)` | `GET /api/v1/location/machines/:id/km-by-day` | Returns `KmByDayResponse` |
@@ -277,5 +302,25 @@ Local interfaces in `use-fleet.ts`: `DeviceLogFilters`, `DeviceLogEntry`, `Devic
 | `useUploadTailscaleApk(client)` | Mutation | `POST /api/v1/super-admin/settings/tailscale-apk` | Accepts `FormData` (field `apk`); sets the hosted Tailscale APK for zero-touch auto-install; invalidates `settings.tailscale` |
 
 `useUpdateTailscaleSettings` uses `client.put` (full replace semantics). `useUploadTailscaleApk` uses `client.upload` (multipart). Both return `AppSettings` on success.
+
+### Transporter (`hooks/use-transporter.ts`) — added Jul 2026
+
+The authenticated surface for the `transportator` role (`UserRole.transportator`, see [[packages-types]]): request submission scoped to admin-assigned beneficiaries, a read-only "my requests" ledger, per-beneficiary comandă (order) settings, and the generated comandă PDF. All routes under `/api/v1/transporter/`.
+
+| Hook | Type | Endpoint | Notes |
+|---|---|---|---|
+| `useTransporterBeneficiaries(client)` | Query | `GET /api/v1/transporter/beneficiaries` | The beneficiaries an admin assigned to this transporter. Returns `AssignedBeneficiary[]` (PIN-free) |
+| `useTransporterRecords<T>(client, beneficiaryId, kind)` | Query | `GET /api/v1/transporter/beneficiaries/:id/:kind` | `kind: 'contacts' \| 'trucks' \| 'drivers'` (`TransporterRecordKind`). Disabled until a beneficiary is chosen |
+| `useCreateTransporterRecord(client)` | Mutation | `POST /api/v1/transporter/beneficiaries/:id/:kind` | Invalidates that beneficiary+kind's records |
+| `useUpdateTransporterRecord(client)` | Mutation | `PATCH /api/v1/transporter/beneficiaries/:id/:kind/:recordId` | Invalidates that beneficiary+kind's records |
+| `useDeleteTransporterRecord(client)` | Mutation | `POST /api/v1/transporter/beneficiaries/:id/:kind/:recordId/delete` | Invalidates that beneficiary+kind's records |
+| `useSubmitTransporterRequest(client)` | Mutation | `POST /api/v1/transporter/requests` | Body: `CreateTransporterRequestInput`. Creates a pending `trip_request`; invalidates `transporter.all` |
+| `useTransporterRequests(client, filters?)` | Query | `GET /api/v1/transporter/requests` | The transporter's own read-only ledger — requests they created. Returns `TripRequest[]` |
+| `useBeneficiaryOrderSettings(client, beneficiaryId)` | Query | `GET /api/v1/transporter/beneficiaries/:id/order-settings` | Returns `BeneficiaryOrderSettings \| null` (null until configured). Disabled until a beneficiary is chosen |
+| `useSaveBeneficiaryOrderSettings(client)` | Mutation | `PUT /api/v1/transporter/beneficiaries/:id/order-settings` | Upsert (set-replace); invalidates that beneficiary's order settings |
+| `useTransporterComanda(client, requestId)` | Query | `GET /api/v1/transporter/requests/:id/comanda` | The generated comandă document(s) for a request (0 or 1). Returns `Document[]` |
+| `useGenerateTransporterComanda(client)` | Mutation | `POST /api/v1/transporter/requests/:id/comanda` | Manually (re)generate the comandă; invalidates `transporter.comanda(id)` + `transporter.all` |
+
+Local interfaces: `TransporterRecordKind` (`'contacts' | 'trucks' | 'drivers'`), `AssignedBeneficiary` (`id`, `slug`, `displayName`, `companyName`, `companyCui`, `companyAddress`, `email`).
 
 See [[packages-types]] for entity shapes and [[packages-validation]] for input schemas.

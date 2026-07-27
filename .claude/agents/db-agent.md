@@ -3,7 +3,7 @@ name: db-agent
 description: Specialist in PostgreSQL + PostGIS -- migrations, RLS, spatial queries, sync versioning
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-07-12
+updated: 2026-07-27
 ---
 
 # StrawBoss Database Agent
@@ -56,11 +56,19 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 00057_fleet_tailscale_oauth_apk.sql        -- app_settings += tailscale_oauth_client_id/secret, tailscale_tag, tailscale_apk_key/sha256/size; OAuth enables per-device ephemeral keys; APK enables zero-touch Tailscale auto-install
 ... (migrations 00058–00082 added in subsequent feature branches)
 00083_cmr_scan_document_type.sql           -- ALTER TYPE document_type ADD VALUE IF NOT EXISTS 'cmr_scan' -- the photographed *paper* CMR from an auxiliary load's external driver (PDF), distinct from the backend-generated 'cmr'; both can exist on the same trip. Single-statement file only -- a new enum label cannot be referenced by any other statement in the same transaction (PG 12+ restriction), so no index/CHECK/backfill was added (idx_documents_trip_request_id from 00076 already covers the lookups).
+00084_curse_merge_indexes.sql              -- Indexes/realtime for the merged "Curse" admin page (aux ledger on trip_requests + own-fleet ledger on trips WHERE is_auxiliary=false): idx_trips_trip_request, idx_trips_org_aux_created, idx_trip_requests_org_created; best-effort ALTER PUBLICATION supabase_realtime ADD TABLE trip_requests (swallows duplicate_object/insufficient_privilege/undefined_object). Deliberately does NOT add a partial UNIQUE on trip_requests(machine_id) -- confirm() is not transactional, so a retry could already have minted a duplicate aux machine; audit before constraining.
+00085_trip_destination_integrity.sql       -- P0 feature repair: trips.destination_id (00051) was NEVER populated by any code path -> depot-manager confirm flow was fully dead. Backfills from task_assignments then unambiguous destination_name match; excludes auxiliary trips and trips in in_transit/arrived/delivering (safety gate -- flipping destination_has_operator mid-delivery strands the driver). New trigger delivery_destinations_propagate_to_trips() keeps destination_name/address in sync with a depot rename, scoped to non-terminal trips only. Paired backend commit (ef7ec6e) fixed a SECURITY LEAK: GET /trips did SELECT t.* and shipped trips.public_sign_token (CMR sign secret) to every authenticated user -- now an explicit projection, field removed from the Trip type.
+00086_trip_number_unique_per_org.sql       -- P0 MULTI-TENANT OUTAGE FIX: trips.trip_number had a GLOBAL unique index while generateTripNumber() counts per-org -> the second org to create a trip on any given day got a duplicate-key error and could create NOTHING. Dropped trips_trip_number_key, added trips_trip_number_org_key UNIQUE (organization_id, trip_number); kept idx_trips_trip_number for value-only lookups.
+00087_transportator_role_and_assignments.sql -- New WEB-only 'transportator' enum label (on user_role AND the stale user_role_old); transporter_beneficiaries M:N table (admin-managed, set-replace); trip_requests.created_by_user_id (provenance for the transporter's own-ledger read). Adds users_org_id_key UNIQUE (organization_id, id) as a composite-FK target.
+00088_comanda_order.sql                    -- New 'comanda' document_type value; beneficiary_order_settings (singleton per beneficiary: price/payment-term/bale specs/loading info + order_counter); trip_requests += unloading_date, comanda_order_no. RLS scopes a transportator to beneficiary_order_settings rows for beneficiaries they're assigned to via transporter_beneficiaries.
+00089_geocode_cache.sql                    -- geocode_cache: server-side reverse-geocode cache (coord_key = "<lat.toFixed(3)>,<lon.toFixed(3)>" -> locality, ~110m buckets) so the tasks-page machine cards / live map don't hammer public Nominatim (~1 req/s) across a 30s-polled fleet. RLS on, no permissive policy (service-role only), same pattern as machine_last_positions/outbound_messages.
+00090_trip_request_source_parcel.sql       -- trip_requests.source_parcel_id (nullable FK parcels(id)) -- sibling to source_depot_id (00070): a confirmed request may source from a field instead of a depot. App layer (confirmTripRequestSchema) enforces XOR, not the DB.
+00091_parcel_cross_org_fk_hardening.sql    -- Cross-org composite FK hardening for EVERY parcel reference (flagged by automated review): adds parcels_org_id_key UNIQUE (organization_id, id) + composite FKs on trip_requests.source_parcel_id, trips.source_parcel_id, bale_loads.parcel_id, task_assignments.parcel_id -- mirrors the pattern already applied to delivery_destinations (00070) and beneficiaries (00063/00068). Verified zero existing violations before adding (plain FK, not NOT VALID).
 ```
 
 ### Key enums (current values)
 
-- `user_role`: `admin`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`, `depot_manager` (added 00043)
+- `user_role`: `admin`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`, `depot_manager` (added 00043), `transportator` (added 00087 -- WEB-only external-hauler role; label added to both `user_role` AND the stale `user_role_old` enum so RLS keeps working, see the `::text` cast note below)
 - `ota_state`: `pending`, `notified`, `downloading`, `downloaded`, `awaiting_idle`, `installing`, `installed`, `failed` (added 00055)
 - `ota_deployment_status`: `pending`, `active`, `completed`, `cancelled` (added 00055)
 - `release_status`: `draft`, `published`, `archived` (added 00055)
@@ -68,7 +76,7 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 - `harvest_status`: `planned`, `to_harvest`, `harvesting`, `partial_harvested`, `harvested`, `in_loading`, `loaded`, `completed` (extended 00042; monotonic ladder enforced by `trg_prevent_harvest_status_downgrade`)
 - `crop_type`: `grau`, `orz`, `rapita`, `plante_nutret` (added 00042)
 - `document_status`: `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
-- `document_type`: `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `cmr_scan` (added 00083 -- photographed paper CMR, distinct from the backend-generated `cmr`)
+- `document_type`: `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `cmr_scan` (added 00083 -- photographed paper CMR, distinct from the backend-generated `cmr`), `comanda` (added 00088 -- auto-generated transport-order PDF for the transporter feature)
 
 ### Key design patterns
 
@@ -83,6 +91,13 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 **UUID primary keys**: All tables use `UUID DEFAULT gen_random_uuid()` as primary key.
 
 **ISO 8601 timestamps**: All timestamp columns use `TIMESTAMPTZ`.
+
+**Cross-org composite FK hardening**: A bare `some_id UUID REFERENCES other_table(id)` lets a row in org A reference a row in org B if the application layer ever forgets an org check. The established fix, applied incrementally to `beneficiaries` (00063/00068), `delivery_destinations` (00070), `users`/`transporter_beneficiaries` (00087), and every remaining `parcels` reference (00091 -- `trip_requests.source_parcel_id`, `trips.source_parcel_id`, `bale_loads.parcel_id`, `task_assignments.parcel_id`):
+1. Add a composite unique constraint on the *referenced* table: `ALTER TABLE parcels ADD CONSTRAINT parcels_org_id_key UNIQUE (organization_id, id);` (id is already the PK, so this is purely additive).
+2. Replace/add the FK as composite: `ALTER TABLE trips ADD CONSTRAINT trips_source_parcel_org_fkey FOREIGN KEY (organization_id, source_parcel_id) REFERENCES parcels (organization_id, id);`
+3. `MATCH SIMPLE` (the default) is correct when the referencing column is nullable (e.g. XOR'd with another source column) -- a `NULL` reference is left unchecked.
+4. **Verify zero existing cross-org violations before adding** (`SELECT ... WHERE t.organization_id <> p.organization_id`) so the constraint can be added directly, not `NOT VALID`.
+When adding a new FK to an org-scoped table, prefer this pattern from the start rather than hardening it later.
 
 ### RLS (Row-Level Security)
 
@@ -153,7 +168,7 @@ The backend checks this table before processing each sync mutation. If the key e
 
 ### Writing new migrations
 
-The next migration should be `supabase/migrations/00084_<descriptive_name>.sql` (current last: 00083).
+The next migration should be `supabase/migrations/00092_<descriptive_name>.sql` (current last: 00091).
 
 Rules:
 1. **Idempotent**: Safe to run multiple times.

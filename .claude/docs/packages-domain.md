@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/domain"
 created: 2026-04-16
-updated: 2026-04-16
+updated: 2026-07-27
 tags: [doc, package, domain, xstate, business-logic]
 status: mature
 related:
@@ -14,7 +14,7 @@ related:
 
 # @strawboss/domain
 
-Pure business logic with no I/O. Contains the XState v5 trip state machine, fraud detection algorithms, bale/fuel reconciliation, alert evaluation, task assignment rules, CMR completeness checks, and geo utilities.
+Pure business logic with no I/O. Contains the XState v5 trip state machine, fraud detection algorithms, bale/fuel reconciliation, alert evaluation, task assignment rules, CMR completeness checks, auxiliary-transport stage composition, and geo utilities.
 
 **Source:** `packages/domain/src/`
 
@@ -140,6 +140,18 @@ Each `AlertDraft` includes: `category`, `severity`, `title`, `description`, `tri
 Two checks against existing assignments for the same date:
 1. **No machine double-booking**: same `machineId` + `assignmentDate` (excluding self by id).
 2. **No user double-booking**: same `assignedUserId` + `assignmentDate` (excluding self by id).
+
+### Aux Stage (`rules/aux-stage.ts`) — added Jul 2026
+
+An auxiliary (external, one-time) transport lives on two axes that neither alone describes: `trip_requests.status` (`RequestStatus` — the commercial axis, never written again after confirm) and `trips.status` (`TripStatus` — the execution axis, which doesn't exist until a dispatcher materializes the trip). `composeAuxStage()` collapses both into one honest `AuxStage` (see [[packages-types]] `entities/trip.ts`).
+
+`composeAuxStage(input: AuxStageInput): AuxStage`
+
+- `AuxStageInput`: `{ status: RequestStatus | string; tripStatus?: TripStatus | string | null; tripSignedAt?: string | null; tripCompletedAt?: string | null }` — deliberately structural rather than the full `TripRequest`, so it stays callable from a report/export/alert that only has these four fields (matches the `TripRequest` live-trip read model fields in [[packages-types]]).
+- Rules, in order: (1) cancelled wins from either axis; (2) `pending` means exactly what the request says; (3) **with no trip yet, the stage is `unplanned`** (confirmed + aux truck minted, nobody scheduled it — a real state the product previously could not show); (4) **once a trip exists, the trip wins** — `trip_requests.status` is frozen at `confirmed` while the truck is actually moving, so trusting it would misreport an in-progress transport as merely confirmed. `loaded` further splits into `awaitingSignature` / `signed` based on whether the external driver has signed the CMR via the one-time public link yet.
+- Never emits `in_transit`/`arrived`/`delivering`/`delivered` — an auxiliary trip's collapsed lifecycle (`loaded → completed` via `applyAuxiliaryLoadedSideEffects` + delayed auto-complete) cannot reach them, and rendering one would be a lie the UI tells about a state the backend cannot produce. Falls back to the strongest available evidence (`tripCompletedAt`/`tripSignedAt`) if `tripStatus` is ever something an aux trip should not hold.
+
+`auxStageOrder(stage: AuxStage): number` — sort key for the stage column, from `AUX_STAGE_ORDER` (see [[packages-types]]); an unknown stage sorts last rather than to 0.
 
 ### CMR Completeness (`rules/cmr-completeness.ts`)
 

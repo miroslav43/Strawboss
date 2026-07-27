@@ -2,8 +2,8 @@
 type: doc
 title: "StrawBoss — System Architecture"
 created: 2026-04-16
-updated: 2026-06-22
-tags: [doc, architecture, overview, top-level, fleet, tailscale]
+updated: 2026-07-27
+tags: [doc, architecture, overview, top-level, fleet, tailscale, roles, aux-stage]
 status: mature
 related:
   - "[[backend]]"
@@ -37,7 +37,7 @@ Strawboss/
 ├── apps/
 │   ├── admin-web/       Next.js 15 App Router dashboard
 │   └── mobile/          Expo SDK 54 + React Native mobile app
-├── supabase/migrations/ PostgreSQL schema (37 migration files)
+├── supabase/migrations/ PostgreSQL schema (91 migration files, 00001–00091)
 ├── scripts/             Modular shell scripts for strawboss.sh
 ├── nginx/               Reverse proxy config
 ├── docker-compose.yml   Production orchestration
@@ -120,6 +120,37 @@ Each transition has a dedicated REST endpoint with:
 
 See [[backend]] for endpoint details, [[packages-domain]] for state machine.
 
+### Auxiliary Trips — a second, collapsed lifecycle (Jul 2026)
+
+An auxiliary (external-hauler) transport does **not** run through the eight-step machine above — its
+`trips` row is collapsed: `planned → loading → loaded → completed` (no `in_transit` / `arrived` /
+`delivering` / `delivered`; `loaded → completed` happens via `applyAuxiliaryLoadedSideEffects` + a
+delayed auto-complete). It is also born on a *different* table first: a public/authenticated portal
+submission creates a `trip_requests` row (`status: pending → confirmed → cancelled`), and the `trips`
+row is only materialized later — sometimes days later — when a dispatcher assigns a loader on the
+truck board (`autoUpsertAuxiliaryTrip`). `trip_requests.status` is never written again after
+`confirm()`, so it freezes at `confirmed` while the truck is out being loaded.
+
+Because neither table alone tells the truth, `composeAuxStage()` (`@strawboss/domain`,
+`rules/aux-stage.ts`) collapses both axes into one honest `AuxStage` (`pending → unplanned → planned →
+loading → awaitingSignature/signed → completed`, plus `cancelled`). Rule of thumb: **once a trip
+exists, the trip's `TripStatus` wins** over the stale request status; `unplanned` is the case with no
+trip yet (confirmed, one-time aux truck minted, nobody has scheduled it — previously invisible to the
+product); `loaded` splits into `awaitingSignature`/`signed` because the external driver still owes a
+signature on the paper CMR via the one-time public link. `AuxStage` is pure/derived — no new column,
+no migration — and is read by both the admin Curse-Aux ledger and (in principle) reports/alerts.
+
+**Admin surface (Jul 2026):** the old standalone `/trip-requests` page was folded into the Curse page
+(`/trips`) as one page with two ledgers — an intake strip of pending portal requests as decision
+cards, a "Curse Aux" table (one row per `trip_requests`, keyed on the *request* id since that's the
+only identity stable across the whole life of an aux transport, joined server-side to its live trip
+via `LEFT JOIN LATERAL ... ON trips.trip_request_id`), and "Curse normale" (`isAuxiliary=false`
+own-fleet trips) — two independent server-scoped queries, not a client-side split of one fetch. The old
+`/trip-requests` route now 301-redirects to `/trips#aux` rather than being deleted, to preserve
+bookmarks/links. See [[admin-web]] for the page/component breakdown.
+
+See [[backend]] for endpoint details, [[packages-domain]] for state machine, [[packages-types]] for `AuxStage`.
+
 ## Authentication & Authorization
 
 ```
@@ -143,9 +174,24 @@ Mobile/Admin-web ──→ Bearer token ──→ NestJS AuthGuard (global APP_G
                                               └── @Roles('admin', 'driver') → role check
 ```
 
-**Roles**: `admin`, `dispatcher`, `baler_operator`, `loader_operator`, `driver`, `geofence_maker`
+### Roles / Account Types
 
-**Mobile role-based routing**: Auth gate in `_layout.tsx` redirects to role-specific tab layout after login.
+Nine values in `UserRole` (`packages/types/src/entities/user.ts`). All are enforced via `@Roles()` on
+the backend and RLS in the DB; platform column is where the account actually gets a UI:
+
+| Role | Platform | Notes |
+|---|---|---|
+| `super_admin` | Web (`/super-admin`) | Cross-org: fleet/OTA/devices, org management. No `organization_id`. |
+| `admin` | Web | Org admin — accounts, machines, parcels, farms, reports. |
+| `dispatcher` | Web | Plans trips/tasks, confirms trip requests. |
+| `baler_operator` | Mobile (`(baler)`) | Runs a baler machine, logs bale production. |
+| `loader_operator` | Mobile (`(loader)`) | Runs a loader, confirms loads onto trucks. |
+| `driver` | Mobile (`(driver)`) | Drives a truck through the trip lifecycle. |
+| `geofence_maker` | Mobile (`(geofence)`) | Draws/edits parcel boundaries in the field. No assigned machine. |
+| `depot_manager` | Mobile (`(deposit)`) | Confirms depot deliveries/weighing/inventory for `users.assigned_delivery_destination_id`. No assigned machine. |
+| `transportator` | **Web only** (added Jul 2026) | External hauler, no mobile app, no machine, no depot. Read-only ledger of the trip requests it created (`trip_requests.created_by_user_id`) plus an authenticated copy of the beneficiary request form, scoped to admin-assigned beneficiaries (`transporter_beneficiaries` M:N, migration `00087`). See [[database]], [[admin-web]]. |
+
+**Mobile role-based routing**: Auth gate in `_layout.tsx` redirects to role-specific tab layout after login. `transportator` has no mobile route group — it is rejected/has nothing to route to on the phone by design.
 
 ## Geofence Detection
 
@@ -192,7 +238,13 @@ Redis is required for BullMQ (password-protected in production).
 ```
 Supabase Realtime (WebSocket)
   │
-  ├── trips changes ──→ invalidate queryKeys.trips.all
+  ├── trips changes ──→ invalidate queryKeys.trips.all AND queryKeys.tripRequests.all
+  │                      (Jul 2026: a trip status change mutates the Curse-Aux read model too,
+  │                       since it's joined server-side to its live trip — see Auxiliary Trips)
+  ├── trip_requests changes ──→ invalidate queryKeys.tripRequests.all (+ .detail(id) on UPDATE)
+  │                      (Jul 2026, commit 6cab8fe: trip_requests was never in this channel
+  │                       before the Curse-Aux merge; fail-safe no-op if not yet in the
+  │                       supabase_realtime publication — self-heals via 60s staleTime)
   ├── task_assignments ──→ invalidate queryKeys.taskAssignments.all
   ├── alerts ──→ invalidate queryKeys.alerts.all
   ├── parcel_daily_status ──→ invalidate queryKeys.parcelDailyStatus.all

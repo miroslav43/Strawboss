@@ -3,7 +3,7 @@ name: mobile-agent
 description: Specialist in the Expo/React Native mobile app -- offline-first, sync, geofence, role-based layouts
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-07-12
+updated: 2026-07-27
 ---
 
 # StrawBoss Mobile Agent
@@ -148,6 +148,14 @@ Two-step screen that replaces a direct `depart` API call:
 2. Driver signature capture.
 Calls `POST /trips/:id/depart` with `{ departureOdometerKm, driverSignature }`.
 
+### Delivery flow (`EnhancedDeliveryFlow.tsx`, sole delivery flow — `DeliveryFlow.tsx`/`SignatureStep.tsx` removed)
+
+Every driver-delivery entry point renders `EnhancedDeliveryFlow` (`app/(driver)/delivery.tsx` → `app/driver-ops/delivery-flow.tsx`). **2 steps** (was 3 through 2026-07-24): step 0 weighing (`WeightInput`, plus a "Livrează fără cântărire" button setting `scaleBroken = true` and blanking both weights, for a depot with no working scale — mirrors `confirmDepotDelivery`'s own `scaleBroken`); step 1 `CmrConfirmation` (weight rows read "Fără cântărire" when `scaleBroken`). **No receiver-signature step exists anymore** (commit `b6beb2e`) — a failed signature upload could permanently stuck-retry the `complete` transition in the sync queue (payload could never pass `signatureUrlSchema`). `CompleteDto`/`completeSchema` no longer accept `receiverSignature` at all, so an already-queued bad payload from an old build gets it silently stripped by zod instead of rejected forever. `confirm-delivery` now sends `scaleBroken` and nullable `grossWeightKg`/`tareWeightKg`; the backend requires a positive gross weight unless `scaleBroken === true`.
+
+### Loader board (`useLoaderBoard`, replaced `useTrucksAtLoader`, 2026-07-24)
+
+The loader home (`app/(loader)/index.tsx`) is assignment-aware, keyed on `trips.loader_id` (not `loader_operator_id`). `useLoaderBoard()` (`src/hooks/useLoaderBoard.ts`) polls `GET /api/v1/location/loader-board/:machineId` every 15s, returning `{ assigned: AssignedTruck[], nearbyUnassigned: TruckAtLoader[] }`. `assigned` (each with a `presence: 'here'|'enroute'|'loaded'|'unknown'` badge + `distanceM`) is UI-merged with `auxTrips` into one "trucks to load" section; `nearbyUnassigned` renders dimmed/collapsible, tagged "unassigned". The old `useTrucksAtLoader` mobile hook is **deleted** (commit `d842737`, zero remaining importers) — the `packages/api` hook and backend `/location/trucks-at-loader` route are kept (still used elsewhere). When touching loader-home truck logic, use `useLoaderBoard`, not the old hook name.
+
 ### CMR scan — auxiliary loads (`app/loader-ops/load-bales.tsx`, new, Jul 2026)
 
 Auxiliary (external-transporter) loads finish on a scanned paper CMR instead of the specimen signature — `proceedToFinish()` branches on `isAuxiliary`. Screen state machine `cmrStep: null | 'intro' | 'preview' | 'saving'`; `submitLoad()` (renamed from `handleSignatureConfirm`) is now shared by both finish paths and takes `{ loaderSignature? , cmr? }` (exactly one set).
@@ -260,7 +268,7 @@ Background location tracking for GPS-equipped devices. Reports machine position 
 
 ### Polling cadence (traffic diet, Jul 2026)
 
-Several hook `refetchInterval`s were widened to cut aggregate fleet request rate: `useTrucksAtLoader` 10s→15s, `useAuxiliaryTrips` 15s→30s, `useMachineLastLocation`/`useMyTasks`/`useNearbyLoaders` 30s→60s, `MapScreen` related-machines 15s→30s. When adding a new polling hook, default to the widest interval the UI can tolerate and rely on the `focusManager` wiring above rather than a manual pause/resume — do not reintroduce a flat 10-15s poll without a specific reason.
+Several hook `refetchInterval`s were widened to cut aggregate fleet request rate: the loader-home trucks hook (now `useLoaderBoard`, see above) 10s→15s, `useAuxiliaryTrips` 15s→30s, `useMachineLastLocation`/`useMyTasks`/`useNearbyLoaders` 30s→60s, `MapScreen` related-machines 15s→30s. When adding a new polling hook, default to the widest interval the UI can tolerate and rely on the `focusManager` wiring above rather than a manual pause/resume — do not reintroduce a flat 10-15s poll without a specific reason.
 
 ### Geofence overlay
 
@@ -292,6 +300,12 @@ For mutations that need offline support, use the sync queue instead.
 
 WebView-based map rendering with a bridge for communication between React Native and the web map.
 
+**Local-first cache (fixed 2026-07-14, commit `79dc421`)**: `useCachedParcels`/`useCachedDepots` (`src/hooks/`) are what the map actually renders from — two React Query queries each, a `PARCELS_LOCAL_KEY`/`DEPOTS_LOCAL_KEY` query reading straight from SQLite (`networkMode: 'always'`, load-bearing — the default `'online'` mode pauses a query while offline) and a `PARCELS_REFRESH_KEY`/`DEPOTS_REFRESH_KEY` background query that fetches REST and writes the result back into SQLite. Never wire a map screen to `GET /api/v1/parcels`/`/delivery-destinations` directly — a save's own `invalidateQueries` racing that fetch is exactly what erased freshly-drawn fields for minutes before this fix. Two repo methods matter: `ParcelsRepo.upsertFromPull()` (pull-path upsert that deliberately never touches `geometry`/`centroid_json` — `/sync/pull` doesn't carry them) and `reconcileWithServer(serverIds)` on both repos (deletes cache rows the server dropped, exempting rows with an open `sync_queue` entry; refuses to run on an empty list). After any local write to `parcels`/`delivery_destinations`, invalidate the `*_LOCAL_KEY`; call `triggerSync()` too if the write should reach the server promptly (`geofence_maker` has no GPS-piggyback sync driver). See [[mobile]] "Local-first map cache" for the full writeup, including the on-device area calc (`src/utils/geo-area.ts`, authalic-latitude projection).
+
+### Android release build safety (R8/Proguard)
+
+**`plugins/withHeadlessProguard.js`** (fixed 2026-07-13, commit `1ab36c5`) keeps Expo's headless JS app loader (`expo.modules.adapters.react.apploader.**`, `expo.modules.apploader.**`, plus `taskManager`/`backgroundtask`) from being stripped by R8 — it's resolved only via `Class.forName()` reflection, so R8 sees no static reference and silently deletes it, which kills **every** JS background entry point (boot-rearm, presence check-in, background sync, FCM wake) while the native side still looks perfectly healthy. This was the root cause of a major fleet always-on incident. Rules: (1) never hand-edit `android/app/proguard-rules.pro` — `expo prebuild` regenerates it and clobbers the edit, always go through a config plugin like this one; (2) never disable minification wholesale as a "fix" for a stripped class — find the specific package and `-keep` it surgically instead (R8 also removes a lot of genuinely-dead legacy unimodules glue under `expo.modules.adapters.react.*` that should stay stripped).
+
 ## Rules you must follow
 
 1. **Offline-first**: All data mutations go through SQLite repo + sync queue. Never make direct POST/PUT/DELETE API calls for mutable data.
@@ -307,3 +321,5 @@ WebView-based map rendering with a bridge for communication between React Native
 11. **`sync_queue.action` must be `'insert' | 'update' | 'delete'`**: the table has a `CHECK` constraint SQLite enforces at the driver level — any other value (e.g. a bespoke verb like `'register'`) makes `enqueue()` throw and the mutation is silently never queued. Bug precedent: commit `3628cdf`/`d8ed54d` (CMR scan feature).
 12. **File-upload / dedicated-endpoint sync entities go in `push.ts`'s `DIRECT_ENDPOINT_TYPES`**, not through the generic table-mutation path or a new SQLite-backed repo — see `cmr_scan` for the pattern (payload carries a local file URI, not row data).
 13. **New polling hooks default wide**: prefer the widest `refetchInterval` the UI can tolerate (see "Polling cadence" above) and rely on the root `focusManager.setFocused()` wiring in `_layout.tsx` to stop polling in the background — don't add a manual per-hook `AppState` pause/resume.
+14. **Maps render from local SQLite, never straight from REST**: use `useCachedParcels`/`useCachedDepots` (or add a same-shaped hook) — a screen that fetches `/parcels`/`/delivery-destinations` directly and paints the map from the response WILL race a save's own `invalidateQueries` and erase freshly-drawn offline data. See "Local-first cache" under Map above.
+15. **Never hand-edit `android/app/proguard-rules.pro` or other files under `android/`**: `expo prebuild` regenerates the whole `android/` directory and silently clobbers hand-edits. Any native Android change (proguard rules, manifest entries, gradle config) must go through a config plugin in `plugins/` (see `withHeadlessProguard.js`, `withDeviceOwner.js`, `withAlwaysOnTracking.js`), applied idempotently (guard against running twice on repeated `prebuild`).

@@ -2,7 +2,7 @@
 type: doc
 title: "Mobile App (apps/mobile)"
 created: 2026-04-16
-updated: 2026-07-12
+updated: 2026-07-27
 tags: [doc, mobile, layer, expo, react-native, offline-first]
 status: mature
 related:
@@ -97,7 +97,7 @@ All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top o
 | Screen | File | Purpose |
 |---|---|---|
 | Trips | `index.tsx` | Active trips list, links to trip detail |
-| Delivery | `delivery.tsx` | `EnhancedDeliveryFlow` or `DeliveryFlow` for active trip |
+| Delivery | `delivery.tsx` | Featured active trip -> `driver-ops/delivery-flow.tsx` -> `EnhancedDeliveryFlow` |
 | Map | `map.tsx` | `MapScreen` with route to destination |
 | Fuel | `fuel.tsx` | `FuelEntryFlow` -- record fuel consumption |
 | Profile | `profile.tsx` | `ProfileScreen` |
@@ -105,7 +105,7 @@ All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top o
 ### Loader (`app/(loader)/`)
 | Screen | File | Purpose |
 |---|---|---|
-| Scan | `index.tsx` | QR scanner to identify trucks/machines |
+| Home | `index.tsx` | `LoaderHomeScreen` -- active field card + assignment-aware trucks board (`useLoaderBoard`, see "Loader Board" section), QR scan entry point |
 | Bales | `bales.tsx` | `LoadingFlow` -- record bale loads onto trips |
 | Map | `map.tsx` | `MapScreen` with related machine locations |
 | Consumables | `consumables.tsx` | `ConsumableFlow` |
@@ -134,7 +134,7 @@ All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top o
 | Trip detail | `app/trip/[tripId].tsx` | Full trip detail with state transitions |
 | Baler production | `app/baler-ops/production.tsx` | `ProductionFlow` standalone entry |
 | Driver departure | `app/driver-ops/departure-flow.tsx` | Two-step departure flow: odometru + semnătură șofer (replaces direct depart call) |
-| Driver delivery | `app/driver-ops/delivery-flow.tsx` | `DeliveryFlow` standalone entry |
+| Driver delivery | `app/driver-ops/delivery-flow.tsx` | `EnhancedDeliveryFlow` standalone entry |
 | Loader bales | `app/loader-ops/load-bales.tsx` | `LoadingFlow` standalone entry |
 | Deliver operation | `app/operations/deliver.tsx` | Operation-based delivery |
 | Load operation | `app/operations/load.tsx` | Operation-based loading |
@@ -182,7 +182,7 @@ Orchestrates the full push/pull cycle:
 4. **Merge** (`src/sync/conflict.ts`): `mergeRecords()` resolves local vs server data using `server_version` as arbiter. Existing records are merged, new records are inserted via repo `upsert()`
 5. **Log upload**: on zero-error sync, calls `uploadTodayMobileLogs()` (`src/sync/mobile-log-upload.ts`) to POST today's NDJSON log file to `POST /api/v1/logs/mobile` — now gated, see "Mobile log upload gate" below
 
-**Parcels delta-sync fix**: `SyncManager.pull()` used to hardcode `parcels: 0` on every pull request (a stale FM-13 comment claimed parcels had no `sync_version` column). Parcels DOES have a server-side `sync_version` (migration `00040`) and the pull response includes it, so the parcels cursor now resolves through the same persisted `sync_cursors` path as every other table (`versions['parcels'] = await resolveVersion('parcels', async () => 0)`). Fresh installs (and any existing install that never persisted a parcels cursor) still fall back to `0` — a one-time full parcels pull, then delta from then on. Note: a parcel's own row rarely changes version even on this delta path, because the server also force-includes parcels newly visible via today's task assignments / active trips (a visibility change, not a row-version bump).
+**Parcels delta-sync fix**: `SyncManager.pull()` used to hardcode `parcels: 0` on every pull request (a stale FM-13 comment claimed parcels had no `sync_version` column). Parcels DOES have a server-side `sync_version` (migration `00040`) and the pull response includes it, so the parcels cursor now resolves through the same persisted `sync_cursors` path as every other table (`versions['parcels'] = await resolveVersion('parcels', async () => 0)`). Fresh installs (and any existing install that never persisted a parcels cursor) still fall back to `0` — a one-time full parcels pull, then delta from then on. Note: a parcel's own row rarely changes version even on this delta path, because the server also force-includes parcels newly visible via today's task assignments / active trips (a visibility change, not a row-version bump). The separate bug where this pull path *wrote* `geometry: null` on every cycle is fixed by `ParcelsRepo.upsertFromPull()` — see "Local-first map cache" under Map Tab.
 
 ### Sync queue status values
 `pending` -> `in_flight` -> `completed` | `failed`
@@ -221,6 +221,25 @@ Mounted in every role-specific tab layout (baler, driver, loader) as an absolute
 - `MapView` (`src/components/map/MapView.tsx`): React Native `WebView` loading a local `leaflet-map.html` file. Exposes `sendCommand(cmd: MapCommand)` via `useImperativeHandle`
 - `MapScreen` (`src/components/map/MapScreen.tsx`): screen-level component that fetches parcel/machine data and sends commands to MapView
 - `ParcelInfoSheet` (`src/components/map/ParcelInfoSheet.tsx`): bottom sheet shown on parcel tap
+
+### Local-first map cache (`useCachedParcels`, `useCachedDepots`, fixed 2026-07-14, commit `79dc421`)
+
+**The maps render from local SQLite, never from the network directly** — the CLAUDE.md invariant. `useCachedParcels` (`src/hooks/useCachedParcels.ts`) and `useCachedDepots` (`src/hooks/useCachedDepots.ts`) were rewritten from a bare mount-once `useEffect` (network-first, invisible to `invalidateQueries`) into **two React Query queries each**:
+
+1. A **local** query (`PARCELS_LOCAL_KEY` / `DEPOTS_LOCAL_KEY`) that reads straight from SQLite (`ParcelsRepo.listAll()` / `DeliveryDestinationsRepo.listAll()`), `staleTime: Infinity`, `networkMode: 'always'` — load-bearing: the default `'online'` mode would *pause* this query while offline, starving the map of the cache exactly when the cache is all that's left. This is what the map (and the geofence-maker's farm list / draw screen) renders.
+2. A **background refresh** query (`PARCELS_REFRESH_KEY` / `DEPOTS_REFRESH_KEY`) that fetches `GET /api/v1/parcels` / `GET /api/v1/delivery-destinations`, writes the result into SQLite, then invalidates the local key so it re-reads. Its failure is a non-event (offline just means the map keeps the cache); `fromCache` in the hook result is `true` until this has succeeded once this session.
+
+A parcel drawn by the geofence-maker is therefore on the map in the same frame as the success modal — previously the map read `GET /api/v1/parcels` directly, whose refetch (triggered by the save's own `invalidateQueries`) returned a server list that had never heard of the brand-new parcel, wiping it back off the map for as long as it took the 15-min WorkManager cycle to sync it (a `geofence_maker` has no assigned machine, hence no GPS-piggyback and no ~2 min sync).
+
+Supporting fixes bundled in the same commit:
+- **`ParcelsRepo.upsertFromPull()`** (new): pull-path upsert that updates `name`/`code`/`area_hectares`/`municipality`/`harvest_status`/`crop_type`/`farm_name` but leaves `geometry`/`centroid_json`/`farm_id` untouched — `/sync/pull` never carries geometry (server excludes `boundary`/`centroid` from `PULL_COLUMNS`, see the "Pull carries no geometry" invariant), and the old `SyncManager.applyPulledUpdate` wrote `geometry: null` on every pull because it read an always-undefined `data['boundary']`. Rule: a writer that cannot observe a column must not write it. `SyncManager` now calls this instead of the generic `upsert()` for `parcels` pull rows.
+- **`reconcileWithServer(serverIds)`** on both `ParcelsRepo` and `DeliveryDestinationsRepo`: deletes cached rows the server list no longer contains, **exempting rows with an open `sync_queue` entry** (`entity_type = 'parcel_create' | 'delivery_destination_create'`, `status IN ('pending','in_flight','failed')`) so an offline-drawn field isn't mistaken for a deletion. Refuses to run against an empty `serverIds` list (a permissions/transport fault, not "this org has zero parcels"). Depots carry no delta-sync tombstones at all — this REST-driven reconcile is the *only* channel by which a phone learns a depot was deleted.
+- **`parcels.farm_id` column** (new local migration in `src/db/migrations.ts`, `addColumnIfMissing`): `farm_name` alone can't group parcels by farm (two farms can share a name); filled from REST/local-create, never from pull.
+- **Map bridge fix**: `SET_PARCELS`/`SET_DESTINATIONS` now fire even on an empty list (they're what trigger `clearLayers()` in the WebView) — short-circuiting on `.length === 0` left deleted parcels'/depots' polygons painted forever. `FIT_BOUNDS` now fires once (`didFitRef`), not on every background refetch under the user's finger.
+- **`triggerSync()`** is called from `map.tsx`'s `handleSaveParcel` after a local write, so the push leaves in ~1 s instead of waiting out the 15-min WorkManager floor. `useSync()`'s post-pull invalidation now also invalidates `PARCELS_LOCAL_KEY`/`PARCELS_REFRESH_KEY`/`DEPOTS_LOCAL_KEY`/`DEPOTS_REFRESH_KEY` (previously only `trips`/`bale-loads`/`operator-stats`).
+- **`src/utils/geo-area.ts`** (new): `polygonAreaHectares(geojson)` — computes a GeoJSON `Polygon`/`MultiPolygon` area on-device via the WGS-84 **authalic (equal-area) latitude** projected onto a sphere (~0.009% error vs PostGIS `ST_Area(geography)`; a naive mean-radius sphere is off ~0.25%, enough for phone and web to visibly disagree). Used so a freshly-drawn, not-yet-synced field shows a real hectare figure instead of "— ha"; the server's PostGIS value overwrites it on the next background refresh.
+
+Any local write to `parcels` / `delivery_destinations` must invalidate `PARCELS_LOCAL_KEY` / `DEPOTS_LOCAL_KEY` (see CLAUDE.md).
 
 ### PointPicker (`src/components/map/PointPicker.tsx`) (Plan A)
 
@@ -484,6 +503,31 @@ Renders the filtered task list with parcel names, machine codes, status pills. E
 
 ---
 
+## Loader Board (Assignment-Aware Trucks Card)
+
+Reworked 2026-07-24. The loader home (`app/(loader)/index.tsx`) used to be purely GPS-proximity-based (`useTrucksAtLoader`, keyed on nothing but distance from the loader machine — deleted, commit `d842737`, zero remaining importers in `apps/mobile`; the `packages/api` hook and the backend `/location/trucks-at-loader` route stay, still used elsewhere). It is now assignment-aware, keyed on `trips.loader_id` (not `loader_operator_id`).
+
+### useLoaderBoard (`src/hooks/useLoaderBoard.ts`, new)
+
+Polls `GET /api/v1/location/loader-board/:loaderMachineId` (`@Roles(admin, loader_operator)`, org-scoped) every 15 s by default (`pollMs`), disabled when no machine id is available — same shape as the old `useTrucksAtLoader`. Optional `radiusM` (default 75) / `windowMinutes` (default 15) query params. Returns `LoaderBoardResponse` (`packages/api/src/hooks/use-trucks-at-loader.ts`):
+
+```ts
+interface LoaderBoardResponse {
+  assigned: AssignedTruck[];         // trips.loader_id === this machine, still to-load
+  nearbyUnassigned: TruckAtLoader[]; // GPS-proximity trucks NOT in `assigned`
+}
+```
+
+`AssignedTruck.presence` is `'here' | 'enroute' | 'loaded' | 'unknown'` (`'here'` = within radius; `'enroute'` = has GPS but outside radius; `'unknown'` = no recent GPS ping; `'loaded'` = the trip's load is already done) plus a `distanceM` (null if no recent GPS) and `tripStatus: 'planned' | 'loading' | 'loaded'`.
+
+### Loader home card (`app/(loader)/index.tsx`)
+
+- **Assigned section** (`sectionAssignedTrucks`, header shows a live count): `board.data.assigned` sorted by presence rank (`here` < `enroute`/`unknown` < `loaded`) then by `distanceM`, **UI-merged** with `auxTrips.data` (auxiliary/external-transporter loads) into one "trucks to load" list/count — `AssignedTruckCard` renders a presence badge (`badgeHereNow`/`badgeEnroute`/`badgePresenceLoaded`) + optional field name; aux trucks still render via the existing `AuxTruckCard`.
+- **Nearby-unassigned section** (`sectionNearbyUnassigned`, collapsible, `nearbyOpen` state, default open): `board.data.nearbyUnassigned`, dimmed (`opacity: 0.55`) `TruckCard`s tagged `tagUnassigned` — trucks merely in GPS range that dispatch has not assigned to this loader.
+- i18n: new `loader.home.*` keys (`sectionAssignedTrucks`, `sectionNearbyUnassigned`, `noAssignedTrucksTitle/Subtitle`, `badgeHereNow`, `badgeEnroute`, `badgePresenceLoaded`, `fieldPrefix`, `tagUnassigned`, `distanceMeters`, `distanceKm`) in `src/i18n/en.ts` / `ro.ts`.
+
+---
+
 ## Feature Flows
 
 ### ProductionFlow (`src/components/features/production/ProductionFlow.tsx`)
@@ -493,15 +537,13 @@ Renders the filtered task list with parcel names, machine codes, status pills. E
 - **confirm**: `ProductionConfirmation` with summary and confirm/back
 - **Save**: creates local `bale_productions` record + enqueues sync with `idempotency_key: bale_production_{id}`
 
-### DeliveryFlow (`src/components/features/delivery/DeliveryFlow.tsx`)
-**Steps**: weight -> photo -> signatures
-- **weight**: `WeightInput` for gross weight entry
-- **photo**: `WeightTicketPhoto` camera capture
-- **signatures**: `SignatureStep` with driver/receiver/witness signature pads
-- **Save**: creates local operation, updates trip status to `delivered`, enqueues sync
-
 ### EnhancedDeliveryFlow (`src/components/features/delivery/EnhancedDeliveryFlow.tsx`)
-Extended delivery flow with additional steps: `DeterioratedBalesInput` (count damaged bales), `CmrConfirmation` (verify CMR data).
+
+The only delivery flow left — the original `DeliveryFlow.tsx`/`SignatureStep.tsx` were removed; every driver-delivery entry point (`app/(driver)/delivery.tsx` → `app/driver-ops/delivery-flow.tsx`) renders `EnhancedDeliveryFlow` directly. **2 steps** (`TOTAL_STEPS = 2`, was 3 through 2026-07-24):
+
+- **Step 0 — weighing**: `WeightInput` (gross/tare), wrapped in a `ScrollView` so the continue button is reachable on small screens. A **"Livrează fără cântărire"** button (`handleDeliverWithoutWeighing()`, confirm modal) sets `scaleBroken = true` and skips straight to step 1 with both weights blanked — for a depot with no working scale, mirroring the depot operator's own `confirmDepotDelivery` `scaleBroken` path. Replaces a removed "Contact via WhatsApp" button (`WhatsAppLink.tsx`, deleted — commit `b85cbd0`).
+- **Step 1 — confirmation**: `CmrConfirmation` — summary of bales/weights (rows read "Fără cântărire" when `scaleBroken`)/receiver, with an FM-6 countdown before the irreversible confirm. **No receiver-signature step or field** (commit `b6beb2e`, 2026-07-24): a failed signature binary upload could leave a payload that could never pass `signatureUrlSchema`, permanently stuck-retrying the `complete` transition in the sync queue with quadratic backoff. `CompleteDto`/`completeSchema` no longer accept `receiverSignature` at all (not just optional) so an already-queued bad payload from an older build is silently stripped by zod instead of rejected forever.
+- **Save**: `confirm-delivery` sends `{ grossWeightKg, tareWeightKg, deterioratedBalesCount: null, scaleBroken }` (both weights `null` when `scaleBroken`); `complete` sends only `{ receiverName }`. Backend `trips.service.ts` requires a positive `grossWeightKg` unless `scaleBroken === true`, in which case `gross_weight_kg`/`tare_weight_kg` stay `NULL` and `trips.scale_broken` is set.
 
 ### LoadingFlow (`src/components/features/loading/LoadingFlow.tsx`)
 **Steps**: scan -> count -> confirm
@@ -601,14 +643,14 @@ Several TanStack Query hooks had their `refetchInterval` widened to cut aggregat
 
 | Hook / query | Old | New |
 |---|---|---|
-| `useTrucksAtLoader` | 10 s | 15 s |
+| `useTrucksAtLoader` (deleted 2026-07-24, commit `d842737` — see "Loader Board") | 10 s | 15 s (inherited by its replacement, `useLoaderBoard`) |
 | `useAuxiliaryTrips` | 15 s | 30 s |
 | `useMachineLastLocation` | 30 s | 60 s |
 | `useMyTasks` | 30 s | 60 s |
 | `useNearbyLoaders` | 30 s | 60 s |
 | `MapScreen` related-machines query | 15 s | 30 s |
 
-`(loader)/index.tsx` also dropped its explicit `pollMs` overrides for `useTrucksAtLoader()` / `useAuxiliaryTrips()`, now relying on each hook's own (widened) default.
+`(loader)/index.tsx` also dropped its explicit `pollMs` overrides for the trucks hook / `useAuxiliaryTrips()`, now relying on each hook's own (widened) default.
 
 **`useAuxiliaryTrips` scoped to today** (bug fix, commit `54c6e51`): now sends `dateFrom=startOfDayRomaniaISO()` to `GET /api/v1/trips/auxiliary/at-loader/:machineId`, and the query key includes `dateFrom` — stops stale auxiliary trips from prior days piling up on the loader home screen; the cache naturally rolls over at local (Romania) midnight.
 
@@ -620,11 +662,26 @@ Several TanStack Query hooks had their `refetchInterval` widened to cut aggregat
 
 ### App config (`app.json`)
 - Package: `com.strawboss.mobile`
-- Version: `version` / `android.versionCode` are bumped by `scripts/bump-version.mjs` (kept in lockstep with `android/app/build.gradle`'s `versionName`/`versionCode`); as of this diff `versionCode 41` / `versionName "1.0.37"` (vc40 shipped the FCM data-wake handler, vc41 the `build:apk` keystore-checkout fix below).
-- Plugins: expo-router, expo-camera, expo-image-picker, `react-native-document-scanner-plugin` (new — CMR scan, config: `cameraPermission`), expo-sqlite, expo-location, expo-notifications, `./plugins/withAlwaysOnTracking`, `./plugins/withDeviceOwner`, `./plugins/withMlKitDocScanner` (new — see CMR Scan section)
+- Version: `version` / `android.versionCode` are bumped by `scripts/bump-version.mjs` (kept in lockstep with `android/app/build.gradle`'s `versionName`/`versionCode`). Last **committed** values (commit `1ab36c5`, 2026-07-13): `versionCode 43` / `versionName "1.0.39"`. The working tree at last inspection carried a further **uncommitted** local bump to `versionCode 49` / `versionName "1.0.45"` (from an uncommitted `mobile-build-local` run) — check `git status`/`git diff` on `app.json` + `android/app/build.gradle` before trusting either number.
+- Plugins: expo-router, expo-camera, expo-image-picker, `react-native-document-scanner-plugin` (CMR scan, config: `cameraPermission`), expo-sqlite, expo-location, expo-notifications, `./plugins/withAlwaysOnTracking`, `./plugins/withDeviceOwner`, `./plugins/withMlKitDocScanner`, `./plugins/withHeadlessProguard` (new — see "R8/Proguard: keep the headless JS app loader" below)
   - `expo-notifications` config: `color: "#0A5C36"` — **no custom sounds declared** (see note below)
 - Android permissions: `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `FOREGROUND_SERVICE_SPECIAL_USE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`, `CAMERA`, `RECORD_AUDIO`
 - iOS: location usage descriptions for when-in-use, always, and both
+
+### R8/Proguard: keep the headless JS app loader (`plugins/withHeadlessProguard.js`, fixed 2026-07-13, commit `1ab36c5`)
+
+**Root cause of the major fleet "always-on" incident** (see `project_r8_strips_headless_loader` in project memory / `apps/mobile/FLEET-BACKGROUND-ONLINE.md`). Release builds run R8 (`enableMinifyInReleaseBuilds` defaults `true`, never overridden). Expo's headless JS app loader is resolved **only via reflection** (`Class.forName("expo.modules.adapters.react.apploader.RNHeadlessAppLoader")` from `AppLoaderProvider`), so R8 sees zero static references and deletes the whole subsystem — confirmed against a shipped APK's `usage.txt` (R8's own removed-code list): `RNHeadlessAppLoader`, `RNHeadlessAppLoader$loadApp$1`, `RNHeadlessAppLoaderKt`, `HeadlessAppLoaderNotifier`, `AppLoaderProvider$Callback`.
+
+**Impact**: every background entry point that needs to run JS with no Activity mounted — `boot-rearm`, the presence-alarm check-in, `expo-background-task` sync, the FCM presence dead-man wake — silently no-ops (`E Expo: Cannot initialize app loader` / `ClassNotFoundException`). The phone becomes a zombie: native health stays perfect (FGS up, battery-opt exempt, WorkManager "Task successfully finished") while **zero JavaScript ever runs**, so `runDeviceCheckin()` never fires and no HTTP request leaves the device — until the UI is opened by hand (which boots JS the normal, non-headless way). Observed live: 6.2 h of zero check-ins on one fleet phone.
+
+**Fix**: `plugins/withHeadlessProguard.js`, a `withDangerousMod` config plugin, appends `-keep` rules to the *generated* `android/app/proguard-rules.pro` on every `expo prebuild` (a hand-edit there is silently clobbered — same reasoning as `withDeviceOwner.js`/`withAlwaysOnTracking.js`). Idempotent via a marker comment. Deliberately surgical — keeps only:
+```
+expo.modules.adapters.react.apploader.**
+expo.modules.apploader.**
+expo.modules.taskManager.**
+expo.modules.backgroundtask.**
+```
+R8 also strips much of the rest of `expo.modules.adapters.react.*` (legacy unimodules glue, genuinely dead under the New Architecture), so that tree is **not** blanket-kept and minification stays **on** — the fix is not "disable R8".
 
 ### Android notification channels (`src/lib/notifications.ts`)
 
@@ -669,7 +726,6 @@ Cloud builds via Expo Application Services. Profile configured in `eas.json`.
 - `ParcelSelector` -- dropdown/picker for parcels
 - `ConsumableTypeSelector` -- diesel/twine toggle
 - `ProblemReportModal` -- report issues
-- `WhatsAppLink` -- deep link to WhatsApp chat
 - `AlertBanner` -- generic alert banner
 
 ### Stores
@@ -685,7 +741,8 @@ Cloud builds via Expo Application Services. Profile configured in `eas.json`.
 - `useCurrentLoaderParcel` -- GPS-based active parcel detection for loader operators. GPS timeout 15s (retry 1x after 5s). Returns status: `locating` | `found` | `not_found` | `multiple_active` | `error`. `multiple_active` means >1 parcels match the GPS position.
 - `useDepotInventory` -- fetches depot inventory via `GET /deposit-inventory/:depotId` for the deposit manager role.
 - `useLoaderRecallPrompt` -- listens for `loader_recall_prompt` push notifications; surfaces a recall card on the loader home screen.
-- `useCachedParcels` -- returns parcels from local SQLite cache (for offline parcel picker in baler workflow).
+- `useCachedParcels` / `useCachedDepots` -- local-first: the maps and geofence-maker farm screen render from these (SQLite-backed React Query hooks), with a background REST refresh writing back into SQLite. See "Local-first map cache" under Map Tab.
+- `useLoaderBoard` (new, `src/hooks/useLoaderBoard.ts`) -- the loader home's assignment-aware trucks board (`GET /location/loader-board/:machineId`, 15s poll). Replaced `useTrucksAtLoader` on mobile (deleted, commit `d842737`) — see "Loader Board" section.
 - `useGeofenceNotifications` -- extended in Plan A to handle new notification types from the geofence-editor workflow.
 
 ---

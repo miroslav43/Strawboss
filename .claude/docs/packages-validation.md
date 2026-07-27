@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/validation"
 created: 2026-04-16
-updated: 2026-06-22
+updated: 2026-07-27
 tags: [doc, package, validation, zod]
 status: mature
 related:
@@ -40,9 +40,11 @@ Defined in `packages/validation/src/helpers/`:
 ### User (`schemas/user.schema.ts`)
 
 - `userRoleSchema`: `z.nativeEnum(UserRole)`.
+- `adminAssignableRoleSchema` (internal): roles an org admin may assign — `admin`, `dispatcher`, `loader_operator`, `driver`, `baler_operator`, `geofence_maker`, `depot_manager`, `transportator` (added Jul 2026; `super_admin` stays excluded).
 - `userSchema`: Full entity with UUID id, `email` (z.string().email()), `fullName` (min 1), all fields merged with timestamps/softDelete.
 - `createUserSchema`: `email` (email), `fullName` (min 1), `role`, optional `phone`.
 - `updateUserSchema`: `email`, `fullName`, `role`, `phone`, `isActive`, `locale`, `avatarUrl` -- all partial.
+- `setTransporterBeneficiariesSchema` / `SetTransporterBeneficiariesInput` (added Jul 2026): `{ beneficiaryIds: uuid[] max 500 }` — body for `PUT /admin/users/:id/beneficiaries`, the set of beneficiaries an admin allows a `transportator` account to act for (set-replace; empty array revokes all).
 
 ### Profile (`schemas/profile.schema.ts`)
 
@@ -157,13 +159,28 @@ Enum validators:
 - `setDeviceTailscaleSchema` / `SetDeviceTailscaleInput`: `desired` (boolean). Toggles the desired Tailscale state for one device; the device applies it via MDM on the next check-in command.
 - `updateTailscaleSettingsSchema` / `UpdateTailscaleSettingsInput`: All fields optional/nullable. `authKey` (max 512, null = leave unchanged, `''` = clear), `tailnet` (max 200), `oauthClientId` (max 256), `oauthClientSecret` (max 512), `tag` (max 128 — applied to OAuth-minted keys, e.g. `tag:fleet-phone`).
 
+### Trip Request / Beneficiary Portal (`schemas/trip-request.schema.ts`)
+
+Backs the external pickup-request flow — the public 4-digit-code portal, the beneficiary-PIN portal, and (added Jul 2026) the authenticated `transportator` form. See [[packages-types]] `TripRequest`.
+
+- `portalCodeSchema`: 4-digit regex (`^\d{4}$`).
+- `createTripRequestSchema` / `CreateTripRequestInput`: public 4-digit-code portal (no auth). All fields required except `driverEmail`, `notes`, `destinationCoords`; `truckMake`/`destinationLocality` are not in the form at all.
+- `createBeneficiaryRequestSchema` / `CreateBeneficiaryRequestInput`: beneficiary-PIN portal. Replaces truck make/model with transporter company fields (`transporterName/Cui/Address`, `trailerRegistrationPlate`); `quality` enum `['quality_1','quality_2']` instead of `cropType` (kept nullable/optional for back-compat); `unloadingDate` (comandă delivery date, added Jul 2026, nullable/optional — only the transporter form sends it); `destinationAddress`/`destinationLocality` (nullable/optional); `contactIds` (1-10 UUIDs — which saved contacts to notify on confirm, first = primary); `pin` (4-digit, re-verified server-side).
+- **`createTransporterRequestSchema` / `CreateTransporterRequestInput`** (added Jul 2026): `createBeneficiaryRequestSchema.omit({ pin: true }).extend({ beneficiaryId: uuidSchema })` — identical shape to the beneficiary portal minus the daily PIN (replaced by the logged-in session) plus an explicit `beneficiaryId` (the transporter picks one of their assigned beneficiaries; the portal instead carried it in the URL slug). Kept in lock-step with `createBeneficiaryRequestSchema` via `.omit`/`.extend`.
+- **`beneficiaryOrderSettingsSchema` / `BeneficiaryOrderSettingsInput`** (added Jul 2026): upsert body for `PUT /transporter/beneficiaries/:id/order-settings`. All fields optional/nullable (`transportValue`, `currency` max 8, `paymentTermDays` 0-365, `baleCount`, `baleDimensions`, `goodsName`, `truckDescription`, `loadingLocality`, `loadingCountry`, `obs`) — the server applies defaults (currency `EUR`, `paymentTermDays` 30) on first insert. See [[packages-types]] `BeneficiaryOrderSettings`.
+- `verifyPortalCodeSchema` / `VerifyPortalCodeInput`: `{ code: portalCodeSchema }`.
+- `signTripSchema` / `SignTripInput`: `{ signature: signatureUrlSchema }` — driver's public sign-and-leave submission.
+- `updateOrgRequestSettingsSchema` / `UpdateOrgRequestSettingsInput`: `requestAccessCode` (portal code, nullable), `allowedCropTypes` (array, max 20).
+- **`confirmTripRequestSchema` / `ConfirmTripRequestInput`**: admin/dispatcher confirm body. Optional `internalCode` (override for the spawned aux truck). **As of Jul 2026 the pickup source is `depotId` OR `parcelId` (both optional, XOR-refined)** — previously `depotId` alone was required; a dispatcher can now confirm against a field instead of a depot, mirroring the `registerLoadSchema`/`forceStatusSchema` XOR in `trip-transition.schema.ts`.
+- `cancelTripRequestSchema`: optional `reason` (max 500).
+
 See [[packages-types]] for the corresponding TypeScript interfaces and [[database]] for the backing SQL schema.
 
 ## DTO Schemas
 
 ### Trip Create (`dtos/trip-create.schema.ts`)
 
-`tripCreateDtoSchema`: `sourceParcelId`, `truckId`, `driverId` (UUIDs required). Optional `loaderId`, `loaderOperatorId`, `destinationName`, `destinationAddress`, `destinationCoords` (geoPoint).
+`tripCreateDtoSchema`: `sourceParcelId`, `truckId`, `driverId` (UUIDs required). Optional `loaderId`, `loaderOperatorId`, `destinationId` (UUID, added Jul 2026 — FK to the destination depot, what the depot-manager pull and RLS key on), `destinationName`, `destinationAddress`, `destinationCoords` (geoPoint).
 
 ### Multi-Iteration Trip DTOs
 
@@ -176,14 +193,17 @@ See [[packages-types]] for the corresponding TypeScript interfaces and [[databas
 |---|---|---|
 | `startLoadingSchema` | `loaderOperatorId` (UUID) | `loaderId` optional UUID |
 | `completeLoadingSchema` | (empty object) | `loaderSignature` optional base64/URL string |
-| `departSchema` | `departureOdometerKm`, `driverSignature` | odometer nonnegative; signature min 1 |
-| `arriveSchema` | `arrivalOdometerKm` | nonnegative number |
+| `departSchema` | (empty object) | **Driver signature removed Jul 2026** (commit `5a8ce2a`) — the mobile screen resent the driver's saved specimen verbatim on every retry, so a malformed cached specimen wedged the trip on `loaded` forever; the field is deliberately *absent* (not optional) so a stale queued payload is silently stripped by Zod instead of rejected. Distance is derived entirely from GPS, so there is no odometer field either. |
+| `arriveSchema` | (empty object) | Trip distance comes from the GPS track (depart → arrive) |
 | `startDeliverySchema` | -- | optional `destinationName` |
-| `confirmDeliverySchema` | `grossWeightKg` | positive number; optional `weightTicketNumber`; optional `weightTicketPhotoUrl`; optional `deterioratedBalesCount` (nonneg int) |
-| `completeSchema` | `receiverName`, `receiverSignature` | both min 1 |
+| `confirmDeliverySchema` | -- | `grossWeightKg`/`tareWeightKg` now `positive`/`nonnegative`, **nullable + optional**; optional `weightTicketNumber`, `weightTicketPhotoUrl` (back-compat only), `deterioratedBalesCount` (nonneg int, nullable); `scaleBroken` optional boolean (Jul 2026 — delivery without weighing at a self-confirmed depot). Refined: either `scaleBroken === true` or `grossWeightKg` is present; `tareWeightKg` (if present) must be ≤ `grossWeightKg`. |
+| `completeSchema` | `receiverName` (min 1) | **Receiver signature removed Jul 2026** (commit `b6beb2e`) — same "stuck-retry" failure mode as `departSchema`; the field is intentionally absent so a stale queued payload is stripped, not rejected. |
+| `confirmDepotDeliverySchema` | `baleCount` (positive int), `depotOperatorSignature`, `idempotencyKey` (UUID) | Added Jul 2026 — depot-operator confirmation. `grossWeightKg`/`tareWeightKg`/`scaleBroken` optional (a `principal` depot with a working scale sends weights; a `temporary` depot or broken scale omits them, enforced server-side — the schema can't see depot type). Same tare-≤-gross refinement as `confirmDeliverySchema`. |
 | `cancelSchema` | `cancellationReason` | min 1 |
+| `forceStatusSchema` | `status` (enum) | Admin-only manual override, bypasses the state machine. Optional `reason`, `expectedStatus` (optimistic-lock guard). Optional `baleCount` (positive int) + exactly one of `parcelId`/`sourceDepotId` (XOR, refined) + `idempotencyKey` — required together when the override implies a load was picked up, so forcing a trip to `loaded`+ now inserts a real `bale_loads` row instead of leaving a phantom 0-bale trip. |
 | `disputeSchema` | `reason` | min 1 |
 | `resolveDisputeSchema` | `resolutionNotes`, `resolvedTo` | min 1; enum `['delivered','completed']` |
+| `registerLoadSchema` | `truckId`, `loaderMachineId`, `baleCount` (positive int), `idempotencyKey` (UUID) | Atomic loader "register load": finds/creates the trip for (truck, today), inserts `bale_loads`, transitions to `loaded`. Exactly one of `parcelId`/`sourceDepotId` required (XOR, refined — goods come off a field or out of a depot). Optional `gpsLat`/`gpsLon`, `loaderSignature` (bounded `max(4096)` but **not validated as a URL** — the server resolves the real specimen from `users.signature_specimen_url` server-side and ignores this value; a strict allowlist here previously locked a loader operator out for six days). |
 
 ### Sync Payloads (`dtos/sync-payload.schema.ts`)
 

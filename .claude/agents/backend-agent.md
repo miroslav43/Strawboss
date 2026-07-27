@@ -3,7 +3,7 @@ name: backend-agent
 description: Specialist in the NestJS backend -- modules, Drizzle ORM, auth, sync, geofence, BullMQ
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-07-12
+updated: 2026-07-27
 ---
 
 # StrawBoss Backend Agent
@@ -24,15 +24,16 @@ Every feature is a NestJS module in its own directory under `backend/service/src
 - `<feature>.controller.ts` -- HTTP endpoints under `/api/v1/<feature>`
 - `<feature>.service.ts` -- business logic and database queries
 
-Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bale-productions`, `fuel-logs`, `alerts`, `reconciliation`, `parcels`, `machines`, `documents`, `cmr-scans` (scanned paper CMR, leaf module -- see below), `jobs`, `notifications`, `mobile-logs`, `health`, `farms`, `delivery-destinations`, `parcel-daily-status`, `admin-users`, `dashboard`, `profile`, `location`, `audit`, `consumable-logs`, `deposit-inventory` (Plan C), `reports`, `trip-requests`, `fleet` (device registry + OTA updates).
+Key modules: `trips`, `sync`, `geofence`, `task-assignments`, `bale-loads`, `bale-productions`, `fuel-logs`, `alerts`, `reconciliation`, `parcels`, `machines`, `documents` (incl. `documents/comanda/` -- the transport-order PDF, see below), `cmr-scans` (scanned paper CMR, leaf module -- see below), `jobs`, `notifications`, `mobile-logs`, `health`, `farms`, `delivery-destinations`, `parcel-daily-status`, `admin-users`, `dashboard`, `profile`, `location`, `audit`, `consumable-logs`, `deposit-inventory` (Plan C), `reports`, `beneficiaries`, `trip-requests` (public PIN portal + admin confirm/cancel + saved beneficiary records), `transporter` (web-only `transportator` role -- see below), `geocode` (Nominatim reverse-geocode cache, exported into `location`), `fleet` (device registry + OTA updates + presence dead-man).
 
 ### Database access
 - Uses Drizzle ORM with `DrizzleProvider` injected into services.
 - All queries use `sql` template literals from `drizzle-orm`: `this.drizzleProvider.db.execute(sql\`...\`)`.
 - Parameters are interpolated safely: `sql\`SELECT * FROM trips WHERE id = ${tripId}\``.
-- NEVER use `sql.raw()` with user-supplied input. For dynamic column names, use the allowlist pattern from `sync.service.ts` (`ALLOWED_COLUMNS` + `validateColumnName()`).
+- NEVER use `sql.raw()` with user-supplied input. For dynamic column names, use the allowlist pattern from `sync.service.ts` (`ALLOWED_COLUMNS` + `validateColumnName()`); the same fix applied to `LocationService.getLoaderBoard()`'s `windowMinutes` (`357f603`) after it was found interpolated via `sql.raw()`.
 - Always include `WHERE deleted_at IS NULL` unless explicitly querying archived records.
 - List queries must have a `LIMIT` clause.
+- **`SELECT t.*`/`SELECT *` on a table with a secret column is a leak on any route without `@Roles`.** `GET /trips` and `GET /trips/:id` shipped `public_sign_token` (the bearer secret for an external driver's public CMR sign link) to every authenticated user until `ef7ec6e` replaced `*` with an explicit projection and removed the field from the `Trip` type entirely. When adding a bearer secret / one-time token column to any table, either exclude it from every generic list/detail projection or gate the endpoint with `@Roles`.
 - `drizzleProvider.client` (the raw `ReturnType<typeof postgres>`) is exposed as a public field. Use `.reserve()` on it when you need a **session-pinned** connection (e.g. for PostgreSQL advisory locks in `onModuleInit`). Always call `.release()` in `finally`.
 - Pool is capped at `max: 8` per replica (Supabase session-mode pooler budget for 2 replicas). Do not raise this without checking the pooler limit.
 - **"Replace the single active row" race** (e.g. one aviz / one `cmr_scan` per trip request): wrap retire (`softDeleteByTripRequest`) + insert (`create`) in one `drizzleProvider.db.transaction()`, taking `pg_advisory_xact_lock(hashtext('<namespace>:' + resourceId))` first so two concurrent writers targeting the same resource serialize instead of both inserting (or leaving zero active rows). See `CmrScansService.attachScan()`. `DocumentsService.create()` / `softDeleteByTripRequest()` both accept an optional transaction executor (`Pick<PostgresJsDatabase, 'execute'>`) for this.
@@ -66,21 +67,32 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - Pull returns deltas based on `sync_version`.
 
 ### BullMQ jobs
-- Queue constants in `jobs/queues.ts`: `alert-evaluation`, `reconciliation`, `cmr-generation`, `sync-cleanup`, `geofence-check`, `truck-idle-check` (Plan C, `QUEUE_TRUCK_IDLE_CHECK`), `ota-deploy` (`QUEUE_OTA_DEPLOY`).
-- `JobSchedulerService` (`jobs/job-scheduler.service.ts`): Seeds repeating jobs on startup via `upsertJobScheduler`.
+- Queue constants in `jobs/queues.ts`: `alert-evaluation`, `reconciliation`, `cmr-generation`, `comanda-generation` (`QUEUE_COMANDA_GENERATION`), `sync-cleanup`, `geofence-check`, `truck-idle-check` (Plan C, `QUEUE_TRUCK_IDLE_CHECK`), `pin-regen` (`QUEUE_PIN_REGEN`), `message-send` (`QUEUE_MESSAGE_SEND`), `trip-autocomplete` (`QUEUE_TRIP_AUTOCOMPLETE`), `presence-deadman` (`QUEUE_PRESENCE_DEADMAN`), `gps-retention` (`QUEUE_GPS_RETENTION`), `stale-plan-sweep` (`QUEUE_STALE_PLAN_SWEEP`), `ota-deploy` (`QUEUE_OTA_DEPLOY`).
+- `JobSchedulerService` (`jobs/job-scheduler.service.ts`): Seeds repeating jobs on startup via `upsertJobScheduler` (idempotent across the 2 Swarm replicas). Cadences: geofence-check 2 min (+event-driven), alert-evaluation 15 min, reconciliation 60 min, sync-cleanup daily 02:00, truck-idle-check 5 min, pin-regen daily 02:00 Europe/Bucharest, presence-deadman every `PRESENCE_DEADMAN_RUN_MS` (90 s, `@strawboss/types` SSOT), gps-retention daily 02:30, stale-plan-sweep daily 00:15 Europe/Bucharest. Import the interval/timeout from `@strawboss/types` `presence.ts` when it exists there rather than hardcoding a new constant.
 - Processors are `@Processor(QUEUE_NAME)` classes in their respective module directories.
-- **CMR generation** is two-stage: job payload includes `{ tripId, stage: 1 | 2 }`. Stage 1 is queued at `depart` (partial PDF), stage 2 at `complete` (final PDF). `CmrProcessor` reads `job.data.stage` to select the rendering path.
+- **CMR generation** is two-stage: job payload includes `{ tripId, stage: 1 | 2 }`. Stage 1 is queued at `depart` (partial PDF), stage 2 at `complete` (final PDF). `CmrProcessor` reads `job.data.stage` to select the rendering path. Both `trip.driver_signature_url` and `trip.receiver_signature_url` are now always NULL (removed from `/depart` and `/complete` respectively, `5a8ce2a`/`b6beb2e`) -- only `loaderSignatureUrl` still renders on the document.
+- **Comandă generation** (`comanda-generation` / `ComandaProcessor` in `documents/comanda/`): on-demand, queued from `TripRequestsService.insertBeneficiaryRequest()` (best-effort, `attempts: 2`); payload `{ requestId, orgId }`. `ComandaService.generateComanda()` no-ops (returns `null`) only when the request has no `beneficiary_id` -- it always generates otherwise, filling missing commercial fields with blanks.
+- **Stale-plan sweep** (`stale-plan-sweep` / `StalePlanSweepProcessor` in `trips/`): daily repeating job, calls `TripsService.sweepStalePlannedTrips()` -- own-fleet (`is_auxiliary = false`) only; auxiliary/external pickups are never auto-cancelled.
 - **OTA deploy** (`ota-deploy` / `OtaDeployProcessor` in `fleet/`): delayed jobs only; added by `FleetService.createDeployment()` when `scheduledAt` is set; payload `{ deploymentId }`. Immediate deployments call `activateDeployment()` synchronously without queuing.
 
 ### Location / Presence (Layer 1)
-`POST /location/report` inserts into `machine_location_events` and also calls `ProfileService.touchLastSeen(operatorId)` best-effort (swallowed in a `.catch()`) — `LocationModule` imports `ProfileModule` for this. Machine-bound devices keep streaming GPS while backgrounded, so this keeps operators "online" (`users.last_seen_at`) even when the explicit `/profile/heartbeat` is paused.
+`POST /location/report` inserts into `machine_location_events` and also calls `ProfileService.touchLastSeen(operatorId)` best-effort (swallowed in a `.catch()`) — `LocationModule` imports `ProfileModule` for this. Machine-bound devices keep streaming GPS while backgrounded, so this keeps operators "online" (`users.last_seen_at`) even when the explicit `/profile/heartbeat` is paused. `LocationModule` also imports `GeocodeModule` (see below); `LocationService.getLastKnownPositions()` (backs `GET /location/machines`) enriches fresh rows with `locality` via `GeocodeService.attachLocalities()`. `GET /location/loader-board/:loaderMachineId` (`LocationService.getLoaderBoard()`) is the loader's work board: trucks assigned via `trips.loader_id` (with a here/enroute/loaded presence badge) plus GPS-proximate-but-unassigned trucks; bind `windowMinutes`/`radiusM` as SQL parameters, never `sql.raw()`.
+
+**Presence cadence hierarchy is an SSOT** (`packages/types/src/presence.ts`): if you touch any "is this online?" window/threshold (device dot, user dot, dead-man stale/run interval, touch-throttle), import the constant from there — don't hardcode a new number. The invariant `C_awake < W_green < S < R_max < W_idle` must hold; see [[backend#Presence cadence hierarchy]].
+
+### Geocode (`src/geocode/`)
+`GeocodeService.attachLocalities()` reverse-geocodes fresh machine GPS positions via Nominatim, cached in `geocode_cache` (3-decimal-rounded coord key, 90-day TTL). Cache misses fill **asynchronously, off the request path** (capped at 3/call, ~1.1 s apart to respect Nominatim's rate limit) — never await a geocode inline on a hot request path. Fully fail-safe (any DB/network error is swallowed with a `logger.warn`).
 
 ### Geofence
-`geofence.service.ts` runs every 5 minutes:
+`geofence.service.ts` runs every 2 minutes (plus an event-driven nudge on a fresh GPS report):
 1. Gets today's active assignments (available/in_progress, not deleted).
 2. Gets latest GPS position per machine from `machine_location_events`.
 3. Checks each machine against parcel/deposit boundaries using PostGIS `ST_Contains`.
 4. Fires enter/exit events, sends push notifications via `NotificationsService`.
+
+### Notifications (`src/notifications/notifications.service.ts`)
+- `sendPush()` stamps `recipientUserId` on every push `data` payload (`d7c0430`) — the mobile client drops any push addressed to someone else (shared-device stale-token leak defence). Any **new** push call site automatically inherits this if it routes through `sendPush()`; don't build a push payload by hand.
+- Never fan a broadcast/alert out across **all** organizations on a null `organizationId` — fail closed (throw / no-op with a warn log) instead of dropping the org filter. `broadcast(kind: 'all')`, `sendTruckIdleAdminAlert`, `sendParcelLoadMismatchAlert` are the precedent.
 
 ### Logging
 - Inject: `@Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger`
@@ -93,15 +105,26 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - Use `ZodValidationPipe` from `common/pipes/zod-validation.pipe.ts`.
 - Import schemas from `@strawboss/validation`.
 - Pattern: `@Body(new ZodValidationPipe(createFooSchema)) dto: FooCreateDto`
+- `ZodValidationPipe` throws `BadRequestException({ statusCode: 400, error: 'validation_failed', message, fieldErrors, formErrors })`, **not** a bare `flatten()` object (fixed `ac1640b` -- the old bare object had no `message` key, so `AllExceptionsFilter` silently fell back to "Internal server error" on every validation failure, hiding 329 real rejections). If you touch either file, keep `message` human-readable and keep `fieldErrors`/`formErrors` flowing through to both the log line and the JSON response.
+- When a Zod schema must be picked dynamically (e.g. per record-kind on one route, see `TransporterController`), use the pipe's public `.transform(value)` method directly instead of the `@Body()` decorator.
+- **Never trust a client-echoed value that the server itself minted.** `loaderSignature` on `register-load` used to be validated with a strict URL allowlist even though the phone only ever echoes back the specimen URL cached at login (never draws a fresh signature) — tightening that allowlist alone (unrelated to any real attack surface) locked a loader out of registering loads for six days (`95a5b4d`). The fix pattern: resolve the value server-side from where the server itself stored it (`users.signature_specimen_url`), and use the client's copy only as a fallback that must still pass validation. Apply this pattern to any field that is "read back", not "authored", on the client.
 
 ### File uploads (multipart PDFs)
-- `UploadsService.savePdf(input, subdir, maxBytes, basename?)` is the shared streaming writer behind `saveAviz()` (10 MB, `avize/`) and `saveCmrScan()` (15 MB, `cmr-scans/`). Don't duplicate it for a new PDF upload kind -- add a thin wrapper that calls `savePdf()` with its own subdir/limit.
+- `UploadsService.savePdf(input, subdir, maxBytes, basename?)` is the shared streaming writer behind `saveAviz()` (10 MB, `avize/`), `saveCmrScan()` (15 MB, `cmr-scans/`), and `saveComanda()` (5 MB, `comenzi/`). Don't duplicate it for a new PDF upload kind -- add a thin wrapper that calls `savePdf()` with its own subdir/limit.
 - The **global** `@fastify/multipart` cap in `main.ts` is only 3 MB. Every PDF/APK controller MUST pass its own limit to `req.file({ limits: { fileSize } })` per-request, or a legitimate multi-page upload gets a confusing 413.
 - `savePdf()` sniffs the leading `%PDF-` magic bytes as the stream comes in (destroys the stream early on mismatch) and re-checks after the pipeline for files too small to have tripped the streaming check -- never trust the client-declared MIME alone.
 - Optional `basename` lets a caller pin a stable, client-minted UUID as the storage filename (validated against `UUID_RE`; anything else is ignored and a random UUID is used instead) so a sync-queue retry after an ambiguous failure overwrites the same blob instead of orphaning one.
 
+### Trip Requests / Transporter (`src/trip-requests/`, `src/transporter/`)
+- A `trip_requests` row is born from two sources sharing the same insert path (`TripRequestsService.insertBeneficiaryRequest()`): the public daily-PIN portal (`public-portal.controller.ts`, `PinThrottleGuard`) and the authenticated `transportator` form (`transporter.controller.ts`). Don't fork the insert logic between them -- extend the shared method.
+- `confirm()` takes a pickup source as **parcel XOR depot** (`source_parcel_id` / `source_depot_id`), both org-validated before insert. `cancel()` on a `confirmed` request is only legal while the request has no live trip (`has_live_trip` machine-readable error otherwise) -- deleting/un-planning the trip (`DELETE /trips/:id` on an aux trip) hands it back to "confirmed, unplanned" first.
+- The list/detail read model joins the live trip via `LEFT JOIN LATERAL` on the **stable** FK direction (`trips.trip_request_id`, soft-delete-guarded inside the lateral) — never the reverse `trip_requests.trip_id` pointer, which is last-write-wins and was never cleared on a soft-deleted trip.
+- Every projected numeric/date column needs an explicit cast (`::float8`, `to_char(...)`) — postgres.js only auto-parses a fixed set of type OIDs, so an uncast NUMERIC/DATE column silently arrives as a string/Date that doesn't match the declared TypeScript type.
+- `TransporterModule` (`UserRole.transportator`, web-only, excluded from mobile via `NON_FIELD_ROLES`): every route is org-scoped (`requireOrg`, fail-closed) and, for anything beneficiary-scoped, gated by `TransporterAssignmentsService.assertAssigned()` — since the backend bypasses RLS, this service call **is** the access boundary, not a convenience check. A transporter's ledger (`GET /transporter/requests`) is filtered server-side to `trip_requests.created_by_user_id === user.id`; it must never call the unguarded `GET /trips`.
+
 ### Fleet module (`src/fleet/`)
 - `FleetController`: single public endpoint `POST /fleet/checkin`. Uses `@Public()` — no JWT required. Device identity is proven via HMAC-SHA256 device token (keyed with `SUPABASE_JWT_SECRET`). First check-in registers the device and returns `deviceTokenIssued`; subsequent calls verify it with `timingSafeEqual`.
+- **Token-recovery, fail-CLOSED** (`536f6e4`/`9c0dfdd`): a known device (`deviceUuid` exists) checking in with no `deviceToken` re-issues one, but *only* when the submitted `androidId` matches the `android_id` stored at registration — a two-factor bearer check, not a bare `deviceUuid` lookup. Missing/mismatched second factor -> hard 401, same as a present-but-wrong token. This is the pattern to follow for any future "device lost its credential" recovery path: never re-mint a secret off a single, guessable/leakable identifier alone.
 - `FleetAdminController`: all routes under `/super-admin/` restricted to `@Roles(UserRole.super_admin)`. Covers devices (list/get/patch/delete/ota-status/logs), releases (list/upload/patch), deployments (list/create/cancel), plus Tailscale control:
   - `PATCH /super-admin/devices/:id/tailscale` — set `tailscale_desired` (`setDeviceTailscaleSchema: { desired: boolean }`); eagerly writes `tailscale_hostname`; sends best-effort FCM wake push.
   - `GET /super-admin/settings/tailscale` — read masked global Tailscale settings (`AppSettings`); raw secrets never returned.
