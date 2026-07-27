@@ -207,6 +207,21 @@ object DeviceOwnerPolicies {
       }
     } catch (t: Throwable) { Log.w(TAG, "OEM killer scan failed", t) }
 
+    // 8. Disable the keyguard. A dedicated device-owner fleet phone has no legitimate
+    //    need for a lock screen, and Android's credential-encrypted (CE) storage —
+    //    where the session/SecureStore data the anchor needs lives — cannot be touched
+    //    by ANY background component (BootReceiver, the onCreate anchor, the FCM
+    //    presence wake) until a human enters the PIN once after a reboot. That silently
+    //    strands a phone that reboots for ANY reason outside our control (OS
+    //    auto-update, OEM forced restart, battery drain) — the exact trap the
+    //    NightlyAlarm process-restart (WATCHDOG_KT) deliberately avoids by never
+    //    triggering a real reboot itself. No effect if the user already set a secure
+    //    lock method (PIN/pattern/password) — they must remove it once from Settings
+    //    for this to actually take.
+    try {
+      dpm.setKeyguardDisabled(admin, true)
+    } catch (t: Throwable) { Log.w(TAG, "setKeyguardDisabled failed", t) }
+
     Log.i(TAG, "Device owner policies applied")
     // NOTE: background-activity-start is automatically allowed for a device owner —
     // GeofenceAlertActivity can be started from the background GPS task with no
@@ -226,6 +241,7 @@ object DeviceOwnerPolicies {
     // decommissioned phone is not left haunted by the watchdog re-arming
     // PresenceService and the nightly self-kill (alarms outlive ownership).
     try { PresenceService.stop(context) } catch (t: Throwable) {}
+    try { dpm.setKeyguardDisabled(admin, false) } catch (t: Throwable) {}
     try { dpm.setUninstallBlocked(admin, PKG, false) } catch (t: Throwable) {}
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       try { dpm.setUserControlDisabledPackages(admin, emptyList()) } catch (t: Throwable) {}
