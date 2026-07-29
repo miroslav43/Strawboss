@@ -9,8 +9,9 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import * as jose from 'jose';
 import { sql } from 'drizzle-orm';
-import { UserRole } from '@strawboss/types';
+import { UserRole, type FeatureKey, type FeatureOverrides } from '@strawboss/types';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { FeaturesService } from '../features/features.service';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
@@ -21,12 +22,27 @@ const KNOWN_USER_ROLES: ReadonlySet<string> = new Set<string>(Object.values(User
 /** Supabase JWTs are always issued for this audience. */
 const EXPECTED_AUDIENCE = 'authenticated';
 
+/** What one `loadUserContext` round-trip yields, and what the TTL cache holds. */
+interface UserContext {
+  isActive: boolean;
+  organizationId: string | null;
+  organizationSlug: string | null;
+  disabledFeatures: FeatureKey[];
+}
+
 export interface RequestUser {
   id: string;
   email: string;
   role: string;
   organizationId: string | null; // null for super_admin users
   organizationSlug: string | null; // null for super_admin users
+  /**
+   * Feature keys switched off for this user's organization, resolved once per
+   * user-context cache miss (never per request). Empty for super_admin, and
+   * empty whenever the flag kill-switch is off — the system degrades to
+   * "everything enabled", never the reverse.
+   */
+  disabledFeatures: FeatureKey[];
 }
 
 @Injectable()
@@ -58,11 +74,16 @@ export class AuthGuard implements CanActivate {
     string,
     {
       at: number;
-      ctx: {
-        isActive: boolean;
-        organizationId: string | null;
-        organizationSlug: string | null;
-      } | null;
+      /**
+       * Feature-flag generation this entry was built under. A super-admin write
+       * bumps it cluster-wide, so a stale entry is dropped within ~2s instead of
+       * riding out the full 60s TTL. Without it the two replicas would expire at
+       * independent moments and return on/off/on for the better part of a
+       * minute after a toggle — worse than a plain delay, because it reads as a
+       * broken switch. See FeaturesCacheService.
+       */
+      gen: number;
+      ctx: UserContext | null;
     }
   >();
 
@@ -70,6 +91,7 @@ export class AuthGuard implements CanActivate {
     private readonly configService: ConfigService,
     private readonly reflector: Reflector,
     private readonly drizzleProvider: DrizzleProvider,
+    private readonly featuresService: FeaturesService,
   ) {}
 
   /**
@@ -80,21 +102,15 @@ export class AuthGuard implements CanActivate {
    * Returns `null` when the user has been soft-deleted (deleted_at IS NOT NULL)
    * or does not exist.
    */
-  private async loadUserContext(
-    userId: string,
-    role: string,
-  ): Promise<{
-    isActive: boolean;
-    organizationId: string | null;
-    organizationSlug: string | null;
-  } | null> {
+  private async loadUserContext(userId: string, role: string): Promise<UserContext | null> {
     if (!userId) return null;
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         u.is_active AS "isActive",
         u.organization_id AS "organizationId",
-        o.slug AS "organizationSlug"
+        o.slug AS "organizationSlug",
+        o.feature_overrides AS "featureOverrides"
       FROM users u
       LEFT JOIN organizations o ON o.id = u.organization_id AND o.deleted_at IS NULL
       WHERE u.id = ${userId}::uuid AND u.deleted_at IS NULL
@@ -104,16 +120,30 @@ export class AuthGuard implements CanActivate {
       isActive: boolean;
       organizationId: string | null;
       organizationSlug: string | null;
+      featureOverrides: FeatureOverrides | null;
     }[];
     const row = rows[0];
     if (!row) return null;
 
     // super_admin lives outside any org — drop the org fields to mirror the
-    // previous behaviour.
+    // previous behaviour. It therefore has no flags of its own either.
     if (role === 'super_admin') {
-      return { isActive: row.isActive, organizationId: null, organizationSlug: null };
+      return {
+        isActive: row.isActive,
+        organizationId: null,
+        organizationSlug: null,
+        disabledFeatures: [],
+      };
     }
-    return row;
+
+    // Resolved HERE, inside the cached path, so the registry walk happens once
+    // per cache miss rather than on every request.
+    return {
+      isActive: row.isActive,
+      organizationId: row.organizationId,
+      organizationSlug: row.organizationSlug,
+      disabledFeatures: this.featuresService.resolve(row.featureOverrides),
+    };
   }
 
   /**
@@ -122,18 +152,14 @@ export class AuthGuard implements CanActivate {
    * Miss / expired → query, then store, evicting the oldest entry first (FIFO
    * via Map insertion order) if we're at capacity.
    */
-  private async getUserContext(
-    userId: string,
-    role: string,
-  ): Promise<{
-    isActive: boolean;
-    organizationId: string | null;
-    organizationSlug: string | null;
-  } | null> {
+  private async getUserContext(userId: string, role: string): Promise<UserContext | null> {
     const key = `${userId}:${role}`;
     const now = Date.now();
+    // Synchronous and non-blocking: returns the last known value and refreshes
+    // in the background, so Redis latency never lands on the request path.
+    const gen = this.featuresService.cacheGeneration();
     const cached = this.userCtxCache.get(key);
-    if (cached && now - cached.at < AuthGuard.USER_CTX_TTL_MS) {
+    if (cached && cached.gen === gen && now - cached.at < AuthGuard.USER_CTX_TTL_MS) {
       return cached.ctx;
     }
 
@@ -146,7 +172,7 @@ export class AuthGuard implements CanActivate {
       const oldestKey = this.userCtxCache.keys().next().value;
       if (oldestKey !== undefined) this.userCtxCache.delete(oldestKey);
     }
-    this.userCtxCache.set(key, { at: now, ctx });
+    this.userCtxCache.set(key, { at: now, gen, ctx });
 
     return ctx;
   }
@@ -238,6 +264,7 @@ export class AuthGuard implements CanActivate {
       // from the org lookup (they live outside any org) but still pass
       // through the is_active check to prevent a soft-deleted super_admin
       // from retaining access.
+      let disabledFeatures: FeatureKey[] = [];
       if (role !== 'super_admin') {
         const ctx = await this.getUserContext(sub, role);
         if (!ctx) {
@@ -248,6 +275,7 @@ export class AuthGuard implements CanActivate {
         }
         organizationId = ctx.organizationId;
         organizationSlug = ctx.organizationSlug;
+        disabledFeatures = ctx.disabledFeatures;
       }
 
       request.user = {
@@ -256,6 +284,7 @@ export class AuthGuard implements CanActivate {
         role,
         organizationId,
         organizationSlug,
+        disabledFeatures,
       } satisfies RequestUser;
 
       return true;

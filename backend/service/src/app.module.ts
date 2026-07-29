@@ -8,6 +8,8 @@ import { ConfigModule } from './config/config.module';
 import { RedisModule } from './redis/redis.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
+import { FeaturesModule } from './features/features.module';
+import { FeaturesGuard } from './features/features.guard';
 import { AuthGuard } from './auth/auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { ParcelsModule } from './parcels/parcels.module';
@@ -64,6 +66,9 @@ const devModules =
     ConfigModule,
     RedisModule,
     DatabaseModule,
+    // Before AuthModule: AuthGuard injects FeaturesService to resolve an org's
+    // flags inside the users/organizations join it already runs per request.
+    FeaturesModule,
     MessagingModule,
     MessagesModule,
     OrganizationsModule,
@@ -106,6 +111,14 @@ const devModules =
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    /*
+     * Third, and the order is load-bearing: FeaturesGuard reads
+     * `request.user.disabledFeatures`, which AuthGuard sets. Declared here in
+     * the root module's providers (not inside FeaturesModule) because
+     * root-module APP_GUARDs run before those contributed by imported modules —
+     * keeping all three in one list is what makes the sequence deterministic.
+     */
+    { provide: APP_GUARD, useClass: FeaturesGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_INTERCEPTOR, useClass: UploadUrlSigningInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

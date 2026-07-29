@@ -43,6 +43,14 @@ services:
       # service-account JSON is bind-mounted read-only below (never baked into the
       # image / committed). Path is the in-container mount point.
       - FIREBASE_SERVICE_ACCOUNT_FILE=/app/firebase-sa.json
+      # Master kill-switch for per-org feature toggles. 'false' makes every org
+      # resolve to zero disabled features (i.e. everything enabled) without a
+      # rebuild — the pre-feature behaviour. Declared HERE on purpose: the other
+      # STRAWBOSS_* switches in this repo are read straight from process.env and
+      # appear in no stack file, so a `docker service update --env-add` sets them
+      # and the next `docker stack deploy` silently reverts it. The backend logs
+      # the resolved value once at boot (search logs/web/ for "feature flags").
+      - STRAWBOSS_ORG_FEATURE_FLAGS_ENABLED=${STRAWBOSS_ORG_FEATURE_FLAGS_ENABLED:-true}
     volumes:
       - /srv/apps/Strawboss/logs:/app/logs
       - /srv/apps/Strawboss/uploads:/app/uploads
