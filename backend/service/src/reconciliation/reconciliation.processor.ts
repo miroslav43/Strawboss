@@ -9,11 +9,14 @@ import { ReconciliationService } from './reconciliation.service';
 import { AlertsService } from '../alerts/alerts.service';
 import { evaluateAlerts } from '@strawboss/domain';
 import { QUEUE_RECONCILIATION } from '../jobs/queues';
+import { isFeatureEnabled } from '@strawboss/types';
+import { FeaturesService } from '../features/features.service';
 
 @Injectable()
 @Processor(QUEUE_RECONCILIATION)
 export class ReconciliationProcessor extends WorkerHost {
   constructor(
+    private readonly features: FeaturesService,
     private readonly drizzleProvider: DrizzleProvider,
     private readonly reconciliationService: ReconciliationService,
     private readonly alertsService: AlertsService,
@@ -61,7 +64,17 @@ export class ReconciliationProcessor extends WorkerHost {
         // work-in-progress and must NOT spam an alert every hour. createFromDraft
         // dedups per parcel while the alert stays unacknowledged.
         const overCount = result.loadedVsProducedDiff > 0 || result.deliveredVsLoadedDiff > 0;
-        if (overCount && parcel.organization_id) {
+        // `bales.reconciliation` off → skip. Without this an org that stopped
+        // logging production gets an hourly "loaded more than produced" alert
+        // for every parcel, since produced is 0 and loaded is not.
+        if (
+          overCount &&
+          parcel.organization_id &&
+          isFeatureEnabled(
+            await this.features.getDisabledForOrg(parcel.organization_id),
+            'bales.reconciliation',
+          )
+        ) {
           const drafts = evaluateAlerts({ baleReconciliation: result });
           for (const draft of drafts) {
             await this.alertsService.createFromDraft(draft, parcel.organization_id);

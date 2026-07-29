@@ -1,7 +1,7 @@
 ---
 name: mobile-reviewer
 description: Auditează codul mobile StrawBoss (apps/mobile/) pentru bug-uri de sync offline, idempotency, securitate și fiabilitate. Folosit de skill-ul strawboss-bug-hunt pe felia mobile.
-model: sonnet
+model: claude-sonnet-5
 tools: [Read, Grep, Glob, Bash]
 ---
 

@@ -36,6 +36,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let error = 'Internal Server Error';
     /** Validation detail (Zod fieldErrors/formErrors), when the failure has any. */
     let details: Record<string, unknown> | undefined;
+    /*
+     * Stable, machine-readable discriminator (e.g. 'FEATURE_DISABLED'), plus the
+     * feature key when the failure is a feature gate.
+     *
+     * These MUST be hoisted explicitly. The reply below is assembled from a
+     * fixed set of fields, so any extra key on the thrown HttpException's
+     * response object is silently dropped — a client branching on
+     * `code === 'FEATURE_DISABLED'` would be dead code, and the operator would
+     * see the generic 'Cerere invalidă.' fallback on a perfectly valid action.
+     * Same class of bug as the message-array handling documented below.
+     */
+    let code: string | undefined;
+    let feature: string | undefined;
 
     if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
@@ -71,6 +84,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
             formErrors: resp.formErrors,
           };
         }
+
+        if (typeof resp.code === 'string') code = resp.code;
+        if (typeof resp.feature === 'string') feature = resp.feature;
       }
     } else if (exception instanceof Error) {
       message = exception.message;
@@ -105,6 +121,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
         path,
         requestId,
         ...(details ? { details } : {}),
+        // Makes "which org hit which disabled feature, how often" greppable in
+        // logs/web/warn/ without adding a bespoke log line at every gate.
+        ...(code ? { code } : {}),
+        ...(feature ? { feature } : {}),
       });
     }
 
@@ -115,6 +135,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       // Sent to the client too: the phone can show "baleCount: Expected number,
       // received string" instead of a meaningless scare.
       ...(details ? details : {}),
+      ...(code ? { code } : {}),
+      ...(feature ? { feature } : {}),
       timestamp: new Date().toISOString(),
       ...(requestId ? { requestId } : {}),
     });

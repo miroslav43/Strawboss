@@ -100,8 +100,9 @@ export class AvizNotificationService {
         : fileUrl.replace(/^\//, '');
       const abs = path.join(resolveUploadsRoot(this.config), key);
       const content = (await fsp.readFile(abs)).toString('base64');
+      // `-` is last in the class, so it is a literal and needs no escape.
       const filename = `aviz-${req.truck_registration_plate ?? requestId}.pdf`.replace(
-        /[^\w.\-]+/g,
+        /[^\w.-]+/g,
         '_',
       );
       attachments = [{ filename, content, contentType: 'application/pdf' }];

@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Building2, Plus, ExternalLink, Users } from 'lucide-react';
+import { Loader2, Building2, Plus, ExternalLink, Users, SlidersHorizontal } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
@@ -73,6 +73,7 @@ export default function OrganizationsPage() {
                 <th className="px-5 py-3 text-left">{t('superAdmin.orgs.colSlug')}</th>
                 <th className="px-5 py-3 text-left">{t('superAdmin.orgs.linkDashboard')}</th>
                 <th className="px-5 py-3 text-left">{t('superAdmin.orgs.linkUsers')}</th>
+                <th className="px-5 py-3 text-left">{t('superAdmin.features.title')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
@@ -95,6 +96,15 @@ export default function OrganizationsPage() {
                     >
                       <Users className="h-3.5 w-3.5" />
                       {t('superAdmin.orgs.actionManageUsers')}
+                    </a>
+                  </td>
+                  <td className="px-5 py-3">
+                    <a
+                      href={`/super-admin/organizations/${org.id}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-400 hover:text-neutral-900"
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      {t('superAdmin.features.title')}
                     </a>
                   </td>
                 </tr>

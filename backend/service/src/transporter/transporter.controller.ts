@@ -43,6 +43,7 @@ import type {
   BeneficiaryOrderSettingsInput,
   CmrScanKind,
 } from '@strawboss/validation';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 /** URL segment (plural) → the service's singular RecordKind. */
 const KIND_BY_SEGMENT: Record<string, RecordKind> = {
@@ -122,6 +123,7 @@ export class TransporterController {
   }
 
   @Put('beneficiaries/:beneficiaryId/order-settings')
+  @RequireFeature('portals.transporter_role')
   async putOrderSettings(
     @CurrentUser() user: RequestUser,
     @Param('beneficiaryId', new ParseUUIDPipe()) beneficiaryId: string,
@@ -147,6 +149,7 @@ export class TransporterController {
   }
 
   @Post('beneficiaries/:beneficiaryId/:kind')
+  @RequireFeature('portals.transporter_role')
   async createRecord(
     @CurrentUser() user: RequestUser,
     @Param('beneficiaryId', new ParseUUIDPipe()) beneficiaryId: string,
@@ -161,6 +164,7 @@ export class TransporterController {
   }
 
   @Patch('beneficiaries/:beneficiaryId/:kind/:id')
+  @RequireFeature('portals.transporter_role')
   async updateRecord(
     @CurrentUser() user: RequestUser,
     @Param('beneficiaryId', new ParseUUIDPipe()) beneficiaryId: string,
@@ -177,6 +181,7 @@ export class TransporterController {
 
   // POST-delete (not DELETE) mirrors the public portal convention.
   @Post('beneficiaries/:beneficiaryId/:kind/:id/delete')
+  @RequireFeature('portals.transporter_role')
   async deleteRecord(
     @CurrentUser() user: RequestUser,
     @Param('beneficiaryId', new ParseUUIDPipe()) beneficiaryId: string,
@@ -193,6 +198,7 @@ export class TransporterController {
   // ── Requests: submit + read-only ledger ────────────────────────────────────
 
   @Post('requests')
+  @RequireFeature('portals.transporter_role')
   async submitRequest(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createTransporterRequestSchema))
@@ -208,6 +214,7 @@ export class TransporterController {
   // Deletable only while the transport hasn't moved yet — TripRequestsService
   // re-derives the stage server-side and refuses otherwise (stage_not_deletable).
   @Post('requests/:id/delete')
+  @RequireFeature('portals.transporter_role')
   async deleteRequest(
     @CurrentUser() user: RequestUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -251,6 +258,7 @@ export class TransporterController {
   }
 
   @Post('requests/:id/aviz')
+  @RequireFeature('portals.transporter_role')
   async uploadAviz(
     @CurrentUser() user: RequestUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -278,6 +286,7 @@ export class TransporterController {
   }
 
   @Post('requests/:id/cmr')
+  @RequireFeature('portals.transporter_role')
   async uploadCmr(
     @CurrentUser() user: RequestUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -317,6 +326,7 @@ export class TransporterController {
   }
 
   @Post('requests/:id/comanda')
+  @RequireFeature('portals.transporter_role')
   async generateComanda(
     @CurrentUser() user: RequestUser,
     @Param('id', new ParseUUIDPipe()) id: string,

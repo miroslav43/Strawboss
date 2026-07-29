@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Auditează securitatea backend StrawBoss (backend/service/src/) și a bazei de date (supabase/migrations/) -- FK cross-org, queries fără filtru organization_id, @Body() fără ZodValidationPipe, auth bypass, RLS lipsă. Folosește înainte de merge pe orice PR care atinge backend-ul sau migrațiile.
-model: sonnet
+model: claude-sonnet-5
 tools: [Read, Grep, Glob, Bash]
 ---
 

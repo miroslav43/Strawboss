@@ -16,6 +16,7 @@ import { CmrScansService } from './cmr-scans.service';
 import { Roles, CurrentUser, type RequestUser } from '../auth';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { CMR_SCAN_MAX_BYTES } from '../uploads/uploads.service';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('cmr-scans')
 export class CmrScansController {
@@ -85,6 +86,7 @@ export class CmrScansController {
    * keeps hitting the departure CMR unchanged.
    */
   @Post('trip/:tripId')
+  @RequireFeature('documents.cmr_scan')
   @Roles(UserRole.admin, UserRole.loader_operator)
   async uploadForTrip(
     @CurrentUser() user: RequestUser,
@@ -112,6 +114,7 @@ export class CmrScansController {
    * requests page — either end, depending on `?kind=`.
    */
   @Post('trip-request/:requestId')
+  @RequireFeature('documents.cmr_scan')
   @Roles(UserRole.admin, UserRole.dispatcher)
   async uploadForRequest(
     @CurrentUser() user: RequestUser,

@@ -204,7 +204,7 @@ export function TracksMap({ routes, className }: TracksMapProps) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deps deliberately narrowed to [sig, mapReady] to avoid re-creating the map.
   }, [sig, mapReady]);
 
   return <div ref={mapRef} className={className ?? 'h-full w-full'} />;

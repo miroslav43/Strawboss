@@ -16,6 +16,7 @@ import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { upsertParcelDailyStatusSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('parcel-daily-status')
 export class ParcelDailyStatusController {
@@ -32,6 +33,7 @@ export class ParcelDailyStatusController {
   }
 
   @Put()
+  @RequireFeature('bales.parcel_daily_status')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   upsert(
     @CurrentUser() user: RequestUser,
@@ -42,6 +44,7 @@ export class ParcelDailyStatusController {
   }
 
   @Delete()
+  @RequireFeature('bales.parcel_daily_status')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   async remove(

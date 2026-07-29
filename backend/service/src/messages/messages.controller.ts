@@ -2,6 +2,7 @@ import { Controller, Get, Post, Param, Query, ForbiddenException } from '@nestjs
 import { MessagesService } from './messages.service';
 import { Roles, CurrentUser, type RequestUser } from '../auth';
 import { UserRole } from '@strawboss/types';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('messages')
 export class MessagesController {
@@ -23,6 +24,7 @@ export class MessagesController {
   }
 
   @Post(':id/retry')
+  @RequireFeature('messaging.monitor')
   @Roles(UserRole.admin, UserRole.dispatcher)
   retry(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     return this.service.retry(this.requireOrg(user), id);

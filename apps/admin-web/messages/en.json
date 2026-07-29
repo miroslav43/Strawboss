@@ -1972,6 +1972,45 @@
         "sendFailed": "Sending failed",
         "messagePlaceholder": "Message (optional) — leave empty for the standard test ping"
       }
+    },
+    "features": {
+      "title": "Features",
+      "subtitle": "What is switched on for this organization",
+      "back": "Back to organizations",
+      "loading": "Loading…",
+      "presets": "Presets",
+      "presetHint": "Apply a predefined set, then adjust",
+      "preset": {
+        "new_org": "New customer",
+        "basic": "Basic",
+        "pro": "Pro",
+        "enterprise": "Enterprise"
+      },
+      "reason": "Reason (required)",
+      "reasonPlaceholder": "Why are you making this change?",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "noChanges": "No changes",
+      "pendingCount": "{{count}} unsaved changes",
+      "willDisable": "Will disable",
+      "cascadeNote": "Switching a module off also switches off everything that depends on it.",
+      "affects": "Affects",
+      "surface": {
+        "web": "web",
+        "mobile": "mobile",
+        "api": "API",
+        "jobs": "jobs"
+      },
+      "roleWarning": "{{count}} active accounts on this role. They keep working — only creating new ones is blocked.",
+      "notWired": "Not implemented yet",
+      "notWiredHint": "These switches appear once the module is fully wired.",
+      "history": "Change history",
+      "historyEmpty": "No changes recorded",
+      "historyBy": "by",
+      "on": "On",
+      "off": "Off",
+      "planLabel": "Plan"
     }
   },
   "dashboard": {
@@ -2376,5 +2415,89 @@
     "submitError": "Failed to submit the CMR. Try again.",
     "successTitle": "CMR recorded",
     "successBody": "The transport is complete. Thank you!"
+  },
+  "features": {
+    "module": {
+      "bales": "Bales & production",
+      "geo": "Fields & maps",
+      "depot": "Depots & receiving",
+      "costs": "Operating costs",
+      "documents": "Documents",
+      "aux": "Auxiliary transport",
+      "portals": "External portals",
+      "messaging": "Messaging",
+      "analytics": "Reports & alerts",
+      "roles": "Account types"
+    },
+    "item": {
+      "bales": {
+        "production": "Bale production (baler)",
+        "load_register": "Bale loading onto trucks",
+        "parcel_daily_status": "Parcel harvest status",
+        "adjustments": "Manual bale correction",
+        "reconciliation": "Bale reconciliation"
+      },
+      "geo": {
+        "parcels": "Parcels (fields)",
+        "farms": "Farms",
+        "kml_import": "KML import",
+        "draw_mobile": "Draw boundaries on mobile",
+        "tracks": "Route history",
+        "auto_transitions": "Automatic enter/exit detection"
+      },
+      "depot": {
+        "destinations": "Depot registry",
+        "manned_confirm": "Depot operator confirmation",
+        "weighing": "Weighing (gross / tare / net)",
+        "inventory": "Depot inventory"
+      },
+      "costs": {
+        "fuel": "Fuel",
+        "consumables": "Consumables (twine)",
+        "receipt_photos": "Receipt photos",
+        "report": "Cost report"
+      },
+      "documents": {
+        "library": "Documents page",
+        "cmr_generate": "CMR generation (PDF)",
+        "cmr_scan": "Paper CMR scanning",
+        "public_sign": "Public-link CMR signing",
+        "aviz": "Delivery note (aviz)",
+        "comanda": "Transport order (PDF)"
+      },
+      "aux": {
+        "requests": "Auxiliary trip ledger",
+        "field_pickup": "Field pickup",
+        "autocomplete": "Auxiliary trip auto-complete"
+      },
+      "portals": {
+        "beneficiaries": "Beneficiaries",
+        "public_request": "Public request portal",
+        "beneficiary_pin": "Beneficiary PIN portal",
+        "transporter_role": "Transporter web account"
+      },
+      "messaging": {
+        "email": "Email",
+        "sms": "SMS via gateway phone",
+        "monitor": "Messages page",
+        "broadcast": "Broadcast to phones"
+      },
+      "analytics": {
+        "reports": "Reports page",
+        "report_operators": "Per-operator reports",
+        "export": "CSV / XLSX export",
+        "alerts": "Alert centre",
+        "fraud": "Fraud detection"
+      },
+      "roles": {
+        "driver": "Driver",
+        "loader_operator": "Loader operator",
+        "baler_operator": "Baler operator",
+        "geofence_maker": "Field planner",
+        "depot_manager": "Depot operator",
+        "dispatcher": "Dispatcher",
+        "transportator": "Transporter"
+      }
+    }
   }
 }

@@ -12,6 +12,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { RealtimeStatusBanner } from '@/components/layout/RealtimeStatusBanner';
 import { ProfileLocaleHydration } from '@/components/layout/ProfileLocaleHydration';
+import { FeatureRouteGuard } from '@/components/layout/FeatureRouteGuard';
 import { supabase } from '@/lib/supabase';
 import { resolveOrganizationSlugForSession } from '@/lib/resolve-organization-slug';
 import { useI18n } from '@/lib/i18n';
@@ -146,6 +147,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       ) : (
         <div className="flex h-screen">
           <ProfileLocaleHydration />
+          {/* Deep-link protection for feature-gated pages. Hiding the sidebar
+              link alone leaves a bookmarked or pasted URL fully reachable. */}
+          <FeatureRouteGuard />
 
           {/* W19: mobile overlay — shown only when sidebar open on small screens */}
           {sidebarOpen && (

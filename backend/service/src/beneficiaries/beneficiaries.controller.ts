@@ -14,6 +14,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createBeneficiarySchema, updateBeneficiarySchema } from '@strawboss/validation';
 import { UserRole } from '@strawboss/types';
 import type { CreateBeneficiaryDto, UpdateBeneficiaryDto } from '@strawboss/types';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('beneficiaries')
 export class BeneficiariesController {
@@ -31,6 +32,7 @@ export class BeneficiariesController {
   }
 
   @Post()
+  @RequireFeature('portals.beneficiaries')
   @Roles(UserRole.admin, UserRole.super_admin)
   create(
     @CurrentUser() user: RequestUser,
@@ -40,6 +42,7 @@ export class BeneficiariesController {
   }
 
   @Patch(':id')
+  @RequireFeature('portals.beneficiaries')
   @Roles(UserRole.admin, UserRole.super_admin)
   update(
     @CurrentUser() user: RequestUser,
@@ -50,12 +53,14 @@ export class BeneficiariesController {
   }
 
   @Delete(':id')
+  @RequireFeature('portals.beneficiaries')
   @Roles(UserRole.admin, UserRole.super_admin)
   remove(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     return this.service.softDelete(id, this.requireOrg(user));
   }
 
   @Post(':id/regen-pin')
+  @RequireFeature('portals.beneficiaries')
   @Roles(UserRole.admin, UserRole.super_admin)
   regenPin(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     return this.service.regenPin(id, this.requireOrg(user));

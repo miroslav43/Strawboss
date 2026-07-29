@@ -6,6 +6,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createBaleProductionSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('bale-productions')
 export class BaleProductionsController {
@@ -63,6 +64,7 @@ export class BaleProductionsController {
   }
 
   @Post()
+  @RequireFeature('bales.production')
   @Roles('baler_operator' as UserRole, 'admin' as UserRole)
   create(
     @CurrentUser() user: RequestUser,
@@ -73,6 +75,7 @@ export class BaleProductionsController {
   }
 
   @Delete(':id')
+  @RequireFeature('bales.production')
   @Roles('admin' as UserRole)
   remove(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     return this.baleProductionsService.softDelete(id, user.organizationId);

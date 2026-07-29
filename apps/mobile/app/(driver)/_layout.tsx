@@ -15,8 +15,10 @@ import {
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
 import { useI18n } from '@/lib/i18n';
+import { featureTabOptions, useIsFeatureEnabled } from '@/stores/features-store';
 
 export default function DriverTabLayout() {
+  const costsEnabled = useIsFeatureEnabled('costs.fuel');
   const { activeAlert, dismissAlert, confirmParcelDone, confirmParcelEntry, cancelParcelEntry } =
     useGeofenceNotifications();
   const { activeAlert: tripAlert, dismiss: dismissTripAlert, onDeparted } = useTripLoadedAlert();
@@ -68,6 +70,7 @@ export default function DriverTabLayout() {
           <Tabs.Screen
             name="fuel"
             options={{
+              ...featureTabOptions(costsEnabled, 4),
               title: t('tabs.label.fuel'),
               tabBarAccessibilityLabel: t('tabs.label.fuel'),
               tabBarIcon: ({ color, size, focused }) => (

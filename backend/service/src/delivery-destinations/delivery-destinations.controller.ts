@@ -18,6 +18,7 @@ import {
 } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('delivery-destinations')
 export class DeliveryDestinationsController {
@@ -37,6 +38,7 @@ export class DeliveryDestinationsController {
   }
 
   @Post()
+  @RequireFeature('depot.destinations')
   @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   create(
     @CurrentUser() user: RequestUser,
@@ -47,6 +49,7 @@ export class DeliveryDestinationsController {
   }
 
   @Patch(':id')
+  @RequireFeature('depot.destinations')
   @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   update(
     @Param('id') id: string,
@@ -58,6 +61,7 @@ export class DeliveryDestinationsController {
   }
 
   @Delete(':id')
+  @RequireFeature('depot.destinations')
   @Roles('admin' as UserRole)
   softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
     return this.service.softDelete(id, user.organizationId);

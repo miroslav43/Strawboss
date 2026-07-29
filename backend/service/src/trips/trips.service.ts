@@ -51,6 +51,9 @@ import type {
   RegisterLoadResult,
 } from '@strawboss/types';
 import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss/domain';
+import { isFeatureEnabled } from '@strawboss/types';
+import type { FeatureKey } from '@strawboss/types';
+import { FeaturesService } from '../features/features.service';
 
 /**
  * A bare calendar day, as an <input type="date"> sends it. Mobile instead sends
@@ -197,6 +200,7 @@ export class TripsService implements OnModuleInit {
     private readonly configService: ConfigService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     private readonly cmrScansService: CmrScansService,
+    private readonly features: FeaturesService,
   ) {}
 
   /** Public web base URL for driver-facing links (arrival-CMR upload). */
@@ -504,6 +508,24 @@ export class TripsService implements OnModuleInit {
   }
 
   async findById(id: string, orgId?: string | null) {
+    /*
+     * `destination_has_operator` is a LIVENESS flag, not just a label: the
+     * driver's app hides its own confirm button whenever it is true, and waits
+     * for the depot operator instead. So it must be a product of BOTH facts —
+     * a depot manager exists AND the org still has manned confirmation on.
+     *
+     * Without the second term, switching `depot.manned_confirm` off while a
+     * truck sits at `arrived` would strand the trip: the depot operator's
+     * endpoint now 403s, and the driver's phone still holds the cached `true`
+     * and shows no button. Only an admin `force-status` could rescue it, and
+     * the state survives offline indefinitely.
+     */
+    const mannedConfirmEnabled = orgId
+      ? isFeatureEnabled(
+          await this.features.getDisabledForOrg(orgId),
+          'depot.manned_confirm',
+        )
+      : true;
     const conditions: ReturnType<typeof sql>[] = [sql`t.id = ${id}`, sql`t.deleted_at IS NULL`];
     if (orgId !== null && orgId !== undefined) {
       conditions.push(sql`t.organization_id = ${orgId}::uuid`);
@@ -527,13 +549,14 @@ export class TripsService implements OnModuleInit {
             p.municipality        AS source_parcel_municipality,
             f.name                AS source_farm_name,
             sd.name               AS source_depot_name,
-            EXISTS(
+            (EXISTS(
               SELECT 1 FROM users du
               WHERE du.assigned_delivery_destination_id = t.destination_id
                 AND du.organization_id = t.organization_id
                 AND du.role = 'depot_manager'::user_role
                 AND du.deleted_at IS NULL
-            )                     AS destination_has_operator
+            ) AND ${mannedConfirmEnabled})
+                                  AS destination_has_operator
           FROM trips t
           LEFT JOIN machines m  ON m.id  = t.truck_id
           LEFT JOIN users    u  ON u.id  = t.driver_id
@@ -1524,6 +1547,11 @@ export class TripsService implements OnModuleInit {
     }
 
     const orgId = trip.organization_id;
+    // @Public() route: the org is only knowable from the token, and everything
+    // below is destructive to the one-time link. Free here — the SELECT above
+    // already resolved the org.
+    await this.features.assertEnabledForOrg(orgId, 'documents.cmr_scan');
+
     const saved = await this.cmrScansService.saveArrivalCmrFile(parts, scanId);
 
     await this.drizzleProvider.db.transaction(async (tx) => {
@@ -3277,6 +3305,24 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
+   * Resolve the organization behind a one-time public trip token and assert the
+   * feature is on.
+   *
+   * Silent no-op when the token matches nothing: the caller already produces
+   * its own deliberately non-leaky "invalid or used" error, and answering
+   * differently here would turn this into a token oracle.
+   */
+  private async assertPublicTokenFeature(token: string, feature: FeatureKey): Promise<void> {
+    const rows = (await this.drizzleProvider.db.execute(
+      sql`SELECT organization_id FROM trips
+          WHERE public_sign_token = ${token} AND deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as { organization_id: string | null }[];
+    const orgId = rows[0]?.organization_id;
+    if (orgId) await this.features.assertEnabledForOrg(orgId, feature);
+  }
+
+  /**
    * DEPRECATED — kept for one release only, for drivers who already received
    * an old-style "sign the CMR" SMS link before this deploy. The admin-web
    * `/sign/[token]` page now redirects to `/cmr/[token]` for everyone, so this
@@ -3291,6 +3337,15 @@ export class TripsService implements OnModuleInit {
    * complete it. One-time per token, same guarantee as before.
    */
   async signByPublicToken(token: string, signature: string): Promise<{ ok: true }> {
+    /*
+     * Gate BEFORE the UPDATE. This is a @Public() route, so FeaturesGuard sees
+     * no request.user and the org is only knowable from the token. It also
+     * cannot be checked afterwards: the UPDATE both stores the signature and
+     * BURNS the one-time token, so a late rejection would leave the link spent
+     * and the trip unsigned — unrecoverable.
+     */
+    await this.assertPublicTokenFeature(token, 'documents.public_sign');
+
     const updated = (await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
             driver_signature_url = ${signature},

@@ -28,6 +28,7 @@ import {
 } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('parcels')
 export class ParcelsController {
@@ -89,6 +90,7 @@ export class ParcelsController {
   }
 
   @Post()
+  @RequireFeature('geo.parcels')
   @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   create(
     @CurrentUser() user: RequestUser,
@@ -98,6 +100,7 @@ export class ParcelsController {
   }
 
   @Post('import')
+  @RequireFeature('geo.kml_import')
   @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   import(
     @CurrentUser() user: RequestUser,
@@ -108,6 +111,7 @@ export class ParcelsController {
   }
 
   @Post(':id/override-bales')
+  @RequireFeature('bales.adjustments')
   @Roles('admin' as UserRole)
   overrideBales(
     @Param('id') id: string,
@@ -119,6 +123,7 @@ export class ParcelsController {
   }
 
   @Post(':id/transfer-to-depot')
+  @RequireFeature('bales.adjustments')
   @Roles('admin' as UserRole)
   transferToDepot(
     @Param('id') id: string,
@@ -130,6 +135,7 @@ export class ParcelsController {
   }
 
   @Patch(':id')
+  @RequireFeature('geo.parcels')
   @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   update(
     @Param('id') id: string,
@@ -140,6 +146,7 @@ export class ParcelsController {
   }
 
   @Delete(':id')
+  @RequireFeature('geo.parcels')
   @Roles('admin' as UserRole)
   async softDelete(
     @Param('id') id: string,

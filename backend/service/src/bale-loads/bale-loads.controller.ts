@@ -6,6 +6,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createBaleLoadSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('bale-loads')
 export class BaleLoadsController {
@@ -23,6 +24,7 @@ export class BaleLoadsController {
   }
 
   @Post()
+  @RequireFeature('bales.load_register')
   @Roles('loader_operator' as UserRole, 'admin' as UserRole)
   create(
     @CurrentUser() user: RequestUser,

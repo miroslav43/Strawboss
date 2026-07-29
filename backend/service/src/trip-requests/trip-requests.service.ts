@@ -19,6 +19,7 @@ import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { DocumentsService } from '../documents/documents.service';
 import { PinThrottleService } from './pin-throttle.service';
+import { FeaturesService } from '../features/features.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { QUEUE_MESSAGE_SEND, QUEUE_COMANDA_GENERATION } from '../jobs/queues';
@@ -239,6 +240,7 @@ export class TripRequestsService {
     private readonly uploads: UploadsService,
     private readonly documents: DocumentsService,
     private readonly pinThrottle: PinThrottleService,
+    private readonly featuresService: FeaturesService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     @InjectQueue(QUEUE_MESSAGE_SEND) private readonly messageQueue: Queue,
     @InjectQueue(QUEUE_COMANDA_GENERATION) private readonly comandaQueue: Queue,
@@ -680,6 +682,22 @@ export class TripRequestsService {
     dto: CreateTripRequestDto,
   ): Promise<{ ok: true }> {
     const org = await this.resolveOrgBySlug(slug);
+    /*
+     * Feature gate for a @Public() route.
+     *
+     * FeaturesGuard cannot help here: AuthGuard returns before setting
+     * `request.user` on public routes, so the organization is simply unknown
+     * until this line. Without an explicit check, a disabled public portal
+     * would keep inserting trip_requests, raising alerts and fanning out admin
+     * emails through the message queue.
+     *
+     * Placed before the access-code check on purpose: a switched-off portal
+     * should not evaluate credentials at all, and it costs no secrecy —
+     * `resolveOrgBySlug` already 404s an unknown slug, so slug existence is
+     * discoverable regardless, and the portal page itself renders a public
+     * "indisponibil" state by design.
+     */
+    await this.featuresService.assertEnabledForOrg(org.id, 'portals.public_request');
     if (!org.request_access_code || org.request_access_code !== code) {
       await this.pinThrottle.recordFailure(slug, '');
       throw new ForbiddenException('Cod invalid.');
@@ -812,6 +830,10 @@ export class TripRequestsService {
     this.assertPinFresh(row.beneficiary.pinGeneratedAt);
     // Clear the counter only after the freshness check (see verifyBeneficiaryPin).
     await this.pinThrottle.recordSuccess(orgSlug, beneficiarySlug);
+    // Same reasoning as submitPublicRequest: a @Public() route has no
+    // request.user, so the gate has to live here — after the org is known and
+    // before anything is written.
+    await this.featuresService.assertEnabledForOrg(row.org.id, 'portals.beneficiary_pin');
     const { pin: _pin, ...fields } = dto;
     return this.insertBeneficiaryRequest(row.org, row.beneficiary, fields, null);
   }

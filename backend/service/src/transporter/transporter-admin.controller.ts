@@ -13,6 +13,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { UserRole } from '@strawboss/types';
 import { setTransporterBeneficiariesSchema } from '@strawboss/validation';
 import type { SetTransporterBeneficiariesInput } from '@strawboss/validation';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 /**
  * Admin management of which beneficiaries a transporter account may act for.
@@ -39,6 +40,7 @@ export class TransporterAdminController {
   }
 
   @Put(':id/beneficiaries')
+  @RequireFeature('portals.transporter_role')
   async set(
     @CurrentUser() user: RequestUser,
     @Param('id', new ParseUUIDPipe()) id: string,

@@ -62,9 +62,10 @@ jobs:
 
             Nu modifica cod. Doar analizează și raportează.
           claude_args: |
-            --model claude-opus-4-7
+            --model claude-opus-5
+            --effort xhigh
             --allowedTools Read,Grep,Glob,Bash,Write,Task
-            --max-turns 50
+            --max-turns 75
 
       - name: Notificare WhatsApp — bug-scan
         env:

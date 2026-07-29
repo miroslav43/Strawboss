@@ -12,6 +12,13 @@ export { createOrganizationSchema } from './schemas/organization.schema.js';
 export type { CreateOrganizationInput } from './schemas/organization.schema.js';
 
 export {
+  featureKeySchema,
+  featureOverridesSchema,
+  updateOrgFeaturesSchema,
+} from './schemas/features.schema.js';
+export type { UpdateOrgFeaturesInput } from './schemas/features.schema.js';
+
+export {
   userRoleSchema,
   userSchema,
   createUserSchema,

@@ -1,3 +1,4 @@
+import { ApiError } from '@strawboss/api';
 import type { ApiClient } from '@strawboss/api';
 import type {
   SyncPushRequest,
@@ -104,6 +105,7 @@ async function sendRegisterLoad(
     await apiClient.post<RegisterLoadResult>('/api/v1/trips/register-load', payload);
     return { ok: true };
   } catch (err) {
+    if (isFeatureDisabled(err)) return { ok: false, error: FEATURE_DISABLED_ERROR };
     return {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
@@ -155,6 +157,9 @@ async function sendCmrScan(
     }
     await uploadCmrScan(payload.tripId, payload.localPdfUri, payload.pageCount, payload.scanId);
   } catch (err) {
+    // Note the local PDF is deliberately NOT deleted below on this path, so a
+    // scan rejected by a feature gate can still be re-sent if the flag returns.
+    if (isFeatureDisabled(err)) return { ok: false, error: FEATURE_DISABLED_ERROR };
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 
@@ -178,6 +183,42 @@ export interface TripTransitionPayload {
  * uses `code` UNIQUE within org as well — replays surface as 409 which we
  * treat as success because the original POST already created the row).
  */
+/**
+ * Marker stored in `sync_queue.last_error` when the server refused a write
+ * because the organization switched that feature off. The sync-details screen
+ * renders a human explanation for it instead of a raw server string.
+ */
+export const FEATURE_DISABLED_ERROR = 'FEATURE_DISABLED';
+
+/** The org switched this feature off. Never a success, never auto-retried. */
+function isFeatureDisabled(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    err.status === 403 &&
+    (err.data as { code?: string } | undefined)?.code === 'FEATURE_DISABLED'
+  );
+}
+
+/**
+ * A create that already landed on an earlier attempt.
+ *
+ * Branches on the HTTP STATUS, not on the message text. The previous version
+ * matched `/conflict/i` and `/\b409\b/` against the error string, which meant
+ * any rejection whose message merely contained the word "conflict" was reported
+ * as success — `markCompleted` then removed the queue row, and the next map
+ * refresh ran `reconcileWithServer`, whose guard only spares rows with a live
+ * queue entry. A field a surveyor had drawn offline would disappear from local
+ * SQLite with no error, no log, and no way to recover it.
+ *
+ * The two remaining regexes are an unambiguous Postgres-phrase fallback for the
+ * case where a transport loses the status code.
+ */
+function isIdempotentReplay(err: unknown): boolean {
+  if (err instanceof ApiError) return err.status === 409;
+  const message = err instanceof Error ? err.message : String(err);
+  return /already exists/i.test(message) || /duplicate key/i.test(message);
+}
+
 async function sendDirectRestCreate(
   entry: SyncQueueEntry,
   apiClient: ApiClient,
@@ -198,19 +239,12 @@ async function sendDirectRestCreate(
     await apiClient.post(endpoint, payload);
     return { ok: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    if (isFeatureDisabled(err)) return { ok: false, error: FEATURE_DISABLED_ERROR };
     // The unique constraint on (code, organization_id) means a successful
-    // earlier retry shows up as 409 / "already exists" / "duplicate key" on
-    // replay. Treat those as idempotent success so the queue drains.
-    if (
-      /already exists/i.test(message) ||
-      /duplicate key/i.test(message) ||
-      /conflict/i.test(message) ||
-      /\b409\b/.test(message)
-    ) {
-      return { ok: true };
-    }
-    return { ok: false, error: message };
+    // earlier retry shows up as 409 on replay. Treat that as idempotent
+    // success so the queue drains.
+    if (isIdempotentReplay(err)) return { ok: true };
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -248,6 +282,9 @@ async function sendTripTransition(
     }
     return { ok: true };
   } catch (err) {
+    // Trip transitions are CORE and never gated, but check first anyway so a
+    // gate can never be misread as an already-applied transition.
+    if (isFeatureDisabled(err)) return { ok: false, error: FEATURE_DISABLED_ERROR };
     const message = err instanceof Error ? err.message : String(err);
     // "not allowed from status" means a previous retry already applied this
     // transition on the server — treat it as idempotent success.

@@ -9,8 +9,9 @@ import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import type { User, UserRole } from '@strawboss/types';
-import { MachineType } from '@strawboss/types';
+import type { User, UserRole, FeatureKey } from '@strawboss/types';
+import { MachineType, FEATURES } from '@strawboss/types';
+import { FeaturesService } from '../features/features.service';
 
 /** Roles an org admin is allowed to assign — super_admin is excluded. */
 type AdminAssignableRole = Exclude<UserRole, 'super_admin'>;
@@ -83,12 +84,28 @@ export class AdminUsersService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly configService: ConfigService,
+    private readonly featuresService: FeaturesService,
   ) {
     const url = this.configService.getOrThrow<string>('SUPABASE_URL');
     const serviceKey = this.configService.getOrThrow<string>('SUPABASE_SERVICE_ROLE_KEY');
     this.supabaseAdmin = createClient(url, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+  }
+
+  /**
+   * Reject creating (or switching an account onto) a role the organization has
+   * switched off.
+   *
+   * `roles.*` keys map 1:1 onto UserRole, EXCEPT `admin` and `super_admin`,
+   * which are deliberately absent from the registry: an org with no admin could
+   * never be administered again, and super_admin lives outside every org. An
+   * unknown key resolves to enabled, so those two always pass.
+   */
+  private async assertRoleEnabled(orgId: string, role: UserRole | string): Promise<void> {
+    const key = `roles.${role}` as FeatureKey;
+    if (!(key in FEATURES)) return;
+    await this.featuresService.assertEnabledForOrg(orgId, key);
   }
 
   async listUsers(orgId: string | null): Promise<User[]> {
@@ -108,6 +125,11 @@ export class AdminUsersService {
   }
 
   async createUser(orgId: string, dto: CreateUserDto): Promise<User> {
+    // Role toggles are GRANDFATHERED: they gate account CREATION only.
+    // Nothing here touches login, routing or @Roles — an account that already
+    // exists on a switched-off role keeps working forever, so an operator can
+    // never be locked out mid-shift by a click in the super-admin console.
+    await this.assertRoleEnabled(orgId, dto.role);
     const { username, email, pin } = await this.generateCredentials(
       dto.fullName,
       dto.usernameOverride,
@@ -167,6 +189,14 @@ export class AdminUsersService {
       dto.locale !== undefined;
 
     if (!hasChanges) return this.getById(id, orgId);
+
+    // Moving an account ONTO a switched-off role is creation by another name.
+    // Every other edit (name, phone, PIN, machine, active flag) stays allowed on
+    // a grandfathered account, so an admin can still manage the people who
+    // already hold that role.
+    if (dto.role !== undefined && orgId) {
+      await this.assertRoleEnabled(orgId, dto.role);
+    }
 
     // Serialize concurrent PATCHes on the same user. Two interleaved requests
     // (e.g. one setting role=depot_manager, another role=driver) used to read

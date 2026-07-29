@@ -6,7 +6,17 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createFuelLogSchema, updateFuelLogSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 
+/**
+ * Writes are gated on `costs.fuel`; the two GETs deliberately are not, so an
+ * organization that stops logging fuel keeps its history and its cost reports.
+ *
+ * Gating the POST does not endanger field data: the mobile app never calls this
+ * endpoint. Fuel entries go to local SQLite and reach the server through
+ * `/sync/push`, which is deliberately ungated so anything an operator recorded
+ * before the flag reached the phone is still accepted.
+ */
 @Controller('fuel-logs')
 export class FuelLogsController {
   constructor(private readonly fuelLogsService: FuelLogsService) {}
@@ -44,6 +54,7 @@ export class FuelLogsController {
     'loader_operator' as UserRole,
     'driver' as UserRole,
   )
+  @RequireFeature('costs.fuel')
   create(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createFuelLogSchema))
@@ -55,6 +66,7 @@ export class FuelLogsController {
   // Edit/delete are admin-only web actions (drivers still create via mobile POST).
   @Patch(':id')
   @Roles('admin' as UserRole)
+  @RequireFeature('costs.fuel')
   update(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
@@ -66,6 +78,7 @@ export class FuelLogsController {
 
   @Delete(':id')
   @Roles('admin' as UserRole)
+  @RequireFeature('costs.fuel')
   softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
     return this.fuelLogsService.softDelete(id, user.organizationId);
   }

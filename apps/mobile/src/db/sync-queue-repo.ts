@@ -177,10 +177,24 @@ export class SyncQueueRepo {
     return result?.count ?? 0;
   }
 
-  /** Reset all failed rows so the next sync attempts push again. */
+  /**
+   * Reset all failed rows so the next sync attempts push again.
+   *
+   * Clears `next_retry_at` and `retry_count`, not just the status. Without
+   * that, "Retry all" was a lie: the rows flipped to `pending` and so vanished
+   * from `getFailedEntries()` — the sync screen showed zero problems — while
+   * `dequeue()`'s `next_retry_at <= now` filter kept hiding them for the rest
+   * of the back-off window, which after a few attempts is up to an hour. The
+   * operator saw "all clear" and stopped checking.
+   *
+   * Mirrors `repairAndRequeue`, which already reset all three.
+   */
   async retryAllFailed(): Promise<void> {
     await this.db.runAsync(
-      `UPDATE sync_queue SET status = 'pending', updated_at = datetime('now') WHERE status = 'failed'`,
+      `UPDATE sync_queue
+       SET status = 'pending', last_error = NULL, retry_count = 0,
+           next_retry_at = NULL, updated_at = datetime('now')
+       WHERE status = 'failed'`,
     );
   }
 
@@ -190,10 +204,12 @@ export class SyncQueueRepo {
     );
   }
 
+  /** Single-row retry. Same reset as retryAllFailed — see the note there. */
   async retry(id: number): Promise<void> {
     await this.db.runAsync(
       `UPDATE sync_queue
-       SET status = 'pending', updated_at = datetime('now')
+       SET status = 'pending', last_error = NULL, retry_count = 0,
+           next_retry_at = NULL, updated_at = datetime('now')
        WHERE id = ?`,
       [id],
     );
