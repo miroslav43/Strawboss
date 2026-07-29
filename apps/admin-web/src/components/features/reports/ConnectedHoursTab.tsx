@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Download } from 'lucide-react';
+import {  } from 'lucide-react';
 import { useUserConnectedHoursReport } from '@strawboss/api';
 import type { ConnectedHoursGroupBy, ConnectedHoursRow } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
@@ -9,6 +9,7 @@ import { exportCsv } from '@/lib/csv';
 import { useI18n } from '@/lib/i18n';
 import { roleLabelKey } from '@/lib/role-labels';
 import { cn } from '@/lib/utils';
+import { ExportButton } from '@/components/shared/ExportButton';
 
 interface ConnectedHoursTabProps {
   dateFrom: string;
@@ -144,14 +145,11 @@ export function ConnectedHoursTab({
               </button>
             ))}
           </div>
-          <button
-            onClick={handleExport}
-            disabled={csvRows.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
-            {t('reports.common.exportCsv')}
-          </button>
+          <ExportButton
+          label={t('reports.common.exportCsv')}
+          onClick={handleExport}
+          disabled={csvRows.length === 0}
+        />
         </div>
       </div>
 

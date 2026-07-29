@@ -1,8 +1,8 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useCallback } from 'react';
-import { Download, FileText } from 'lucide-react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import {  } from 'lucide-react';
 import {
   useFarmReports,
   useDepotReports,
@@ -30,6 +30,9 @@ import { exportCsv } from '@/lib/csv';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { useFeatures } from '@/hooks/useFeatures';
+import { ExportButton } from '@/components/shared/ExportButton';
+import type { FeatureKey } from '@strawboss/types';
 
 type Tab =
   | 'farms'
@@ -43,17 +46,23 @@ type Tab =
   | 'kmPerOperator'
   | 'connectedHours';
 
-const TABS: { id: Tab; labelKey: string }[] = [
+/**
+ * `feature` marks the tabs a flag owns. `machineProduction` and `kmPerTruck`
+ * are deliberately NOT under `analytics.report_operators`: they are per-machine
+ * and per-truck, and that flag exists for organizations that must not track
+ * individual people.
+ */
+const TABS: { id: Tab; labelKey: string; feature?: FeatureKey }[] = [
   { id: 'farms', labelKey: 'reports.tabs.farms' },
   { id: 'fields', labelKey: 'reports.tabs.fields' },
   { id: 'depots', labelKey: 'reports.tabs.depots' },
   { id: 'rankings', labelKey: 'reports.tabs.rankings' },
-  { id: 'costs', labelKey: 'reports.tabs.costs' },
-  { id: 'operators', labelKey: 'reports.tabs.operators' },
+  { id: 'costs', labelKey: 'reports.tabs.costs', feature: 'costs.report' },
+  { id: 'operators', labelKey: 'reports.tabs.operators', feature: 'analytics.report_operators' },
   { id: 'machineProduction', labelKey: 'reports.tabs.machineProduction' },
   { id: 'kmPerTruck', labelKey: 'reports.tabs.kmPerTruck' },
-  { id: 'kmPerOperator', labelKey: 'reports.tabs.kmPerOperator' },
-  { id: 'connectedHours', labelKey: 'reports.tabs.connectedHours' },
+  { id: 'kmPerOperator', labelKey: 'reports.tabs.kmPerOperator', feature: 'analytics.report_operators' },
+  { id: 'connectedHours', labelKey: 'reports.tabs.connectedHours', feature: 'analytics.report_operators' },
 ];
 
 interface CostRow extends Record<string, unknown> {
@@ -74,31 +83,29 @@ interface OperatorRow extends Record<string, unknown> {
   avgPerSession: number;
 }
 
-function ExportCsvButton({
-  label,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-    >
-      <Download className="h-4 w-4" />
-      {label}
-    </button>
-  );
-}
-
 export default function ReportsPage() {
   const { t, locale } = useI18n();
   const numberLocale = locale === 'ro' ? 'ro-RO' : 'en-US';
   const [tab, setTab] = useState<Tab>('farms');
+  const { isEnabled, ready } = useFeatures();
+
+  /*
+   * `ready` matters here: useFeatures is fail-open while the profile loads, so
+   * without it the strip would render every tab and then visibly reflow.
+   */
+  const visibleTabs = useMemo(
+    () => (ready ? TABS.filter((x) => !x.feature || isEnabled(x.feature)) : TABS),
+    [ready, isEnabled],
+  );
+
+  // The panels are separate `{tab === 'x' && ...}` blocks, not driven by the
+  // array, so a tab that disappears while selected would leave its panel
+  // rendered with nothing highlighted. Fall back to the first visible one.
+  useEffect(() => {
+    if (ready && !visibleTabs.some((x) => x.id === tab)) {
+      setTab(visibleTabs[0]?.id ?? 'farms');
+    }
+  }, [ready, visibleTabs, tab]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [connectedHoursGroupBy, setConnectedHoursGroupBy] = useState<'day' | 'week' | 'month'>(
@@ -392,13 +399,11 @@ export default function ReportsPage() {
         <PageHeader
           title={t('reports.title')}
           actions={
-            <button
+            <ExportButton
+              variant="pdf"
+              label={t('reports.common.exportPdf')}
               onClick={handleExportPdf}
-              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
-            >
-              <FileText className="h-4 w-4" />
-              {t('reports.common.exportPdf')}
-            </button>
+            />
           }
         />
 
@@ -425,7 +430,7 @@ export default function ReportsPage() {
 
         {/* Tab selector */}
         <div className="mb-6 flex flex-wrap gap-1 rounded-lg bg-neutral-100 p-1">
-          {TABS.map((tabDef) => (
+          {visibleTabs.map((tabDef) => (
             <button
               key={tabDef.id}
               onClick={() => setTab(tabDef.id)}
@@ -482,7 +487,7 @@ export default function ReportsPage() {
               <h2 className="text-lg font-semibold text-neutral-800">
                 {t('reports.costs.heading')}
               </h2>
-              <ExportCsvButton
+              <ExportButton
                 label={t('reports.common.exportCsv')}
                 onClick={handleExportCosts}
                 disabled={costRows.length === 0}
@@ -532,7 +537,7 @@ export default function ReportsPage() {
               <h2 className="text-lg font-semibold text-neutral-800">
                 {t('reports.operators.heading')}
               </h2>
-              <ExportCsvButton
+              <ExportButton
                 label={t('reports.common.exportCsv')}
                 onClick={handleExportOperators}
                 disabled={operatorRows.length === 0}

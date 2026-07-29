@@ -25,6 +25,7 @@ import { useSync } from '@/hooks/useSync';
 import { polygonAreaHectares } from '@/utils/geo-area';
 import { generateUuid } from '@/lib/uuid';
 import { useI18n } from '@/lib/i18n';
+import { useIsFeatureEnabled } from '@/stores/features-store';
 
 type DrawMode = 'parcel' | 'deposit' | null;
 
@@ -61,6 +62,7 @@ function parseBoundary(raw: string | null): unknown {
 }
 
 export default function GeofenceMakerMapScreen() {
+  const drawEnabled = useIsFeatureEnabled('geo.draw_mobile');
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -443,7 +445,9 @@ export default function GeofenceMakerMapScreen() {
       : vertexCount < 3
         ? t('geofenceMap.bannerProgress', { count: vertexCount })
         : t('geofenceMap.bannerEnoughPoints', { count: vertexCount })
-    : t('geofenceMap.bannerIdle');
+    : drawEnabled
+      ? t('geofenceMap.bannerIdle')
+      : t('geofenceMap.bannerDrawDisabled');
 
   const bannerColor = drawMode ? '#FEF9C3' : '#ECFDF5';
   const bannerBorder = drawMode ? '#FDE047' : '#A7F3D0';
@@ -476,7 +480,12 @@ export default function GeofenceMakerMapScreen() {
       <GeofenceEditorView ref={mapRef} onEvent={handleMapEvent} onReady={handleMapReady} />
 
       {/* FABs — left side, stacked vertically */}
-      {!drawMode && (
+      {/* Only the ENTRY point is gated. With startDraw unreachable, drawMode
+          stays null, so the point-by-point controls and both create modals are
+          dead by construction. The screen itself stays a valid read surface —
+          it still shows existing parcels and depots — so the tab is not
+          hidden. */}
+      {!drawMode && drawEnabled && (
         <View style={[styles.fabStack, { bottom: 16 + insets.bottom }]}>
           <TouchableOpacity
             style={[styles.fab, styles.fabParcel, isSaving && styles.fabDisabled]}

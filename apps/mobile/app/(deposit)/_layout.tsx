@@ -10,6 +10,7 @@ import {
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
 import { useI18n } from '@/lib/i18n';
+import { featureTabOptions, useIsFeatureEnabled } from '@/stores/features-store';
 
 /**
  * Plan C — depot_manager tab group. Three tabs: Inventar (today's
@@ -18,6 +19,7 @@ import { useI18n } from '@/lib/i18n';
  * so the layout is intentionally simpler than (loader)/_layout.tsx.
  */
 export default function DepositTabLayout() {
+  const inventoryEnabled = useIsFeatureEnabled('depot.inventory');
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
 
@@ -36,6 +38,7 @@ export default function DepositTabLayout() {
           <Tabs.Screen
             name="index"
             options={{
+              ...featureTabOptions(inventoryEnabled, 2),
               title: t('tabs.label.inventory'),
               tabBarAccessibilityLabel: t('tabs.label.inventory'),
               tabBarIcon: ({ color, size, focused }) => (

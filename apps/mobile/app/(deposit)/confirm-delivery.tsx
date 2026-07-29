@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
+import { useIsFeatureEnabled } from '@/stores/features-store';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -91,11 +92,23 @@ export default function ConfirmDeliveryScreen() {
   const isInsideGeofence = truck?.isInsideGeofence ?? false;
   const distanceM = truck?.distanceM ?? null;
 
+  /*
+   * `depot.weighing` off is treated exactly like a broken scale — the server
+   * already accepts a delivery with no weights on that flag, so no endpoint
+   * change is needed.
+   *
+   * It MUST feed `weightsValid` below. Hiding the inputs alone would leave
+   * `canSubmit` permanently false and the depot operator unable to confirm any
+   * delivery at all — the feature would silently shut the depot down.
+   */
+  const weighingEnabled = useIsFeatureEnabled('depot.weighing');
+  const effectiveScaleBroken = scaleBroken || !weighingEnabled;
+
   // Validation
   const baleCountValid = baleCount > 0;
   const weightsValid =
     !isPrincipal ||
-    scaleBroken ||
+    effectiveScaleBroken ||
     (grossWeightStr.length > 0 &&
       grossWeightKg > 0 &&
       tareWeightStr.length > 0 &&
@@ -146,15 +159,15 @@ export default function ConfirmDeliveryScreen() {
 
       // Build body — weights only for principal with working scale.
       const bodyGross =
-        isPrincipal && !scaleBroken && grossWeightKg > 0 ? grossWeightKg : undefined;
+        isPrincipal && !effectiveScaleBroken && grossWeightKg > 0 ? grossWeightKg : undefined;
       const bodyTare =
-        isPrincipal && !scaleBroken && tareWeightKg >= 0 && grossWeightKg > 0
+        isPrincipal && !effectiveScaleBroken && tareWeightKg >= 0 && grossWeightKg > 0
           ? tareWeightKg
           : undefined;
 
       const transitionBody: Record<string, unknown> = {
         baleCount,
-        scaleBroken,
+        scaleBroken: effectiveScaleBroken,
         idempotencyKey,
       };
       if (bodyGross !== undefined) transitionBody.grossWeightKg = bodyGross;
@@ -365,7 +378,7 @@ export default function ConfirmDeliveryScreen() {
         <NumericPad value={baleCountStr} onChange={setBaleCountStr} decimal={false} />
 
         {/* Weight inputs — principal depot only */}
-        {isPrincipal ? (
+        {isPrincipal && weighingEnabled ? (
           <View style={styles.weightSection}>
             <View style={styles.scaleBrokenRow}>
               <View style={{ flex: 1 }}>
