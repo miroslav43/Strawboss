@@ -202,21 +202,39 @@ function isFeatureDisabled(err: unknown): boolean {
 /**
  * A create that already landed on an earlier attempt.
  *
- * Branches on the HTTP STATUS, not on the message text. The previous version
- * matched `/conflict/i` and `/\b409\b/` against the error string, which meant
- * any rejection whose message merely contained the word "conflict" was reported
- * as success — `markCompleted` then removed the queue row, and the next map
+ * Prefers the HTTP STATUS over the message text. An earlier version matched
+ * `/conflict/i` and `/\b409\b/` against the error string, which meant any
+ * rejection whose message merely contained the word "conflict" was reported as
+ * success — `markCompleted` then removed the queue row, and the next map
  * refresh ran `reconcileWithServer`, whose guard only spares rows with a live
  * queue entry. A field a surveyor had drawn offline would disappear from local
- * SQLite with no error, no log, and no way to recover it.
+ * SQLite with no error, no log, and no way to recover it. Those two broad
+ * patterns stay gone.
  *
- * The two remaining regexes are an unambiguous Postgres-phrase fallback for the
- * case where a transport loses the status code.
+ * But status ALONE is not enough, and assuming it was is what broke this:
+ * `parcels`/`delivery_destinations` used to let the raw Postgres unique
+ * violation escape, and the global exception filter turned it into a 500 — so
+ * a genuine replay of a field drawn offline was never recognised and its queue
+ * row sat `failed` forever. The backend now maps that to 409 (see
+ * ParcelsService.create), and the unambiguous Postgres phrases below are kept
+ * as a second line of defence, checked on the error body as well as the
+ * message so a phone running against an older backend still drains its queue.
+ *
+ * A 403 is never a replay — that path is handled by `isFeatureDisabled`.
  */
 function isIdempotentReplay(err: unknown): boolean {
-  if (err instanceof ApiError) return err.status === 409;
-  const message = err instanceof Error ? err.message : String(err);
-  return /already exists/i.test(message) || /duplicate key/i.test(message);
+  if (err instanceof ApiError) {
+    if (err.status === 409) return true;
+    if (err.status === 403) return false;
+    const body = (err.data as { message?: string } | undefined)?.message ?? '';
+    return isUniqueViolationText(`${err.message} ${body}`);
+  }
+  return isUniqueViolationText(err instanceof Error ? err.message : String(err));
+}
+
+/** Postgres phrases that unambiguously mean "this row already exists". */
+function isUniqueViolationText(text: string): boolean {
+  return /already exists/i.test(text) || /duplicate key/i.test(text);
 }
 
 async function sendDirectRestCreate(

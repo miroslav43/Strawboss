@@ -835,22 +835,53 @@ export const FEATURE_PRESETS: Readonly<
 export type FeaturePresetKey = keyof typeof FEATURE_PRESETS;
 
 /**
- * A preset narrowed to the keys that are actually switchable right now.
+ * A preset translated into keys that are actually switchable right now.
  *
  * The presets are written against the FULL registry — that is their long-term
- * shape and they should not be edited as modules get wired. But the API rejects
- * writes to unwired or anchor-only keys, so applying a raw preset today would
- * simply 400. Filtering here keeps the console's preset buttons working
- * throughout the rollout and makes them silently complete themselves as each
- * module lands.
+ * shape, and they are not edited as modules get wired. But the API rejects
+ * writes to unwired or anchor-only keys, so a raw preset cannot be applied
+ * as-is during the rollout.
+ *
+ * ── WHY THIS EXPANDS INSTEAD OF FILTERING ─────────────────────────────────
+ *
+ * An earlier version simply dropped unwired keys. Because the presets switch
+ * whole MODULES off (`documents: false`) and module rows are wired only once
+ * every leaf is, that quietly discarded most of what a preset meant: applying
+ * "Basic" left Documents, Auxiliary transport, Messaging and Analytics fully
+ * enabled — four of ten modules — so a customer on Basic had effectively
+ * Enterprise access. A commercial plan that does not restrict anything is worse
+ * than no plan, because it is invisible.
+ *
+ * So an unwired module row is now expanded into whichever of its leaves ARE
+ * wired. The preset's intent survives, the API still only ever receives keys it
+ * accepts, and each expansion narrows toward the module row itself as the last
+ * leaves land. `uiSwitch: false` anchors (the `roles` row) are still dropped —
+ * they are not switches at all.
  */
 export function applicablePreset(preset: FeaturePresetKey): FeatureOverrides {
   const source = FEATURE_PRESETS[preset];
   const applicable: FeatureOverrides = {};
-  for (const [key, value] of Object.entries(source) as [FeatureKey, boolean][]) {
+
+  const put = (key: FeatureKey, value: boolean) => {
     const def = FEATURES[key];
-    if (!def?.wired || !def.uiSwitch) continue;
-    applicable[key] = value;
+    if (!def || !def.uiSwitch) return;
+    if (def.wired) {
+      applicable[key] = value;
+      return;
+    }
+    // Not wired yet: fall through to whatever the preset actually meant.
+    if (isFeatureModuleKey(key)) {
+      for (const leaf of FEATURE_KEYS) {
+        if (leaf === key) continue;
+        if (FEATURES[leaf].module !== key) continue;
+        if (!FEATURES[leaf].wired || !FEATURES[leaf].uiSwitch) continue;
+        applicable[leaf] = value;
+      }
+    }
+  };
+
+  for (const [key, value] of Object.entries(source) as [FeatureKey, boolean][]) {
+    put(key, value);
   }
   return applicable;
 }

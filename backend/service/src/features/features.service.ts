@@ -174,15 +174,42 @@ export class FeaturesService implements OnModuleInit {
     dto: UpdateOrgFeaturesDto,
     actor: ActorContext,
   ): Promise<OrgFeatureSettings> {
-    const previous = await this.getSettings(orgId);
     const next = normalizeOverrides(dto.featureOverrides);
-    const changes = diffOverrides(previous.featureOverrides, next);
+    let changes: ReturnType<typeof diffOverrides> = [];
 
     await this.drizzleProvider.db.transaction(async (tx) => {
+      /*
+       * Read the previous value INSIDE the transaction, holding a row lock.
+       *
+       * It used to be read before the transaction opened, and the UPDATE below
+       * replaces the whole column with no condition on the prior value — so two
+       * super-admins (or two browser tabs) saving at once both diffed against
+       * the same snapshot and the later commit silently reverted the earlier
+       * one. Worse, the audit rows are derived from that same snapshot, so the
+       * reverted key produced NO row at all: the one trace a cross-tenant
+       * kill-switch is supposed to leave was exactly the thing that went
+       * missing. Every other service in this backend already locks this way
+       * (trips, geofence, parcels, fleet).
+       */
+      const locked = (await tx.execute(
+        sql`SELECT feature_overrides AS "featureOverrides", plan_label AS "planLabel"
+            FROM organizations
+            WHERE id = ${orgId}::uuid AND deleted_at IS NULL
+            FOR UPDATE`,
+      )) as unknown as { featureOverrides: FeatureOverrides | null; planLabel: string | null }[];
+      if (!locked.length) throw new NotFoundException('Organization not found');
+
+      changes = diffOverrides(locked[0].featureOverrides ?? {}, next);
+
+      // `planLabel` omitted entirely means "leave it alone"; an explicit null
+      // means "clear it". Without the distinction, any caller that sent only
+      // featureOverrides wiped the plan label as a side effect.
+      const nextPlanLabel = dto.planLabel === undefined ? locked[0].planLabel : dto.planLabel;
+
       const updated = (await tx.execute(
         sql`UPDATE organizations
             SET feature_overrides = ${JSON.stringify(next)}::jsonb,
-                plan_label = ${dto.planLabel ?? null},
+                plan_label = ${nextPlanLabel},
                 updated_at = NOW()
             WHERE id = ${orgId}::uuid AND deleted_at IS NULL
             RETURNING id`,

@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { Fragment, useState, useMemo } from 'react';
+import { Fragment, useEffect, useState, useMemo } from 'react';
 import {
   UserPlus,
   Trash2,
@@ -350,6 +350,16 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
     usernameOverride: '',
   });
 
+  // Keep the selection inside the creatable set. `role` defaults to driver, but
+  // an org can switch `roles.driver` off — leaving a controlled <select> whose
+  // value matches no option (nothing appears selected) while still submitting
+  // 'driver' and earning a 403 that names a role the operator never picked.
+  useEffect(() => {
+    if (creatableRoles.length && !creatableRoles.includes(form.role)) {
+      setForm((f) => ({ ...f, role: creatableRoles[0] }));
+    }
+  }, [creatableRoles, form.role]);
+
   const createUser = useCreateUser(apiClient);
 
   const preview = deriveCredentials(form.fullName);
@@ -533,10 +543,13 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     e.preventDefault();
     const data: UpdateUserPayload = {
       fullName: form.fullName || undefined,
-      role: form.role,
       phone: form.phone || null,
       locale: form.locale,
     };
+    // Only when it actually changed, matching username/pin/isActive below.
+    // Sending it unconditionally made every edit of a grandfathered account
+    // (one whose role the org has since switched off) fail the role gate.
+    if (form.role !== user.role) data.role = form.role;
     if (form.username && form.username !== user.username) {
       data.username = form.username;
     }

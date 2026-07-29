@@ -2010,7 +2010,8 @@
       "historyBy": "by",
       "on": "On",
       "off": "Off",
-      "planLabel": "Plan"
+      "planLabel": "Plan",
+      "saveFailed": "Save failed"
     }
   },
   "dashboard": {

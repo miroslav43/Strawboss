@@ -2010,7 +2010,8 @@
       "historyBy": "de",
       "on": "Pornit",
       "off": "Oprit",
-      "planLabel": "Pachet"
+      "planLabel": "Pachet",
+      "saveFailed": "Salvarea a eșuat"
     }
   },
   "dashboard": {

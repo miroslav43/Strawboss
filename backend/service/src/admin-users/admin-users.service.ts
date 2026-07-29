@@ -190,14 +190,6 @@ export class AdminUsersService {
 
     if (!hasChanges) return this.getById(id, orgId);
 
-    // Moving an account ONTO a switched-off role is creation by another name.
-    // Every other edit (name, phone, PIN, machine, active flag) stays allowed on
-    // a grandfathered account, so an admin can still manage the people who
-    // already hold that role.
-    if (dto.role !== undefined && orgId) {
-      await this.assertRoleEnabled(orgId, dto.role);
-    }
-
     // Serialize concurrent PATCHes on the same user. Two interleaved requests
     // (e.g. one setting role=depot_manager, another role=driver) used to read
     // the same `existing` snapshot and decide cleanup independently, leaving
@@ -223,6 +215,24 @@ export class AdminUsersService {
       const existingRows = lockResult as unknown as User[];
       if (!existingRows.length) throw new NotFoundException(`User ${id} not found`);
       const existing = existingRows[0];
+
+      /*
+       * Moving an account ONTO a switched-off role is creation by another name,
+       * so it is blocked. Every other edit — name, phone, PIN, machine, depot,
+       * active flag — stays allowed on a grandfathered account.
+       *
+       * The comparison against `existing.role` is what makes that true, and it
+       * has to happen HERE rather than before the transaction. Both admin-web
+       * forms send `role` on every save (unlike `username`/`pin`, which they
+       * omit when unchanged), so a presence-only check — `dto.role !== undefined`
+       * — rejected every edit of an account whose role had since been switched
+       * off: changing a dispatcher's phone number, or even deactivating them,
+       * returned 403 and the operator was left with no way to manage the very
+       * people grandfathering exists to protect.
+       */
+      if (dto.role !== undefined && dto.role !== existing.role && orgId) {
+        await this.assertRoleEnabled(orgId, dto.role);
+      }
 
       // Validate machine assignment compatibility.
       if (dto.assignedMachineId) {
