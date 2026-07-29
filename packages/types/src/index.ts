@@ -1,12 +1,15 @@
 export * from './common.js';
 export * from './messaging.js';
 export * from './presence.js';
+export * from './features.js';
 
 export * from './entities/farm.js';
 export type {
   Organization,
   CreateOrganizationDto,
   OrgRequestSettings,
+  OrgFeatureSettings,
+  UpdateOrgFeaturesDto,
 } from './entities/organization.js';
 export * from './entities/user.js';
 export * from './entities/parcel.js';
@@ -46,3 +49,4 @@ export * from './dtos/reports.dto.js';
 export * from './dtos/location-report.dto.js';
 export * from './dtos/route-history.dto.js';
 export * from './dtos/device-uptime.dto.js';
+export * from './dtos/profile.dto.js';

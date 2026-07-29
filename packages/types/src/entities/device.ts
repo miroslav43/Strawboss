@@ -1,4 +1,5 @@
 import type { Timestamps, SoftDelete } from '../common.js';
+import type { FeatureKey } from '../features.js';
 
 /**
  * Fleet management + OTA self-update.
@@ -418,6 +419,21 @@ export interface DeviceCheckinResponse {
   pendingCommands: DeviceRemoteCommand[];
   /** Outbound SMS to send via the SIM (only for devices flagged is_sms_gateway). */
   pendingSms: PendingSms[];
+  /**
+   * Feature keys switched OFF for `assignedOrgId`, or absent when the device is
+   * not assigned to an org yet.
+   *
+   * This — not `GET /profile` — is the channel that actually reaches a fielded
+   * phone. `/profile` is fetched at most once per login (the auth store persists
+   * `role`, so `AuthGate` short-circuits every subsequent cold boot without any
+   * network call), whereas check-in runs on an unconditional ~60s timer. A
+   * kill-switch delivered only over `/profile` would have unbounded latency.
+   *
+   * Optional so an APK that predates this field simply ignores it — which,
+   * combined with an empty list meaning "everything on", is the whole fail-open
+   * story for old builds.
+   */
+  disabledFeatures?: FeatureKey[];
 }
 
 /** An SMS the SIM-gateway device should send; deduped on the device by id. */
