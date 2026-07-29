@@ -947,9 +947,11 @@ export function runDeviceCheckin(opts?: { force?: boolean }): Promise<void> {
        * regardless of login state, so a kill-switch flipped in the console
        * lands within about a minute.
        *
-       * Only written when the server actually sent the field: an older backend
-       * (or a device with no org assigned yet) leaves the last known set in
-       * place rather than wrongly clearing it to "everything on".
+       * Only written when the server actually sent the field. The backend OMITS
+       * it when the device has no organization, so absence genuinely means
+       * "unknown" and the last known set survives — a device that is merely
+       * unassigned must not have its flags cleared to "everything on". An older
+       * backend that never sends the field behaves the same way.
        */
       if (Array.isArray(response.disabledFeatures)) {
         useFeaturesStore.getState().setDisabled(response.disabledFeatures);

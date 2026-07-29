@@ -382,11 +382,9 @@ export class FleetService {
         pendingCommand: null,
         pendingCommands: [],
         pendingSms: [],
-        // A fresh registrant has no org assigned yet (a super-admin does that
-        // out of band), so there is nothing to resolve. It picks up real flags
-        // on its next check-in ~60s later; until then it is fully enabled,
-        // which is the fail-open posture everywhere else too.
-        disabledFeatures: [],
+        // Deliberately omitted: a fresh registrant has no org assigned yet (a
+        // super-admin does that out of band), so the answer is "unknown", not
+        // "nothing is disabled". It picks up real flags on its next check-in.
       };
     }
 
@@ -453,7 +451,14 @@ export class FleetService {
     // Served from FeaturesService's per-org cache (60s TTL + the same Redis
     // generation invalidation), so ~30 phones checking in every minute cost at
     // most one query per org per minute, not one per device.
-    const disabledFeatures = orgId ? await this.featuresService.getDisabledForOrg(orgId) : [];
+    // OMITTED (not []) when the device has no organization, so the field's
+    // absence genuinely means "unknown" on the wire. The client's guard is
+    // `Array.isArray(...)`, so sending [] here would have told a device that was
+    // merely unassigned to clear every flag it had — the opposite of what its
+    // comment promises.
+    const disabledFeatures = orgId
+      ? await this.featuresService.getDisabledForOrg(orgId)
+      : undefined;
 
     return {
       deviceId,
@@ -463,7 +468,7 @@ export class FleetService {
       pendingCommand,
       pendingCommands,
       pendingSms,
-      disabledFeatures,
+      ...(disabledFeatures ? { disabledFeatures } : {}),
     };
   }
 

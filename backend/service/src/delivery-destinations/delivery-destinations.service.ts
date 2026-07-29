@@ -1,6 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+
+/** Postgres unique_violation — an idempotent replay of a create, not a fault. */
+const PG_UNIQUE_VIOLATION = '23505';
 
 const DEST_COLS = sql`
   id, code, name, address,
@@ -110,22 +113,31 @@ export class DeliveryDestinationsService {
 
     const isDefault = dto.isDefault === true;
 
-    return await this.drizzleProvider.db.transaction(async (tx) => {
-      if (isDefault) {
-        const demoteConditions: ReturnType<typeof sql>[] = [
-          sql`is_default = TRUE`,
-          sql`deleted_at IS NULL`,
-        ];
-        if (orgId !== null) demoteConditions.push(sql`organization_id = ${orgId}::uuid`);
-        const demoteWhere = sql.join(demoteConditions, sql` AND `);
-        await tx.execute(
-          sql`UPDATE delivery_destinations SET is_default = FALSE, updated_at = NOW()
+    /*
+     * Same idempotent-replay contract as ParcelsService.create: the mobile
+     * geofence-maker queue retries this create when a response is lost, and the
+     * unique (code, organization_id) constraint is what makes the retry safe.
+     * A raw 23505 would escape as a non-HttpException and the global filter
+     * would turn it into a 500 the client cannot recognise as a replay, leaving
+     * an already-saved depot stuck as permanently `failed` in the queue.
+     */
+    try {
+      return await this.drizzleProvider.db.transaction(async (tx) => {
+        if (isDefault) {
+          const demoteConditions: ReturnType<typeof sql>[] = [
+            sql`is_default = TRUE`,
+            sql`deleted_at IS NULL`,
+          ];
+          if (orgId !== null) demoteConditions.push(sql`organization_id = ${orgId}::uuid`);
+          const demoteWhere = sql.join(demoteConditions, sql` AND `);
+          await tx.execute(
+            sql`UPDATE delivery_destinations SET is_default = FALSE, updated_at = NOW()
               WHERE ${demoteWhere}`,
-        );
-      }
+          );
+        }
 
-      const result = await tx.execute(
-        sql`INSERT INTO delivery_destinations (
+        const result = await tx.execute(
+          sql`INSERT INTO delivery_destinations (
               organization_id,
               code, name, address, coords,
               contact_name, contact_phone, contact_email, boundary, is_default,
@@ -145,9 +157,16 @@ export class DeliveryDestinationsService {
               ${(dto.confirmRadiusM as number) ?? 300}
             )
             RETURNING ${DEST_COLS}`,
-      );
-      return (result as unknown as Record<string, unknown>[])[0];
-    });
+        );
+        return (result as unknown as Record<string, unknown>[])[0];
+      });
+    } catch (err) {
+      const pgCode = (err as { code?: string } | undefined)?.code;
+      if (pgCode === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException('A delivery destination with this code already exists');
+      }
+      throw err;
+    }
   }
 
   async update(id: string, orgId: string | null, dto: Record<string, unknown>) {

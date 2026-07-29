@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, Check, Loader2, Users } from 'lucide-react';
 import {
@@ -60,20 +60,41 @@ export default function OrganizationFeaturesPage() {
       .catch(() => setOrgName(''));
   }, [orgId]);
 
-  // Hydrate local state once the server answers, matching the existing
-  // OrgRequestPortalSection pattern.
+  /*
+   * Hydrate from the server ONCE, then leave local state alone.
+   *
+   * Reacting to every change of `featuresQuery.data` silently destroys work:
+   * `refetchOnWindowFocus` is on globally with a 60s staleTime, so switching
+   * tabs and coming back overwrote every unsaved toggle AND reset `dirty` to
+   * false, so even the "unsaved changes" hint vanished. `hydratedRef` pins it
+   * to the first answer; a successful save re-arms it deliberately.
+   */
+  const hydratedRef = useRef(false);
   useEffect(() => {
-    if (featuresQuery.data) {
-      setOverrides(featuresQuery.data.featureOverrides ?? {});
-      setPlanLabel(featuresQuery.data.planLabel ?? null);
-    }
+    if (hydratedRef.current || !featuresQuery.data) return;
+    hydratedRef.current = true;
+    setOverrides(featuresQuery.data.featureOverrides ?? {});
+    setPlanLabel(featuresQuery.data.planLabel ?? null);
   }, [featuresQuery.data]);
 
   const saved0 = featuresQuery.data?.featureOverrides ?? {};
-  const dirty = useMemo(
-    () => JSON.stringify(normalize(saved0)) !== JSON.stringify(normalize(overrides)),
-    [saved0, overrides],
-  );
+  const savedPlanLabel = featuresQuery.data?.planLabel ?? null;
+
+  /** Keys whose stored value differs from what is on screen. */
+  const changedKeys = useMemo(() => {
+    const before = normalize(saved0);
+    const after = normalize(overrides);
+    const keys = new Set<FeatureKey>([
+      ...(Object.keys(before) as FeatureKey[]),
+      ...(Object.keys(after) as FeatureKey[]),
+    ]);
+    return [...keys].filter((k) => before[k] !== after[k]);
+  }, [saved0, overrides]);
+
+  // Includes planLabel: applying a preset that produces the same override set
+  // (Enterprise on an already-clean org) still changes the plan, and without
+  // this the Save button stayed disabled and that change was unreachable.
+  const dirty = changedKeys.length > 0 || planLabel !== savedPlanLabel;
 
   /** Same resolution the backend performs — the cascade preview. */
   const disabled = useMemo(() => new Set(resolveDisabledFeatures(overrides)), [overrides]);
@@ -101,7 +122,9 @@ export default function OrganizationFeaturesPage() {
 
   const applyPreset = (preset: FeaturePresetKey) => {
     setSaved(false);
-    setPlanLabel(t(`superAdmin.features.preset.${preset}`));
+    // Store the stable preset KEY, not its translation: the label is persisted
+    // and read back by other admins, whose UI language may differ.
+    setPlanLabel(preset);
     // Filtered to what is switchable today; the preset itself stays written
     // against the full registry and completes itself as modules land.
     setOverrides(applicablePreset(preset));
@@ -115,8 +138,12 @@ export default function OrganizationFeaturesPage() {
         onSuccess: () => {
           setSaved(true);
           setReason('');
+          // Deliberate re-arm: the invalidated query refetches and THAT answer
+          // becomes the new local baseline.
+          hydratedRef.current = false;
         },
-        onError: (err: unknown) => setError(err instanceof Error ? err.message : 'Save failed'),
+        onError: (err: unknown) =>
+          setError(err instanceof Error ? err.message : t('superAdmin.features.saveFailed')),
       },
     );
   };
@@ -157,7 +184,7 @@ export default function OrganizationFeaturesPage() {
           </h2>
           {planLabel ? (
             <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
-              {t('superAdmin.features.planLabel')}: {planLabel}
+              {t('superAdmin.features.planLabel')}: {renderPlanLabel(planLabel, t)}
             </span>
           ) : null}
         </div>
@@ -225,7 +252,7 @@ export default function OrganizationFeaturesPage() {
                         </span>
                         <span className="font-mono">{key}</span>
                       </div>
-                      {roleCount > 0 && overrides[key] === false ? (
+                      {roleCount > 0 && isOff ? (
                         <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
                           <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
                           {t('superAdmin.features.roleWarning', { count: roleCount })}
@@ -312,7 +339,7 @@ export default function OrganizationFeaturesPage() {
           />
           <span className="shrink-0 text-xs text-neutral-500">
             {dirty
-              ? t('superAdmin.features.pendingCount', { count: disabled.size })
+              ? t('superAdmin.features.pendingCount', { count: changedKeys.length })
               : saved
                 ? t('superAdmin.features.saved')
                 : t('superAdmin.features.noChanges')}
@@ -337,6 +364,16 @@ export default function OrganizationFeaturesPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * Preset labels are persisted as the preset KEY so they translate per viewer.
+ * Anything written before that change is free text and is shown as-is.
+ */
+function renderPlanLabel(label: string | null, t: (k: string) => string): string {
+  if (!label) return '';
+  if (label in FEATURE_PRESETS) return t(`superAdmin.features.preset.${label}`);
+  return label;
 }
 
 /** Sparse-canonical form, so "no change" compares reliably. */

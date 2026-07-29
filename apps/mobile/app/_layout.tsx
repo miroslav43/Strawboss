@@ -315,13 +315,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
        * Role changes, depot reassignments and feature flags could therefore sit
        * stale indefinitely.
        *
-       * Fire-and-forget on purpose: a failure here must be invisible. Offline
-       * cold boot keeps working exactly as before because readiness was already
-       * set above — nothing waits on this promise.
+       * Non-blocking: a failure here must be invisible, and offline cold boot
+       * keeps working exactly as before because readiness was already set
+       * above — nothing waits on this promise.
        */
+      let cancelled = false;
       void mobileApiClient
         .get<ProfileResponse>('/api/v1/profile')
         .then((profile) => {
+          if (cancelled) return;
           setProfile({
             role: profile.role,
             userId: profile.id,
@@ -335,12 +337,28 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             useFeaturesStore.getState().setDisabled(profile.features.disabled);
           }
         })
-        .catch(() => {
+        .catch((err: unknown) => {
+          if (cancelled) return;
           // Offline or a transient failure: keep the persisted values. Never
           // clear flags on a failed fetch — that would silently re-enable
           // everything the organization had switched off.
+          //
+          // Logged, not swallowed: a systemic background-refresh failure (say a
+          // backend bug affecting one org) is otherwise invisible in the field,
+          // and remote diagnosis depends entirely on the uploaded NDJSON logs.
+          mobileLogger.warn('Profile background refresh failed', {
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
-      return;
+      // NOT optional: logging out calls useAuthStore.clear(), which sets `role`
+      // to null and re-runs this effect. Without a cleanup, the in-flight
+      // request for the PREVIOUS operator stays alive and its .then() would
+      // write that operator's role, machine and depot over whoever logged in
+      // next. Nothing would repair it either — check-in refreshes feature
+      // flags, never identity.
+      return () => {
+        cancelled = true;
+      };
     }
 
     let cancelled = false;

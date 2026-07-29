@@ -571,9 +571,10 @@ function EditUserModal({
     e.preventDefault();
     const data: UpdateUserPayload = {
       fullName: form.fullName || undefined,
-      role: form.role,
       phone: form.phone || null,
     };
+    // Only when it actually changed — see accounts/page.tsx.
+    if (form.role !== user.role) data.role = form.role;
     if (form.username && form.username !== user.username) {
       data.username = form.username;
     }

@@ -500,7 +500,23 @@ export class ParcelsService {
 
     const cropType = (dto.cropType as string | null | undefined) ?? null;
 
-    const result = await this.drizzleProvider.db.execute(sql`
+    /*
+     * A unique-violation here means an idempotent REPLAY, not an error.
+     *
+     * The geofence-maker app derives a deterministic `code` from the local
+     * record id precisely so a retry lands on the same row, and its offline
+     * queue retries whenever a response is lost mid-flight. Without this
+     * catch, the raw Postgres 23505 escapes as a non-HttpException, and the
+     * global filter turns it into a 500 whose body the mobile client cannot
+     * recognise as a replay — so a field the surveyor already saved sat in the
+     * queue as permanently `failed`. Mapping it to 409 is what lets
+     * `isIdempotentReplay` drain the row.
+     *
+     * `update()` above already uses this pattern for check violations.
+     */
+    let result;
+    try {
+      result = await this.drizzleProvider.db.execute(sql`
       INSERT INTO parcels (
         organization_id,
         code, name, area_hectares,
@@ -535,6 +551,21 @@ export class ParcelsService {
         crop_type AS "cropType",
         created_at AS "createdAt", updated_at AS "updatedAt", deleted_at AS "deletedAt"
     `);
+    } catch (err) {
+      const pgCode = (err as { code?: string } | undefined)?.code;
+      if (pgCode === PG_UNIQUE_VIOLATION) {
+        this.winston.warn(
+          'Parcel create hit the unique (code, org) constraint — treating as replay',
+          {
+            context: 'ParcelsService',
+            code,
+            orgId,
+          },
+        );
+        throw new ConflictException('A parcel with this code already exists');
+      }
+      throw err;
+    }
     return result;
   }
 
