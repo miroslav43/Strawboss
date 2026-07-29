@@ -39,6 +39,7 @@ import type {
   ResolveDisputeDto,
   RegisterLoadDto,
 } from '@strawboss/types';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('trips')
 export class TripsController {
@@ -111,6 +112,7 @@ export class TripsController {
    * transition the trip to `loaded`. Idempotent on `idempotencyKey`.
    */
   @Post('register-load')
+  @RequireFeature('bales.load_register')
   @Roles('admin' as UserRole, 'loader_operator' as UserRole)
   registerLoad(
     @Body(new ZodValidationPipe(registerLoadSchema)) dto: RegisterLoadDto,
@@ -194,6 +196,7 @@ export class TripsController {
   }
 
   @Post(':id/confirm-depot-delivery')
+  @RequireFeature('depot.manned_confirm')
   @Roles('admin' as UserRole, 'depot_manager' as UserRole)
   confirmDepotDelivery(
     @Param('id') id: string,

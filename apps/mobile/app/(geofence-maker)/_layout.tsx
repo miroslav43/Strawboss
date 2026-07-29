@@ -10,8 +10,10 @@ import {
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
 import { useI18n } from '@/lib/i18n';
+import { featureTabOptions, useIsFeatureEnabled } from '@/stores/features-store';
 
 export default function GeofenceMakerTabLayout() {
+  const farmsEnabled = useIsFeatureEnabled('geo.farms');
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
 
@@ -41,6 +43,7 @@ export default function GeofenceMakerTabLayout() {
           <Tabs.Screen
             name="farms"
             options={{
+              ...featureTabOptions(farmsEnabled, 2),
               title: t('tabs.label.farms'),
               tabBarAccessibilityLabel: t('tabs.label.farms'),
               tabBarIcon: ({ color, size, focused }) => (

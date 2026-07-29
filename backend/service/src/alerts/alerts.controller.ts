@@ -14,12 +14,14 @@ import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createAlertSchema } from '@strawboss/validation';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('alerts')
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
 
   @Post()
+  @RequireFeature('analytics.alerts')
   @Roles('admin' as UserRole)
   create(
     @CurrentUser() user: RequestUser,
@@ -44,6 +46,7 @@ export class AlertsController {
   }
 
   @Patch(':id/acknowledge')
+  @RequireFeature('analytics.alerts')
   @Roles('admin' as UserRole, 'dispatcher' as UserRole)
   acknowledge(
     @Param('id') id: string,

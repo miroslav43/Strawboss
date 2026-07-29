@@ -17,6 +17,7 @@ import { useI18n } from '@/lib/i18n';
 import { featureTabOptions, useIsFeatureEnabled } from '@/stores/features-store';
 
 export default function LoaderTabLayout() {
+  const loadsEnabled = useIsFeatureEnabled('bales.load_register');
   const costsEnabled = useIsFeatureEnabled('costs.fuel');
   const {
     activeAlert,
@@ -59,6 +60,7 @@ export default function LoaderTabLayout() {
           <Tabs.Screen
             name="bales"
             options={{
+              ...featureTabOptions(loadsEnabled, 4),
               title: t('tabs.label.loads'),
               tabBarAccessibilityLabel: t('tabs.label.loads'),
               tabBarIcon: ({ color, size, focused }) => (

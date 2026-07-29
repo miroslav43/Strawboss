@@ -217,7 +217,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'mobile', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   geo: {
@@ -265,7 +265,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   messaging: {
@@ -302,7 +302,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['bales'],
     surfaces: ['mobile', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'bales.load_register': {
@@ -310,7 +310,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['bales'],
     surfaces: ['mobile', 'web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'bales.parcel_daily_status': {
@@ -318,7 +318,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['bales'],
     surfaces: ['mobile', 'web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'bales.adjustments': {
@@ -326,7 +326,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['bales'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'bales.reconciliation': {
@@ -335,7 +335,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['bales'],
     surfaces: ['jobs', 'api'],
     gatesJobs: ['reconciliation'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
 
@@ -345,7 +345,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo'],
     surfaces: ['web', 'mobile', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'geo.farms': {
@@ -353,7 +353,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo'],
     surfaces: ['web', 'mobile', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'geo.kml_import': {
@@ -361,7 +361,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo.parcels'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'geo.draw_mobile': {
@@ -377,7 +377,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'geo.auto_transitions': {
@@ -395,7 +395,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['depot'],
     surfaces: ['web', 'mobile', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   /**
@@ -411,7 +411,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['depot.destinations'],
     surfaces: ['mobile', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'depot.weighing': {
@@ -471,7 +471,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['documents'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'documents.cmr_generate': {
@@ -480,7 +480,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['documents'],
     surfaces: ['web', 'api', 'jobs'],
     gatesJobs: ['cmr-generation'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'documents.cmr_scan': {
@@ -488,7 +488,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['documents'],
     surfaces: ['mobile', 'web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'documents.public_sign': {
@@ -496,7 +496,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['documents'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'documents.aviz': {
@@ -553,7 +553,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['portals'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'portals.public_request': {
@@ -578,7 +578,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['portals'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
 
@@ -604,7 +604,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['messaging'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'messaging.broadcast': {
@@ -612,7 +612,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['messaging'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
 
@@ -622,7 +622,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['analytics'],
     surfaces: ['web', 'api'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   /** ⚠️ Per-operator tracking — some organizations must contractually not have it. */
@@ -648,7 +648,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['analytics'],
     surfaces: ['web', 'mobile', 'api', 'jobs'],
     gatesJobs: ['alert-evaluation', 'truck-idle-check'],
-    wired: false,
+    wired: true,
     uiSwitch: true,
   },
   'analytics.fraud': {

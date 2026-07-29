@@ -90,7 +90,7 @@ function EntryCard({ entry, onRetry, retrying, t }: EntryCardProps) {
               it gets a plain explanation instead of a raw server string. The
               record stays queued and sends intact if the flag is switched back
               on — nothing they entered is thrown away. */}
-          {entry.last_error.startsWith(FEATURE_DISABLED_ERROR)
+          {entry.last_error.includes(FEATURE_DISABLED_ERROR)
             ? t('syncDetails.featureDisabled')
             : entry.last_error}
         </Text>

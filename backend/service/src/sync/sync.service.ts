@@ -2,7 +2,16 @@ import { Injectable, BadRequestException, ForbiddenException, Logger } from '@ne
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
-import type { SyncMutation, SyncResult, SyncResponse, SyncTombstone } from '@strawboss/types';
+import type {
+  SyncMutation,
+  SyncResult,
+  SyncResponse,
+  SyncTombstone,
+  FeatureKey,
+} from '@strawboss/types';
+import { isFeatureEnabled } from '@strawboss/types';
+import { FeaturesService } from '../features/features.service';
+import { FEATURE_DISABLED_CODE } from '../features/feature-disabled.exception';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -11,6 +20,21 @@ function isUuid(value: unknown): value is string {
 }
 
 /** Tables that support sync (have a sync_version column). */
+/**
+ * Which feature governs each syncable table's WRITES.
+ *
+ * Absent = CORE and never gated. `trips`, `task_assignments` and `machines` are
+ * the dispatch spine — gating any of them would strand work with no in-app way
+ * out, which is exactly what a product flag must never be able to do.
+ */
+const SYNC_TABLE_FEATURES: Record<string, FeatureKey> = {
+  bale_productions: 'bales.production',
+  bale_loads: 'bales.load_register',
+  fuel_logs: 'costs.fuel',
+  consumable_logs: 'costs.consumables',
+  parcels: 'geo.parcels',
+};
+
 const SYNCABLE_TABLES = new Set([
   'trips',
   'bale_loads',
@@ -404,7 +428,10 @@ function validateColumnName(table: string, column: string): void {
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
 
-  constructor(private readonly drizzleProvider: DrizzleProvider) {}
+  constructor(
+    private readonly drizzleProvider: DrizzleProvider,
+    private readonly features: FeaturesService,
+  ) {}
 
   /**
    * For every FK column declared in FK_ORG_CHECKS for `table` that is present
@@ -567,6 +594,37 @@ export class SyncService {
   ): Promise<SyncResult> {
     if (!SYNCABLE_TABLES.has(mutation.table)) {
       throw new BadRequestException(`Table '${mutation.table}' is not syncable`);
+    }
+
+    /*
+     * Per-mutation feature gate.
+     *
+     * A blanket `@RequireFeature` on the controller cannot work: one push
+     * carries many mutation types, and rejecting the whole batch because one
+     * row belongs to a disabled module would strand every unrelated record in
+     * it.
+     *
+     * RETURN a failed result rather than throwing. The caller does catch and
+     * convert throws, but returning keeps the error text exact so the phone can
+     * recognise it — and it keeps this out of the warn log, since a disabled
+     * feature is a configuration decision, not a fault.
+     *
+     * Nothing is lost: the row parks at `failed` in the device's queue (already
+     * terminal — `dequeue()` selects only 'pending'), stays visible with a human
+     * explanation, keeps its payload, and re-sends intact if the flag comes
+     * back. `trips`, `task_assignments` and `machines` are deliberately absent
+     * from the map — they are CORE.
+     */
+    const gated = SYNC_TABLE_FEATURES[mutation.table];
+    if (gated && orgId && !isFeatureEnabled(await this.features.getDisabledForOrg(orgId), gated)) {
+      return {
+        table: mutation.table,
+        recordId: mutation.recordId,
+        status: 'failed',
+        serverVersion: 0,
+        data: null,
+        error: `${FEATURE_DISABLED_CODE}: ${gated}`,
+      };
     }
 
     // The server schema uses `uuid` primary keys; reject early with a clear
@@ -770,6 +828,10 @@ export class SyncService {
     supportsTombstones = false,
     callerRole?: string,
   ): Promise<SyncResponse> {
+    // Resolved once per pull, not per table — see the note on extraSelect below.
+    const mannedConfirmEnabled = orgId
+      ? isFeatureEnabled(await this.features.getDisabledForOrg(orgId), 'depot.manned_confirm')
+      : true;
     // The "no org filter" branch below is reachable ONLY for an explicit
     // super_admin caller. A missing/null orgId for anyone else — including a
     // forged or stale identity that slipped past the guards — is rejected
@@ -849,15 +911,19 @@ export class SyncService {
       // depot_manager assigned? Drives the driver app's read-only delivery view.
       // It is NOT a stored column, so it is appended as an expression here rather
       // than listed in PULL_COLUMNS (the mobile trips schema mirrors it).
+      // ANDed with the feature flag for the same liveness reason as
+      // TripsService.findById: the driver's app hides its own confirm button
+      // when this is true, so a disabled `depot.manned_confirm` must hand the
+      // button back on the very next pull instead of stranding the trip.
       const extraSelect =
         table === 'trips'
-          ? sql`, EXISTS(
+          ? sql`, (EXISTS(
               SELECT 1 FROM users du
               WHERE du.assigned_delivery_destination_id = "trips".destination_id
                 AND du.organization_id = "trips".organization_id
                 AND du.role = 'depot_manager'::user_role
                 AND du.deleted_at IS NULL
-            ) AS destination_has_operator`
+            ) AND ${mannedConfirmEnabled}) AS destination_has_operator`
           : sql``;
       // Delta by version, EXCEPT for tables where an out-of-order commit can
       // strand a row behind the cursor forever: sync_version is stamped by a

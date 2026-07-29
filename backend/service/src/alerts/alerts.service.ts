@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import type { AlertDraft } from '@strawboss/domain';
+import { isFeatureEnabled } from '@strawboss/types';
+import { FeaturesService } from '../features/features.service';
 
 /** All alert columns aliased to camelCase so the API is consistent. */
 const ALERT_COLS = sql`
@@ -26,7 +28,10 @@ const ALERT_COLS = sql`
 
 @Injectable()
 export class AlertsService {
-  constructor(private readonly drizzleProvider: DrizzleProvider) {}
+  constructor(
+    private readonly drizzleProvider: DrizzleProvider,
+    private readonly features: FeaturesService,
+  ) {}
 
   async list(
     orgId: string | null,
@@ -289,6 +294,18 @@ export class AlertsService {
   }
 
   async createFromDraft(draft: AlertDraft, orgId: string) {
+    /*
+     * The single chokepoint for every job-generated alert (alert-evaluation,
+     * reconciliation, truck-idle), so gating here covers all of them at once
+     * instead of patching each processor.
+     *
+     * Returns quietly instead of throwing: these callers run OUTSIDE any
+     * request, inside BullMQ loops that iterate every org. An exception would
+     * abort the whole run and starve the organizations that still want alerts.
+     */
+    if (!isFeatureEnabled(await this.features.getDisabledForOrg(orgId), 'analytics.alerts')) {
+      return [];
+    }
     // Skip insert if an unacknowledged alert with the same (trip_id, category)
     // already exists — the evaluation job runs every 15 minutes and would
     // otherwise spam duplicates for the same persistent anomaly.

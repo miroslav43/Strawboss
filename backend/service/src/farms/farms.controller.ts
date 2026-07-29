@@ -14,6 +14,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createFarmSchema, updateFarmSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('farms')
 export class FarmsController {
@@ -30,6 +31,7 @@ export class FarmsController {
   }
 
   @Post()
+  @RequireFeature('geo.farms')
   @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   create(
     @CurrentUser() user: RequestUser,
@@ -39,6 +41,7 @@ export class FarmsController {
   }
 
   @Patch(':id')
+  @RequireFeature('geo.farms')
   @Roles('admin' as UserRole, 'geofence_maker' as UserRole)
   update(
     @Param('id') id: string,
@@ -49,6 +52,7 @@ export class FarmsController {
   }
 
   @Delete(':id')
+  @RequireFeature('geo.farms')
   @Roles('admin' as UserRole)
   softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
     return this.farmsService.softDelete(id, user.organizationId);

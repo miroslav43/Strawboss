@@ -12,6 +12,7 @@ import {
   broadcastNotificationSchema,
   loaderRecallResponseSchema,
 } from '@strawboss/validation';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 const registerTokenSchema = z.object({
   token: z.string().min(1),
@@ -99,6 +100,7 @@ export class NotificationsController {
   }
 
   @Post('broadcast')
+  @RequireFeature('messaging.broadcast')
   @Roles('admin' as UserRole)
   async broadcast(@CurrentUser() user: RequestUser, @Body() body: unknown) {
     const parsed = broadcastNotificationSchema.safeParse(body);

@@ -167,11 +167,55 @@ check('presets reference only real keys, and enterprise is empty', () => {
 });
 
 /*
- * Coverage, not correctness: enumerate every write route in the backend and
- * report the ones that carry neither @RequireFeature nor a CORE exemption.
- * Review discipline is not what keeps the gate complete — this list is.
+ * Enumerate every write route in the backend and require that each one is
+ * either decorated with @RequireFeature or listed below with a reason.
+ *
+ * This check, not review discipline, is what keeps the gate complete: the day
+ * someone adds an ungated write endpoint, this fails and they have to make an
+ * explicit choice instead of silently shipping a hole.
  */
 console.log('\nBackend write-route coverage\n');
+
+/**
+ * Controllers whose write routes are deliberately NOT decorated.
+ *
+ * Two distinct reasons, both legitimate:
+ *   CORE       — switching it off would brick an organization or strand work.
+ *   IN-SERVICE — a @Public() route, so FeaturesGuard never sees a request.user;
+ *                the org is only knowable once the service resolves it from a
+ *                slug or a one-time token, and the check lives there.
+ */
+const EXEMPT = {
+  'trips/trips.controller.ts':
+    'CORE — the trip state machine. Every transition is an exit edge; gating one strands trips.',
+  'task-assignments/task-assignments.controller.ts':
+    'CORE — the dispatch spine. No assignments means no work can reach anyone.',
+  'profile/profile.controller.ts': 'CORE — identity, heartbeat, password, specimen.',
+  'sync/sync.controller.ts':
+    'IN-SERVICE — gated per mutation in SyncService.applyMutation; one push carries many types.',
+  'admin-users/admin-users.controller.ts':
+    'IN-SERVICE — role toggles enforced in AdminUsersService.assertRoleEnabled (creation only).',
+  'admin-users/super-admin-users.controller.ts': 'CORE — super-admin org management.',
+  'trip-requests/public-portal.controller.ts':
+    'IN-SERVICE — @Public(); org resolved from slug/token inside TripRequestsService / TripsService.',
+  'trip-requests/beneficiary-records.controller.ts':
+    'IN-SERVICE — all 12 routes funnel through BeneficiaryPinVerifier.verify.',
+  'notifications/notifications.controller.ts':
+    'CORE — push-token registration and the geofence confirm flows; gating them can trap an operator mid-modal.',
+  'machines/machines.controller.ts':
+    'CORE — you cannot assign work to nothing. The lever here is a quota, never a boolean.',
+  'organizations/organizations.controller.ts': 'CORE — org management itself.',
+  'uploads/uploads.controller.ts': 'CORE — every photo, receipt, signature and CMR page.',
+  'location/location.controller.ts': 'CORE — GPS ingestion feeds presence, geofence and km reports.',
+  'geofence/geofence.controller.ts': 'CORE — enter/exit detection drives the whole field workflow.',
+  'mobile-logs/mobile-logs.controller.ts': 'CORE — diagnostics; must survive any flag state.',
+  'fleet/fleet.controller.ts': 'CORE — device check-in; also the flag delivery channel itself.',
+  'fleet/fleet-admin.controller.ts':
+    'CORE — super-admin global fleet/OTA console; app_settings has no org dimension.',
+  'features/super-admin-features.controller.ts':
+    'CORE — the flag console. Gating it on a flag would be a lockout.',
+  'dev/dev.controller.ts': 'Dev-only module, not registered in production.',
+};
 
 const CONTROLLER_ROOT = join(ROOT, 'backend/service/src');
 
@@ -215,14 +259,31 @@ for (const file of controllers) {
   }
 }
 
+const CONTROLLER_PREFIX = 'backend/service/src/';
+const unexplained = ungated.filter((u) => !EXEMPT[u.file.slice(CONTROLLER_PREFIX.length)]);
+const exemptCount = ungated.length - unexplained.length;
+
 console.log(`  ${totalWrites} write routes across ${controllers.length} controllers`);
-console.log(`  ${totalWrites - ungated.length} gated, ${ungated.length} ungated\n`);
-console.log('  Ungated (each must be a deliberate CORE exemption — see features.ts header):');
+console.log(
+  `  ${totalWrites - ungated.length} gated by decorator, ${exemptCount} exempt, ${unexplained.length} unexplained\n`,
+);
+
 const byFile = new Map();
 for (const u of ungated) byFile.set(u.file, (byFile.get(u.file) ?? 0) + 1);
 for (const [file, count] of [...byFile].sort((a, b) => b[1] - a[1])) {
-  console.log(`    ${String(count).padStart(3)}  ${file}`);
+  const reason = EXEMPT[file.slice(CONTROLLER_PREFIX.length)];
+  console.log(`    ${String(count).padStart(3)}  ${file.slice(CONTROLLER_PREFIX.length)}`);
+  if (reason) console.log(`         ${reason}`);
 }
+
+check('every write route is gated or explicitly exempt', () => {
+  assert(
+    unexplained.length === 0,
+    'ungated with no recorded reason — decorate it, or add it to EXEMPT with why:\n' +
+      unexplained.map((u) => `          ${u.file}:${u.line}  ${u.route}`).join('\n'),
+  );
+  return `${totalWrites} routes`;
+});
 
 console.log(
   `\n${failures === 0 ? 'PASS' : 'FAIL'} — ${checks - failures}/${checks} invariants held\n`,
