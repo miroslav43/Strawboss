@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, Check, Loader2, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronDown, Loader2, Undo2 } from 'lucide-react';
 import {
   FEATURE_KEYS,
   FEATURE_MODULES,
@@ -19,9 +19,19 @@ import {
 import { useOrgFeatures, useUpdateOrgFeatures } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/Switch';
 
 /**
  * Super-admin console for one organization's feature toggles.
+ *
+ * ── WHAT THE PAGE IS FOR ──────────────────────────────────────────────────
+ *
+ * An operator arrives with two questions: what can this customer use, and if I
+ * flip this, whose day do I ruin? So the page leads with the configuration as a
+ * summary, groups the switches by module with per-module counts (you can audit
+ * a customer without expanding anything), and refuses to let a change be saved
+ * before showing exactly what it will do.
  *
  * ── WHAT IS RENDERED ──────────────────────────────────────────────────────
  *
@@ -51,6 +61,7 @@ export default function OrganizationFeaturesPage() {
   const [reason, setReason] = useState('');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
@@ -107,6 +118,19 @@ export default function OrganizationFeaturesPage() {
     (k) => FEATURES[k].uiSwitch && !FEATURES[k].wired,
   ).length;
 
+  const offCount = switchable.filter((k) => disabled.has(k)).length;
+  const activeUsersByRole = featuresQuery.data?.activeUsersByRole ?? {};
+
+  /** Active accounts that a pending role change would stop anyone adding to. */
+  const affectedAccounts = useMemo(
+    () =>
+      changedKeys
+        .filter((k) => k.startsWith('roles.') && overrides[k] === false)
+        .map((k) => ({ key: k, count: activeUsersByRole[k.slice('roles.'.length)] ?? 0 }))
+        .filter((r) => r.count > 0),
+    [changedKeys, overrides, activeUsersByRole],
+  );
+
   const toggle = (key: FeatureKey) => {
     setSaved(false);
     setOverrides((prev) => {
@@ -128,6 +152,13 @@ export default function OrganizationFeaturesPage() {
     // Filtered to what is switchable today; the preset itself stays written
     // against the full registry and completes itself as modules land.
     setOverrides(applicablePreset(preset));
+  };
+
+  const discard = () => {
+    setOverrides(saved0);
+    setPlanLabel(savedPlanLabel);
+    setSaved(false);
+    setError(null);
   };
 
   const save = () => {
@@ -157,11 +188,12 @@ export default function OrganizationFeaturesPage() {
     );
   }
 
-  const activeUsersByRole = featuresQuery.data?.activeUsersByRole ?? {};
+  const changes = featuresQuery.data?.changes ?? [];
 
   return (
-    <div className="flex flex-col gap-6 pb-24">
-      <div>
+    <div className={cn('flex flex-col gap-5', dirty ? 'pb-56' : 'pb-10')}>
+      {/* ── Header: the configuration stated as a fact ─────────────────── */}
+      <header>
         <a
           href="/super-admin/organizations"
           className="mb-2 inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-800"
@@ -169,107 +201,144 @@ export default function OrganizationFeaturesPage() {
           <ArrowLeft className="h-3.5 w-3.5" />
           {t('superAdmin.features.back')}
         </a>
-        <h1 className="text-xl font-bold text-neutral-800">
-          {t('superAdmin.features.title')}
-          {orgName ? <span className="text-neutral-400"> — {orgName}</span> : null}
-        </h1>
-        <p className="mt-0.5 text-sm text-neutral-500">{t('superAdmin.features.subtitle')}</p>
-      </div>
-
-      {/* Presets */}
-      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <div className="mb-1 flex items-baseline gap-3">
-          <h2 className="text-sm font-semibold text-neutral-800">
-            {t('superAdmin.features.presets')}
-          </h2>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-xl font-bold text-neutral-800">
+            {orgName || t('superAdmin.features.title')}
+          </h1>
           {planLabel ? (
-            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
-              {t('superAdmin.features.planLabel')}: {renderPlanLabel(planLabel, t)}
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+              {renderPlanLabel(planLabel, t)}
             </span>
           ) : null}
         </div>
-        <p className="mb-3 text-xs text-neutral-500">{t('superAdmin.features.presetHint')}</p>
-        <div className="flex flex-wrap gap-2">
-          {(Object.keys(FEATURE_PRESETS) as FeaturePresetKey[]).map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => applyPreset(preset)}
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50"
-            >
-              {t(`superAdmin.features.preset.${preset}`)}
-            </button>
-          ))}
+        <p className="mt-1 text-sm text-neutral-500">
+          {offCount === 0
+            ? t('superAdmin.features.summaryAllOn', { total: switchable.length })
+            : t('superAdmin.features.summary', {
+                on: switchable.length - offCount,
+                total: switchable.length,
+                off: offCount,
+              })}
+        </p>
+      </header>
+
+      {/* ── Presets ────────────────────────────────────────────────────── */}
+      <section className="rounded-xl border border-neutral-200 bg-white px-5 py-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-neutral-800">
+              {t('superAdmin.features.presets')}
+            </h2>
+            <p className="text-xs text-neutral-500">{t('superAdmin.features.presetHint')}</p>
+          </div>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {(Object.keys(FEATURE_PRESETS) as FeaturePresetKey[]).map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => applyPreset(preset)}
+                className={cn(
+                  'rounded-lg border px-3 py-1.5 text-sm transition-colors',
+                  planLabel === preset
+                    ? 'border-primary bg-primary/5 font-medium text-primary'
+                    : 'border-neutral-200 text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50',
+                )}
+              >
+                {t(`superAdmin.features.preset.${preset}`)}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Modules */}
-      <p className="-mb-2 text-xs text-neutral-500">{t('superAdmin.features.cascadeNote')}</p>
+      {/* ── Modules ────────────────────────────────────────────────────── */}
       {FEATURE_MODULES.map((mod) => {
         const rows = switchable.filter((k) => FEATURES[k].module === mod);
         if (rows.length === 0) return null;
+        const modOff = rows.filter((k) => disabled.has(k)).length;
+
         return (
           <section
             key={mod}
             className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
           >
-            <header className="border-b border-neutral-100 bg-neutral-50 px-5 py-3">
+            <header className="flex items-center gap-3 border-b border-neutral-100 bg-neutral-50 px-5 py-2.5">
               <h2 className="text-sm font-semibold text-neutral-800">{t(featureLabelKey(mod))}</h2>
+              {/* Tabular figures so these counts line up down the page and can
+                  be compared without reading each one. */}
+              <span
+                className={cn(
+                  'ml-auto rounded-full px-2 py-0.5 text-xs tabular-nums',
+                  modOff === 0
+                    ? 'bg-primary/10 text-primary'
+                    : modOff === rows.length
+                      ? 'bg-neutral-200 text-neutral-600'
+                      : 'bg-warning/10 text-warning',
+                )}
+              >
+                {modOff === 0
+                  ? t('superAdmin.features.moduleAllOn')
+                  : t('superAdmin.features.moduleOff', { off: modOff, total: rows.length })}
+              </span>
             </header>
+
             <div className="divide-y divide-neutral-100">
               {rows.map((key) => {
                 const def = FEATURES[key];
                 const isOff = disabled.has(key);
-                // Off because a dependency is off, not by its own override:
-                // show it dark but make clear the switch is not the lever.
+                // Off because a dependency is off, not by its own override: the
+                // switch is not the lever here, so say where the decision lives.
                 const byCascade = isOff && overrides[key] !== false;
                 const roleCount = key.startsWith('roles.')
                   ? (activeUsersByRole[key.slice('roles.'.length)] ?? 0)
                   : 0;
+                const changed = changedKeys.includes(key);
+
                 return (
-                  <div key={key} className="flex items-start gap-4 px-5 py-3">
+                  <div
+                    key={key}
+                    className={cn(
+                      'flex items-center gap-4 px-5 py-2.5 transition-colors',
+                      // A quiet left rule marks rows this save will change —
+                      // findable by eye when scrolling back over a long page.
+                      changed && 'border-l-2 border-l-primary bg-primary/[0.03] pl-[18px]',
+                    )}
+                  >
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={
-                            isOff ? 'text-sm text-neutral-400' : 'text-sm text-neutral-800'
-                          }
-                        >
-                          {t(featureLabelKey(key))}
-                        </span>
-                        {byCascade ? (
-                          <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500">
-                            {t(featureLabelKey(def.module))}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-                        <span>
-                          {t('superAdmin.features.affects')}:{' '}
-                          {def.surfaces
-                            .map((s) => t(`superAdmin.features.surface.${s}`))
-                            .join(', ')}
-                        </span>
-                        <span className="font-mono">{key}</span>
-                      </div>
-                      {roleCount > 0 && isOff ? (
-                        <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                          <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
-                          {t('superAdmin.features.roleWarning', { count: roleCount })}
-                        </p>
-                      ) : roleCount > 0 ? (
-                        <p className="mt-1 flex items-center gap-1 text-[11px] text-neutral-400">
-                          <Users className="h-3 w-3" />
-                          {roleCount}
-                        </p>
-                      ) : null}
+                      <p className={cn('text-sm', isOff ? 'text-neutral-400' : 'text-neutral-800')}>
+                        {t(featureLabelKey(key))}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-neutral-400">
+                        {byCascade
+                          ? t('superAdmin.features.viaModule', {
+                              module: t(featureLabelKey(def.module)),
+                            })
+                          : def.surfaces
+                              .map((s) => t(`superAdmin.features.surface.${s}`))
+                              .join(' · ')}
+                      </p>
                     </div>
+
+                    {roleCount > 0 ? (
+                      // Amber means exactly one thing on this page: live
+                      // accounts are involved. Always rendered, so nothing
+                      // shifts when the switch flips.
+                      <span
+                        className={cn(
+                          'shrink-0 rounded px-1.5 py-0.5 text-[11px] tabular-nums',
+                          isOff ? 'bg-warning/10 text-warning' : 'text-neutral-400',
+                        )}
+                        title={t('superAdmin.features.roleWarning', { count: roleCount })}
+                      >
+                        {t('superAdmin.features.accounts', { count: roleCount })}
+                      </span>
+                    ) : null}
+
                     <Switch
-                      on={!isOff}
+                      checked={!isOff}
                       disabled={byCascade}
-                      onToggle={() => toggle(key)}
-                      labelOn={t('superAdmin.features.on')}
-                      labelOff={t('superAdmin.features.off')}
+                      onChange={() => toggle(key)}
+                      label={t(featureLabelKey(key))}
                     />
                   </div>
                 );
@@ -280,88 +349,153 @@ export default function OrganizationFeaturesPage() {
       })}
 
       {unwiredCount > 0 ? (
-        <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-5 py-4">
-          <p className="text-sm font-medium text-neutral-500">
-            {t('superAdmin.features.notWired')} ({unwiredCount})
-          </p>
-          <p className="mt-0.5 text-xs text-neutral-400">{t('superAdmin.features.notWiredHint')}</p>
-        </div>
+        <p className="text-xs text-neutral-400">
+          {t('superAdmin.features.notWired')} ({unwiredCount}) —{' '}
+          {t('superAdmin.features.notWiredHint')}
+        </p>
       ) : null}
 
-      {/* History */}
+      {/* ── History, collapsed by default ──────────────────────────────── */}
       <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-        <header className="border-b border-neutral-100 bg-neutral-50 px-5 py-3">
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((v) => !v)}
+          className="flex w-full items-center gap-2 px-5 py-3 text-left hover:bg-neutral-50"
+        >
           <h2 className="text-sm font-semibold text-neutral-800">
             {t('superAdmin.features.history')}
           </h2>
-        </header>
-        {(featuresQuery.data?.changes ?? []).length === 0 ? (
-          <p className="px-5 py-4 text-sm text-neutral-400">
-            {t('superAdmin.features.historyEmpty')}
-          </p>
-        ) : (
-          <ul className="divide-y divide-neutral-100">
-            {(featuresQuery.data?.changes ?? []).map((c, i) => (
-              <li key={`${c.featureKey}-${c.createdAt}-${i}`} className="px-5 py-2.5 text-sm">
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="font-mono text-xs text-neutral-600">{c.featureKey}</span>
-                  <span
-                    className={
-                      c.newEnabled
-                        ? 'rounded bg-green-50 px-1.5 text-xs text-green-700'
-                        : 'rounded bg-red-50 px-1.5 text-xs text-red-700'
-                    }
-                  >
-                    {c.newEnabled ? t('superAdmin.features.on') : t('superAdmin.features.off')}
-                  </span>
-                  <span className="text-xs text-neutral-400">
-                    {new Date(c.createdAt).toLocaleString()} {t('superAdmin.features.historyBy')}{' '}
-                    {c.actorName ?? c.actorRole ?? '—'}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-neutral-500">{c.reason}</p>
-              </li>
-            ))}
-          </ul>
-        )}
+          <span className="text-xs tabular-nums text-neutral-400">{changes.length}</span>
+          <ChevronDown
+            className={cn(
+              'ml-auto h-4 w-4 text-neutral-400 transition-transform',
+              historyOpen && 'rotate-180',
+            )}
+          />
+        </button>
+        {historyOpen ? (
+          changes.length === 0 ? (
+            <p className="border-t border-neutral-100 px-5 py-4 text-sm text-neutral-400">
+              {t('superAdmin.features.historyEmpty')}
+            </p>
+          ) : (
+            <ul className="divide-y divide-neutral-100 border-t border-neutral-100">
+              {changes.map((c, i) => (
+                <li key={`${c.featureKey}-${c.createdAt}-${i}`} className="px-5 py-2.5">
+                  <div className="flex flex-wrap items-baseline gap-2 text-sm">
+                    <span className="text-neutral-700">{featureLabel(c.featureKey, t)}</span>
+                    <span
+                      className={cn(
+                        'rounded px-1.5 text-xs',
+                        c.newEnabled
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-neutral-200 text-neutral-600',
+                      )}
+                    >
+                      {c.newEnabled ? t('superAdmin.features.on') : t('superAdmin.features.off')}
+                    </span>
+                    <span className="text-xs text-neutral-400">
+                      {new Date(c.createdAt).toLocaleString()} {t('superAdmin.features.historyBy')}{' '}
+                      {c.actorName ?? c.actorRole ?? '—'}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-neutral-500">{c.reason}</p>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
       </section>
 
-      {/* Sticky save bar — a reason is mandatory, since `organizations` carries
-          no audit trigger and this is a cross-tenant switch. */}
-      <div className="fixed inset-x-0 bottom-0 border-t border-neutral-200 bg-white/95 px-6 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3">
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder={t('superAdmin.features.reasonPlaceholder')}
-            aria-label={t('superAdmin.features.reason')}
-            className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none"
-          />
-          <span className="shrink-0 text-xs text-neutral-500">
-            {dirty
-              ? t('superAdmin.features.pendingCount', { count: changedKeys.length })
-              : saved
-                ? t('superAdmin.features.saved')
-                : t('superAdmin.features.noChanges')}
-          </span>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!dirty || reason.trim().length < 3 || updateFeatures.isPending}
-            className="flex shrink-0 items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {updateFeatures.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : saved ? (
-              <Check className="h-4 w-4" />
+      {/*
+        ── The commit bar ───────────────────────────────────────────────────
+        Deliberately a DIFF, not a counter. This writes a cross-tenant kill
+        switch whose only trace is an audit row, so the operator reads exactly
+        what they are about to do — and names why — before the button unlocks.
+        Hidden entirely when nothing has changed, so the page is calm at rest.
+      */}
+      {dirty ? (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-200 bg-white/95 backdrop-blur">
+          <div className="mx-auto max-w-5xl px-6 py-3">
+            <div className="mb-2 flex items-start gap-2">
+              <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                {t('superAdmin.features.changeSummary')}
+              </p>
+              <div className="flex min-w-0 flex-wrap gap-1.5">
+                {changedKeys.length === 0 ? (
+                  <span className="text-xs text-neutral-500">
+                    {t('superAdmin.features.planOnlyChange')}
+                  </span>
+                ) : (
+                  changedKeys.map((k) => (
+                    <span
+                      key={k}
+                      className={cn(
+                        'rounded px-1.5 py-0.5 text-xs',
+                        overrides[k] === false
+                          ? 'bg-neutral-200 text-neutral-700'
+                          : 'bg-primary/10 text-primary',
+                      )}
+                      title={k}
+                    >
+                      {t(featureLabelKey(k))}{' '}
+                      {overrides[k] === false
+                        ? '→ ' + t('superAdmin.features.off')
+                        : '→ ' + t('superAdmin.features.on')}
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {affectedAccounts.length > 0 ? (
+              <p className="mb-2 flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1 text-xs text-warning">
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {affectedAccounts
+                    .map((a) => t('superAdmin.features.roleWarning', { count: a.count }))
+                    .join(' ')}
+                </span>
+              </p>
             ) : null}
-            {updateFeatures.isPending
-              ? t('superAdmin.features.saving')
-              : t('superAdmin.features.save')}
-          </button>
+
+            <div className="flex items-center gap-3">
+              <input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder={t('superAdmin.features.reasonPlaceholder')}
+                aria-label={t('superAdmin.features.reason')}
+                className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+              />
+              <button
+                type="button"
+                onClick={discard}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
+              >
+                <Undo2 className="h-4 w-4" />
+                {t('superAdmin.features.discard')}
+              </button>
+              <button
+                type="button"
+                onClick={save}
+                disabled={reason.trim().length < 3 || updateFeatures.isPending}
+                className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {updateFeatures.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {updateFeatures.isPending
+                  ? t('superAdmin.features.saving')
+                  : t('superAdmin.features.save')}
+              </button>
+            </div>
+            {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
+          </div>
         </div>
-        {error ? <p className="mx-auto mt-2 max-w-5xl text-xs text-red-600">{error}</p> : null}
-      </div>
+      ) : saved ? (
+        <p className="flex items-center gap-1.5 text-sm text-primary">
+          <Check className="h-4 w-4" />
+          {t('superAdmin.features.saved')}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -376,6 +510,11 @@ function renderPlanLabel(label: string | null, t: (k: string) => string): string
   return label;
 }
 
+/** History rows store the raw key; show the human label when we still have one. */
+function featureLabel(key: string, t: (k: string) => string): string {
+  return key in FEATURES ? t(featureLabelKey(key as FeatureKey)) : key;
+}
+
 /** Sparse-canonical form, so "no change" compares reliably. */
 function normalize(overrides: FeatureOverrides): FeatureOverrides {
   const out: FeatureOverrides = {};
@@ -383,41 +522,4 @@ function normalize(overrides: FeatureOverrides): FeatureOverrides {
     if (overrides[key] === false) out[key] = false;
   }
   return out;
-}
-
-function Switch({
-  on,
-  disabled,
-  onToggle,
-  labelOn,
-  labelOff,
-}: {
-  on: boolean;
-  disabled?: boolean;
-  onToggle: () => void;
-  labelOn: string;
-  labelOff: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={on ? labelOn : labelOff}
-      disabled={disabled}
-      onClick={onToggle}
-      className={[
-        'relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors',
-        on ? 'bg-green-600' : 'bg-neutral-300',
-        disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
-      ].join(' ')}
-    >
-      <span
-        className={[
-          'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-          on ? 'translate-x-[22px]' : 'translate-x-0.5',
-        ].join(' ')}
-      />
-    </button>
-  );
 }

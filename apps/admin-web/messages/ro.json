@@ -1975,7 +1975,6 @@
     },
     "features": {
       "title": "Funcționalități",
-      "subtitle": "Ce e pornit pentru această organizație",
       "back": "Înapoi la organizații",
       "loading": "Se încarcă…",
       "presets": "Pachete",
@@ -1991,11 +1990,7 @@
       "save": "Salvează",
       "saving": "Se salvează…",
       "saved": "Salvat",
-      "noChanges": "Nicio modificare",
-      "pendingCount": "{{count}} modificări nesalvate",
       "willDisable": "Va dezactiva",
-      "cascadeNote": "Stingerea unui modul stinge automat tot ce depinde de el.",
-      "affects": "Afectează",
       "surface": {
         "web": "web",
         "mobile": "mobil",
@@ -2010,8 +2005,16 @@
       "historyBy": "de",
       "on": "Pornit",
       "off": "Oprit",
-      "planLabel": "Pachet",
-      "saveFailed": "Salvarea a eșuat"
+      "saveFailed": "Salvarea a eșuat",
+      "summary": "{{on}} din {{total}} funcționalități pornite · {{off}} oprite",
+      "summaryAllOn": "Toate cele {{total}} funcționalități sunt pornite",
+      "moduleAllOn": "toate pornite",
+      "moduleOff": "{{off}} din {{total}} oprite",
+      "viaModule": "oprit prin {{module}}",
+      "accounts": "{{count}} conturi",
+      "changeSummary": "Se schimbă",
+      "planOnlyChange": "doar pachetul",
+      "discard": "Renunță"
     }
   },
   "dashboard": {

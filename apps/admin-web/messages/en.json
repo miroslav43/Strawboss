@@ -1975,7 +1975,6 @@
     },
     "features": {
       "title": "Features",
-      "subtitle": "What is switched on for this organization",
       "back": "Back to organizations",
       "loading": "Loading…",
       "presets": "Presets",
@@ -1991,11 +1990,7 @@
       "save": "Save",
       "saving": "Saving…",
       "saved": "Saved",
-      "noChanges": "No changes",
-      "pendingCount": "{{count}} unsaved changes",
       "willDisable": "Will disable",
-      "cascadeNote": "Switching a module off also switches off everything that depends on it.",
-      "affects": "Affects",
       "surface": {
         "web": "web",
         "mobile": "mobile",
@@ -2010,8 +2005,16 @@
       "historyBy": "by",
       "on": "On",
       "off": "Off",
-      "planLabel": "Plan",
-      "saveFailed": "Save failed"
+      "saveFailed": "Save failed",
+      "summary": "{{on}} of {{total}} features on · {{off}} off",
+      "summaryAllOn": "All {{total}} features are on",
+      "moduleAllOn": "all on",
+      "moduleOff": "{{off}} of {{total}} off",
+      "viaModule": "off via {{module}}",
+      "accounts": "{{count}} accounts",
+      "changeSummary": "Changing",
+      "planOnlyChange": "plan only",
+      "discard": "Discard"
     }
   },
   "dashboard": {
