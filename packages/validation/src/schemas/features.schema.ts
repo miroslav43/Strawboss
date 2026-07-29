@@ -54,6 +54,19 @@ export const updateOrgFeaturesSchema = z
           path: ['featureOverrides', key],
           message: `Feature '${key}' is not switchable`,
         });
+        continue;
+      }
+
+      // Refuse to store an override nothing consumes yet. A toggle that
+      // silently does nothing is worse than an absent one — the operator
+      // switches something off, sees no effect, and stops trusting the whole
+      // console. Drop this check per key as each module gets wired.
+      if (!FEATURES[key].wired) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['featureOverrides', key],
+          message: `Feature '${key}' is not implemented yet`,
+        });
       }
     }
   });

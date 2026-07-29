@@ -16,6 +16,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { confirmTripRequestSchema, cancelTripRequestSchema } from '@strawboss/validation';
 import { UserRole } from '@strawboss/types';
 import { AVIZ_MAX_BYTES } from '../uploads/uploads.service';
+import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('trip-requests')
 export class TripRequestsController {
@@ -60,6 +61,7 @@ export class TripRequestsController {
 
   @Post(':id/confirm')
   @Roles(UserRole.admin, UserRole.dispatcher)
+  @RequireFeature('aux.requests')
   confirm(
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,
@@ -78,6 +80,7 @@ export class TripRequestsController {
 
   @Post(':id/cancel')
   @Roles(UserRole.admin, UserRole.dispatcher)
+  @RequireFeature('aux.requests')
   cancel(
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,
@@ -93,6 +96,7 @@ export class TripRequestsController {
    */
   @Post(':id/aviz')
   @Roles(UserRole.admin, UserRole.dispatcher)
+  @RequireFeature('documents.aviz')
   async uploadAviz(
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,

@@ -107,6 +107,19 @@ export interface FeatureDef {
    * switch. Writes to a `uiSwitch: false` key are rejected by the API.
    */
   uiSwitch: boolean;
+  /**
+   * Does flipping this key actually change anything YET?
+   *
+   * Required, not optional, so adding a feature forces an explicit answer.
+   * The console renders only wired switches and the API rejects writes to the
+   * rest — because a toggle that silently does nothing is worse than no toggle
+   * at all: the operator switches "Documente" off, nothing happens, and they
+   * conclude the whole system is broken.
+   *
+   * A module row is wired only once EVERY one of its leaves is. Delete these
+   * `false`s as each module gets wired end to end.
+   */
+  wired: boolean;
 }
 
 /**
@@ -204,6 +217,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   geo: {
@@ -211,6 +225,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   depot: {
@@ -218,6 +233,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   costs: {
@@ -225,6 +241,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   documents: {
@@ -232,6 +249,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'mobile', 'api', 'jobs'],
+    wired: false,
     uiSwitch: true,
   },
   aux: {
@@ -239,6 +257,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   portals: {
@@ -246,6 +265,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   messaging: {
@@ -254,6 +274,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: [],
     surfaces: ['web', 'api', 'jobs'],
     gatesJobs: ['message-send'],
+    wired: false,
     uiSwitch: true,
   },
   analytics: {
@@ -261,6 +282,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'api', 'jobs'],
+    wired: false,
     uiSwitch: true,
   },
   roles: {
@@ -270,6 +292,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     surfaces: ['web', 'api'],
     // A master switch here would read as "no new accounts of any kind", which
     // is never what an operator means. Anchor only.
+    wired: false,
     uiSwitch: false,
   },
 
@@ -279,6 +302,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['bales'],
     surfaces: ['mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'bales.load_register': {
@@ -286,6 +310,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['bales'],
     surfaces: ['mobile', 'web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'bales.parcel_daily_status': {
@@ -293,6 +318,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['bales'],
     surfaces: ['mobile', 'web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'bales.adjustments': {
@@ -300,6 +326,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['bales'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'bales.reconciliation': {
@@ -308,6 +335,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['bales'],
     surfaces: ['jobs', 'api'],
     gatesJobs: ['reconciliation'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -317,6 +345,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo'],
     surfaces: ['web', 'mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'geo.farms': {
@@ -324,6 +353,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo'],
     surfaces: ['web', 'mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'geo.kml_import': {
@@ -331,6 +361,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo.parcels'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'geo.draw_mobile': {
@@ -338,6 +369,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo.parcels'],
     surfaces: ['mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'geo.tracks': {
@@ -345,6 +377,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'geo.auto_transitions': {
@@ -352,6 +385,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo.parcels'],
     surfaces: ['mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -361,6 +395,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['depot'],
     surfaces: ['web', 'mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   /**
@@ -376,6 +411,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['depot.destinations'],
     surfaces: ['mobile', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'depot.weighing': {
@@ -383,6 +419,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['depot'],
     surfaces: ['mobile', 'web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'depot.inventory': {
@@ -390,6 +427,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['depot'],
     surfaces: ['mobile', 'web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -399,6 +437,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['costs'],
     surfaces: ['mobile', 'web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'costs.consumables': {
@@ -406,6 +445,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['costs'],
     surfaces: ['mobile', 'web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'costs.receipt_photos': {
@@ -413,6 +453,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['costs'],
     surfaces: ['mobile', 'web'],
+    wired: false,
     uiSwitch: true,
   },
   'costs.report': {
@@ -420,6 +461,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['costs'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -429,6 +471,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['documents'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'documents.cmr_generate': {
@@ -437,6 +480,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['documents'],
     surfaces: ['web', 'api', 'jobs'],
     gatesJobs: ['cmr-generation'],
+    wired: false,
     uiSwitch: true,
   },
   'documents.cmr_scan': {
@@ -444,6 +488,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['documents'],
     surfaces: ['mobile', 'web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'documents.public_sign': {
@@ -451,6 +496,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['documents'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'documents.aviz': {
@@ -458,6 +504,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['documents'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'documents.comanda': {
@@ -466,6 +513,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['documents'],
     surfaces: ['web', 'api', 'jobs'],
     gatesJobs: ['comanda-generation'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -475,6 +523,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['aux'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'aux.field_pickup': {
@@ -482,6 +531,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['aux.requests'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   /**
@@ -493,6 +543,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['aux'],
     surfaces: ['api', 'jobs'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -502,6 +553,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['portals'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'portals.public_request': {
@@ -509,6 +561,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['portals'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'portals.beneficiary_pin': {
@@ -517,6 +570,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['portals.beneficiaries'],
     surfaces: ['web', 'api', 'jobs'],
     gatesJobs: ['pin-regen'],
+    wired: true,
     uiSwitch: true,
   },
   'portals.transporter_role': {
@@ -524,6 +578,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['portals'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -533,6 +588,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['messaging'],
     surfaces: ['api', 'jobs'],
+    wired: false,
     uiSwitch: true,
   },
   'messaging.sms': {
@@ -540,6 +596,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['messaging'],
     surfaces: ['api', 'jobs'],
+    wired: false,
     uiSwitch: true,
   },
   'messaging.monitor': {
@@ -547,6 +604,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['messaging'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'messaging.broadcast': {
@@ -554,6 +612,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['messaging'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -563,6 +622,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['analytics'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   /** ⚠️ Per-operator tracking — some organizations must contractually not have it. */
@@ -571,6 +631,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['analytics.reports'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'analytics.export': {
@@ -578,6 +639,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['analytics'],
     surfaces: ['web', 'api'],
+    wired: false,
     uiSwitch: true,
   },
   'analytics.alerts': {
@@ -586,6 +648,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['analytics'],
     surfaces: ['web', 'mobile', 'api', 'jobs'],
     gatesJobs: ['alert-evaluation', 'truck-idle-check'],
+    wired: false,
     uiSwitch: true,
   },
   'analytics.fraud': {
@@ -593,6 +656,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['analytics.alerts'],
     surfaces: ['api', 'jobs'],
+    wired: false,
     uiSwitch: true,
   },
 
@@ -602,6 +666,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['roles'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'roles.loader_operator': {
@@ -609,6 +674,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['roles'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'roles.baler_operator': {
@@ -616,6 +682,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['roles'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'roles.geofence_maker': {
@@ -623,6 +690,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['roles'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'roles.depot_manager': {
@@ -630,6 +698,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['roles'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'roles.dispatcher': {
@@ -637,6 +706,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['roles'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
   'roles.transportator': {
@@ -644,6 +714,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['roles', 'portals.transporter_role'],
     surfaces: ['web', 'api'],
+    wired: true,
     uiSwitch: true,
   },
 };
@@ -762,3 +833,24 @@ export const FEATURE_PRESETS: Readonly<
 };
 
 export type FeaturePresetKey = keyof typeof FEATURE_PRESETS;
+
+/**
+ * A preset narrowed to the keys that are actually switchable right now.
+ *
+ * The presets are written against the FULL registry — that is their long-term
+ * shape and they should not be edited as modules get wired. But the API rejects
+ * writes to unwired or anchor-only keys, so applying a raw preset today would
+ * simply 400. Filtering here keeps the console's preset buttons working
+ * throughout the rollout and makes them silently complete themselves as each
+ * module lands.
+ */
+export function applicablePreset(preset: FeaturePresetKey): FeatureOverrides {
+  const source = FEATURE_PRESETS[preset];
+  const applicable: FeatureOverrides = {};
+  for (const [key, value] of Object.entries(source) as [FeatureKey, boolean][]) {
+    const def = FEATURES[key];
+    if (!def?.wired || !def.uiSwitch) continue;
+    applicable[key] = value;
+  }
+  return applicable;
+}

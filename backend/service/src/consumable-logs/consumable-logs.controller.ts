@@ -6,7 +6,16 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { createConsumableLogSchema, updateConsumableLogSchema } from '@strawboss/validation';
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 
+/**
+ * Writes are gated on `costs.consumables`; the GETs are not, so an organization
+ * that stops tracking twine keeps its history and its cost reports.
+ *
+ * Safe for field data: the mobile app never calls this endpoint. Consumable
+ * entries go to local SQLite and reach the server via the deliberately ungated
+ * `/sync/push`.
+ */
 @Controller('consumable-logs')
 export class ConsumableLogsController {
   constructor(private readonly consumableLogsService: ConsumableLogsService) {}
@@ -43,6 +52,7 @@ export class ConsumableLogsController {
     'loader_operator' as UserRole,
     'driver' as UserRole,
   )
+  @RequireFeature('costs.consumables')
   create(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createConsumableLogSchema))
@@ -54,6 +64,7 @@ export class ConsumableLogsController {
   // Edit/delete are admin-only web actions (operators still create via mobile POST).
   @Patch(':id')
   @Roles('admin' as UserRole)
+  @RequireFeature('costs.consumables')
   update(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
@@ -65,6 +76,7 @@ export class ConsumableLogsController {
 
   @Delete(':id')
   @Roles('admin' as UserRole)
+  @RequireFeature('costs.consumables')
   softDelete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
     return this.consumableLogsService.softDelete(id, user.organizationId);
   }
