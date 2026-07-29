@@ -326,7 +326,7 @@ export class TransporterController {
   }
 
   @Post('requests/:id/comanda')
-  @RequireFeature('portals.transporter_role')
+  @RequireFeature('portals.transporter_role', 'documents.comanda')
   async generateComanda(
     @CurrentUser() user: RequestUser,
     @Param('id', new ParseUUIDPipe()) id: string,

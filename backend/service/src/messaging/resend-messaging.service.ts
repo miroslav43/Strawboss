@@ -7,6 +7,11 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { MessageChannel } from '@strawboss/types';
 import type { IMessagingService, SendEmailParams, SendSmsParams } from './messaging.tokens';
 import { postResendEmail } from './resend-client';
+import { isFeatureEnabled, type FeatureKey } from '@strawboss/types';
+import { FeaturesService } from '../features/features.service';
+
+/** Shown in the /messages monitor so the reason is legible, not a mystery. */
+const FEATURE_DISABLED_REASON = 'Funcție dezactivată pentru organizație';
 
 /**
  * Real outbound messaging: email via Resend, SMS via the outbound_messages outbox
@@ -18,6 +23,7 @@ import { postResendEmail } from './resend-client';
 @Injectable()
 export class ResendMessagingService implements IMessagingService {
   constructor(
+    private readonly features: FeaturesService,
     private readonly drizzleProvider: DrizzleProvider,
     private readonly config: ConfigService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
@@ -69,12 +75,18 @@ export class ResendMessagingService implements IMessagingService {
   }
 
   async sendEmail(params: SendEmailParams): Promise<void> {
+    const orgId = this.orgOf(params.metadata);
     const id = await this.insertRow(
       MessageChannel.email,
       params,
-      this.orgOf(params.metadata),
+      orgId,
       this.requestOf(params.metadata),
     );
+
+    if (await this.channelDisabled(orgId, 'messaging.email')) {
+      await this.markFailed(id, FEATURE_DISABLED_REASON);
+      return;
+    }
 
     const key = this.config.get<string>('RESEND_API_KEY');
     const from = this.config.get<string>('RESEND_FROM');
@@ -101,11 +113,32 @@ export class ResendMessagingService implements IMessagingService {
   async sendSms(params: SendSmsParams): Promise<void> {
     // SMS is delivered by the SIM-gateway app: persist as pending; the device
     // claims it on /fleet/checkin and reports back sent/failed.
-    await this.insertRow(
+    const orgId = this.orgOf(params.metadata);
+    const id = await this.insertRow(
       MessageChannel.sms,
       { to: params.to, body: params.body, kind: params.kind },
-      this.orgOf(params.metadata),
+      orgId,
       this.requestOf(params.metadata),
     );
+
+    if (await this.channelDisabled(orgId, 'messaging.sms')) {
+      await this.markFailed(id, FEATURE_DISABLED_REASON);
+    }
+  }
+
+  /*
+   * Gated AFTER the row is written, then marked failed — deliberately.
+   *
+   * Blocking before the insert would leave nothing at all in /messages, so an
+   * operator whose organization has messaging switched off would see silence
+   * and no way to find out why. A failed row with a reason is the same promise
+   * the rest of the outbox makes: nothing disappears quietly.
+   *
+   * Fails OPEN when the caller passed no org in metadata — the gate cannot
+   * invent one, and refusing to send would be worse than sending.
+   */
+  private async channelDisabled(orgId: string | null, key: FeatureKey): Promise<boolean> {
+    if (!orgId) return false;
+    return !isFeatureEnabled(await this.features.getDisabledForOrg(orgId), key);
   }
 }

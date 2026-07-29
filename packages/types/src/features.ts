@@ -108,6 +108,17 @@ export interface FeatureDef {
    */
   uiSwitch: boolean;
   /**
+   * `true` → this key has no server-side gate, and cannot have one: everything
+   * behind it is a READ, and the registry's contract is that reads stay open so
+   * history and reports never break.
+   *
+   * Flipping it hides a control, a tab or a step. That is genuinely useful —
+   * less noise for a customer who does not use the feature — but it is NOT a
+   * commercial boundary: the data stays reachable over the API. The console
+   * labels these so nobody switches one off believing they revoked access.
+   */
+  uiOnly?: boolean;
+  /**
    * Does flipping this key actually change anything YET?
    *
    * Required, not optional, so adding a feature forces an explicit answer.
@@ -172,7 +183,6 @@ export const FEATURE_KEYS = [
   // aux
   'aux.requests',
   'aux.field_pickup',
-  'aux.autocomplete',
   // portals
   'portals.beneficiaries',
   'portals.public_request',
@@ -369,6 +379,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['geo.parcels'],
     surfaces: ['mobile', 'api'],
+    uiOnly: true,
     wired: false,
     uiSwitch: true,
   },
@@ -419,6 +430,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['depot'],
     surfaces: ['mobile', 'web', 'api'],
+    uiOnly: true,
     wired: false,
     uiSwitch: true,
   },
@@ -427,6 +439,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['depot'],
     surfaces: ['mobile', 'web', 'api'],
+    uiOnly: true,
     wired: false,
     uiSwitch: true,
   },
@@ -453,6 +466,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['costs'],
     surfaces: ['mobile', 'web'],
+    uiOnly: true,
     wired: false,
     uiSwitch: true,
   },
@@ -461,6 +475,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['costs'],
     surfaces: ['web', 'api'],
+    uiOnly: true,
     wired: false,
     uiSwitch: true,
   },
@@ -526,23 +541,23 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     wired: true,
     uiSwitch: true,
   },
+  /*
+   * `aux.autocomplete` used to live here. It was retired rather than wired:
+   * the behaviour it named no longer exists — `trip-autocomplete.processor.ts`
+   * is a documented no-op with no producer left, and
+   * `TripsService.autoCompleteAuxiliary` was deleted. Its successor,
+   * `completeAuxiliaryOnArrivalCmr`, is already gated on `documents.cmr_scan`.
+   *
+   * Removing a key is normally forbidden (see the header: stored overrides
+   * would silently re-enable). It is safe here precisely because the key was
+   * never wired, so the API rejected every write to it and no organization can
+   * hold an override for it.
+   */
   'aux.field_pickup': {
     module: 'aux',
     defaultEnabled: true,
     dependsOn: ['aux.requests'],
     surfaces: ['web', 'api'],
-    wired: false,
-    uiSwitch: true,
-  },
-  /**
-   * The `trip-autocomplete` queue also serves own-fleet trips, so it is NOT in
-   * `gatesJobs` — the check happens per-trip inside the processor.
-   */
-  'aux.autocomplete': {
-    module: 'aux',
-    defaultEnabled: true,
-    dependsOn: ['aux'],
-    surfaces: ['api', 'jobs'],
     wired: false,
     uiSwitch: true,
   },
@@ -631,6 +646,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['analytics.reports'],
     surfaces: ['web', 'api'],
+    uiOnly: true,
     wired: false,
     uiSwitch: true,
   },
@@ -639,6 +655,7 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: ['analytics'],
     surfaces: ['web', 'api'],
+    uiOnly: true,
     wired: false,
     uiSwitch: true,
   },

@@ -377,6 +377,16 @@ export class TripRequestsService {
             LIMIT 1`,
       )) as unknown as unknown[];
       if (!parcelRows.length) throw new BadRequestException('Parcelă invalidă.');
+      /*
+       * Gated HERE and not on the controller: the route also confirms ordinary
+       * depot pickups, which this feature has nothing to do with. And gated
+       * BEFORE the machines INSERT below — rejecting afterwards would leave an
+       * orphan one-time auxiliary truck behind.
+       */
+      await this.featuresService.assertEnabledForOrg(
+        req.organizationId,
+        'aux.field_pickup',
+      );
     }
 
     const code = internalCode ?? `AUX-${randomUUID().slice(0, 6).toUpperCase()}`;

@@ -7,6 +7,8 @@ import type { TripStatus } from '@strawboss/types';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
 import { todayInRomania } from '../common/date';
+import { isFeatureEnabled } from '@strawboss/types';
+import { FeaturesService } from '../features/features.service';
 
 /** Parses an env override, falling back when unset/non-numeric — but keeps an explicit `0`. */
 function envNumber(raw: string | undefined, fallback: number): number {
@@ -71,6 +73,7 @@ export class GeofenceService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly notificationsService: NotificationsService,
+    private readonly features: FeaturesService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
 
@@ -181,6 +184,26 @@ export class GeofenceService {
 
     // 3. For each assignment, check if the machine is inside the target geofence
     for (const assignment of assignments) {
+      /*
+       * `continue`, never throw. This is ONE job sweeping every organization's
+       * assignments; an exception for a single disabled org would kill
+       * enter/exit detection for the entire fleet.
+       *
+       * Gated at the very top on purpose. `resolveTransition` writes the
+       * geofence_events row inside its own transaction and the hysteresis
+       * state machine reads those rows back — gating any lower would leave
+       * events recorded with no notification and desync `wasInside` from
+       * reality, so re-enabling would then behave wrongly.
+       */
+      if (
+        assignment.organizationId &&
+        !isFeatureEnabled(
+          await this.features.getDisabledForOrg(assignment.organizationId),
+          'geo.auto_transitions',
+        )
+      ) {
+        continue;
+      }
       const pos = posMap.get(assignment.machineId);
       if (!pos) {
         if (assignment.machineType === 'baler') {

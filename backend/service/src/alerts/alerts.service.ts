@@ -246,6 +246,19 @@ export class AlertsService {
     delivered: number;
     orgId: string | null;
   }) {
+    /*
+     * Quiet return, not a throw. The caller (confirmDepotDelivery) has already
+     * COMPLETED the trip by this point and wraps this in a try/catch — a
+     * mismatch deliberately does not block delivery. Throwing here would be
+     * caught and logged as a failure, which is a lie: the org simply does not
+     * buy fraud detection.
+     */
+    if (
+      args.orgId &&
+      !isFeatureEnabled(await this.features.getDisabledForOrg(args.orgId), 'analytics.fraud')
+    ) {
+      return undefined;
+    }
     const existing = await this.drizzleProvider.db.execute(
       sql`SELECT id FROM alerts
           WHERE trip_id = ${args.tripId}::uuid
@@ -303,7 +316,14 @@ export class AlertsService {
      * request, inside BullMQ loops that iterate every org. An exception would
      * abort the whole run and starve the organizations that still want alerts.
      */
-    if (!isFeatureEnabled(await this.features.getDisabledForOrg(orgId), 'analytics.alerts')) {
+    const disabledFeatures = await this.features.getDisabledForOrg(orgId);
+    if (!isFeatureEnabled(disabledFeatures, 'analytics.alerts')) {
+      return [];
+    }
+    // Fraud is a separate purchase from alerting in general, and every
+    // job-side fraud producer (timing anomaly, reconciliation) funnels through
+    // here — so one line covers them all, on the lookup already made above.
+    if (draft.category === 'fraud' && !isFeatureEnabled(disabledFeatures, 'analytics.fraud')) {
       return [];
     }
     // Skip insert if an unacknowledged alert with the same (trip_id, category)
