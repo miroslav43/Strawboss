@@ -1,9 +1,21 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { TripRequestsService } from './trip-requests.service';
 import { TripsService } from '../trips/trips.service';
 import { PinThrottleGuard } from './pin-throttle.guard';
+import { TokenThrottleGuard } from './token-throttle.guard';
 import { Public } from '../auth';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { CMR_SCAN_MAX_BYTES } from '../uploads/uploads.service';
 import {
   verifyPortalCodeSchema,
   createTripRequestSchema,
@@ -14,6 +26,13 @@ import {
 } from '@strawboss/validation';
 import type { CreateTripRequestDto } from '@strawboss/types';
 import type { CreateBeneficiaryRequestInput } from '@strawboss/validation';
+
+/** Accepted MIME types for an arrival-CMR upload — a phone photo or, rarer, an
+ *  already-built PDF from a scanner app (see CmrScansService.saveArrivalCmrFile). */
+const ARRIVAL_CMR_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+
+/** Same page ceiling as the loader's on-device scanner (cmrScanner.ts MAX_PAGES). */
+const MAX_ARRIVAL_CMR_FILES = 10;
 
 // The portal code travels in the request BODY (never the URL/query) so it does
 // not leak into access logs, proxies, or browser history.
@@ -57,12 +76,14 @@ export class PublicPortalController {
     return this.service.submitPublicRequest(slug, code, request);
   }
 
+  /** @deprecated superseded by GET cmr/:token — kept one release for stale links. */
   @Get('sign/:token')
   @Public()
   signInfo(@Param('token') token: string) {
     return this.tripsService.getPublicSignInfo(token);
   }
 
+  /** @deprecated superseded by POST cmr/:token — kept one release for stale links. */
   @Post('sign/:token')
   @Public()
   sign(
@@ -70,6 +91,55 @@ export class PublicPortalController {
     @Body(new ZodValidationPipe(signTripSchema)) dto: { signature: string },
   ) {
     return this.tripsService.signByPublicToken(token, dto.signature);
+  }
+
+  // ── Arrival CMR (external driver, one-time link) ───────────────────────────
+
+  @Get('cmr/:token')
+  @Public()
+  cmrInfo(@Param('token') token: string) {
+    return this.tripsService.getPublicArrivalCmrInfo(token);
+  }
+
+  @Post('cmr/:token')
+  @Public()
+  @UseGuards(TokenThrottleGuard)
+  async uploadCmr(@Param('token') token: string, @Req() req: FastifyRequest) {
+    if (!req.isMultipart()) {
+      throw new BadRequestException('Expected multipart/form-data');
+    }
+
+    const parts: { mimetype: string; buffer: Buffer }[] = [];
+    let scanId: string | null = null;
+    let totalBytes = 0;
+
+    for await (const file of req.files({
+      limits: { fileSize: CMR_SCAN_MAX_BYTES, files: MAX_ARRIVAL_CMR_FILES },
+    })) {
+      if (!ARRIVAL_CMR_MIMES.has(file.mimetype)) {
+        throw new BadRequestException(`Unsupported file type '${file.mimetype}'.`);
+      }
+      // A `scanId` field sent ahead of the first file part (same convention as
+      // CmrScansController) pins the storage filename so a retry after an
+      // ambiguous failure overwrites the same blob instead of orphaning one.
+      if (scanId === null) {
+        const field = file.fields?.scanId;
+        const value = field && !Array.isArray(field) && 'value' in field ? field.value : null;
+        scanId = typeof value === 'string' ? value : null;
+      }
+      const buffer = await file.toBuffer();
+      totalBytes += buffer.length;
+      if (totalBytes > CMR_SCAN_MAX_BYTES) {
+        throw new BadRequestException(`Fișierele depășesc limita de ${CMR_SCAN_MAX_BYTES} bytes.`);
+      }
+      parts.push({ mimetype: file.mimetype, buffer });
+    }
+
+    if (parts.length === 0) {
+      throw new BadRequestException('Nicio poză primită.');
+    }
+
+    return this.tripsService.completeAuxiliaryOnArrivalCmr(token, parts, scanId);
   }
 
   // ── Beneficiary portal ─────────────────────────────────────────────────────

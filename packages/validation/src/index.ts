@@ -83,7 +83,9 @@ export {
   documentTypeSchema,
   documentStatusSchema,
   documentSchema,
+  cmrScanKindSchema,
 } from './schemas/document.schema.js';
+export type { CmrScanKind } from './schemas/document.schema.js';
 
 export {
   alertCategorySchema,

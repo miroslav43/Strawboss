@@ -9,7 +9,7 @@ import { DrizzleProvider } from '../database/drizzle.provider';
  * single transaction (see CmrScansService), so the retire-then-insert is atomic
  * rather than two independent statements that can interleave.
  */
-type SqlExecutor = Pick<PostgresJsDatabase, 'execute'>;
+export type SqlExecutor = Pick<PostgresJsDatabase, 'execute'>;
 
 // Project columns to camelCase — the API contract (@strawboss/types Document)
 // and the admin UI expect camelCase; a raw SELECT * returns snake_case, which

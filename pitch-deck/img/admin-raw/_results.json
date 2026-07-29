@@ -1,0 +1,92 @@
+[
+  {
+    "name": "command-center",
+    "ok": true,
+    "redacted": 2,
+    "postNavOk": null
+  },
+  {
+    "name": "tasks",
+    "ok": true,
+    "redacted": 3,
+    "postNavOk": null
+  },
+  {
+    "name": "map",
+    "ok": true,
+    "redacted": 23,
+    "postNavOk": null
+  },
+  {
+    "name": "trips",
+    "ok": true,
+    "redacted": 440,
+    "postNavOk": null
+  },
+  {
+    "name": "trips-detail",
+    "ok": true,
+    "redacted": 5,
+    "postNavOk": true
+  },
+  {
+    "name": "tracks",
+    "ok": true,
+    "redacted": 2,
+    "postNavOk": true
+  },
+  {
+    "name": "reports",
+    "ok": true,
+    "redacted": 19,
+    "postNavOk": null
+  },
+  {
+    "name": "reports-costs",
+    "ok": true,
+    "redacted": 493,
+    "postNavOk": true
+  },
+  {
+    "name": "alerts",
+    "ok": true,
+    "redacted": 86,
+    "postNavOk": null
+  },
+  {
+    "name": "machines",
+    "ok": true,
+    "redacted": 60,
+    "postNavOk": null
+  },
+  {
+    "name": "machines-detail",
+    "ok": true,
+    "redacted": 3,
+    "postNavOk": true
+  },
+  {
+    "name": "farms",
+    "ok": true,
+    "redacted": 21,
+    "postNavOk": null
+  },
+  {
+    "name": "accounts",
+    "ok": true,
+    "redacted": 18,
+    "postNavOk": null
+  },
+  {
+    "name": "messages",
+    "ok": true,
+    "redacted": 367,
+    "postNavOk": null
+  },
+  {
+    "name": "deposits",
+    "ok": true,
+    "redacted": 17,
+    "postNavOk": null
+  }
+]

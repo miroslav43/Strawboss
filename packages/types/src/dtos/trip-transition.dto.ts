@@ -64,14 +64,17 @@ export interface CompleteDto {
 
 /**
  * Depot-operator delivery confirmation. A depot_manager assigned to the trip's
- * destination depot confirms the arriving bale count and signs; the single action
- * drives the trip arrived→delivered→completed server-side.
+ * destination depot confirms the arriving bale count; the single action drives
+ * the trip arrived→delivered→completed server-side.
  *
  * - `baleCount` is always required (the count the truck actually arrived with).
  * - `grossWeightKg`/`tareWeightKg` are entered only on a `principal` depot with a
  *   working scale; on a `temporary` depot or when `scaleBroken` they are omitted.
- * - `depotOperatorSignature` is stored as both the depot-operator and receiver
- *   signature.
+ * - `depotOperatorSignature` is never trusted as-is — the server resolves the
+ *   real value from the confirming operator's `users.signature_specimen_url`
+ *   (`TripsService.resolveSpecimenSignature`) and stores it as both the
+ *   depot-operator and receiver signature. The client field is optional and
+ *   only ever used as a last-resort fallback when no specimen is on file.
  * - `idempotencyKey` (the client mutation UUID) dedupes retries via
  *   `sync_idempotency`.
  */
@@ -80,7 +83,7 @@ export interface ConfirmDepotDeliveryDto {
   grossWeightKg?: number | null;
   tareWeightKg?: number | null;
   scaleBroken?: boolean;
-  depotOperatorSignature: string;
+  depotOperatorSignature?: string;
   idempotencyKey: string;
 }
 

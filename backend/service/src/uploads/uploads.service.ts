@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import sharp from 'sharp';
+import { ImagesToPdfService } from './images-to-pdf.service';
 
 /** Hard upper bound enforced server-side even if a client sends a larger body. */
 const MAX_BYTES = 3 * 1024 * 1024; // 3 MB
@@ -132,7 +133,10 @@ export function resolveUploadsRoot(configService: ConfigService): string {
 export class UploadsService {
   private readonly uploadsRoot: string;
 
-  constructor(configService: ConfigService) {
+  constructor(
+    configService: ConfigService,
+    private readonly imagesToPdf: ImagesToPdfService,
+  ) {
     this.uploadsRoot = resolveUploadsRoot(configService);
   }
 
@@ -299,6 +303,25 @@ export class UploadsService {
    */
   async saveCmrScan(input: SaveSignatureInput, scanId?: string): Promise<SaveSignatureResult> {
     return this.savePdf(input, 'cmr-scans', CMR_SCAN_MAX_BYTES, scanId);
+  }
+
+  /**
+   * Save the arrival CMR when it arrives as one or more PHOTOS instead of a
+   * PDF — the case for the external driver's public upload, which has no
+   * on-device scanner and no PDF library, just a browser file picker/camera.
+   *
+   * Renders the photos into a single PDF (`ImagesToPdfService`) and stores it
+   * through the same `savePdf` path as every other scanned CMR, so it is
+   * indistinguishable on disk/URL from one the loader built on their phone.
+   */
+  async saveCmrScanFromImages(images: Buffer[], scanId?: string): Promise<SaveSignatureResult> {
+    const pdfBuffer = await this.imagesToPdf.renderImagesToPdf(images);
+    return this.savePdf(
+      { mimetype: 'application/pdf', stream: Readable.from(pdfBuffer) },
+      'cmr-scans',
+      CMR_SCAN_MAX_BYTES,
+      scanId,
+    );
   }
 
   /**

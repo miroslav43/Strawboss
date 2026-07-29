@@ -24,8 +24,15 @@ import { ParcelsService } from '../parcels/parcels.service';
 import { AlertsService } from '../alerts/alerts.service';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates, fmtCoordsUrl } from '../messaging/message-templates';
-import { TripStatus, MessageKind, type UserRole, type PublicSignInfo } from '@strawboss/types';
-import { QUEUE_CMR_GENERATION, QUEUE_TRIP_AUTOCOMPLETE } from '../jobs/queues';
+import {
+  TripStatus,
+  MessageKind,
+  type UserRole,
+  type PublicSignInfo,
+  type PublicArrivalCmrInfo,
+} from '@strawboss/types';
+import { QUEUE_CMR_GENERATION } from '../jobs/queues';
+import { CmrScansService } from '../cmr-scans/cmr-scans.service';
 import type {
   TripCreateDto,
   StartLoadingDto,
@@ -44,14 +51,6 @@ import type {
   RegisterLoadResult,
 } from '@strawboss/types';
 import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss/domain';
-
-/**
- * How long an auxiliary trip sits in `loaded` before it auto-completes. Aux
- * trips have a collapsed lifecycle (planned → loaded → completed): the loader
- * finishing the load lands it on `loaded`, and this delayed job flips it to
- * `completed`. Fixed at 5 minutes.
- */
-const AUX_AUTOCOMPLETE_DELAY_MS = 5 * 60_000;
 
 /**
  * A bare calendar day, as an <input type="date"> sends it. Mobile instead sends
@@ -190,7 +189,6 @@ export class TripsService implements OnModuleInit {
     private readonly drizzleProvider: DrizzleProvider,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
     @InjectQueue(QUEUE_CMR_GENERATION) private readonly cmrQueue: Queue,
-    @InjectQueue(QUEUE_TRIP_AUTOCOMPLETE) private readonly tripAutocompleteQueue: Queue,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
     private readonly deliveryDestinationsService: DeliveryDestinationsService,
@@ -198,9 +196,10 @@ export class TripsService implements OnModuleInit {
     private readonly alertsService: AlertsService,
     private readonly configService: ConfigService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
+    private readonly cmrScansService: CmrScansService,
   ) {}
 
-  /** Public web base URL for driver-facing links (sign-and-leave). */
+  /** Public web base URL for driver-facing links (arrival-CMR upload). */
   private publicWebBaseUrl(): string {
     return (
       this.configService.get<string>('NEXT_PUBLIC_SITE_URL') ??
@@ -784,7 +783,7 @@ export class TripsService implements OnModuleInit {
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
-    const resolvedLoaderSignature = await this.resolveLoaderSignature(
+    const resolvedLoaderSignature = await this.resolveSpecimenSignature(
       callerId,
       dto.loaderSignature,
     );
@@ -1150,27 +1149,32 @@ export class TripsService implements OnModuleInit {
    * (via signByPublicToken) finalizes stage-2 of the document.
    */
   /**
-   * The loader's signature on a load is ALWAYS their pre-registered SPECIMEN — the
-   * phone draws nothing, it just echoes back the URL it cached at login (see
-   * load-bales.tsx: `submitLoad({ loaderSignature: signatureSpecimenUrl })`). The
-   * server already stores that specimen on `users.signature_specimen_url`, so there
-   * is no reason to trust the client's copy of it.
+   * A caller's signature on a trip action (loader registering a load, depot
+   * operator confirming a delivery) is ALWAYS their pre-registered SPECIMEN — the
+   * phone draws nothing (or, for the depot operator, draws something the server
+   * ignores), it just echoes back the URL it cached at login. The server already
+   * stores that specimen on `users.signature_specimen_url`, so there is no reason
+   * to trust the client's copy of it.
    *
-   * This is not a tidy-up — it is the fix for a live field outage. Commit 111d4b1
-   * (the security audit, deployed 08.07) tightened the DTO from
-   * `loaderSignature: z.string()` to a strict URL allowlist. Any phone whose cached
-   * specimen URL no longer matched the new shape had its loads REJECTED at the
-   * validation boundary — a hard 400 which, thanks to the ZodValidationPipe bug,
-   * surfaced as "Internal server error". The one loader operator using this screen
-   * could not register a load for six days and nobody could see why.
+   * This is not a tidy-up — it is the fix for a live field outage, generalized.
+   * Commit 111d4b1 (the security audit, deployed 08.07) tightened the loader's DTO
+   * from `loaderSignature: z.string()` to a strict URL allowlist. Any phone whose
+   * cached specimen URL no longer matched the new shape had its loads REJECTED at
+   * the validation boundary — a hard 400 which, thanks to the ZodValidationPipe
+   * bug, surfaced as "Internal server error". The one loader operator using this
+   * screen could not register a load for six days and nobody could see why.
+   * `confirmDepotDeliverySchema.depotOperatorSignature` had the identical shape
+   * (required + strict `signatureUrlSchema`) and the identical failure mode — a
+   * failed binary upload fell back to raw base64, which can never pass the
+   * allowlist, wedging `confirm-depot-delivery` in the sync queue forever.
    *
    * Resolving server-side makes the whole class of failure impossible: a stale,
-   * malformed or absent client value can no longer break a load, and the client can
-   * no longer smuggle an arbitrary URL into an `<img src>` — which is what the audit
-   * was defending against in the first place. The client value is used only as a
-   * fallback, and only when it already satisfies the allowlist.
+   * malformed or absent client value can no longer break a trip transition, and
+   * the client can no longer smuggle an arbitrary URL into an `<img src>` — which
+   * is what the audit was defending against in the first place. The client value
+   * is used only as a fallback, and only when it already satisfies the allowlist.
    */
-  private async resolveLoaderSignature(
+  private async resolveSpecimenSignature(
     callerId: string,
     clientValue?: string | null,
   ): Promise<string | null> {
@@ -1185,7 +1189,7 @@ export class TripsService implements OnModuleInit {
       if (clientValue && clientValue !== specimen) {
         // The phone is carrying a stale specimen URL. Harmless now — but this is the
         // fingerprint of the outage above, so it is worth seeing in the logs.
-        this.winston.warn('Loader specimen mismatch — using the stored one', {
+        this.winston.warn('Signature specimen mismatch — using the stored one', {
           context: 'TripsService',
           userId: callerId,
           stored: specimen,
@@ -1205,7 +1209,7 @@ export class TripsService implements OnModuleInit {
     callerId: string,
     orgId: string | null,
   ): Promise<RegisterLoadResult> {
-    const resolvedLoaderSignature = await this.resolveLoaderSignature(
+    const resolvedLoaderSignature = await this.resolveSpecimenSignature(
       callerId,
       dto.loaderSignature,
     );
@@ -1336,12 +1340,10 @@ export class TripsService implements OnModuleInit {
     const tripId = trip.id as string;
     this.logTripFlow(tripId, 'REGISTER_LOAD_AUX', 'planned', TripStatus.loaded);
 
-    // Schedule the delayed auto-complete (loaded → completed after ~5 min), then
-    // fire the loaded side-effects (sign-token + stage-1 CMR + driver SMS + retire
-    // the one-time truck). Both are idempotent and shared with the admin
-    // force-load path; the auto-complete job also re-runs the side-effects as a
-    // crash backstop.
-    await this.scheduleAuxiliaryAutoComplete(tripId, orgId);
+    // Fire the loaded side-effects (sign-token + stage-1 CMR + driver SMS +
+    // retire the one-time truck) — idempotent, shared with the admin
+    // force-load path. There is nothing to schedule: the trip now waits for
+    // the arrival-CMR upload (completeAuxiliaryOnArrivalCmr) instead of a timer.
     await this.applyAuxiliaryLoadedSideEffects(tripId, orgId);
 
     return result;
@@ -1351,10 +1353,11 @@ export class TripsService implements OnModuleInit {
    * Idempotent side-effects fired when an auxiliary trip enters `loaded` (from a
    * mobile register-load OR an admin force-status). Gated on atomically claiming
    * `public_sign_token`, so it runs EXACTLY ONCE even if called from several
-   * paths: mints the driver sign-token, retires the one-time aux truck (soft
-   * delete — it drops out of the fleet list but stays readable for CMR + trip
-   * history), queues the stage-1 (loading) CMR, and SMSs the external driver the
-   * sign-and-leave link. All best-effort — failures are logged, never thrown.
+   * paths: mints the driver's one-time token, retires the one-time aux truck
+   * (soft delete — it drops out of the fleet list but stays readable for CMR +
+   * trip history), queues the stage-1 (loading) CMR, and SMSs the external
+   * driver the link to upload the arrival CMR once they reach their
+   * destination. All best-effort — failures are logged, never thrown.
    */
   private async applyAuxiliaryLoadedSideEffects(
     tripId: string,
@@ -1363,7 +1366,7 @@ export class TripsService implements OnModuleInit {
     const token = randomUUID();
     const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
     // Atomic claim: only the first caller (token still null) proceeds; a second
-    // caller (redundant admin force, or the auto-complete backstop) gets 0 rows.
+    // caller (redundant admin force) gets 0 rows.
     const claimed = (await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET public_sign_token = ${token}, updated_at = NOW()
           WHERE id = ${tripId}
@@ -1407,26 +1410,26 @@ export class TripsService implements OnModuleInit {
       }),
     );
 
-    // SMS the external driver a one-time sign-and-leave link (stubbed).
+    // SMS the external driver a one-time link to upload the arrival CMR.
     const driverPhone = row.external_driver_phone;
     if (driverPhone) {
       const slug = await this.resolveOrgSlug(row.organization_id);
-      const signUrl = slug
-        ? `${this.publicWebBaseUrl()}/${slug}/sign/${token}`
-        : `${this.publicWebBaseUrl()}/sign/${token}`;
-      const tpl = messageTemplates[MessageKind.driver_loaded_sign_link]({
-        signUrl,
+      const cmrUrl = slug
+        ? `${this.publicWebBaseUrl()}/${slug}/cmr/${token}`
+        : `${this.publicWebBaseUrl()}/cmr/${token}`;
+      const tpl = messageTemplates[MessageKind.driver_arrival_cmr_link]({
+        cmrUrl,
         baleCount: Number(row.bale_count ?? 0),
       });
       void this.messaging
         .sendSms({
           to: driverPhone,
           body: tpl.body,
-          kind: MessageKind.driver_loaded_sign_link,
+          kind: MessageKind.driver_arrival_cmr_link,
           metadata: { tripId },
         })
         .catch((err) =>
-          this.winston.warn('applyAuxiliaryLoadedSideEffects: sign-link SMS failed', {
+          this.winston.warn('applyAuxiliaryLoadedSideEffects: arrival-CMR link SMS failed', {
             context: 'TripsService',
             tripId,
             err: err instanceof Error ? { message: err.message } : err,
@@ -1436,56 +1439,130 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
-   * Enqueue (or replace) the delayed job that auto-completes an auxiliary trip
-   * `loaded → completed`. Deterministic jobId → a repeat schedule dedupes rather
-   * than piling up. Non-fatal: a Redis hiccup is logged, not thrown (the load
-   * already committed).
+   * Public driver page: load summary for the arrival-CMR upload link (no auth).
+   * Historically this token backed a "sign the CMR" flow — see the note on
+   * `publicSignToken` in @strawboss/types — the token and its one-time-use
+   * guarantee carry over unchanged, only what the driver does at the link end
+   * has changed (upload a photo instead of drawing a signature).
    */
-  private async scheduleAuxiliaryAutoComplete(tripId: string, orgId: string | null): Promise<void> {
-    await this.tripAutocompleteQueue
-      .add(
-        'complete',
-        { tripId, orgId },
-        { delay: AUX_AUTOCOMPLETE_DELAY_MS, jobId: `aux-autocomplete-${tripId}` },
+  async getPublicArrivalCmrInfo(token: string): Promise<PublicArrivalCmrInfo> {
+    const rows = (await this.drizzleProvider.db
+      .execute(
+        sql`SELECT t.bale_count, t.public_sign_token_used_at,
+                 t.destination_name, t.destination_address,
+                 o.name AS org_name,
+                 m.registration_plate AS truck_plate
+          FROM trips t
+          JOIN organizations o ON o.id = t.organization_id
+          LEFT JOIN machines m ON m.id = t.truck_id
+          WHERE t.public_sign_token = ${token}
+            AND t.is_auxiliary = true
+            AND t.deleted_at IS NULL
+          LIMIT 1`,
       )
-      .catch((err) =>
-        this.winston.error('scheduleAuxiliaryAutoComplete: enqueue failed', {
-          context: 'TripsService',
-          tripId,
-          err: err instanceof Error ? { message: err.message } : err,
-        }),
-      );
+      .catch(() => [])) as unknown as {
+      bale_count: number | null;
+      public_sign_token_used_at: string | null;
+      destination_name: string | null;
+      destination_address: string | null;
+      org_name: string;
+      truck_plate: string | null;
+    }[];
+    const row = rows[0];
+    if (!row) throw new NotFoundException('Link invalid sau expirat.');
+    return {
+      organizationName: row.org_name,
+      truckPlate: row.truck_plate,
+      baleCount: Number(row.bale_count ?? 0),
+      destinationName: row.destination_name,
+      destinationAddress: row.destination_address,
+      alreadyUploaded: row.public_sign_token_used_at != null,
+    };
   }
 
   /**
-   * Delayed-job target: flip an auxiliary trip `loaded → completed` a few minutes
-   * after it was loaded. Idempotent — a no-op if the trip already left `loaded`
-   * (an admin completed or cancelled it early). Also re-runs the loaded
-   * side-effects first as a backstop, in case they never fired at load time
-   * (e.g. a crash right after the load committed).
+   * Public driver page submit: the external driver has reached the
+   * destination and uploads 1..N photos of the arrival CMR. This is the ONLY
+   * thing that completes an auxiliary trip (besides an admin force-complete
+   * with a reason) — there is no timer.
+   *
+   * Rendering the photos into a PDF is slow (Puppeteer) and deliberately runs
+   * OUTSIDE any transaction. Filing the document and flipping the trip to
+   * `completed` then happen together in ONE transaction — re-checking
+   * eligibility under the same guard the fast up-front check uses, so a
+   * concurrent duplicate submission (a double-tap on a slow connection) can
+   * insert at most one document and complete the trip at most once. One-time
+   * per token, same as the old sign flow.
    */
-  async autoCompleteAuxiliary(tripId: string, orgId: string | null): Promise<void> {
-    await this.applyAuxiliaryLoadedSideEffects(tripId, orgId);
-
-    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
-    const updated = (await this.drizzleProvider.db.execute(
-      sql`UPDATE trips SET
-            status = ${TripStatus.completed}::trip_status,
-            completed_at = COALESCE(completed_at, NOW()),
-            updated_at = NOW()
-          WHERE id = ${tripId}
+  async completeAuxiliaryOnArrivalCmr(
+    token: string,
+    parts: { mimetype: string; buffer: Buffer }[],
+    scanId?: string | null,
+  ): Promise<{ ok: true }> {
+    const found = (await this.drizzleProvider.db.execute(
+      sql`SELECT id, organization_id, trip_request_id, status, public_sign_token_used_at
+          FROM trips
+          WHERE public_sign_token = ${token}
             AND is_auxiliary = true
-            AND status = ${TripStatus.loaded}::trip_status${orgFilter}
-          RETURNING id`,
-    )) as unknown as { id: string }[];
-    if (!updated.length) {
-      this.winston.log('flow', 'Aux auto-complete: no-op (trip not in loaded)', {
-        context: 'TripsService',
-        tripId,
-      });
-      return;
+            AND deleted_at IS NULL
+          LIMIT 1`,
+    )) as unknown as {
+      id: string;
+      organization_id: string | null;
+      trip_request_id: string | null;
+      status: TripStatus;
+      public_sign_token_used_at: string | null;
+    }[];
+    const trip = found[0];
+    if (!trip || !trip.trip_request_id || !trip.organization_id) {
+      throw new NotFoundException('Link invalid sau expirat.');
     }
-    this.logTripFlow(tripId, 'AUTO_COMPLETE_AUX', TripStatus.loaded, TripStatus.completed);
+    // Fast fail before the expensive render — the definitive check is the
+    // guarded UPDATE inside the transaction below.
+    if (trip.public_sign_token_used_at || trip.status !== TripStatus.loaded) {
+      throw new ConflictException('Documentul de sosire a fost deja încărcat.');
+    }
+
+    const orgId = trip.organization_id;
+    const saved = await this.cmrScansService.saveArrivalCmrFile(parts, scanId);
+
+    await this.drizzleProvider.db.transaction(async (tx) => {
+      await this.cmrScansService.attachArrivalCmr(
+        orgId,
+        trip.trip_request_id as string,
+        saved,
+        parts.length,
+        tx,
+      );
+      const completed = (await tx.execute(
+        sql`UPDATE trips SET
+              status = ${TripStatus.completed}::trip_status,
+              completed_at = COALESCE(completed_at, NOW()),
+              public_sign_token_used_at = NOW(),
+              updated_at = NOW()
+            WHERE id = ${trip.id}
+              AND is_auxiliary = true
+              AND status = ${TripStatus.loaded}::trip_status
+              AND public_sign_token_used_at IS NULL
+            RETURNING id`,
+      )) as unknown as { id: string }[];
+      if (!completed.length) {
+        // Lost a race with a concurrent submission — roll back the document
+        // insert too, so the loser leaves no trace.
+        throw new ConflictException('Documentul de sosire a fost deja încărcat.');
+      }
+    });
+
+    this.logTripFlow(trip.id, 'AUX_ARRIVAL_CMR_UPLOADED', TripStatus.loaded, TripStatus.completed);
+    // Stage-2 CMR — finalize the document now that the trip is done.
+    await this.cmrQueue.add('generate', { tripId: trip.id, orgId, stage: 2 }).catch((err) =>
+      this.winston.warn('completeAuxiliaryOnArrivalCmr: CMR enqueue failed', {
+        context: 'TripsService',
+        tripId: trip.id,
+        err: err instanceof Error ? { message: err.message } : err,
+      }),
+    );
+    return { ok: true };
   }
 
   /** Org slug for building public driver links; null if not resolvable. */
@@ -1988,6 +2065,13 @@ export class TripsService implements OnModuleInit {
     )) as unknown as { full_name: string | null }[];
     const operatorName = opRows[0]?.full_name ?? 'Operator depozit';
 
+    // The depot operator's signature is ALWAYS their pre-registered specimen —
+    // never trust/require a fresh client draw, see resolveSpecimenSignature.
+    const resolvedDepotOperatorSignature = await this.resolveSpecimenSignature(
+      user.id,
+      dto.depotOperatorSignature,
+    );
+
     const result = await this.drizzleProvider.db.transaction(async (tx) => {
       const updated = (await tx.execute(
         sql`UPDATE trips SET
@@ -1999,9 +2083,9 @@ export class TripsService implements OnModuleInit {
           delivered_at = NOW(),
           depot_operator_id = ${user.id},
           depot_confirmed_at = NOW(),
-          depot_operator_signature_url = ${dto.depotOperatorSignature},
+          depot_operator_signature_url = ${resolvedDepotOperatorSignature},
           receiver_name = ${operatorName},
-          receiver_signature_url = ${dto.depotOperatorSignature},
+          receiver_signature_url = ${resolvedDepotOperatorSignature},
           receiver_signed_at = NOW(),
           completed_at = NOW(),
           updated_at = NOW()
@@ -2479,6 +2563,25 @@ export class TripsService implements OnModuleInit {
       });
     }
 
+    // Force-completing an auxiliary trip that never received its arrival CMR is
+    // a deliberate override of the whole point of gating `completed` on that
+    // upload (see completeAuxiliaryOnArrivalCmr) — so require an explicit
+    // reason, giving the audit trail (logged below) something to say about why
+    // this one didn't go through the normal path.
+    if (
+      trip.is_auxiliary === true &&
+      target === TripStatus.completed &&
+      from !== TripStatus.completed &&
+      !trip.public_sign_token_used_at &&
+      !dto.reason?.trim()
+    ) {
+      throw new BadRequestException({
+        error: 'arrival_cmr_reason_required',
+        message:
+          'Această cursă auxiliară nu are CMR-ul de sosire încărcat. Specifică un motiv pentru a o finaliza manual.',
+      });
+    }
+
     // Validate the source belongs to the caller's org before touching anything —
     // same ownership checks registerLoad performs.
     if (wantsLoad && orgId !== null) {
@@ -2615,11 +2718,12 @@ export class TripsService implements OnModuleInit {
     });
 
     // Auxiliary force-load: an admin forcing an aux trip to `loaded` should behave
-    // like a mobile register-load — fire the loaded side-effects once (idempotent)
-    // and schedule the delayed auto-complete so it still lands on `completed`.
+    // like a mobile register-load — fire the loaded side-effects once (idempotent:
+    // mints the sign token, retires the truck, queues stage-1 CMR, SMSs the
+    // arrival-CMR link). The trip then waits for that upload like any other aux
+    // trip — there is no timer to schedule anymore.
     if (trip.is_auxiliary === true && target === TripStatus.loaded) {
       await this.applyAuxiliaryLoadedSideEffects(id, orgId);
-      await this.scheduleAuxiliaryAutoComplete(id, orgId);
     }
 
     return result;
@@ -3173,8 +3277,18 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
-   * Public driver page submit: store the driver's signature (the "last
-   * signature") and finalize stage-2 of the CMR. One-time per token.
+   * DEPRECATED — kept for one release only, for drivers who already received
+   * an old-style "sign the CMR" SMS link before this deploy. The admin-web
+   * `/sign/[token]` page now redirects to `/cmr/[token]` for everyone, so this
+   * is only reachable by a stale bookmark or a direct API call.
+   *
+   * Stores the driver's signature (the "last signature") and finalizes
+   * stage-2 of the CMR — same as before. The one change: it now ALSO
+   * completes the trip itself, because the 5-minute auto-complete timer that
+   * used to do that is gone. Without this, a legacy link would set
+   * `public_sign_token_used_at` (burning the one-time token) and then leave
+   * the trip stuck in `loaded` forever, since nothing else would ever
+   * complete it. One-time per token, same guarantee as before.
    */
   async signByPublicToken(token: string, signature: string): Promise<{ ok: true }> {
     const updated = (await this.drizzleProvider.db.execute(
@@ -3186,8 +3300,8 @@ export class TripsService implements OnModuleInit {
             AND is_auxiliary = true
             AND deleted_at IS NULL
             AND public_sign_token_used_at IS NULL
-          RETURNING id, organization_id`,
-    )) as unknown as { id: string; organization_id: string | null }[];
+          RETURNING id, organization_id, status`,
+    )) as unknown as { id: string; organization_id: string | null; status: TripStatus }[];
     const row = updated[0];
     if (!row) {
       // Either invalid token or already signed — surface a clear, non-leaky error.
@@ -3201,7 +3315,20 @@ export class TripsService implements OnModuleInit {
       }
       throw new NotFoundException('Link invalid sau expirat.');
     }
-    this.logTripFlow(row.id, 'AUX_DRIVER_SIGNED', TripStatus.completed, TripStatus.completed);
+
+    // Separately guarded on `status = loaded`, so signing a trip that is
+    // already `completed` (harmless) or `cancelled` (must NOT be resurrected)
+    // touches nothing beyond the signature recorded above.
+    if (row.status === TripStatus.loaded) {
+      await this.drizzleProvider.db.execute(
+        sql`UPDATE trips SET
+              status = ${TripStatus.completed}::trip_status,
+              completed_at = COALESCE(completed_at, NOW()),
+              updated_at = NOW()
+            WHERE id = ${row.id} AND status = ${TripStatus.loaded}::trip_status`,
+      );
+    }
+    this.logTripFlow(row.id, 'AUX_DRIVER_SIGNED', row.status, TripStatus.completed);
     // Stage-2 CMR — finalize the document now that the driver has signed.
     await this.cmrQueue.add('generate', { tripId: row.id, orgId: row.organization_id, stage: 2 });
     return { ok: true };

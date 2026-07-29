@@ -2,21 +2,26 @@
 export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Download } from 'lucide-react';
 import { useTransporterRequests } from '@strawboss/api';
 import type { TripRequest } from '@strawboss/types';
 import { AUX_STAGE_ORDER } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
-import { buildAuxRows } from '@/lib/aux-rows';
+import { buildAuxRows, type AuxRow } from '@/lib/aux-rows';
+import { fmtDate, fmtDateTime, romaniaDateString } from '@/lib/date';
+import { exportXlsx, type XlsxColumn } from '@/lib/xlsx';
+import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { AuxTripTable } from '@/components/features/trips/AuxTripTable';
 import { RequestDetailsModal } from '@/components/features/trip-requests/RequestDetailsModal';
 import { AvizUploadModal } from '@/components/features/trip-requests/AvizUploadModal';
 import { CmrUploadModal } from '@/components/features/trip-requests/CmrUploadModal';
+import { qualityLabelKey } from '@/components/features/trip-requests/labels';
 import { ComandaModal } from './ComandaModal';
+import { TransporterDeleteTripDialog } from './TransporterDeleteTripDialog';
 
 const inputCls =
   'rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 ' +
@@ -27,13 +32,17 @@ const inputCls =
 const STAGE_OPTIONS = AUX_STAGE_ORDER;
 
 /**
- * The transporter's read-only ledger — the aux transports THEY created, rendered
- * through the same AuxStage lifecycle the admin ledger uses (buildAuxRows +
- * AuxTripTable in `readOnly` mode: no confirm/cancel/unplan/upload). Row click
+ * The transporter's ledger — the aux transports THEY created, rendered through
+ * the same AuxStage lifecycle the admin ledger uses (buildAuxRows + AuxTripTable
+ * in `readOnly` mode: no confirm/cancel/unplan, and the row itself isn't
+ * editable). Document upload IS wired though — aviz + both CMRs (departure and
+ * arrival) — so the transporter can attach a document on the driver's behalf
+ * even though they cannot otherwise change the transport's state. Row click
  * opens the read-only details modal.
  */
 export default function TransporterTripsPage() {
   const { t } = useI18n();
+  const slug = useOrgSlug();
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -41,7 +50,9 @@ export default function TransporterTripsPage() {
   const [detailsTarget, setDetailsTarget] = useState<TripRequest | null>(null);
   const [avizTarget, setAvizTarget] = useState<TripRequest | null>(null);
   const [cmrTarget, setCmrTarget] = useState<TripRequest | null>(null);
+  const [cmrArrivalTarget, setCmrArrivalTarget] = useState<TripRequest | null>(null);
   const [comandaTarget, setComandaTarget] = useState<TripRequest | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TripRequest | null>(null);
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {};
@@ -59,9 +70,115 @@ export default function TransporterTripsPage() {
     [allRows, stageFilter],
   );
 
+  // Exports exactly what's on screen — i.e. the active search/date/stage
+  // filters — with every field of the request, not just the 10 visible
+  // columns. Booleans render as Da/Nu so the sheet reads naturally in Excel.
+  const handleExport = () => {
+    const yesNo = (v: boolean | undefined) => (v ? t('common.yes') : t('common.no'));
+    const columns: XlsxColumn<AuxRow>[] = [
+      { header: t('tripRequests.colStatus'), value: (r) => t(`tripRequests.stage.${r.stage}`) },
+      {
+        header: t('tripRequests.colRequester'),
+        value: (r) => r.request.companyName || r.request.requesterName,
+      },
+      { header: t('transporter.export.requesterName'), value: (r) => r.request.requesterName },
+      { header: t('transporter.export.requesterPhone'), value: (r) => r.request.requesterPhone },
+      { header: t('transporter.export.requesterEmail'), value: (r) => r.request.requesterEmail },
+      { header: t('tripRequests.colTruck'), value: (r) => r.request.truckRegistrationPlate },
+      {
+        header: t('transporter.export.trailerPlate'),
+        value: (r) => r.request.trailerRegistrationPlate,
+      },
+      {
+        header: t('transporter.export.truckMakeModel'),
+        value: (r) => [r.request.truckMake, r.request.truckModel].filter(Boolean).join(' '),
+      },
+      { header: t('tripRequests.colDriver'), value: (r) => r.request.driverName },
+      { header: t('transporter.export.driverPhone'), value: (r) => r.request.driverPhone },
+      { header: t('tripRequests.colCrop'), value: (r) => r.request.cropType },
+      {
+        header: t('transporter.export.quality'),
+        value: (r) => (r.request.quality ? t(qualityLabelKey(r.request.quality)) : null),
+      },
+      { header: t('transporter.export.tonsRequested'), value: (r) => r.request.tonsRequested },
+      {
+        header: t('transporter.export.pickupParcel'),
+        value: (r) => r.request.tripSourceParcelName ?? r.request.sourceParcelName,
+      },
+      {
+        header: t('transporter.export.pickupDepot'),
+        value: (r) => r.request.tripSourceDepotName ?? r.request.sourceDepotName,
+      },
+      { header: t('tripRequests.colDestination'), value: (r) => r.request.destinationLocality },
+      {
+        header: t('transporter.export.destinationAddress'),
+        value: (r) => r.request.destinationAddress,
+      },
+      {
+        header: t('tripRequests.colNeededDate'),
+        value: (r) => fmtDate(r.request.neededDate),
+      },
+      {
+        header: t('transporter.export.unloadingDate'),
+        value: (r) => fmtDate(r.request.unloadingDate),
+      },
+      { header: t('tripRequests.colTrip'), value: (r) => r.request.tripNumber },
+      { header: t('transporter.export.baleCount'), value: (r) => r.request.tripBaleCount },
+      {
+        header: t('transporter.export.loadingCompletedAt'),
+        value: (r) => fmtDateTime(r.request.tripLoadingCompletedAt),
+      },
+      {
+        header: t('transporter.export.arrivalCmrAt'),
+        value: (r) => fmtDateTime(r.request.tripSignedAt),
+      },
+      {
+        header: t('transporter.export.completedAt'),
+        value: (r) => fmtDateTime(r.request.tripCompletedAt),
+      },
+      { header: t('transporter.export.createdAt'), value: (r) => fmtDateTime(r.request.createdAt) },
+      { header: t('transporter.export.confirmedBy'), value: (r) => r.request.confirmedByName },
+      {
+        header: t('transporter.export.cancelledAt'),
+        value: (r) => fmtDateTime(r.request.cancelledAt),
+      },
+      {
+        header: t('transporter.export.cancellationReason'),
+        value: (r) => r.request.cancellationReason,
+      },
+      { header: t('transporter.export.hasAviz'), value: (r) => yesNo(r.request.hasAviz) },
+      { header: t('transporter.export.hasCmrScan'), value: (r) => yesNo(r.request.hasCmrScan) },
+      {
+        header: t('transporter.export.hasCmrArrival'),
+        value: (r) => yesNo(r.request.hasCmrArrival),
+      },
+      { header: t('transporter.export.hasComanda'), value: (r) => yesNo(r.request.hasComanda) },
+      { header: t('transporter.export.comandaOrderNo'), value: (r) => r.request.comandaOrderNo },
+    ];
+    void exportXlsx(
+      `curse-${slug}-${romaniaDateString()}.xlsx`,
+      t('transporter.myTripsTitle'),
+      columns,
+      rows,
+    );
+  };
+
   return (
     <div className="space-y-4">
-      <PageHeader title={t('transporter.myTripsTitle')} />
+      <PageHeader
+        title={t('transporter.myTripsTitle')}
+        actions={
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={rows.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            {t('transporter.exportXlsx')}
+          </button>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput
@@ -114,7 +231,9 @@ export default function TransporterTripsPage() {
           onRowClick={(row) => setDetailsTarget(row.request)}
           onUploadAviz={(r) => setAvizTarget(r)}
           onUploadCmr={(r) => setCmrTarget(r)}
+          onUploadCmrArrival={(r) => setCmrArrivalTarget(r)}
           onViewComanda={(r) => setComandaTarget(r)}
+          onDelete={(row) => setDeleteTarget(row.request)}
           emptyMessage={t('transporter.empty')}
         />
       )}
@@ -136,8 +255,19 @@ export default function TransporterTripsPage() {
           onClose={() => setCmrTarget(null)}
         />
       )}
+      {cmrArrivalTarget && (
+        <CmrUploadModal
+          request={cmrArrivalTarget}
+          variant="transporter"
+          kind="delivery"
+          onClose={() => setCmrArrivalTarget(null)}
+        />
+      )}
       {comandaTarget && (
         <ComandaModal request={comandaTarget} onClose={() => setComandaTarget(null)} />
+      )}
+      {deleteTarget && (
+        <TransporterDeleteTripDialog request={deleteTarget} onClose={() => setDeleteTarget(null)} />
       )}
     </div>
   );

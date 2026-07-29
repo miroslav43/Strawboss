@@ -9,6 +9,7 @@ import { BeneficiaryRecordsService } from './beneficiary-records.service';
 import { BeneficiaryPinVerifier } from './beneficiary-pin.verifier';
 import { PinThrottleService } from './pin-throttle.service';
 import { PinThrottleGuard } from './pin-throttle.guard';
+import { TokenThrottleGuard } from './token-throttle.guard';
 import { AlertsModule } from '../alerts/alerts.module';
 import { TripsModule } from '../trips/trips.module';
 import { BeneficiariesModule } from '../beneficiaries/beneficiaries.module';
@@ -31,6 +32,7 @@ import { DocumentsModule } from '../documents/documents.module';
     BeneficiaryPinVerifier,
     PinThrottleService,
     PinThrottleGuard,
+    TokenThrottleGuard,
   ],
   exports: [TripRequestsService, BeneficiaryRecordsService],
 })

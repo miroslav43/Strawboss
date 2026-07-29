@@ -4,43 +4,40 @@ import type { Job } from 'bullmq';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { QUEUE_TRIP_AUTOCOMPLETE } from '../jobs/queues';
-import { TripsService } from './trips.service';
 
 /**
- * Delayed job that auto-completes an auxiliary trip a few minutes after it is
- * loaded. Scheduled from TripsService when an aux trip enters `loaded` (mobile
- * register-load or admin force-load), keyed by a deterministic jobId so a
- * repeat schedule replaces rather than duplicates. The service method is
- * idempotent — a no-op if the trip already left `loaded`.
+ * Deliberate NO-OP kept for exactly one release.
+ *
+ * This used to be a delayed job that auto-completed an auxiliary trip 5
+ * minutes after it was loaded, regardless of whether anything had actually
+ * arrived anywhere (`TripsService.autoCompleteAuxiliary`, now removed). That
+ * timer is gone: an aux trip now only completes when the external driver
+ * uploads the arrival CMR (`TripsService.completeAuxiliaryOnArrivalCmr`), or an
+ * admin force-completes it with a reason.
+ *
+ * At the moment this ships, BullMQ may still be holding delayed jobs
+ * (`aux-autocomplete-<tripId>`) that were scheduled by the old code before the
+ * deploy. Left unhandled, those would fire post-deploy and silently complete
+ * trips nobody actually finished. Logging and discarding them here is the
+ * deploy-safety net; this whole file (and QUEUE_TRIP_AUTOCOMPLETE) can be
+ * deleted once they've all drained (~5 minutes after the release lands).
  */
 @Injectable()
 @Processor(QUEUE_TRIP_AUTOCOMPLETE)
 export class TripAutocompleteProcessor extends WorkerHost {
-  constructor(
-    private readonly tripsService: TripsService,
-    @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
-  ) {
+  constructor(@Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger) {
     super();
   }
 
   async process(job: Job<{ tripId: string; orgId: string | null }>): Promise<void> {
-    const { tripId, orgId } = job.data;
-    this.winston.log('flow', 'Aux auto-complete job started', {
-      context: 'TripAutocompleteProcessor',
-      jobId: job.id,
-      tripId,
-    });
-
-    try {
-      await this.tripsService.autoCompleteAuxiliary(tripId, orgId);
-    } catch (err) {
-      this.winston.error('Aux auto-complete job failed', {
+    this.winston.log(
+      'flow',
+      'Aux auto-complete job: no-op (superseded by arrival-CMR completion)',
+      {
         context: 'TripAutocompleteProcessor',
         jobId: job.id,
-        tripId,
-        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
-      });
-      throw err;
-    }
+        tripId: job.data.tripId,
+      },
+    );
   }
 }

@@ -46,17 +46,67 @@
   }
 }
 
-/* Parcel map labels — permanent tooltips on polygons */
-.parcel-label {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(79, 121, 66, 0.3);
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-  padding: 2px 6px;
-  pointer-events: none;
-  text-align: center;
+/* Parcel bale badge — permanent count of bales still lying in the field.
+   The Leaflet-positioned anchor is a zero-size point at the polygon
+   centroid; the pill inside centres itself on it so it can be any number
+   of digits wide without mis-centring. */
+.parcel-bale-anchor {
+  width: 0 !important;
+  height: 0 !important;
 }
-.parcel-label::before {
+.parcel-bale-badge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: rgba(
+    217,
+    119,
+    6,
+    0.94
+  ); /* amber-600 — matches the parcels table's "remaining" cell */
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font:
+    700 12px/1 ui-sans-serif,
+    system-ui,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+/* Zoom gate (LeafletMap BADGE_MIN_ZOOM): below the threshold the pills
+   overlap into an unreadable smear, so they're hidden entirely rather than
+   shrunk. The class lives on the map container — see the zoomend effect. */
+.hide-parcel-badges .parcel-bale-badge {
+  display: none;
+}
+
+/* Rich hover card shown on parcel polygons (and reused for deposit pins) —
+   farm, crop, area, harvest status, bale tallies. Dark on purpose: the
+   basemap is satellite imagery, where a light card is unreadable over
+   bright stubble or snow. */
+.parcel-hover-card {
+  background: rgba(17, 24, 39, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  padding: 8px 10px;
+  max-width: 280px;
+  color: #f9fafb;
+  white-space: normal;
+  pointer-events: none;
+}
+.parcel-hover-card::before {
   display: none;
 }
 

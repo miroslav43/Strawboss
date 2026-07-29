@@ -25,6 +25,7 @@ import { QUEUE_MESSAGE_SEND, QUEUE_COMANDA_GENERATION } from '../jobs/queues';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates } from '../messaging/message-templates';
 import { MessageKind, RequestStatus } from '@strawboss/types';
+import { composeAuxStage, canDeleteAuxStage } from '@strawboss/domain';
 import type {
   TripRequest,
   PortalInfo,
@@ -121,11 +122,18 @@ const TR_COLS = sql`
   EXISTS(SELECT 1 FROM documents d
          WHERE d.trip_request_id = trip_requests.id
            AND d.document_type = 'delivery_note' AND d.deleted_at IS NULL) AS "hasAviz",
-  -- The scanned paper CMR. Note this can only match a 'cmr_scan' document, never
-  -- the Puppeteer-generated 'cmr' — that one is trip-scoped (trip_request_id NULL).
+  -- The scanned paper CMR (departure). Note this can only match a 'cmr_scan'
+  -- document, never the Puppeteer-generated 'cmr' — that one is trip-scoped
+  -- (trip_request_id NULL).
   EXISTS(SELECT 1 FROM documents d
          WHERE d.trip_request_id = trip_requests.id
            AND d.document_type = 'cmr_scan' AND d.deleted_at IS NULL) AS "hasCmrScan",
+  -- The arrival CMR — uploaded by the external driver via the public link (or
+  -- overridden by an admin/transporter). Its presence is also what completes
+  -- the trip (see TripsService.completeAuxiliaryOnArrivalCmr).
+  EXISTS(SELECT 1 FROM documents d
+         WHERE d.trip_request_id = trip_requests.id
+           AND d.document_type = 'cmr_scan_delivery' AND d.deleted_at IS NULL) AS "hasCmrArrival",
   -- The generated transport-order (comandă) PDF, if one exists for this request.
   EXISTS(SELECT 1 FROM documents d
          WHERE d.trip_request_id = trip_requests.id
@@ -491,6 +499,89 @@ export class TripRequestsService {
     });
 
     return updated[0];
+  }
+
+  /**
+   * Delete a request outright — the transporter self-service counterpart to
+   * `cancel()`. Only reachable while the transport has not yet moved: the
+   * stage is recomputed server-side (never trust the client's snapshot) via
+   * the SAME `composeAuxStage` the ledger renders with, and gated by
+   * `canDeleteAuxStage` from `@strawboss/domain` — pending / unplanned /
+   * planned / cancelled only. Loading, awaitingArrivalCmr and completed all
+   * refuse: a loader may be actively working the truck, or paper/goods
+   * already moved, and undoing that from under them is exactly the hazard
+   * `AuxTripTable`'s original "no delete" comment warned about.
+   *
+   * Unlike `cancel()`, this does not hand the transport back for
+   * re-planning — it soft-deletes the live trip(s) (mirroring the auxiliary
+   * branch of `TripsService.softDelete`: task_assignments soft-deleted, never
+   * NULLed, so a boot backfill can't resurrect them), retires the one-time
+   * auxiliary truck, and finally soft-deletes the request row itself.
+   *
+   * Attached documents (aviz/CMR/comandă) are left untouched — the request
+   * row they hang off is gone from every query already, and keeping them
+   * preserves the paper trail for the audit table.
+   */
+  async deleteAuxRequest(orgId: string | null, id: string): Promise<void> {
+    const req = await this.findById(orgId, id); // 404 + org check
+
+    const stage = composeAuxStage({
+      status: req.status,
+      tripStatus: req.tripStatus,
+      tripSignedAt: req.tripSignedAt,
+      tripCompletedAt: req.tripCompletedAt,
+    });
+    if (!canDeleteAuxStage(stage)) {
+      throw new BadRequestException({
+        error: 'stage_not_deletable',
+        stage,
+        message:
+          'Această cursă este deja în desfășurare sau finalizată și nu mai poate fi ștearsă.',
+      });
+    }
+
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+
+    await this.drizzleProvider.db.transaction(async (tx) => {
+      // Soft-delete (never NULL trip_id) any task assigned against a live trip
+      // on this request, same invariant TripsService.softDelete relies on.
+      await tx.execute(
+        sql`UPDATE task_assignments SET deleted_at = NOW(), updated_at = NOW()
+             WHERE trip_id IN (
+                     SELECT id FROM trips
+                      WHERE trip_request_id = ${id}::uuid AND deleted_at IS NULL
+                   )
+               AND deleted_at IS NULL`,
+      );
+      // All non-deleted trips on this request — not just the "winning" one
+      // TR_TRIP_JOIN picks. A re-planned request can leave an inert cancelled
+      // trip behind; deleting the request should not leave that dangling.
+      await tx.execute(
+        sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW()
+             WHERE trip_request_id = ${id}::uuid AND deleted_at IS NULL`,
+      );
+      // Retire the one-time auxiliary truck minted at confirm() — same cleanup
+      // cancel() performs; it has no purpose beyond this transport.
+      if (req.machineId) {
+        await tx.execute(
+          sql`UPDATE machines SET deleted_at = NOW(), updated_at = NOW()
+               WHERE id = ${req.machineId}::uuid
+                 AND is_auxiliary = true
+                 AND deleted_at IS NULL`,
+        );
+      }
+      await tx.execute(
+        sql`UPDATE trip_requests SET deleted_at = NOW(), updated_at = NOW()
+             WHERE id = ${id}::uuid AND deleted_at IS NULL${orgFilter}`,
+      );
+    });
+
+    this.winston.log('flow', `Trip request ${id} deleted (was stage '${stage}')`, {
+      context: 'TripRequestsService',
+      requestId: id,
+      stage,
+      retiredMachineId: req.machineId ?? null,
+    });
   }
 
   // ── Avize (delivery-note PDFs attached to a request) ─────────────────────

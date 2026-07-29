@@ -115,7 +115,12 @@ export interface TripRequest extends Timestamps, SoftDelete {
   tripBaleCount?: number | null;
   tripLoadingCompletedAt?: string | null;
   tripCompletedAt?: string | null;
-  /** When the external driver signed via the one-time public link. */
+  /**
+   * When the external driver uploaded the arrival CMR via the one-time public
+   * link. Historically this was "when they signed" (an electronic signature) —
+   * the column and this field kept their name across the switch to a photo
+   * upload; the moment it marks is the same one (`completed` gates on it).
+   */
   tripSignedAt?: string | null;
   tripSourceParcelName?: string | null;
   tripSourceDepotName?: string | null;
@@ -126,6 +131,10 @@ export interface TripRequest extends Timestamps, SoftDelete {
   // whether a non-deleted scanned paper CMR (cmr_scan document) exists for this
   // request — uploaded by the loader after an aux load, or overridden by an admin
   hasCmrScan?: boolean;
+  // whether a non-deleted arrival CMR (cmr_scan_delivery document) exists for
+  // this request — uploaded by the external driver via the public link, or
+  // overridden by an admin/transporter
+  hasCmrArrival?: boolean;
   // whether a generated comandă (transport-order) document exists for this request
   hasComanda?: boolean;
 }
@@ -158,7 +167,12 @@ export interface PortalInfo {
   allowedCropTypes: CropType[];
 }
 
-/** Minimal load summary shown to the driver on the public sign page. */
+/**
+ * Minimal load summary shown to the driver on the public sign page.
+ * @deprecated Superseded by `PublicArrivalCmrInfo` — kept only because
+ * `GET /public/sign/:token` still serves it for one release, for drivers who
+ * already received an old-style "sign the CMR" SMS link before this shipped.
+ */
 export interface PublicSignInfo {
   organizationName: string;
   cropType: CropType | null;
@@ -166,4 +180,14 @@ export interface PublicSignInfo {
   sourceParcelName: string | null;
   sourceParcelMunicipality: string | null;
   alreadySigned: boolean;
+}
+
+/** Load summary shown to the external driver on the public arrival-CMR page. */
+export interface PublicArrivalCmrInfo {
+  organizationName: string;
+  truckPlate: string | null;
+  baleCount: number;
+  destinationName: string | null;
+  destinationAddress: string | null;
+  alreadyUploaded: boolean;
 }

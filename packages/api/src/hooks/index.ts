@@ -89,6 +89,7 @@ export {
   useOrgRequestSettings,
   useUpdateOrgRequestSettings,
 } from './use-trip-requests.js';
+export type { DocVariant, CmrKind } from './use-trip-requests.js';
 
 export {
   useMessages,
@@ -134,6 +135,7 @@ export {
   useDeleteTransporterRecord,
   useSubmitTransporterRequest,
   useTransporterRequests,
+  useDeleteTransporterRequest,
   useBeneficiaryOrderSettings,
   useSaveBeneficiaryOrderSettings,
   useTransporterComanda,

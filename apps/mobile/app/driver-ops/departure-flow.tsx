@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useI18n } from '@/lib/i18n';
 import { BigButton } from '@/components/ui/BigButton';
@@ -9,14 +9,13 @@ import { ConfirmCountdown } from '@/components/shared/ConfirmCountdown';
 import { mobileLogger } from '@/lib/logger';
 import { colors } from '@strawboss/ui-tokens';
 import { useTripTransition } from '@/hooks/useTripTransition';
-import { useAuthStore } from '@/stores/auth-store';
-import { resolveApiUrl } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
-import { scale } from '@/utils/responsive';
 
 /**
- * Departure flow — the driver signs to start the trip. Trip distance is derived
+ * Departure flow — the driver explicitly confirms the trip has departed (a 3s
+ * countdown gate, not a signature — the backend hasn't collected a driver
+ * signature since `departSchema` was emptied out). Trip distance is derived
  * from the GPS track between depart and arrive, so no odometer is collected.
  */
 export default function DepartureFlowScreen() {
@@ -27,51 +26,23 @@ export default function DepartureFlowScreen() {
   const [pendingSync, setPendingSync] = useState(false);
   // FM-6: countdown state
   const [countdownVisible, setCountdownVisible] = useState(false);
-  const [pendingSignature, setPendingSignature] = useState<string | null>(null);
 
   const { enqueueTransition } = useTripTransition();
-  const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
 
-  // Sign-with-specimen: trigger countdown using the saved specimen URL instead
-  // of capturing a fresh canvas signature.
-  const handleSignWithSpecimen = useCallback(() => {
-    if (!signatureSpecimenUrl) {
-      // Defensive — should not happen because AuthGate forces specimen capture
-      // for drivers before they can reach the trip flow.
-      Alert.alert(
-        t('departureFlow.alert.specimenMissing.title'),
-        t('departureFlow.alert.specimenMissing.message'),
-        [
-          {
-            text: t('departureFlow.alert.specimenMissing.action'),
-            onPress: () => router.replace('/specimen-capture?mode=redo'),
-          },
-        ],
-      );
-      return;
-    }
-    setPendingSignature(signatureSpecimenUrl);
+  const handleConfirmDeparture = useCallback(() => {
     setCountdownVisible(true);
-  }, [signatureSpecimenUrl]);
+  }, []);
 
   const handleCountdownCancel = useCallback(() => {
     setCountdownVisible(false);
-    setPendingSignature(null);
   }, []);
 
   // Actual depart logic — runs after countdown expires (FM-6).
   const executeDepart = useCallback(async () => {
     setCountdownVisible(false);
-    const driverSignature = pendingSignature;
-    setPendingSignature(null);
-    if (!tripId || !driverSignature) return;
+    if (!tripId) return;
     setSubmitting(true);
     try {
-      // Specimen URL flows through verbatim — the backend stores it as-is in
-      // `trips.driver_signature_url`, identical to how it handled freshly
-      // captured base64 signatures before.
-      const signatureValue = driverSignature;
-
       // Read current local trip status for pre-validation.
       const db = await getDatabase();
       const tripsRepo = new TripsRepo(db);
@@ -82,9 +53,7 @@ export default function DepartureFlowScreen() {
         tripId,
         currentStatus,
         transition: 'depart',
-        body: {
-          driverSignature: signatureValue,
-        },
+        body: {},
         localMeta: {
           departure_at: new Date().toISOString(),
         },
@@ -107,36 +76,21 @@ export default function DepartureFlowScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [tripId, enqueueTransition, pendingSignature]);
+  }, [tripId, enqueueTransition]);
 
   return (
     <View style={styles.outer}>
       <ScreenHeader title={t('departureFlow.screenTitle')} />
-      <ScrollView
-        style={[styles.body, { flex: 1 }]}
-        contentContainerStyle={styles.signatureContent}
-      >
+      <ScrollView style={[styles.body, { flex: 1 }]} contentContainerStyle={styles.content}>
         {pendingSync && (
           <View style={styles.badgeRow}>
             <PendingTransitionBadge />
           </View>
         )}
-        <Text style={styles.sigHint}>{t('departureFlow.hint')}</Text>
-        <View style={styles.specimenCard}>
-          <Text style={styles.specimenLabel}>{t('departureFlow.specimenCard.label')}</Text>
-          {signatureSpecimenUrl ? (
-            <Image
-              source={{ uri: resolveApiUrl(signatureSpecimenUrl) }}
-              style={styles.specimenImage}
-              resizeMode="contain"
-            />
-          ) : (
-            <Text style={styles.specimenMissing}>{t('departureFlow.specimenCard.missing')}</Text>
-          )}
-        </View>
+        <Text style={styles.hintText}>{t('departureFlow.hint')}</Text>
         <BigButton
-          title={t('departureFlow.button.signWithSpecimen')}
-          onPress={handleSignWithSpecimen}
+          title={t('departureFlow.button.confirmDeparture')}
+          onPress={handleConfirmDeparture}
           disabled={submitting}
         />
         {submitting ? null : (
@@ -147,7 +101,7 @@ export default function DepartureFlowScreen() {
           />
         )}
       </ScrollView>
-      {/* FM-6: countdown overlay — shown after specimen is selected */}
+      {/* FM-6: countdown overlay — shown after the driver confirms */}
       <ConfirmCountdown
         visible={countdownVisible}
         actionLabel={t('departureFlow.countdown.actionLabel')}
@@ -171,33 +125,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 4,
   },
-  sigHint: { fontSize: 14, color: '#5D4037', paddingHorizontal: 16, paddingBottom: 8 },
-  signatureContent: { padding: 16, gap: 12 },
-  specimenCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    gap: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-    alignItems: 'center',
-  },
-  specimenLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#5D4037',
-    textTransform: 'uppercase',
-    alignSelf: 'flex-start',
-  },
-  specimenImage: {
-    width: '100%',
-    height: scale(140),
-    backgroundColor: '#F9F5F2',
-    borderRadius: 8,
-  },
-  specimenMissing: {
-    fontSize: 14,
-    color: '#C62828',
-    paddingVertical: 24,
-  },
+  hintText: { fontSize: 14, color: '#5D4037', paddingHorizontal: 16, paddingBottom: 8 },
+  content: { padding: 16, gap: 12 },
 });

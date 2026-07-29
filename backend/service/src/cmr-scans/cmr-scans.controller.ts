@@ -5,13 +5,16 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { UserRole } from '@strawboss/types';
+import { cmrScanKindSchema, type CmrScanKind } from '@strawboss/validation';
 import { CmrScansService } from './cmr-scans.service';
 import { Roles, CurrentUser, type RequestUser } from '../auth';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { CMR_SCAN_MAX_BYTES } from '../uploads/uploads.service';
 
 @Controller('cmr-scans')
@@ -76,45 +79,68 @@ export class CmrScansController {
     return this.textField(file, 'scanId');
   }
 
-  /** Mobile: the loader uploads the PDF built from the document-scanner shots. */
+  /**
+   * Mobile: the loader uploads the PDF built from the document-scanner shots.
+   * `?kind=` defaults to `loading` so the mobile app (which never sends it)
+   * keeps hitting the departure CMR unchanged.
+   */
   @Post('trip/:tripId')
   @Roles(UserRole.admin, UserRole.loader_operator)
   async uploadForTrip(
     @CurrentUser() user: RequestUser,
     @Param('tripId') tripId: string,
+    @Query('kind', new ZodValidationPipe(cmrScanKindSchema)) kind: CmrScanKind,
     @Req() req: FastifyRequest,
   ) {
     const file = await this.requireFile(req);
-    return this.service.uploadForTrip(this.requireOrg(user), tripId, {
-      mimetype: file.mimetype,
-      stream: file.file,
-      pageCount: this.pageCount(file),
-      scanId: this.scanId(file),
-      source: 'loader_scan',
-    });
+    return this.service.uploadForTrip(
+      this.requireOrg(user),
+      tripId,
+      {
+        mimetype: file.mimetype,
+        stream: file.file,
+        pageCount: this.pageCount(file),
+        scanId: this.scanId(file),
+        source: 'loader_scan',
+      },
+      kind,
+    );
   }
 
-  /** Admin override: upload (or replace) the CMR straight from the requests page. */
+  /**
+   * Admin/dispatcher override: upload (or replace) a CMR straight from the
+   * requests page — either end, depending on `?kind=`.
+   */
   @Post('trip-request/:requestId')
   @Roles(UserRole.admin, UserRole.dispatcher)
   async uploadForRequest(
     @CurrentUser() user: RequestUser,
     @Param('requestId') requestId: string,
+    @Query('kind', new ZodValidationPipe(cmrScanKindSchema)) kind: CmrScanKind,
     @Req() req: FastifyRequest,
   ) {
     const file = await this.requireFile(req);
-    return this.service.uploadForRequest(this.requireOrg(user), requestId, {
-      mimetype: file.mimetype,
-      stream: file.file,
-      pageCount: this.pageCount(file),
-      scanId: this.scanId(file),
-      source: 'admin_upload',
-    });
+    return this.service.uploadForRequest(
+      this.requireOrg(user),
+      requestId,
+      {
+        mimetype: file.mimetype,
+        stream: file.file,
+        pageCount: this.pageCount(file),
+        scanId: this.scanId(file),
+        source: 'admin_upload',
+      },
+      kind,
+    );
   }
 
   @Get('trip-request/:requestId')
   @Roles(UserRole.admin, UserRole.dispatcher)
-  listForRequest(@CurrentUser() user: RequestUser, @Param('requestId') requestId: string) {
-    return this.service.listForRequest(this.requireOrg(user), requestId);
+  listForRequest(
+    @CurrentUser() user: RequestUser,
+    @Param('requestId') requestId: string,
+    @Query('kind', new ZodValidationPipe(cmrScanKindSchema)) kind: CmrScanKind,
+  ) {
+    return this.service.listForRequest(this.requireOrg(user), requestId, kind);
   }
 }

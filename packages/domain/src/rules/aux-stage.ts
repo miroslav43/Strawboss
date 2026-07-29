@@ -10,7 +10,7 @@ export interface AuxStageInput {
   status: RequestStatus | string;
   /** The execution axis: trips.status of the live trip, absent until one exists. */
   tripStatus?: TripStatus | string | null;
-  /** trips.public_sign_token_used_at — when the external driver signed. */
+  /** trips.public_sign_token_used_at — when the arrival CMR was uploaded. */
   tripSignedAt?: string | null;
   /** trips.completed_at. */
   tripCompletedAt?: string | null;
@@ -36,14 +36,18 @@ export interface AuxStageInput {
  *    truck is out being loaded. Trusting it would report a moving transport as
  *    merely confirmed.
  *
- * `loaded` splits on the signature, because for an aux load "loaded" is not the
- * end — the external driver still has to sign the paper CMR through a one-time
- * public link, and "who still owes me a signature" is a question the dispatcher
- * actually asks.
+ * `loaded` means "awaiting the arrival CMR" — the external driver still has to
+ * upload a photo of it through a one-time public link once the load reaches
+ * its destination, and "who still owes me that CMR" is a question the
+ * dispatcher actually asks. There is no further split beyond this: the upload
+ * completes the trip in the same transaction that records it
+ * (`completeAuxiliaryOnArrivalCmr`), so an "uploaded but still loaded" moment
+ * cannot be observed — unlike the old electronic-signature flow, which left the
+ * trip `loaded` for up to 5 more minutes after signing.
  *
  * This never emits in_transit / arrived / delivering / delivered: an auxiliary
  * trip cannot reach them. Its lifecycle is collapsed (loaded -> completed, via
- * applyAuxiliaryLoadedSideEffects + a delayed auto-complete), so rendering those
+ * applyAuxiliaryLoadedSideEffects + the arrival-CMR upload), so rendering those
  * would be a lie the UI tells about a state the backend cannot produce.
  */
 export function composeAuxStage(row: AuxStageInput): AuxStage {
@@ -63,15 +67,17 @@ export function composeAuxStage(row: AuxStageInput): AuxStage {
     case TripStatus.loading:
       return AuxStage.loading;
     case TripStatus.loaded:
-      return tripSignedAt ? AuxStage.signed : AuxStage.awaitingSignature;
+      return AuxStage.awaitingArrivalCmr;
     case TripStatus.completed:
       return AuxStage.completed;
     default:
       // A status an aux trip should not be able to reach (in_transit, arrived,
       // delivering, delivered, disputed). Rather than render a stage that lies,
-      // fall back to the strongest evidence we actually have.
-      if (tripCompletedAt) return AuxStage.completed;
-      return tripSignedAt ? AuxStage.signed : AuxStage.planned;
+      // fall back to the strongest evidence we actually have: either mark of
+      // completion (the arrival CMR is only ever recorded alongside completion,
+      // so its presence here is itself evidence of it) means completed.
+      if (tripCompletedAt || tripSignedAt) return AuxStage.completed;
+      return AuxStage.planned;
   }
 }
 
@@ -79,4 +85,28 @@ export function composeAuxStage(row: AuxStageInput): AuxStage {
 export function auxStageOrder(stage: AuxStage): number {
   const i = AUX_STAGE_ORDER.indexOf(stage);
   return i === -1 ? AUX_STAGE_ORDER.length : i;
+}
+
+/**
+ * Stages at which an aux transport has not yet moved and may still be
+ * deleted outright (as opposed to un-planned/cancelled — see
+ * `TripRequestsService.deleteAuxRequest`).
+ *
+ * `loading` is excluded even though nothing has been carried yet: a loader is
+ * actively working the truck on a phone, and deleting the request out from
+ * under them would strand that screen. `awaitingArrivalCmr` is "loaded" in
+ * TripStatus terms but the load has physically happened — excluded for the
+ * same reason. `completed` is obviously excluded. `cancelled` stays deletable
+ * so a transporter can clear cancelled rows out of their own ledger.
+ */
+export const DELETABLE_AUX_STAGES: readonly AuxStage[] = [
+  AuxStage.pending,
+  AuxStage.unplanned,
+  AuxStage.planned,
+  AuxStage.cancelled,
+] as const;
+
+/** Whether an aux transport at this stage may still be deleted (see above). */
+export function canDeleteAuxStage(stage: AuxStage): boolean {
+  return DELETABLE_AUX_STAGES.includes(stage);
 }

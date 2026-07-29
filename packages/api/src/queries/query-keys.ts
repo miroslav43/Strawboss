@@ -104,7 +104,11 @@ export const queryKeys = {
     list: (filters?: Record<string, unknown>) => ['tripRequests', 'list', filters] as const,
     detail: (id: string) => ['tripRequests', 'detail', id] as const,
     avize: (id: string) => ['tripRequests', 'avize', id] as const,
-    cmrScans: (id: string) => ['tripRequests', 'cmrScans', id] as const,
+    // `kind` distinguishes the departure CMR ('loading', the default — every
+    // existing call site omits it) from the arrival CMR ('delivery'), so the
+    // two never collide in the query cache.
+    cmrScans: (id: string, kind: 'loading' | 'delivery' = 'loading') =>
+      ['tripRequests', 'cmrScans', id, kind] as const,
   },
   orgRequestSettings: {
     all: ['orgRequestSettings'] as const,

@@ -15,6 +15,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { DeliveryDestinationsModule } from '../delivery-destinations/delivery-destinations.module';
 import { AlertsModule } from '../alerts/alerts.module';
 import { ParcelsModule } from '../parcels/parcels.module';
+import { CmrScansModule } from '../cmr-scans/cmr-scans.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ParcelsModule } from '../parcels/parcels.module';
     DeliveryDestinationsModule,
     AlertsModule,
     ParcelsModule,
+    CmrScansModule,
   ],
   controllers: [TripsController],
   providers: [TripsService, TruckIdleProcessor, TripAutocompleteProcessor, StalePlanSweepProcessor],

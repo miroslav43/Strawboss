@@ -483,25 +483,16 @@ export const en = {
   },
 
   departureFlow: {
-    screenTitle: 'Driver Signature',
-    hint: 'Confirm departure using your saved signature specimen.',
-    specimenCard: {
-      label: 'Signature Specimen',
-      missing: "You don't have a specimen yet.",
-    },
+    screenTitle: 'Trip departure',
+    hint: 'Confirm that you departed, to start the trip to the depot.',
     button: {
-      signWithSpecimen: 'Sign with specimen',
+      confirmDeparture: 'Confirm departure',
       cancel: 'Cancel',
     },
     countdown: {
       actionLabel: 'Departing from field',
     },
     alert: {
-      specimenMissing: {
-        title: 'Specimen missing',
-        message: "You don't have a signature specimen yet. Create one from your profile.",
-        action: 'Go to profile',
-      },
       error: {
         title: 'Error',
         message: 'Could not start the trip. Please try again.',
@@ -817,10 +808,6 @@ export const en = {
     successScreenTitle: 'Delivery confirmed',
     successMessage: 'Delivery confirmed!',
     successSubtext: '{count} bales recorded for {truck}.',
-    signatureScreenTitle: 'Operator signature',
-    signatureHint: 'Sign as depot operator to confirm receipt of the truck.',
-    signatureCaptureLabel: 'Depot operator signature',
-    cancelSignatureButton: 'Cancel',
     notFoundScreenTitle: 'Confirm delivery',
     notFoundTitle: 'Trip not found',
     notFoundSubtitle: 'The trip may already be confirmed or is not directed to your depot.',
@@ -845,10 +832,6 @@ export const en = {
     editingFieldGross: 'Gross',
     editingFieldTare: 'Tare',
     scaleBrokenNotice: 'Weights will not be recorded (scale broken).',
-    fieldLabelSignature: 'Operator signature',
-    signatureCaptured: 'Signature captured',
-    resignLink: 'Re-sign',
-    addSignatureButton: 'Add signature',
     gateHintWithDistance: 'Confirmation is disabled — the truck is {distance} m from the depot.',
     gateHintNoPosition: "Confirmation is disabled — the truck's position is unknown.",
     submitButtonSaving: 'Saving...',
@@ -864,8 +847,6 @@ export const en = {
     alertIncompleteBalesMessage: 'Please enter the number of bales.',
     alertIncompleteWeightsTitle: 'Incomplete data',
     alertIncompleteWeightsMessage: 'Please enter the gross weight and tare correctly.',
-    alertMissingSignatureTitle: 'Missing signature',
-    alertMissingSignatureMessage: 'Please sign before confirming the delivery.',
     errorTitle: 'Error',
     errorMessage: 'Could not confirm the delivery. Please try again.',
   },

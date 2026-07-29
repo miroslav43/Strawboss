@@ -1,0 +1,158 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{theme/strawboss-theme}[2026/07/27 StrawBoss pitch deck theme]
+
+\RequirePackage{fontspec}
+\RequirePackage{xcolor}
+\RequirePackage{tikz}
+\RequirePackage[absolute,overlay]{textpos}
+\RequirePackage{graphicx}
+\RequirePackage{fontawesome5}
+
+% ---- Brand colors, lifted verbatim from apps/admin-web/public/landing/style.css ----
+\definecolor{sbCream}{HTML}{F3EDE2}
+\definecolor{sbInk}{HTML}{1A1410}
+\definecolor{sbMuted}{HTML}{8A7B68}
+\definecolor{sbLine}{HTML}{D7CCB6}
+\definecolor{sbTerra}{HTML}{C4542A}
+\definecolor{sbField}{HTML}{4A5A3A}
+\definecolor{sbGold}{HTML}{C28B2C}
+\definecolor{sbDanger}{HTML}{A33521}
+\definecolor{sbWhite}{HTML}{FFFFFF}
+
+% ---- Fonts ----
+\setmainfont{InstrumentSerif}[
+  Path = fonts/,
+  Extension = .ttf,
+  UprightFont = *-Regular,
+  ItalicFont = *-Italic,
+]
+\setsansfont{InstrumentSans}[
+  Path = fonts/,
+  Extension = .ttf,
+  UprightFont = *-Regular,
+  BoldFont = *-SemiBold,
+]
+\newfontfamily\sbmedium{InstrumentSans-Medium}[Path = fonts/, Extension = .ttf]
+\newfontfamily\sbmono{JetBrainsMono-Regular}[Path = fonts/, Extension = .ttf]
+\newfontfamily\sbmonomed{JetBrainsMono-Medium}[Path = fonts/, Extension = .ttf]
+
+% ---- Beamer base ----
+\usefonttheme{professionalfonts}
+\setbeamertemplate{navigation symbols}{}
+\setbeamerfont{title}{family=\rmfamily,size=\huge}
+\setbeamerfont{frametitle}{family=\sffamily,series=\bfseries,size=\Large}
+\setbeamerfont{normal text}{family=\sffamily}
+\setbeamercolor{normal text}{fg=sbInk,bg=sbCream}
+\setbeamercolor{background canvas}{bg=sbCream}
+\setbeamercolor{frametitle}{fg=sbInk,bg=sbCream}
+\setbeamercolor{title}{fg=sbInk}
+\setbeamercolor{structure}{fg=sbTerra}
+\setbeamercolor{itemize item}{fg=sbTerra}
+\setbeamercolor{itemize subitem}{fg=sbField}
+\setbeamertemplate{itemize item}{\faLeaf}
+\setbeamertemplate{itemize subitem}{\faAngleRight}
+\setbeamercolor{footline}{fg=sbMuted}
+\setlength{\parskip}{0.4em}
+
+% No default beamer decorations — we draw our own frame furniture below.
+\setbeamertemplate{background}{}
+\setbeamertemplate{headline}{}
+% NOTE: on this Tectonic/beamer combination, \insertframenumber reads 0 (not 1)
+% specifically on the document's very first frame, and a local footline
+% override placed around that same first frame is silently ignored (both
+% confirmed by isolated repro — later frames are unaffected). Rather than
+% fight that, we reuse the "=0" signature as the hide condition: it only
+% ever fires on frame one, which is exactly where we want no footer anyway.
+\setbeamertemplate{footline}{
+  \ifnum\insertframenumber=0\else
+  \begin{textblock*}{\paperwidth}(0.85cm,8.75cm)
+    {\sbmono\scriptsize\color{sbMuted} STRAWBOSS \quad\textbullet\quad \insertframenumber\,/\,\inserttotalframenumber}
+  \end{textblock*}
+  \fi
+}
+
+% ---- Slide furniture: thin rule + eyebrow kicker above the frame title ----
+\newcommand{\sbkicker}[1]{%
+  \begin{textblock*}{20cm}(0.85cm,0.55cm)
+    {\sbmonomed\footnotesize\color{sbTerra}\MakeUppercase{#1}}
+  \end{textblock*}
+}
+
+\setbeamertemplate{frametitle}{
+  \vspace*{0.05cm}
+  \hspace*{0.85cm}\insertframetitle\\[-0.15em]
+  \hspace*{0.85cm}{\color{sbLine}\rule{11.6cm}{0.8pt}}
+}
+
+% ---- Section divider slides ----
+% One flowing textblock (kicker/title/subtitle stacked with \par+\vspace)
+% instead of three independently-positioned boxes, so it never overlaps
+% regardless of how many lines the title wraps to.
+\newcommand{\sectiondivider}[3]{%
+  % #1 = kicker (e.g. "PARTEA 1"), #2 = title, #3 = subtitle
+  {\setbeamertemplate{footline}{}
+  \begin{frame}[plain]
+    \begin{tikzpicture}[remember picture,overlay]
+      \fill[sbInk] (current page.south west) rectangle (current page.north east);
+    \end{tikzpicture}
+    \begin{textblock*}{13cm}(1.4cm,2.6cm)
+      {\sbmonomed\small\color{sbGold}\MakeUppercase{#1}}\par\vspace{0.35cm}
+      {\rmfamily\color{sbCream}\fontsize{34}{38}\selectfont #2}\par\vspace{0.45cm}
+      {\sffamily\color{sbMuted}\large #3}
+    \end{textblock*}
+  \end{frame}}
+}
+
+% ---- Big stat callout, e.g. for the opener/closer ----
+\newcommand{\bigstat}[2]{%
+  \begin{minipage}[t]{0.3\linewidth}
+    \centering
+    {\fontsize{34}{34}\selectfont\color{sbTerra} #1}\\[0.2em]
+    {\sffamily\small\color{sbMuted} #2}
+  \end{minipage}
+}
+
+% ---- Screenshot frame: rounded corners + a soft cast shadow, browser-card feel.
+%      Falls back to a dashed placeholder box if the capture isn't in place yet. ----
+\newcommand{\shotframe}[2][1\linewidth]{%
+  \IfFileExists{#2}{%
+    \begin{tikzpicture}
+      \node[rounded corners=3pt, fill=sbInk, opacity=0.16, inner sep=0pt,
+            xshift=2pt, yshift=-2pt] {\includegraphics[width=#1]{#2}};
+      \node[draw=sbLine, line width=0.6pt, rounded corners=3pt,
+            fill=sbWhite, inner sep=0pt] {\includegraphics[width=#1]{#2}};
+    \end{tikzpicture}%
+  }{%
+    \begin{tikzpicture}
+      \node[draw=sbMuted, dashed, line width=0.8pt, rounded corners=6pt,
+            fill=sbLine!35, minimum width=#1, minimum height=0.62*\linewidth,
+            text width=0.8*#1, align=center, inner sep=0.3cm] {%
+        {\sbmono\scriptsize\color{sbMuted} #2}%
+      };
+    \end{tikzpicture}%
+  }
+}
+
+% ---- Mobile placeholder: draws a phone-shaped gray box with the expected
+%      filename + caption when the real screenshot hasn't been dropped in yet.
+%      Falls back automatically to the real image once img/mobile/<file> exists.
+\newcommand{\mobileshot}[2]{%
+  \IfFileExists{img/mobile/#1}{%
+    \begin{tikzpicture}
+      \node[draw=sbLine, line width=0.8pt, rounded corners=8pt, fill=sbWhite, inner sep=3pt] {%
+        \includegraphics[width=3.55cm]{img/mobile/#1}%
+      };
+    \end{tikzpicture}%
+  }{%
+    \begin{tikzpicture}
+      \node[draw=sbMuted, dashed, line width=0.8pt, rounded corners=8pt,
+            fill=sbLine!35, minimum width=3.55cm, minimum height=7.3cm,
+            text width=3.0cm, align=center, inner sep=0.3cm] {%
+        {\sbmono\scriptsize\color{sbMuted} #1}\\[0.5em]
+        {\sffamily\footnotesize\color{sbInk} #2}
+      };
+    \end{tikzpicture}%
+  }
+}
+
+\endinput

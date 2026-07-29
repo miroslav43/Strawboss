@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Eye, AlertTriangle, Trash2 } from 'lucide-react';
 import type { TripRequest } from '@strawboss/types';
 import { AuxStage } from '@strawboss/types';
+import { canDeleteAuxStage } from '@strawboss/domain';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { useI18n } from '@/lib/i18n';
@@ -18,14 +19,16 @@ interface AuxTripTableProps {
   onViewDetails?: (r: TripRequest) => void;
   onUploadAviz?: (r: TripRequest) => void;
   onUploadCmr?: (r: TripRequest) => void;
+  onUploadCmrArrival?: (r: TripRequest) => void;
   /** Delete the live trip, handing the request back as "confirmed — unplanned". */
   onUnplan?: (row: AuxRow) => void;
   /** No trip to un-plan: cancel the request itself and retire its one-time truck. */
   onCancelRequest?: (r: TripRequest) => void;
   canUnplan?: boolean;
   /**
-   * Read-only view (the transporter's ledger): no actions column, and the doc
-   * chips render static. Every handler prop is ignored. Defaults to the admin's
+   * Read-only view (the transporter's ledger): no admin actions, and the doc
+   * chips render static. `onUnplan`/`onCancelRequest`/`canUnplan` are ignored.
+   * `onDelete` is the one exception — see below. Defaults to the admin's
    * interactive ledger.
    */
   readOnly?: boolean;
@@ -33,6 +36,13 @@ interface AuxTripTableProps {
   onRowClick?: (row: AuxRow) => void;
   /** View/generate the comandă (transport order) — adds a 3rd doc chip. */
   onViewComanda?: (r: TripRequest) => void;
+  /**
+   * Delete the REQUEST outright (the transporter's own self-service delete,
+   * not the admin un-plan/cancel escalation below). Only ever rendered in the
+   * `readOnly` ledger, and only for rows whose stage is still
+   * `canDeleteAuxStage` — see the actions-column comment.
+   */
+  onDelete?: (row: AuxRow) => void;
   emptyMessage?: string;
 }
 
@@ -45,24 +55,32 @@ interface AuxTripTableProps {
  * an aux trip has `driver_id` NULL by construction, so the cell was structurally
  * always blank. The external driver's name has always lived on the request.
  *
- * There is deliberately NO delete action here. An aux trip is owned by its
- * request — deleting the trip leaves the request pointing at a dead row and the
- * loader's phone stuck on "Camionul auxiliar nu are o cursă activă" forever. You
- * cancel the request, not the trip. Because the fleet table is filtered to
- * `isAuxiliary=false`, an aux trip has no delete button anywhere in the UI, which
- * makes that hazard structurally unreachable rather than merely discouraged.
+ * There is NO admin delete-the-trip action here, deliberately. An aux trip is
+ * owned by its request — deleting just the trip leaves the request pointing at
+ * a dead row and the loader's phone stuck on "Camionul auxiliar nu are o cursă
+ * activă" forever. The admin trash icon therefore un-plans/cancels the REQUEST
+ * (see `onUnplan`/`onCancelRequest`), never the bare trip.
+ *
+ * `onDelete` is a second, narrower trash icon for the transporter's own
+ * read-only ledger: it deletes the whole request (and any trip on it) in one
+ * step, but ONLY while `canDeleteAuxStage(row.stage)` — i.e. nothing has
+ * physically moved yet. The backend re-derives the stage and refuses
+ * regardless of what this button shows, so hiding it here is a UX nicety, not
+ * the enforcement.
  */
 export function AuxTripTable({
   rows,
   onViewDetails,
   onUploadAviz,
   onUploadCmr,
+  onUploadCmrArrival,
   onUnplan,
   onCancelRequest,
   canUnplan = false,
   readOnly = false,
   onRowClick,
   onViewComanda,
+  onDelete,
   emptyMessage,
 }: AuxTripTableProps) {
   const { t } = useI18n();
@@ -233,71 +251,95 @@ export function AuxTripTable({
           request={row.request}
           onUploadAviz={onUploadAviz}
           onUploadCmr={onUploadCmr}
+          onUploadCmrArrival={onUploadCmrArrival}
           onViewComanda={onViewComanda}
           // Static only when nobody can act on them. In the read-only ledger the
           // transporter still gets clickable chips if upload handlers are wired.
-          readOnly={readOnly && !onUploadAviz && !onUploadCmr}
+          readOnly={readOnly && !onUploadAviz && !onUploadCmr && !onUploadCmrArrival}
         />
       ),
     },
     {
       key: 'actions',
       header: '',
-      render: (row) => (
-        <div className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewDetails?.(row.request);
-            }}
-            className="rounded p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
-            aria-label={t('tripRequests.viewDetails')}
-            title={t('tripRequests.viewDetails')}
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-          {/*
-            One trash icon, two meanings — an escalation, not an ambiguity:
-              has a trip  -> UN-PLAN it. The request returns to "Confirmată —
-                             neplanificată" and can be re-assigned to another truck.
-                             (The truck broke down.)
-              no trip yet -> CANCEL the request outright and retire its one-time
-                             auxiliary truck. (The transport is off.)
-            So deleting a planned transport twice walks it all the way out, and you
-            can never wipe a commitment out from under a loader already working on it.
-            Nothing to delete on an already-cancelled row.
-          */}
-          {canUnplan && row.stage !== AuxStage.cancelled && (
+      render: (row) =>
+        readOnly ? (
+          // Transporter ledger: the only action is deleting their own request,
+          // and only while nothing has moved yet (canDeleteAuxStage). No eye
+          // icon here — the whole row is already clickable (see onRowClick).
+          <div className="flex items-center justify-end gap-1">
+            {onDelete && canDeleteAuxStage(row.stage) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(row);
+                }}
+                className="rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
+                aria-label={t('transporter.deleteTripAria')}
+                title={t('transporter.deleteTripAria')}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-end gap-1">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (row.request.tripLiveId) onUnplan?.(row);
-                else onCancelRequest?.(row.request);
+                onViewDetails?.(row.request);
               }}
-              className="rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
-              aria-label={
-                row.request.tripLiveId
-                  ? t('tripRequests.unplanAria')
-                  : t('tripRequests.cancelRequestAria')
-              }
-              title={
-                row.request.tripLiveId
-                  ? t('tripRequests.unplanAria')
-                  : t('tripRequests.cancelRequestAria')
-              }
+              className="rounded p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+              aria-label={t('tripRequests.viewDetails')}
+              title={t('tripRequests.viewDetails')}
             >
-              <Trash2 className="h-4 w-4" />
+              <Eye className="h-4 w-4" />
             </button>
-          )}
-        </div>
-      ),
+            {/*
+              One trash icon, two meanings — an escalation, not an ambiguity:
+                has a trip  -> UN-PLAN it. The request returns to "Confirmată —
+                               neplanificată" and can be re-assigned to another truck.
+                               (The truck broke down.)
+                no trip yet -> CANCEL the request outright and retire its one-time
+                               auxiliary truck. (The transport is off.)
+              So deleting a planned transport twice walks it all the way out, and you
+              can never wipe a commitment out from under a loader already working on it.
+              Nothing to delete on an already-cancelled row.
+            */}
+            {canUnplan && row.stage !== AuxStage.cancelled && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (row.request.tripLiveId) onUnplan?.(row);
+                  else onCancelRequest?.(row.request);
+                }}
+                className="rounded p-1 text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
+                aria-label={
+                  row.request.tripLiveId
+                    ? t('tripRequests.unplanAria')
+                    : t('tripRequests.cancelRequestAria')
+                }
+                title={
+                  row.request.tripLiveId
+                    ? t('tripRequests.unplanAria')
+                    : t('tripRequests.cancelRequestAria')
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ),
     },
   ];
 
-  // Read-only ledger (transporter): no actions column at all.
-  const visibleColumns = readOnly ? columns.filter((c) => c.key !== 'actions') : columns;
+  // Read-only ledger (transporter): actions column only when there is
+  // something to act on (a delete handler). The admin ledger always keeps it.
+  const showActionsColumn = !readOnly || !!onDelete;
+  const visibleColumns = showActionsColumn ? columns : columns.filter((c) => c.key !== 'actions');
 
   return (
     <DataTable<AuxRow>

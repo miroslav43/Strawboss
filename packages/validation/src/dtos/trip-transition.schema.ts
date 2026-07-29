@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { uuidSchema } from '../helpers/uuid.js';
-import { signatureUrlSchema } from '../helpers/signature-url.js';
 
 export const startLoadingSchema = z.object({
   loaderId: uuidSchema.optional(),
@@ -81,7 +80,21 @@ export const confirmDepotDeliverySchema = z
     grossWeightKg: z.number().positive().nullable().optional(),
     tareWeightKg: z.number().nonnegative().nullable().optional(),
     scaleBroken: z.boolean().optional(),
-    depotOperatorSignature: signatureUrlSchema,
+    /*
+     * NOT `signatureUrlSchema`, deliberately — mirrors registerLoadSchema's
+     * `loaderSignature` for the same reason. The depot operator's signature is
+     * always their pre-registered specimen; the server resolves the real value
+     * from `users.signature_specimen_url` and ignores this field
+     * (TripsService.resolveSpecimenSignature), so it never reaches an
+     * `<img src>` and needs no allowlist.
+     *
+     * Validating it strictly here was the exact same failure mode as the
+     * loader incident (111d4b1): a failed binary upload on the phone fell back
+     * to raw base64, which can never pass a strict URL regex, permanently
+     * wedging `confirm-depot-delivery` in the sync queue. Bounded to keep the
+     * body sane; never trusted.
+     */
+    depotOperatorSignature: z.string().max(4096).optional(),
     idempotencyKey: uuidSchema,
   })
   .refine(
@@ -169,13 +182,15 @@ export const registerLoadSchema = z
     gpsLon: z.number().min(-180).max(180).optional(),
     idempotencyKey: uuidSchema,
     /*
-     * NOT `signatureUrlSchema`, deliberately — unlike driverSignature /
-     * receiverSignature / depotOperatorSignature, which are drawn fresh on the phone
-     * and persisted, this is only the loader echoing back the specimen URL they
-     * cached at login. The server now RESOLVES the real specimen from
-     * `users.signature_specimen_url` and ignores this value
-     * (TripsService.resolveLoaderSignature), so it cannot reach an `<img src>` and
-     * needs no allowlist.
+     * NOT `signatureUrlSchema`, deliberately — this is only the loader echoing
+     * back the specimen URL they cached at login. The server now RESOLVES the
+     * real specimen from `users.signature_specimen_url` and ignores this value
+     * (TripsService.resolveSpecimenSignature), so it cannot reach an `<img src>`
+     * and needs no allowlist. `depotOperatorSignature` on
+     * `confirmDepotDeliverySchema` follows the same pattern for the same
+     * reason; `driverSignature`/`receiverSignature` were dropped from
+     * `departSchema`/`completeSchema` entirely since driver/receiver
+     * signatures are no longer collected at all.
      *
      * Validating it here was actively harmful: the audit (111d4b1) swapped
      * `z.string()` for the strict allowlist, and every phone whose cached URL no

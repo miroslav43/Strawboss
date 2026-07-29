@@ -96,14 +96,20 @@ export function useCancelTripRequest(client: ApiClient) {
  */
 export type DocVariant = 'admin' | 'transporter';
 
+/** Which end of the trip a CMR scan belongs to — see `CmrScanKind` in @strawboss/validation. */
+export type CmrKind = 'loading' | 'delivery';
+
 const avizPath = (variant: DocVariant, requestId: string) =>
   variant === 'transporter'
     ? `/api/v1/transporter/requests/${requestId}/aviz`
     : `/api/v1/trip-requests/${requestId}/aviz`;
-const cmrPath = (variant: DocVariant, requestId: string) =>
-  variant === 'transporter'
-    ? `/api/v1/transporter/requests/${requestId}/cmr`
-    : `/api/v1/cmr-scans/trip-request/${requestId}`;
+const cmrPath = (variant: DocVariant, requestId: string, kind: CmrKind = 'loading') => {
+  const base =
+    variant === 'transporter'
+      ? `/api/v1/transporter/requests/${requestId}/cmr`
+      : `/api/v1/cmr-scans/trip-request/${requestId}`;
+  return `${base}?kind=${kind}`;
+};
 
 export function useRequestAvize(
   client: ApiClient,
@@ -136,36 +142,45 @@ export function useUploadAviz(client: ApiClient, variant: DocVariant = 'admin') 
 }
 
 /**
- * List the scanned paper CMR attached to a request. Like the aviz, only one is
- * kept active at a time, so this returns 0 or 1 document.
+ * List the CMR scan of the given `kind` attached to a request — `loading`
+ * (departure, the default) or `delivery` (arrival). Like the aviz, only one of
+ * each kind is kept active at a time, so this returns 0 or 1 document.
  */
 export function useRequestCmrScans(
   client: ApiClient,
   requestId: string,
   variant: DocVariant = 'admin',
+  kind: CmrKind = 'loading',
 ) {
   return useQuery({
-    queryKey: queryKeys.tripRequests.cmrScans(requestId),
-    queryFn: () => client.get<Document[]>(cmrPath(variant, requestId)),
+    queryKey: queryKeys.tripRequests.cmrScans(requestId, kind),
+    queryFn: () => client.get<Document[]>(cmrPath(variant, requestId, kind)),
     enabled: !!requestId,
   });
 }
 
 /**
- * Upload (or replace) the scanned CMR for a request — the loader normally posts it
- * from the phone against the trip instead; admins and the transporter can override.
+ * Upload (or replace) the CMR of the given `kind` for a request. `loading` is
+ * normally posted by the loader from the phone against the trip instead;
+ * admins and the transporter can override either kind, and `delivery` is also
+ * how they can attach the arrival CMR on the driver's behalf.
  *
- * Invalidating `tripRequests.all` (+ `transporter.all`) is what flips the button
- * green: `hasCmrScan` is computed server-side on the *list* row, not on the
- * document, so refetching the scan alone would leave the button grey.
+ * Invalidating `tripRequests.all` (+ `transporter.all`) is what flips the
+ * button green: `hasCmrScan`/`hasCmrArrival` are computed server-side on the
+ * *list* row, not on the document, so refetching the scan alone would leave
+ * the button grey.
  */
-export function useUploadCmrScan(client: ApiClient, variant: DocVariant = 'admin') {
+export function useUploadCmrScan(
+  client: ApiClient,
+  variant: DocVariant = 'admin',
+  kind: CmrKind = 'loading',
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ requestId, formData }: { requestId: string; formData: FormData }) =>
-      client.upload<Document>(cmrPath(variant, requestId), formData),
+      client.upload<Document>(cmrPath(variant, requestId, kind), formData),
     onSuccess: (_doc, { requestId }) => {
-      void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.cmrScans(requestId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.cmrScans(requestId, kind) });
       void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
       void qc.invalidateQueries({ queryKey: queryKeys.transporter.all });
     },

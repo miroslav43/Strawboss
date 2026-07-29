@@ -118,11 +118,11 @@ export class TransportConfirmationProcessor extends WorkerHost {
       )) as unknown as PickupSourceRow[];
       source = depotRows[0];
     } else if (parcelId) {
-      // Field-sourced pickup: label only, no coordinates — the route/map block
-      // below is gated on `pickupCoords`, so it naturally skips for a field.
       const parcelRows = (await this.drizzleProvider.db.execute(
         sql`SELECT (code || COALESCE(', ' || farm_name, '')) AS name,
-                   NULL::text AS address, NULL::float8 AS lat, NULL::float8 AS lon
+                   NULL::text AS address,
+                   COALESCE(ST_Y(centroid), ST_Y(ST_Centroid(boundary))) AS lat,
+                   COALESCE(ST_X(centroid), ST_X(ST_Centroid(boundary))) AS lon
             FROM parcels WHERE id = ${parcelId}::uuid LIMIT 1`,
       )) as unknown as PickupSourceRow[];
       source = parcelRows[0];

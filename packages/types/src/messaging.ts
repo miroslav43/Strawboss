@@ -19,8 +19,12 @@ export enum MessageKind {
   request_confirmed_requester = 'request_confirmed_requester',
   /** Auxiliary truck assigned to a loader → notify the driver (SMS): loader phone + parcel/maps. */
   driver_assigned = 'driver_assigned',
-  /** Loading complete → notify the driver (SMS) with the public sign-and-leave link. */
-  driver_loaded_sign_link = 'driver_loaded_sign_link',
+  /**
+   * Loading complete → notify the driver (SMS) with the public link to upload
+   * the arrival CMR once the load reaches its destination. Replaces the old
+   * "sign and leave" flow — the link now collects a photo, not a signature.
+   */
+  driver_arrival_cmr_link = 'driver_arrival_cmr_link',
   /** Request confirmed → detailed email to driver + requester (pickup + delivery + route). */
   transport_confirmed = 'transport_confirmed',
   /** Request confirmed → short SMS to the driver (pickup + delivery + maps links + km). */

@@ -550,9 +550,10 @@ export class GeofenceService {
 
           // Truck exit from the source parcel — if the trip is loaded and DEPART
           // is a valid transition, prompt the driver to start the departure flow
-          // (audit #3). We never auto-fire DEPART: it needs the driver signature
-          // (CMR), which the driver supplies in the departure-flow screen this
-          // push routes to.
+          // (audit #3). We never auto-fire DEPART: it needs the driver's explicit
+          // confirmation (a 3s countdown gate, not a signature — departSchema
+          // collects nothing), which the driver supplies in the departure-flow
+          // screen this push routes to.
           if (
             geofenceType === 'parcel' &&
             assignment.machineType === 'truck' &&

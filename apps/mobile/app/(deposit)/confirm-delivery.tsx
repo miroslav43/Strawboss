@@ -17,15 +17,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { BigButton } from '@/components/ui/BigButton';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
-import { SignatureCapture } from '@/components/shared/SignatureCapture';
 import { AppModal } from '@/components/shared/AppModal';
 import { useModal } from '@/hooks/useModal';
 import { useDepotInventory, useDepotList } from '@/hooks/useDepotInventory';
 import { useSync } from '@/hooks/useSync';
+import { useAuthStore } from '@/stores/auth-store';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
-import { uploadSignature } from '@/lib/signatureUpload';
 import { mobileLogger } from '@/lib/logger';
 import { generateUuid } from '@/lib/uuid';
 import { colors } from '@strawboss/ui-tokens';
@@ -39,10 +38,11 @@ import type { TripTransitionPayload } from '@/sync/push';
  *  2. Gate confirmation on isInsideGeofence.
  *  3. Collect bale count (NumericPad, prefilled from server data).
  *  4. If principal depot: collect gross + tare weights (or use scale-broken toggle).
- *  5. Collect operator signature (SignatureCapture).
- *  6. Enqueue a `trip_transition` sync queue entry with transition `confirm-depot-delivery`.
- *  7. Apply optimistically locally (applyTransitionLocally → completed).
- *  8. Kick sync + invalidate queries, then navigate back.
+ *  5. Enqueue a `trip_transition` sync queue entry with transition `confirm-depot-delivery`.
+ *     No signature is drawn here — the operator's pre-registered specimen
+ *     (`users.signature_specimen_url`) is resolved server-side.
+ *  6. Apply optimistically locally (applyTransitionLocally → completed).
+ *  7. Kick sync + invalidate queries, then navigate back.
  */
 
 export default function ConfirmDeliveryScreen() {
@@ -65,8 +65,6 @@ export default function ConfirmDeliveryScreen() {
   const [tareWeightStr, setTareWeightStr] = useState('');
   const [scaleBroken, setScaleBroken] = useState(false);
   const [activeWeightField, setActiveWeightField] = useState<'gross' | 'tare'>('gross');
-  const [signature, setSignature] = useState<string | null>(null);
-  const [showSignatureCapture, setShowSignatureCapture] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const successScale = useRef(new Animated.Value(0.5)).current;
@@ -74,6 +72,7 @@ export default function ConfirmDeliveryScreen() {
   const queryClient = useQueryClient();
   const { triggerSync } = useSync();
   const { modalProps, showModal, hideModal } = useModal();
+  const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
 
   // Prefill bale count from the truck's known value once data loads.
   useEffect(() => {
@@ -103,8 +102,7 @@ export default function ConfirmDeliveryScreen() {
       tareWeightKg >= 0 &&
       tareWeightKg <= grossWeightKg &&
       netWeightKg > 0);
-  const signatureReady = signature !== null;
-  const canSubmit = baleCountValid && weightsValid && signatureReady && isInsideGeofence && !saving;
+  const canSubmit = baleCountValid && weightsValid && isInsideGeofence && !saving;
 
   const handleSubmit = useCallback(async () => {
     if (!tripId || !truck) return;
@@ -135,32 +133,10 @@ export default function ConfirmDeliveryScreen() {
       );
       return;
     }
-    if (!signatureReady) {
-      Alert.alert(
-        t('confirmDelivery.alertMissingSignatureTitle'),
-        t('confirmDelivery.alertMissingSignatureMessage'),
-      );
-      return;
-    }
-
     setSaving(true);
     mobileLogger.flow('DepotConfirmDelivery: submitting', { tripId, baleCount, scaleBroken });
 
     try {
-      // Upload the operator signature; fall back to base64 on failure.
-      let depotOperatorSignature = signature ?? '';
-      if (signature) {
-        try {
-          depotOperatorSignature = await uploadSignature(signature, 'receiver');
-        } catch {
-          mobileLogger.info('DepotConfirmDelivery: signature upload failed, using base64', {
-            tripId,
-          });
-          // fall back to raw base64 — backend accepts both
-          depotOperatorSignature = signature;
-        }
-      }
-
       const db = await getDatabase();
       const tripsRepo = new TripsRepo(db);
       const syncQueueRepo = new SyncQueueRepo(db);
@@ -179,7 +155,6 @@ export default function ConfirmDeliveryScreen() {
       const transitionBody: Record<string, unknown> = {
         baleCount,
         scaleBroken,
-        depotOperatorSignature,
         idempotencyKey,
       };
       if (bodyGross !== undefined) transitionBody.grossWeightKg = bodyGross;
@@ -212,7 +187,10 @@ export default function ConfirmDeliveryScreen() {
         delivered_at: now,
         completed_at: now,
         depot_confirmed_at: now,
-        depot_operator_signature_url: depotOperatorSignature,
+        // Best-effort optimistic mirror of what the server will resolve
+        // server-side from the operator's on-file specimen — the next pull
+        // reconciles this with the authoritative value.
+        depot_operator_signature_url: signatureSpecimenUrl,
       });
 
       mobileLogger.flow('DepotConfirmDelivery: enqueued & applied locally', {
@@ -253,10 +231,9 @@ export default function ConfirmDeliveryScreen() {
     distanceM,
     baleCountValid,
     weightsValid,
-    signatureReady,
     baleCount,
     scaleBroken,
-    signature,
+    signatureSpecimenUrl,
     isPrincipal,
     grossWeightKg,
     tareWeightKg,
@@ -290,34 +267,6 @@ export default function ConfirmDeliveryScreen() {
             })}
           </Text>
         </View>
-      </View>
-    );
-  }
-
-  if (showSignatureCapture) {
-    return (
-      <View style={styles.outer}>
-        <ScreenHeader
-          title={t('confirmDelivery.signatureScreenTitle')}
-          onBack={() => setShowSignatureCapture(false)}
-        />
-        <ScrollView style={styles.body} contentContainerStyle={styles.content}>
-          <Text style={styles.sigHint}>{t('confirmDelivery.signatureHint')}</Text>
-          <SignatureCapture
-            label={t('confirmDelivery.signatureCaptureLabel')}
-            onSave={(sig) => {
-              setSignature(sig);
-              setShowSignatureCapture(false);
-            }}
-          />
-          {!saving ? (
-            <BigButton
-              title={t('confirmDelivery.cancelSignatureButton')}
-              variant="outline"
-              onPress={() => setShowSignatureCapture(false)}
-            />
-          ) : null}
-        </ScrollView>
       </View>
     );
   }
@@ -499,26 +448,6 @@ export default function ConfirmDeliveryScreen() {
           </View>
         ) : null}
 
-        {/* Signature section */}
-        <View style={styles.signatureSection}>
-          <Text style={styles.fieldLabel}>{t('confirmDelivery.fieldLabelSignature')}</Text>
-          {signature ? (
-            <View style={styles.signedRow}>
-              <MaterialCommunityIcons name="check-circle" size={18} color={colors.primary} />
-              <Text style={styles.signedText}>{t('confirmDelivery.signatureCaptured')}</Text>
-              <TouchableOpacity onPress={() => setShowSignatureCapture(true)}>
-                <Text style={styles.resignLink}>{t('confirmDelivery.resignLink')}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <BigButton
-              title={t('confirmDelivery.addSignatureButton')}
-              variant="outline"
-              onPress={() => setShowSignatureCapture(true)}
-            />
-          )}
-        </View>
-
         {/* Geofence gate hint */}
         {!isInsideGeofence ? (
           <Text style={styles.gateHint}>
@@ -640,13 +569,6 @@ const styles = StyleSheet.create({
   netValueInvalid: { color: '#9CA3AF' },
   errorText: { fontSize: 13, color: '#C62828', textAlign: 'center' },
   editingHint: { fontSize: 12, color: '#8D6E63', textAlign: 'center', marginTop: 4 },
-
-  // Signature
-  signatureSection: { gap: 8 },
-  signedRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  signedText: { fontSize: 14, fontWeight: '600', color: colors.primary, flex: 1 },
-  resignLink: { fontSize: 13, color: '#5D4037', textDecorationLine: 'underline' },
-  sigHint: { fontSize: 14, color: '#5D4037', paddingHorizontal: 4, paddingBottom: 8 },
 
   // Gate hint
   gateHint: { fontSize: 12, color: '#991B1B', textAlign: 'center', marginTop: -4 },

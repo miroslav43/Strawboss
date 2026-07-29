@@ -126,6 +126,23 @@ export function useTransporterRequests(
   });
 }
 
+/**
+ * Delete one of the transporter's own requests. The backend refuses once the
+ * transport has moved (loading/awaitingArrivalCmr/completed) with a
+ * machine-readable `stage_not_deletable` error — match on that, not the
+ * message text, same convention as `ApiError` handling elsewhere.
+ */
+export function useDeleteTransporterRequest(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      client.post<{ ok: true }>(`/api/v1/transporter/requests/${id}/delete`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.transporter.all });
+    },
+  });
+}
+
 // ── Per-beneficiary comandă (order) settings ─────────────────────────────────
 
 /** The order settings for a beneficiary (null until configured). */

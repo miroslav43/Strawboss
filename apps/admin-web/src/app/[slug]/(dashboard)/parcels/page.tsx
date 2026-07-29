@@ -35,21 +35,7 @@ import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { BaleOverrideModal } from '@/components/features/parcels/BaleOverrideModal';
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-/** Hectares from API may be number or string (Postgres numeric → JSON). */
-function parseHa(ha: unknown): number | null {
-  if (ha == null || ha === '') return null;
-  const n = typeof ha === 'number' ? ha : Number(String(ha).replace(',', '.'));
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmtHa(ha: unknown) {
-  const n = parseHa(ha);
-  if (n == null) return '—';
-  return `${n.toFixed(2).replace('.', ',')} ha`;
-}
+import { parseHa, fmtHa, remainingBales } from '@/lib/parcel-bales';
 
 const HARVEST_STATUS_OPTIONS = [
   HarvestStatus.planned,
@@ -542,8 +528,8 @@ export default function ParcelsPage() {
         const nb = Number(b[sortKey] ?? 0);
         cmp = na < nb ? -1 : na > nb ? 1 : 0;
       } else if (sortKey === 'balesRemaining') {
-        const na = Number(a.balesProduced ?? 0) - Number(a.balesLoaded ?? 0);
-        const nb = Number(b.balesProduced ?? 0) - Number(b.balesLoaded ?? 0);
+        const na = remainingBales(a);
+        const nb = remainingBales(b);
         cmp = na < nb ? -1 : na > nb ? 1 : 0;
       } else {
         const aVal = a[sortKey];
@@ -834,7 +820,7 @@ export default function ParcelsPage() {
                     {/* Rămași pe câmp = produși − livrați */}
                     <td className="px-4 py-3 text-sm tabular-nums">
                       {(() => {
-                        const remaining = Number(p.balesProduced ?? 0) - Number(p.balesLoaded ?? 0);
+                        const remaining = remainingBales(p);
                         return (
                           <span
                             className={

@@ -7,6 +7,7 @@ import type {
   MachineLastLocation,
   RoutePoint,
   DeliveryDestination,
+  CropType,
 } from '@strawboss/types';
 import { HarvestStatus, MACHINE_ONLINE_WINDOW_MS } from '@strawboss/types';
 import { useUpdateParcelBoundary, useUpdateDeliveryDestination } from '@strawboss/api';
@@ -16,6 +17,7 @@ import { getMachineVisual } from './machine-icons';
 import type { IconVariant } from './machine-icons';
 import type { IconPrefs } from '@/hooks/useMachineIconPrefs';
 import { esc } from '@/lib/html-escape';
+import { hasBaleTallies, remainingBales, shouldShowBaleBadge, parseHa } from '@/lib/parcel-bales';
 
 // Default map center: Deta, Timiș
 const DETA_CENTER: [number, number] = [45.3883, 21.2311];
@@ -23,9 +25,30 @@ const DEFAULT_ZOOM = 13;
 
 const ONLINE_THRESHOLD_MS = MACHINE_ONLINE_WINDOW_MS;
 
+// Below this zoom level, permanent bale badges are hidden (CSS class toggle,
+// not a re-render) — at wide zoom the pills overlap into an unreadable smear.
+const BADGE_MIN_ZOOM = 12;
+
 function isOnline(recordedAt: string): boolean {
   return Date.now() - new Date(recordedAt).getTime() < ONLINE_THRESHOLD_MS;
 }
+
+/**
+ * Full T9.10 harvest-status ladder, typed as Record<HarvestStatus, …> so
+ * adding a 9th enum value is a compile error here rather than a silently
+ * wrong label — the previous 4-case switch fell through to "planned" for
+ * partial_harvested / in_loading / loaded / completed.
+ */
+const HARVEST_STATUS_KEY: Record<HarvestStatus, string> = {
+  [HarvestStatus.planned]: 'parcels.harvest.planned',
+  [HarvestStatus.to_harvest]: 'parcels.harvest.to_harvest',
+  [HarvestStatus.harvesting]: 'parcels.harvest.harvesting',
+  [HarvestStatus.partial_harvested]: 'parcels.harvest.partial_harvested',
+  [HarvestStatus.harvested]: 'parcels.harvest.harvested',
+  [HarvestStatus.in_loading]: 'parcels.harvest.in_loading',
+  [HarvestStatus.loaded]: 'parcels.harvest.loaded',
+  [HarvestStatus.completed]: 'parcels.harvest.completed',
+};
 
 type MapStrings = {
   fieldNoName: string;
@@ -43,6 +66,15 @@ type MapStrings = {
   routeStart: string;
   routeEnd: string;
   formatAgo: (recordedAt: string) => string;
+  // Rich parcel hover card (bale badge tooltip)
+  farmLabel: string;
+  cropLabel: string;
+  areaLabel: string;
+  balesSection: string;
+  balesProducedLabel: string;
+  balesLoadedLabel: string;
+  balesRemainingLabel: string;
+  labelCrop: (crop: CropType) => string;
 };
 
 function getParcelPolygonStyle(
@@ -96,6 +128,85 @@ function createMachineIcon(
   });
 }
 
+/** Zero-size divIcon anchored on the polygon's centroid; the pill inside
+ *  centres itself via CSS so it supports variable digit widths. */
+function createBaleBadgeIcon(L: typeof import('leaflet'), remaining: number) {
+  return L.divIcon({
+    html: `<div class="parcel-bale-badge">${esc(String(remaining))}</div>`,
+    className: 'parcel-bale-anchor',
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+}
+
+/**
+ * True area centroid when available (must be added to the map first —
+ * L.Polygon#getCenter() throws otherwise, it needs projected coordinates),
+ * bounds centre as a fallback for a degenerate/not-yet-projected shape.
+ * L.geoJSON() returns a FeatureGroup, so the polygon is its first child.
+ * Deliberately NOT using parcel.centroid: it is typed GeoPoint {lat, lon}
+ * but the API actually returns a GeoJSON Point {coordinates:[lon,lat]} —
+ * reading .lat off it is undefined and would place the marker at NaN.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parcelCenter(layer: any): [number, number] | null {
+  try {
+    const child = layer.getLayers?.()[0];
+    const c = child?.getCenter?.();
+    if (c) return [c.lat, c.lng];
+  } catch {
+    /* not on the map yet, or a degenerate ring — fall through to bounds */
+  }
+  const b = layer.getBounds?.();
+  return b?.isValid?.() ? [b.getCenter().lat, b.getCenter().lng] : null;
+}
+
+/** One label/value row in the hover card. Escapes both sides internally so
+ *  no caller can forget (H8/H9) — valueColor is always a literal from here. */
+function tipRow(label: string, value: string, valueColor = '#f9fafb'): string {
+  return `<div style="display:flex;gap:12px;justify-content:space-between;font-size:11px;line-height:1.65;">
+      <span style="color:#9ca3af;">${esc(label)}</span>
+      <span style="color:${valueColor};font-weight:600;">${esc(value)}</span>
+    </div>`;
+}
+
+/** Rich hover card: farm, crop, area, harvest status, and (when the endpoint
+ *  carried them) all three bale tallies. Replaces the old name+code tooltip. */
+function parcelTooltipHtml(p: Parcel, s: MapStrings): string {
+  const title = p.name
+    ? `<span style="color:#fff;">${esc(p.name)}</span>`
+    : `<em style="color:#d1d5db;">${esc(s.fieldNoName)}</em>`;
+
+  const ha = parseHa(p.areaHectares);
+  const tallies = hasBaleTallies(p);
+  const produced = Number(p.balesProduced ?? 0);
+  const loaded = Number(p.balesLoaded ?? 0);
+  const remaining = remainingBales(p);
+  const remainingColor = remaining > 0 ? '#fbbf24' : remaining < 0 ? '#fca5a5' : '#9ca3af';
+
+  return `
+    <div style="min-width:196px;font-family:sans-serif;">
+      <div style="font-weight:700;font-size:13px;line-height:1.3;">${title}</div>
+      <div style="font-size:10px;color:#fed7aa;margin-bottom:6px;">${esc(p.code)}</div>
+      ${p.farmName ? tipRow(s.farmLabel, p.farmName) : ''}
+      ${p.cropType ? tipRow(s.cropLabel, s.labelCrop(p.cropType)) : ''}
+      ${ha != null ? tipRow(s.areaLabel, `${ha.toFixed(2).replace('.', ',')} ha`) : ''}
+      ${tipRow(s.harvestStatusLabel, s.labelHarvestStatus(p.harvestStatus))}
+      ${
+        tallies
+          ? `<div style="margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,.15);">
+          <div style="font-size:9px;color:#9ca3af;letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px;">
+            ${esc(s.balesSection)}
+          </div>
+          ${tipRow(s.balesProducedLabel, String(produced))}
+          ${tipRow(s.balesLoadedLabel, String(loaded))}
+          ${tipRow(s.balesRemainingLabel, String(remaining), remainingColor)}
+        </div>`
+          : ''
+      }
+    </div>`;
+}
+
 function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): string {
   const btnBase = `
     cursor:pointer;border:1px solid #d1d5db;border-radius:6px;
@@ -104,6 +215,7 @@ function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): stri
   `;
   const displayName = p.name ? esc(p.name) : `<em style="color:#9ca3af">${esc(s.fieldNoName)}</em>`;
   const status = p.isActive ? s.statusActive : s.statusInactive;
+  const ha = parseHa(p.areaHectares);
   const actionRow = selectionOnly
     ? ''
     : `<div style="margin-top:8px;display:flex;gap:6px;">
@@ -114,7 +226,7 @@ function parcelPopupHtml(p: Parcel, s: MapStrings, selectionOnly: boolean): stri
     <div style="min-width:180px;font-family:sans-serif;line-height:1.5;">
       <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${displayName}</div>
       <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${esc(p.code)}</div>
-      ${p.areaHectares != null ? `<div style="font-size:12px;color:#6b7280;">${p.areaHectares} ha</div>` : ''}
+      ${ha != null ? `<div style="font-size:12px;color:#6b7280;">${ha.toFixed(2).replace('.', ',')} ha</div>` : ''}
       ${p.municipality ? `<div style="font-size:12px;color:#6b7280;">${esc(p.municipality)}</div>` : ''}
       <div style="margin-top:4px;font-size:11px;color:#6b7280;">
         ${esc(s.harvestStatusLabel)}: ${esc(s.labelHarvestStatus(p.harvestStatus))}
@@ -253,25 +365,21 @@ export function LeafletMap({
       statusActive: t('leaflet.statusActive'),
       statusInactive: t('leaflet.statusInactive'),
       harvestStatusLabel: t('leaflet.harvestStatus'),
-      labelHarvestStatus: (status: string | undefined) => {
-        switch (status ?? HarvestStatus.planned) {
-          case HarvestStatus.planned:
-            return t('parcels.harvest.planned');
-          case HarvestStatus.to_harvest:
-            return t('parcels.harvest.to_harvest');
-          case HarvestStatus.harvesting:
-            return t('parcels.harvest.harvesting');
-          case HarvestStatus.harvested:
-            return t('parcels.harvest.harvested');
-          default:
-            return t('parcels.harvest.planned');
-        }
-      },
+      labelHarvestStatus: (status: string | undefined) =>
+        t(HARVEST_STATUS_KEY[status as HarvestStatus] ?? HARVEST_STATUS_KEY[HarvestStatus.planned]),
       onlineStatus: t('leaflet.onlineStatus'),
       offlineStatus: t('leaflet.offlineStatus'),
       routeStart: t('leaflet.routeStart'),
       routeEnd: t('leaflet.routeEnd'),
       formatAgo,
+      farmLabel: t('parcels.colFarm'),
+      cropLabel: t('parcels.crop.label'),
+      areaLabel: t('parcels.colArea'),
+      balesSection: t('leaflet.balesSection'),
+      balesProducedLabel: t('parcels.colProduced'),
+      balesLoadedLabel: t('parcels.colDelivered'),
+      balesRemainingLabel: t('parcels.colRemaining'),
+      labelCrop: (crop: CropType) => t(`parcels.crop.${crop}`),
     };
   }, [t]);
 
@@ -290,6 +398,14 @@ export function LeafletMap({
   const mapInstanceRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parcelLayersRef = useRef<Map<string, any>>(new Map());
+  // Permanent centre-of-field bale-count markers, kept in a separate ref/pane
+  // from the polygons so they can be torn down and rebuilt in lockstep.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parcelBadgeLayersRef = useRef<Map<string, any>>(new Map());
+  // Guards against two overlapping async parcel renders (StrictMode double-
+  // invoke, or a locale switch landing mid-refetch) stomping on each other's
+  // ref state — see the parcel effect below.
+  const parcelRenderSeqRef = useRef(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const machineLayersRef = useRef<Map<string, any>>(new Map());
   // T8 — previous recordedAt per machine to detect freshly-updated markers.
@@ -451,6 +567,13 @@ export function LeafletMap({
       placeLabelsPane.style.zIndex = '550';
       placeLabelsPane.style.pointerEvents = 'none';
 
+      // Permanent bale-count badges: above the locality/boundary overlay (550)
+      // so a badge is never hidden under a place label, below the marker pane
+      // (600) so machines/deposits/Geoman vertex handles always draw on top.
+      const parcelBadgesPane = map.createPane('parcelBadges');
+      parcelBadgesPane.style.zIndex = '560';
+      parcelBadgesPane.style.pointerEvents = 'none';
+
       L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         {
@@ -597,11 +720,20 @@ export function LeafletMap({
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
 
+    const seq = ++parcelRenderSeqRef.current;
+
     const render = async () => {
       const L = (await import('leaflet')).default;
+      // Two overlapping async renders (StrictMode double-invoke, or a locale
+      // switch landing mid-refetch) would otherwise interleave: the older one
+      // clears the ref the newer one just populated. Bail if a newer render
+      // started while this one was awaiting the dynamic import.
+      if (seq !== parcelRenderSeqRef.current) return;
 
       parcelLayersRef.current.forEach((layer) => map.removeLayer(layer));
       parcelLayersRef.current.clear();
+      parcelBadgeLayersRef.current.forEach((marker) => map.removeLayer(marker));
+      parcelBadgeLayersRef.current.clear();
 
       const bounds: [number, number][] = [];
 
@@ -630,19 +762,15 @@ export function LeafletMap({
             onParcelSelectRef.current(parcel.id);
           });
 
-        // Permanent label: name (if set) on line 1, code smaller below.
-        const labelLine1 = parcel.name ?? null;
-        const labelLine2 = parcel.code;
-        const labelHtml = labelLine1
-          ? `<div style="font-weight:600;font-size:12px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${esc(labelLine1)}</div>
-             <div style="font-size:10px;color:#fed7aa;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.6);">${esc(labelLine2)}</div>`
-          : `<div style="font-weight:600;font-size:11px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${esc(labelLine2)}</div>`;
-
-        layer.bindTooltip(labelHtml, {
-          permanent: false,
-          direction: 'center',
-          className: 'parcel-label',
-          sticky: false,
+        // Rich hover card — farm, crop, area, harvest status, bale tallies.
+        // sticky + offset so the card tracks the cursor instead of parking
+        // over the centre badge (which uses direction:'center').
+        layer.bindTooltip(parcelTooltipHtml(parcel, mapStrings), {
+          sticky: true,
+          direction: 'top',
+          offset: [0, -14],
+          opacity: 1,
+          className: 'parcel-hover-card',
         });
 
         // While this field's boundary is under edit, hide its base polygon.
@@ -650,9 +778,25 @@ export function LeafletMap({
         // orange layer on top; leaving the original visible lets it fill the
         // old shape under — and, after any parcels refetch, re-paint on top of —
         // the edit layer, so a dragged vertex looks like it "snaps back".
-        if (showParcels && !hiddenParcelIds?.has(parcel.id) && parcel.id !== editingId)
-          layer.addTo(map);
+        const visible = showParcels && !hiddenParcelIds?.has(parcel.id) && parcel.id !== editingId;
+        if (visible) layer.addTo(map);
         parcelLayersRef.current.set(parcel.id, layer);
+
+        // Permanent bale-count badge — same visibility gate as the polygon,
+        // built AFTER addTo() because L.Polygon#getCenter() needs the layer
+        // projected on the map.
+        if (visible && shouldShowBaleBadge(parcel)) {
+          const center = parcelCenter(layer);
+          if (center) {
+            const badge = L.marker(center, {
+              icon: createBaleBadgeIcon(L, remainingBales(parcel)),
+              pane: 'parcelBadges',
+              interactive: false, // never eats the polygon's hover/click
+              keyboard: false, // keeps hundreds of badges out of the tab order
+            }).addTo(map);
+            parcelBadgeLayersRef.current.set(parcel.id, badge);
+          }
+        }
 
         const b = layer.getBounds();
         if (b.isValid()) {
@@ -677,6 +821,27 @@ export function LeafletMap({
     selectionOnly,
     editingId,
   ]);
+
+  // ── 2b. Zoom gate for bale badges ────────────────────────────────────────
+  // A CSS class on the map container, NOT a re-run of the parcel effect above
+  // — that effect tears down and rebuilds every polygon/popup/tooltip/badge,
+  // far too expensive to run on every zoomend. Because the class lives on an
+  // ancestor, badges created by a later parcels refetch inherit the current
+  // zoom state automatically — nothing to re-sync. Mirrors the existing
+  // pick-edit-cursor class toggle on the same element.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const el = mapRef.current;
+    if (!map || !mapReady || !el) return;
+    const sync = () => {
+      el.classList.toggle('hide-parcel-badges', map.getZoom() < BADGE_MIN_ZOOM);
+    };
+    sync();
+    map.on('zoomend', sync);
+    return () => {
+      map.off('zoomend', sync);
+    };
+  }, [mapReady]);
 
   // ── 3. Sync machine markers ──────────────────────────────────────────────
   useEffect(() => {
@@ -801,8 +966,8 @@ export function LeafletMap({
         });
 
         layer.bindTooltip(
-          `<div style="font-weight:600;font-size:11px;color:#fff;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7);">${esc(d.name)}</div>`,
-          { permanent: false, direction: 'center', className: 'deposit-label', sticky: false },
+          `<div style="font-weight:600;font-size:11px;color:#fff;white-space:nowrap;">${esc(d.name)}</div>`,
+          { permanent: false, direction: 'center', className: 'parcel-hover-card', sticky: false },
         );
 
         // Hide the base polygon of the depot under edit — same reason as parcels:

@@ -36,10 +36,12 @@ import {
   updateBeneficiaryTruckSchema,
   createBeneficiaryDriverSchema,
   updateBeneficiaryDriverSchema,
+  cmrScanKindSchema,
 } from '@strawboss/validation';
 import type {
   CreateTransporterRequestInput,
   BeneficiaryOrderSettingsInput,
+  CmrScanKind,
 } from '@strawboss/validation';
 
 /** URL segment (plural) → the service's singular RecordKind. */
@@ -202,6 +204,20 @@ export class TransporterController {
     return this.tripRequests.submitTransporterRequest(orgId, user.id, dto);
   }
 
+  // POST-delete (not DELETE) mirrors the beneficiary-record convention above.
+  // Deletable only while the transport hasn't moved yet — TripRequestsService
+  // re-derives the stage server-side and refuses otherwise (stage_not_deletable).
+  @Post('requests/:id/delete')
+  async deleteRequest(
+    @CurrentUser() user: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    const orgId = this.requireOrg(user);
+    await this.tripRequests.assertCreatedBy(orgId, id, user.id);
+    await this.tripRequests.deleteAuxRequest(orgId, id);
+    return { ok: true };
+  }
+
   @Get('requests')
   listRequests(
     @CurrentUser() user: RequestUser,
@@ -251,28 +267,38 @@ export class TransporterController {
   }
 
   @Get('requests/:id/cmr')
-  async listCmr(@CurrentUser() user: RequestUser, @Param('id', new ParseUUIDPipe()) id: string) {
+  async listCmr(
+    @CurrentUser() user: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('kind', new ZodValidationPipe(cmrScanKindSchema)) kind: CmrScanKind,
+  ) {
     const orgId = this.requireOrg(user);
     await this.tripRequests.assertCreatedBy(orgId, id, user.id);
-    return this.cmrScans.listForRequest(orgId, id);
+    return this.cmrScans.listForRequest(orgId, id, kind);
   }
 
   @Post('requests/:id/cmr')
   async uploadCmr(
     @CurrentUser() user: RequestUser,
     @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('kind', new ZodValidationPipe(cmrScanKindSchema)) kind: CmrScanKind,
     @Req() req: FastifyRequest,
   ) {
     const orgId = this.requireOrg(user);
     await this.tripRequests.assertCreatedBy(orgId, id, user.id);
     const file = await this.requireFile(req, CMR_SCAN_MAX_BYTES);
-    return this.cmrScans.uploadForRequest(orgId, id, {
-      mimetype: file.mimetype,
-      stream: file.file,
-      pageCount: null,
-      scanId: null,
-      source: 'admin_upload',
-    });
+    return this.cmrScans.uploadForRequest(
+      orgId,
+      id,
+      {
+        mimetype: file.mimetype,
+        stream: file.file,
+        pageCount: null,
+        scanId: null,
+        source: 'admin_upload',
+      },
+      kind,
+    );
   }
 
   // ── Comandă (generated transport order) — view + regenerate, own requests ──

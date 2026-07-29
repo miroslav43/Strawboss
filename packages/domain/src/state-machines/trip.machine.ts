@@ -430,9 +430,10 @@ export function getAvailableTransitions(status: TripStatus): string[] {
  * Auxiliary (one-time external) trucks have a collapsed 3-status lifecycle:
  * `planned → loaded → completed` (no depart/arrive/depot step, no app driver).
  * The loader finishing the load lands the trip on `loaded` — same as a normal
- * trip — and a delayed backend job auto-completes it a few minutes later
- * (`TripsService.autoCompleteAuxiliary`). The driver's later public-link
- * signature only finalizes the document (stage-2 CMR); it never changes status.
+ * trip — and it stays there until the external driver uploads the arrival CMR
+ * through the one-time public link, which completes the trip in the same
+ * transaction (`TripsService.completeAuxiliaryOnArrivalCmr`). An admin can also
+ * force-complete it (with a reason) if the driver never uploads.
  *
  * Single source of truth for the backend register-load branch — keep the SQL in
  * trips.service in step with this.

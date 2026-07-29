@@ -484,25 +484,16 @@ export const ro = {
   },
 
   departureFlow: {
-    screenTitle: 'Semnătură șofer',
-    hint: 'Confirmă plecarea folosind specimenul de semnătură salvat.',
-    specimenCard: {
-      label: 'Specimen semnătură',
-      missing: 'Nu ai încă un specimen.',
-    },
+    screenTitle: 'Plecare din cursă',
+    hint: 'Confirmă că ai plecat, ca să pornești cursa spre depozit.',
     button: {
-      signWithSpecimen: 'Semnează cu specimen',
+      confirmDeparture: 'Confirmă plecarea',
       cancel: 'Anulează',
     },
     countdown: {
       actionLabel: 'Plecare din câmp',
     },
     alert: {
-      specimenMissing: {
-        title: 'Specimen lipsă',
-        message: 'Nu ai încă un specimen de semnătură. Creează unul din profil.',
-        action: 'Mergi la profil',
-      },
       error: {
         title: 'Eroare',
         message: 'Nu s-a putut porni cursa. Încearcă din nou.',
@@ -819,10 +810,6 @@ export const ro = {
     successScreenTitle: 'Livrare confirmată',
     successMessage: 'Livrare confirmată!',
     successSubtext: '{count} baloți înregistrați pentru {truck}.',
-    signatureScreenTitle: 'Semnătură operator',
-    signatureHint: 'Semnați ca operator de depozit pentru a confirma primirea camionului.',
-    signatureCaptureLabel: 'Semnătură operator depozit',
-    cancelSignatureButton: 'Renunță',
     notFoundScreenTitle: 'Confirmă livrarea',
     notFoundTitle: 'Cursa nu a fost găsită',
     notFoundSubtitle: 'Cursa poate fi deja confirmată sau nu este îndreptată spre depozitul tău.',
@@ -848,10 +835,6 @@ export const ro = {
     editingFieldGross: 'Brut',
     editingFieldTare: 'Tară',
     scaleBrokenNotice: 'Greutățile nu vor fi înregistrate (cântar defect).',
-    fieldLabelSignature: 'Semnătură operator',
-    signatureCaptured: 'Semnătură capturată',
-    resignLink: 'Resemnează',
-    addSignatureButton: 'Adaugă semnătură',
     gateHintWithDistance:
       'Confirmarea este dezactivată — camionul este la {distance} m de depozit.',
     gateHintNoPosition: 'Confirmarea este dezactivată — poziția camionului este necunoscută.',
@@ -867,8 +850,6 @@ export const ro = {
     alertIncompleteBalesMessage: 'Introduceți numărul de baloți.',
     alertIncompleteWeightsTitle: 'Date incomplete',
     alertIncompleteWeightsMessage: 'Introduceți greutatea brută și tara corect.',
-    alertMissingSignatureTitle: 'Semnătură lipsă',
-    alertMissingSignatureMessage: 'Semnați înainte de a confirma livrarea.',
     errorTitle: 'Eroare',
     errorMessage: 'Nu s-a putut confirma livrarea. Încearcă din nou.',
   },

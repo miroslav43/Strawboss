@@ -40,8 +40,8 @@ export interface DriverAssignedCtx {
   cropType: string | null;
 }
 
-export interface DriverSignLinkCtx {
-  signUrl: string;
+export interface DriverArrivalCmrLinkCtx {
+  cmrUrl: string;
   baleCount: number;
 }
 
@@ -171,10 +171,10 @@ export const messageTemplates = {
       (ctx.mapsUrl ? `\nHartă: ${ctx.mapsUrl}` : ''),
   }),
 
-  [MessageKind.driver_loaded_sign_link]: (ctx: DriverSignLinkCtx) => ({
+  [MessageKind.driver_arrival_cmr_link]: (ctx: DriverArrivalCmrLinkCtx) => ({
     body:
       `Încărcarea a fost finalizată (${ctx.baleCount} baloți).\n` +
-      `Confirmați și semnați aici pentru a pleca:\n${ctx.signUrl}`,
+      `La sosirea la destinație, încărcați o poză a CMR-ului aici:\n${ctx.cmrUrl}`,
   }),
 
   [MessageKind.transport_confirmed]: (ctx: TransportConfirmedCtx) => {

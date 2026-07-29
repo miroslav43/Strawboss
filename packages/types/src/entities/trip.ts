@@ -16,9 +16,10 @@ export enum TripStatus {
 /**
  * Auxiliary (external, one-time) trucks have a collapsed 3-status lifecycle:
  * `planned → loaded → completed`. There is no depart/arrive/deliver — the loader
- * finishing the load lands the trip on `loaded`, and it auto-completes a few
- * minutes later. Single source of truth for the admin trip-detail timeline and
- * status-override dropdown when `trip.isAuxiliary` is true.
+ * finishing the load lands the trip on `loaded`, and it completes once the
+ * external driver uploads the arrival CMR via the one-time public link (or an
+ * admin force-completes it with a reason). Single source of truth for the admin
+ * trip-detail timeline and status-override dropdown when `trip.isAuxiliary` is true.
  */
 export const AUXILIARY_TRIP_STATUSES = [
   TripStatus.planned,
@@ -55,9 +56,13 @@ export enum AuxStage {
   unplanned = 'unplanned',
   planned = 'planned',
   loading = 'loading',
-  /** Loaded; the external driver has not signed the CMR via the public link yet. */
-  awaitingSignature = 'awaitingSignature',
-  signed = 'signed',
+  /**
+   * Loaded; the departure CMR is in, but the external driver has not yet
+   * uploaded the arrival CMR through the one-time public link. There is no
+   * further split beyond this — the upload completes the trip atomically, so
+   * there is no observable "uploaded but not yet completed" moment to render.
+   */
+  awaitingArrivalCmr = 'awaitingArrivalCmr',
   completed = 'completed',
 }
 
@@ -67,8 +72,7 @@ export const AUX_STAGE_ORDER: readonly AuxStage[] = [
   AuxStage.unplanned,
   AuxStage.planned,
   AuxStage.loading,
-  AuxStage.awaitingSignature,
-  AuxStage.signed,
+  AuxStage.awaitingArrivalCmr,
   AuxStage.completed,
   AuxStage.cancelled,
 ] as const;
@@ -79,8 +83,7 @@ export const ACTIVE_AUX_STAGES: readonly AuxStage[] = [
   AuxStage.unplanned,
   AuxStage.planned,
   AuxStage.loading,
-  AuxStage.awaitingSignature,
-  AuxStage.signed,
+  AuxStage.awaitingArrivalCmr,
 ] as const;
 
 export interface Trip extends Timestamps, SoftDelete {
@@ -156,8 +159,9 @@ export interface Trip extends Timestamps, SoftDelete {
   // ── Auxiliary (one-time external) truck support ───────────────────────────
   /**
    * True for a trip spun up from a confirmed external trip_request. Drives the
-   * collapsed lifecycle: loader finishes loading ⇒ status=completed (no
-   * arrive/depot/receiver step), and the driver signs via publicSignToken.
+   * collapsed lifecycle: loader finishes loading ⇒ status=loaded, and the trip
+   * only reaches completed once the driver uploads the arrival CMR via
+   * publicSignToken (or an admin force-completes it with a reason).
    */
   isAuxiliary: boolean;
   /** External driver contact, captured from the request (no users row). */
@@ -167,13 +171,16 @@ export interface Trip extends Timestamps, SoftDelete {
   /**
    * `publicSignToken` is DELIBERATELY ABSENT from this type.
    *
-   * It is the one-time BEARER SECRET behind /<slug>/sign/<token> — whoever holds
-   * it can sign an auxiliary trip's CMR as the external driver. It used to reach
-   * every authenticated client, because GET /trips did `SELECT t.*` and carries no
-   * @Roles, so any driver or loader could read every trip's token. The read
-   * endpoints now use an explicit projection that omits it, and it is off the type
-   * so nothing can casually put it back. The token is minted server-side and the
-   * link is SMS'd straight to the driver; no client ever needs to see it.
+   * It is the one-time BEARER SECRET behind /<slug>/cmr/<token> — whoever holds
+   * it can upload the arrival CMR as the external driver. (The column and route
+   * keep their historical "sign" name from when this was an electronic
+   * signature; the secret and its one-time-use guarantee are unchanged.) It
+   * used to reach every authenticated client, because GET /trips did `SELECT
+   * t.*` and carries no @Roles, so any driver or loader could read every trip's
+   * token. The read endpoints now use an explicit projection that omits it, and
+   * it is off the type so nothing can casually put it back. The token is
+   * minted server-side and the link is SMS'd straight to the driver; no client
+   * ever needs to see it.
    *
    * Only the "has it been used" timestamp is safe to expose.
    */

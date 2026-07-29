@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ScanLine, XCircle, UploadCloud, Loader2 } from 'lucide-react';
+import { ScanLine, PackageCheck, XCircle, UploadCloud, Loader2 } from 'lucide-react';
 import type { TripRequest, Document } from '@strawboss/types';
-import { useRequestCmrScans, useUploadCmrScan } from '@strawboss/api';
+import { useRequestCmrScans, useUploadCmrScan, type CmrKind } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
@@ -14,32 +14,50 @@ function isPdf(f: File): boolean {
   return f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
 }
 
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+function isImage(f: File): boolean {
+  return IMAGE_TYPES.has(f.type);
+}
+
 /** Mirror of the server's CMR_SCAN_MAX_BYTES — reject client-side before streaming. */
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 
 /**
- * The scanned paper CMR. Normally the loader posts this from the phone at the end
- * of an auxiliary load; this modal is the admin's manual override for when that
- * didn't happen (or produced an unusable scan).
+ * Upload (or override) one of the two scanned CMRs on an auxiliary transport:
+ *
+ * - `loading` (default) — the paper CMR the loader photographs at pickup.
+ *   Normally posted from the phone at the end of the load; this modal is the
+ *   admin's manual override for when that didn't happen (or produced an
+ *   unusable scan). PDF only.
+ * - `delivery` — the photo the external driver uploads at the destination
+ *   through the one-time public link. This modal lets an admin/transporter
+ *   attach it on the driver's behalf (e.g. it arrived by WhatsApp instead).
+ *   Accepts a photo OR an already-built PDF — uploading it here also
+ *   completes the trip, exactly like the driver's own upload does.
  */
 export function CmrUploadModal({
   request,
   onClose,
   variant = 'admin',
+  kind = 'loading',
 }: {
   request: TripRequest;
   onClose: () => void;
   /** 'transporter' targets the ownership-scoped transporter endpoints. */
   variant?: 'admin' | 'transporter';
+  /** Which end of the trip this upload is for — see the doc comment above. */
+  kind?: CmrKind;
 }) {
   const { t } = useI18n();
   const [file, setFile] = useState<File | null>(null);
-  const upload = useUploadCmrScan(apiClient, variant);
-  const scans = useRequestCmrScans(apiClient, request.id, variant);
+  const upload = useUploadCmrScan(apiClient, variant, kind);
+  const scans = useRequestCmrScans(apiClient, request.id, variant, kind);
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  const isAccepted = (f: File) => (kind === 'delivery' ? isPdf(f) || isImage(f) : isPdf(f));
 
   const existing = useMemo(() => normalizeList<Document>(scans.data)[0] ?? null, [scans.data]);
 
@@ -59,11 +77,13 @@ export function CmrUploadModal({
     };
   }, []);
 
-  const badFile = file != null && !isPdf(file);
+  const badFile = file != null && !isAccepted(file);
   const tooLarge = file != null && file.size > MAX_UPLOAD_BYTES;
+  const fileTypeHint =
+    kind === 'delivery' ? t('tripRequests.cmrArrivalFileTypes') : t('tripRequests.cmrPdfOnly');
 
   const handleUpload = () => {
-    if (!file || !isPdf(file) || tooLarge) return;
+    if (!file || !isAccepted(file) || tooLarge) return;
     // Uploading replaces any existing scan (the server soft-deletes the prior one,
     // single-CMR-per-request) — and it may be overwriting what the loader scanned
     // in the field, so confirm before clobbering it.
@@ -101,9 +121,13 @@ export function CmrUploadModal({
             id={titleId}
             className="flex min-w-0 items-center gap-2 text-lg font-semibold text-neutral-800"
           >
-            <ScanLine className="h-5 w-5 shrink-0 text-primary" />
+            {kind === 'delivery' ? (
+              <PackageCheck className="h-5 w-5 shrink-0 text-primary" />
+            ) : (
+              <ScanLine className="h-5 w-5 shrink-0 text-primary" />
+            )}
             <span className="truncate">
-              {t('tripRequests.cmrTitle')}
+              {kind === 'delivery' ? t('tripRequests.cmrArrivalTitle') : t('tripRequests.cmrTitle')}
               {request.truckRegistrationPlate ? ` · ${request.truckRegistrationPlate}` : ''}
             </span>
           </h2>
@@ -157,15 +181,20 @@ export function CmrUploadModal({
               <span className="font-medium text-neutral-700">
                 {file ? file.name : t('tripRequests.cmrSelectFile')}
               </span>
-              <span className="text-xs text-neutral-400">{t('tripRequests.cmrPdfOnly')}</span>
+              <span className="text-xs text-neutral-400">{fileTypeHint}</span>
               <input
                 type="file"
-                accept="application/pdf,.pdf"
+                accept={
+                  kind === 'delivery'
+                    ? 'image/jpeg,image/png,image/webp,application/pdf,.pdf'
+                    : 'application/pdf,.pdf'
+                }
+                capture={kind === 'delivery' ? 'environment' : undefined}
                 className="hidden"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
             </label>
-            {badFile && <p className="text-xs text-red-600">{t('tripRequests.cmrPdfOnly')}</p>}
+            {badFile && <p className="text-xs text-red-600">{fileTypeHint}</p>}
             {tooLarge && <p className="text-xs text-red-600">{t('tripRequests.cmrTooLarge')}</p>}
             {errorMessage && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</p>

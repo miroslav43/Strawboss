@@ -64,6 +64,7 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
   const [detailsTarget, setDetailsTarget] = useState<TripRequest | null>(null);
   const [avizTarget, setAvizTarget] = useState<TripRequest | null>(null);
   const [cmrTarget, setCmrTarget] = useState<TripRequest | null>(null);
+  const [cmrArrivalTarget, setCmrArrivalTarget] = useState<TripRequest | null>(null);
 
   // Only send keys that have a value: URLSearchParams turns `undefined` into the
   // literal string "undefined", which the server would then try to parse.
@@ -115,6 +116,7 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
   const handleDetails = useCallback((r: TripRequest) => setDetailsTarget(r), []);
   const handleAviz = useCallback((r: TripRequest) => setAvizTarget(r), []);
   const handleCmr = useCallback((r: TripRequest) => setCmrTarget(r), []);
+  const handleCmrArrival = useCallback((r: TripRequest) => setCmrArrivalTarget(r), []);
 
   /**
    * Un-plan: delete the live trip. The server hands the request back as
@@ -215,6 +217,7 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
           onViewDetails={handleDetails}
           onUploadAviz={handleAviz}
           onUploadCmr={handleCmr}
+          onUploadCmrArrival={handleCmrArrival}
           onUnplan={handleUnplan}
           // No trip to un-plan → cancel the request itself. Reuses the same modal
           // the intake cards use, so a reason is still captured.
@@ -235,6 +238,13 @@ export function AuxTripSection({ search, dateFrom, dateTo }: AuxTripSectionProps
       )}
       {avizTarget && <AvizUploadModal request={avizTarget} onClose={() => setAvizTarget(null)} />}
       {cmrTarget && <CmrUploadModal request={cmrTarget} onClose={() => setCmrTarget(null)} />}
+      {cmrArrivalTarget && (
+        <CmrUploadModal
+          request={cmrArrivalTarget}
+          kind="delivery"
+          onClose={() => setCmrArrivalTarget(null)}
+        />
+      )}
     </section>
   );
 }
