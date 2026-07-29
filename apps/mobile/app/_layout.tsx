@@ -60,7 +60,7 @@ import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/
 import { startHeartbeat, stopHeartbeat } from '@/lib/heartbeat';
 import { hasSeenOnboarding } from './onboarding';
 import { hasSeenTrackingSetup } from './tracking-setup';
-import type { User, ProfileResponse } from '@strawboss/types';
+import type { ProfileResponse } from '@strawboss/types';
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -151,7 +151,7 @@ export function SpecimenSection({ profile }: SpecimenSectionProps) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <div className="flex h-32 w-full max-w-sm items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 sm:w-64">
           {profile.signatureSpecimenUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
+            // Plain <img> on purpose: a signed uploads URL, not a static asset.
             <img
               src={resolveUrl(profile.signatureSpecimenUrl)}
               alt={t('settings.profile.specimen.imageAlt')}

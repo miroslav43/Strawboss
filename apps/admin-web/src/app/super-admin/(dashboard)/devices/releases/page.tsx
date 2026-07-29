@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   Archive,
   FileUp,
-  XCircle,
 } from 'lucide-react';
 import { useReleases, useUploadRelease, useUpdateRelease } from '@strawboss/api';
 import type { AppRelease } from '@strawboss/types';

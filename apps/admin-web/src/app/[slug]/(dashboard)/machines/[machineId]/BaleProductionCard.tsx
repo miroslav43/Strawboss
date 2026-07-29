@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import dynamicImport from 'next/dynamic';
-import { Wheat, Plus, Map as MapIcon, Trash2, Loader2, Check, Tractor, MapPin } from 'lucide-react';
+import { Wheat, Plus, Map as MapIcon, Trash2, Loader2, Tractor, MapPin } from 'lucide-react';
 import {
   useBaleProductions,
   useParcels,

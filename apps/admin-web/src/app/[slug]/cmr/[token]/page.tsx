@@ -75,7 +75,7 @@ export default function PublicCmrPage() {
     return () => {
       photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Intentionally run once on mount; the deps are stable for this flow.
   }, []);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -178,7 +178,7 @@ export default function PublicCmrPage() {
               <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
                 {photos.map((p, i) => (
                   <div key={p.id} className="relative shrink-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- local blob: preview, not a remote asset */}
+                    {/* Plain <img>: this is a local blob: preview, not a remote asset, so next/image adds nothing. */}
                     <img
                       src={p.previewUrl}
                       alt=""

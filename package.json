@@ -1,5 +1,6 @@
 {
   "name": "strawboss",
+  "packageManager": "pnpm@9.15.9",
   "private": true,
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",

@@ -44,7 +44,7 @@ export const ro = {
     errorMissingApiUrl:
       'Lipsește EXPO_PUBLIC_API_URL. Completează apps/mobile/.env.dev și repornește Metro.',
     errorLoopback:
-      'Nu merge conexiunea la {{origin}}. Pe telefon (USB): rulează „adb reverse tcp:3001 tcp:3001\", apoi pornește backend-ul pe Mac la portul 3001. Eroare rețea: {{errMsg}}',
+      'Nu merge conexiunea la {{origin}}. Pe telefon (USB): rulează „adb reverse tcp:3001 tcp:3001", apoi pornește backend-ul pe Mac la portul 3001. Eroare rețea: {{errMsg}}',
     errorCannotContactApi:
       'Nu pot contacta API la {{origin}}. Verifică Wi‑Fi/firewall și că backend-ul ascultă pe 0.0.0.0 (nu doar localhost). {{errMsg}}',
     errorApiResolve: 'Eroare API la rezolvare user ({{status}}).',
@@ -102,7 +102,7 @@ export const ro = {
       },
       slide3: {
         title: 'Alimentare combustibil',
-        body: 'Înregistrează alimentările din tabul „Combustibil\". Poți fotografia bonul fiscal — acesta se trimite automat la server.',
+        body: 'Înregistrează alimentările din tabul „Combustibil". Poți fotografia bonul fiscal — acesta se trimite automat la server.',
       },
       slide4: {
         title: 'Funcționează și offline',
@@ -116,7 +116,7 @@ export const ro = {
       },
       slide2: {
         title: 'Încărcare baloți',
-        body: 'Apasă „Încarcă baloți\" pe ecranul principal. GPS-ul detectează automat parcela curentă. Introdu numărul de baloți și confirmă.',
+        body: 'Apasă „Încarcă baloți" pe ecranul principal. GPS-ul detectează automat parcela curentă. Introdu numărul de baloți și confirmă.',
       },
       slide3: {
         title: 'Geofence activ',
@@ -134,11 +134,11 @@ export const ro = {
       },
       slide2: {
         title: 'Înregistrare producție',
-        body: 'Folosește tastatura numerică de pe ecranul „Producție\" pentru a introduce numărul de baloți. Apasă „Salvează\" după fiecare lot.',
+        body: 'Folosește tastatura numerică de pe ecranul „Producție" pentru a introduce numărul de baloți. Apasă „Salvează" după fiecare lot.',
       },
       slide3: {
         title: 'Consumabile',
-        body: 'Înregistrează consumul de sfoară, plasă sau alte consumabile din tabul „Consumabile\". Poți fotografia bonul.',
+        body: 'Înregistrează consumul de sfoară, plasă sau alte consumabile din tabul „Consumabile". Poți fotografia bonul.',
       },
       slide4: {
         title: 'Funcționează și offline',
@@ -148,11 +148,11 @@ export const ro = {
     geofence: {
       slide1: {
         title: 'Desenează geofence-uri',
-        body: 'Pe ecranul „Hartă\", apasă „Câmp nou\" și desenează conturul parcelei atingând punctele pe hartă.',
+        body: 'Pe ecranul „Hartă", apasă „Câmp nou" și desenează conturul parcelei atingând punctele pe hartă.',
       },
       slide2: {
         title: 'Contur precis',
-        body: 'Urmează marginile câmpului cât mai fidel. Apasă „Finalizează\" când conturul e complet. Poți corecta înainte de salvare.',
+        body: 'Urmează marginile câmpului cât mai fidel. Apasă „Finalizează" când conturul e complet. Poți corecta înainte de salvare.',
       },
       slide3: {
         title: 'Ferme și parcele',
@@ -176,8 +176,8 @@ export const ro = {
     subtitle:
       'Pentru ca poziția să fie transmisă mereu — chiar cu ecranul stins sau aplicația în fundal — activează cei {{stepCount}} pași de mai jos. Se fac o singură dată pe acest telefon.',
     step1: {
-      title: 'Locație „Permite mereu\"',
-      body: 'Acordă permisiunea de locație în fundal (alege „Permite tot timpul / Allow all the time\").',
+      title: 'Locație „Permite mereu"',
+      body: 'Acordă permisiunea de locație în fundal (alege „Permite tot timpul / Allow all the time").',
       actionGranted: 'Acordat',
       actionGrant: 'Acordă',
     },
@@ -189,7 +189,7 @@ export const ro = {
     },
     step3: {
       title: 'Pornire automată (autostart)',
-      body: 'Activează „Autostart / Pornire automată\" pentru StrawBoss în setările producătorului, ca să repornească după restart.',
+      body: 'Activează „Autostart / Pornire automată" pentru StrawBoss în setările producătorului, ca să repornească după restart.',
       action: 'Deschide',
     },
     step4: {
@@ -337,7 +337,7 @@ export const ro = {
       machineTypeBaler: 'Balotieră',
       machineTypeTruck: 'Camion',
       gpsActiveAndroid: 'GPS activ (inclusiv în fundal)',
-      gpsInactiveAndroid: 'GPS nu rulează — verifică permisiunile „Tot timpul\"',
+      gpsInactiveAndroid: 'GPS nu rulează — verifică permisiunile „Tot timpul"',
       gpsActiveIos: 'GPS activ',
       gpsInactiveIos: 'GPS: pornește din setările aplicației (iOS)',
       lastPing: 'Ultimul ping: {{time}}',
@@ -877,7 +877,7 @@ export const ro = {
     addFarmButton: 'Fermă nouă',
     loadingText: 'Se încarcă fermele...',
     emptyTitle: 'Nicio fermă înregistrată',
-    emptySub: 'Apasă \"Fermă nouă\" pentru a adăuga prima fermă.',
+    emptySub: 'Apasă "Fermă nouă" pentru a adăuga prima fermă.',
     entityTypeLegal: 'Persoană juridică',
     entityTypeNatural: 'Persoană fizică',
     farmFieldCount: '{count} câmpuri',
@@ -914,9 +914,9 @@ export const ro = {
 
   geofenceMap: {
     bannerIdle: 'Apasă un buton pentru a adăuga un câmp sau depozit',
-    bannerFirstPoint: 'Centrează pinul pe primul punct și apasă \"Adaugă punct\"',
+    bannerFirstPoint: 'Centrează pinul pe primul punct și apasă "Adaugă punct"',
     bannerProgress: 'Punct {count}/3 — continuă (minim 3 puncte)',
-    bannerEnoughPoints: '{count} puncte — apasă \"Finalizează\" sau adaugă mai multe',
+    bannerEnoughPoints: '{count} puncte — apasă "Finalizează" sau adaugă mai multe',
     cancelDrawButton: 'Anulează',
     fabNewFieldLabel: 'Câmp nou',
     fabNewFieldA11y: 'Adaugă câmp nou',
@@ -1023,7 +1023,7 @@ export const ro = {
       noFieldAssigned: 'Niciun teren asignat',
       helpUnavailable: 'Cere dispecerului să te asigneze pe o parcelă astăzi.',
       helpGpsError:
-        'Mergi pe parcela pe care lucrezi și apasă \"Reîncearcă GPS\". Terenul se detectează automat după locație — nu se poate alege manual.',
+        'Mergi pe parcela pe care lucrezi și apasă "Reîncearcă GPS". Terenul se detectează automat după locație — nu se poate alege manual.',
       candidatesTitle: 'Terenurile tale asignate:',
       openParcelA11y: 'Deschide detaliile pentru {{name}}',
       parcelFallback: 'Parcelă',
