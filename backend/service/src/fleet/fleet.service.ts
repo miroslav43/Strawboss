@@ -47,6 +47,7 @@ import type {
   CreateRemoteCommandInput,
 } from '@strawboss/validation';
 import { FleetPushService } from './fleet-push.service';
+import { FeaturesService } from '../features/features.service';
 import { QUEUE_OTA_DEPLOY } from '../jobs/queues';
 import { postResendEmail } from '../messaging/resend-client';
 
@@ -174,6 +175,7 @@ export class FleetService {
     private readonly drizzleProvider: DrizzleProvider,
     private readonly configService: ConfigService,
     private readonly fleetPushService: FleetPushService,
+    private readonly featuresService: FeaturesService,
     @InjectQueue(QUEUE_OTA_DEPLOY) private readonly otaDeployQueue: Queue,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {
@@ -380,6 +382,11 @@ export class FleetService {
         pendingCommand: null,
         pendingCommands: [],
         pendingSms: [],
+        // A fresh registrant has no org assigned yet (a super-admin does that
+        // out of band), so there is nothing to resolve. It picks up real flags
+        // on its next check-in ~60s later; until then it is fully enabled,
+        // which is the fail-open posture everywhere else too.
+        disabledFeatures: [],
       };
     }
 
@@ -434,6 +441,20 @@ export class FleetService {
     // even though at most one device is ever a gateway.
     const pendingSms = preloadedIsSmsGateway ? await this.computePendingSms(deviceId) : [];
 
+    // 9. Per-org feature flags.
+    //
+    // THIS is the channel that actually reaches a fielded phone. `GET /profile`
+    // is fetched at most once per login — the auth store persists `role`, so
+    // AuthGate marks the app ready on every later cold boot without any network
+    // call, and four of the five mobile roles never re-read it at all. Check-in,
+    // by contrast, runs on an unconditional ~60s timer regardless of login
+    // state, so a kill-switch delivered here has a bounded latency.
+    //
+    // Served from FeaturesService's per-org cache (60s TTL + the same Redis
+    // generation invalidation), so ~30 phones checking in every minute cost at
+    // most one query per org per minute, not one per device.
+    const disabledFeatures = orgId ? await this.featuresService.getDisabledForOrg(orgId) : [];
+
     return {
       deviceId,
       assignedOrgId: orgId,
@@ -442,6 +463,7 @@ export class FleetService {
       pendingCommand,
       pendingCommands,
       pendingSms,
+      disabledFeatures,
     };
   }
 

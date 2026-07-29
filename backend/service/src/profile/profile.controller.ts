@@ -2,7 +2,7 @@ import { Controller, Get, Patch, Post, Body, Req, BadRequestException } from '@n
 import type { FastifyRequest } from 'fastify';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
-import type { User } from '@strawboss/types';
+import type { User, ProfileResponse } from '@strawboss/types';
 import { updateProfileSchema, changePasswordSchema } from '@strawboss/validation';
 import { ProfileService } from './profile.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -17,11 +17,22 @@ export class ProfileController {
 
   /**
    * GET /api/v1/profile
-   * Returns the public.users row for the currently authenticated user.
+   * Returns the public.users row for the currently authenticated user, plus the
+   * organization's disabled feature keys.
+   *
+   * The flags cost nothing here — AuthGuard already resolved them into
+   * `currentUser` while loading the user context, so this is a field copy.
+   *
+   * This is admin-web's ONLY flag channel (it calls `useProfile` on every page).
+   * It is NOT the mobile one: the phone fetches `/profile` at most once per
+   * login, because the auth store persists `role` and `AuthGate` short-circuits
+   * every later cold boot without touching the network. Mobile gets its flags
+   * from `POST /fleet/checkin`, which runs on an unconditional ~60s timer.
    */
   @Get()
-  async getProfile(@CurrentUser() currentUser: RequestUser): Promise<User> {
-    return this.profileService.findByUserId(currentUser.id);
+  async getProfile(@CurrentUser() currentUser: RequestUser): Promise<ProfileResponse> {
+    const user = await this.profileService.findByUserId(currentUser.id);
+    return { ...user, features: { disabled: currentUser.disabledFeatures } };
   }
 
   /**
