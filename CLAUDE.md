@@ -133,11 +133,11 @@ The `.claude/` directory carries a custom automation setup that keeps the knowle
 | `strawboss-deploy` | Production deploy walkthrough |
 | `strawboss-sync-docs` | Sync `.claude/` docs+agents with the current code — run after every feature |
 | `strawboss-new-migration` | Scaffold an idempotent migration (RLS, indexes, sync_version) |
-| `strawboss-bug-hunt` | Full multi-angle bug analysis (security web/mobile, logic, data integrity) — dispatches the review agents in parallel |
+| `strawboss-bug-hunt` | Full multi-angle bug analysis (security web/mobile, logic, cross-layer contract drift, data integrity) — dispatches the review agents in parallel, then adversarially verifies each finding before reporting |
 
 ### Agents (`.claude/agents/`)
 
-Domain specialists: `backend-agent`, `db-agent`, `devops-agent`, `frontend-agent`, `mobile-agent`. Review agents: `security-reviewer` (backend + DB/RLS), `web-reviewer` (admin-web XSS/i18n/React), `mobile-reviewer` (sync/offline/secrets), `logic-reviewer` (state machine, reconciliation, race conditions). Plus `docs-updater` (subagent form of `strawboss-sync-docs`, for large PRs).
+Domain specialists: `backend-agent`, `db-agent`, `devops-agent`, `frontend-agent`, `mobile-agent`. Review agents: `security-reviewer` (backend + DB/RLS), `web-reviewer` (admin-web XSS/i18n/React), `mobile-reviewer` (sync/offline/secrets), `logic-reviewer` (state machine, reconciliation, race conditions), `cross-layer-reviewer` (contract drift between backend/mobile/admin-web/packages — e.g. an enum renamed in `packages/types` without every consumer updated in the same PR). Plus `bug-finding-verifier` (adversarial verification pass `strawboss-bug-hunt` runs on every finding before reporting) and `docs-updater` (subagent form of `strawboss-sync-docs`, for large PRs).
 
 ### Plugin: `strawboss-farm` (`plugins/strawboss-farm/`)
 

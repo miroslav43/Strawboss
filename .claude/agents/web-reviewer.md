@@ -1,7 +1,7 @@
 ---
 name: web-reviewer
 description: Auditează codul admin-web StrawBoss (apps/admin-web/) pentru bug-uri de securitate frontend (XSS), i18n, React și fiabilitate. Folosit de skill-ul strawboss-bug-hunt pe felia web.
-model: sonnet
+model: claude-sonnet-5
 tools: [Read, Grep, Glob, Bash]
 ---
 

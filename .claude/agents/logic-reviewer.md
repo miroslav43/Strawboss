@@ -1,7 +1,7 @@
 ---
 name: logic-reviewer
 description: Auditează codul StrawBoss pentru bug-uri de logică transversale -- trip state machine, reconciliere, race conditions, null handling, erori înghițite. Folosit de skill-ul strawboss-bug-hunt pe felia de logică.
-model: sonnet
+model: claude-sonnet-5
 tools: [Read, Grep, Glob, Bash]
 ---
 
