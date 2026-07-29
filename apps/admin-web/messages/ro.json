@@ -1972,6 +1972,45 @@
         "sendFailed": "Trimiterea a eșuat",
         "messagePlaceholder": "Mesaj (opțional) — lasă gol pentru ping-ul de test standard"
       }
+    },
+    "features": {
+      "title": "Funcționalități",
+      "subtitle": "Ce e pornit pentru această organizație",
+      "back": "Înapoi la organizații",
+      "loading": "Se încarcă…",
+      "presets": "Pachete",
+      "presetHint": "Aplică un set predefinit, apoi ajustează",
+      "preset": {
+        "new_org": "Client nou",
+        "basic": "Basic",
+        "pro": "Pro",
+        "enterprise": "Enterprise"
+      },
+      "reason": "Motiv (obligatoriu)",
+      "reasonPlaceholder": "De ce faci această schimbare?",
+      "save": "Salvează",
+      "saving": "Se salvează…",
+      "saved": "Salvat",
+      "noChanges": "Nicio modificare",
+      "pendingCount": "{{count}} modificări nesalvate",
+      "willDisable": "Va dezactiva",
+      "cascadeNote": "Stingerea unui modul stinge automat tot ce depinde de el.",
+      "affects": "Afectează",
+      "surface": {
+        "web": "web",
+        "mobile": "mobil",
+        "api": "API",
+        "jobs": "joburi"
+      },
+      "roleWarning": "{{count}} conturi active pe acest rol. Rămân funcționale — se blochează doar crearea de conturi noi.",
+      "notWired": "Nu e încă implementat",
+      "notWiredHint": "Aceste comutatoare apar când modulul e cablat complet.",
+      "history": "Istoric modificări",
+      "historyEmpty": "Nicio modificare înregistrată",
+      "historyBy": "de",
+      "on": "Pornit",
+      "off": "Oprit",
+      "planLabel": "Pachet"
     }
   },
   "dashboard": {
@@ -2376,5 +2415,89 @@
     "submitError": "Eroare la trimiterea CMR-ului. Încearcă din nou.",
     "successTitle": "CMR înregistrat",
     "successBody": "Transportul a fost finalizat. Mulțumim!"
+  },
+  "features": {
+    "module": {
+      "bales": "Baloți și producție",
+      "geo": "Câmpuri și hărți",
+      "depot": "Depozite și recepție",
+      "costs": "Costuri operaționale",
+      "documents": "Documente",
+      "aux": "Transport auxiliar",
+      "portals": "Portaluri externe",
+      "messaging": "Mesagerie",
+      "analytics": "Rapoarte și alerte",
+      "roles": "Tipuri de cont"
+    },
+    "item": {
+      "bales": {
+        "production": "Producție baloți (presă)",
+        "load_register": "Încărcare baloți pe camion",
+        "parcel_daily_status": "Status recoltare parcelă",
+        "adjustments": "Corecție manuală baloți",
+        "reconciliation": "Reconciliere baloți"
+      },
+      "geo": {
+        "parcels": "Parcele (câmpuri)",
+        "farms": "Ferme",
+        "kml_import": "Import KML",
+        "draw_mobile": "Desenare perimetre pe telefon",
+        "tracks": "Trasee istorice",
+        "auto_transitions": "Detecție automată intrare/ieșire"
+      },
+      "depot": {
+        "destinations": "Registru depozite",
+        "manned_confirm": "Operator depozit (confirmare la depozit)",
+        "weighing": "Cântărire brut / tară / net",
+        "inventory": "Inventar depozit"
+      },
+      "costs": {
+        "fuel": "Motorină",
+        "consumables": "Consumabile (sfoară)",
+        "receipt_photos": "Poze la bonuri",
+        "report": "Raport de costuri"
+      },
+      "documents": {
+        "library": "Pagina Documente",
+        "cmr_generate": "Generare CMR (PDF)",
+        "cmr_scan": "Scanare CMR pe hârtie",
+        "public_sign": "Semnare CMR prin link public",
+        "aviz": "Aviz",
+        "comanda": "Comandă transport (PDF)"
+      },
+      "aux": {
+        "requests": "Registrul curselor auxiliare",
+        "field_pickup": "Ridicare din câmp",
+        "autocomplete": "Auto-finalizare cursă auxiliară"
+      },
+      "portals": {
+        "beneficiaries": "Beneficiari",
+        "public_request": "Portal public de solicitare",
+        "beneficiary_pin": "Portal beneficiar cu PIN",
+        "transporter_role": "Cont web transportator"
+      },
+      "messaging": {
+        "email": "Email",
+        "sms": "SMS prin telefon-gateway",
+        "monitor": "Pagina Mesaje",
+        "broadcast": "Broadcast către telefoane"
+      },
+      "analytics": {
+        "reports": "Pagina Rapoarte",
+        "report_operators": "Rapoarte per operator",
+        "export": "Export CSV / XLSX",
+        "alerts": "Centrul de alerte",
+        "fraud": "Anti-fraudă"
+      },
+      "roles": {
+        "driver": "Șofer",
+        "loader_operator": "Operator încărcător",
+        "baler_operator": "Operator presă",
+        "geofence_maker": "Planificator câmp",
+        "depot_manager": "Operator depozit",
+        "dispatcher": "Dispecer",
+        "transportator": "Transportator"
+      }
+    }
   }
 }

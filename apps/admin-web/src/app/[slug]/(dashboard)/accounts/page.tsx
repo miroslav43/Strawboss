@@ -29,14 +29,15 @@ import {
   type CreateUserPayload,
   type UpdateUserPayload,
 } from '@strawboss/api';
-import { UserRole, MachineType } from '@strawboss/types';
-import type { User, Machine, DeliveryDestination } from '@strawboss/types';
+import { UserRole, MachineType, FEATURES } from '@strawboss/types';
+import type { User, Machine, DeliveryDestination, FeatureKey } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useFeatures } from '@/hooks/useFeatures';
 import { AssignBeneficiariesModal } from './AssignBeneficiariesModal';
 
 // ── Role config ───────────────────────────────────────────────────────────
@@ -60,6 +61,27 @@ const GROUP_ORDER: UserRole[] = [
   UserRole.depot_manager,
   UserRole.transportator,
 ];
+
+/**
+ * Roles this organization may still create accounts on.
+ *
+ * Role toggles are GRANDFATHERED: switching one off blocks NEW accounts only.
+ * Existing accounts keep working, stay listed, and stay editable — so this
+ * filters the creation dropdown and nothing else. GROUP_ORDER is untouched on
+ * purpose; filtering it would make grandfathered accounts vanish from the page
+ * that exists to manage them.
+ *
+ * `admin` has no `roles.admin` key by design: an organization that could not
+ * have an admin would be unadministrable. Unknown keys resolve to enabled, so
+ * it always passes.
+ */
+function useCreatableRoles(): UserRole[] {
+  const { isEnabled } = useFeatures();
+  return ALL_ROLES.filter((role) => {
+    const key = `roles.${role}` as FeatureKey;
+    return !(key in FEATURES) || isEnabled(key);
+  });
+}
 
 /** i18n key suffixes for each role — resolved via t('accounts.role.<key>') */
 const ROLE_LABEL_KEYS: Record<UserRole, string> = {
@@ -319,6 +341,7 @@ interface CreateForm {
 }
 
 function CreateAccountModal({ onClose }: { onClose: () => void }) {
+  const creatableRoles = useCreatableRoles();
   const { t } = useI18n();
   const [form, setForm] = useState<CreateForm>({
     fullName: '',
@@ -381,7 +404,7 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
               className={inputCls}
             >
-              {ALL_ROLES.map((role) => (
+              {creatableRoles.map((role) => (
                 <option key={role} value={role}>
                   {t(ROLE_LABEL_KEYS[role])}
                 </option>
@@ -484,6 +507,13 @@ interface EditForm {
 }
 
 function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const creatableRoles = useCreatableRoles();
+  // Keep the account's CURRENT role in the list even if the org switched it
+  // off. Dropping it would silently re-point the <select> at another role and
+  // reassign the user on the next save.
+  const selectableRoles = creatableRoles.includes(user.role)
+    ? creatableRoles
+    : [...creatableRoles, user.role];
   const { t } = useI18n();
   const [form, setForm] = useState<EditForm>({
     username: user.username ?? '',
@@ -612,7 +642,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))}
               className={inputCls}
             >
-              {ALL_ROLES.map((role) => (
+              {selectableRoles.map((role) => (
                 <option key={role} value={role}>
                   {t(ROLE_LABEL_KEYS[role])}
                 </option>

@@ -162,6 +162,9 @@ export {
   useUploadSpecimen,
 } from './use-profile.js';
 
+export { useOrgFeatures, useUpdateOrgFeatures } from './use-org-features.js';
+export type { OrgFeatureChange, OrgFeaturesResponse } from './use-org-features.js';
+
 export {
   useBaleProductions,
   useBaleProductionStats,

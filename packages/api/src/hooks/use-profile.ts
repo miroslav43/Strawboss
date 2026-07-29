@@ -1,14 +1,33 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { User } from '@strawboss/types';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { User, ProfileResponse } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 
 const profileKey = ['profile'] as const;
+
+/**
+ * MERGE the mutation result into the cached profile instead of replacing it.
+ *
+ * Every profile mutation resolves to a bare `User` (that is what PATCH returns),
+ * while the cache holds a `ProfileResponse` carrying `features`. A plain
+ * `setQueryData(profileKey, user)` therefore DROPPED the feature list on any
+ * profile edit — switching the UI language would silently re-enable every
+ * disabled page in the sidebar until the next refetch, and each of those pages
+ * would then 403 on write.
+ *
+ * The no-cache fallback supplies an empty disabled list, matching the fail-open
+ * posture everywhere else: never invent restrictions the server did not send.
+ */
+const mergeProfile = (qc: QueryClient) => (user: User) => {
+  qc.setQueryData<ProfileResponse>(profileKey, (prev) =>
+    prev ? { ...prev, ...user } : { ...user, features: { disabled: [] } },
+  );
+};
 
 /** Fetch the current authenticated user's profile (including assignedMachineId). */
 export function useProfile(client: ApiClient) {
   return useQuery({
     queryKey: profileKey,
-    queryFn: () => client.get<User>('/api/v1/profile'),
+    queryFn: () => client.get<ProfileResponse>('/api/v1/profile'),
   });
 }
 
@@ -17,9 +36,7 @@ export function useUpdateProfileLocale(client: ApiClient) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (locale: 'en' | 'ro') => client.patch<User>('/api/v1/profile', { locale }),
-    onSuccess: (user) => {
-      qc.setQueryData(profileKey, user);
-    },
+    onSuccess: mergeProfile(qc),
   });
 }
 
@@ -35,9 +52,7 @@ export function useUpdateProfile(client: ApiClient) {
       avatarUrl?: string | null;
       signatureSpecimenUrl?: string | null;
     }) => client.patch<User>('/api/v1/profile', dto),
-    onSuccess: (user) => {
-      qc.setQueryData(profileKey, user);
-    },
+    onSuccess: mergeProfile(qc),
   });
 }
 
@@ -59,7 +74,7 @@ export function useUploadAvatar(client: ApiClient) {
   return useMutation({
     mutationFn: (formData: FormData) => client.upload<User>('/api/v1/profile/avatar', formData),
     onSuccess: (user) => {
-      qc.setQueryData(profileKey, user);
+      mergeProfile(qc)(user);
       void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
   });
@@ -75,7 +90,7 @@ export function useUploadSpecimen(client: ApiClient) {
   return useMutation({
     mutationFn: (formData: FormData) => client.upload<User>('/api/v1/profile/specimen', formData),
     onSuccess: (user) => {
-      qc.setQueryData(profileKey, user);
+      mergeProfile(qc)(user);
       void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
   });
