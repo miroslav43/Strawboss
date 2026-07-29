@@ -14,8 +14,10 @@ import {
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
 import { useI18n } from '@/lib/i18n';
+import { featureTabOptions, useIsFeatureEnabled } from '@/stores/features-store';
 
 export default function LoaderTabLayout() {
+  const costsEnabled = useIsFeatureEnabled('costs.fuel');
   const {
     activeAlert,
     dismissAlert,
@@ -82,6 +84,7 @@ export default function LoaderTabLayout() {
           <Tabs.Screen
             name="consumables"
             options={{
+              ...featureTabOptions(costsEnabled, 4),
               title: t('tabs.label.diesel'),
               tabBarAccessibilityLabel: t('tabs.label.diesel'),
               tabBarIcon: ({ color, size, focused }) => (

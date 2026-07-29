@@ -247,6 +247,8 @@ export const ro = {
   },
 
   syncDetails: {
+    featureDisabled:
+      'Această funcție a fost dezactivată de administrator. Înregistrarea rămâne salvată și se trimite dacă funcția e repornită.',
     title: 'Date în așteptare',
     refreshAccessibility: 'Reîmprospătează',
     backAccessibility: 'Înapoi',

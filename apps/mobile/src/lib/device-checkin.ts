@@ -47,6 +47,7 @@ import { getDatabase } from './storage';
 import { TripsRepo } from '../db/trips-repo';
 import { markCheckinSuccess, readHealthTimestamps } from './health-state';
 import { mobileLogger } from './logger';
+import { useFeaturesStore } from '../stores/features-store';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -936,12 +937,31 @@ export function runDeviceCheckin(opts?: { force?: boolean }): Promise<void> {
         await clearRemoteCommandReports();
       }
 
+      /*
+       * Per-org feature flags.
+       *
+       * Check-in is the ONLY channel that reliably reaches a fielded phone:
+       * `/profile` is fetched at most once per login, because the auth store
+       * persists `role` and AuthGate short-circuits every later cold boot
+       * without touching the network. This runs on an unconditional ~60s timer
+       * regardless of login state, so a kill-switch flipped in the console
+       * lands within about a minute.
+       *
+       * Only written when the server actually sent the field: an older backend
+       * (or a device with no org assigned yet) leaves the last known set in
+       * place rather than wrongly clearing it to "everything on".
+       */
+      if (Array.isArray(response.disabledFeatures)) {
+        useFeaturesStore.getState().setDisabled(response.disabledFeatures);
+      }
+
       mobileLogger.flow('Fleet: check-in ok', {
         deviceId: response.deviceId,
         assignedOrgId: response.assignedOrgId,
         hasPendingDeployment: !!response.pendingDeployment,
         hasPendingCommand: !!response.pendingCommand,
         pendingCommandCount: response.pendingCommands?.length ?? 0,
+        disabledFeatureCount: response.disabledFeatures?.length ?? 0,
       });
 
       // Handle OTA deployment if one is pending

@@ -12,8 +12,10 @@ import {
   tabBarInactiveTintColor,
 } from '@/constants/tabBarConfig';
 import { useI18n } from '@/lib/i18n';
+import { featureTabOptions, useIsFeatureEnabled } from '@/stores/features-store';
 
 export default function BalerTabLayout() {
+  const costsEnabled = useIsFeatureEnabled('costs.consumables');
   const { activeAlert, dismissAlert, confirmParcelDone, confirmParcelEntry, cancelParcelEntry } =
     useGeofenceNotifications();
   const insets = useSafeAreaInsets();
@@ -64,6 +66,7 @@ export default function BalerTabLayout() {
           <Tabs.Screen
             name="consumables"
             options={{
+              ...featureTabOptions(costsEnabled, 4),
               title: t('tabs.label.consumables'),
               tabBarAccessibilityLabel: t('tabs.label.consumables'),
               tabBarIcon: ({ color, size, focused }) => (

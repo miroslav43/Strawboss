@@ -246,6 +246,8 @@ export const en = {
   },
 
   syncDetails: {
+    featureDisabled:
+      'This feature was switched off by an administrator. The record stays saved and will be sent if it is switched back on.',
     title: 'Pending data',
     refreshAccessibility: 'Refresh',
     backAccessibility: 'Back',

@@ -27,6 +27,7 @@ import {
   isManualSignOutInFlight,
 } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
+import { useFeaturesStore } from '@/stores/features-store';
 import { mobileApiClient } from '@/lib/api-client';
 import { cleanupOldMobileLogFiles, mobileLogger } from '@/lib/logger';
 import { SyncQueueRepo } from '@/db/sync-queue-repo';
@@ -59,7 +60,7 @@ import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/lib/
 import { startHeartbeat, stopHeartbeat } from '@/lib/heartbeat';
 import { hasSeenOnboarding } from './onboarding';
 import { hasSeenTrackingSetup } from './tracking-setup';
-import type { User } from '@strawboss/types';
+import type { User, ProfileResponse } from '@strawboss/types';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -234,6 +235,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         })();
         queryClient.clear();
         useAuthStore.getState().clear();
+        // A different operator may belong to a different organization, so the
+        // previous org's flags must not carry over. Clearing means fail-open
+        // (everything enabled) until the next check-in — never the reverse.
+        useFeaturesStore.getState().clear();
         setProfileReady(false);
       }
       activeUserIdRef.current = newUserId;
@@ -299,6 +304,42 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       // role already set — either from hydrated persist storage (offline boot)
       // or from a prior fetch in the same session; mark as ready immediately.
       setProfileReady(true);
+
+      /*
+       * Then refresh in the BACKGROUND, without blocking or gating anything.
+       *
+       * The early return used to end here, which meant a phone that had ever
+       * logged in never re-read its profile on a cold boot — and four of the
+       * five role layouts never mount `useProfile` either, so the only refresh
+       * was a foreground-resume invalidation that those layouts do not observe.
+       * Role changes, depot reassignments and feature flags could therefore sit
+       * stale indefinitely.
+       *
+       * Fire-and-forget on purpose: a failure here must be invisible. Offline
+       * cold boot keeps working exactly as before because readiness was already
+       * set above — nothing waits on this promise.
+       */
+      void mobileApiClient
+        .get<ProfileResponse>('/api/v1/profile')
+        .then((profile) => {
+          setProfile({
+            role: profile.role,
+            userId: profile.id,
+            assignedMachineId: profile.assignedMachineId ?? null,
+            assignedDeliveryDestinationId: profile.assignedDeliveryDestinationId ?? null,
+            signatureSpecimenUrl: profile.signatureSpecimenUrl ?? null,
+            locale:
+              ((profile as unknown as Record<string, unknown>).locale as string | null) ?? null,
+          });
+          if (profile.features?.disabled) {
+            useFeaturesStore.getState().setDisabled(profile.features.disabled);
+          }
+        })
+        .catch(() => {
+          // Offline or a transient failure: keep the persisted values. Never
+          // clear flags on a failed fetch — that would silently re-enable
+          // everything the organization had switched off.
+        });
       return;
     }
 
@@ -320,9 +361,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     };
 
     mobileApiClient
-      .get<User>('/api/v1/profile')
+      .get<ProfileResponse>('/api/v1/profile')
       .then((profile) => {
         if (cancelled) return;
+        if (profile.features?.disabled) {
+          useFeaturesStore.getState().setDisabled(profile.features.disabled);
+        }
         setProfile({
           role: profile.role,
           userId: profile.id,

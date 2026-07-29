@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { User } from '@strawboss/types';
+import type { ProfileResponse } from '@strawboss/types';
 import { mobileApiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store';
+import { useFeaturesStore } from '@/stores/features-store';
 
 /**
  * Fetches the current user's profile and keeps the Zustand auth store in sync.
@@ -10,14 +11,21 @@ import { useAuthStore } from '@/stores/auth-store';
  */
 export function useProfile() {
   const setProfile = useAuthStore((s) => s.setProfile);
+  const setDisabledFeatures = useFeaturesStore((s) => s.setDisabled);
 
   const query = useQuery({
     queryKey: ['profile'],
-    queryFn: () => mobileApiClient.get<User>('/api/v1/profile'),
+    queryFn: () => mobileApiClient.get<ProfileResponse>('/api/v1/profile'),
   });
 
   useEffect(() => {
     if (query.data) {
+      // Secondary flag channel. `/fleet/checkin` is the one that reaches an
+      // idle fielded phone on its own; this covers the moments the profile IS
+      // refetched (login, foreground resume) and keeps the two in step.
+      if (query.data.features?.disabled) {
+        setDisabledFeatures(query.data.features.disabled);
+      }
       setProfile({
         role: query.data.role,
         userId: query.data.id,
@@ -28,7 +36,7 @@ export function useProfile() {
           ((query.data as unknown as Record<string, unknown>).locale as string | null) ?? null,
       });
     }
-  }, [query.data, setProfile]);
+  }, [query.data, setProfile, setDisabledFeatures]);
 
   return {
     profile: query.data ?? null,
