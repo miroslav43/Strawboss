@@ -86,12 +86,22 @@ export class FeaturesCacheService {
    */
   async bump(): Promise<void> {
     try {
-      await this.redis.incr(GENERATION_KEY);
+      // INCR returns the new value, so the replica that performed the write
+      // adopts it SYNCHRONOUSLY. Without this, `currentGeneration()` would hand
+      // back the stale value one more time (it refreshes in the background),
+      // and the very request that would hit it is the operator reloading right
+      // after pressing Save. Other replicas still converge within POLL_MS.
+      const next = await this.redis.incr(GENERATION_KEY);
+      if (Number.isFinite(next)) {
+        this.generation = next;
+        this.checkedAt = Date.now();
+        return;
+      }
     } catch {
       // The 60s TTL still bounds staleness; the write itself already committed.
     }
-    // Force this replica to re-read on the very next call rather than waiting
-    // out the poll window, so the operator who just saved sees it applied.
+    // Redis unreachable or a surprising reply: force a re-read on the next call
+    // rather than waiting out the poll window.
     this.checkedAt = 0;
   }
 }
