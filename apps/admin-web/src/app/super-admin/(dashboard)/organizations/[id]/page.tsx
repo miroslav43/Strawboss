@@ -308,14 +308,27 @@ export default function OrganizationFeaturesPage() {
                       <p className={cn('text-sm', isOff ? 'text-neutral-400' : 'text-neutral-800')}>
                         {t(featureLabelKey(key))}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-neutral-400">
-                        {byCascade
-                          ? t('superAdmin.features.viaModule', {
-                              module: t(featureLabelKey(def.module)),
-                            })
-                          : def.surfaces
-                              .map((s) => t(`superAdmin.features.surface.${s}`))
-                              .join(' · ')}
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-400">
+                        <span>
+                          {byCascade
+                            ? t('superAdmin.features.viaModule', {
+                                module: t(featureLabelKey(def.module)),
+                              })
+                            : def.surfaces
+                                .map((s) => t(`superAdmin.features.surface.${s}`))
+                                .join(' · ')}
+                        </span>
+                        {/* Says plainly that this one hides a control rather
+                            than blocking access — the data behind it stays
+                            reachable, because reads are never gated. */}
+                        {def.uiOnly ? (
+                          <span
+                            className="rounded bg-neutral-100 px-1.5 text-[10px] text-neutral-500"
+                            title={t('superAdmin.features.uiOnlyHint')}
+                          >
+                            {t('superAdmin.features.uiOnly')}
+                          </span>
+                        ) : null}
                       </p>
                     </div>
 

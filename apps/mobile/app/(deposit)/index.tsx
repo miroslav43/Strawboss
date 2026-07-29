@@ -1,3 +1,4 @@
+import { Redirect } from 'expo-router';
 import { useState, useMemo } from 'react';
 import {
   View,
@@ -15,6 +16,7 @@ import { NotificationBell } from '@/components/shared/NotificationBell';
 import { useDepotInventory, useDepotList } from '@/hooks/useDepotInventory';
 import { useTheme } from '@/lib/theme';
 import { useI18n } from '@/lib/i18n';
+import { useIsFeatureEnabled } from '@/stores/features-store';
 import { fontScale } from '@/utils/responsive';
 import { colors, radii } from '@strawboss/ui-tokens';
 
@@ -27,6 +29,14 @@ import { colors, radii } from '@strawboss/ui-tokens';
  * Query cache + write-through SQLite cache in useDepotInventory).
  */
 export default function DepositInventoryScreen() {
+  /*
+   * `index` is this group's initial route AND the inventory screen itself, so
+   * hiding its tab would land the depot manager on a screen with no tab bar
+   * entry. Redirect to Trips instead — the same shape `(geofence-maker)` uses.
+   */
+  const inventoryEnabled = useIsFeatureEnabled('depot.inventory');
+  if (!inventoryEnabled) return <Redirect href="/(deposit)/trips" />;
+
   const { t } = useI18n();
   const { colors: themeColors } = useTheme();
   const { data: depots } = useDepotList();

@@ -1449,7 +1449,9 @@ export class TripsService implements OnModuleInit {
           to: driverPhone,
           body: tpl.body,
           kind: MessageKind.driver_arrival_cmr_link,
-          metadata: { tripId },
+          // orgId is load-bearing, not decoration: the messaging gate reads the
+          // org out of this metadata, and without it the gate fails OPEN.
+          metadata: { tripId, orgId },
         })
         .catch((err) =>
           this.winston.warn('applyAuxiliaryLoadedSideEffects: arrival-CMR link SMS failed', {
@@ -3168,6 +3170,7 @@ export class TripsService implements OnModuleInit {
         sourceParcelId,
         cropType: req.crop_type,
         tripId: newTripId,
+        orgId,
       });
       return;
     }
@@ -3213,6 +3216,7 @@ export class TripsService implements OnModuleInit {
     sourceParcelId: string | null;
     cropType: string | null;
     tripId: string;
+    orgId: string | null;
   }): Promise<void> {
     if (!args.driverPhone) return;
     try {
@@ -3256,7 +3260,8 @@ export class TripsService implements OnModuleInit {
         to: args.driverPhone,
         body: tpl.body,
         kind: MessageKind.driver_assigned,
-        metadata: { tripId: args.tripId },
+        // See the note on the arrival-CMR SMS: the gate needs the org here.
+        metadata: { tripId: args.tripId, orgId: args.orgId },
       });
     } catch (err) {
       this.winston.warn('sendDriverAssignedSms failed', {

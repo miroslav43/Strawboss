@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
-import { Loader2, Download } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTransporterRequests } from '@strawboss/api';
 import type { TripRequest } from '@strawboss/types';
 import { AUX_STAGE_ORDER } from '@strawboss/types';
@@ -22,6 +22,7 @@ import { CmrUploadModal } from '@/components/features/trip-requests/CmrUploadMod
 import { qualityLabelKey } from '@/components/features/trip-requests/labels';
 import { ComandaModal } from './ComandaModal';
 import { TransporterDeleteTripDialog } from './TransporterDeleteTripDialog';
+import { ExportButton } from '@/components/shared/ExportButton';
 
 const inputCls =
   'rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 ' +
@@ -168,15 +169,11 @@ export default function TransporterTripsPage() {
       <PageHeader
         title={t('transporter.myTripsTitle')}
         actions={
-          <button
-            type="button"
+          <ExportButton
+            label={t('transporter.exportXlsx')}
             onClick={handleExport}
             disabled={rows.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
-            {t('transporter.exportXlsx')}
-          </button>
+          />
         }
       />
 

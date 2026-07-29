@@ -2014,7 +2014,9 @@
       "accounts": "{{count}} conturi",
       "changeSummary": "Se schimbă",
       "planOnlyChange": "doar pachetul",
-      "discard": "Renunță"
+      "discard": "Renunță",
+      "uiOnly": "doar interfață",
+      "uiOnlyHint": "Ascunde controlul în aplicație. Datele rămân accesibile prin API — citirile nu se blochează niciodată."
     }
   },
   "dashboard": {

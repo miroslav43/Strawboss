@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useModal } from '@/hooks/useModal';
 import { useI18n } from '@/lib/i18n';
+import { useIsFeatureEnabled } from '@/stores/features-store';
 import { AppModal } from '@/components/shared/AppModal';
 import { UndoToast } from '@/components/shared/UndoToast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -40,6 +41,20 @@ export const FUEL_STEP_TITLE_KEYS: Record<FuelStep, string> = {
 
 const FUEL_STEP_ORDER: FuelStep[] = ['liters', 'station-photo', 'confirm'];
 
+/**
+ * The step list actually walked, which drops the photo when the organization
+ * has `costs.receipt_photos` off.
+ *
+ * Both `StepIndicator`'s length and the current index derive from this array,
+ * so removing an entry is the one clean seam here — no index arithmetic to
+ * adjust. Only the three hardcoded `goToStep('station-photo')` transitions
+ * needed rewriting, and the photo, which is mandatory today, simply stops
+ * being asked for.
+ */
+function stepsFor(photosEnabled: boolean): FuelStep[] {
+  return photosEnabled ? FUEL_STEP_ORDER : FUEL_STEP_ORDER.filter((x) => x !== 'station-photo');
+}
+
 interface FuelEntryFlowProps {
   machineId: string | null;
   operatorId: string;
@@ -65,6 +80,8 @@ export function FuelEntryFlow({
   onStepChange,
   onSaved,
 }: FuelEntryFlowProps) {
+  const photosEnabled = useIsFeatureEnabled('costs.receipt_photos');
+  const stepOrder = stepsFor(photosEnabled);
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
@@ -223,7 +240,7 @@ export function FuelEntryFlow({
     hideModal,
   ]);
 
-  const stepIndex = FUEL_STEP_ORDER.indexOf(step);
+  const stepIndex = stepOrder.indexOf(step);
 
   const stepContent = (() => {
     switch (step) {
@@ -235,7 +252,7 @@ export function FuelEntryFlow({
             <View style={styles.actions}>
               <BigButton
                 title={t('fuel.entryFlow.liters.action.continue')}
-                onPress={() => goToStep('station-photo')}
+                onPress={() => goToStep(photosEnabled ? 'station-photo' : 'confirm')}
                 disabled={!liters || liters === '0'}
               />
               <BigButton
@@ -298,7 +315,10 @@ export function FuelEntryFlow({
                 onPress={handleConfirm}
                 loading={saving}
               />
-              <TouchableOpacity onPress={() => goToStep('station-photo')} style={styles.backButton}>
+              <TouchableOpacity
+                onPress={() => goToStep(photosEnabled ? 'station-photo' : 'liters')}
+                style={styles.backButton}
+              >
                 <Text style={styles.backText}>{t('fuel.entryFlow.confirm.action.back')}</Text>
               </TouchableOpacity>
             </View>
@@ -310,7 +330,7 @@ export function FuelEntryFlow({
 
   return (
     <View style={styles.wrapper}>
-      <StepIndicator totalSteps={FUEL_STEP_ORDER.length} currentStep={stepIndex} />
+      <StepIndicator totalSteps={stepOrder.length} currentStep={stepIndex} />
       {stepContent}
       <UndoToast state={toastState} bottomOffset={24} />
     </View>

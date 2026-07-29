@@ -2014,7 +2014,9 @@
       "accounts": "{{count}} accounts",
       "changeSummary": "Changing",
       "planOnlyChange": "plan only",
-      "discard": "Discard"
+      "discard": "Discard",
+      "uiOnly": "interface only",
+      "uiOnlyHint": "Hides the control in the app. The data stays reachable over the API — reads are never blocked."
     }
   },
   "dashboard": {

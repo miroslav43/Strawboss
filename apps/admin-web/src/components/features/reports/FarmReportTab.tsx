@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import { ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { FarmReport, ReportTimelinePoint } from '@strawboss/types';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { FarmProductionChart } from './FarmProductionChart';
@@ -9,6 +9,7 @@ import { ReportTimelineChart } from './ReportTimelineChart';
 import { exportCsv } from '@/lib/csv';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { ExportButton } from '@/components/shared/ExportButton';
 
 interface FarmReportTabProps {
   farms: FarmReport[];
@@ -134,14 +135,11 @@ export function FarmReportTab({
         <h2 className="text-lg font-semibold text-neutral-800">
           {t('reports.farms.heading')}
         </h2>
-        <button
+        <ExportButton
+          label={t('reports.common.exportCsv')}
           onClick={handleExport}
           disabled={farms.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-        >
-          <Download className="h-4 w-4" />
-          {t('reports.common.exportCsv')}
-        </button>
+        />
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-neutral-200">

@@ -45,6 +45,7 @@ const {
   FEATURE_PRESETS,
   resolveDisabledFeatures,
   isFeatureEnabled,
+  applicablePreset,
 } = await import(pathToFileURL(registryPath).href);
 
 console.log('\nFeature registry invariants\n');
@@ -151,6 +152,29 @@ check('a module row is wired only when every one of its leaves is', () => {
   assert(bad.length === 0, bad.join('; '));
   const wired = FEATURE_KEYS.filter((k) => FEATURES[k].wired);
   return `${wired.length}/${FEATURE_KEYS.length} wired`;
+});
+
+/*
+ * The commercial promise, mechanically checked.
+ *
+ * `applicablePreset` used to DROP keys that were not wired, and because the
+ * presets switch whole modules off, that quietly discarded most of what
+ * "Basic" meant — a customer on Basic kept Documents, Aux, Messaging and
+ * Analytics in full. Presets are a product claim, so a preset that names a
+ * module must actually reach that module.
+ */
+check('every module a preset names is actually reached by it', () => {
+  for (const [name, overrides] of Object.entries(FEATURE_PRESETS)) {
+    const applied = resolveDisabledFeatures(applicablePreset(name));
+    const named = Object.keys(overrides).filter((k) => FEATURE_MODULES.includes(k));
+    const missed = named.filter((mod) => !applied.some((k) => k === mod || k.startsWith(`${mod}.`)));
+    assert(
+      missed.length === 0,
+      `preset '${name}' names ${missed.join(', ')} but disables nothing in them`,
+    );
+  }
+  const basic = resolveDisabledFeatures(applicablePreset('basic'));
+  return `basic disables ${basic.length}`;
 });
 
 check('presets reference only real keys, and enterprise is empty', () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Download, MapPin, X } from 'lucide-react';
+import { MapPin, X } from 'lucide-react';
 import { useMachines, useTruckDistanceReport, useRouteHistory } from '@strawboss/api';
 import type { Machine, MachineType, PaginatedResponse, TruckDistanceRow } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { KmPerTruckChart, type KmChartRow } from './KmPerTruckChart';
 import { RouteMiniMap } from '@/components/map/RouteMiniMap';
+import { ExportButton } from '@/components/shared/ExportButton';
 
 interface KmPerTruckTabProps {
   dateFrom: string;
@@ -191,14 +192,11 @@ export function KmPerTruckTab({ dateFrom, dateTo }: KmPerTruckTabProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-neutral-800">{t('reports.kmPerTruck.title')}</h2>
-        <button
+        <ExportButton
+          label={t('reports.kmPerTruck.export')}
           onClick={handleExport}
           disabled={csvRows.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-        >
-          <Download className="h-4 w-4" />
-          {t('reports.kmPerTruck.export')}
-        </button>
+        />
       </div>
 
       {/* Truck selector chips */}

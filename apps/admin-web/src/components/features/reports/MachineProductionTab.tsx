@@ -1,13 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useMachineOperatorProduction } from '@strawboss/api';
 import type { MachineProductionReport } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { exportCsv } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { ExportButton } from '@/components/shared/ExportButton';
 
 interface MachineProductionTabProps {
   dateFrom: string;
@@ -85,14 +86,11 @@ export function MachineProductionTab({ dateFrom, dateTo }: MachineProductionTabP
         <h2 className="text-lg font-semibold text-neutral-800">
           {t('reports.machineProduction.title')}
         </h2>
-        <button
+        <ExportButton
+          label={t('reports.common.exportCsv')}
           onClick={handleExport}
           disabled={csvRows.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-        >
-          <Download className="h-4 w-4" />
-          {t('reports.common.exportCsv')}
-        </button>
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
