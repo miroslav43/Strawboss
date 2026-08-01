@@ -394,6 +394,20 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     retry: retryGeometry,
   };
 
+  // The exact fingerprint of an ownership-predicate mismatch — the server sent
+  // tasks and none of them looked like ours. There is no way to reproduce that
+  // on a fleet phone without a log line. In an effect, and keyed on the counts,
+  // so it records a transition rather than firing on every GPS-driven re-render.
+  const ownerMismatch = tasks.length > 0 && myTasks.length === 0;
+  useEffect(() => {
+    if (!ownerMismatch) return;
+    mobileLogger.flow('useCurrentLoaderParcel: tasks returned but none matched owner predicate', {
+      tasksLen: tasks.length,
+      userId,
+      assignedMachineId,
+    });
+  }, [ownerMismatch, tasks.length, userId, assignedMachineId]);
+
   // Pull farm / locality / crop for a resolved parcel from the cached-parcels
   // list (offline-capable). Returns nulls until the cache is populated.
   const enrich = (
@@ -429,16 +443,6 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       geometryRepair,
       refresh,
     };
-  }
-
-  if (tasks.length > 0 && myTasks.length === 0) {
-    // The exact fingerprint of an ownership-predicate mismatch. There is no way
-    // to reproduce this on a fleet phone without it.
-    mobileLogger.flow('useCurrentLoaderParcel: tasks returned but none matched owner predicate', {
-      tasksLen: tasks.length,
-      userId,
-      assignedMachineId,
-    });
   }
 
   // Depot target: a loader assigned to a depot (destinationId set, no parcel).
