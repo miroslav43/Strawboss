@@ -49,6 +49,8 @@ export async function uploadSpecimen(signatureBase64: string): Promise<string> {
     const response = await mobileApiClient.upload<SpecimenUploadResponse>(
       '/api/v1/profile/specimen',
       form,
+      // A photo over a weak field connection needs more than the default 15s.
+      { timeoutMs: 120_000 },
     );
 
     if (!response.signatureSpecimenUrl) {

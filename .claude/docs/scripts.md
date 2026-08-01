@@ -2,12 +2,13 @@
 type: doc
 title: "Scripts (strawboss.sh)"
 created: 2026-04-16
-updated: 2026-06-28
+updated: 2026-07-31
 tags: [doc, scripts, tooling, bash, fleet, tailscale]
 status: mature
 related:
   - "[[architecture]]"
   - "[[infrastructure]]"
+  - "[[feature-toggles]]"
 ---
 
 # Scripts
@@ -254,6 +255,30 @@ Pins the Android OTA signing keystore by SHA-256. Used by the pre-commit hook an
 4. Exits non-zero (with an explanatory message) if the digest differs.
 
 **Rotation procedure (rare):** Update `EXPECTED` in `scripts/verify-keystore.sh`, commit with `--no-verify` (bypasses the local hook), update `keystore-guard.yml` expectations, and plan a manual re-sideload of the full fleet with the first APK signed under the new key.
+
+## Feature-Registry Invariant Checks
+
+### `scripts/check-features.mjs`
+
+Dependency-free Node script (this repo has no test runner — no vitest, no jest, zero `*.test.ts`, and
+`node_modules` is root-owned so a workspace `pnpm add` is unavailable to the dev user) verifying the
+per-organization feature-toggle registry in `packages/types/src/features.ts`. See [[feature-toggles]]
+for the full system.
+
+```bash
+./strawboss.sh build packages   # required first — reads the BUILT registry
+node scripts/check-features.mjs
+```
+
+Runs 10 registry invariants (an untouched org resolves to zero disabled features; every default is
+`true`; every key has exactly one definition; every `dependsOn` target exists; the dependency graph is
+acyclic; every leaf reaches its module; switching a module off cascades to all its leaves; an unknown
+key reads as enabled; a module is `wired` only once every leaf is; every preset-named module is
+actually reached by it), then a **backend write-route coverage scan**: walks every `*.controller.ts`
+under `backend/service/src`, flags every `@Post`/`@Put`/`@Patch`/`@Delete` route, and requires each to
+carry `@RequireFeature(...)` or appear in the script's own `EXEMPT` map with a reason (`CORE` or
+`IN-SERVICE`). Exits non-zero on the first failed invariant — this mechanical check, not review
+discipline, is what keeps the gate complete when someone adds a new write endpoint.
 
 ## Root `prepare` Script
 

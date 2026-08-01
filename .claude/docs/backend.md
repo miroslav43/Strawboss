@@ -2,7 +2,7 @@
 type: doc
 title: "Backend Service (backend/service)"
 created: 2026-04-16
-updated: 2026-07-27
+updated: 2026-07-31
 tags: [doc, backend, layer, nestjs, drizzle, bullmq]
 status: mature
 related:
@@ -13,6 +13,7 @@ related:
   - "[[packages-types]]"
   - "[[packages-validation]]"
   - "[[packages-api]]"
+  - "[[feature-toggles]]"
 ---
 
 # Backend Service (`backend/service`)
@@ -537,7 +538,7 @@ Returns the `key` string or `null` on any error (network or non-2xx). The caller
 | `gps-retention` | daily 02:30 (cron) | `GpsRetentionProcessor` (`src/location/gps-retention.processor.ts`) -- retention/downsampling of `machine_location_events` (D1): batched-delete rows > 90 days; batched-downsample the 14–90 day window to 1 point/machine/minute (NULL-`machine_id` rows downsampled per-operator instead); each step capped at 50 batches of 20 000 rows per run so a first-time backlog is worked off over several nights instead of blocking |
 | `stale-plan-sweep` | daily 00:15 Europe/Bucharest (cron) | `StalePlanSweepProcessor` (`src/trips/stale-plan-sweep.processor.ts`) -- auto-cancels stale own-fleet `planned` trips; see [[backend#Trips]] |
 
-The `cmr-generation` queue is on-demand only (triggered by trip completion or manual endpoint). The `comanda-generation` queue (`QUEUE_COMANDA_GENERATION`, `ComandaProcessor`) is likewise on-demand, queued from `TripRequestsService.insertBeneficiaryRequest()` (best-effort, `attempts: 2`); see [[backend#Comandă (transport order) PDF]]. `message-send` (`QUEUE_MESSAGE_SEND`) is on-demand too, queued from `TripRequestsService.confirm()` to send the transport-confirmation email/SMS via `messaging/transport-confirmation.processor.ts`. `trip-autocomplete` (`QUEUE_TRIP_AUTOCOMPLETE`) is a per-trip delayed job (auto-completes an auxiliary trip a few minutes after it is loaded).
+The `cmr-generation` queue is on-demand only (triggered by trip completion or manual endpoint). The `comanda-generation` queue (`QUEUE_COMANDA_GENERATION`, `ComandaProcessor`) is likewise on-demand, queued from `TripRequestsService.insertBeneficiaryRequest()` (best-effort, `attempts: 2`); see [[backend#Comandă (transport order) PDF]]. `message-send` (`QUEUE_MESSAGE_SEND`) is on-demand too, queued from `TripRequestsService.confirm()` to send the transport-confirmation email/SMS via `messaging/transport-confirmation.processor.ts`. **`trip-autocomplete` (`QUEUE_TRIP_AUTOCOMPLETE`) is now a no-op stub** (`TripAutocompleteProcessor`, `src/trips/trip-autocomplete.processor.ts`) -- it used to be a per-trip delayed job that auto-completed an auxiliary trip a few minutes after loading (`TripsService.autoCompleteAuxiliary`, deleted), but that timer is gone: an aux trip now only completes via the external driver's arrival-CMR upload (`TripsService.completeAuxiliaryOnArrivalCmr`, gated on `documents.cmr_scan`) or an admin force-complete. The stub only logs-and-discards any delayed jobs still in flight from before the deploy that removed the old behaviour, and is kept for exactly one release. The registry key that used to guard the old behaviour, `aux.autocomplete`, was **removed** (not renamed) in `d141fb8` -- it was never `wired`, so no org could hold an override for it.
 
 The `ota-deploy` queue uses **delayed jobs** (not repeating). Each job is added by `FleetService.createDeployment()` when `scheduledAt` is set; `OtaDeployProcessor` processes it by calling `FleetService.activateDeployment()`. Immediate deployments bypass the queue entirely.
 
@@ -604,6 +605,25 @@ Assigns `X-Request-Id` (from header or `randomUUID()`). Logs one line per reques
 
 ### `ZodValidationPipe` (`src/common/pipes/zod-validation.pipe.ts`)
 Wraps `schema.safeParse()`. On failure, throws `BadRequestException({ statusCode: 400, error: 'validation_failed', message, fieldErrors, formErrors })` (fixed alongside the filter above, `ac1640b`) -- `message` is a real per-field summary (`"baleCount: Expected number, received string"`, joined with whole-object refine failures from `formErrors`, e.g. "exactly one of parcelId or sourceDepotId is required"), not Zod's bare `flatten()` object. Also exposes a public `.transform(value)` method (used by `TransporterController` where the Zod schema is picked dynamically per record-kind, so the pipe can't be applied via the `@Body(new ZodValidationPipe(schema))` decorator pattern).
+
+---
+
+## Feature-Gated Call Sites
+
+Per-organization feature toggles (registry, guard, resolution, deploy safety -- full picture in
+[[feature-toggles]]) are enforced at 139 write routes. Six of those gates -- the last backend call
+sites needed to reach 57/57 wired keys -- landed in `d141fb8` (2026-07-29):
+
+| Feature key | Site | Shape |
+|---|---|---|
+| `documents.comanda` | `TransporterController` route decorator (now `@RequireFeature('portals.transporter_role', 'documents.comanda')`) + `ComandaProcessor.process()` | Job-side: quiet `return` **before** the try/catch around `comandaService.generateComanda()` -- a throw would feed BullMQ's `attempts: 2` retry into `failed`, noise for a config decision that will never succeed. |
+| `aux.field_pickup` | `TripRequestsService.confirm()` (in-service, not the controller -- the same route also confirms ordinary depot pickups) | `featuresService.assertEnabledForOrg(...)`, called **before** the one-time auxiliary `machines` INSERT -- rejecting after would leave an orphan truck. |
+| `analytics.fraud` | `AlertsService.createBaleMismatchAlert` (depot-delivery bale-mismatch check) + `AlertsService.createFromDraft` (only when `draft.category === 'fraud'`) | Both quiet-return. `createBaleMismatchAlert`'s caller (`confirmDepotDelivery`) has already **completed** the trip and try/catches this call -- a mismatch must never block delivery. `createFromDraft` reuses the `analytics.alerts` `getDisabledForOrg` lookup already made for that gate -- one extra `isFeatureEnabled` call, no extra query. |
+| `geo.auto_transitions` | `GeofenceService`, top of the per-assignment loop inside the fleet-wide geofence-sweep job | `continue`, never throw -- one job serves every org. Gated at the very **top** of the loop: `resolveTransition`, called later in the same iteration, writes `geofence_events` rows inside its own transaction and the hysteresis state machine reads them back -- gating lower would desync `wasInside`. |
+| `messaging.email` / `messaging.sms` | `ResendMessagingService.sendEmail()` / `sendSms()` | Gated **after** `insertRow()`, then `markFailed(id, 'Funcție dezactivată pentru organizație')` -- so the `/messages` monitor shows *why* nothing went out instead of silence. New private `channelDisabled(orgId, key)` fails **open** (`false`) when `orgId` is null. Required threading `orgId` into the metadata at two call sites in `TripsService` (`sendDriverAssignedSms`, and the arrival-CMR-link SMS in `applyAuxiliaryLoadedSideEffects`) that previously passed only `{ tripId }` -- without `orgId` the gate reads no org and fails open exactly there (a real bug this commit fixed). |
+
+**Retired key**: `aux.autocomplete` was removed (not renamed) from the registry in the same commit --
+see the `trip-autocomplete` note under [[backend#Job Scheduler]] above. Full rationale for the fail-open/quiet-return/`continue` conventions, the registry, and deploy safety all live in [[feature-toggles]]; this table is only the where.
 
 ---
 

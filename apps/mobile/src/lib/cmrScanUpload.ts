@@ -174,6 +174,8 @@ export async function uploadCmrScan(
     const response = await mobileApiClient.upload<UploadResponse>(
       `/api/v1/cmr-scans/trip/${tripId}`,
       form,
+      // A PDF over a weak field connection needs more than the default 15s.
+      { timeoutMs: 120_000 },
     );
     // Log the document id, never the fileUrl — that URL carries a signed token,
     // and logs get persisted to disk and uploaded.

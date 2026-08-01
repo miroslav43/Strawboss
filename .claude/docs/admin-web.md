@@ -2,7 +2,7 @@
 type: doc
 title: "Admin Web (apps/admin-web)"
 created: 2026-04-16
-updated: 2026-07-27
+updated: 2026-07-31
 tags: [doc, frontend, layer, nextjs]
 status: mature
 related:
@@ -10,8 +10,15 @@ related:
   - "[[packages-api]]"
   - "[[packages-ui-tokens]]"
   - "[[backend]]"
+  - "[[feature-toggles]]"
 ---
 
+<!-- updated 2026-07-31: last 13 feature switches wired (57/57, e275b3c) -- shared `ExportButton`
+     (src/components/shared/ExportButton.tsx) replaces 11 independent `analytics.export` checks across
+     7 report tabs + reports page (CSV/PDF) + transporter XLSX export; 5 report tabs gated on
+     `analytics.report_operators` (MachineProductionTab/KmPerTruckTab deliberately excluded, per-machine
+     not per-operator); super-admin org console gets a `uiOnly` badge on registry rows. See
+     [[feature-toggles]] for the full per-org feature-toggle system. -->
 <!-- updated 2026-07-27: "Curse" merges Solicitări curse into one page with two ledgers (AuxTripSection/AuxTripTable, AuxStage from @strawboss/domain, realtime for trip_requests); /trip-requests is now a redirect to /trips#aux; new web-only `transportator` role ((transporter) route group: My trips / New request / Beneficiari, auto-generated comandă PDF); force-status now requires a real load source (ForceStatusLoadFields); ParcelMapModal + LeafletMap gain multi-select field picking and bulk-add; richer available-machine cards (operator photo, aux company/contact, live locality via new geocode cache) and loader info panel; custom single-field vertex-edit tool on the map -->
 <!-- updated 2026-07-12: Trip Requests — CmrUploadModal (admin CMR-scan override) + accessible-dialog pattern in AvizUploadModal/CmrUploadModal; documents.types.* i18n replaces hardcoded type-label maps (adds cmr_scan); UserPresenceDot default window 90s -> 180s -->
 <!-- updated 2026-06-28: /healthz Swarm probe, preloadEntriesOnStart disabled, HOSTNAME=0.0.0.0 deploy note -->
@@ -85,6 +92,7 @@ A separate route group with its own layout. Accessible only to users whose JWT `
 |---|---|---|
 | `/super-admin/organizations` | `organizations/page.tsx` | Organization list with create/edit |
 | `/super-admin/organizations/new` | `organizations/new/page.tsx` | New organization form |
+| `/super-admin/organizations/[id]` | `organizations/[id]/page.tsx` | Per-org feature-toggle console — registry tree editor with live cascade preview and preset buttons. Full system: [[feature-toggles]]. As of `e275b3c`, rows where `def.uiOnly` is true (7 keys, e.g. `analytics.export`, `analytics.report_operators`) carry a small pill (`superAdmin.features.uiOnly`, `title` tooltip `superAdmin.features.uiOnlyHint`) next to the surfaces/cascade line, so an operator can't mistake "hides a control" for "revokes access to the data" |
 | `/super-admin/organizations/[id]/users` | `organizations/[id]/users/page.tsx` | Users within an organization |
 | `/super-admin/devices` | `devices/page.tsx` | Fleet device list (see below) |
 | `/super-admin/devices/releases` | `devices/releases/page.tsx` | APK release management (see below) |
@@ -409,16 +417,53 @@ Both modals share the same shape: PDF-only (client extension/MIME check; backend
 
 ---
 
-## Reports (`src/app/(dashboard)/reports/page.tsx`)
+## Reports (`src/app/[slug]/(dashboard)/reports/page.tsx`)
 
-Four tabs:
-
-1. **Production**: `BaleCountChart` -- custom CSS bar chart showing bale counts by operator/parcel/date using `useBaleProductionStats()` with `ReportFilters` for date range + groupBy
-2. **Costs**: `CostBreakdownChart` -- fuel + consumable cost bar chart from `useDashboardCosts()`
-3. **Operators**: `OperatorProductionChart` -- per-operator production bars
-4. **Km/Truck** (Plan C): `KmPerTruckTab` -- daily km driven per truck chart using `useLocationKmByDay()`
+Ten tabs (`TABS` array, each with an optional `feature` gate — see below): Farms, Fields, Depots,
+Rankings, Costs (`costs.report`), Operators (`analytics.report_operators`), Production/machine
+(`MachineProductionTab`), Km/truck (`KmPerTruckTab`), Km/operator (`KmPerOperatorTab`,
+`analytics.report_operators`), Connected hours (`ConnectedHoursTab`, `analytics.report_operators`).
 
 All charts use pure CSS bar rendering (no external chart library).
+
+### Per-tab gating on `analytics.report_operators` (`e275b3c`)
+
+`analytics.report_operators` is a `uiOnly` feature (full system: [[feature-toggles]]) — some orgs must
+contractually not expose per-operator tracking. Five tabs carry `feature: 'analytics.report_operators'`
+in the page's `TABS` array and are hidden from the tab strip (and their panel unreachable) when the
+flag is off: `ConnectedHoursTab`, `DepotReportTab`, `FarmReportTab`, `FieldReportTab`,
+`KmPerOperatorTab`.
+
+**`MachineProductionTab` and `KmPerTruckTab` are deliberately NOT gated by this flag** — they report
+per-*machine*, not per-operator, and `analytics.report_operators` exists specifically for organizations
+that must not track individual people, not machines. This is an intentional, correctness-relevant
+distinction (see the comment above the `TABS` array in `reports/page.tsx`) — do not add them to the
+gate later without checking with the team.
+
+Two supporting mechanics in `ReportsPage`:
+- **`ready` guard**: `useFeatures()`'s `ready` gates the tab-strip filter so it renders every tab (fail
+  open) until the profile resolves, then filters — without it the strip would visibly reflow right
+  after load.
+- **Reset effect**: when the selected tab becomes hidden (its flag flipped, or on initial load before
+  `ready`), a `useEffect` reselects the first visible tab. The tabs are separate `{tab === 'x' && ...}`
+  blocks rather than array-driven, so without this an orphaned panel could render with no strip item
+  highlighted.
+
+### `ExportButton` — one gate for every export trigger (`src/components/shared/ExportButton.tsx`, `e275b3c`)
+
+Replaces eleven independent `analytics.export` checks (or, in some cases, none at all) that used to
+live at each call site: the 7 report tabs above, the Costs and Operators tab exports and the PDF export
+in `reports/page.tsx` itself, and the transporter XLSX export
+(`[slug]/(transporter)/transport/page.tsx`). Gating eleven call sites independently was eleven chances
+to miss one, and a missed one leaks exactly the capability the flag is supposed to withhold.
+
+Calls `useFeatures().isEnabled('analytics.export')` internally and **renders `null`, not a disabled
+button**, when the feature is off — a visible-but-greyed control invites a support ticket asking why it
+doesn't work, an absent one doesn't. Takes `{ label, onClick, disabled?, variant?: 'csv' | 'pdf',
+className? }`; `disabled` is a distinct concept ("nothing to export yet"), not the feature gate. PDF is
+gated by the same key as CSV — it's the same act (taking the org's data out of the product) and
+splitting it under its own key would leave the customer who didn't buy exports a working PDF button.
+When adding a new exportable view, use this component rather than a bespoke `analytics.export` check.
 
 ---
 
@@ -495,6 +540,7 @@ Subscribes a per-component channel to a specific table and invalidates the given
 - `UserPresenceDot` (`src/components/shared/UserPresenceDot.tsx`) -- green/grey dot indicator based on `user.lastSeenAt` within a shared default window, `DEFAULT_ONLINE_WINDOW_MS = 180_000` (raised from 90 s) -- covers the relaxed mobile heartbeat (jittered ~60-65 s JS interval, deduped against a 60 s native alarm) with room for one missed tick before the dot flips grey. Callers override via `thresholdMs` (e.g. Machines / Available-truck lists pass 15 min for GPS-based presence). Tooltip localized via `useI18n()` (Plan C, H-8 fix)
 - `TripTimeline` (`src/components/shared/TripTimeline.tsx`) -- visual timeline of trip state transitions
 - `MachineCard` / `ParcelCard` -- compact card views for machines and parcels
+- `ExportButton` (`src/components/shared/ExportButton.tsx`, `e275b3c`) -- the single `analytics.export` gate for every data-export trigger in the app (see Reports section above for the full story); renders `null` when the feature is off instead of a disabled button
 
 ### Utility
 - `normalize()` (`src/lib/normalize-api-list.ts`) -- normalizes API list responses (handles both array and `{ data: [] }` formats)

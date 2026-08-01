@@ -69,7 +69,10 @@ export async function uploadReceipt(
   } as any);
 
   try {
-    const response = await mobileApiClient.upload<UploadResponse>('/api/v1/uploads/receipt', form);
+    // A photo over a weak field connection needs more than the default 15s.
+    const response = await mobileApiClient.upload<UploadResponse>('/api/v1/uploads/receipt', form, {
+      timeoutMs: 120_000,
+    });
     mobileLogger.flow('Receipt uploaded', {
       kind,
       // Log the opaque server-side key, not the URL — the URL may contain a

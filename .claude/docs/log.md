@@ -2,7 +2,7 @@
 type: meta
 title: "Doc Change Log"
 created: 2026-05-25
-updated: 2026-07-27
+updated: 2026-07-31
 tags: [meta, log, changelog]
 status: developing
 ---
@@ -81,3 +81,17 @@ Actions: `save` (update), `new doc` (created), `delete`, `rename`.
 [2026-07-27] save | `backend-agent.md` — key-modules list extended (beneficiaries/trip-requests/transporter/geocode); new "never SELECT a secret column on an unguarded route" + "never trust a client-echoed server-minted value" rules; BullMQ cadences corrected/expanded; fail-closed token-recovery pattern
 [2026-07-27] save | `hot.md` — full refresh of "What's Changing Now" for the Jul 2026 backlog (transportator role, Curse/AuxStage merge, P0 cross-org fixes, R8/Proguard, signature removal, stale-plan sweep/loader board); migration range 00057→00091; hook count 24→28
 [2026-07-27] save | `_index.md` — migration range 00001–00043→00001–00091 in Layers table; hook-file count 24→28
+[2026-07-31] save | new doc `feature-toggles.md` — per-organization feature-toggle system, documented end-to-end for the first time (PR #28/#29/#30 shipped it to `main` with no `.claude/docs/` coverage): registry/overrides/resolution in `packages/types/src/features.ts`, `FeaturesGuard`/`@RequireFeature`, `FeaturesService` (kill switch, per-org cache, `assertEnabledForOrg`), `FeaturesCacheService` (Redis generation-counter cross-replica invalidation), `SuperAdminFeaturesController`, admin-web/mobile consumption, `uiOnly`/`wired` conventions, `check-features.mjs` invariants, migration `00093`
+[2026-07-31] save | `packages-types.md` — new "Feature Registry (`features.ts`)" section (FEATURE_MODULES/FEATURE_KEYS/FeatureDef/FEATURES/resolveDisabledFeatures/isFeatureEnabled/FEATURE_PRESETS/applicablePreset/featureLabelKey); `OrgFeatureSettings`/`UpdateOrgFeaturesDto` noted against `Organization`
+[2026-07-31] save | `scripts.md` — new "Feature-Registry Invariant Checks" section for `scripts/check-features.mjs` (10 registry invariants + backend write-route coverage scan)
+[2026-07-31] save | `database.md` — migration range 00001–00091→00001–00093; `document_type` enum gains `cmr_scan_delivery` (00092); new "Per-Organization Feature Toggles (00093)" section (`organizations.feature_overrides`/`plan_label` + `organization_feature_changes` audit table)
+[2026-07-31] save | `db-agent.md` — added 00092/00093 to migration list; `document_type` enum updated; next-migration guidance bumped 00092→00094
+[2026-07-31] save | `backend.md` — corrected stale `trip-autocomplete`/`QUEUE_TRIP_AUTOCOMPLETE` description (now a no-op stub, successor is `completeAuxiliaryOnArrivalCmr` gated on `documents.cmr_scan`); new "Feature-Gated Call Sites" section for the six `d141fb8` gates (`documents.comanda`, `aux.field_pickup`, `analytics.fraud`, `geo.auto_transitions`, `messaging.email`/`messaging.sms`)
+[2026-07-31] save | `backend-agent.md` — new "Feature gates (src/features/)" rules subsection (`@RequireFeature` vs `assertEnabledForOrg`, quiet-return/`continue` in jobs, `orgId` must ride in messaging metadata or the gate fails open, never rename a registry key)
+[2026-07-31] save | `mobile.md` — feature-gating notes on `(deposit)` screens (`depot.inventory` tab-hide+redirect pairing, `depot.weighing`'s `effectiveScaleBroken` fold flagged as a correctness trap), `(geofence-maker)/map.tsx` (`geo.draw_mobile` entry-FAB-only gating), `FuelEntryFlow` (`costs.receipt_photos` `stepsFor()` derivation); corrected a pre-existing stale `FUEL_STEP_ORDER` description
+[2026-07-31] save | `mobile-agent.md` — new rule 16: pattern for gating a `uiOnly` mobile feature (entry-point-only gating, single `effectiveX` value feeding validation+payload+JSX, `featureTabOptions` + `<Redirect>` pairing when the gated tab is the group's `index`)
+[2026-07-31] save | `admin-web.md` — new `/super-admin/organizations/[id]` console row (`uiOnly` badge); Reports section rewritten (was stale "four tabs", actually 10) with new "Per-tab gating on `analytics.report_operators`" (machine-vs-operator distinction: `MachineProductionTab`/`KmPerTruckTab` deliberately excluded) and "`ExportButton`" subsections; added to Shared Components inventory
+[2026-07-31] save | `frontend-agent.md` — new "Feature-gated exports and report tabs" subsection + 3 new rules (use shared `ExportButton` not a bespoke `analytics.export` check; render nothing rather than disable when hiding must be total; reset-effect guard when a flag can hide the selected tab)
+[2026-07-31] save | `architecture.md` — new "Per-Organization Feature Toggles" cross-cutting section (system diagram + fail-open/cache-invalidation summary); added to Component Documentation Index
+[2026-07-31] save | `_index.md` — added Feature Toggles row to Layers table + Cross-cutting Topics bullet; migration range 00001–00091→00001–00093
+[2026-07-31] save | `hot.md` — new "Per-organization feature toggles, 57/57 wired" bullet (prepended, most load-bearing); pruned the settled "Presence + auth persistence (Jun 2026)" bullet to hold the ~500-word budget; migration count 00091→00093; new pointer to [[feature-toggles]]

@@ -3,7 +3,7 @@ name: mobile-agent
 description: Specialist in the Expo/React Native mobile app -- offline-first, sync, geofence, role-based layouts
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-07-27
+updated: 2026-07-31
 ---
 
 # StrawBoss Mobile Agent
@@ -323,3 +323,7 @@ WebView-based map rendering with a bridge for communication between React Native
 13. **New polling hooks default wide**: prefer the widest `refetchInterval` the UI can tolerate (see "Polling cadence" above) and rely on the root `focusManager.setFocused()` wiring in `_layout.tsx` to stop polling in the background — don't add a manual per-hook `AppState` pause/resume.
 14. **Maps render from local SQLite, never straight from REST**: use `useCachedParcels`/`useCachedDepots` (or add a same-shaped hook) — a screen that fetches `/parcels`/`/delivery-destinations` directly and paints the map from the response WILL race a save's own `invalidateQueries` and erase freshly-drawn offline data. See "Local-first cache" under Map above.
 15. **Never hand-edit `android/app/proguard-rules.pro` or other files under `android/`**: `expo prebuild` regenerates the whole `android/` directory and silently clobbers hand-edits. Any native Android change (proguard rules, manifest entries, gradle config) must go through a config plugin in `plugins/` (see `withHeadlessProguard.js`, `withDeviceOwner.js`, `withAlwaysOnTracking.js`), applied idempotently (guard against running twice on repeated `prebuild`).
+16. **Gating a screen behind a `uiOnly` feature** (registry + mobile consumption layer documented in `.claude/docs/feature-toggles.md`; four screens wired in `e275b3c` — `(deposit)/index.tsx`+`_layout.tsx`, `(deposit)/confirm-delivery.tsx`, `(geofence-maker)/map.tsx`, `FuelEntryFlow.tsx`):
+    - Gate only the **entry point** when the rest is naturally unreachable once it's gone (e.g. `{!drawMode && drawEnabled && <FAB/>}`) — everything downstream becomes dead-by-construction, so don't chase every individual control gated by the same flag.
+    - When the feature governs a **required input**, derive one `effectiveX = rawX || !featureEnabled` value and fold it through validation, the request payload, AND the JSX from that single flag — never gate validation and JSX independently. Hiding the input alone while validation still reads the raw (never-set) state leaves the submit button permanently disabled, silently bricking that whole flow for the org.
+    - When the gated tab **is** the route group's initial route (`index`), pair `featureTabOptions(enabled, remainingTabs)` in `_layout.tsx` with a `<Redirect>` inside that screen itself — a hidden tab alone still renders a now-unreachable screen with no way back to the tab bar.

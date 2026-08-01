@@ -2,7 +2,7 @@
 type: meta
 title: "StrawBoss Docs Index"
 created: 2026-05-25
-updated: 2026-07-27
+updated: 2026-07-31
 tags: [meta, index]
 status: mature
 ---
@@ -24,8 +24,9 @@ This vault is the canonical knowledge base for the StrawBoss monorepo. Start wit
 | Backend | [[backend]] | NestJS 11 + Fastify, `/api/v1/*`, Drizzle ORM, BullMQ jobs |
 | Admin Web | [[admin-web]] | Next.js 15 App Router, TanStack Query, Supabase Realtime, Leaflet maps |
 | Mobile | [[mobile]] | Expo SDK 54, offline-first SQLite + sync queue, geofence, FCM |
-| Database | [[database]] | PostgreSQL + PostGIS on Supabase Cloud, migrations 00001–00091, RLS |
+| Database | [[database]] | PostgreSQL + PostGIS on Supabase Cloud, migrations 00001–00093, RLS |
 | Sync | [[sync-protocol]] | Push/pull protocol, idempotency keys, sync_version delta |
+| Feature Toggles | [[feature-toggles]] | Per-org registry, resolver/presets, FeaturesGuard, super-admin console |
 | Infrastructure | [[infrastructure]] | Docker Compose, nginx, Let's Encrypt, Redis, Winston logs |
 | Scripts | [[scripts]] | `strawboss.sh` orchestrator + scripts/_lib.sh dispatcher |
 
@@ -45,6 +46,7 @@ This vault is the canonical knowledge base for the StrawBoss monorepo. Start wit
 - **Offline sync** → protocol in [[sync-protocol]]; mobile producer in [[mobile]]; backend consumer in [[backend]]; idempotency table in [[database]].
 - **Auth & RLS** → Supabase JWT verification in [[backend]]; RLS policies in [[database]]; role gates in [[mobile]] + [[admin-web]].
 - **Background jobs** → BullMQ queues in [[backend]] (alert-evaluation, reconciliation, cmr-generation, farmtrack-sync, sync-cleanup).
+- **Per-org feature toggles** → registry in [[packages-types]]; enforcement in [[backend]]; console + route guard in [[admin-web]]; store + tab/step gating in [[mobile]]; storage in [[database]]; invariant script in [[scripts]]; full system in [[feature-toggles]].
 
 ## Adding a New Doc
 

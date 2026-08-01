@@ -3,7 +3,7 @@ name: frontend-agent
 description: Specialist in the Next.js admin dashboard -- App Router, TanStack Query, i18n, Leaflet maps
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-07-27
+updated: 2026-07-31
 ---
 
 # StrawBoss Frontend Agent
@@ -196,6 +196,27 @@ A third, view-only chip — `onViewComanda` → `ComandaModal` — follows the o
 
 **Accessible dialog pattern** (use for any new modal): `role="dialog"` + `aria-modal="true"` + `aria-labelledby={titleId}` (from `useId()`) on the panel; on mount, focus the close button (`useRef<HTMLButtonElement>` + `.focus()`) and remember `document.activeElement` to restore focus to it on unmount; listen for `Escape` on `document` to call `onClose`. Read `onClose` through a ref inside the mount `useEffect` so the effect only runs once. See `AvizUploadModal.tsx` / `CmrUploadModal.tsx` for the reference implementation.
 
+### Feature-gated exports and report tabs (`e275b3c`)
+
+Full per-org feature-toggle system: [[feature-toggles]]. Two admin-web-specific patterns from the
+commit that wired the last 13 switches (57/57):
+
+- **`ExportButton`** (`src/components/shared/ExportButton.tsx`) is the ONE gate for `analytics.export`
+  — every export trigger in the app (7 report tabs, the Costs/Operators/PDF exports on the reports page,
+  the transporter XLSX export) renders it instead of its own inline button + inline feature check. It
+  renders `null` (not a disabled button) when the feature is off. **Do not add a new export button that
+  checks `analytics.export` (or any feature key) inline** — use `ExportButton` so there is one choke
+  point, not N chances to miss one.
+- **`reports/page.tsx`**'s `TABS` array tags tabs with an optional `feature: FeatureKey`; `analytics.report_operators`
+  hides `ConnectedHoursTab`/`DepotReportTab`/`FarmReportTab`/`FieldReportTab`/`KmPerOperatorTab`.
+  `MachineProductionTab`/`KmPerTruckTab` are deliberately excluded — they're per-machine, and that flag
+  exists for orgs that must not track individual operators; don't "fix" this without checking with the
+  team. When a tab can disappear on a flag flip, guard the selection state with a reset effect (`useEffect`
+  reselecting the first visible tab) — the panels are separate `{tab === 'x' && ...}` blocks, not
+  array-driven, so a flip can otherwise leave an orphaned panel rendered with no strip item highlighted.
+  Gate the tab-strip filter itself on `useFeatures().ready` so it doesn't visibly reflow right after the
+  profile loads.
+
 ### Transportator role (`(transporter)` route group)
 
 A web-only account type (`UserRole.transportator`) with its own minimal shell — not the admin dashboard. Key rules if you touch this area:
@@ -247,3 +268,6 @@ The admin-web runs as a Swarm service with a healthcheck on `GET /healthz`. When
 10. After making changes, run: `pnpm --filter @strawboss/admin-web build` to verify the build.
 11. After code changes, update `.claude/docs/admin-web.md` (and `agents/frontend-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.
 12. New modal dialogs must follow the accessible-dialog pattern (`role="dialog"`, `aria-modal`, `aria-labelledby`, focus-in on mount / focus-restore on unmount, `Escape` to close) — see `AvizUploadModal.tsx` / `CmrUploadModal.tsx`. New file-upload modals must mirror the backend's byte-size limit constant client-side rather than guessing a number.
+13. Adding a new exportable data view: reuse the shared `ExportButton` (`src/components/shared/ExportButton.tsx`) rather than a bespoke `analytics.export` check — one choke point, not N chances to miss one. See [[feature-toggles]].
+14. Gating a feature that must be invisible rather than merely inert: prefer "render nothing" (`return null`) over a greyed-out/disabled control — a visible-but-disabled control invites a support ticket, an absent one doesn't.
+15. When a tab (or any selectable item) can be hidden by a feature flag, guard the selection state with a reset effect so a flag flip never leaves an orphaned panel/selection with nothing highlighted in the strip.

@@ -2,7 +2,7 @@
 type: doc
 title: "Mobile App (apps/mobile)"
 created: 2026-04-16
-updated: 2026-07-27
+updated: 2026-07-31
 tags: [doc, mobile, layer, expo, react-native, offline-first]
 status: mature
 related:
@@ -11,6 +11,7 @@ related:
   - "[[packages-api]]"
   - "[[packages-ui-tokens]]"
   - "[[backend]]"
+  - "[[feature-toggles]]"
 ---
 
 # Mobile App (`apps/mobile`)
@@ -91,7 +92,12 @@ All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top o
 |---|---|---|
 | Index | `index.tsx` | Depot inventory overview (incoming trips, bale counts) |
 | Trips | `trips.tsx` | Trips arriving at this depot |
+| Confirm delivery | `confirm-delivery.tsx` | Depot operator confirms an incoming truck's delivery (bale count + weighing); detail screen reached from Trips, hidden from the tab bar (`href: null`) |
 | Profile | `profile.tsx` | `ProfileScreen` |
+
+**Feature-gated (`e275b3c`, see [[feature-toggles]]):**
+- `depot.inventory` (`uiOnly`) — `index` is both this tab group's initial route and the inventory screen itself, so hiding the tab alone (`featureTabOptions(inventoryEnabled, 2)` in `_layout.tsx`) would strand the depot manager on a screen with no tab-bar entry. `index.tsx` also checks the flag directly and renders `<Redirect href="/(deposit)/trips" />` when disabled — the same shape `(geofence-maker)` uses (see PointPicker/map notes below).
+- `depot.weighing` (`uiOnly`) — `confirm-delivery.tsx` derives `effectiveScaleBroken = scaleBroken || !weighingEnabled` and threads that *single* value through validation (`weightsValid`), the transition request body (`scaleBroken: effectiveScaleBroken`, plus gross/tare weight fields sent only when `!effectiveScaleBroken`), and the JSX gate on the weight inputs (`isPrincipal && weighingEnabled`). **Load-bearing correctness trap**: any future edit to the weight-validation or payload logic must keep folding through `effectiveScaleBroken`, not the raw `scaleBroken` state — hiding just the inputs without that fold leaves `canSubmit`/`weightsValid` permanently `false`, silently bricking depot-delivery confirmation for the whole org the moment `depot.weighing` is off. The server already accepts a weightless delivery when `scaleBroken: true`, so no backend endpoint changed.
 
 ### Driver (`app/(driver)/`)
 | Screen | File | Purpose |
@@ -244,6 +250,8 @@ Any local write to `parcels` / `delivery_destinations` must invalidate `PARCELS_
 ### PointPicker (`src/components/map/PointPicker.tsx`) (Plan A)
 
 2D satellite tile map with a centered pin mechanism (like Google Earth point placement, not a 3D globe). A round pin is fixed at the viewport center; the user pans the map under it. An "Add point" button commits the center coordinate as a new geofence vertex. Used by `geofence-maker` role to build parcel boundaries interactively.
+
+**Feature-gated (`geo.draw_mobile`, `uiOnly`, `e275b3c`, see [[feature-toggles]])**: only the entry-point FABs on `(geofence-maker)/map.tsx` that set `drawMode` are gated (`{!drawMode && drawEnabled && (...)}`). With the entry point unreachable, `drawMode` stays `null` for the whole session, so the point-by-point vertex controls and both create modals (parcel/deposit) are dead by construction — no need to gate them individually. Unlike `depot.inventory` above, the tab itself is **not** hidden — the map remains a valid READ surface showing existing parcels/depots when drawing is off. The idle banner swaps to the new `geofenceMap.bannerDrawDisabled` i18n key instead of `geofenceMap.bannerIdle` when the flag is off.
 
 ### Heartbeat (`src/lib/heartbeat.ts`) (Plan C)
 
@@ -553,12 +561,13 @@ The only delivery flow left — the original `DeliveryFlow.tsx`/`SignatureStep.t
 - **Save**: creates local operation, updates trip to `loaded`, enqueues sync
 
 ### FuelEntryFlow (`src/components/features/fuel/FuelEntryFlow.tsx`)
-**Steps**: liters -> odometer -> photo -> confirm (simplified in Plan C — odometer step is now optional for baler operators)
+**Steps**: liters -> station-photo -> confirm (Plan C/T17 simplified flow — dropped receipt OCR and a separate odometer step; corrected from a stale earlier version of this doc)
 - **liters**: `NumericPad` (6 digits, decimal support)
-- **odometer**: `NumericPad` for km reading (7 digits)
-- **photo**: `PhotoCapture` for receipt (optional, can skip)
+- **station-photo**: `PhotoCapture`, audit-only photo of the fuel station (no OCR, no receipt/bon fiscal)
 - **confirm**: summary card with all values
 - **Save**: creates local `fuel_logs` record + enqueues sync
+
+**Feature-gated (`costs.receipt_photos`, `uiOnly`, `e275b3c`, see [[feature-toggles]])**: `stepsFor(photosEnabled)` derives the walked step list by filtering `'station-photo'` out of the fixed `FUEL_STEP_ORDER` array when the org has the flag off; both `StepIndicator`'s `totalSteps` and the current `stepIndex` are computed from this derived array, so no index arithmetic is needed elsewhere. Only the three hardcoded `goToStep('station-photo')` call sites needed rewriting, to target `'confirm'` or `'liters'` instead. The photo step is mandatory today (no partial state) — disabling the flag simply means it's never asked for.
 
 ### ConsumableFlow (`src/components/features/consumables/ConsumableFlow.tsx`)
 **Steps**: type -> quantity -> photo -> confirm

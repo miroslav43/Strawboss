@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/types"
 created: 2026-04-16
-updated: 2026-07-27
+updated: 2026-07-31
 tags: [doc, package, types, typescript]
 status: mature
 related:
@@ -11,6 +11,7 @@ related:
   - "[[packages-validation]]"
   - "[[packages-domain]]"
   - "[[backend]]"
+  - "[[feature-toggles]]"
 ---
 
 # @strawboss/types
@@ -30,6 +31,39 @@ Defined in `packages/types/src/common.ts`:
 | `SoftDelete` | `deletedAt: string \| null` | Mixed into every deletable entity |
 | `GeoPoint` | `lat: number`, `lon: number` | GPS coordinates (used by parcels, trips, destinations) |
 | `PaginatedResponse<T>` | `data: T[]`, `total`, `page`, `pageSize`, `totalPages` | Wraps list endpoints |
+
+## Feature Registry (`features.ts`)
+
+`packages/types/src/features.ts` is the SSOT for the per-organization feature-toggle system — full
+mechanics (resolution algorithm, backend enforcement, admin/mobile consumption, invariants) are in
+[[feature-toggles]]; this is the type-level shape only.
+
+- **`FEATURE_MODULES`** (10): `bales`, `geo`, `depot`, `costs`, `documents`, `aux`, `portals`,
+  `messaging`, `analytics`, `roles`. **`FEATURE_KEYS`** adds 47 leaf keys (`'<module>.<leaf>'`); the
+  array is the source of the `FeatureKey` union, so a typo in `@RequireFeature(...)` is a compile error.
+- **`FeatureDef`**: `module`, `defaultEnabled: true` (literal type — `false` cannot compile),
+  `dependsOn: readonly FeatureKey[]`, `surfaces: readonly ('web'|'mobile'|'api'|'jobs')[]`,
+  `gatesJobs?: readonly string[]`, `uiSwitch: boolean`, `uiOnly?: boolean`, `wired: boolean`.
+- **`FEATURES: Readonly<Record<FeatureKey, FeatureDef>>`** — `Record`, not `Partial<Record>`, so a key
+  added to `FEATURE_KEYS` without a matching definition is a compile error, not a runtime crash on the
+  first org that touches it.
+- **`FeatureOverrides = Partial<Record<FeatureKey, boolean>>`** — sparse, stored in
+  `organizations.feature_overrides` (migration `00093`).
+- **`resolveDisabledFeatures(overrides?): FeatureKey[]`** — bounded fixed-point closure; returns only
+  the disabled keys.
+- **`isFeatureEnabled(disabled: readonly string[], key: string): boolean`** — takes plain strings
+  deliberately (fail-open for keys an older/newer build doesn't recognise).
+- **`FEATURE_PRESETS`** (`new_org`/`basic`/`pro`/`enterprise`) + **`applicablePreset(preset)`** — presets
+  written against the full registry, expanded to currently-wired keys.
+- **`featureLabelKey(key)`** — derives the i18n key (`features.module.<key>` / `features.item.<key>`)
+  from the `FeatureKey` itself so a label can never drift from the registry.
+
+`Organization` (`entities/organization.ts`) carries none of this directly — `feature_overrides` and
+`plan_label` are deliberately NOT on the `Organization` interface (the service's `ORG_COLS` projection
+doesn't select them, so declaring them there would make every `list()`/`findById()` a type lie).
+Instead: **`OrgFeatureSettings`** (`featureOverrides`, `planLabel`, `activeUsersByRole`) is the
+super-admin console's read shape, and **`UpdateOrgFeaturesDto`** (`featureOverrides`, `planLabel?`,
+mandatory `reason`) is its write payload — see [[feature-toggles]].
 
 ## Entities
 

@@ -43,6 +43,8 @@ export async function uploadAvatar(sourceUri: string): Promise<User> {
     const user = await mobileApiClient.upload<User>(
       '/api/v1/profile/avatar',
       form,
+      // A photo over a weak field connection needs more than the default 15s.
+      { timeoutMs: 120_000 },
     );
     mobileLogger.flow('Avatar uploaded', {
       userId: user.id,

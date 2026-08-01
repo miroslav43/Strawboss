@@ -53,6 +53,9 @@ export async function runBackgroundSyncCycle(): Promise<void> {
     getToken: getAuthToken,
     // Advertise tombstone support so /sync/pull returns deletions[].
     defaultHeaders: { 'X-Sync-Caps': 'tombstones-v1' },
+    // A full pull/push batch is bigger than a plain GET — give it more room
+    // than the mobile default (15s) before we give up on it.
+    timeoutMs: 60_000,
   });
 
   const db = await getDatabase();

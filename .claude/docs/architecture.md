@@ -2,8 +2,8 @@
 type: doc
 title: "StrawBoss — System Architecture"
 created: 2026-04-16
-updated: 2026-07-27
-tags: [doc, architecture, overview, top-level, fleet, tailscale, roles, aux-stage]
+updated: 2026-07-31
+tags: [doc, architecture, overview, top-level, fleet, tailscale, roles, aux-stage, feature-toggles]
 status: mature
 related:
   - "[[backend]]"
@@ -15,6 +15,7 @@ related:
   - "[[scripts]]"
   - "[[packages-types]]"
   - "[[packages-domain]]"
+  - "[[feature-toggles]]"
 ---
 
 # StrawBoss — System Architecture
@@ -192,6 +193,35 @@ the backend and RLS in the DB; platform column is where the account actually get
 | `transportator` | **Web only** (added Jul 2026) | External hauler, no mobile app, no machine, no depot. Read-only ledger of the trip requests it created (`trip_requests.created_by_user_id`) plus an authenticated copy of the beneficiary request form, scoped to admin-assigned beneficiaries (`transporter_beneficiaries` M:N, migration `00087`). See [[database]], [[admin-web]]. |
 
 **Mobile role-based routing**: Auth gate in `_layout.tsx` redirects to role-specific tab layout after login. `transportator` has no mobile route group — it is rejected/has nothing to route to on the phone by design.
+
+## Per-Organization Feature Toggles
+
+Full detail in [[feature-toggles]]; summary here for the top-level system map. A `super_admin` can switch
+product modules/features off for one tenant — **a product gate, never a security gate**: auth, the trip
+state machine, task assignments, sync, org scoping and soft deletes are never in this system.
+
+```
+packages/types/src/features.ts       (REGISTRY — 10 modules, 47 leaves, all defaultEnabled: true)
+        │
+        ▼
+organizations.feature_overrides      (OVERRIDES — sparse JSONB, migration 00093)
+        │
+        ▼
+resolveDisabledFeatures()            (RESOLUTION — defaults <- overrides <- dependency closure)
+        │
+        ├──→ AuthGuard user-context join ──→ FeaturesGuard (3rd global guard) ──→ @RequireFeature routes
+        ├──→ FeaturesService.getDisabledForOrg() ──→ @Public() routes (assertEnabledForOrg, in-service)
+        ├──→ GET /profile → admin-web useFeatures() → FeatureRouteGuard + per-page UI gating
+        └──→ /fleet/checkin, /profile → mobile useFeaturesStore() → useIsFeatureEnabled / featureTabOptions
+```
+
+Fail-open is structural: the wire format is the *disabled* list only, so a client that never received it
+(an offline boot, an old APK) behaves as fully-enabled. A Redis generation counter (`FeaturesCacheService`)
+invalidates the per-replica cache across the two backend replicas within ~2s of a super-admin save — TTL
+alone would otherwise read on/off/on to the same browser for ~55s. As of `e275b3c` (2026-07-31) the system
+is **57/57 wired**: every switchable key gates something real, and `scripts/check-features.mjs` mechanically
+enforces that every backend write route is either `@RequireFeature`-decorated or on an explicit, reasoned
+exemption list. See [[backend]], [[mobile]], [[admin-web]], [[packages-types]], [[database]], [[scripts]].
 
 ## Geofence Detection
 
@@ -458,4 +488,5 @@ Cross-references: [[backend]] (FleetService, OTA check-in, settings endpoints), 
 | Database | [[database]] | PostgreSQL, PostGIS, RLS |
 | Infrastructure | [[infrastructure]] | Docker, nginx, Redis |
 | Sync Protocol | [[sync-protocol]] | Outbox, delta sync |
+| Feature Toggles | [[feature-toggles]] | Per-org registry, presets, guard/decorator |
 | CLI Scripts | [[scripts]] | Bash, cross-platform |
