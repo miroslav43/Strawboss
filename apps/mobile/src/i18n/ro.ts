@@ -749,6 +749,20 @@ export const ro = {
       alertTruckCapacityTitle: 'Capacitate camion depășită',
       alertTruckCapacityFallback: 'Camionul are capacitatea maximă {truckCap} baloți.',
       modalCancel: 'Anulează',
+      // Presence when we have a GPS fix but nothing to check it against —
+      // distinct from "still locating" (presenceVerifying) and from "no GPS
+      // at all" (presenceGpsUnavailable).
+      presenceUnverifiableOffline: '● Poziția nu poate fi verificată (offline)',
+      presenceUnverifiableNoGeometry: '● Conturul terenului nu e salvat pe telefon',
+      gateHintUnverifiable:
+        'Nu putem verifica poziția offline. Poți înregistra — poziția GPS se salvează pentru verificare.',
+      modalUnverifiableTitle: 'Poziție neverificată',
+      modalUnverifiableMessage:
+        'Nu avem conturul terenului {parcelName} salvat pe telefon (ești offline). Înregistrarea se salvează cu poziția ta GPS și va fi verificată la sincronizare. Continui?',
+      modalUnverifiableConfirm: 'Da, înregistrează',
+      modalUnverifiableCancel: 'Anulează',
+      offlineBannerTitle: 'Ești offline',
+      offlineBannerBody: 'Lucrezi din memoria telefonului. Se trimite automat la reconectare.',
     },
     recallOverlay: {
       title: 'Camion descărcat',
@@ -913,8 +927,7 @@ export const ro = {
   },
 
   geofenceMap: {
-    bannerDrawDisabled:
-      'Desenarea terenurilor este dezactivată pentru organizația ta.',
+    bannerDrawDisabled: 'Desenarea terenurilor este dezactivată pentru organizația ta.',
     bannerIdle: 'Apasă un buton pentru a adăuga un câmp sau depozit',
     bannerFirstPoint: 'Centrează pinul pe primul punct și apasă "Adaugă punct"',
     bannerProgress: 'Punct {count}/3 — continuă (minim 3 puncte)',
@@ -1020,6 +1033,8 @@ export const ro = {
       presenceOutsideWithDistance: 'Mai ai {{distance}} m până în teren',
       presenceOutside: 'Mergi la teren',
       presenceUnknown: 'Verific poziția…',
+      presenceUnverifiable: 'Poziție neverificată (offline)',
+      presenceNoGeometry: 'Contur teren nesalvat',
       tapForDetails: 'apasă pentru detalii',
       gpsNoDetect: 'GPS — nu te detectez pe teren',
       noFieldAssigned: 'Niciun teren asignat',
@@ -1195,7 +1210,11 @@ export const ro = {
       },
       noParcel: 'Nu ești pe niciun teren delimitat',
       loadingParcels: 'Încarc parcelele…',
+      // Parcels now come from the offline-first cache and no longer fail to
+      // load, so this key is no longer a live error string — kept for any
+      // stale reference, superseded by `parcelsFromCache`.
       parcelsError: 'Nu s-au putut încărca parcelele. Verifică conexiunea.',
+      parcelsFromCache: 'Din planul zilei (offline)',
       accessibility: {
         deleteLastDigit: 'Șterge ultima cifră',
         clearAll: 'Șterge tot',
@@ -1587,6 +1606,7 @@ export const ro = {
     },
     mapScreen: {
       offlineBanner: 'Parcele din cache local (offline)',
+      legendAssigned: 'Terenurile tale de azi',
       reset: 'Reset',
       resetAccessibilityLabel: 'Resetează harta',
       recenterAccessibilityLabel: 'Recentrare pe locația mea',

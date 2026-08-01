@@ -747,6 +747,21 @@ export const en = {
       alertTruckCapacityTitle: 'Truck capacity exceeded',
       alertTruckCapacityFallback: 'The truck has a maximum capacity of {truckCap} bales.',
       modalCancel: 'Cancel',
+      // Presence when we have a GPS fix but nothing to check it against —
+      // distinct from "still locating" (presenceVerifying) and from "no GPS
+      // at all" (presenceGpsUnavailable).
+      presenceUnverifiableOffline: '● Position cannot be verified (offline)',
+      presenceUnverifiableNoGeometry: "● This field's outline isn't cached on this phone",
+      gateHintUnverifiable:
+        "We can't verify your position offline. You can still register — the GPS position is saved for review.",
+      modalUnverifiableTitle: 'Position not verified',
+      modalUnverifiableMessage:
+        "We don't have the outline of field {parcelName} cached on this phone (you're offline). The load will be saved with your GPS position and reviewed once synced. Continue?",
+      modalUnverifiableConfirm: 'Yes, register',
+      modalUnverifiableCancel: 'Cancel',
+      offlineBannerTitle: "You're offline",
+      offlineBannerBody:
+        "Working from the phone's cache. This will send automatically once reconnected.",
     },
     recallOverlay: {
       title: 'Truck unloaded',
@@ -910,8 +925,7 @@ export const en = {
   },
 
   geofenceMap: {
-    bannerDrawDisabled:
-      'Drawing fields is switched off for your organization.',
+    bannerDrawDisabled: 'Drawing fields is switched off for your organization.',
     bannerIdle: 'Tap a button to add a field or depot',
     bannerFirstPoint: 'Centre the pin on the first point and tap "Add point"',
     bannerProgress: 'Point {count}/3 — continue (minimum 3 points)',
@@ -1017,6 +1031,8 @@ export const en = {
       presenceOutsideWithDistance: '{{distance}} m to the field',
       presenceOutside: 'Go to the field',
       presenceUnknown: 'Checking position…',
+      presenceUnverifiable: 'Position not verified (offline)',
+      presenceNoGeometry: 'Field outline not cached',
       tapForDetails: 'tap for details',
       gpsNoDetect: 'GPS — you are not detected on the field',
       noFieldAssigned: 'No field assigned',
@@ -1192,7 +1208,11 @@ export const en = {
       },
       noParcel: 'You are not on any delimited field',
       loadingParcels: 'Loading parcels…',
+      // Parcels now come from the offline-first cache and no longer fail to
+      // load, so this key is no longer a live error string — kept for any
+      // stale reference, superseded by `parcelsFromCache`.
       parcelsError: 'Could not load parcels. Check your connection.',
+      parcelsFromCache: "From today's plan (offline)",
       accessibility: {
         deleteLastDigit: 'Delete last digit',
         clearAll: 'Clear all',
@@ -1584,6 +1604,7 @@ export const en = {
     },
     mapScreen: {
       offlineBanner: 'Parcels from local cache (offline)',
+      legendAssigned: 'Your fields today',
       reset: 'Reset',
       resetAccessibilityLabel: 'Reset map',
       recenterAccessibilityLabel: 'Re-centre on my location',

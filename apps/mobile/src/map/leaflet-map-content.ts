@@ -116,14 +116,28 @@ setTimeout(function() {
 
   var parcelLayers = {};
   var highlightedId = null;
+  // Purple "assigned to me today" set (id -> true). A module-level var read at
+  // STYLE time (not baked into parcelLayers[id].data), so the deselect repaint
+  // in highlightParcel() below re-reads it fresh and can never erase purple —
+  // and it means SET_PARCELS / SET_ASSIGNED_PARCELS can arrive in either order.
+  var assignedIds = {};
   var lastUserLat = null;
   var lastUserLon = null;
   var parcelsLayerPopulated = false;
   var userCenterApplied = false;
 
-  function getParcelStyle(harvestStatus, isHighlighted) {
+  function getParcelStyle(harvestStatus, isHighlighted, isAssigned) {
+    // Purple = "assigned to me today" (token: ui-tokens/colors.ts mapAssigned/
+    // mapAssignedFill). Precedence: focus-highlight (red) > assigned (purple)
+    // > harvest status — but a highlighted+assigned parcel keeps a purple fill
+    // under the red focus ring, so "mine" is never lost while selected.
     if (isHighlighted) {
-      return { color: '#dc2626', weight: 3, fillOpacity: 0.3 };
+      return isAssigned
+        ? { color: '#dc2626', weight: 4, fillColor: '#7C3AED', fillOpacity: 0.35 }
+        : { color: '#dc2626', weight: 3, fillOpacity: 0.3 };
+    }
+    if (isAssigned) {
+      return { color: '#A855F7', weight: 3, fillColor: '#7C3AED', fillOpacity: 0.35 };
     }
     switch (harvestStatus) {
       case 'harvesting':
@@ -155,7 +169,7 @@ setTimeout(function() {
 
       var layer = L.geoJSON(geojson, {
         style: function() {
-          return getParcelStyle(p.harvestStatus, p.id === highlightedId);
+          return getParcelStyle(p.harvestStatus, p.id === highlightedId, !!assignedIds[p.id]);
         }
       });
 
@@ -312,17 +326,31 @@ setTimeout(function() {
   function highlightParcel(parcelId) {
     if (highlightedId && parcelLayers[highlightedId]) {
       var prev = parcelLayers[highlightedId];
-      prev.layer.setStyle(getParcelStyle(prev.data.harvestStatus, false));
+      prev.layer.setStyle(getParcelStyle(prev.data.harvestStatus, false, !!assignedIds[highlightedId]));
     }
 
     highlightedId = parcelId;
 
     if (parcelId && parcelLayers[parcelId]) {
       var entry = parcelLayers[parcelId];
-      entry.layer.setStyle(getParcelStyle(entry.data.harvestStatus, true));
+      entry.layer.setStyle(getParcelStyle(entry.data.harvestStatus, true, !!assignedIds[parcelId]));
       entry.layer.bringToFront();
       map.fitBounds(entry.layer.getBounds(), { padding: [50, 50], maxZoom: 15 });
     }
+  }
+
+  // Style-only update for the "assigned to me today" set — deliberately
+  // separate from setParcels()/SET_PARCELS: assignment changes on every sync
+  // cycle while geometry almost never does, and this command never touches
+  // bounds/camera (unlike setParcels), so it can't reintroduce the map-jump
+  // bug that command's unconditional recenter caused.
+  function setAssignedParcels(parcelIds) {
+    assignedIds = {};
+    (parcelIds || []).forEach(function(id) { assignedIds[id] = true; });
+    Object.keys(parcelLayers).forEach(function(id) {
+      var entry = parcelLayers[id];
+      entry.layer.setStyle(getParcelStyle(entry.data.harvestStatus, id === highlightedId, !!assignedIds[id]));
+    });
   }
 
   function fitBounds() {
@@ -360,6 +388,7 @@ setTimeout(function() {
       case 'SET_ROUTE':         setRoute(cmd.points, cmd.distanceKm, cmd.durationMin); break;
       case 'CLEAR_ROUTE':       clearRoute(); break;
       case 'HIGHLIGHT_PARCEL':  highlightParcel(cmd.parcelId); break;
+      case 'SET_ASSIGNED_PARCELS': setAssignedParcels(cmd.parcelIds); break;
       case 'FIT_BOUNDS':        fitBounds(); break;
       case 'CENTER_ON':         centerOn(cmd.lat, cmd.lon, cmd.zoom); break;
     }

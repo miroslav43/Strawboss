@@ -44,6 +44,10 @@ export type MapCommand =
     }
   | { type: 'CLEAR_ROUTE' }
   | { type: 'HIGHLIGHT_PARCEL'; parcelId: string }
+  // Style-only: paints the given parcel ids purple ("assigned to me today").
+  // Deliberately NOT a field on ParcelMapData/SET_PARCELS — see the doc
+  // comment on setAssignedParcels() in leaflet-map-content.ts for why.
+  | { type: 'SET_ASSIGNED_PARCELS'; parcelIds: string[] }
   | { type: 'FIT_BOUNDS' }
   | { type: 'CENTER_ON'; lat: number; lon: number; zoom?: number };
 
