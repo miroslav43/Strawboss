@@ -201,6 +201,10 @@ export const registerLoadSchema = z
      * Bounded to keep the body sane; never trusted.
      */
     loaderSignature: z.string().max(4096).optional(),
+    // See migration 00094 — bale_loads.location_unverified. Set only when the
+    // operator explicitly confirmed the "position unverified" prompt on
+    // mobile; absent/false is today's behaviour for every other load.
+    locationUnverified: z.boolean().optional(),
   })
   .refine((d) => !!d.parcelId !== !!d.sourceDepotId, {
     message: 'exactly one of parcelId or sourceDepotId is required',

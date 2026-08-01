@@ -4,8 +4,6 @@ import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
-import { useFocusEffect } from 'expo-router';
-import * as Location from 'expo-location';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,13 +15,8 @@ import { SyncQueueRepo } from '@/db/sync-queue-repo';
 import { mobileLogger } from '@/lib/logger';
 import { generateUuid } from '@/lib/uuid';
 import { todayInRomania } from '@/lib/date';
-import { useMyTasks } from '@/hooks/useMyTasks';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
-import {
-  useActiveParcels,
-  findParcelAtLocation,
-  type ActiveParcel,
-} from '@/hooks/useActiveParcels';
+import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 
 interface FieldActiveNumpadProps {
   operatorId: string;
@@ -40,10 +33,6 @@ const PAD_ROWS: PadKey[][] = [
 ];
 
 const MAX_DIGITS = 5;
-const GPS_REFRESH_MS = 45_000;
-// Cap the wait for a fix so production never stalls on a cold/weak GPS. Balanced
-// accuracy resolves faster than High and suffices for parcel-polygon matching.
-const GPS_FIX_TIMEOUT_MS = 12_000;
 
 /**
  * FM-7: Minimal numpad for the "Câmp activ" mode.
@@ -59,36 +48,28 @@ const GPS_FIX_TIMEOUT_MS = 12_000;
  */
 export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProps) {
   const { t } = useI18n();
-  const { tasks } = useMyTasks();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
-  const parcelQuery = useActiveParcels();
-  const activeParcels: ActiveParcel[] | undefined = parcelQuery.data as ActiveParcel[] | undefined;
 
   const [count, setCount] = useState('');
-  const [parcelId, setParcelId] = useState<string | null>(null);
-  const [parcelName, setParcelName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [todayTotal, setTodayTotal] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const taskOnlyParcel = useMemo(() => {
-    // Fallback when GPS does not match a polygon: if exactly one assigned task
-    // has a parcel, use it. A null parcel name must NOT exclude it (that would
-    // leave parcelId null and keep SAVE disabled) — fall back to the code.
-    const withParcel = tasks.filter((t) => t.parcelId !== null);
-    const uniqueIds = new Set(withParcel.map((t) => t.parcelId));
-    if (uniqueIds.size !== 1) return null;
-    const first = withParcel[0];
-    if (!first?.parcelId) return null;
-    return {
-      id: first.parcelId,
-      name: first.parcelName ?? first.parcelCode ?? t('production.fieldNumpad.taskParcelFallback'),
-    };
-  }, [tasks]);
+  // Same shared resolver as the loader, this role's home screen and the other
+  // numpad — see the note in ProductionNumpad. This component's own version of
+  // the logic differed even from its sibling's (it accepted a task whose parcel
+  // had no name, the sibling did not), so the two numpads on the SAME screen
+  // could disagree about which field the operator was on.
+  const parcel = useCurrentLoaderParcel();
+  const resolved = parcel.status === 'resolved' && parcel.targetType === 'parcel';
+  const parcelId = resolved ? parcel.parcelId : null;
+  const parcelName = resolved
+    ? (parcel.parcelName ?? parcel.parcelCode ?? t('production.fieldNumpad.taskParcelFallback'))
+    : null;
 
   // Load today's total from local DB
   useEffect(() => {
@@ -104,58 +85,6 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
       }
     })();
   }, [operatorId]);
-
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true;
-
-      async function sample() {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (!alive) return;
-        if (status !== 'granted') return;
-        try {
-          const loc = await Promise.race([
-            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('GPS timeout')), GPS_FIX_TIMEOUT_MS),
-            ),
-          ]);
-          if (!alive) return;
-          if (activeParcels?.length) {
-            const hit = findParcelAtLocation(
-              loc.coords.longitude,
-              loc.coords.latitude,
-              activeParcels,
-            );
-            if (hit) {
-              setParcelId(hit.id);
-              setParcelName(hit.name);
-              return;
-            }
-          }
-          // Task fallback
-          if (taskOnlyParcel) {
-            setParcelId(taskOnlyParcel.id);
-            setParcelName(taskOnlyParcel.name);
-          }
-        } catch {
-          // GPS unavailable — fall back to task parcel
-          if (taskOnlyParcel) {
-            setParcelId(taskOnlyParcel.id);
-            setParcelName(taskOnlyParcel.name);
-          }
-        }
-      }
-
-      void sample();
-      const intervalId = setInterval(() => void sample(), GPS_REFRESH_MS);
-
-      return () => {
-        alive = false;
-        clearInterval(intervalId);
-      };
-    }, [activeParcels, taskOnlyParcel]),
-  );
 
   useEffect(() => {
     return () => {
@@ -205,7 +134,10 @@ export function FieldActiveNumpad({ operatorId, balerId }: FieldActiveNumpadProp
     return Number.isFinite(n) ? n : 0;
   }, [count]);
 
-  const canSave = !saving && numericCount > 0 && parcelId !== null;
+  // Soft presence gate — see the matching note in ProductionNumpad. Blocks only
+  // a field GPS can prove is wrong; an unverifiable position still saves so a
+  // long keep-awake session survives a signal drop.
+  const canSave = !saving && numericCount > 0 && parcelId !== null && parcel.presence !== 'outside';
 
   const handleSave = useCallback(async () => {
     if (!canSave || parcelId === null) return;

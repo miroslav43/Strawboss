@@ -88,6 +88,46 @@ export function pointInBoundary(lon: number, lat: number, boundaryJson: unknown)
  */
 export const PARCEL_MATCH_TOLERANCE_M = 30;
 
+/**
+ * Adaptive presence tolerance (metres) for "am I standing in this field",
+ * used by the register-load / production-entry in-field gates. Distinct from
+ * {@link PARCEL_MATCH_TOLERANCE_M} above, which answers a different question
+ * ("which field, among several overlapping candidates, is this") and stays
+ * fixed at 30m regardless of GPS quality.
+ *
+ * Scales with the GPS fix's own reported accuracy, clamped to
+ * `[FIELD_TOLERANCE_MIN_M, PARCEL_MATCH_TOLERANCE_M]`: a precise fix
+ * (accuracy ~5m) keeps the gate close to strict containment, while a
+ * degraded fix (accuracy ~40m — common under tree cover, cloud cover, or a
+ * cold GPS) widens it, but never past the backend's own enter buffer
+ * (`geofence.service.ts`, 30m — `ST_Contains` was explicitly rejected there
+ * as too strict). The client can therefore never assert "inside" for a
+ * position the server would independently call outside.
+ */
+export const FIELD_TOLERANCE_MIN_M = 10;
+
+/**
+ * Wider radius (metres) for the second GPS pass: "which of MY fields is the
+ * operator at", when no field contains them within {@link PARCEL_MATCH_TOLERANCE_M}.
+ *
+ * Answers a strictly weaker question than the other two constants and is used
+ * only to *name* the field, never to assert presence in it — a match at this
+ * radius still reports `presence: 'outside'`, so the in-field gate on the load
+ * screen keeps blocking. The point is that an operator standing on the access
+ * track or at a headland gets "Field P-12 — 40 m from the edge" instead of a
+ * dead end that tells them nothing about where to walk.
+ *
+ * Only ever applied to the operator's own assigned fields, so a wide radius
+ * cannot drag in a neighbouring field that isn't theirs.
+ */
+export const NEARBY_FIELD_RADIUS_M = 150;
+
+/** See {@link PARCEL_MATCH_TOLERANCE_M} and {@link FIELD_TOLERANCE_MIN_M}. */
+export function fieldToleranceMeters(accuracyM: number | null | undefined): number {
+  const a = accuracyM ?? PARCEL_MATCH_TOLERANCE_M;
+  return Math.min(PARCEL_MATCH_TOLERANCE_M, Math.max(FIELD_TOLERANCE_MIN_M, a));
+}
+
 const M_PER_DEG_LAT = 111_320;
 const metersPerDegLon = (lat: number) => 111_320 * Math.cos((lat * Math.PI) / 180);
 

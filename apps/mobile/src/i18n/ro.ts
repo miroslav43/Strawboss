@@ -655,9 +655,6 @@ export const ro = {
       errorNoTruck: 'Eroare',
       errorNoTruckMessage: 'Niciun camion identificat.',
       errorNoTruckOk: 'OK',
-      parcelUnconfirmedTitle: 'Teren neconfirmat',
-      parcelUnconfirmedMessage: 'Confirmă terenul activ în ecranul principal înainte de a încărca.',
-      parcelUnconfirmedBack: 'Înapoi',
       gpsActive: 'GPS activ',
       gpsLocating: 'Localizare...',
       gpsNone: 'Fără GPS',
@@ -667,7 +664,28 @@ export const ro = {
       depotRequiresConnectionMessage:
         'Încărcarea de la depozit necesită conexiune la internet. Reconectează-te și încearcă din nou.',
       parcelIdentifying: 'Se identifică...',
-      parcelUnconfirmedFallback: 'Neconfirmat — confirmă pe ecranul principal',
+      parcelUnconfirmedFallback: 'Se determină terenul din poziția ta…',
+      fieldStateNoAssignmentTitle: 'Niciun teren asignat azi',
+      fieldStateNoAssignmentBody:
+        'Dispecerul nu ți-a asignat niciun teren pentru azi. Ia legătura cu el, apoi reîncearcă.',
+      fieldStateOutsideTitle: 'Nu ești pe niciunul dintre terenurile tale',
+      fieldStateOutsideBody:
+        'Mergi pe terenul pe care lucrezi. Se detectează automat după poziția ta — nu se poate alege manual.',
+      fieldStateLocatingTitle: 'Caut semnal GPS…',
+      fieldStateLocatingBody:
+        'Ține telefonul în loc deschis. Imediat ce prinde poziția, terenul se identifică singur.',
+      fieldStateGpsOffTitle: 'Locația este oprită',
+      fieldStateGpsOffBody:
+        'Activează locația pentru aplicație — fără ea terenul nu poate fi identificat.',
+      fieldStateMissingGeometryTitle: 'Conturile terenurilor nu sunt descărcate',
+      fieldStateMissingGeometryBody:
+        'Telefonul nu are încă conturile terenurilor tale, așa că poziția ta nu poate fi potrivită cu niciunul. Descarcă-le și se rezolvă singur.',
+      fieldStateMissingGeometryOfflineBody:
+        'Telefonul nu are încă conturile terenurilor tale și nu există conexiune ca să fie aduse. Conectează-te la internet și se rezolvă singur.',
+      fieldStateAssignedListTitle: 'Terenurile tale de azi:',
+      fieldStateDownloadOutlines: 'Descarcă conturile',
+      fieldStateDownloadingOutlines: 'Se descarcă…',
+      fieldStateRetryGps: 'Reîncearcă GPS',
       presenceInside: '● Ești în câmp',
       presenceAwayFromField: '● La {distance} m de câmp — apropie-te ca să încarci',
       presenceNear: '● Aproape de câmp ({distance} m)',
@@ -1045,6 +1063,11 @@ export const ro = {
       openParcelA11y: 'Deschide detaliile pentru {{name}}',
       parcelFallback: 'Parcelă',
       retryGps: 'Reîncearcă GPS',
+      outlinesMissing: 'Conturile terenurilor nu sunt descărcate',
+      helpMissingGeometry:
+        'Telefonul nu are încă conturile terenurilor tale, așa că poziția ta nu poate fi potrivită cu niciunul. Descarcă-le — apoi terenul se detectează automat, ca de obicei.',
+      downloadOutlines: 'Descarcă conturile',
+      downloadingOutlines: 'Se descarcă…',
     },
     pendingTransitionBadge: {
       a11y: 'Tranziție în așteptare de sincronizare',
@@ -1207,6 +1230,9 @@ export const ro = {
         unavailable: 'GPS indisponibil — încearcă din nou pe teren',
         outsideParcels: 'În afara terenurilor delimitate — apropie-te de teren',
         detecting: 'Se detectează terenul din GPS…',
+        nearField: 'Aproape de teren (la {distance} m de margine)',
+        outlinesMissing: 'Conturile terenurilor nu sunt descărcate pe telefon',
+        noAssignment: 'Niciun teren asignat ție azi',
       },
       noParcel: 'Nu ești pe niciun teren delimitat',
       loadingParcels: 'Încarc parcelele…',

@@ -13,6 +13,8 @@ export interface LocalBaleLoad {
   gps_lat: number | null;
   gps_lon: number | null;
   notes: string | null;
+  /** 0/1 — see migration 00094. Optional so pull rows predating this column still parse. */
+  location_unverified?: number | null;
   created_at: string;
   updated_at: string;
   server_version: number;
@@ -25,9 +27,9 @@ export class BaleLoadsRepo {
     await this.db.runAsync(
       `INSERT INTO bale_loads (
         id, trip_id, parcel_id, loader_id, operator_id,
-        bale_count, loaded_at, gps_lat, gps_lon, notes,
+        bale_count, loaded_at, gps_lat, gps_lon, notes, location_unverified,
         created_at, updated_at, server_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.trip_id,
@@ -39,6 +41,7 @@ export class BaleLoadsRepo {
         data.gps_lat,
         data.gps_lon,
         data.notes,
+        data.location_unverified ?? 0,
         data.created_at,
         data.updated_at,
         data.server_version,
@@ -50,9 +53,9 @@ export class BaleLoadsRepo {
     await this.db.runAsync(
       `INSERT INTO bale_loads (
         id, trip_id, parcel_id, loader_id, operator_id,
-        bale_count, loaded_at, gps_lat, gps_lon, notes,
+        bale_count, loaded_at, gps_lat, gps_lon, notes, location_unverified,
         created_at, updated_at, server_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         trip_id = excluded.trip_id,
         parcel_id = excluded.parcel_id,
@@ -63,6 +66,7 @@ export class BaleLoadsRepo {
         gps_lat = excluded.gps_lat,
         gps_lon = excluded.gps_lon,
         notes = excluded.notes,
+        location_unverified = excluded.location_unverified,
         updated_at = excluded.updated_at,
         server_version = excluded.server_version`,
       [
@@ -76,6 +80,7 @@ export class BaleLoadsRepo {
         data.gps_lat,
         data.gps_lon,
         data.notes,
+        data.location_unverified ?? 0,
         data.created_at,
         data.updated_at,
         data.server_version,

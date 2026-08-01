@@ -146,6 +146,14 @@ export interface RegisterLoadDto {
   gpsLon?: number;
   idempotencyKey: string;
   loaderSignature?: string;
+  /**
+   * True when the operator confirmed registering this load without the app
+   * being able to verify their GPS presence against the field's boundary
+   * (offline, or the boundary wasn't cached yet). See migration 00094 —
+   * `bale_loads.location_unverified`. Never set by an aux load or a
+   * no-geometry depot (those already bypass the gate silently by design).
+   */
+  locationUnverified?: boolean;
 }
 
 export interface RegisterLoadResult {

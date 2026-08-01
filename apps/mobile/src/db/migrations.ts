@@ -91,6 +91,10 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   // delta sync does not carry it, and `upsertFromPull` therefore never writes it.
   await addColumnIfMissing(db, 'parcels', 'farm_id', 'TEXT');
 
+  // Matches server migration 00094 — flags a load registered while the field's
+  // GPS presence couldn't be verified (offline / boundary not cached yet).
+  await addColumnIfMissing(db, 'bale_loads', 'location_unverified', 'INTEGER DEFAULT 0');
+
   // Create indexes for common queries
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_operations_trip_id ON operations(trip_id)`);
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_operations_status ON operations(status)`);

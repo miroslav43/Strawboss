@@ -653,9 +653,6 @@ export const en = {
       errorNoTruck: 'Error',
       errorNoTruckMessage: 'No truck identified.',
       errorNoTruckOk: 'OK',
-      parcelUnconfirmedTitle: 'Field not confirmed',
-      parcelUnconfirmedMessage: 'Confirm the active field on the home screen before loading.',
-      parcelUnconfirmedBack: 'Back',
       gpsActive: 'GPS active',
       gpsLocating: 'Locating...',
       gpsNone: 'No GPS',
@@ -665,7 +662,28 @@ export const en = {
       depotRequiresConnectionMessage:
         'Loading from a depot requires an internet connection. Reconnect and try again.',
       parcelIdentifying: 'Identifying...',
-      parcelUnconfirmedFallback: 'Unconfirmed — confirm on the main screen',
+      parcelUnconfirmedFallback: 'Determining the field from your position…',
+      fieldStateNoAssignmentTitle: 'No field assigned today',
+      fieldStateNoAssignmentBody:
+        'The dispatcher has not assigned you a field for today. Contact them, then retry.',
+      fieldStateOutsideTitle: 'You are not on any of your fields',
+      fieldStateOutsideBody:
+        'Drive onto the field you are working. It is detected automatically from your position — it cannot be chosen by hand.',
+      fieldStateLocatingTitle: 'Searching for GPS signal…',
+      fieldStateLocatingBody:
+        'Keep the phone in the open. As soon as there is a fix, the field is identified on its own.',
+      fieldStateGpsOffTitle: 'Location is off',
+      fieldStateGpsOffBody:
+        'Enable location for the app — without it the field cannot be identified.',
+      fieldStateMissingGeometryTitle: 'Field outlines not downloaded',
+      fieldStateMissingGeometryBody:
+        'This phone does not yet have the outlines of your fields, so your position cannot be matched to one. Download them and it resolves on its own.',
+      fieldStateMissingGeometryOfflineBody:
+        'This phone does not yet have the outlines of your fields, and there is no connection to fetch them. Connect to the internet and this resolves on its own.',
+      fieldStateAssignedListTitle: 'Your fields today:',
+      fieldStateDownloadOutlines: 'Download outlines',
+      fieldStateDownloadingOutlines: 'Downloading…',
+      fieldStateRetryGps: 'Retry GPS',
       presenceInside: '● You are in the field',
       presenceAwayFromField: '● {distance} m from the field — move closer to load',
       presenceNear: '● Near the field ({distance} m)',
@@ -1043,6 +1061,11 @@ export const en = {
       openParcelA11y: 'Open details for {{name}}',
       parcelFallback: 'Parcel',
       retryGps: 'Retry GPS',
+      outlinesMissing: 'Field outlines not downloaded',
+      helpMissingGeometry:
+        'This phone does not yet have the outlines of your fields, so your position cannot be matched to one. Download them — then the field is detected automatically, as usual.',
+      downloadOutlines: 'Download outlines',
+      downloadingOutlines: 'Downloading…',
     },
     pendingTransitionBadge: {
       a11y: 'Transition pending sync',
@@ -1205,6 +1228,9 @@ export const en = {
         unavailable: 'GPS unavailable — try again in the field',
         outsideParcels: 'Outside delimited fields — move closer to the field',
         detecting: 'Detecting field from GPS…',
+        nearField: 'Near the field ({distance} m from the edge)',
+        outlinesMissing: 'Field outlines not downloaded on this phone',
+        noAssignment: 'No field assigned to you today',
       },
       noParcel: 'You are not on any delimited field',
       loadingParcels: 'Loading parcels…',
