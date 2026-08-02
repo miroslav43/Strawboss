@@ -7,6 +7,7 @@ import {
   Dimensions,
   ScrollView,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
@@ -50,6 +51,11 @@ interface EnhancedDeliveryFlowProps {
   destinationHasOperator?: boolean;
   /** Confirmed bale count from the depot operator (shown in the completed state). */
   depotConfirmedBaleCount?: number | null;
+  /** Set once the operator pressed "Începe descărcarea" — drives the middle state. */
+  depotUnloadStartedAt?: string | null;
+  /** Who is unloading, so the driver can chase them instead of guessing. */
+  depotOperatorName?: string | null;
+  depotOperatorPhone?: string | null;
   onComplete: () => void;
   onCancel: () => void;
 }
@@ -106,6 +112,9 @@ export function EnhancedDeliveryFlow({
   destinationAddress,
   destinationHasOperator = false,
   depotConfirmedBaleCount,
+  depotUnloadStartedAt,
+  depotOperatorName,
+  depotOperatorPhone,
   onComplete,
   onCancel,
 }: EnhancedDeliveryFlowProps) {
@@ -360,32 +369,50 @@ export function EnhancedDeliveryFlow({
   // Don't render until draft restoration is complete (avoids step flicker).
   if (!draftLoaded) return null;
 
-  // Plan C: when the destination has an assigned depot operator, the driver
-  // must not enter weights or sign — confirmation comes from the operator side.
+  /*
+   * Plan C: when the destination has an assigned depot operator, the driver must
+   * not enter weights or sign — confirmation comes from the operator's side.
+   *
+   * Three states, not two. This screen used to be a mute hourglass that flipped
+   * straight to "confirmed": from the cab there was no way to tell whether the
+   * operator had seen the truck, was mid-unload, or had gone home. It now tracks
+   * the operator's actual progress and, while waiting, offers the one thing a
+   * stuck driver actually needs — a way to ring the person at the ramp.
+   */
   if (destinationHasOperator) {
     const isConfirmed = depotConfirmedBaleCount != null && depotConfirmedBaleCount > 0;
+    const isUnloading = !isConfirmed && depotUnloadStartedAt != null;
+    const startedAtLabel = depotUnloadStartedAt
+      ? new Date(depotUnloadStartedAt).toLocaleTimeString('ro-RO', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : null;
+
+    const icon = isConfirmed ? 'check-circle' : isUnloading ? 'forklift' : 'clock-outline';
+    const iconColor = isConfirmed ? colors.primary : isUnloading ? '#1D4ED8' : '#B7791F';
+    const title = isConfirmed
+      ? t('delivery.enhancedFlow.operatorWait.confirmedTitle')
+      : isUnloading
+        ? t('delivery.enhancedFlow.operatorWait.unloadingTitle')
+        : t('delivery.enhancedFlow.operatorWait.pendingTitle');
+    const subtitle = isConfirmed
+      ? t('delivery.enhancedFlow.operatorWait.confirmedSubtitle').replace(
+          '{count}',
+          String(depotConfirmedBaleCount),
+        )
+      : isUnloading && startedAtLabel
+        ? t('delivery.enhancedFlow.operatorWait.unloadingSubtitle', { time: startedAtLabel })
+        : t('delivery.enhancedFlow.operatorWait.pendingSubtitle');
+
     return (
       <View style={styles.flow}>
         <ScreenHeader title={t('delivery.enhancedFlow.operatorWait.title')} onBack={onCancel} />
         <View style={styles.operatorWaitBody}>
-          <MaterialCommunityIcons
-            name={isConfirmed ? 'check-circle' : 'clock-outline'}
-            size={64}
-            color={isConfirmed ? colors.primary : '#B7791F'}
-          />
-          <Text style={styles.operatorWaitTitle}>
-            {isConfirmed
-              ? t('delivery.enhancedFlow.operatorWait.confirmedTitle')
-              : t('delivery.enhancedFlow.operatorWait.pendingTitle')}
-          </Text>
-          <Text style={styles.operatorWaitSubtitle}>
-            {isConfirmed
-              ? t('delivery.enhancedFlow.operatorWait.confirmedSubtitle').replace(
-                  '{count}',
-                  String(depotConfirmedBaleCount),
-                )
-              : t('delivery.enhancedFlow.operatorWait.pendingSubtitle')}
-          </Text>
+          <MaterialCommunityIcons name={icon} size={64} color={iconColor} />
+          <Text style={styles.operatorWaitTitle}>{title}</Text>
+          <Text style={styles.operatorWaitSubtitle}>{subtitle}</Text>
+
           {isConfirmed ? (
             <View style={styles.operatorConfirmedRow}>
               <MaterialCommunityIcons name="grain" size={20} color={colors.primary} />
@@ -393,6 +420,26 @@ export function EnhancedDeliveryFlow({
               <Text style={styles.operatorConfirmedLabel}>
                 {t('delivery.enhancedFlow.operatorWait.confirmedByDepot')}
               </Text>
+            </View>
+          ) : depotOperatorName ? (
+            <View style={styles.operatorContactCard}>
+              <MaterialCommunityIcons name="account-hard-hat" size={20} color={colors.primary} />
+              <Text style={styles.operatorContactName} numberOfLines={1}>
+                {depotOperatorName}
+              </Text>
+              {depotOperatorPhone ? (
+                <TouchableOpacity
+                  style={styles.operatorCallButton}
+                  onPress={() => {
+                    void Linking.openURL(`tel:${depotOperatorPhone}`).catch(() => {});
+                  }}
+                >
+                  <MaterialCommunityIcons name="phone" size={16} color="#FFFFFF" />
+                  <Text style={styles.operatorCallText}>
+                    {t('delivery.enhancedFlow.operatorWait.callOperator')}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -555,6 +602,27 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primary,
   },
+  operatorContactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  operatorContactName: { flex: 1, fontSize: 15, fontWeight: '600', color: '#374151' },
+  operatorCallButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#0A5C36',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  operatorCallText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
   operatorConfirmedLabel: {
     fontSize: 13,
     color: '#5D4037',

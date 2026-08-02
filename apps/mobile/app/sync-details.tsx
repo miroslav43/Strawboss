@@ -15,7 +15,7 @@ import { useSyncQueueStatus } from '@/hooks/useSyncQueueStatus';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import type { SyncQueueEntry } from '@/db/sync-queue-repo';
 import { useI18n } from '@/lib/i18n';
-import { FEATURE_DISABLED_ERROR } from '@/sync/push';
+import { FEATURE_DISABLED_ERROR, TERMINAL_REJECTION_ERROR } from '@/sync/push';
 
 const ENTITY_KEY: Record<string, string> = {
   trips: 'syncDetails.entityLabel.trips',
@@ -92,7 +92,12 @@ function EntryCard({ entry, onRetry, retrying, t }: EntryCardProps) {
               on — nothing they entered is thrown away. */}
           {entry.last_error.includes(FEATURE_DISABLED_ERROR)
             ? t('syncDetails.featureDisabled')
-            : entry.last_error}
+            : /* The server rejected the content itself, so retrying as-is cannot
+                 help. Say so plainly rather than showing a raw code the operator
+                 will keep tapping Retry against. */
+              entry.last_error.includes(TERMINAL_REJECTION_ERROR)
+              ? t('syncDetails.terminalRejection')
+              : entry.last_error}
         </Text>
       ) : null}
 

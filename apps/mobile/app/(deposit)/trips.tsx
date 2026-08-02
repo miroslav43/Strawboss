@@ -1,47 +1,45 @@
-import { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  ActivityIndicator,
-  RefreshControl,
-  TouchableOpacity,
-} from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { NotificationBell } from '@/components/shared/NotificationBell';
-import { useDepotInventory, useDepotList } from '@/hooks/useDepotInventory';
+import { AppModal } from '@/components/shared/AppModal';
+import { useModal } from '@/hooks/useModal';
+import { useDepotInventory, useActiveDepotId } from '@/hooks/useDepotInventory';
+import { DepotTruckCard } from '@/components/features/deposit/DepotTruckCard';
+import { useStartDepotUnload } from '@/hooks/useStartDepotUnload';
 import { useTheme } from '@/lib/theme';
 import { useI18n } from '@/lib/i18n';
-import { colors, radii } from '@strawboss/ui-tokens';
-
-const STATUS_COLORS: Record<string, string> = {
-  in_transit: '#8D6E63',
-  arrived: '#2E7D32',
-  delivering: '#B7791F',
-};
+import { colors } from '@strawboss/ui-tokens';
 
 /**
- * Plan C — incoming trips list for depot manager. Same data source as the
- * Inventar tab but rendered as a full-screen scrollable list.
+ * Plan C — incoming trips list for the depot manager. Same data source as the
+ * Inventar tab, rendered as a full-screen scrollable list.
  */
 export default function DepositTripsScreen() {
   const { t } = useI18n();
   const { colors: themeColors } = useTheme();
-
-  const STATUS_LABELS: Record<string, string> = {
-    in_transit: t('depositTrips.statusInTransit'),
-    arrived: t('depositTrips.statusArrived'),
-    delivering: t('depositTrips.statusDelivering'),
-  };
-  const { data: depots } = useDepotList();
-  const depotId = depots?.[0]?.id ?? null;
+  const depotId = useActiveDepotId();
   const query = useDepotInventory(depotId);
   const [refreshing, setRefreshing] = useState(false);
+  const { modalProps, showModal, hideModal } = useModal();
+  const startUnload = useStartDepotUnload({ depotId, showModal, hideModal });
   const incoming = query.data?.incoming ?? [];
+
+  const handlePress = useCallback(
+    (truck: (typeof incoming)[number], action: 'start' | 'finish') => {
+      if (action === 'finish') {
+        router.push(
+          `/(deposit)/confirm-delivery?tripId=${truck.tripId}` as Parameters<typeof router.push>[0],
+        );
+        return;
+      }
+      void startUnload(truck);
+    },
+    [startUnload],
+  );
 
   return (
     <View style={[styles.outer, { backgroundColor: themeColors.primary }]}>
@@ -87,107 +85,17 @@ export default function DepositTripsScreen() {
               </View>
             }
             renderItem={({ item }) => (
-              <View style={styles.tripCard}>
-                <View style={styles.tripHeader}>
-                  <Text style={styles.tripNumber} numberOfLines={1}>
-                    {item.tripNumber}
-                    {item.iterationIndex && item.iterationIndex > 1
-                      ? ` · ${t('depositTrips.tripIteration', { index: item.iterationIndex })}`
-                      : ''}
-                  </Text>
-                  <View style={styles.tripHeaderRight}>
-                    {item.isInsideGeofence ? (
-                      <View style={styles.geofenceBadge}>
-                        <MaterialCommunityIcons name="map-marker-check" size={12} color="#FFFFFF" />
-                        <Text style={styles.geofenceBadgeText}>
-                          {t('depositTrips.geofenceBadge')}
-                        </Text>
-                      </View>
-                    ) : null}
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        {
-                          backgroundColor: STATUS_COLORS[item.status] ?? '#5D4037',
-                        },
-                      ]}
-                    >
-                      <Text style={styles.statusText}>
-                        {STATUS_LABELS[item.status] ?? item.status}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.tripRow}>
-                  <MaterialCommunityIcons name="truck" size={16} color={themeColors.primary} />
-                  <Text style={styles.tripText} numberOfLines={1}>
-                    {item.truckCode ?? item.truckPlate ?? '—'}
-                  </Text>
-                </View>
-                <View style={styles.tripRow}>
-                  <MaterialCommunityIcons name="account" size={16} color={themeColors.primary} />
-                  <Text style={styles.tripText} numberOfLines={1}>
-                    {item.driverName ?? '—'}
-                  </Text>
-                </View>
-                <View style={styles.tripRow}>
-                  <MaterialCommunityIcons name="grain" size={16} color={themeColors.primary} />
-                  <Text style={styles.tripText}>
-                    {t('depositTrips.tripBaleCount', { count: item.baleCount })}
-                  </Text>
-                </View>
-                {/* Distance readout */}
-                <View style={styles.tripRow}>
-                  <MaterialCommunityIcons
-                    name="map-marker-distance"
-                    size={16}
-                    color={item.isInsideGeofence ? themeColors.primary : '#8D6E63'}
-                  />
-                  <Text style={[styles.tripText, item.isInsideGeofence && styles.tripTextInside]}>
-                    {item.distanceM != null
-                      ? item.isInsideGeofence
-                        ? t('depositTrips.distanceInsideGeofence')
-                        : t('depositTrips.distanceFromDepot', { distance: item.distanceM })
-                      : t('depositTrips.distanceUnknown')}
-                  </Text>
-                </View>
-                {/* Confirm CTA — only when awaiting confirmation and inside geofence */}
-                {item.awaitingConfirmation ? (
-                  <TouchableOpacity
-                    style={[
-                      styles.confirmButton,
-                      !item.isInsideGeofence && styles.confirmButtonDisabled,
-                    ]}
-                    activeOpacity={item.isInsideGeofence ? 0.8 : 1}
-                    onPress={() => {
-                      if (!item.isInsideGeofence) return;
-                      router.push(
-                        `/(deposit)/confirm-delivery?tripId=${item.tripId}` as Parameters<
-                          typeof router.push
-                        >[0],
-                      );
-                    }}
-                  >
-                    <MaterialCommunityIcons
-                      name="clipboard-check"
-                      size={16}
-                      color={item.isInsideGeofence ? '#FFFFFF' : '#9CA3AF'}
-                    />
-                    <Text
-                      style={[
-                        styles.confirmButtonText,
-                        !item.isInsideGeofence && styles.confirmButtonTextDisabled,
-                      ]}
-                    >
-                      {t('depositTrips.confirmDeliveryButton')}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+              <DepotTruckCard
+                truck={item}
+                onPress={handlePress}
+                t={t}
+                primaryColor={themeColors.primary}
+              />
             )}
           />
         )}
       </View>
+      <AppModal {...modalProps} />
     </View>
   );
 }
@@ -197,48 +105,6 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   body: { flex: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   list: { padding: 16, gap: 10 },
-  tripCard: {
-    backgroundColor: '#FFF',
-    borderRadius: radii.md,
-    padding: 14,
-    gap: 6,
-  },
-  tripHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  tripNumber: { flex: 1, fontSize: 15, fontWeight: '600', color: '#374151' },
-  tripHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statusBadge: { flexShrink: 0, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  statusText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
-  geofenceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#0A5C36',
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  geofenceBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
-  tripRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tripText: { flex: 1, fontSize: 13, color: '#5D4037' },
-  tripTextInside: { color: '#0A5C36', fontWeight: '600' },
-  confirmButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#0A5C36',
-    borderRadius: 10,
-    paddingVertical: 10,
-    marginTop: 4,
-  },
-  confirmButtonDisabled: { backgroundColor: '#E5E7EB' },
-  confirmButtonText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  confirmButtonTextDisabled: { color: '#9CA3AF' },
   empty: { alignItems: 'center', padding: 40, gap: 8 },
   emptyTitle: { fontSize: 15, fontWeight: '600', color: '#374151' },
   emptySubtitle: {

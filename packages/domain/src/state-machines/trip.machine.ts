@@ -50,11 +50,21 @@ type ConfirmDeliveryEvent = {
   grossWeightKg: number;
 };
 
-// Depot-operator confirmation. Valid from `arrived` or `delivering`; the operator
-// always reports a bale count, plus gross/tare on a `principal` depot with a
-// working scale. On a `temporary` depot or when the scale is broken, weights are
-// omitted (the guard does not require gross). The service then collapses
-// delivered→completed in one transaction.
+// Step 1 of the manned-depot flow: the operator starts unloading. Valid from
+// `in_transit` too, not just `arrived` — the operator standing at the ramp is a
+// better witness of arrival than a button the driver often forgets to press, so
+// the service stamps `arrival_at` implicitly when it fires from `in_transit`.
+type StartDepotUnloadEvent = {
+  type: 'START_DEPOT_UNLOAD';
+};
+
+// Step 2: depot-operator confirmation. Valid from `in_transit`, `arrived` or
+// `delivering`. The operator always reports a bale count; weights are optional
+// everywhere (a depot may have no scale, a broken one, or simply not weigh this
+// load). The service then collapses delivered→completed in one transaction.
+//
+// `in_transit` is deliberately allowed so a lost step-1 sync entry cannot strand
+// a truck that has already been physically unloaded.
 type ConfirmDeliveryAtDepotEvent = {
   type: 'CONFIRM_DELIVERY_AT_DEPOT';
   baleCount: number;
@@ -92,6 +102,7 @@ type TripEvent =
   | ArriveEvent
   | StartDeliveryEvent
   | ConfirmDeliveryEvent
+  | StartDepotUnloadEvent
   | ConfirmDeliveryAtDepotEvent
   | CompleteEvent
   | CancelEvent
@@ -137,17 +148,21 @@ export const tripMachine = setup({
         event.grossWeightKg > 0
       );
     },
+    /*
+     * The bale count is the only thing a depot confirmation must carry.
+     *
+     * This guard used to require a gross weight unless the depot was explicitly
+     * `temporary` or the operator ticked "scale broken", defaulting to the strict
+     * case when `depotType` was absent. That made the weight a hard gate on the
+     * one action that closes a trip, so a principal depot whose scale was busy,
+     * unreachable for the trailer, or simply not used left the operator unable to
+     * confirm a truck he had already unloaded. Weighing is now optional
+     * everywhere and `scaleBroken` records that no weight was taken; the weight
+     * itself is validated (tare <= gross) server-side when it IS supplied.
+     */
     hasDepotConfirmInfo: ({ event }) => {
       if (event.type !== 'CONFIRM_DELIVERY_AT_DEPOT') return false;
-      if (typeof event.baleCount !== 'number' || event.baleCount <= 0) return false;
-      // A principal depot with a working scale must carry a gross weight; only an
-      // explicitly temporary depot or a broken scale may confirm with the bale
-      // count alone. Default to the strict (gross-required) case when depotType is
-      // omitted, so the guard never passes a weightless principal confirmation.
-      if (event.depotType !== 'temporary' && event.scaleBroken !== true) {
-        return typeof event.grossWeightKg === 'number' && event.grossWeightKg > 0;
-      }
-      return true;
+      return typeof event.baleCount === 'number' && event.baleCount > 0;
     },
     hasReceiverInfo: ({ event }) => {
       return (
@@ -264,6 +279,24 @@ export const tripMachine = setup({
             status: TripStatus.arrived,
           }),
         },
+        // The depot operator may act on a truck that is physically at the ramp but
+        // whose driver never pressed "Am ajuns". Both of these stamp arrival_at
+        // server-side, so the trip never skips a phase in the record.
+        START_DEPOT_UNLOAD: {
+          target: 'delivering',
+          actions: assign({
+            status: TripStatus.delivering,
+          }),
+        },
+        CONFIRM_DELIVERY_AT_DEPOT: {
+          target: 'delivered',
+          guard: 'hasDepotConfirmInfo',
+          actions: assign({
+            baleCount: ({ context, event }) => event.baleCount ?? context.baleCount,
+            grossWeightKg: ({ event }) => event.grossWeightKg ?? null,
+            status: TripStatus.delivered,
+          }),
+        },
         CANCEL: {
           target: 'cancelled',
           guard: 'hasCancellationReason',
@@ -279,6 +312,12 @@ export const tripMachine = setup({
       entry: assign({ status: TripStatus.arrived }),
       on: {
         START_DELIVERY: {
+          target: 'delivering',
+          actions: assign({
+            status: TripStatus.delivering,
+          }),
+        },
+        START_DEPOT_UNLOAD: {
           target: 'delivering',
           actions: assign({
             status: TripStatus.delivering,
@@ -409,12 +448,24 @@ export function createTripMachine(initialContext: Partial<TripMachineContext>) {
   });
 }
 
+/*
+ * THIS is what the backend enforces. `TripsService.validateTransition` reads
+ * `getAvailableTransitions()` below, which reads this literal — it never
+ * interprets the XState machine above. The two are kept in step by hand, so a
+ * transition added to the machine and NOT added here passes code review and then
+ * fails in production with "not allowed from status". Edit both.
+ */
 const transitionMap: Record<string, string[]> = {
   [TripStatus.planned]: ['START_LOADING', 'REGISTER_LOAD', 'CANCEL'],
   [TripStatus.loading]: ['COMPLETE_LOADING', 'REGISTER_LOAD', 'CANCEL'],
   [TripStatus.loaded]: ['DEPART', 'CANCEL'],
-  [TripStatus.in_transit]: ['ARRIVE', 'CANCEL'],
-  [TripStatus.arrived]: ['START_DELIVERY', 'CONFIRM_DELIVERY_AT_DEPOT', 'CANCEL'],
+  [TripStatus.in_transit]: ['ARRIVE', 'START_DEPOT_UNLOAD', 'CONFIRM_DELIVERY_AT_DEPOT', 'CANCEL'],
+  [TripStatus.arrived]: [
+    'START_DELIVERY',
+    'START_DEPOT_UNLOAD',
+    'CONFIRM_DELIVERY_AT_DEPOT',
+    'CANCEL',
+  ],
   [TripStatus.delivering]: ['CONFIRM_DELIVERY', 'CONFIRM_DELIVERY_AT_DEPOT', 'CANCEL'],
   [TripStatus.delivered]: ['COMPLETE', 'DISPUTE', 'CANCEL'],
   [TripStatus.completed]: ['DISPUTE'],

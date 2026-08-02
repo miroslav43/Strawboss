@@ -248,6 +248,8 @@ export const en = {
   syncDetails: {
     featureDisabled:
       'This feature was switched off by an administrator. The record stays saved and will be sent if it is switched back on.',
+    terminalRejection:
+      'The server rejected this record. Retrying will not help — redo the action from its screen.',
     title: 'Pending data',
     refreshAccessibility: 'Refresh',
     backAccessibility: 'Back',
@@ -869,6 +871,10 @@ export const en = {
     scaleBrokenNotice: 'Weights will not be recorded (scale broken).',
     gateHintWithDistance: 'Confirmation is disabled — the truck is {distance} m from the depot.',
     gateHintNoPosition: "Confirmation is disabled — the truck's position is unknown.",
+    perimeterWarnWithDistance:
+      'The truck appears to be {distance} m from the depot. You can still confirm — you will be asked to vouch for it.',
+    perimeterWarnNoPosition:
+      'The truck position is unknown. You can still confirm — you will be asked to vouch for it.',
     submitButtonSaving: 'Saving...',
     submitButton: 'Confirm delivery',
     cancelButton: 'Cancel',
@@ -900,6 +906,23 @@ export const en = {
     distanceFromDepot: '{distance} m from depot',
     distanceUnknown: 'Unknown position',
     confirmDeliveryButton: 'Confirm delivery',
+    // Two-step unloading + GPS override
+    statusUnloading: 'Unloading',
+    startUnloadButton: 'Start unloading',
+    finishUnloadButton: 'Finish unloading',
+    confirmAnywayButton: 'Confirm anyway',
+    distanceFromDepotKm: '{distance} km from the depot',
+    blockedNoGps: 'The truck has not reported its position recently.',
+    blockedOutside: 'The truck is {distance} m from the depot.',
+    blockedUnlinked: 'This trip is not linked to your depot — a valid GPS position is required.',
+    overrideTitle: 'Confirm without GPS verification?',
+    overrideMessageDistance:
+      'The truck position places it {distance} m from the depot. Confirm only if you can see the truck at the ramp — the action will be flagged for review.',
+    overrideMessageNoGps:
+      'The truck has not reported a recent position. Confirm only if you can see the truck at the ramp — the action will be flagged for review.',
+    overrideConfirm: 'Yes, the truck is here',
+    startFailedTitle: 'Could not start unloading',
+    startFailedMessage: 'Try again in a moment.',
   },
 
   geofenceFarms: {
@@ -1159,6 +1182,9 @@ export const en = {
         confirmedSubtitle: 'The depot operator confirmed {count} bales.',
         pendingSubtitle:
           'Awaiting confirmation. You do not need to enter weights or a signature — the depot operator does that.',
+        unloadingTitle: 'Being unloaded now',
+        unloadingSubtitle: 'The operator started unloading at {time}.',
+        callOperator: 'Call',
         confirmedByDepot: 'confirmed by depot',
       },
       error: {

@@ -306,6 +306,69 @@ export class AlertsService {
     return (result as unknown as Record<string, unknown>[])[0];
   }
 
+  /**
+   * Raised when a depot operator acted on a truck whose GPS could NOT be checked
+   * against the depot perimeter — no fix in the last 15 minutes, or a fix outside
+   * confirm_radius_m — and explicitly took the override.
+   *
+   * This is a review signal, not a block. Refusing the action outright is what it
+   * replaces, and that stranded real deliveries every time a truck's phone went
+   * into deep Doze at the ramp. Authorization was still enforced (the operator
+   * runs that depot); only the anti-fraud location assertion was waived, so the
+   * severity is 'high' rather than 'critical'.
+   *
+   * Deduped per (trip, fraud) so a retried confirmation does not spawn copies.
+   */
+  async createDepotOverrideAlert(args: {
+    tripId: string;
+    truckId: string | null;
+    truckLabel?: string | null;
+    depotName?: string | null;
+    orgId: string | null;
+  }) {
+    // Quiet return, mirroring createBaleMismatchAlert: the caller has already
+    // moved the trip and wraps this in a try/catch — throwing here would be
+    // logged as a failure, which is a lie. The org simply does not buy fraud
+    // detection.
+    if (
+      args.orgId &&
+      !isFeatureEnabled(await this.features.getDisabledForOrg(args.orgId), 'analytics.fraud')
+    ) {
+      return undefined;
+    }
+    const existing = await this.drizzleProvider.db.execute(
+      sql`SELECT id FROM alerts
+          WHERE trip_id = ${args.tripId}::uuid
+            AND category = 'fraud'
+            AND data->>'kind' = 'depot_confirm_unverified'
+            AND is_acknowledged = false
+            AND organization_id IS NOT DISTINCT FROM ${args.orgId ? sql`${args.orgId}::uuid` : sql`NULL`}
+          LIMIT 1`,
+    );
+    if ((existing as unknown as Record<string, unknown>[]).length > 0) {
+      return (existing as unknown as Record<string, unknown>[])[0];
+    }
+    const truck = args.truckLabel ?? 'camion';
+    const depot = args.depotName ?? 'depozit';
+    const result = await this.drizzleProvider.db.execute(
+      sql`INSERT INTO alerts (
+        category, severity, title, description,
+        trip_id, related_table, related_record_id, machine_id,
+        data, is_acknowledged, organization_id
+      ) VALUES (
+        'fraud'::alert_category, 'high'::alert_severity,
+        'Confirmare la depozit fără verificare GPS',
+        ${`Operatorul a confirmat livrarea la ${depot} fără ca poziția camionului (${truck}) să poată fi verificată în perimetru.`},
+        ${args.tripId}::uuid, 'trips', ${args.tripId}::uuid,
+        ${args.truckId ? sql`${args.truckId}::uuid` : sql`NULL`},
+        jsonb_build_object('kind', 'depot_confirm_unverified'),
+        false,
+        ${args.orgId ? sql`${args.orgId}::uuid` : sql`NULL`}
+      ) RETURNING ${ALERT_COLS}`,
+    );
+    return (result as unknown as Record<string, unknown>[])[0];
+  }
+
   async createFromDraft(draft: AlertDraft, orgId: string) {
     /*
      * The single chokepoint for every job-generated alert (alert-evaluation,

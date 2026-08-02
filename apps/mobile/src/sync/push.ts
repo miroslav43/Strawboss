@@ -190,6 +190,43 @@ export interface TripTransitionPayload {
  */
 export const FEATURE_DISABLED_ERROR = 'FEATURE_DISABLED';
 
+/**
+ * Marker for a write the server rejected on its merits — bad data, a missing
+ * link, a truck it cannot place at the depot. Rendered specially on the
+ * sync-details screen and never auto-retried.
+ */
+export const TERMINAL_REJECTION_ERROR = 'TERMINAL_REJECTION';
+
+/**
+ * Server codes that mean "this will never succeed as sent".
+ *
+ * Retrying them is worse than useless: the depot flow writes its result to local
+ * SQLite optimistically, so an entry that keeps failing under quadratic backoff
+ * leaves the operator looking at a delivered trip forever while the driver's
+ * phone still shows him waiting — a silent, permanent divergence with a happy
+ * UI on both ends. Better to stop, surface it, and let the operator redo it with
+ * corrected data (or the override).
+ */
+const TERMINAL_TRANSITION_CODES = new Set([
+  'no_destination',
+  'depot_not_found',
+  'depot_no_location',
+  'no_truck',
+  'gps_stale',
+  'outside_geofence',
+  'tare_exceeds_gross',
+  'gross_weight_required',
+  'load_required',
+]);
+
+/** A 4xx naming one of the codes above — refused on content, not transport. */
+function isTerminalRejection(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.status < 400 || err.status >= 500) return false;
+  const code = (err.data as { error?: string } | undefined)?.error;
+  return typeof code === 'string' && TERMINAL_TRANSITION_CODES.has(code);
+}
+
 /** The org switched this feature off. Never a success, never auto-retried. */
 function isFeatureDisabled(err: unknown): boolean {
   return (
@@ -311,6 +348,18 @@ async function sendTripTransition(
         await tripsRepo.clearPendingTransitionFlag(tripId);
       }
       return { ok: true };
+    }
+    /*
+     * A refusal on content, not transport. Retrying cannot fix it, and the
+     * optimistic local write is now a lie, so clear the pending flag: the next
+     * pull overwrites the row with the server's real state and the trip stops
+     * pretending to be further along than it is.
+     */
+    if (isTerminalRejection(err)) {
+      if (tripsRepo) {
+        await tripsRepo.clearPendingTransitionFlag(tripId);
+      }
+      return { ok: false, error: TERMINAL_REJECTION_ERROR };
     }
     return { ok: false, error: message };
   }

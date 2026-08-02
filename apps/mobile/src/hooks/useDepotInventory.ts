@@ -1,8 +1,72 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { create } from 'zustand';
 import { mobileApiClient } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
 import { mobileLogger } from '@/lib/logger';
+
+/**
+ * How often the depot board re-reads the server, matching the loader board's
+ * 15 s poll.
+ *
+ * There used to be no interval at all: `staleTime: 60s` and nothing to trigger a
+ * refetch, so the list only moved when the operator remembered to pull down. A
+ * truck could arrive, park, and sit at the ramp without ever appearing — which
+ * is indistinguishable from the feature not existing.
+ */
+const DEPOT_POLL_MS = 15_000;
+
+/** One inbound truck as the depot operator sees it. Mirrors DepotIncomingTruck. */
+export interface DepotIncomingTruck {
+  tripId: string;
+  tripNumber: string;
+  status: string;
+  truckId: string | null;
+  baleCount: number;
+  iterationIndex: number | null;
+  truckPlate: string | null;
+  truckCode: string | null;
+  driverName: string | null;
+  /** Metres from the truck's latest GPS fix to the depot; null if no recent fix. */
+  distanceM: number | null;
+  /** True when the truck is within the depot's confirm geofence. */
+  isInsideGeofence: boolean;
+  /** True while the trip is still open at this depot (every listed truck). */
+  awaitingConfirmation: boolean;
+  /**
+   * False when the trip reached this list by proximity alone — its
+   * `destination_id` is NULL. Acting on it adopts it, but only with real GPS
+   * inside the perimeter: the server refuses to adopt on an override.
+   */
+  destinationLinked: boolean;
+  /** Set once "Începe descărcarea" was pressed; null before that. */
+  unloadStartedAt: string | null;
+  lastSeenAt: string | null;
+}
+
+/**
+ * Which depot the operator is looking at.
+ *
+ * `trips.tsx` and `confirm-delivery.tsx` each hardcoded `depots[0]`, ignoring the
+ * picker on the inventory tab — a multi-depot user selecting their second depot
+ * still got the first one's trucks. A `depot_manager` is scoped server-side to a
+ * single depot so it never bit them, but an admin sees the whole org.
+ */
+interface SelectedDepotState {
+  selectedDepotId: string | null;
+  setSelectedDepotId: (id: string | null) => void;
+}
+export const useSelectedDepotStore = create<SelectedDepotState>((set) => ({
+  selectedDepotId: null,
+  setSelectedDepotId: (id) => set({ selectedDepotId: id }),
+}));
+
+/** The depot in context: the operator's pick, else the first available. */
+export function useActiveDepotId(): string | null {
+  const selected = useSelectedDepotStore((s) => s.selectedDepotId);
+  const { data: depots } = useDepotList();
+  return selected ?? depots?.[0]?.id ?? null;
+}
 
 export interface DepotInventoryPayload {
   depot: {
@@ -21,24 +85,7 @@ export interface DepotInventoryPayload {
     totalNetWeightKg: number;
     lastUpdate: string | null;
   };
-  incoming: Array<{
-    tripId: string;
-    tripNumber: string;
-    status: string;
-    truckId: string | null;
-    baleCount: number;
-    iterationIndex: number | null;
-    truckPlate: string | null;
-    truckCode: string | null;
-    driverName: string | null;
-    /** Metres from the truck's latest GPS fix to the depot; null if no recent fix. */
-    distanceM: number | null;
-    /** True when the truck is within the depot's confirm geofence. */
-    isInsideGeofence: boolean;
-    /** True when the truck has arrived and is awaiting depot confirmation. */
-    awaitingConfirmation: boolean;
-    lastSeenAt: string | null;
-  }>;
+  incoming: DepotIncomingTruck[];
 }
 
 export interface DepotOption {
@@ -117,6 +164,19 @@ export function useDepotInventory(depotId: string | null) {
       }
       return data;
     },
-    staleTime: 60_000,
+    // Distance and perimeter state are live facts about a truck 200 m away —
+    // stale-by-a-minute is stale enough to be wrong. Poll, and keep polling in
+    // the foreground.
+    staleTime: DEPOT_POLL_MS,
+    refetchInterval: DEPOT_POLL_MS,
+    /*
+     * Load-bearing. React Query's default 'online' mode PAUSES a query when the
+     * device is offline rather than failing it, so `isLoading` never resolves and
+     * the SQLite snapshot below it never gets a chance to render — the operator
+     * sees a spinner forever exactly when the cache is all he has. Same rule as
+     * useMyTasks / useCachedParcels.
+     */
+    networkMode: 'always',
+    retry: 1,
   });
 }

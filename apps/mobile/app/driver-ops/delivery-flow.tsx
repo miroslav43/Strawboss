@@ -79,6 +79,9 @@ export default function DriverDeliveryFlowScreen() {
         destinationAddress={trip.destination_address}
         destinationHasOperator={trip.destination_has_operator === 1}
         depotConfirmedBaleCount={trip.depot_confirmed_at != null ? trip.bale_count : null}
+        depotUnloadStartedAt={trip.depot_unload_started_at}
+        depotOperatorName={trip.destination_operator_name}
+        depotOperatorPhone={trip.destination_operator_phone}
         onComplete={() => router.replace('/(driver)')}
         onCancel={() => router.back()}
       />

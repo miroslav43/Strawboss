@@ -73,6 +73,14 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   // Computed read-model flag from the pull (not a server-stored column).
   await addColumnIfMissing(db, 'trips', 'destination_has_operator', 'INTEGER DEFAULT 0');
 
+  // Two-step depot unloading (matches server migration 00096). The first is a
+  // real pulled column; the other two are computed read-model labels that ride
+  // the same pull, so the local table must carry all three or TripsRepo.upsert
+  // crashes on the next sync.
+  await addColumnIfMissing(db, 'trips', 'depot_unload_started_at', 'TEXT');
+  await addColumnIfMissing(db, 'trips', 'destination_operator_name', 'TEXT');
+  await addColumnIfMissing(db, 'trips', 'destination_operator_phone', 'TEXT');
+
   // Depot confirmation radius (matches server `delivery_destinations.confirm_radius_m`)
   // so the loader depot-load flow can gate on proximity to the depot's confirm ring
   // when the depot has no drawn boundary. Additive; NULL means "no radius configured".

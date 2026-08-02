@@ -58,12 +58,24 @@ export class DepositInventoryService {
     `)) as unknown as Record<string, unknown>[];
     if (!depot.length) throw new NotFoundException('Depot not found');
 
-    // Aggregate completed trips whose destination is within 50 m of the depot.
+    /*
+     * INBOUND — bales delivered here.
+     *
+     * Keyed on the FK first, with the old 50 m spatial match kept ONLY for trips
+     * that never got a destination_id (the pre-00085 history the backfill
+     * deliberately skipped). Proximity alone used to be the whole rule, which put
+     * the stock figure on a different definition of "this depot" than the one
+     * `confirmDepotDelivery` authorizes against — two numbers, same name.
+     */
     const tripScopeConditions: ReturnType<typeof sql>[] = [
       sql`t.deleted_at IS NULL`,
       sql`t.status = 'completed'::trip_status`,
-      sql`t.destination_coords IS NOT NULL`,
-      sql`ST_DWithin(t.destination_coords::geography, dd.coords::geography, 50)`,
+      sql`(
+        t.destination_id = ${depotId}::uuid
+        OR (t.destination_id IS NULL
+            AND t.destination_coords IS NOT NULL
+            AND ST_DWithin(t.destination_coords::geography, dd.coords::geography, 50))
+      )`,
     ];
     if (orgId !== null) tripScopeConditions.push(sql`t.organization_id = ${orgId}::uuid`);
     const tripScopeWhere = sql.join(tripScopeConditions, sql` AND `);
@@ -102,12 +114,34 @@ export class DepositInventoryService {
        WHERE ${tripScopeWhere}
     `)) as unknown as Record<string, unknown>[];
 
-    // Incoming trips: status in_transit or arrived, dest within 5 km.
+    /*
+     * INCOMING — the trucks the operator can actually act on.
+     *
+     * The FK is the rule; the 5 km proximity term is a fallback for trips whose
+     * destination_id is NULL. Matching purely on proximity (the old behaviour)
+     * meant a trip could be listed with a live Confirm button and then fail with
+     * `no_destination`, while a trip that WAS linked but had no denormalized
+     * destination_coords never appeared at all — the operator staring at a truck
+     * the app insisted was not there.
+     *
+     * Auxiliary trips are excluded from the fallback: they deliver to a
+     * customer's yard, never a depot, so a NULL destination_id on one of them is
+     * correct rather than missing data.
+     *
+     * A fallback row carries destinationLinked = false; the client only enables
+     * it while its GPS genuinely places it inside the perimeter, and acting on it
+     * adopts it (see TripsService.resolveDepotAction).
+     */
     const incomingConditions: ReturnType<typeof sql>[] = [
       sql`t.deleted_at IS NULL`,
       sql`t.status IN ('in_transit'::trip_status, 'arrived'::trip_status, 'delivering'::trip_status)`,
-      sql`t.destination_coords IS NOT NULL`,
-      sql`ST_DWithin(t.destination_coords::geography, dd.coords::geography, 5000)`,
+      sql`(
+        t.destination_id = ${depotId}::uuid
+        OR (t.destination_id IS NULL
+            AND t.is_auxiliary = false
+            AND t.destination_coords IS NOT NULL
+            AND ST_DWithin(t.destination_coords::geography, dd.coords::geography, 5000))
+      )`,
     ];
     if (orgId !== null) incomingConditions.push(sql`t.organization_id = ${orgId}::uuid`);
     const incomingWhere = sql.join(incomingConditions, sql` AND `);
@@ -134,7 +168,13 @@ export class DepositInventoryService {
         CASE WHEN ltp.coords IS NOT NULL AND dd.coords IS NOT NULL
           THEN ST_DWithin(ltp.coords::geography, dd.coords::geography, dd.confirm_radius_m)
           ELSE FALSE END                AS "isInsideGeofence",
-        (t.status IN ('arrived'::trip_status, 'delivering'::trip_status)) AS "awaitingConfirmation",
+        -- Every listed truck is actionable: the operator may start unloading one
+        -- still marked in_transit, because a driver who forgot to press "Am ajuns"
+        -- is not a reason to leave a truck sitting at the ramp. The operator's
+        -- action stamps arrival on his behalf.
+        TRUE                            AS "awaitingConfirmation",
+        (t.destination_id IS NOT NULL)  AS "destinationLinked",
+        t.depot_unload_started_at       AS "unloadStartedAt",
         ltp.recorded_at                 AS "lastSeenAt"
       FROM trips t
       JOIN delivery_destinations dd ON dd.id = ${depotId}::uuid

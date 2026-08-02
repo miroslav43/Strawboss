@@ -84,7 +84,16 @@ export interface ConfirmDepotDeliveryDto {
   tareWeightKg?: number | null;
   scaleBroken?: boolean;
   depotOperatorSignature?: string;
+  /** Operator accepted the "truck is here, its GPS isn't" override. */
+  locationUnverified?: boolean;
   idempotencyKey: string;
+}
+
+/** Step 1 of the manned-depot flow — the operator starts unloading. */
+export interface StartDepotUnloadDto {
+  idempotencyKey: string;
+  /** Operator accepted the "truck is here, its GPS isn't" override. */
+  locationUnverified?: boolean;
 }
 
 /**
@@ -100,12 +109,23 @@ export interface DepotIncomingTruck {
   truckCode: string | null;
   driverName: string | null;
   baleCount: number;
+  iterationIndex: number | null;
   /** Metres from the truck's latest GPS fix to the depot; null if no recent fix. */
   distanceM: number | null;
   /** True when distanceM is within the depot's confirmRadiusM. */
   isInsideGeofence: boolean;
   /** True when the truck has arrived and is awaiting depot confirmation. */
   awaitingConfirmation: boolean;
+  /**
+   * False when the trip reached this list by proximity alone (`destination_id`
+   * is NULL — a leftover from before migration 00085 backfilled the link, or a
+   * trip created without one). Such a truck may only be acted on while its GPS
+   * genuinely places it inside the depot perimeter; doing so adopts it by
+   * stamping `destination_id`. See DepositInventoryService.getInventory.
+   */
+  destinationLinked: boolean;
+  /** Set once the operator pressed "Începe descărcarea"; null before that. */
+  unloadStartedAt: string | null;
   lastSeenAt: string | null;
 }
 

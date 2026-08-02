@@ -314,6 +314,9 @@ const PULL_COLUMNS: Record<string, string[]> = {
     'depot_operator_id',
     'depot_confirmed_at',
     'depot_operator_signature_url',
+    // The driver's "se descarcă acum" state lives on this column — without it in
+    // the pull his phone can only ever show "waiting" then "done".
+    'depot_unload_started_at',
     'scale_broken',
     'parent_trip_id',
     'iteration_index',
@@ -917,15 +920,26 @@ export class SyncService {
       // TripsService.findById: the driver's app hides its own confirm button
       // when this is true, so a disabled `depot.manned_confirm` must hand the
       // button back on the very next pull instead of stranding the trip.
+      //
+      // The same subquery also yields the operator's name and phone: a driver
+      // parked at the ramp with nothing but an hourglass has no way to chase the
+      // person who is supposed to unload him. Correlated scalar subqueries rather
+      // than a LATERAL because this expression is spliced into a projection whose
+      // FROM clause is built elsewhere.
+      const depotOperatorFilter = sql`
+        du.assigned_delivery_destination_id = "trips".destination_id
+          AND du.organization_id = "trips".organization_id
+          AND du.role = 'depot_manager'::user_role
+          AND du.deleted_at IS NULL`;
       const extraSelect =
         table === 'trips'
           ? sql`, (EXISTS(
-              SELECT 1 FROM users du
-              WHERE du.assigned_delivery_destination_id = "trips".destination_id
-                AND du.organization_id = "trips".organization_id
-                AND du.role = 'depot_manager'::user_role
-                AND du.deleted_at IS NULL
-            ) AND ${mannedConfirmEnabled}) AS destination_has_operator`
+              SELECT 1 FROM users du WHERE ${depotOperatorFilter}
+            ) AND ${mannedConfirmEnabled}) AS destination_has_operator,
+            (SELECT du.full_name FROM users du WHERE ${depotOperatorFilter}
+              ORDER BY du.created_at ASC LIMIT 1) AS destination_operator_name,
+            (SELECT du.phone FROM users du WHERE ${depotOperatorFilter}
+              ORDER BY du.created_at ASC LIMIT 1) AS destination_operator_phone`
           : sql``;
       // Delta by version, EXCEPT for tables where an out-of-order commit can
       // strand a row behind the cursor forever: sync_version is stamped by a

@@ -249,6 +249,8 @@ export const ro = {
   syncDetails: {
     featureDisabled:
       'Această funcție a fost dezactivată de administrator. Înregistrarea rămâne salvată și se trimite dacă funcția e repornită.',
+    terminalRejection:
+      'Serverul a respins această înregistrare. Reîncercarea nu ajută — reia operațiunea din ecranul respectiv.',
     title: 'Date în așteptare',
     refreshAccessibility: 'Reîmprospătează',
     backAccessibility: 'Înapoi',
@@ -872,6 +874,10 @@ export const ro = {
     gateHintWithDistance:
       'Confirmarea este dezactivată — camionul este la {distance} m de depozit.',
     gateHintNoPosition: 'Confirmarea este dezactivată — poziția camionului este necunoscută.',
+    perimeterWarnWithDistance:
+      'Camionul pare a fi la {distance} m de depozit. Poți confirma oricum — vei fi întrebat să confirmi asta.',
+    perimeterWarnNoPosition:
+      'Poziția camionului este necunoscută. Poți confirma oricum — vei fi întrebat să confirmi asta.',
     submitButtonSaving: 'Se salvează...',
     submitButton: 'Confirmă livrarea',
     cancelButton: 'Anulează',
@@ -902,6 +908,23 @@ export const ro = {
     distanceFromDepot: 'La {distance} m de depozit',
     distanceUnknown: 'Poziție necunoscută',
     confirmDeliveryButton: 'Confirmă livrarea',
+    // Two-step unloading + GPS override
+    statusUnloading: 'Se descarcă',
+    startUnloadButton: 'Începe descărcarea',
+    finishUnloadButton: 'Finalizează descărcarea',
+    confirmAnywayButton: 'Confirmă oricum',
+    distanceFromDepotKm: 'La {distance} km de depozit',
+    blockedNoGps: 'Camionul nu a transmis poziția recent.',
+    blockedOutside: 'Camionul este la {distance} m de depozit.',
+    blockedUnlinked: 'Cursa nu e legată de depozitul tău — e nevoie de o poziție GPS validă.',
+    overrideTitle: 'Confirmi fără verificare GPS?',
+    overrideMessageDistance:
+      'Poziția camionului îl arată la {distance} m de depozit. Confirmă doar dacă vezi camionul la rampă — acțiunea va fi marcată pentru verificare.',
+    overrideMessageNoGps:
+      'Camionul nu a transmis o poziție recentă. Confirmă doar dacă vezi camionul la rampă — acțiunea va fi marcată pentru verificare.',
+    overrideConfirm: 'Da, camionul e aici',
+    startFailedTitle: 'Nu s-a putut începe descărcarea',
+    startFailedMessage: 'Încearcă din nou peste câteva momente.',
   },
 
   geofenceFarms: {
@@ -1161,6 +1184,9 @@ export const ro = {
         confirmedSubtitle: 'Operatorul depozitului a confirmat {count} baloți.',
         pendingSubtitle:
           'Aștepți confirmarea. Nu trebuie să introduci greutăți sau semnătură — operatorul de la depozit face asta.',
+        unloadingTitle: 'Se descarcă acum',
+        unloadingSubtitle: 'Operatorul a început descărcarea la ora {time}.',
+        callOperator: 'Sună',
         confirmedByDepot: 'confirmați de depozit',
       },
       error: {

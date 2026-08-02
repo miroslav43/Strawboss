@@ -72,6 +72,25 @@ function resolveTypeAndCategory(pushType: string): {
         category: MobileNotificationCategory.geofence,
         severity: MobileNotificationSeverity.warning,
       };
+    /*
+     * The depot operator's inbound-truck pushes. Fired by
+     * GeofenceService.notifyDepotOperatorsApproaching / ...AtArrival since the
+     * manned-depot feature shipped, but absent from this switch — so they hit
+     * `default: return null` and never reached the notification centre. An
+     * arrival is the operator's cue to act, hence `warning`.
+     */
+    case 'depot_truck_approaching':
+      return {
+        type: MobileNotificationType.depot_truck_approaching,
+        category: MobileNotificationCategory.geofence,
+        severity: MobileNotificationSeverity.info,
+      };
+    case 'depot_truck_arrived':
+      return {
+        type: MobileNotificationType.depot_truck_arrived,
+        category: MobileNotificationCategory.geofence,
+        severity: MobileNotificationSeverity.warning,
+      };
     case 'parcel_load_mismatch':
       return {
         type: MobileNotificationType.parcel_load_mismatch,

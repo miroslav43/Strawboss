@@ -84,8 +84,12 @@ export function toTripCamel(raw: unknown): Trip | null {
     depotConfirmedAt: (r.depot_confirmed_at as string | null) ?? null,
     depotOperatorSignatureUrl: (r.depot_operator_signature_url as string | null) ?? null,
     scaleBroken: Boolean(r.scale_broken),
+    depotUnloadStartedAt: (r.depot_unload_started_at as string | null) ?? null,
+    depotConfirmLocationUnverified: Boolean(r.depot_confirm_location_unverified),
     destinationHasOperator:
       r.destination_has_operator != null ? Boolean(r.destination_has_operator) : undefined,
+    destinationOperatorName: (r.destination_operator_name as string | null) ?? null,
+    destinationOperatorPhone: (r.destination_operator_phone as string | null) ?? null,
   };
 }
 

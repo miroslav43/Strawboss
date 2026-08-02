@@ -153,6 +153,18 @@ export interface Trip extends Timestamps, SoftDelete {
   depotConfirmedAt: string | null;
   depotOperatorSignatureUrl: string | null;
   scaleBroken: boolean;
+  /**
+   * Step 1 of the two-step depot flow: when the operator pressed "Începe
+   * descărcarea". This is what turns the driver's mute hourglass into "se
+   * descarcă acum", so it must stay in the sync pull's trip columns.
+   */
+  depotUnloadStartedAt: string | null;
+  /**
+   * The operator confirmed with the truck's GPS stale or outside the depot's
+   * confirmRadiusM, using the explicit override. Mirrors
+   * `BaleLoad.locationUnverified`; raises a fraud alert for admin review.
+   */
+  depotConfirmLocationUnverified: boolean;
   cancelledAt: string | null;
   cancellationReason: string | null;
 
@@ -199,6 +211,13 @@ export interface Trip extends Timestamps, SoftDelete {
    * and the sync pull; optional elsewhere.
    */
   destinationHasOperator?: boolean;
+  /**
+   * Who that operator is, so the waiting driver can see a name and phone him
+   * instead of staring at an anonymous hourglass. Populated alongside
+   * destinationHasOperator; null when the depot has no assigned manager.
+   */
+  destinationOperatorName?: string | null;
+  destinationOperatorPhone?: string | null;
 
   // Enriched join labels — populated only by GET /trips/:id, optional elsewhere.
   truckPlate?: string | null;

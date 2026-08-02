@@ -68,15 +68,39 @@ export const completeSchema = z.object({
 });
 
 /**
- * Depot-operator confirmation payload. `baleCount` is always required; weights
- * are optional (omitted on a temporary depot or when the scale is broken). The
- * depot-type rule — "principal depot with a working scale must send gross" — is
- * enforced server-side (the schema can't see the depot type). The cross-field
- * tare ≤ gross check applies only when both weights are present.
+ * Step 1 of the manned-depot flow — the operator starts unloading. Carries no
+ * measurements: the whole point of splitting the flow is that the driver learns
+ * work has begun before anyone knows the final count.
+ */
+export const startDepotUnloadSchema = z.object({
+  idempotencyKey: uuidSchema,
+  /*
+   * The operator explicitly accepted the "camionul e aici, GPS-ul nu" override.
+   * Never trusted as authorization — the caller must still be the depot's
+   * assigned manager. It only waives the anti-fraud geofence assertion and
+   * flags the trip for admin review. See confirmDepotDeliverySchema below.
+   */
+  locationUnverified: z.boolean().optional(),
+});
+
+/**
+ * Step 2 — depot-operator confirmation payload. `baleCount` is always required;
+ * weights are entirely optional (a depot may have no scale, a broken one, or
+ * simply not weigh this load — see the `hasDepotConfirmInfo` guard in
+ * @strawboss/domain). The cross-field tare ≤ gross check applies only when both
+ * weights are present.
  */
 export const confirmDepotDeliverySchema = z
   .object({
     baleCount: z.number().int().positive(),
+    /*
+     * Same override as startDepotUnloadSchema. A truck whose phone is dozing
+     * reports no fix for far longer than the server's 15-minute window, and the
+     * operator is standing next to it — refusing to close the trip in that case
+     * strands a real delivery. The override is recorded
+     * (trips.depot_confirm_location_unverified) and raises a fraud alert.
+     */
+    locationUnverified: z.boolean().optional(),
     grossWeightKg: z.number().positive().nullable().optional(),
     tareWeightKg: z.number().nonnegative().nullable().optional(),
     scaleBroken: z.boolean().optional(),

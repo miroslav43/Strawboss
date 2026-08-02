@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import { SIGNATURE_URL_PATTERN } from '@strawboss/validation';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
+import { SEGMENT_CAP_M, SPEED_CAP_MS } from '../common/gps-noise';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DeliveryDestinationsService } from '../delivery-destinations/delivery-destinations.service';
 import { ParcelsService } from '../parcels/parcels.service';
@@ -42,6 +43,7 @@ import type {
   StartDeliveryDto,
   ConfirmDeliveryDto,
   ConfirmDepotDeliveryDto,
+  StartDepotUnloadDto,
   ForceStatusDto,
   CompleteDto,
   CancelDto,
@@ -546,14 +548,10 @@ export class TripsService implements OnModuleInit {
             p.municipality        AS source_parcel_municipality,
             f.name                AS source_farm_name,
             sd.name               AS source_depot_name,
-            (EXISTS(
-              SELECT 1 FROM users du
-              WHERE du.assigned_delivery_destination_id = t.destination_id
-                AND du.organization_id = t.organization_id
-                AND du.role = 'depot_manager'::user_role
-                AND du.deleted_at IS NULL
-            ) AND ${mannedConfirmEnabled})
-                                  AS destination_has_operator
+            ((dep.id IS NOT NULL) AND ${mannedConfirmEnabled})
+                                  AS destination_has_operator,
+            dep.full_name         AS destination_operator_name,
+            dep.phone             AS destination_operator_phone
           FROM trips t
           LEFT JOIN machines m  ON m.id  = t.truck_id
           LEFT JOIN users    u  ON u.id  = t.driver_id
@@ -562,6 +560,19 @@ export class TripsService implements OnModuleInit {
           LEFT JOIN parcels  p  ON p.id  = t.source_parcel_id
           LEFT JOIN farms    f  ON f.id  = p.farm_id
           LEFT JOIN delivery_destinations sd ON sd.id = t.source_depot_id
+          -- Was a bare EXISTS(); widened to LATERAL so the waiting driver gets a
+          -- name and a phone number instead of an anonymous hourglass. Still one
+          -- row at most, so destination_has_operator is unchanged.
+          LEFT JOIN LATERAL (
+            SELECT du.id, du.full_name, du.phone
+            FROM users du
+            WHERE du.assigned_delivery_destination_id = t.destination_id
+              AND du.organization_id = t.organization_id
+              AND du.role = 'depot_manager'::user_role
+              AND du.deleted_at IS NULL
+            ORDER BY du.created_at ASC
+            LIMIT 1
+          ) dep ON TRUE
           WHERE ${where}
           LIMIT 1`,
     );
@@ -1682,47 +1693,58 @@ export class TripsService implements OnModuleInit {
     return result;
   }
 
+  /**
+   * Trip distance from the truck's GPS track between `departure_at` and now,
+   * summed pairwise with ST_DistanceSphere — same approach as
+   * location.service.getKmByDay. NULL/zero-ping cases COALESCE to 0. The hourly
+   * reconciliation job recomputes this for recently-arrived trips to pick up
+   * pings that synced late from the phone.
+   *
+   * Correlated on the `t` alias, so it only composes inside `UPDATE trips AS t`.
+   * Shared by `arrive()` and by the depot-operator paths, which stamp arrival on
+   * the driver's behalf — inlining it in only one of them silently loses the
+   * kilometres of every trip the operator closes.
+   */
+  private gpsDistanceKmExpr() {
+    return sql`(
+      SELECT ROUND((COALESCE(SUM(
+        -- Drop GPS noise using the SAME caps as reports.service.ts, from the
+        -- shared gps-noise constants — hardcoding them here is how arrive()
+        -- and the reports end up disagreeing on a trip's distance.
+        CASE
+          WHEN leg_m IS NULL OR dt_s IS NULL OR dt_s = 0 THEN 0
+          WHEN leg_m > ${SEGMENT_CAP_M} THEN 0
+          WHEN (leg_m / dt_s) > ${SPEED_CAP_MS} THEN 0
+          ELSE leg_m
+        END
+      ), 0) / 1000.0)::numeric, 2)
+      FROM (
+        SELECT
+          ST_DistanceSphere(LAG(geom) OVER w, geom) AS leg_m,
+          EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)) AS dt_s
+        FROM (
+          SELECT recorded_at,
+                 ST_SetSRID(ST_MakePoint(lon, lat), 4326) AS geom
+          FROM machine_location_events
+          WHERE machine_id = t.truck_id
+            AND recorded_at >= t.departure_at
+            AND recorded_at <= NOW()
+        ) pts
+        WINDOW w AS (ORDER BY recorded_at)
+      ) pairwise
+    )`;
+  }
+
   async arrive(id: string, orgId: string | null, _dto: ArriveDto) {
     const trip = await this.findById(id, orgId);
     const from = trip.status as TripStatus;
     this.validateTransition(from, 'ARRIVE');
 
-    // Trip distance comes from the GPS track of the truck between depart and
-    // now (arrival), summed pairwise with ST_DistanceSphere — same approach as
-    // location.service.getKmByDay. NULL/zero-ping cases COALESCE to 0. The
-    // hourly reconciliation job recomputes this for recently-arrived trips to
-    // pick up pings that synced late from the phone.
     const result = await this.drizzleProvider.db.execute(
       sql`UPDATE trips AS t SET
         status = ${TripStatus.arrived},
         arrival_at = NOW(),
-        gps_distance_km = (
-          SELECT ROUND((COALESCE(SUM(
-            -- Drop GPS noise: legs implying > 130 km/h (36 m/s) or > 5 km in a
-            -- single segment. Mirrors reports.service.ts so arrive() and the
-            -- reports never disagree on a trip's distance.
-            CASE
-              WHEN leg_m IS NULL OR dt_s IS NULL OR dt_s = 0 THEN 0
-              WHEN leg_m > 5000 THEN 0
-              WHEN (leg_m / dt_s) > 36 THEN 0
-              ELSE leg_m
-            END
-          ), 0) / 1000.0)::numeric, 2)
-          FROM (
-            SELECT
-              ST_DistanceSphere(LAG(geom) OVER w, geom) AS leg_m,
-              EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)) AS dt_s
-            FROM (
-              SELECT recorded_at,
-                     ST_SetSRID(ST_MakePoint(lon, lat), 4326) AS geom
-              FROM machine_location_events
-              WHERE machine_id = t.truck_id
-                AND recorded_at >= t.departure_at
-                AND recorded_at <= NOW()
-            ) pts
-            WINDOW w AS (ORDER BY recorded_at)
-          ) pairwise
-        ),
+        gps_distance_km = ${this.gpsDistanceKmExpr()},
         updated_at = NOW()
       WHERE t.id = ${id} AND t.status = ${from} RETURNING *`,
     );
@@ -1931,14 +1953,273 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
-   * Depot-operator delivery confirmation (driver → operator depozit). A
+   * Everything both depot-operator steps must establish before they may touch a
+   * trip: which depot this is, that the caller runs it, and whether the truck is
+   * verifiably standing in it.
+   *
+   * Extracted because `startDepotUnload` and `confirmDepotDelivery` have to agree
+   * exactly — an operator who is allowed to start unloading a truck and then not
+   * allowed to close it leaves the driver stranded mid-flow, which is the failure
+   * this whole feature exists to remove.
+   *
+   * Returns the resolved depot id so the caller can adopt an unlinked trip (see
+   * `destinationLinked` below).
+   */
+  private async resolveDepotAction(
+    trip: Record<string, unknown>,
+    user: { id: string; role: string; organizationId: string | null },
+    opts: { locationUnverified?: boolean },
+  ): Promise<{ destinationId: string; adopted: boolean; locationUnverified: boolean }> {
+    const orgId = user.organizationId;
+
+    /*
+     * The operator's own assigned depot is the anchor, not the trip's
+     * destination_id. A trip whose destination was never linked (NULL — the
+     * pre-00085 leftovers, or any path that forgot to set it) used to be
+     * unconfirmable with `no_destination` while sitting right there on the
+     * operator's screen. It can now be adopted, but only on the strict terms
+     * below: real GPS inside the perimeter, no override.
+     */
+    let assignedId: string | null = null;
+    if (user.role !== 'admin') {
+      const userRows = (await this.drizzleProvider.db.execute(sql`
+        SELECT assigned_delivery_destination_id AS "assignedId"
+          FROM users
+         WHERE id = ${user.id}::uuid AND deleted_at IS NULL
+           ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+         LIMIT 1
+      `)) as unknown as { assignedId: string | null }[];
+      assignedId = userRows[0]?.assignedId ?? null;
+    }
+
+    const tripDestinationId = (trip.destination_id as string | null) ?? null;
+    const destinationId = tripDestinationId ?? assignedId;
+    if (!destinationId) {
+      throw new BadRequestException({
+        error: 'no_destination',
+        message: 'Cursa nu are un depozit de destinație.',
+      });
+    }
+    const adopted = tripDestinationId === null;
+
+    // Authorization: a depot_manager may only act at their assigned depot (admin
+    // bypasses). Mirrors deposit-inventory.ensureUserCanAccessDepot.
+    if (user.role !== 'admin' && assignedId !== destinationId) {
+      throw new ForbiddenException('You can only confirm deliveries at your assigned depot');
+    }
+
+    // Depot geofence config.
+    const depotRows = (await this.drizzleProvider.db.execute(sql`
+      SELECT confirm_radius_m AS "confirmRadiusM",
+             (coords IS NOT NULL) AS "hasCoords",
+             (boundary IS NOT NULL) AS "hasBoundary"
+        FROM delivery_destinations
+       WHERE id = ${destinationId}::uuid AND deleted_at IS NULL
+         ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
+       LIMIT 1
+    `)) as unknown as { confirmRadiusM: number; hasCoords: boolean; hasBoundary: boolean }[];
+    const depot = depotRows[0];
+    if (!depot) {
+      throw new BadRequestException({
+        error: 'depot_not_found',
+        message: 'Depozitul nu a fost găsit.',
+      });
+    }
+    if (!depot.hasCoords && !depot.hasBoundary) {
+      throw new BadRequestException({
+        error: 'depot_no_location',
+        message: 'Depozitul nu are o locație definită; nu se poate verifica perimetrul.',
+      });
+    }
+    const truckId = trip.truck_id as string | null;
+    if (!truckId) {
+      throw new BadRequestException({
+        error: 'no_truck',
+        message: 'Cursa nu are un camion asociat.',
+      });
+    }
+
+    const geoRows = (await this.drizzleProvider.db.execute(sql`
+      WITH ltp AS (
+        SELECT coords, recorded_at
+        FROM machine_location_events
+        WHERE machine_id = ${truckId}::uuid
+          AND recorded_at >= NOW() - INTERVAL '15 minutes'
+        ORDER BY recorded_at DESC
+        LIMIT 1
+      )
+      SELECT
+        (ltp.recorded_at IS NOT NULL) AS "hasFix",
+        CASE WHEN ltp.coords IS NOT NULL THEN
+          ST_DWithin(ltp.coords::geography, COALESCE(dd.boundary, dd.coords)::geography, dd.confirm_radius_m)
+          ELSE FALSE END AS "inside",
+        CASE WHEN ltp.coords IS NOT NULL THEN
+          ROUND(ST_Distance(ltp.coords::geography, COALESCE(dd.boundary, dd.coords)::geography)::numeric, 1)::float
+          ELSE NULL END AS "distanceM"
+      FROM delivery_destinations dd
+      LEFT JOIN ltp ON TRUE
+      WHERE dd.id = ${destinationId}::uuid
+      LIMIT 1
+    `)) as unknown as { hasFix: boolean; inside: boolean; distanceM: number | null }[];
+    const geo = geoRows[0];
+    const verified = geo?.hasFix === true && geo.inside === true;
+
+    /*
+     * The geofence is anti-fraud, never authorization — that was settled above by
+     * the depot assignment. A fleet phone in deep Doze reports no fix for hours,
+     * so refusing outright leaves an operator unable to close a truck he has
+     * physically unloaded. He may override; the trip is flagged
+     * (depot_confirm_location_unverified) and raises an alert for admin review.
+     *
+     * The one thing an override may NOT do is adopt an unlinked trip: without a
+     * destination_id, the GPS match is the ONLY evidence this truck was ever
+     * headed here, so waiving it would let any operator claim any nearby trip.
+     */
+    if (!verified) {
+      if (adopted || opts.locationUnverified !== true) {
+        if (!geo?.hasFix) {
+          throw new BadRequestException({
+            error: 'gps_stale',
+            message: 'Camionul nu a transmis o poziție GPS recentă. Așteaptă o actualizare.',
+            canOverride: !adopted,
+          });
+        }
+        throw new BadRequestException({
+          error: 'outside_geofence',
+          message: 'Camionul nu este în perimetrul depozitului.',
+          distanceM: geo.distanceM,
+          radiusM: depot.confirmRadiusM,
+          canOverride: !adopted,
+        });
+      }
+    }
+
+    return { destinationId, adopted, locationUnverified: !verified };
+  }
+
+  /**
+   * Best-effort fraud alert for a depot action taken with the truck's GPS
+   * unverified. Never throws: the trip has already moved by the time this runs,
+   * and an alert failure must not undo a delivery the operator physically saw.
+   */
+  private async raiseDepotOverrideAlert(
+    tripId: string,
+    trip: Record<string, unknown>,
+    orgId: string | null,
+  ): Promise<void> {
+    try {
+      await this.alertsService.createDepotOverrideAlert({
+        tripId,
+        truckId: (trip.truck_id as string | null) ?? null,
+        truckLabel:
+          (trip.truck_code as string | null) ?? (trip.truck_plate as string | null) ?? null,
+        depotName: (trip.destination_name as string | null) ?? null,
+        orgId,
+      });
+    } catch (err) {
+      this.winston.warn('depot action: location-override alert failed', {
+        context: 'TripsService',
+        tripId,
+        err: err instanceof Error ? { message: err.message } : err,
+      });
+    }
+  }
+
+  /**
+   * Step 1 of the manned-depot flow — the operator starts unloading (→
+   * `delivering`). Its only job is to tell the waiting driver that work has
+   * begun; no counts, no weights.
+   *
+   * Legal from `in_transit` as well as `arrived`: the operator at the ramp is a
+   * better witness of arrival than a button drivers routinely forget, so this
+   * stamps `arrival_at` and the GPS distance on their behalf when it fires early.
+   */
+  async startDepotUnload(
+    id: string,
+    user: { id: string; role: string; organizationId: string | null },
+    dto: StartDepotUnloadDto,
+  ) {
+    const orgId = user.organizationId;
+    const trip = await this.findById(id, orgId);
+    const from = trip.status as TripStatus;
+
+    const idempotencyTable = 'start_depot_unload';
+    const existing = (await this.drizzleProvider.db.execute(
+      sql`SELECT result_data FROM sync_idempotency
+          WHERE client_id = ${user.id}
+            AND table_name = ${idempotencyTable}
+            AND record_id = ${dto.idempotencyKey}
+          LIMIT 1`,
+    )) as unknown as { result_data: unknown }[];
+    if (existing[0]?.result_data) {
+      return existing[0].result_data;
+    }
+
+    this.validateTransition(from, 'START_DEPOT_UNLOAD');
+
+    const { destinationId, adopted, locationUnverified } = await this.resolveDepotAction(
+      trip,
+      user,
+      { locationUnverified: dto.locationUnverified },
+    );
+
+    const result = await this.drizzleProvider.db.transaction(async (tx) => {
+      const updated = (await tx.execute(
+        sql`UPDATE trips AS t SET
+              status = ${TripStatus.delivering},
+              arrival_at = COALESCE(t.arrival_at, NOW()),
+              gps_distance_km = COALESCE(t.gps_distance_km, ${this.gpsDistanceKmExpr()}),
+              destination_id = ${destinationId}::uuid,
+              depot_operator_id = ${user.id},
+              depot_unload_started_at = NOW(),
+              depot_confirm_location_unverified = ${locationUnverified},
+              updated_at = NOW()
+            WHERE t.id = ${id} AND t.status = ${from} RETURNING *`,
+      )) as unknown as Record<string, unknown>[];
+      if (!updated.length) {
+        throw new BadRequestException('Trip status changed concurrently');
+      }
+      await tx.execute(
+        sql`INSERT INTO sync_idempotency (
+              client_id, table_name, record_id,
+              client_version, server_version, result_data
+            ) VALUES (
+              ${user.id}, ${idempotencyTable}, ${dto.idempotencyKey},
+              1, 1, ${JSON.stringify(updated)}::jsonb
+            )
+            ON CONFLICT DO NOTHING`,
+      );
+      return updated;
+    });
+
+    this.logTripFlow(id, 'START_DEPOT_UNLOAD', from, TripStatus.delivering);
+    if (adopted) {
+      this.winston.log('flow', `Depot ${destinationId} adopted unlinked trip ${id}`, {
+        context: 'TripsService',
+        tripId: id,
+        destinationId,
+      });
+    }
+    void this.pushToDriver(
+      id,
+      'Se descarcă',
+      'Operatorul depozitului a început descărcarea.',
+      'trip_depot_unload_started',
+    );
+    if (locationUnverified) {
+      await this.raiseDepotOverrideAlert(id, trip, orgId);
+    }
+    return result;
+  }
+
+  /**
+   * Step 2 — depot-operator delivery confirmation (driver → operator depozit). A
    * depot_manager assigned to the trip's destination depot confirms the arriving
-   * bale count (+ gross/tare on a principal depot with a working scale; bale count
-   * only on a temporary depot or when the scale is broken), signs with their
-   * specimen, and this single action drives the trip arrived/delivering →
-   * delivered → completed in one transaction (the operator's signature is stored
-   * as the receiver signature). Server-enforced geofence: the truck's latest GPS
-   * must be within the depot's confirm_radius_m. Idempotent on `idempotencyKey`.
+   * bale count, optionally with gross/tare weights, signs with their specimen,
+   * and this single action drives the trip arrived/delivering → delivered →
+   * completed in one transaction (the operator's signature is stored as the
+   * receiver signature). Weighing is optional everywhere — the bale count is the
+   * only required measurement. Idempotent on `idempotencyKey`.
    */
   async confirmDepotDelivery(
     id: string,
@@ -1967,130 +2248,44 @@ export class TripsService implements OnModuleInit {
     // instead of a misleading gps_stale/outside_geofence error from the checks below.
     this.validateTransition(from, 'CONFIRM_DELIVERY_AT_DEPOT');
 
-    const destinationId = trip.destination_id as string | null;
-    if (!destinationId) {
-      throw new BadRequestException({
-        error: 'no_destination',
-        message: 'Cursa nu are un depozit de destinație.',
-      });
-    }
+    const { destinationId, adopted, locationUnverified } = await this.resolveDepotAction(
+      trip,
+      user,
+      { locationUnverified: dto.locationUnverified },
+    );
 
-    // Authorization: a depot_manager may only confirm at their assigned depot
-    // (admin bypasses). Mirrors deposit-inventory.ensureUserCanAccessDepot.
-    if (user.role !== 'admin') {
-      const userRows = (await this.drizzleProvider.db.execute(sql`
-        SELECT assigned_delivery_destination_id AS "assignedId"
-          FROM users
-         WHERE id = ${user.id}::uuid AND deleted_at IS NULL
-           ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}
-         LIMIT 1
-      `)) as unknown as { assignedId: string | null }[];
-      if ((userRows[0]?.assignedId ?? null) !== destinationId) {
-        throw new ForbiddenException('You can only confirm deliveries at your assigned depot');
-      }
-    }
-
-    // Depot type + geofence config.
-    const depotRows = (await this.drizzleProvider.db.execute(sql`
-      SELECT depot_type AS "depotType",
-             confirm_radius_m AS "confirmRadiusM",
-             (coords IS NOT NULL) AS "hasCoords",
-             (boundary IS NOT NULL) AS "hasBoundary"
-        FROM delivery_destinations
-       WHERE id = ${destinationId}::uuid AND deleted_at IS NULL
-       LIMIT 1
-    `)) as unknown as {
-      depotType: string;
-      confirmRadiusM: number;
-      hasCoords: boolean;
-      hasBoundary: boolean;
-    }[];
-    const depot = depotRows[0];
-    if (!depot) {
+    /*
+     * Weighing is optional everywhere.
+     *
+     * A `principal` depot used to REQUIRE a gross weight unless the operator
+     * ticked "cântarul nu merge", which made a scale the gate on the one action
+     * that closes a trip: a busy weighbridge, a trailer that won't fit, or a load
+     * nobody intends to weigh all left the operator stuck with `gross_weight_required`
+     * on a truck he had already emptied. The bale count is the measurement that
+     * matters; `scale_broken` now simply records "no weight was taken here".
+     *
+     * When a weight IS supplied it is still validated: tare above gross is
+     * rejected, never silently clamped, because a clamp writes net = 0 onto a
+     * legally binding CMR.
+     */
+    const hasGross = typeof dto.grossWeightKg === 'number' && dto.grossWeightKg > 0;
+    const grossWeightKg = hasGross ? (dto.grossWeightKg as number) : null;
+    const tareWeightKg = hasGross
+      ? typeof dto.tareWeightKg === 'number'
+        ? dto.tareWeightKg
+        : 0
+      : null;
+    if (grossWeightKg !== null && tareWeightKg !== null && tareWeightKg > grossWeightKg) {
       throw new BadRequestException({
-        error: 'depot_not_found',
-        message: 'Depozitul nu a fost găsit.',
+        error: 'tare_exceeds_gross',
+        message: 'Tara nu poate depăși greutatea brută.',
+        grossWeightKg,
+        tareWeightKg,
       });
     }
-
-    // Weight rules. Principal depot with a working scale must carry gross; tare ≤
-    // gross. Temporary depot or broken scale → weights stay NULL (net auto-NULL).
-    const scaleBroken = dto.scaleBroken === true;
-    let grossWeightKg: number | null = null;
-    let tareWeightKg: number | null = null;
-    if (depot.depotType === 'principal' && !scaleBroken) {
-      if (typeof dto.grossWeightKg !== 'number' || dto.grossWeightKg <= 0) {
-        throw new BadRequestException({
-          error: 'gross_weight_required',
-          message:
-            'Depozitul principal necesită greutatea brută (sau marcați „Cântarul nu merge").',
-        });
-      }
-      grossWeightKg = dto.grossWeightKg;
-      tareWeightKg = typeof dto.tareWeightKg === 'number' ? dto.tareWeightKg : 0;
-      if (tareWeightKg > grossWeightKg) {
-        throw new BadRequestException({
-          error: 'tare_exceeds_gross',
-          message: 'Tara nu poate depăși greutatea brută.',
-          grossWeightKg,
-          tareWeightKg,
-        });
-      }
-    }
-
-    // Server-enforced geofence: the truck's latest GPS must be within the depot's
-    // confirm radius of the boundary polygon (or the centroid coords when a
-    // temporary depot has no polygon). No recent fix → reject (do not allow).
-    if (!depot.hasCoords && !depot.hasBoundary) {
-      throw new BadRequestException({
-        error: 'depot_no_location',
-        message: 'Depozitul nu are o locație definită; nu se poate verifica perimetrul.',
-      });
-    }
-    const truckId = trip.truck_id as string | null;
-    if (!truckId) {
-      throw new BadRequestException({
-        error: 'no_truck',
-        message: 'Cursa nu are un camion asociat.',
-      });
-    }
-    const geoRows = (await this.drizzleProvider.db.execute(sql`
-      WITH ltp AS (
-        SELECT coords, recorded_at
-        FROM machine_location_events
-        WHERE machine_id = ${truckId}::uuid
-          AND recorded_at >= NOW() - INTERVAL '15 minutes'
-        ORDER BY recorded_at DESC
-        LIMIT 1
-      )
-      SELECT
-        (ltp.recorded_at IS NOT NULL) AS "hasFix",
-        CASE WHEN ltp.coords IS NOT NULL THEN
-          ST_DWithin(ltp.coords::geography, COALESCE(dd.boundary, dd.coords)::geography, dd.confirm_radius_m)
-          ELSE FALSE END AS "inside",
-        CASE WHEN ltp.coords IS NOT NULL THEN
-          ROUND(ST_Distance(ltp.coords::geography, COALESCE(dd.boundary, dd.coords)::geography)::numeric, 1)::float
-          ELSE NULL END AS "distanceM"
-      FROM delivery_destinations dd
-      LEFT JOIN ltp ON TRUE
-      WHERE dd.id = ${destinationId}::uuid
-      LIMIT 1
-    `)) as unknown as { hasFix: boolean; inside: boolean; distanceM: number | null }[];
-    const geo = geoRows[0];
-    if (!geo?.hasFix) {
-      throw new BadRequestException({
-        error: 'gps_stale',
-        message: 'Camionul nu a transmis o poziție GPS recentă. Așteaptă o actualizare.',
-      });
-    }
-    if (!geo.inside) {
-      throw new BadRequestException({
-        error: 'outside_geofence',
-        message: 'Camionul nu este în perimetrul depozitului.',
-        distanceM: geo.distanceM,
-        radiusM: depot.confirmRadiusM,
-      });
-    }
+    // No weight recorded ⇒ the trip carries the count-only marker, whether the
+    // operator pressed "Fără cântărire" or simply left the fields empty.
+    const scaleBroken = dto.scaleBroken === true || !hasGross;
 
     // The operator is the receiver — their name + signature fill the receiver
     // fields so the completed CMR is signed.
@@ -2108,22 +2303,28 @@ export class TripsService implements OnModuleInit {
 
     const result = await this.drizzleProvider.db.transaction(async (tx) => {
       const updated = (await tx.execute(
-        sql`UPDATE trips SET
+        sql`UPDATE trips AS t SET
           status = ${TripStatus.completed},
           bale_count = ${dto.baleCount},
           gross_weight_kg = ${grossWeightKg},
           tare_weight_kg = ${tareWeightKg},
           scale_broken = ${scaleBroken},
+          -- Stamped on the driver's behalf when the operator closes a truck whose
+          -- driver never pressed "Am ajuns"; COALESCE keeps a real arrival intact.
+          arrival_at = COALESCE(t.arrival_at, NOW()),
+          gps_distance_km = COALESCE(t.gps_distance_km, ${this.gpsDistanceKmExpr()}),
+          destination_id = ${destinationId}::uuid,
           delivered_at = NOW(),
           depot_operator_id = ${user.id},
           depot_confirmed_at = NOW(),
+          depot_confirm_location_unverified = ${locationUnverified},
           depot_operator_signature_url = ${resolvedDepotOperatorSignature},
           receiver_name = ${operatorName},
           receiver_signature_url = ${resolvedDepotOperatorSignature},
           receiver_signed_at = NOW(),
           completed_at = NOW(),
           updated_at = NOW()
-        WHERE id = ${id} AND status = ${from} RETURNING *`,
+        WHERE t.id = ${id} AND t.status = ${from} RETURNING *`,
       )) as unknown as Record<string, unknown>[];
       if (!updated.length) {
         throw new BadRequestException('Trip status changed concurrently');
@@ -2143,12 +2344,22 @@ export class TripsService implements OnModuleInit {
     });
 
     this.logTripFlow(id, 'CONFIRM_DELIVERY_AT_DEPOT', from, TripStatus.completed);
+    if (adopted) {
+      this.winston.log('flow', `Depot ${destinationId} adopted unlinked trip ${id}`, {
+        context: 'TripsService',
+        tripId: id,
+        destinationId,
+      });
+    }
     void this.pushToDriver(
       id,
       'Livrare confirmată la depozit',
       'Depozitul a confirmat baloții. Cursa este finalizată.',
       'trip_depot_confirmed',
     );
+    if (locationUnverified) {
+      await this.raiseDepotOverrideAlert(id, trip, orgId);
+    }
 
     // CMR stage 2 — the completed document with the operator (receiver) signature.
     await this.cmrQueue.add('generate', { tripId: id, orgId: orgId, stage: 2 });

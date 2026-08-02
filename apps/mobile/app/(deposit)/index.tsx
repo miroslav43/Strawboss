@@ -1,5 +1,5 @@
-import { Redirect } from 'expo-router';
-import { useState, useMemo } from 'react';
+import { Redirect, router } from 'expo-router';
+import { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,16 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { ConnectionStatusBadge } from '@/components/shared/ConnectionStatusBadge';
 import { NotificationBell } from '@/components/shared/NotificationBell';
-import { useDepotInventory, useDepotList } from '@/hooks/useDepotInventory';
+import { AppModal } from '@/components/shared/AppModal';
+import { useModal } from '@/hooks/useModal';
+import {
+  useDepotInventory,
+  useDepotList,
+  useSelectedDepotStore,
+  useActiveDepotId,
+} from '@/hooks/useDepotInventory';
+import { DepotTruckCard } from '@/components/features/deposit/DepotTruckCard';
+import { useStartDepotUnload } from '@/hooks/useStartDepotUnload';
 import { useTheme } from '@/lib/theme';
 import { useI18n } from '@/lib/i18n';
 import { useIsFeatureEnabled } from '@/stores/features-store';
@@ -40,12 +49,30 @@ export default function DepositInventoryScreen() {
   const { t } = useI18n();
   const { colors: themeColors } = useTheme();
   const { data: depots } = useDepotList();
-  const [selected, setSelected] = useState<string | null>(null);
-  const depotId = selected ?? depots?.[0]?.id ?? null;
+  // Shared with the Curse tab and the confirm screen, which used to hardcode
+  // depots[0] and so ignored this picker entirely.
+  const setSelected = useSelectedDepotStore((s) => s.setSelectedDepotId);
+  const depotId = useActiveDepotId();
   const query = useDepotInventory(depotId);
   const [refreshing, setRefreshing] = useState(false);
+  const { modalProps, showModal, hideModal } = useModal();
+  const startUnload = useStartDepotUnload({ depotId, showModal, hideModal });
 
   const payload = query.data;
+  const incoming = payload?.incoming ?? [];
+
+  const handleTruckPress = useCallback(
+    (truck: (typeof incoming)[number], action: 'start' | 'finish') => {
+      if (action === 'finish') {
+        router.push(
+          `/(deposit)/confirm-delivery?tripId=${truck.tripId}` as Parameters<typeof router.push>[0],
+        );
+        return;
+      }
+      void startUnload(truck);
+    },
+    [startUnload],
+  );
   const lastUpdate = useMemo(() => {
     if (!payload?.inventory.lastUpdate) return null;
     return new Date(payload.inventory.lastUpdate).toLocaleString('ro-RO');
@@ -112,6 +139,29 @@ export default function DepositInventoryScreen() {
           </View>
         ) : (
           <>
+            {/*
+             * Trucks first, stock second. This tab is where the depot manager
+             * lands, and it used to open on an inventory total with a passive
+             * five-row list underneath — no distance, no perimeter badge, no
+             * button. The one thing he opens the app to do lived on another tab.
+             */}
+            {incoming.length > 0 ? (
+              <View style={styles.trucksSection}>
+                <Text style={styles.sectionTitle}>
+                  {t('deposit.incomingTripsCount', { count: incoming.length })}
+                </Text>
+                {incoming.map((truck) => (
+                  <DepotTruckCard
+                    key={truck.tripId}
+                    truck={truck}
+                    onPress={handleTruckPress}
+                    t={t}
+                    primaryColor={themeColors.primary}
+                  />
+                ))}
+              </View>
+            ) : null}
+
             <View style={styles.card}>
               <Text style={styles.cardLabel} numberOfLines={1} ellipsizeMode="tail">
                 {payload.depot.name}
@@ -137,35 +187,18 @@ export default function DepositInventoryScreen() {
               ) : null}
             </View>
 
-            <View style={styles.cardSecondary}>
-              <Text style={styles.sectionTitle}>
-                {t('deposit.incomingTripsCount', { count: payload.incoming.length })}
-              </Text>
-              {payload.incoming.length === 0 ? (
+            {incoming.length === 0 ? (
+              <View style={styles.cardSecondary}>
+                <Text style={styles.sectionTitle}>
+                  {t('deposit.incomingTripsCount', { count: 0 })}
+                </Text>
                 <Text style={styles.emptyInline}>{t('deposit.noIncomingTripsInline')}</Text>
-              ) : (
-                payload.incoming.slice(0, 5).map((trip) => (
-                  <View key={trip.tripId} style={styles.tripRow}>
-                    <MaterialCommunityIcons name="truck" size={18} color={themeColors.primary} />
-                    <View style={styles.tripInfo}>
-                      <Text style={styles.tripNumber}>
-                        {trip.tripNumber}
-                        {trip.iterationIndex && trip.iterationIndex > 1
-                          ? ` · ${t('deposit.tripIteration', { index: trip.iterationIndex })}`
-                          : ''}
-                      </Text>
-                      <Text style={styles.tripSub} numberOfLines={1} ellipsizeMode="tail">
-                        {trip.truckCode ?? trip.truckPlate ?? '—'} · {trip.driverName ?? '—'} ·{' '}
-                        {t('deposit.tripBaleCount', { count: trip.baleCount })}
-                      </Text>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>
+      <AppModal {...modalProps} />
     </View>
   );
 }
@@ -179,6 +212,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
   },
   content: { padding: 16, gap: 12 },
+  trucksSection: { gap: 10 },
   depotPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   depotPill: {
     paddingHorizontal: 12,

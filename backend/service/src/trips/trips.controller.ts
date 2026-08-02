@@ -14,6 +14,7 @@ import {
   startDeliverySchema,
   confirmDeliverySchema,
   confirmDepotDeliverySchema,
+  startDepotUnloadSchema,
   completeSchema,
   cancelSchema,
   forceStatusSchema,
@@ -32,6 +33,7 @@ import type {
   StartDeliveryDto,
   ConfirmDeliveryDto,
   ConfirmDepotDeliveryDto,
+  StartDepotUnloadDto,
   CompleteDto,
   CancelDto,
   ForceStatusDto,
@@ -195,6 +197,19 @@ export class TripsController {
     return this.tripsService.confirmDelivery(id, user.organizationId, dto);
   }
 
+  /** Step 1 of the manned-depot flow — the operator starts unloading. */
+  @Post(':id/start-depot-unload')
+  @RequireFeature('depot.manned_confirm')
+  @Roles('admin' as UserRole, 'depot_manager' as UserRole)
+  startDepotUnload(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(startDepotUnloadSchema)) dto: StartDepotUnloadDto,
+  ) {
+    return this.tripsService.startDepotUnload(id, user, dto);
+  }
+
+  /** Step 2 — the operator records the bale count (weights optional) and closes the trip. */
   @Post(':id/confirm-depot-delivery')
   @RequireFeature('depot.manned_confirm')
   @Roles('admin' as UserRole, 'depot_manager' as UserRole)

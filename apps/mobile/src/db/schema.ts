@@ -41,10 +41,15 @@ export const TABLES = {
     depot_operator_id TEXT,
     depot_confirmed_at TEXT,
     depot_operator_signature_url TEXT,
+    -- Step 1 of the two-step depot flow: the driver's "se descarcă acum" state.
+    depot_unload_started_at TEXT,
     scale_broken INTEGER DEFAULT 0,
     -- Read-model flag: destination depot has an assigned operator (drives the
-    -- driver's read-only delivery view).
+    -- driver's read-only delivery view), plus who that operator is so the
+    -- waiting driver can call them instead of staring at an hourglass.
     destination_has_operator INTEGER DEFAULT 0,
+    destination_operator_name TEXT,
+    destination_operator_phone TEXT,
     acknowledged_at TEXT,
     has_pending_transition INTEGER DEFAULT 0,
     delivery_step_progress INTEGER,

@@ -38,6 +38,11 @@ export enum MobileNotificationType {
   parcel_load_mismatch = 'parcel_load_mismatch',
   // FM-3 — server overwrote a user-entered field during sync conflict resolution.
   field_overwritten = 'field_overwritten',
+  // Manned-depot flow: the operator's two heads-ups that a truck is inbound.
+  // The backend has sent these since the depot-confirm feature shipped, but
+  // nothing mapped them here, so they were dropped before reaching the bell.
+  depot_truck_approaching = 'depot_truck_approaching',
+  depot_truck_arrived = 'depot_truck_arrived',
 }
 
 export enum MobileNotificationSeverity {

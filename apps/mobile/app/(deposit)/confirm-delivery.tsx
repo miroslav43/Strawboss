@@ -14,22 +14,21 @@ import { useI18n } from '@/lib/i18n';
 import { useIsFeatureEnabled } from '@/stores/features-store';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useQueryClient } from '@tanstack/react-query';
 import { BigButton } from '@/components/ui/BigButton';
 import { NumericPad } from '@/components/ui/NumericPad';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { AppModal } from '@/components/shared/AppModal';
 import { useModal } from '@/hooks/useModal';
-import { useDepotInventory, useDepotList } from '@/hooks/useDepotInventory';
-import { useSync } from '@/hooks/useSync';
-import { useAuthStore } from '@/stores/auth-store';
+import {
+  useDepotInventory,
+  useActiveDepotId,
+  type DepotIncomingTruck,
+} from '@/hooks/useDepotInventory';
+import { useDepotAction } from '@/hooks/useDepotAction';
 import { getDatabase } from '@/lib/storage';
-import { TripsRepo } from '@/db/trips-repo';
-import { SyncQueueRepo } from '@/db/sync-queue-repo';
+import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { mobileLogger } from '@/lib/logger';
-import { generateUuid } from '@/lib/uuid';
 import { colors } from '@strawboss/ui-tokens';
-import type { TripTransitionPayload } from '@/sync/push';
 
 /**
  * Plan C — depot operator delivery confirmation screen.
@@ -50,15 +49,65 @@ export default function ConfirmDeliveryScreen() {
   const { t } = useI18n();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
 
-  // Resolve depot context the same way index.tsx and trips.tsx do.
-  const { data: depots } = useDepotList();
-  const depotId = depots?.[0]?.id ?? null;
+  // Honours the picker on the Inventar tab instead of assuming depots[0].
+  const depotId = useActiveDepotId();
   const inventoryQuery = useDepotInventory(depotId);
   const payload = inventoryQuery.data;
 
   const incoming = payload?.incoming ?? [];
-  const truck = incoming.find((t) => t.tripId === tripId) ?? null;
-  const depot = payload?.depot ?? null;
+  const serverTruck = incoming.find((x) => x.tripId === tripId) ?? null;
+
+  /*
+   * Fall back to the locally cached trip when the snapshot doesn't carry this
+   * truck.
+   *
+   * Resolving from `incoming[]` alone meant a stale or empty snapshot rendered
+   * "cursa nu a fost găsită" over a trip that exists and is perfectly
+   * confirmable — the operator's only recourse being to back out and hope. The
+   * server is still the authority on whether the confirmation is allowed; this
+   * only decides what we can put on screen.
+   */
+  const [localTrip, setLocalTrip] = useState<LocalTrip | null>(null);
+  useEffect(() => {
+    if (!tripId || serverTruck) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const db = await getDatabase();
+        const row = await new TripsRepo(db).findById(tripId);
+        if (!cancelled) setLocalTrip(row ?? null);
+      } catch (err) {
+        mobileLogger.warn('ConfirmDelivery: local trip lookup failed', { tripId, err });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tripId, serverTruck]);
+
+  const truck: DepotIncomingTruck | null =
+    serverTruck ??
+    (localTrip
+      ? {
+          tripId: localTrip.id,
+          tripNumber: localTrip.trip_number ?? '—',
+          status: localTrip.status,
+          truckId: null,
+          baleCount: localTrip.bale_count ?? 0,
+          iterationIndex: localTrip.iteration_index ?? null,
+          truckPlate: null,
+          truckCode: null,
+          driverName: null,
+          // No live fix in the local cache — say so rather than implying "far
+          // away", and let the server rule on the perimeter.
+          distanceM: null,
+          isInsideGeofence: false,
+          awaitingConfirmation: true,
+          destinationLinked: true,
+          unloadStartedAt: localTrip.depot_unload_started_at ?? null,
+          lastSeenAt: null,
+        }
+      : null);
 
   // --- form state ---
   const [baleCountStr, setBaleCountStr] = useState<string>('');
@@ -70,10 +119,8 @@ export default function ConfirmDeliveryScreen() {
   const [saved, setSaved] = useState(false);
   const successScale = useRef(new Animated.Value(0.5)).current;
 
-  const queryClient = useQueryClient();
-  const { triggerSync } = useSync();
   const { modalProps, showModal, hideModal } = useModal();
-  const signatureSpecimenUrl = useAuthStore((s) => s.signatureSpecimenUrl);
+  const depotAction = useDepotAction();
 
   // Prefill bale count from the truck's known value once data loads.
   useEffect(() => {
@@ -88,174 +135,149 @@ export default function ConfirmDeliveryScreen() {
   const tareWeightKg = parseFloat(tareWeightStr) || 0;
   const netWeightKg = Math.max(0, grossWeightKg - tareWeightKg);
 
-  const isPrincipal = depot?.depotType === 'principal';
   const isInsideGeofence = truck?.isInsideGeofence ?? false;
   const distanceM = truck?.distanceM ?? null;
 
   /*
-   * `depot.weighing` off is treated exactly like a broken scale — the server
-   * already accepts a delivery with no weights on that flag, so no endpoint
-   * change is needed.
+   * `depot.weighing` off is treated exactly like the operator declining to weigh.
    *
-   * It MUST feed `weightsValid` below. Hiding the inputs alone would leave
-   * `canSubmit` permanently false and the depot operator unable to confirm any
-   * delivery at all — the feature would silently shut the depot down.
+   * It MUST feed `weightsEntered` below rather than only hiding the inputs.
+   * Gating on the raw `scaleBroken` state instead would leave `canSubmit`
+   * permanently false the moment the flag is switched off, silently shutting the
+   * whole depot down.
    */
   const weighingEnabled = useIsFeatureEnabled('depot.weighing');
   const effectiveScaleBroken = scaleBroken || !weighingEnabled;
 
-  // Validation
+  /*
+   * Weighing is optional, everywhere.
+   *
+   * `canSubmit` used to require a gross weight on a `principal` depot AND
+   * `isInsideGeofence`. Both were dead ends the operator could not talk his way
+   * out of: a busy weighbridge blocked the count, and a truck whose phone had
+   * dozed off greyed the button out with no explanation. The bale count is the
+   * only thing this screen genuinely needs; the perimeter is now the server's
+   * call, with an override, so a blocked confirmation always says why.
+   */
+  const weightsEntered = !effectiveScaleBroken && grossWeightStr.length > 0 && grossWeightKg > 0;
+  const tareInvalid = weightsEntered && tareWeightStr.length > 0 && tareWeightKg > grossWeightKg;
   const baleCountValid = baleCount > 0;
-  const weightsValid =
-    !isPrincipal ||
-    effectiveScaleBroken ||
-    (grossWeightStr.length > 0 &&
-      grossWeightKg > 0 &&
-      tareWeightStr.length > 0 &&
-      tareWeightKg >= 0 &&
-      tareWeightKg <= grossWeightKg &&
-      netWeightKg > 0);
-  const canSubmit = baleCountValid && weightsValid && isInsideGeofence && !saving;
+  const canSubmit = baleCountValid && !tareInvalid && !saving;
 
-  const handleSubmit = useCallback(async () => {
-    if (!tripId || !truck) return;
-    if (!isInsideGeofence) {
-      showModal({
-        type: 'warning',
-        title: t('confirmDelivery.modalGeofenceTitle'),
-        message:
-          distanceM != null
-            ? t('confirmDelivery.modalGeofenceMessageWithDistance', { distance: distanceM })
-            : t('confirmDelivery.modalGeofenceMessageNoPosition'),
-        confirmText: t('confirmDelivery.modalGeofenceConfirm'),
-        onConfirm: hideModal,
+  const handleSubmit = useCallback(
+    async (locationUnverified = false) => {
+      if (!tripId || !truck) return;
+      if (!baleCountValid) {
+        Alert.alert(
+          t('confirmDelivery.alertIncompleteBalesTitle'),
+          t('confirmDelivery.alertIncompleteBalesMessage'),
+        );
+        return;
+      }
+      if (tareInvalid) {
+        Alert.alert(
+          t('confirmDelivery.alertIncompleteWeightsTitle'),
+          t('confirmDelivery.alertIncompleteWeightsMessage'),
+        );
+        return;
+      }
+      setSaving(true);
+      mobileLogger.flow('DepotConfirmDelivery: submitting', {
+        tripId,
+        baleCount,
+        weightsEntered,
+        locationUnverified,
       });
-      return;
-    }
-    if (!baleCountValid) {
-      Alert.alert(
-        t('confirmDelivery.alertIncompleteBalesTitle'),
-        t('confirmDelivery.alertIncompleteBalesMessage'),
-      );
-      return;
-    }
-    if (!weightsValid) {
-      Alert.alert(
-        t('confirmDelivery.alertIncompleteWeightsTitle'),
-        t('confirmDelivery.alertIncompleteWeightsMessage'),
-      );
-      return;
-    }
-    setSaving(true);
-    mobileLogger.flow('DepotConfirmDelivery: submitting', { tripId, baleCount, scaleBroken });
-
-    try {
-      const db = await getDatabase();
-      const tripsRepo = new TripsRepo(db);
-      const syncQueueRepo = new SyncQueueRepo(db);
 
       const now = new Date().toISOString();
-      const idempotencyKey = generateUuid();
-
-      // Build body — weights only for principal with working scale.
-      const bodyGross =
-        isPrincipal && !effectiveScaleBroken && grossWeightKg > 0 ? grossWeightKg : undefined;
-      const bodyTare =
-        isPrincipal && !effectiveScaleBroken && tareWeightKg >= 0 && grossWeightKg > 0
-          ? tareWeightKg
-          : undefined;
-
-      const transitionBody: Record<string, unknown> = {
+      // Weights travel only when actually entered. Everything else is a
+      // count-only confirmation, which the server records via scale_broken.
+      const body: Record<string, unknown> = {
         baleCount,
-        scaleBroken: effectiveScaleBroken,
-        idempotencyKey,
+        scaleBroken: !weightsEntered,
       };
-      if (bodyGross !== undefined) transitionBody.grossWeightKg = bodyGross;
-      if (bodyTare !== undefined) transitionBody.tareWeightKg = bodyTare;
+      if (weightsEntered) {
+        body.grossWeightKg = grossWeightKg;
+        body.tareWeightKg = tareWeightStr.length > 0 ? tareWeightKg : 0;
+      }
 
-      const queuePayload: TripTransitionPayload = {
-        transition: 'confirm-depot-delivery',
-        tripId,
-        body: transitionBody,
-      };
+      try {
+        const res = await depotAction({
+          tripId,
+          transition: 'confirm-depot-delivery',
+          body,
+          offlineStatus: 'completed',
+          offlineFields: {
+            bale_count: baleCount,
+            gross_weight_kg: weightsEntered ? grossWeightKg : null,
+            tare_weight_kg: weightsEntered ? tareWeightKg : null,
+            scale_broken: weightsEntered ? 0 : 1,
+            delivered_at: now,
+            completed_at: now,
+            depot_confirmed_at: now,
+          },
+          locationUnverified,
+          depotId,
+        });
 
-      // Deterministic local queue key (one confirmation per trip) so a double-tap
-      // or a correct-and-resubmit SUPERSEDES the pending entry instead of appending
-      // a second row — only the latest payload is pushed. The body carries the
-      // server idempotency UUID (`idempotencyKey`) for server-side dedup.
-      await syncQueueRepo.enqueueOrUpdate({
-        entityType: 'trip_transition',
-        entityId: tripId,
-        action: 'update',
-        payload: queuePayload,
-        idempotencyKey: `confirm-depot-delivery::${tripId}`,
-      });
+        if (res.ok) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setSaved(true);
+          setTimeout(() => router.back(), 2000);
+          return;
+        }
 
-      // Optimistic local update
-      await tripsRepo.applyTransitionLocally(tripId, 'completed', {
-        bale_count: baleCount,
-        gross_weight_kg: bodyGross ?? null,
-        tare_weight_kg: bodyTare ?? null,
-        scale_broken: scaleBroken ? 1 : 0,
-        delivered_at: now,
-        completed_at: now,
-        depot_confirmed_at: now,
-        // Best-effort optimistic mirror of what the server will resolve
-        // server-side from the operator's on-file specimen — the next pull
-        // reconciles this with the authoritative value.
-        depot_operator_signature_url: signatureSpecimenUrl,
-      });
+        /*
+         * The server refused. Show the real reason — with the distance it
+         * measured — instead of the old silent grey button, and offer the
+         * override when the refusal is only about GPS evidence.
+         */
+        if (res.canOverride) {
+          showModal({
+            type: 'warning',
+            title: t('depositTrips.overrideTitle'),
+            message:
+              res.distanceM != null
+                ? t('depositTrips.overrideMessageDistance', { distance: Math.round(res.distanceM) })
+                : t('depositTrips.overrideMessageNoGps'),
+            confirmText: t('depositTrips.overrideConfirm'),
+            cancelText: t('common.cancel'),
+            onConfirm: () => {
+              hideModal();
+              void handleSubmit(true);
+            },
+            onCancel: hideModal,
+          });
+          return;
+        }
 
-      mobileLogger.flow('DepotConfirmDelivery: enqueued & applied locally', {
-        tripId,
-        baleCount,
-        scaleBroken,
-      });
-
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-      // Invalidate relevant queries and kick sync
-      void queryClient.invalidateQueries({ queryKey: ['trips'] });
-      void queryClient.invalidateQueries({ queryKey: ['my-trips'] });
-      void queryClient.invalidateQueries({ queryKey: ['deposit-inventory', depotId] });
-      void queryClient.invalidateQueries({ queryKey: ['deposit-inventory'] });
-      void triggerSync().catch(() => {});
-
-      setSaved(true);
-      setTimeout(() => router.back(), 2000);
-    } catch (err) {
-      mobileLogger.error('DepotConfirmDelivery: failed', {
-        tripId,
-        err: err instanceof Error ? { message: err.message } : err,
-      });
-      showModal({
-        type: 'error',
-        title: t('confirmDelivery.errorTitle'),
-        message: err instanceof Error ? err.message : t('confirmDelivery.errorMessage'),
-        onConfirm: hideModal,
-      });
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    tripId,
-    truck,
-    isInsideGeofence,
-    distanceM,
-    baleCountValid,
-    weightsValid,
-    baleCount,
-    scaleBroken,
-    signatureSpecimenUrl,
-    isPrincipal,
-    grossWeightKg,
-    tareWeightKg,
-    depotId,
-    queryClient,
-    triggerSync,
-    showModal,
-    hideModal,
-  ]);
+        showModal({
+          type: 'error',
+          title: t('confirmDelivery.errorTitle'),
+          message: res.message ?? t('confirmDelivery.errorMessage'),
+          onConfirm: hideModal,
+        });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      tripId,
+      truck,
+      baleCountValid,
+      tareInvalid,
+      baleCount,
+      weightsEntered,
+      grossWeightKg,
+      tareWeightKg,
+      tareWeightStr,
+      depotId,
+      depotAction,
+      showModal,
+      hideModal,
+      t,
+    ],
+  );
 
   // Success animation + screen
   if (saved) {
@@ -377,8 +399,8 @@ export default function ConfirmDeliveryScreen() {
         <Text style={styles.fieldLabel}>{t('confirmDelivery.fieldLabelBaleCount')}</Text>
         <NumericPad value={baleCountStr} onChange={setBaleCountStr} decimal={false} />
 
-        {/* Weight inputs — principal depot only */}
-        {isPrincipal && weighingEnabled ? (
+        {/* Weight inputs — optional everywhere; hidden only when the org turns weighing off */}
+        {weighingEnabled ? (
           <View style={styles.weightSection}>
             <View style={styles.scaleBrokenRow}>
               <View style={{ flex: 1 }}>
@@ -432,7 +454,7 @@ export default function ConfirmDeliveryScreen() {
                     {netWeightKg > 0 ? `${netWeightKg} kg` : '—'}
                   </Text>
                 </View>
-                {tareWeightKg > grossWeightKg && tareWeightStr.length > 0 ? (
+                {tareInvalid ? (
                   <Text style={styles.errorText}>{t('confirmDelivery.tareExceedsGrossError')}</Text>
                 ) : null}
                 <Text style={styles.editingHint}>
@@ -461,12 +483,18 @@ export default function ConfirmDeliveryScreen() {
           </View>
         ) : null}
 
-        {/* Geofence gate hint */}
+        {/*
+          * Advisory, not a gate. The server rules on the perimeter and offers an
+          * override, so this only warns that the confirmation may come back
+          * asking the operator to vouch for the truck.
+          */}
         {!isInsideGeofence ? (
           <Text style={styles.gateHint}>
             {distanceM != null
-              ? t('confirmDelivery.gateHintWithDistance', { distance: distanceM })
-              : t('confirmDelivery.gateHintNoPosition')}
+              ? t('confirmDelivery.perimeterWarnWithDistance', {
+                  distance: Math.round(distanceM),
+                })
+              : t('confirmDelivery.perimeterWarnNoPosition')}
           </Text>
         ) : null}
 
@@ -475,7 +503,7 @@ export default function ConfirmDeliveryScreen() {
           title={
             saving ? t('confirmDelivery.submitButtonSaving') : t('confirmDelivery.submitButton')
           }
-          onPress={() => void handleSubmit()}
+          onPress={() => void handleSubmit(false)}
           disabled={!canSubmit}
         />
         <BigButton
