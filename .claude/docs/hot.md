@@ -2,7 +2,7 @@
 type: meta
 title: "Hot Context — StrawBoss"
 created: 2026-05-25
-updated: 2026-07-27
+updated: 2026-07-31
 tags: [meta, hot, context]
 status: developing
 ---
@@ -25,6 +25,7 @@ Read this first every session. ~500 words covering what's load-bearing right now
 
 ## What's Changing Now
 
+- **Per-organization feature toggles, 57/57 wired (Jul 2026):** a super_admin can switch product modules/features off per tenant — a **product gate, never a security gate** (auth, trip state machine, sync, org scoping, soft deletes are never in this system). Registry SSOT is `packages/types/src/features.ts` (10 modules, 47 leaves, `defaultEnabled: true` typed as the literal so a false default cannot compile); sparse overrides in `organizations.feature_overrides` (migration `00093`); enforced by `FeaturesGuard`/`@RequireFeature` on writes (reads always stay open) plus `FeaturesService.assertEnabledForOrg` for `@Public()` routes; cross-replica cache invalidation via a Redis generation counter. `scripts/check-features.mjs` mechanically enforces every backend write route is gated or explicitly exempt (139 routes, 12/12 invariants). **Renaming a key silently re-enables it for every org that had it off — add and deprecate, never rename** (`aux.autocomplete` was removed, not renamed, since it was never wired). Full system in [[feature-toggles]]. ([[backend]], [[admin-web]], [[mobile]], [[packages-types]], [[database]], [[scripts]])
 - **Transportator role + Curse/Curse Aux merge (Jul 2026):** new web-only account type `transportator` — external hauler with a read-only aux-trip ledger (`trip_requests.created_by_user_id`) plus an authenticated beneficiary request form and aviz/CMR upload; auto-generated "comandă" (transport order) PDF. The old `/trip-requests` page was folded into `/trips` (Curse + Curse Aux, one page, two ledgers, realtime on `trip_requests`); old route now redirects. `AuxStage`/`composeAuxStage()` (`packages/domain`) is the **single source of truth** for an aux transport's status — never derive it ad hoc from `trip_requests.status` or `trips.status` alone. Field-sourced pickup (`trip_requests.source_parcel_id`) is now a valid alternative to a depot pickup (XOR-enforced). Migration 00087. ([[admin-web]], [[backend]], [[database]], [[packages-types]], [[packages-domain]], [[packages-validation]])
 - **P0 cross-org fixes, closed (Jul 2026):** a second organization could not create ANY trip — `trip_number` was globally unique instead of per-org (migration 00086, fixed) — and CMR's `public_sign_token` was leaking on `GET /trips` (fixed). Parcel references also got cross-org composite-FK hardening as defense-in-depth (migration 00091). Tracked as CR-9/CR-10/H-18, ✅ FIXED in `.claude/issues/security-audit-2026-05-11.md`. ([[database]], [[backend]])
 - **Delivery flow simplified (Jul 2026):** driver signature dropped from `/depart`; receiver signature dropped from the depot delivery flow; a self-confirmed depot can record a delivery without weighing (`scaleBroken`, nullable weights). Depot inventory now correctly subtracts outbound stock (was inbound-only). ([[mobile]], [[backend]])
@@ -35,7 +36,6 @@ Read this first every session. ~500 words covering what's load-bearing right now
 - **Production on Docker Swarm (Jun 2026):** the app tier (`strawboss-backend` ×2, `strawboss-admin` ×1, `redis` ×1) runs as Swarm stack **`strawboss-app`**, nginx+certbot stay on Compose as the shared reverse proxy. Deploys via `./strawboss.sh prod` are **health-gated rolling updates** → zero downtime. New CLI: `stack:status`/`stack:logs`/`stack:rollback`/`scale` ([[scripts]]). **Single-node only** — `logs/`+`uploads/` are host-local bind mounts. Details in [[infrastructure]].
 - **Fleet management + OTA self-update (Jun 2026):** ~30 Device-Owner phones self-install APK updates via `POST /api/v1/fleet/checkin` ([[backend]] `fleet` module) + Device Owner `PackageInstaller` ([[mobile]]). ⚠️ **`apps/mobile/android/app/debug.keystore` must NEVER change** — rotating it breaks OTA for every fielded phone; pinned by SHA-256, CI-guarded ([[infrastructure]]).
 - **Fleet Tailscale remote access (Jun 2026):** super-admin toggles Tailscale per phone for remote `adb`; tailnet `tail2b4c34.ts.net`; ephemeral OAuth-minted keys; dot fed by a HOST-side systemd timer (container can't reach the tailnet). ([[database]], [[backend]], [[mobile]], [[scripts]], [[infrastructure]])
-- **Presence + auth persistence (Jun 2026):** machine-bound operators stay online while backgrounded (Layer 1 `ProfileService.touchLastSeen` + Layer 2 native `PresenceService` FGS); mobile Supabase session persists across restarts via a SecureStore adapter. ([[backend]], [[mobile]], [[packages-api]])
 
 ## High-Friction Places
 
@@ -62,7 +62,7 @@ Read this first every session. ~500 words covering what's load-bearing right now
 |---|---|
 | Trip state machine | `packages/domain/src/trip-machine/` |
 | Sync push/pull | `backend/service/src/sync/` + `apps/mobile/src/sync/` |
-| DB migrations | `supabase/migrations/` (00001–00091) |
+| DB migrations | `supabase/migrations/` (00001–00093) |
 | RLS policies | `supabase/migrations/` — see [[database]] |
 | Fleet / OTA self-update | `backend/service/src/fleet/` + `apps/mobile/src/lib/device-checkin.ts` + `super-admin/(dashboard)/devices/` |
 | OTA signing keystore (pinned) | `apps/mobile/android/app/debug.keystore` — guarded, see [[infrastructure]] |
@@ -81,3 +81,4 @@ Read this first every session. ~500 words covering what's load-bearing right now
 - Sync protocol (push/pull/idempotency) → [[sync-protocol]]
 - Admin web (Next.js, TanStack Query) → [[admin-web]]
 - Domain package (state machine, fraud) → [[packages-domain]]
+- Per-org feature toggles (registry, guard, console) → [[feature-toggles]]

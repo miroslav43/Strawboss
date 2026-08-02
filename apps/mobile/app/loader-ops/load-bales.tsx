@@ -8,6 +8,7 @@ import {
   Image,
   Alert,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -49,10 +50,6 @@ const GPS_TIMEOUT_MS = 15_000;
 // imported) to keep `xstate` and other domain-only deps out of the mobile
 // bundle — same pattern as useTripTransition mirroring the trip state machine.
 const DEFAULT_MAX_BALES_PER_TRUCK = 33;
-// A loader may only register a load while physically on the field the bales are
-// attributed to. Small buffer (max 5 m) for GPS jitter right at the boundary —
-// effectively requires the operator to be on the field, not merely nearby.
-const LOAD_FIELD_TOLERANCE_M = 5;
 
 type GpsStatus = 'idle' | 'loading' | 'denied' | 'unavailable' | 'ok';
 
@@ -243,33 +240,54 @@ export default function LoadBalesScreen() {
   // Stable across retries — sync_idempotency on the server dedupes only when
   // the same key is replayed. Regenerated only after a confirmed success.
   const idempotencyKeyRef = useRef<string | null>(null);
+  // Set when the operator explicitly confirmed registering a load whose
+  // position could not be verified (offline / no cached geometry) — see the
+  // `bypassIsUnverifiable` branch in handleRegisterPress. Carried into the
+  // submit payload as `locationUnverified` so the row surfaces for review.
+  const [locationUnverified, setLocationUnverified] = useState(false);
 
   const baleCount = parseInt(baleCountStr, 10) || 0;
 
   // In-field gate (hard). A load may only be registered when GPS *proves* the
-  // loader is inside the field (or within tolerance of its boundary), so bales
-  // are never attributed to a field the operator isn't standing on. Unknown
-  // position (no boundary / GPS not ready / GPS denied) blocks the load — the
-  // operator must get a fix first. `presence`/`distanceM`/`gpsState` come from
-  // useCurrentLoaderParcel.
-  const inField =
-    parcel.presence === 'inside' ||
-    (parcel.presence === 'outside' &&
-      parcel.distanceM != null &&
-      parcel.distanceM <= LOAD_FIELD_TOLERANCE_M);
-  // GPS proves the loader is past the tolerance — used for the precise distance
-  // copy. `unknown` is handled separately (locating vs unavailable).
-  const awayFromField =
-    parcel.presence === 'outside' &&
-    parcel.distanceM != null &&
-    parcel.distanceM > LOAD_FIELD_TOLERANCE_M;
+  // loader is inside the field, within an accuracy-adaptive tolerance of its
+  // boundary (see `fieldToleranceMeters` — computed inside `computePresence`
+  // in useCurrentLoaderParcel), so bales are never attributed to a field the
+  // operator isn't standing on. `presence`/`distanceM`/`gpsState` come from
+  // useCurrentLoaderParcel; the tolerance itself is NOT re-applied here —
+  // doing it in two places is how the old 0m/5m double-count happened.
+  const inField = parcel.presence === 'inside';
+  // GPS proves the loader is outside the (already-tolerant) boundary — used
+  // for the precise distance copy. `unknown` is handled separately below
+  // (locating vs unverifiable vs unavailable).
+  const awayFromField = parcel.presence === 'outside';
 
-  // Whether the hard in-target GPS gate is bypassed. Auxiliary loads always
-  // bypass (external truck arrives wherever). A depot with NO cached geometry
-  // also bypasses to a soft confirm — but a depot WITH geometry is gated on
-  // presence exactly like a field. While the geometry is still loading
-  // (depotHasGeometry === null) we keep the gate on.
-  const bypassFieldGate = isAuxiliary || (targetIsDepot && depotHasGeometry === false);
+  // Presence is `unknown` because we have a GPS fix but can't check it against
+  // anything (the resolved parcel's geometry isn't cached, or the parcel row
+  // itself isn't) — as opposed to `unknown` because there's genuinely no GPS
+  // fix yet. Only the former is safe to unblock: the operator's position is
+  // real, we just can't verify it offline. See useCurrentLoaderParcel's
+  // `PresenceReason` doc for the full reasoning.
+  const positionUnverifiable =
+    parcel.presence === 'unknown' &&
+    (parcel.presenceReason === 'no_geometry' || parcel.presenceReason === 'no_data');
+
+  // The gate is bypassed specifically because of the unverifiable-position
+  // case (not because this is an auxiliary load, or a depot with no cached
+  // geometry — both of those are already-legitimate silent bypasses that
+  // predate this change and need no confirmation or flag).
+  const unverifiedBypass =
+    positionUnverifiable && !isAuxiliary && !(targetIsDepot && depotHasGeometry === false);
+
+  // Whether the hard in-target GPS gate is bypassed.
+  //  - Auxiliary loads always bypass (external truck arrives wherever).
+  //  - A depot with NO cached geometry also bypasses to a soft confirm — but a
+  //    depot WITH geometry is gated on presence exactly like a field. While
+  //    the geometry is still loading (depotHasGeometry === null) the gate stays on.
+  //  - A genuinely unverifiable position (see above) degrades to "allowed with
+  //    a confirm + the load flagged unverified" — never a silent bypass, and
+  //    never applied to a *verified* outside/too-far position.
+  const bypassFieldGate =
+    isAuxiliary || (targetIsDepot && depotHasGeometry === false) || positionUnverifiable;
 
   // The active target (parcel or depot) has been snapshotted and is ready to load.
   const targetReady = targetIsDepot ? snapshotDepotId !== null : snapshotParcelId !== null;
@@ -292,24 +310,21 @@ export default function LoadBalesScreen() {
     }
   }, [truckId, t]);
 
-  useEffect(() => {
-    // Auxiliary trips have their parcel pre-resolved from the route param — the
-    // GPS-based parcel resolution is irrelevant and must not block or redirect.
-    if (isAuxiliary) return;
-    if (
-      parcel.status === 'needs_start' ||
-      parcel.status === 'unavailable' ||
-      parcel.status === 'multiple_active'
-    ) {
-      // Surface the parcel prompt on home — this screen requires a resolved parcel.
-      Alert.alert(
-        t('loader.loadBales.parcelUnconfirmedTitle'),
-        t('loader.loadBales.parcelUnconfirmedMessage'),
-        [{ text: t('loader.loadBales.parcelUnconfirmedBack'), onPress: () => router.back() }],
-      );
-    }
-  }, [isAuxiliary, parcel.status]);
-
+  // NOTE: there is deliberately no effect here that bounces the operator off
+  // this screen when the parcel can't be resolved.
+  //
+  // There used to be one: `unavailable` / `multiple_active` / online
+  // `needs_start` fired an alert reading "confirm the active field on the home
+  // screen", whose single button called `router.back()`. The home screen offers
+  // no such confirmation — by design, since field resolution is GPS-only
+  // (ActiveFieldCard renders candidates read-only). So the message named an
+  // action that does not exist, and the bounce removed the operator before the
+  // resolver's own 30s GPS re-sample could resolve the field for them. An
+  // operator with several fields assigned had no way through at all.
+  //
+  // The unresolved states are now rendered in place, with a live GPS retry —
+  // see the parcel card below. Register stays disabled until a target snapshots
+  // (`parcelReady`), so removing the bounce cannot admit a bad write.
   // Best-effort GPS for audit trail.
   useEffect(() => {
     let cancelled = false;
@@ -321,8 +336,12 @@ export default function LoadBalesScreen() {
           if (!cancelled) setGpsStatus('denied');
           return;
         }
+        // High accuracy (not Balanced): this fix both proves in-field presence
+        // and is stored on the bale_load as the audit trail, so it's worth the
+        // extra second or two — a phone standing still in a field has GPS FGS
+        // access already, this isn't a fresh cold start.
         const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+          accuracy: Location.Accuracy.High,
           timeInterval: GPS_TIMEOUT_MS,
         });
         if (cancelled) return;
@@ -354,49 +373,11 @@ export default function LoadBalesScreen() {
 
   // FM-5: duplicate detection — check for a recent bale_load on same (truckId, parcelId).
   // Uses snapshotParcelId directly (parcelReady = snapshotParcelId !== null, declared later).
-  const handleRegisterPress = useCallback(async () => {
-    // Hard gate: must be provably on the field the bales are attributed to.
-    // Auxiliary loads bypass this entirely — the external truck arrives wherever;
-    // proximity is irrelevant and must never block the operator.
-    if (!bypassFieldGate && !inField) {
-      if (awayFromField) {
-        // GPS proves the loader is too far from the field/depot.
-        showModal({
-          type: 'warning',
-          title: t('loader.loadBales.modalNotInFieldTitle'),
-          message: t('loader.loadBales.modalNotInFieldMessage', {
-            parcelName: targetName ?? 'selectat',
-            distance: parcel.distanceM ?? 0,
-          }),
-          confirmText: t('loader.loadBales.modalUnderstood'),
-          onConfirm: hideModal,
-        });
-      } else if (parcel.gpsState === 'unavailable') {
-        // GPS denied / timed out / field has no boundary — can't confirm position.
-        showModal({
-          type: 'warning',
-          title: t('loader.loadBales.modalPositionUnconfirmedTitle'),
-          message: t('loader.loadBales.modalPositionUnconfirmedMessage'),
-          confirmText: t('loader.loadBales.modalRetryGps'),
-          cancelText: t('loader.loadBales.modalCancel'),
-          onConfirm: () => {
-            hideModal();
-            parcel.refresh();
-          },
-          onCancel: hideModal,
-        });
-      } else {
-        // Still acquiring a fix — ask the operator to wait.
-        showModal({
-          type: 'warning',
-          title: t('loader.loadBales.modalDeterminingPositionTitle'),
-          message: t('loader.loadBales.modalDeterminingPositionMessage'),
-          confirmText: t('loader.loadBales.modalUnderstood'),
-          onConfirm: hideModal,
-        });
-      }
-      return;
-    }
+  //
+  // Split from handleRegisterPress so the "position unverified" confirmation
+  // (below) can defer straight into it once the operator explicitly agrees —
+  // everything past the gate is identical either way.
+  const runPreflightAndProceed = useCallback(async () => {
     if (baleCount <= 0 || !truckId || (!targetIsDepot && !snapshotParcelId)) {
       proceedToFinish();
       return;
@@ -490,22 +471,105 @@ export default function LoadBalesScreen() {
     proceedToFinish();
   }, [
     proceedToFinish,
-    isAuxiliary,
-    bypassFieldGate,
     targetIsDepot,
-    inField,
-    awayFromField,
     baleCount,
     truckId,
     snapshotParcelId,
-    targetName,
     isOnline,
     fullTruckCount,
+    showModal,
+    hideModal,
+    t,
+  ]);
+
+  const handleRegisterPress = useCallback(async () => {
+    // Hard gate: must be provably on the field the bales are attributed to.
+    // Auxiliary loads bypass this entirely — the external truck arrives wherever;
+    // proximity is irrelevant and must never block the operator.
+    if (!bypassFieldGate && !inField) {
+      if (awayFromField) {
+        // GPS proves the loader is too far from the field/depot (already past
+        // the accuracy-adaptive tolerance computed in useCurrentLoaderParcel).
+        showModal({
+          type: 'warning',
+          title: t('loader.loadBales.modalNotInFieldTitle'),
+          message: t('loader.loadBales.modalNotInFieldMessage', {
+            parcelName: targetName ?? 'selectat',
+            distance: parcel.distanceM ?? 0,
+          }),
+          confirmText: t('loader.loadBales.modalUnderstood'),
+          onConfirm: hideModal,
+        });
+      } else if (parcel.gpsState === 'unavailable') {
+        // Genuinely no GPS fix (denied / timed out) — nothing to verify
+        // against, online or offline. This is the one case that stays hard-
+        // blocked per product decision: unverifiable-but-we-have-a-fix
+        // degrades below; unverifiable-with-no-fix-at-all does not.
+        showModal({
+          type: 'warning',
+          title: t('loader.loadBales.modalPositionUnconfirmedTitle'),
+          message: t('loader.loadBales.modalPositionUnconfirmedMessage'),
+          confirmText: t('loader.loadBales.modalRetryGps'),
+          cancelText: t('loader.loadBales.modalCancel'),
+          onConfirm: () => {
+            hideModal();
+            parcel.refresh();
+          },
+          onCancel: hideModal,
+        });
+      } else {
+        // Still acquiring a fix — ask the operator to wait.
+        showModal({
+          type: 'warning',
+          title: t('loader.loadBales.modalDeterminingPositionTitle'),
+          message: t('loader.loadBales.modalDeterminingPositionMessage'),
+          confirmText: t('loader.loadBales.modalUnderstood'),
+          onConfirm: hideModal,
+        });
+      }
+      return;
+    }
+
+    // The gate passed because the position is genuinely unverifiable (a GPS
+    // fix exists, but the field's geometry isn't cached — offline, or not
+    // yet synced) rather than because this is an auxiliary load or a
+    // no-geometry depot (both already-legitimate silent bypasses). Ask once,
+    // explicitly, before writing anything — never a silent bypass — and flag
+    // the eventual bale_load as unverified so it surfaces for review.
+    if (unverifiedBypass) {
+      showModal({
+        type: 'warning',
+        title: t('loader.loadBales.modalUnverifiableTitle'),
+        message: t('loader.loadBales.modalUnverifiableMessage', {
+          parcelName: targetName ?? 'selectat',
+        }),
+        confirmText: t('loader.loadBales.modalUnverifiableConfirm'),
+        cancelText: t('loader.loadBales.modalUnverifiableCancel'),
+        onConfirm: () => {
+          hideModal();
+          setLocationUnverified(true);
+          void runPreflightAndProceed();
+        },
+        onCancel: hideModal,
+      });
+      return;
+    }
+
+    setLocationUnverified(false);
+    await runPreflightAndProceed();
+  }, [
+    bypassFieldGate,
+    inField,
+    awayFromField,
+    unverifiedBypass,
+    targetName,
     parcel.distanceM,
     parcel.gpsState,
     parcel.refresh,
+    runPreflightAndProceed,
     showModal,
     hideModal,
+    t,
   ]);
 
   /**
@@ -558,7 +622,19 @@ export default function LoadBalesScreen() {
           gpsLon: gps?.lon,
           idempotencyKey,
           ...(loaderSignature ? { loaderSignature } : {}),
+          // Server-side field is additive (Zod strips unknown keys on an older
+          // backend, so this is safe to send unconditionally ahead of that
+          // deploy — see migration 00094). Only ever true when the operator
+          // explicitly confirmed the unverified-position modal.
+          ...(locationUnverified ? { locationUnverified: true } : {}),
         };
+        if (locationUnverified) {
+          mobileLogger.warn('register-load: geofence unverified, operator confirmed', {
+            truckId,
+            parcelId: targetIsDepot ? null : snapshotParcelId,
+            depotId: targetIsDepot ? snapshotDepotId : null,
+          });
+        }
 
         if (isOnline) {
           const result = await mobileApiClient.post<RegisterLoadResponse>(
@@ -581,6 +657,7 @@ export default function LoadBalesScreen() {
               operatorId: userId,
               baleCount,
               gps,
+              locationUnverified,
             });
           }
           mobileLogger.flow('Loader register-load: online success', {
@@ -617,6 +694,7 @@ export default function LoadBalesScreen() {
             operatorId: userId,
             baleCount,
             gps,
+            locationUnverified,
           });
           const db = await getDatabase();
           const queue = new SyncQueueRepo(db);
@@ -720,6 +798,7 @@ export default function LoadBalesScreen() {
       isAuxiliary,
       auxTripId,
       isOnline,
+      locationUnverified,
       queryClient,
       t,
     ],
@@ -1020,6 +1099,19 @@ export default function LoadBalesScreen() {
       </ScreenHeader>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.content}>
+        {!isOnline ? (
+          <View style={styles.offlineBanner}>
+            <MaterialCommunityIcons name="cloud-off-outline" size={16} color="#8D6E63" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.offlineBannerTitle}>
+                {t('loader.loadBales.offlineBannerTitle')}
+              </Text>
+              <Text style={styles.offlineBannerBody}>
+                {t('loader.loadBales.offlineBannerBody')}
+              </Text>
+            </View>
+          </View>
+        ) : null}
         <View style={styles.parcelCard}>
           <MaterialCommunityIcons
             name={targetIsDepot ? 'warehouse' : 'map-marker-radius'}
@@ -1061,6 +1153,16 @@ export default function LoadBalesScreen() {
                 <Text style={styles.presenceOutside}>
                   {t('loader.loadBales.presenceGpsUnavailable')}
                 </Text>
+              ) : parcel.presenceReason === 'no_geometry' ? (
+                // We have a GPS fix, but this field's boundary isn't cached
+                // (offline, not yet synced) — distinct from "still locating".
+                <Text style={styles.presenceUnknown}>
+                  {t('loader.loadBales.presenceUnverifiableNoGeometry')}
+                </Text>
+              ) : parcel.presenceReason === 'no_data' ? (
+                <Text style={styles.presenceUnknown}>
+                  {t('loader.loadBales.presenceUnverifiableOffline')}
+                </Text>
               ) : (
                 <Text style={styles.presenceUnknown}>
                   {t('loader.loadBales.presenceVerifying')}
@@ -1069,6 +1171,107 @@ export default function LoadBalesScreen() {
             ) : null}
           </View>
         </View>
+
+        {/*
+          The field couldn't be resolved. This used to be an alert whose only
+          button called router.back(), telling the operator to "confirm the
+          field on the home screen" — an action that screen does not offer,
+          because resolution is GPS-only. Rendered in place instead: the
+          resolver keeps re-sampling GPS every 30s, so walking onto the field
+          heals this with no interaction at all.
+        */}
+        {!isAuxiliary && !parcelReady && parcel.status !== 'loading' ? (
+          <View style={styles.unresolvedCard}>
+            <View style={styles.unresolvedHeader}>
+              {parcel.status === 'needs_start' && parcel.gpsState === 'locating' ? (
+                <ActivityIndicator size="small" color="#B7791F" />
+              ) : (
+                <MaterialCommunityIcons
+                  name={
+                    parcel.status === 'unavailable'
+                      ? 'map-marker-off'
+                      : parcel.status === 'awaiting_geometry'
+                        ? 'cloud-download-outline'
+                        : 'map-marker-alert'
+                  }
+                  size={20}
+                  color="#B7791F"
+                />
+              )}
+              <Text style={styles.unresolvedTitle}>
+                {parcel.status === 'unavailable'
+                  ? t('loader.loadBales.fieldStateNoAssignmentTitle')
+                  : parcel.status === 'awaiting_geometry'
+                    ? t('loader.loadBales.fieldStateMissingGeometryTitle')
+                    : parcel.gpsState === 'locating'
+                      ? t('loader.loadBales.fieldStateLocatingTitle')
+                      : parcel.gpsState === 'unavailable'
+                        ? t('loader.loadBales.fieldStateGpsOffTitle')
+                        : t('loader.loadBales.fieldStateOutsideTitle')}
+              </Text>
+            </View>
+
+            <Text style={styles.unresolvedBody}>
+              {parcel.status === 'unavailable'
+                ? t('loader.loadBales.fieldStateNoAssignmentBody')
+                : parcel.status === 'awaiting_geometry'
+                  ? isOnline
+                    ? t('loader.loadBales.fieldStateMissingGeometryBody')
+                    : t('loader.loadBales.fieldStateMissingGeometryOfflineBody')
+                  : parcel.gpsState === 'locating'
+                    ? t('loader.loadBales.fieldStateLocatingBody')
+                    : parcel.gpsState === 'unavailable'
+                      ? t('loader.loadBales.fieldStateGpsOffBody')
+                      : t('loader.loadBales.fieldStateOutsideBody')}
+            </Text>
+
+            {/*
+              Read-only, deliberately. Field attribution is decided by GPS and
+              nothing else — making these tappable is what let bales be logged
+              against the wrong field in the first place.
+            */}
+            {parcel.candidates.length > 0 ? (
+              <View style={styles.assignedList}>
+                <Text style={styles.assignedListTitle}>
+                  {t('loader.loadBales.fieldStateAssignedListTitle')}
+                </Text>
+                {parcel.candidates.map((task) => (
+                  <Text key={task.id} style={styles.assignedListItem} numberOfLines={1}>
+                    {'•  '}
+                    {task.parcelName ?? task.parcelCode ?? ''}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {parcel.status === 'awaiting_geometry' && isOnline ? (
+              <TouchableOpacity
+                style={styles.unresolvedAction}
+                activeOpacity={0.85}
+                disabled={parcel.geometryRepair.isRepairing}
+                onPress={() => parcel.geometryRepair.retry()}
+              >
+                <MaterialCommunityIcons name="cloud-download-outline" size={18} color="#fff" />
+                <Text style={styles.unresolvedActionText}>
+                  {parcel.geometryRepair.isRepairing
+                    ? t('loader.loadBales.fieldStateDownloadingOutlines')
+                    : t('loader.loadBales.fieldStateDownloadOutlines')}
+                </Text>
+              </TouchableOpacity>
+            ) : parcel.status !== 'awaiting_geometry' ? (
+              <TouchableOpacity
+                style={styles.unresolvedAction}
+                activeOpacity={0.85}
+                onPress={() => parcel.refresh()}
+              >
+                <MaterialCommunityIcons name="crosshairs-gps" size={18} color="#fff" />
+                <Text style={styles.unresolvedActionText}>
+                  {t('loader.loadBales.fieldStateRetryGps')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
 
         <Text style={styles.fieldLabel}>{t('loader.loadBales.baleCountFieldLabel')}</Text>
 
@@ -1101,6 +1304,11 @@ export default function LoadBalesScreen() {
                 : t('loader.loadBales.gateHintWaitingGps')}
           </Text>
         ) : null}
+        {unverifiedBypass && parcelReady ? (
+          // The button above is enabled — explain why, so the confirm modal
+          // that follows a tap isn't a surprise.
+          <Text style={styles.gateHint}>{t('loader.loadBales.gateHintUnverifiable')}</Text>
+        ) : null}
         {isAuxiliary && !parcelReady ? (
           <Text style={styles.gateHint}>
             {parcel.gpsState === 'unavailable'
@@ -1129,6 +1337,8 @@ interface OptimisticInput {
   operatorId: string;
   baleCount: number;
   gps: { lat: number; lon: number } | null;
+  /** See migration 00094 — bale_loads.location_unverified. */
+  locationUnverified: boolean;
 }
 
 /**
@@ -1155,6 +1365,7 @@ async function applyOptimistic(input: OptimisticInput): Promise<void> {
     gps_lat: input.gps?.lat ?? null,
     gps_lon: input.gps?.lon ?? null,
     notes: null,
+    location_unverified: input.locationUnverified ? 1 : 0,
     created_at: now,
     updated_at: now,
     server_version: 0,
@@ -1222,6 +1433,16 @@ const styles = StyleSheet.create({
   },
   centered: { justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 60 },
   content: { padding: 16, gap: 12 },
+  offlineBanner: {
+    backgroundColor: 'rgba(141,110,99,0.12)',
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  offlineBannerTitle: { fontSize: 12, fontWeight: '700', color: '#5D4037' },
+  offlineBannerBody: { fontSize: 11, color: '#8D6E63', marginTop: 1 },
   parcelCard: {
     backgroundColor: '#FFF',
     borderRadius: 14,
@@ -1244,6 +1465,35 @@ const styles = StyleSheet.create({
   presenceOutside: { fontSize: 12, fontWeight: '700', color: '#991B1B', marginTop: 3 },
   presenceUnknown: { fontSize: 12, color: '#8D6E63', fontStyle: 'italic', marginTop: 3 },
   gateHint: { fontSize: 12, color: '#991B1B', textAlign: 'center', marginTop: -4 },
+  unresolvedCard: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  unresolvedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  unresolvedTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: '#92400E' },
+  unresolvedBody: { fontSize: 13, lineHeight: 19, color: '#78350F' },
+  assignedList: { gap: 2 },
+  assignedListTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+    textTransform: 'uppercase',
+  },
+  assignedListItem: { fontSize: 13, color: '#78350F' },
+  unresolvedAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#B7791F',
+    borderRadius: 10,
+    paddingVertical: 12,
+  },
+  unresolvedActionText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: '#5D4037', marginTop: 4 },
   fullTruckButton: {
     backgroundColor: '#FFFFFF',

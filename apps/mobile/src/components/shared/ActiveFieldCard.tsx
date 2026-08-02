@@ -153,6 +153,17 @@ export function ActiveFieldCard({
                 : t('shared.activeFieldCard.presenceOutside')}
             </Text>
           </View>
+        ) : parcel.presenceReason === 'no_geometry' || parcel.presenceReason === 'no_data' ? (
+          // A GPS fix exists, but there's nothing cached to check it against
+          // (offline / not yet synced) — distinct from "still locating".
+          <View style={[styles.presencePill, styles.presenceUnknown]}>
+            <MaterialCommunityIcons name="cloud-off-outline" size={16} color={colors.tertiary} />
+            <Text style={styles.presenceUnknownText}>
+              {parcel.presenceReason === 'no_geometry'
+                ? t('shared.activeFieldCard.presenceNoGeometry')
+                : t('shared.activeFieldCard.presenceUnverifiable')}
+            </Text>
+          </View>
         ) : (
           <View style={[styles.presencePill, styles.presenceUnknown]}>
             <MaterialCommunityIcons name="crosshairs-gps" size={16} color={colors.tertiary} />
@@ -168,24 +179,30 @@ export function ActiveFieldCard({
     );
   }
 
-  // multiple_active / needs_start / unavailable — all force GPS-only resolution.
-  // Candidate parcels are shown only as read-only context, never as a tappable
-  // "start here" list. The operator must physically reach a parcel and press
-  // "Reîncearcă GPS" to re-resolve.
-  const isError = parcel.status === 'multiple_active' || parcel.status === 'needs_start';
+  // needs_start / awaiting_geometry / unavailable — all force GPS-only
+  // resolution. Candidate parcels are shown only as read-only context, never as
+  // a tappable "start here" list. The operator must physically reach a parcel
+  // and press "Reîncearcă GPS" to re-resolve.
+  //
+  // `awaiting_geometry` shares the amber treatment but NOT the message: there
+  // the phone is missing the field outlines, so telling the operator to walk
+  // somewhere would be wrong — nothing they do on foot fixes it.
+  const awaitingGeometry = parcel.status === 'awaiting_geometry';
+  const isError = parcel.status === 'needs_start' || awaitingGeometry;
   const headerColor = isError ? '#B7791F' : '#991B1B';
-  const iconName: keyof typeof MaterialCommunityIcons.glyphMap =
-    parcel.status === 'multiple_active'
-      ? 'map-marker-question'
-      : parcel.status === 'needs_start'
-        ? 'map-marker-alert'
-        : 'map-marker-off';
-  const headerLabel =
-    parcel.status === 'multiple_active' || parcel.status === 'needs_start'
+  const iconName: keyof typeof MaterialCommunityIcons.glyphMap = awaitingGeometry
+    ? 'cloud-download-outline'
+    : isError
+      ? 'map-marker-alert'
+      : 'map-marker-off';
+  const headerLabel = awaitingGeometry
+    ? t('shared.activeFieldCard.outlinesMissing')
+    : isError
       ? t('shared.activeFieldCard.gpsNoDetect')
       : t('shared.activeFieldCard.noFieldAssigned');
-  const helpText =
-    parcel.status === 'unavailable'
+  const helpText = awaitingGeometry
+    ? t('shared.activeFieldCard.helpMissingGeometry')
+    : parcel.status === 'unavailable'
       ? t('shared.activeFieldCard.helpUnavailable')
       : t('shared.activeFieldCard.helpGpsError');
 
@@ -229,7 +246,20 @@ export function ActiveFieldCard({
           ))}
         </View>
       ) : null}
-      {isError ? (
+      {awaitingGeometry ? (
+        <TouchableOpacity
+          style={styles.refreshGpsBtn}
+          disabled={parcel.geometryRepair.isRepairing}
+          onPress={() => parcel.geometryRepair.retry()}
+        >
+          <MaterialCommunityIcons name="cloud-download-outline" size={16} color="#fff" />
+          <Text style={styles.refreshGpsText}>
+            {parcel.geometryRepair.isRepairing
+              ? t('shared.activeFieldCard.downloadingOutlines')
+              : t('shared.activeFieldCard.downloadOutlines')}
+          </Text>
+        </TouchableOpacity>
+      ) : isError ? (
         <TouchableOpacity style={styles.refreshGpsBtn} onPress={parcel.refresh}>
           <MaterialCommunityIcons name="crosshairs-gps" size={16} color="#fff" />
           <Text style={styles.refreshGpsText}>{t('shared.activeFieldCard.retryGps')}</Text>

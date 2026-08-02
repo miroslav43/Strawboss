@@ -35,6 +35,13 @@ export const colors = {
   neutral700: '#3E2723',
   neutral800: '#2C1B14',
   neutral900: '#1A0F0B',
+  // Mobile map: parcels assigned to the logged-in operator today. Mirrored
+  // literally (not imported — the map runs inside a WebView, not the RN
+  // bundle) in apps/mobile/src/map/leaflet-map-content.ts getParcelStyle().
+  // Kept here so the legend chip on the map screen (rendered in RN, not the
+  // WebView) can consume a token instead of a bare hex.
+  mapAssigned: '#A855F7',
+  mapAssignedFill: '#7C3AED',
 } as const;
 
 /**
@@ -83,6 +90,9 @@ export const colorsHighContrast = {
   neutral700: '#141414',
   neutral800: '#0D0D0D',
   neutral900: '#070707',
+  // See `colors.mapAssigned` — darker pair for the high-contrast palette.
+  mapAssigned: '#6D28D9',
+  mapAssignedFill: '#5B21B6',
 } as const;
 
 /** Union type covering both palette shapes. */

@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '@/lib/i18n';
 import { useModal } from '@/hooks/useModal';
 import { AppModal } from '@/components/shared/AppModal';
 import { UndoToast } from '@/components/shared/UndoToast';
-import { useFocusEffect } from 'expo-router';
-import * as Location from 'expo-location';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { colors } from '@strawboss/ui-tokens';
@@ -17,14 +15,10 @@ import { mobileLogger } from '@/lib/logger';
 import { fontScale } from '@/utils/responsive';
 import { generateUuid } from '@/lib/uuid';
 import { todayInRomania } from '@/lib/date';
-import { useMyTasks } from '@/hooks/useMyTasks';
 import { operatorStatsQueryKey } from '@/components/features/stats/OperatorStats';
 import { useUndoableSave } from '@/hooks/useUndoableSave';
-import {
-  useActiveParcels,
-  findParcelAtLocation,
-  type ActiveParcel,
-} from '@/hooks/useActiveParcels';
+import { useActiveParcels, type ActiveParcel } from '@/hooks/useActiveParcels';
+import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
 
 interface ProductionNumpadProps {
   operatorId: string;
@@ -34,7 +28,6 @@ interface ProductionNumpadProps {
 type PadKey = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' | 'clear' | 'backspace';
 
 type ParcelSource = 'gps' | 'task' | null;
-type GpsStatus = 'idle' | 'loading' | 'denied' | 'unavailable' | 'ok';
 
 const PAD_ROWS: PadKey[][] = [
   ['1', '2', '3'],
@@ -44,129 +37,47 @@ const PAD_ROWS: PadKey[][] = [
 ];
 
 const MAX_DIGITS = 5;
-const GPS_REFRESH_MS = 45_000;
-// Cap how long we wait for a fix so the screen never sits in "loading" forever
-// on a cold/weak GPS. Balanced accuracy resolves much faster than High and is
-// plenty for parcel-polygon matching.
-const GPS_FIX_TIMEOUT_MS = 12_000;
+// GPS sampling (interval, timeout, permission handling) now lives entirely in
+// `useCurrentLoaderParcel` — this screen no longer runs a second sampler.
 
 export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps) {
   const { t } = useI18n();
-  const { tasks } = useMyTasks();
   const queryClient = useQueryClient();
   const { modalProps, showModal, hideModal } = useModal();
   const parcelQuery = useActiveParcels();
   const activeParcels: ActiveParcel[] | undefined = parcelQuery.data as ActiveParcel[] | undefined;
   const parcelsLoading = parcelQuery.isLoading;
-  const parcelsError = parcelQuery.isError;
+  // Parcels now come from the local cache (useCachedParcels), which never
+  // errors offline — it's the source of truth, not a fallback. `fromCache`
+  // tells us whether the server has confirmed this list yet this session, so
+  // we can say "resolved from the day's plan, offline" instead of implying
+  // the resolution itself is uncertain.
+  const parcelsFromCache = parcelQuery.fromCache;
 
   const [count, setCount] = useState('');
-  const [parcelId, setParcelId] = useState<string | null>(null);
-  const [parcelName, setParcelName] = useState<string | null>(null);
-  const [parcelCode, setParcelCode] = useState<string | null>(null);
-  const [parcelSource, setParcelSource] = useState<ParcelSource>(null);
-
-  const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
-  const [lastLonLat, setLastLonLat] = useState<{ lon: number; lat: number } | null>(null);
-  const [lastAccuracyM, setLastAccuracyM] = useState<number | null>(null);
-
   const [saving, setSaving] = useState(false);
 
-  const taskOnlyParcel = useMemo(() => {
-    const withParcel = tasks.filter((t) => t.parcelId !== null && t.parcelName !== null);
-    const uniqueIds = new Set(withParcel.map((t) => t.parcelId));
-    if (uniqueIds.size !== 1) return null;
-    const first = withParcel[0];
-    if (!first?.parcelId || !first.parcelName) return null;
-    return { id: first.parcelId, name: first.parcelName };
-  }, [tasks]);
-
-  const gpsHit = useMemo(() => {
-    if (gpsStatus !== 'ok' || !lastLonLat || !activeParcels?.length) return null;
-    return findParcelAtLocation(lastLonLat.lon, lastLonLat.lat, activeParcels);
-  }, [gpsStatus, lastLonLat, activeParcels]);
-
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true;
-
-      async function sample(showLoading: boolean) {
-        if (showLoading) setGpsStatus('loading');
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (!alive) return;
-        if (status !== 'granted') {
-          setGpsStatus('denied');
-          setLastLonLat(null);
-          setLastAccuracyM(null);
-          return;
-        }
-        try {
-          const loc = await Promise.race([
-            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('GPS timeout')), GPS_FIX_TIMEOUT_MS),
-            ),
-          ]);
-          if (!alive) return;
-          setLastLonLat({
-            lon: loc.coords.longitude,
-            lat: loc.coords.latitude,
-          });
-          setLastAccuracyM(
-            loc.coords.accuracy != null && Number.isFinite(loc.coords.accuracy)
-              ? loc.coords.accuracy
-              : null,
-          );
-          setGpsStatus('ok');
-        } catch {
-          if (!alive) return;
-          setGpsStatus('unavailable');
-          setLastLonLat(null);
-          setLastAccuracyM(null);
-        }
-      }
-
-      void sample(true);
-      const intervalId = setInterval(() => {
-        void sample(false);
-      }, GPS_REFRESH_MS);
-
-      return () => {
-        alive = false;
-        clearInterval(intervalId);
-      };
-    }, []),
-  );
-
-  useEffect(() => {
-    if (!activeParcels || activeParcels.length === 0) return;
-
-    if (gpsHit) {
-      setParcelId(gpsHit.id);
-      setParcelName(gpsHit.name);
-      setParcelCode(gpsHit.code || null);
-      setParcelSource('gps');
-      return;
-    }
-
-    const gpsSaysOutsideAllParcels = gpsStatus === 'ok' && activeParcels.length > 0 && !gpsHit;
-
-    if (taskOnlyParcel && !gpsSaysOutsideAllParcels) {
-      const meta = activeParcels.find((p) => p.id === taskOnlyParcel.id);
-      setParcelId(taskOnlyParcel.id);
-      setParcelName(taskOnlyParcel.name);
-      setParcelCode(meta?.code ?? null);
-      setParcelSource('task');
-      return;
-    }
-
-    if (gpsStatus === 'ok' || gpsStatus === 'denied' || gpsStatus === 'unavailable') {
-      setParcelId(null);
-      setParcelName(null);
-      setParcelCode(null);
-      setParcelSource(null);
-    }
-  }, [activeParcels, taskOnlyParcel, gpsHit, gpsStatus]);
+  // One answer to "which field am I on", shared with the loader and with this
+  // role's own home screen.
+  //
+  // This component used to resolve the field itself, and disagreed with the
+  // shared resolver on every point that matters: it matched GPS against EVERY
+  // parcel in the organisation rather than the operator's own assigned fields
+  // (so production could be recorded against a field nobody had assigned), it
+  // required a task to carry a non-null `parcelName` where the sibling numpad
+  // required only an id, and it ran a second independent GPS sampler. With 2+
+  // assigned fields and no GPS hit it silently left SAVE disabled with no
+  // explanation at all.
+  const parcel = useCurrentLoaderParcel();
+  const resolved = parcel.status === 'resolved' && parcel.targetType === 'parcel';
+  const parcelId = resolved ? parcel.parcelId : null;
+  const parcelName = resolved ? parcel.parcelName : null;
+  const parcelCode = resolved ? parcel.parcelCode : null;
+  const parcelSource: ParcelSource = !resolved
+    ? null
+    : parcel.source === 'in_progress_task'
+      ? 'task'
+      : 'gps';
 
   // FM-4: undo hook — deletes the bale_productions row + sync queue entry
   const { showUndo, toastState } = useUndoableSave({
@@ -181,35 +92,49 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
 
   const subtitle = useMemo(() => {
     if (parcelSource === 'gps') {
-      const acc =
-        lastAccuracyM != null && lastAccuracyM > 0 ? ` (~±${Math.round(lastAccuracyM)} m)` : '';
-      return `${t('production.numpad.parcelSource.gps')}${acc}`;
+      // `gps_nearby` named the field from the wider radius rather than from
+      // containment — say how far off, so a wrong field is obvious.
+      if (parcel.source === 'gps_nearby') {
+        return t('production.numpad.gps.nearField', { distance: parcel.distanceM ?? 0 });
+      }
+      return t('production.numpad.parcelSource.gps');
     }
     if (parcelSource === 'task') {
-      return t('production.numpad.parcelSource.task');
+      // Resolved via the day's single assigned parcel rather than a GPS hit —
+      // honest about it when that resolution came from the offline cache
+      // rather than a fresh server confirmation.
+      return parcelsFromCache
+        ? t('production.numpad.parcelsFromCache')
+        : t('production.numpad.parcelSource.task');
     }
-    if (gpsStatus === 'loading') {
-      return t('production.numpad.gps.loading');
+    if (parcel.status === 'awaiting_geometry') {
+      return t('production.numpad.gps.outlinesMissing');
     }
-    if (gpsStatus === 'denied') {
-      return t('production.numpad.gps.denied');
+    if (parcel.status === 'unavailable') {
+      return t('production.numpad.gps.noAssignment');
     }
-    if (gpsStatus === 'unavailable') {
+    if (parcel.gpsState === 'unavailable') {
       return t('production.numpad.gps.unavailable');
     }
-    if (gpsStatus === 'ok' && lastLonLat) {
-      return t('production.numpad.gps.outsideParcels');
+    if (parcel.gpsState === 'locating') {
+      return t('production.numpad.gps.loading');
     }
-    return t('production.numpad.gps.detecting');
-  }, [parcelSource, gpsStatus, lastLonLat, lastAccuracyM, t]);
+    return t('production.numpad.gps.outsideParcels');
+  }, [
+    parcelSource,
+    parcel.source,
+    parcel.distanceM,
+    parcel.status,
+    parcel.gpsState,
+    parcelsFromCache,
+    t,
+  ]);
 
   const bannerMainTitle = useMemo(() => {
     if (parcelName) return parcelName;
-    if (gpsStatus === 'ok' && activeParcels && activeParcels.length > 0 && !gpsHit) {
-      return t('production.numpad.noParcel');
-    }
+    if (parcel.status === 'needs_start') return t('production.numpad.noParcel');
     return '—';
-  }, [parcelName, gpsStatus, activeParcels, gpsHit, t]);
+  }, [parcelName, parcel.status, t]);
 
   const handlePress = useCallback((key: PadKey) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -233,7 +158,12 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
     return Number.isFinite(n) ? n : 0;
   }, [count]);
 
-  const canSave = !saving && numericCount > 0 && parcelId !== null;
+  // Soft presence gate: block only a field GPS can PROVE is the wrong one.
+  // `'unknown'` (offline, or no outline cached) still saves — a baler works
+  // long continuous sessions and a signal drop must not stop the count. That is
+  // the deliberate difference from the loader's strict in-field gate, where the
+  // bales are leaving on a truck.
+  const canSave = !saving && numericCount > 0 && parcelId !== null && parcel.presence !== 'outside';
 
   const doSave = useCallback(async () => {
     if (!canSave || parcelId === null) return;
@@ -368,9 +298,7 @@ export function ProductionNumpad({ operatorId, balerId }: ProductionNumpadProps)
       <View style={styles.parcelSection}>
         <Text style={styles.parcelLabel}>{t('production.numpad.parcelLabel')}</Text>
 
-        {parcelsError ? (
-          <Text style={styles.bannerError}>{t('production.numpad.parcelsError')}</Text>
-        ) : parcelsLoading && (activeParcels === undefined || activeParcels.length === 0) ? (
+        {parcelsLoading && (activeParcels === undefined || activeParcels.length === 0) ? (
           <View style={styles.bannerLoading}>
             <ActivityIndicator color={colors.primary} />
             <Text style={styles.bannerLoadingText}>{t('production.numpad.loadingParcels')}</Text>

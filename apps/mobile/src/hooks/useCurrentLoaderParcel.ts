@@ -5,10 +5,25 @@ import { useActiveParcels, findParcelAtLocation, type ActiveParcel } from './use
 import { useCachedParcels } from './useCachedParcels';
 import { useCachedDepots } from './useCachedDepots';
 import { useMyTasks, type MyTask } from './useMyTasks';
-import { distanceToBoundaryMeters } from '@/lib/point-in-geojson';
+import {
+  distanceToBoundaryMeters,
+  fieldToleranceMeters,
+  pickSmallestContainingParcel,
+  NEARBY_FIELD_RADIUS_M,
+} from '@/lib/point-in-geojson';
+import { useAssignedParcelGeometry } from './useAssignedParcelGeometry';
 import { haversineKm } from '@/lib/routing';
 import { type LocalDeliveryDestination } from '@/db/delivery-destinations-repo';
+import { isMineByOwner } from '@/lib/my-assignments';
 import { mobileLogger } from '@/lib/logger';
+
+/** A GPS fix, carrying the reported accuracy so presence checks can adapt their tolerance. */
+interface GpsFix {
+  lat: number;
+  lon: number;
+  /** Metres, per `expo-location`'s `coords.accuracy`; null when the platform doesn't report it. */
+  accuracyM: number | null;
+}
 
 /**
  * Fallback confirmation-ring radius (metres) for a depot with a stored centroid
@@ -21,11 +36,36 @@ export type CurrentParcelStatus =
   | 'loading'
   | 'resolved'
   | 'needs_start'
-  | 'multiple_active'
+  /**
+   * The operator has 2+ fields assigned but at least one of their outlines is
+   * not cached on this phone, so GPS has nothing to match against. Distinct
+   * from `needs_start` ("we have every outline, you are simply not on any of
+   * them") because the remedy is completely different: download the outlines,
+   * not walk somewhere. Never guesses a field — with several candidates and a
+   * missing polygon there is no honest answer to "which one", and attributing
+   * bales to the wrong field is worse than a blocked screen.
+   */
+  | 'awaiting_geometry'
   | 'unavailable';
 
 /** Live "am I physically on the field" state. */
 export type ParcelPresence = 'inside' | 'outside' | 'unknown';
+
+/**
+ * Why `presence` is what it is — specifically, why it's `'unknown'` (or, for
+ * a resolved target, whether it was verified at all). Distinguishes two very
+ * different failure modes that used to collapse into the same "unknown" and
+ * the same "Nu ești în câmp" message:
+ *  - `'gps'` — we have (or could have) the field's geometry, but no GPS fix.
+ *    Genuinely unverifiable *and* nothing to fall back on — the gate stays
+ *    blocked until a fix arrives.
+ *  - `'no_geometry'` / `'no_data'` — we have a GPS fix but lack the parcel's
+ *    boundary (offline, not yet synced) or the parcel row itself. The
+ *    operator's position is real; we just can't check it against anything.
+ *    This is the case the degraded-mode gate is built to unblock.
+ *  - `'ok'` — presence was actually computed (inside or outside).
+ */
+export type PresenceReason = 'ok' | 'gps' | 'no_geometry' | 'no_data';
 
 /**
  * GPS acquisition state, surfaced so callers can tell "still locating" (wait)
@@ -57,19 +97,43 @@ export interface CurrentLoaderParcel {
   cropType: string | null;
   /** Owning-farm name (denormalized, offline-capable) when known. */
   farmName: string | null;
-  /** How the parcel was resolved. */
-  source: 'in_progress_task' | 'gps' | null;
-  /** Whether the operator's GPS is strictly inside the resolved field boundary. */
+  /**
+   * How the parcel was resolved. `gps_nearby` means GPS named the field from
+   * the wider {@link NEARBY_FIELD_RADIUS_M} pass rather than containment — the
+   * field is identified, but the operator is demonstrably not standing in it.
+   */
+  source: 'in_progress_task' | 'gps' | 'gps_nearby' | null;
+  /** Whether the operator's GPS is within tolerance of the resolved field boundary. */
   presence: ParcelPresence;
   /** Metres to the field boundary when `presence === 'outside'`. */
   distanceM: number | null;
   /** GPS acquisition state — disambiguates `presence === 'unknown'`. */
   gpsState: ParcelGpsState;
   /**
-   * When `status === 'needs_start'`: available tasks to pick from.
-   * When `status === 'multiple_active'`: in_progress tasks GPS couldn't disambiguate.
+   * Why presence is unverified (or that it's genuinely verified) — see
+   * {@link PresenceReason}. `null` only while the resolver itself is still
+   * loading (`status === 'loading'`), before there is anything to reason about.
+   */
+  presenceReason: PresenceReason | null;
+  /**
+   * When `status === 'needs_start'`: the operator's assigned fields today,
+   * rendered READ-ONLY so they know where to walk. Never a picker — see the
+   * header note on GPS-only resolution.
    */
   candidates: MyTask[];
+  /**
+   * State of the local field-outline cache for today's assignment, so a screen
+   * can explain and repair `status === 'awaiting_geometry'` in place instead of
+   * presenting it as a generic GPS failure.
+   */
+  geometryRepair: {
+    /** Assigned fields with no polygon cached on this phone. */
+    missingCount: number;
+    /** True while the outlines are being fetched. */
+    isRepairing: boolean;
+    /** Re-attempt the download. */
+    retry: () => void;
+  };
   /** Re-run resolution (resets GPS and task state). */
   refresh: () => void;
 }
@@ -84,24 +148,31 @@ export type CurrentFieldParcel = CurrentLoaderParcel;
 /** Distance/inside check of a GPS fix against a resolved parcel's boundary. */
 function computePresence(
   parcelId: string | null,
-  gps: { lat: number; lon: number } | null,
+  gps: GpsFix | null,
   gpsReady: boolean,
   parcels: ActiveParcel[] | undefined,
-): { presence: ParcelPresence; distanceM: number | null } {
-  if (!gpsReady || !gps || !parcelId || !parcels) return { presence: 'unknown', distanceM: null };
-  const p = parcels.find((x) => x.id === parcelId);
-  if (!p || p.boundary == null) return { presence: 'unknown', distanceM: null };
-  // Strict containment — no tolerance buffer. distanceToBoundaryMeters returns
-  // exactly 0 only when the GPS point is truly inside the polygon; any other
-  // value means "outside" and is the real distance left to reach the field.
+): { presence: ParcelPresence; distanceM: number | null; reason: PresenceReason } {
+  if (!parcelId) return { presence: 'unknown', distanceM: null, reason: 'no_data' };
+  if (!gpsReady || !gps) return { presence: 'unknown', distanceM: null, reason: 'gps' };
+  const p = parcels?.find((x) => x.id === parcelId);
+  if (!p) return { presence: 'unknown', distanceM: null, reason: 'no_data' };
+  if (p.boundary == null) return { presence: 'unknown', distanceM: null, reason: 'no_geometry' };
+  // Adaptive tolerance: widens with the GPS fix's own reported accuracy (never
+  // past the backend's 30m enter buffer), so a degraded-but-present fix at a
+  // field edge doesn't read as "outside". `distanceM` always reports the real
+  // distance to the boundary (0 only when truly inside the polygon) so the UI
+  // can say "in field (12m from the edge)" instead of always showing 0 —
+  // independent of the tolerance used to decide inside/outside.
   const d = distanceToBoundaryMeters(gps.lon, gps.lat, p.boundary);
-  if (d === 0) return { presence: 'inside', distanceM: 0 };
-  return { presence: 'outside', distanceM: Math.round(d) };
+  const roundedD = Math.round(d);
+  if (d <= fieldToleranceMeters(gps.accuracyM))
+    return { presence: 'inside', distanceM: roundedD, reason: 'ok' };
+  return { presence: 'outside', distanceM: roundedD, reason: 'ok' };
 }
 
 /**
  * Presence of a GPS fix against a cached depot's geometry.
- *  - Boundary drawn → strict containment (inside iff distance 0), same as fields.
+ *  - Boundary drawn → same adaptive-tolerance containment as fields.
  *  - No boundary but a centroid → "inside" when within `confirm_radius_m` of the
  *    point (fallback {@link DEFAULT_DEPOT_CONFIRM_RADIUS_M}); otherwise the real
  *    distance to the centroid.
@@ -110,17 +181,20 @@ function computePresence(
  */
 function computeDepotPresence(
   destinationId: string | null,
-  gps: { lat: number; lon: number } | null,
+  gps: GpsFix | null,
   gpsReady: boolean,
   depots: LocalDeliveryDestination[],
-): { presence: ParcelPresence; distanceM: number | null } {
-  if (!gpsReady || !gps || !destinationId) return { presence: 'unknown', distanceM: null };
+): { presence: ParcelPresence; distanceM: number | null; reason: PresenceReason } {
+  if (!destinationId) return { presence: 'unknown', distanceM: null, reason: 'no_data' };
+  if (!gpsReady || !gps) return { presence: 'unknown', distanceM: null, reason: 'gps' };
   const depot = depots.find((x) => x.id === destinationId);
-  if (!depot) return { presence: 'unknown', distanceM: null };
+  if (!depot) return { presence: 'unknown', distanceM: null, reason: 'no_data' };
   if (depot.boundary) {
     const d = distanceToBoundaryMeters(gps.lon, gps.lat, depot.boundary);
-    if (d === 0) return { presence: 'inside', distanceM: 0 };
-    return { presence: 'outside', distanceM: Math.round(d) };
+    const roundedD = Math.round(d);
+    if (d <= fieldToleranceMeters(gps.accuracyM))
+      return { presence: 'inside', distanceM: roundedD, reason: 'ok' };
+    return { presence: 'outside', distanceM: roundedD, reason: 'ok' };
   }
   if (depot.coords_json) {
     try {
@@ -130,14 +204,14 @@ function computeDepotPresence(
         const meters = Math.round(
           haversineKm({ lat: gps.lat, lon: gps.lon }, { lat: c.lat, lon: c.lon }) * 1000,
         );
-        if (meters <= radius) return { presence: 'inside', distanceM: 0 };
-        return { presence: 'outside', distanceM: meters };
+        if (meters <= radius) return { presence: 'inside', distanceM: meters, reason: 'ok' };
+        return { presence: 'outside', distanceM: meters, reason: 'ok' };
       }
     } catch {
       // Malformed centroid — fall through to unknown.
     }
   }
-  return { presence: 'unknown', distanceM: null };
+  return { presence: 'unknown', distanceM: null, reason: 'no_geometry' };
 }
 
 const GPS_TIMEOUT_MS = 15_000;
@@ -151,25 +225,31 @@ const GPS_MAX_RETRIES = 1;
  * is never asked to pick manually. The only auto-resolve without GPS is the
  * trivial case of a single parcel assigned for the whole day.
  *
+ * Which tasks count as "mine" is `isMineByOwner` — machine OR direct user
+ * assignment, the same predicate the server and the offline fallback use.
+ *
  * Resolution order:
- *  1. Loader has exactly **one** task assigned today (any status) →
- *     resolve to that parcel without consulting GPS (single-parcel shortcut).
- *  2. GPS inside a parcel boundary:
- *     - 2+ in_progress: restrict GPS check to those parcel IDs.
- *     - 0 in_progress: check all assigned task parcels.
- *     - 1 in_progress + other availables: same GPS check across all (we no
- *       longer trust the in_progress flag alone when the loader has multiple
- *       parcels to choose from).
- *  3. 2+ in_progress but GPS could not pick one → `multiple_active`
- *     (banner shows a "Reîncearcă GPS" button — no manual list).
- *  4. 0 in_progress → `needs_start` with the assigned-but-not-yet-started
- *     tasks as informational context, or `unavailable` when nothing's
- *     assigned. The screen still forbids manual selection.
+ *  1. Operator has exactly **one** parcel assigned today (any status) →
+ *     resolve to it without consulting GPS. Note this tier needs no boundary
+ *     geometry at all, which is precisely why a phone with an empty parcel
+ *     cache works fine for a one-field operator and used to dead-end for a
+ *     multi-field one.
+ *  2. GPS inside a parcel boundary, matched ONLY against the operator's own
+ *     assigned fields — never the org-wide parcel cache.
+ *  3. Neither → `needs_start` with the assigned fields as read-only context,
+ *     or `unavailable` when nothing is assigned. The screen forbids manual
+ *     selection in both cases; the way out is to walk onto the field.
+ *
+ * Task `status` is deliberately not consulted anywhere: it does not survive the
+ * sync pull, so any tier keyed on `in_progress` behaved differently offline.
  *
  * GPS is attempted with a 15s timeout and one automatic retry before giving up.
  */
 export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
+  // Needed alongside the machine: an operator with no `assigned_machine_id`
+  // reaches their tasks only through `assigned_user_id`. See `isMineByOwner`.
+  const userId = useAuthStore((s) => s.userId);
   const { tasks, isLoading: tasksLoading } = useMyTasks();
   const { data: activeParcels, isLoading: parcelsLoading } = useActiveParcels();
   // Metadata source for the card (farm / locality / crop). Offline-first: tries
@@ -182,7 +262,7 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   // assigned to a delivery destination).
   const { depots: cachedDepots } = useCachedDepots();
 
-  const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
+  const [gps, setGps] = useState<GpsFix | null>(null);
   const [gpsStatus, setGpsStatus] = useState<
     'idle' | 'loading' | 'retrying' | 'unavailable' | 'ready'
   >('idle');
@@ -208,7 +288,11 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
           ),
         ]);
         if (cancelled) return;
-        setGps({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+        setGps({
+          lat: loc.coords.latitude,
+          lon: loc.coords.longitude,
+          accuracyM: Number.isFinite(loc.coords.accuracy) ? (loc.coords.accuracy ?? null) : null,
+        });
         setGpsStatus('ready');
       } catch (err) {
         if (cancelled) return;
@@ -241,7 +325,14 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
           const loc = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
-          if (!cancelled) setGps({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+          if (!cancelled)
+            setGps({
+              lat: loc.coords.latitude,
+              lon: loc.coords.longitude,
+              accuracyM: Number.isFinite(loc.coords.accuracy)
+                ? (loc.coords.accuracy ?? null)
+                : null,
+            });
         } catch {
           // Keep the last known fix; presence stays on the previous value.
         }
@@ -269,6 +360,53 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   // (idle/loading/retrying) is still `locating`.
   const gpsState: ParcelGpsState =
     gpsStatus === 'ready' ? 'ready' : gpsStatus === 'unavailable' ? 'unavailable' : 'locating';
+
+  // Ownership via machine OR direct user assignment — the same predicate the
+  // server's `getMyTasks` and the offline `readTasksFromSqlite` fallback use.
+  // Filtering on the machine alone (as this did) silently emptied the list for
+  // every operator with no `assigned_machine_id`, which ends as `unavailable`
+  // and a screen telling them they have no field today.
+  //
+  // Computed above the loading early-return because the geometry repair below
+  // is a hook and so cannot sit behind a conditional return.
+  const myTasks = tasks.filter((t) =>
+    isMineByOwner(
+      { assignedUserId: t.assignedUserId, machineId: t.machineId },
+      { userId, machineId: assignedMachineId },
+    ),
+  );
+  // Distinct parcel ids across all today's tasks (any status) — the "single
+  // parcel assigned" shortcut, and the bound on GPS matching. Deliberately
+  // status-blind: see the note on Tier 3 below.
+  const distinctTaskParcelIds = new Set(myTasks.map((t) => t.parcelId).filter(Boolean) as string[]);
+  const assignedParcelIds = [...distinctTaskParcelIds];
+
+  // Make sure today's fields actually have outlines on this phone. GPS matching
+  // is impossible without them, and the sync pull never carries them.
+  const { isRepairing, retry: retryGeometry } = useAssignedParcelGeometry(assignedParcelIds);
+  const assignedMissingGeometry = assignedParcelIds.filter((id) => {
+    const p = activeParcels?.find((x) => x.id === id);
+    return !p || p.boundary == null;
+  });
+  const geometryRepair = {
+    missingCount: assignedMissingGeometry.length,
+    isRepairing,
+    retry: retryGeometry,
+  };
+
+  // The exact fingerprint of an ownership-predicate mismatch — the server sent
+  // tasks and none of them looked like ours. There is no way to reproduce that
+  // on a fleet phone without a log line. In an effect, and keyed on the counts,
+  // so it records a transition rather than firing on every GPS-driven re-render.
+  const ownerMismatch = tasks.length > 0 && myTasks.length === 0;
+  useEffect(() => {
+    if (!ownerMismatch) return;
+    mobileLogger.flow('useCurrentLoaderParcel: tasks returned but none matched owner predicate', {
+      tasksLen: tasks.length,
+      userId,
+      assignedMachineId,
+    });
+  }, [ownerMismatch, tasks.length, userId, assignedMachineId]);
 
   // Pull farm / locality / crop for a resolved parcel from the cached-parcels
   // list (offline-capable). Returns nulls until the cache is populated.
@@ -300,34 +438,25 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       presence: 'unknown',
       distanceM: null,
       gpsState,
+      presenceReason: null,
       candidates: [],
+      geometryRepair,
       refresh,
     };
   }
-
-  const myMachineTasks = tasks.filter(
-    (t) => assignedMachineId != null && t.machineId === assignedMachineId,
-  );
-  const inProgress = myMachineTasks.filter((t) => t.status === 'in_progress' && !!t.parcelId);
-  // Distinct parcel ids across all today's tasks (any status) — used to
-  // detect the "single parcel assigned" shortcut.
-  const distinctTaskParcelIds = new Set(
-    myMachineTasks.map((t) => t.parcelId).filter(Boolean) as string[],
-  );
 
   // Depot target: a loader assigned to a depot (destinationId set, no parcel).
   // Resolves like the single-parcel shortcut — presence is computed against the
   // cached depot geometry rather than a field boundary. Only when the loader has
   // no parcel tasks at all (field XOR depot per the board convention).
-  const depotTasks = myMachineTasks.filter((t) => !!t.destinationId && !t.parcelId);
+  const depotTasks = myTasks.filter((t) => !!t.destinationId && !t.parcelId);
   if (distinctTaskParcelIds.size === 0 && depotTasks.length > 0) {
     const dt = depotTasks[0]!;
-    const { presence, distanceM } = computeDepotPresence(
-      dt.destinationId,
-      gps,
-      gpsStatus === 'ready',
-      cachedDepots,
-    );
+    const {
+      presence,
+      distanceM,
+      reason: presenceReason,
+    } = computeDepotPresence(dt.destinationId, gps, gpsStatus === 'ready', cachedDepots);
     return {
       status: 'resolved',
       targetType: 'depot',
@@ -344,7 +473,9 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       presence,
       distanceM,
       gpsState,
+      presenceReason,
       candidates: [],
+      geometryRepair,
       refresh,
     };
   }
@@ -352,13 +483,12 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
   // Tier 1: exactly one parcel assigned for the whole day → resolve without
   // GPS. The trivial case where there's nothing to pick between.
   if (distinctTaskParcelIds.size === 1) {
-    const t = myMachineTasks.find((mt) => !!mt.parcelId)!;
-    const { presence, distanceM } = computePresence(
-      t.parcelId,
-      gps,
-      gpsStatus === 'ready',
-      activeParcels,
-    );
+    const t = myTasks.find((mt) => !!mt.parcelId)!;
+    const {
+      presence,
+      distanceM,
+      reason: presenceReason,
+    } = computePresence(t.parcelId, gps, gpsStatus === 'ready', activeParcels);
     return {
       status: 'resolved',
       targetType: 'parcel',
@@ -374,28 +504,45 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       presence,
       distanceM,
       gpsState,
+      presenceReason,
       candidates: [],
+      geometryRepair,
       refresh,
     };
   }
 
-  // Tier 2: GPS inside a parcel boundary.
-  // For 2+ in_progress: restrict to those parcel IDs so GPS can disambiguate.
-  // For 0 in_progress: check all task-assigned parcels.
-  if (gpsStatus === 'ready' && gps && activeParcels?.length) {
-    const restrictIds: Set<string> =
-      inProgress.length > 1
-        ? new Set(inProgress.map((t) => t.parcelId).filter(Boolean) as string[])
-        : new Set(myMachineTasks.map((t) => t.parcelId).filter(Boolean) as string[]);
-    const gpsPool: ActiveParcel[] = restrictIds.size
-      ? activeParcels.filter((p) => restrictIds.has(p.id))
-      : activeParcels;
-    const hit = findParcelAtLocation(gps.lon, gps.lat, gpsPool);
+  // Tier 2: GPS inside a parcel boundary — always bounded by the operator's OWN
+  // assigned fields.
+  //
+  // This pool previously fell back to EVERY cached parcel in the organisation
+  // whenever the assigned set came out empty, so an operator standing in any of
+  // the org's fields resolved to it with `source: 'gps'`. The server does not
+  // catch that either — `trips.service.ts` only checks the parcel belongs to the
+  // organisation, not that it was assigned — so the wrong-field load was
+  // accepted and written. No fallback: with nothing assigned there is nothing
+  // GPS is allowed to match.
+  if (gpsStatus === 'ready' && gps && distinctTaskParcelIds.size > 0) {
+    const gpsPool: ActiveParcel[] = (activeParcels ?? []).filter((p) =>
+      distinctTaskParcelIds.has(p.id),
+    );
+    // Two passes over the same pool. First containment (+ the standard 30m
+    // drift buffer). Failing that, the widest radius at which naming the field
+    // is still unambiguous — an operator on the access track or at a headland
+    // gets told which field they are next to and how far, instead of a dead end.
+    // A `gps_nearby` match still reports `presence: 'outside'`, so it names the
+    // field without ever asserting the operator is standing in it.
+    const contained = findParcelAtLocation(gps.lon, gps.lat, gpsPool);
+    const hit =
+      contained ?? pickSmallestContainingParcel(gps.lon, gps.lat, gpsPool, NEARBY_FIELD_RADIUS_M);
     if (hit) {
       // GPS resolves WHICH field (tolerance helps disambiguate between parcels),
-      // but presence is strict: "inside" only when the point is truly within the
-      // boundary, otherwise show the real distance left to reach it.
-      const { presence, distanceM } = computePresence(hit.id, gps, true, activeParcels);
+      // and presence re-checks the same point against the adaptive tolerance
+      // (see computePresence) to decide inside/outside and report the reason.
+      const {
+        presence,
+        distanceM,
+        reason: presenceReason,
+      } = computePresence(hit.id, gps, true, activeParcels);
       return {
         status: 'resolved',
         targetType: 'parcel',
@@ -406,20 +553,29 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
         destinationName: null,
         destinationCode: null,
         ...enrich(hit.id),
-        source: 'gps',
+        source: contained ? 'gps' : 'gps_nearby',
         presence,
         distanceM,
         gpsState,
+        presenceReason,
         candidates: [],
+        geometryRepair,
         refresh,
       };
     }
   }
 
-  // Tier 3: 2+ in_progress but GPS couldn't pick one → operator must confirm.
-  if (inProgress.length > 1) {
+  // Tier 2b: GPS found nothing, but that verdict is not trustworthy — at least
+  // one of the operator's fields has no outline cached, so it could not have
+  // been matched even if they were standing in the middle of it. Say so, and
+  // offer the download, rather than reporting a GPS failure that isn't one.
+  //
+  // Only for 2+ fields: a single assigned field never reaches here (Tier 1
+  // resolves it without geometry, and `computePresence` already reports
+  // `no_geometry` there for the degraded-mode gate to pick up).
+  if (assignedMissingGeometry.length > 0 && distinctTaskParcelIds.size > 1) {
     return {
-      status: 'multiple_active',
+      status: 'awaiting_geometry',
       targetType: 'parcel',
       parcelId: null,
       parcelName: null,
@@ -434,15 +590,25 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
       presence: 'unknown',
       distanceM: null,
       gpsState,
-      candidates: inProgress,
+      presenceReason: 'no_geometry',
+      candidates: myTasks.filter((t) => !!t.parcelId),
+      geometryRepair,
       refresh,
     };
   }
 
-  // Tier 4: GPS didn't match any assigned parcel. Surface ALL tasks (any
+  // Tier 3: GPS didn't match any assigned parcel. Surface ALL tasks (any
   // status) as informational candidates so the operator knows where to walk;
   // the screen renders them read-only with a "Reîncearcă GPS" button.
-  const assignedAny = myMachineTasks.filter((t) => !!t.parcelId);
+  //
+  // There used to be a tier above this one for "2+ in_progress but GPS couldn't
+  // pick one" (`multiple_active`). Under the GPS-only rule that was the same
+  // state as this one — the operator can do nothing differently about either —
+  // and it was the ONLY thing that made this resolver behave differently online
+  // and offline: `readTasksFromSqlite` synthesizes `status: 'available'` for
+  // every row (the pull payload carries no status), so offline `in_progress`
+  // was always empty and that tier could never fire. One state, one message.
+  const assignedAny = myTasks.filter((t) => !!t.parcelId);
   return {
     status: assignedAny.length ? 'needs_start' : 'unavailable',
     targetType: 'parcel',
@@ -459,7 +625,9 @@ export function useCurrentLoaderParcel(): CurrentLoaderParcel {
     presence: 'unknown',
     distanceM: null,
     gpsState,
+    presenceReason: 'no_data',
     candidates: assignedAny,
+    geometryRepair,
     refresh,
   };
 }

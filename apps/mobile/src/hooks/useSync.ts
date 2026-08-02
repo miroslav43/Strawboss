@@ -69,6 +69,9 @@ export function useSync() {
         },
         // Advertise tombstone support so /sync/pull returns deletions[].
         defaultHeaders: { 'X-Sync-Caps': 'tombstones-v1' },
+        // A full pull/push batch is bigger than a plain GET — give it more
+        // room than the mobile default (15s) before we give up on it.
+        timeoutMs: 60_000,
       });
 
       const syncQueueRepo = new SyncQueueRepo(db);
@@ -118,6 +121,32 @@ export function useSync() {
         queryClient.invalidateQueries({ queryKey: PARCELS_REFRESH_KEY });
         queryClient.invalidateQueries({ queryKey: DEPOTS_LOCAL_KEY });
         queryClient.invalidateQueries({ queryKey: DEPOTS_REFRESH_KEY });
+        // Purple-on-the-map assignment set — a pull may have just changed
+        // today's task_assignments or trips.
+        queryClient.invalidateQueries({ queryKey: ['my-assigned-parcel-ids'] });
+      }
+
+      // A parcel can only be LEARNED ABOUT via pull while online (that's the
+      // only moment it could have arrived at all), so this is always run at
+      // a moment with a connection to repair it in. `upsertFromPull` never
+      // writes geometry (parcels-repo.ts) — only the REST refresh does — so a
+      // parcel first synced mid-day sits with `geometry = NULL` until
+      // something forces that refresh. Left alone, it's invisible on the
+      // offline map and unreachable by the background geofence wake.
+      //
+      // `refetchQueries`, not `invalidateQueries`: invalidating a query with
+      // no mounted observer (e.g. the baler home screen, which never renders
+      // a map) is a no-op, and this repair must happen regardless of what
+      // screen is open.
+      if (isConnected) {
+        try {
+          const missing = await parcelsRepo.countMissingGeometry();
+          if (missing > 0) {
+            await queryClient.refetchQueries({ queryKey: PARCELS_REFRESH_KEY, type: 'all' });
+          }
+        } catch {
+          // Best-effort — a normal sync cycle already refreshed the cache above.
+        }
       }
 
       await refreshPendingCount();
@@ -128,7 +157,7 @@ export function useSync() {
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, [refreshPendingCount, queryClient]);
+  }, [refreshPendingCount, queryClient, isConnected]);
 
   const retryFailedAndSync = useCallback(async () => {
     try {

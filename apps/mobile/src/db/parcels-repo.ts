@@ -121,6 +121,21 @@ export class ParcelsRepo {
     return this.db.getAllAsync<LocalParcel>(`SELECT * FROM parcels ORDER BY name ASC`);
   }
 
+  /**
+   * Count parcels cached with no geometry — the `upsertFromPull` gap
+   * documented above: a parcel first learned about through delta sync (e.g.
+   * newly assigned mid-day) has a row here before its polygon has ever come
+   * down via the REST endpoint. Used to trigger a targeted REST refresh
+   * while still online, closing the window before the phone might go
+   * offline with the field un-mappable and un-geofenceable.
+   */
+  async countMissingGeometry(): Promise<number> {
+    const result = await this.db.getFirstAsync<{ n: number }>(
+      `SELECT COUNT(*) as n FROM parcels WHERE geometry IS NULL OR geometry = ''`,
+    );
+    return result?.n ?? 0;
+  }
+
   async listByIds(ids: string[]): Promise<LocalParcel[]> {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(', ');

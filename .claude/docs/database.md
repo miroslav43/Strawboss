@@ -2,7 +2,7 @@
 type: doc
 title: "Database Schema"
 created: 2026-04-16
-updated: 2026-07-27
+updated: 2026-07-31
 tags: [doc, database, schema, postgres, postgis, rls]
 status: mature
 related:
@@ -10,18 +10,19 @@ related:
   - "[[backend]]"
   - "[[sync-protocol]]"
   - "[[packages-types]]"
+  - "[[feature-toggles]]"
 ---
 
 # Database Schema
 
-PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00091).
+PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00093).
 
 ## Extensions (00001)
 
 - `uuid-ossp` -- UUID generation (`uuid_generate_v4()`)
 - `postgis` -- Spatial types and functions
 
-## Enums (00001, 00009, 00015, 00017, 00055, 00083, 00087, 00088)
+## Enums (00001, 00009, 00015, 00017, 00055, 00083, 00087, 00088, 00092)
 
 | Enum | Values |
 |---|---|
@@ -31,7 +32,7 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 | `trip_status` | `planned`, `loading`, `loaded`, `in_transit`, `arrived`, `delivering`, `delivered`, `completed`, `cancelled`, `disputed` |
 | `parcel_status` | `active`, `inactive` |
 | `consumable_type` | `twine`, `net_wrap`, `silage_film`, `other` |
-| `document_type` | `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `cmr_scan` (added 00083 -- the photographed *paper* CMR from an auxiliary load's external driver, distinct from the backend-generated `cmr`; both can coexist on one trip), `comanda` (added 00088 -- auto-generated transport-order PDF for the transporter feature) |
+| `document_type` | `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `cmr_scan` (added 00083 -- the photographed *paper* CMR from an auxiliary load's external driver, distinct from the backend-generated `cmr`; both can coexist on one trip), `comanda` (added 00088 -- auto-generated transport-order PDF for the transporter feature), `cmr_scan_delivery` (added 00092 -- the ARRIVAL-side counterpart photographed through a one-time public link when an aux load reaches its destination; `cmr_scan` remains the pickup-side photo, so both now coexist on the same aux trip request) |
 | `document_status` | `pending`, `generating`, `partial`, `generated`, `sent`, `failed` |
 | `alert_category` | `fraud`, `anomaly`, `maintenance`, `safety`, `system` |
 | `alert_severity` | `low`, `medium`, `high`, `critical` |
@@ -204,6 +205,35 @@ Server-side reverse-geocode cache: `(rounded coordinate) → nearest locality`, 
 - Four new composite FKs, all `(organization_id, <col>) REFERENCES parcels (organization_id, id)`, `MATCH SIMPLE` (default — a `NULL` parcel reference is unchecked, required since every one of these columns is nullable): `trip_requests_source_parcel_org_fkey`, `trips_source_parcel_org_fkey`, `bale_loads_parcel_org_fkey`, `task_assignments_parcel_org_fkey`.
 
 This closes the same class of gap as the composite FKs already shipped for `delivery_destinations` (00070) and `beneficiaries` (00063/00068) — a row in org A can no longer reference a `parcels` row belonging to org B, at the database level, regardless of what the application layer does or forgets to check. It is **not** a 1:1 fix for any single catalogued finding in `.claude/issues/security-audit-2026-05-11.md` (that audit's still-open H-8/H-9/H-10 are about *other* unguarded FK columns — `bale_loads.trip_id`, `bale_productions.parcelId`/`balerId`/`operatorId`, `consumable_logs.*` — which this migration does not touch); it is documented here as defense-in-depth that structurally closes the parcel-reference slice of that same bug class.
+
+### Per-Organization Feature Toggles (00093)
+
+`00093_org_feature_overrides.sql` — storage for the per-org feature-toggle system; full mechanics
+(registry, resolution, backend enforcement, admin/mobile consumption) documented in
+[[feature-toggles]].
+
+- **organizations.feature_overrides**: `JSONB NOT NULL DEFAULT '{}'` — sparse, holds only deviations
+  from the static registry in `packages/types/src/features.ts` (`effective = override ?? default`).
+  CHECK `jsonb_typeof(feature_overrides) = 'object'` (a scalar/array here would make the resolver read
+  every key as `undefined`, silently "everything on" at best). This migration cannot change behaviour
+  for any existing org on its own — every registry default is `true`, so an untouched org stores `{}`.
+  No index: read only by `organizations.id` (already the PK), once per `AuthGuard` cache miss.
+- **organizations.plan_label**: `TEXT`, CHECK `char_length <= 64` — cosmetic commercial-plan name
+  ("Basic"/"Pro"/"Enterprise") for the super-admin org list. Display only; no code branches on it.
+- **organization_feature_changes**: append-only audit trail, one row per **changed key** (not per
+  save). `id` (UUID PK), `organization_id` (FK organizations), `feature_key` (TEXT), `old_enabled`
+  (nullable BOOLEAN — `NULL` = was on the registry default), `new_enabled` (BOOLEAN NOT NULL),
+  `actor_user_id` (FK users, nullable), `actor_role` (TEXT), `reason` (TEXT NOT NULL), `created_at`.
+  Index `idx_org_feature_changes_org_created (organization_id, created_at DESC)`. Exists because
+  `organizations` is not in the 00023 generic audit-trigger table list and `audit.interceptor.ts` is
+  declared but never bound — without this table a cross-tenant kill-switch would leave no trace. RLS
+  enabled, **no permissive policy** — same server-authoritative pattern as `machine_last_positions`
+  (00081) / `outbound_messages` (00071) / `geocode_cache` (00089); the backend connects as table owner
+  and bypasses RLS.
+- Existing `org_read_own` RLS policy on `organizations` (00052) covers the two new columns
+  automatically — acceptable, since a member of an org may read its own flags and both clients are told
+  them anyway. No INSERT/UPDATE policy exists on `organizations`, so direct PostgREST writes stay
+  fail-closed; the NestJS backend bypasses RLS as table owner.
 
 ## Generated Columns
 

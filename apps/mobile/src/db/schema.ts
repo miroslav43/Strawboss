@@ -131,6 +131,10 @@ export const TABLES = {
     gps_lat REAL,
     gps_lon REAL,
     notes TEXT,
+    -- Set when the load was registered while the field's GPS presence could
+    -- not be verified (offline / boundary not cached) and the operator
+    -- explicitly confirmed anyway — see server migration 00094.
+    location_unverified INTEGER DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     server_version INTEGER DEFAULT 0

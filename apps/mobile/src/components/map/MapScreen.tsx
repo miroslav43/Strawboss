@@ -5,6 +5,7 @@ import { AppModal } from '@/components/shared/AppModal';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors } from '@strawboss/ui-tokens';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { mobileApiClient } from '@/lib/api-client';
@@ -14,6 +15,7 @@ import { MapView, type MapViewHandle } from './MapView';
 import { ParcelInfoSheet } from './ParcelInfoSheet';
 import { useCachedParcels } from '@/hooks/useCachedParcels';
 import { useCachedDepots } from '@/hooks/useCachedDepots';
+import { useMyAssignedParcelIds } from '@/hooks/useMyAssignedParcelIds';
 import { useI18n } from '@/lib/i18n';
 import type {
   MapEvent,
@@ -105,6 +107,10 @@ export function MapScreen({ focusId }: MapScreenProps) {
 
   // FM-13: Use cached parcels (API when online, SQLite cache when offline).
   const { parcels: cachedParcels, fromCache: parcelsFromCache } = useCachedParcels();
+
+  // Parcels assigned to the logged-in operator today — highlighted purple.
+  // SQLite-only (see the hook), so this works identically online and offline.
+  const { assignedParcelIds } = useMyAssignedParcelIds();
 
   // Local-first, like the parcels above: render from the SQLite cache and let the
   // server refresh land in the background. Offline, this is the difference between
@@ -272,6 +278,23 @@ export function MapScreen({ focusId }: MapScreenProps) {
     };
   }, []);
 
+  // Content signatures for the parcel/destination sets. `SET_PARCELS` (below)
+  // unconditionally re-centers/re-fits the map inside the WebView — it's what
+  // clears deleted-parcel polygons, so it can't be skipped, but sending it on
+  // every identity change of `cachedParcels`/`destinations` (a new array on
+  // every 60s-ish refresh, every PARCELS_LOCAL_KEY invalidation) yanked the
+  // camera out from under the operator's finger for no reason: nothing
+  // actually changed. Gate the effect on real content instead of identity.
+  const parcelsSignature = useMemo(
+    () =>
+      cachedParcels.map((p) => `${p.id}:${p.harvestStatus ?? ''}:${p.boundary ? 1 : 0}`).join('|'),
+    [cachedParcels],
+  );
+  const destinationsSignature = useMemo(
+    () => destinations.map((d) => `${d.id}:${d.boundary ? 1 : 0}`).join('|'),
+    [destinations],
+  );
+
   // Send data to map when ready (FM-13: uses cachedParcels — works online + offline)
   useEffect(() => {
     if (!mapReady) return;
@@ -301,7 +324,26 @@ export function MapScreen({ focusId }: MapScreenProps) {
       };
     });
     mapRef.current?.sendCommand({ type: 'SET_DESTINATIONS', destinations: destData });
-  }, [mapReady, cachedParcels, destinations]);
+    // Deliberately keyed on content signatures, not array identity — see comment above.
+  }, [mapReady, parcelsSignature, destinationsSignature]);
+
+  // Purple "assigned to me today" overlay — a style-only command (see
+  // SET_ASSIGNED_PARCELS in leaflet-map-content.ts), independent of
+  // SET_PARCELS above so a reassignment mid-sync never touches the camera.
+  // Sorted-join signature because `assignedParcelIds` gets a new Set identity
+  // on every query resolution even when its contents haven't changed.
+  const assignedIdsSignature = useMemo(
+    () => [...assignedParcelIds].sort().join(','),
+    [assignedParcelIds],
+  );
+  useEffect(() => {
+    if (!mapReady) return;
+    mapRef.current?.sendCommand({
+      type: 'SET_ASSIGNED_PARCELS',
+      parcelIds: [...assignedParcelIds],
+    });
+    // Deliberately keyed on the sorted signature, not Set identity — see comment above.
+  }, [mapReady, assignedIdsSignature]);
 
   // Send machine markers to map (others only; distance label updates with userLocation)
   useEffect(() => {
@@ -448,6 +490,17 @@ export function MapScreen({ focusId }: MapScreenProps) {
           <Text style={styles.offlineBannerText}>{t('map.mapScreen.offlineBanner')}</Text>
         </View>
       )}
+      {/* Legend for the purple "assigned to me today" overlay — only shown
+          when there's actually something purple on screen to explain. */}
+      {assignedParcelIds.size > 0 && (
+        <View
+          style={[styles.legendChip, { top: 12 + insets.top + (parcelsFromCache ? 34 : 0) }]}
+          pointerEvents="none"
+        >
+          <View style={styles.legendSwatch} />
+          <Text style={styles.legendText}>{t('map.mapScreen.legendAssigned')}</Text>
+        </View>
+      )}
       {showOverlayControls && (
         <TouchableOpacity
           style={[styles.resetFab, { top: 12 + insets.top }]}
@@ -517,6 +570,33 @@ const styles = StyleSheet.create({
     borderColor: '#D7CCC8',
   },
   offlineBannerText: {
+    fontSize: 12,
+    color: '#5D4037',
+    fontWeight: '500',
+  },
+  legendChip: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0D6D0',
+  },
+  legendSwatch: {
+    width: 10,
+    height: 10,
+    borderRadius: 3,
+    backgroundColor: colors.mapAssignedFill,
+    borderWidth: 1.5,
+    borderColor: colors.mapAssigned,
+  },
+  legendText: {
     fontSize: 12,
     color: '#5D4037',
     fontWeight: '500',

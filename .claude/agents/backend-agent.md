@@ -94,6 +94,15 @@ The trip lifecycle is enforced by XState v5 in `@strawboss/domain`. The backend 
 - `sendPush()` stamps `recipientUserId` on every push `data` payload (`d7c0430`) — the mobile client drops any push addressed to someone else (shared-device stale-token leak defence). Any **new** push call site automatically inherits this if it routes through `sendPush()`; don't build a push payload by hand.
 - Never fan a broadcast/alert out across **all** organizations on a null `organizationId` — fail closed (throw / no-op with a warn log) instead of dropping the org filter. `broadcast(kind: 'all')`, `sendTruckIdleAdminAlert`, `sendParcelLoadMismatchAlert` are the precedent.
 
+### Feature gates (`src/features/`)
+Per-org feature toggles -- registry, `FeaturesGuard`/`@RequireFeature`, resolution, deploy safety: see `.claude/docs/feature-toggles.md` (not duplicated here). Pattern for gating any NEW write path or job (six precedents landed in `d141fb8`, see `.claude/docs/backend.md` "Feature-Gated Call Sites"):
+- Route with `request.user` -> `@RequireFeature('module.key')` decorator on the controller method (WRITES only; multiple keys: `@RequireFeature('a.b', 'c.d')`).
+- `@Public()` route -> the guard fails open (no `request.user` to read an org from). Gate in-service instead: `featuresService.assertEnabledForOrg(orgId, key)`, called AFTER the org is resolved and strictly BEFORE any INSERT/UPDATE -- rejecting after a partial write leaves an orphan row.
+- BullMQ job/processor iterating multiple orgs -> quiet `return` (single-org job) or `continue` (per-record loop), NEVER throw -- a throw either kills the whole run (loop) or feeds BullMQ's retry into `failed` (noise for a config decision that will never succeed). Check via `isFeatureEnabled(await featuresService.getDisabledForOrg(orgId), key)`.
+- A gate reusing another gate's already-fetched `getDisabledForOrg(orgId)` result (no extra query) beats a second lookup -- see `AlertsService.createFromDraft`'s `analytics.fraud` check next to its `analytics.alerts` one.
+- Any `metadata`/`data` payload a gate reads `orgId` from (e.g. messaging) MUST carry `orgId` explicitly -- a missing org makes the gate fail OPEN, not closed. Threading `orgId` into `TripsService`'s SMS call sites (`sendDriverAssignedSms`, arrival-CMR SMS) is the precedent for wiring a new one.
+- Never rename a registry key (`packages/types/src/features.ts`) -- a rename silently re-enables the feature for every org that had it off. Add a new key and retire the old one; only remove (don't just deprecate) a key that was never `wired`, since an unwired key rejected every write and no org could hold an override.
+
 ### Logging
 - Inject: `@Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger`
 - Info: `this.winston.info('message', { context: 'ServiceName' })`

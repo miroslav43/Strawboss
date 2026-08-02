@@ -39,10 +39,67 @@ export interface ApiClientConfig {
    * (`Content-Type`, `Authorization`) take precedence.
    */
   defaultHeaders?: Record<string, string>;
+  /**
+   * Default per-request abort timeout in milliseconds. `undefined` (the
+   * default) means no timeout — `fetch` waits indefinitely, which is the
+   * historical behaviour and what admin-web keeps relying on.
+   *
+   * Mobile sets this because a screen an operator stands in a field
+   * depends on: with bars but no throughput (a common in-field condition),
+   * an un-timed `fetch` never settles, so a query built on it never fails
+   * over to its offline fallback either — it just hangs forever. See
+   * individual call sites for per-request overrides (a sync pull/push or a
+   * multipart upload legitimately needs longer than a plain GET).
+   */
+  timeoutMs?: number;
+}
+
+/** Per-call override of {@link ApiClientConfig.timeoutMs}. */
+export interface ApiRequestOptions {
+  timeoutMs?: number;
 }
 
 export class ApiClient {
   constructor(private config: ApiClientConfig) {}
+
+  /**
+   * Build a *fresh* abort signal for a single fetch attempt. Must be called
+   * again for every retry — an already-fired/consumed `AbortSignal` cannot be
+   * reused, so sharing one across the initial request and its 401 retry would
+   * make the retry fail instantly once the first attempt's timer had fired.
+   */
+  private withTimeout(ms: number | undefined): {
+    signal: AbortSignal | undefined;
+    clear: () => void;
+  } {
+    if (ms == null) return { signal: undefined, clear: () => {} };
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      // Self-managed timer; nothing for us to clear.
+      return { signal: AbortSignal.timeout(ms), clear: () => {} };
+    }
+    const controller = new AbortController();
+    const handle = setTimeout(() => controller.abort(), ms);
+    return { signal: controller.signal, clear: () => clearTimeout(handle) };
+  }
+
+  /** Runs `fetch`, converting our own timeout abort into a typed `ApiError(0, ...)`. */
+  private async fetchWithTimeout(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number | undefined,
+  ): Promise<Response> {
+    const { signal, clear } = this.withTimeout(timeoutMs);
+    try {
+      return await fetch(url, signal ? { ...init, signal } : init);
+    } catch (err) {
+      if (signal?.aborted) {
+        throw new ApiError(0, 'Request timed out');
+      }
+      throw err;
+    } finally {
+      clear();
+    }
+  }
 
   private async handleErrorResponse(
     res: Response,
@@ -62,31 +119,41 @@ export class ApiClient {
     throw new ApiError(res.status, message, error);
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    opts?: ApiRequestOptions,
+  ): Promise<T> {
     const token = await this.config.getToken();
     const hasBody = body !== undefined;
+    const timeoutMs = opts?.timeoutMs ?? this.config.timeoutMs;
     const buildHeaders = (t: string | null) => ({
       ...(this.config.defaultHeaders ?? {}),
       ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...(t ? { Authorization: `Bearer ${t}` } : {}),
     });
-    const res = await fetch(`${this.config.baseUrl}${path}`, {
-      method,
-      headers: buildHeaders(token),
-      body: hasBody ? JSON.stringify(body) : undefined,
-    });
+    const doFetch = (t: string | null) =>
+      this.fetchWithTimeout(
+        `${this.config.baseUrl}${path}`,
+        {
+          method,
+          headers: buildHeaders(t),
+          body: hasBody ? JSON.stringify(body) : undefined,
+        },
+        timeoutMs,
+      );
+    const res = await doFetch(token);
     captureServerDate(res);
 
-    // On 401, force a real token refresh and retry once.
+    // On 401, force a real token refresh and retry once. `doFetch` builds a
+    // fresh abort signal per call, so the retry is never stuck with the
+    // initial attempt's already-fired timer.
     if (res.status === 401) {
       const newToken = this.config.refreshToken
         ? await this.config.refreshToken()
         : await this.config.getToken();
-      const retryRes = await fetch(`${this.config.baseUrl}${path}`, {
-        method,
-        headers: buildHeaders(newToken),
-        body: hasBody ? JSON.stringify(body) : undefined,
-      });
+      const retryRes = await doFetch(newToken);
       captureServerDate(retryRes);
       if (!retryRes.ok) {
         return this.handleErrorResponse(retryRes, method, path, 'Request failed');
@@ -103,20 +170,20 @@ export class ApiClient {
     return res.json() as Promise<T>;
   }
 
-  get<T>(path: string) {
-    return this.request<T>('GET', path);
+  get<T>(path: string, opts?: ApiRequestOptions) {
+    return this.request<T>('GET', path, undefined, opts);
   }
-  post<T>(path: string, body?: unknown) {
-    return this.request<T>('POST', path, body);
+  post<T>(path: string, body?: unknown, opts?: ApiRequestOptions) {
+    return this.request<T>('POST', path, body, opts);
   }
-  put<T>(path: string, body?: unknown) {
-    return this.request<T>('PUT', path, body);
+  put<T>(path: string, body?: unknown, opts?: ApiRequestOptions) {
+    return this.request<T>('PUT', path, body, opts);
   }
-  patch<T>(path: string, body?: unknown) {
-    return this.request<T>('PATCH', path, body);
+  patch<T>(path: string, body?: unknown, opts?: ApiRequestOptions) {
+    return this.request<T>('PATCH', path, body, opts);
   }
-  delete<T>(path: string) {
-    return this.request<T>('DELETE', path);
+  delete<T>(path: string, opts?: ApiRequestOptions) {
+    return this.request<T>('DELETE', path, undefined, opts);
   }
 
   /**
@@ -139,28 +206,31 @@ export class ApiClient {
   }
 
   /** Upload a file via multipart form data. */
-  async upload<T>(path: string, formData: FormData): Promise<T> {
+  async upload<T>(path: string, formData: FormData, opts?: ApiRequestOptions): Promise<T> {
     const token = await this.config.getToken();
+    const timeoutMs = opts?.timeoutMs ?? this.config.timeoutMs;
     const buildUploadHeaders = (t: string | null) => ({
       ...(this.config.defaultHeaders ?? {}),
       ...(t ? { Authorization: `Bearer ${t}` } : {}),
     });
-    const res = await fetch(`${this.config.baseUrl}${path}`, {
-      method: 'POST',
-      headers: buildUploadHeaders(token),
-      body: formData,
-    });
+    const doFetch = (t: string | null) =>
+      this.fetchWithTimeout(
+        `${this.config.baseUrl}${path}`,
+        {
+          method: 'POST',
+          headers: buildUploadHeaders(t),
+          body: formData,
+        },
+        timeoutMs,
+      );
+    const res = await doFetch(token);
 
-    // On 401, force a real token refresh and retry once.
+    // On 401, force a real token refresh and retry once (fresh signal — see request()).
     if (res.status === 401) {
       const newToken = this.config.refreshToken
         ? await this.config.refreshToken()
         : await this.config.getToken();
-      const retryRes = await fetch(`${this.config.baseUrl}${path}`, {
-        method: 'POST',
-        headers: buildUploadHeaders(newToken),
-        body: formData,
-      });
+      const retryRes = await doFetch(newToken);
       if (!retryRes.ok) {
         return this.handleErrorResponse(retryRes, 'POST', path, 'Upload failed');
       }

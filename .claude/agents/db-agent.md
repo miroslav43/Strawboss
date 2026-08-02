@@ -64,6 +64,8 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 00089_geocode_cache.sql                    -- geocode_cache: server-side reverse-geocode cache (coord_key = "<lat.toFixed(3)>,<lon.toFixed(3)>" -> locality, ~110m buckets) so the tasks-page machine cards / live map don't hammer public Nominatim (~1 req/s) across a 30s-polled fleet. RLS on, no permissive policy (service-role only), same pattern as machine_last_positions/outbound_messages.
 00090_trip_request_source_parcel.sql       -- trip_requests.source_parcel_id (nullable FK parcels(id)) -- sibling to source_depot_id (00070): a confirmed request may source from a field instead of a depot. App layer (confirmTripRequestSchema) enforces XOR, not the DB.
 00091_parcel_cross_org_fk_hardening.sql    -- Cross-org composite FK hardening for EVERY parcel reference (flagged by automated review): adds parcels_org_id_key UNIQUE (organization_id, id) + composite FKs on trip_requests.source_parcel_id, trips.source_parcel_id, bale_loads.parcel_id, task_assignments.parcel_id -- mirrors the pattern already applied to delivery_destinations (00070) and beneficiaries (00063/00068). Verified zero existing violations before adding (plain FK, not NOT VALID).
+00092_cmr_scan_delivery_document_type.sql  -- ALTER TYPE document_type ADD VALUE IF NOT EXISTS 'cmr_scan_delivery' -- the ARRIVAL-side counterpart to 'cmr_scan' (pickup-side): photographed through a one-time public link when an aux load reaches its destination. Single-statement file (same PG 12+ restriction as 00083/00087/00088).
+00093_org_feature_overrides.sql            -- Per-org feature-toggle storage: organizations.feature_overrides (JSONB NOT NULL DEFAULT '{}', CHECK jsonb_typeof = 'object') + organizations.plan_label (cosmetic, <=64 chars) + organization_feature_changes audit table (one row per changed key: feature_key, old_enabled nullable, new_enabled, actor_user_id/role, reason NOT NULL, created_at). RLS on organization_feature_changes with no permissive policy (service-role only); org_read_own (00052) already covers the two new organizations columns. See `.claude/docs/feature-toggles.md` for the full system (registry, resolver, backend enforcement).
 ```
 
 ### Key enums (current values)
@@ -76,7 +78,7 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 - `harvest_status`: `planned`, `to_harvest`, `harvesting`, `partial_harvested`, `harvested`, `in_loading`, `loaded`, `completed` (extended 00042; monotonic ladder enforced by `trg_prevent_harvest_status_downgrade`)
 - `crop_type`: `grau`, `orz`, `rapita`, `plante_nutret` (added 00042)
 - `document_status`: `pending`, `generating`, `partial`, `generated`, `sent`, `failed`
-- `document_type`: `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `cmr_scan` (added 00083 -- photographed paper CMR, distinct from the backend-generated `cmr`), `comanda` (added 00088 -- auto-generated transport-order PDF for the transporter feature)
+- `document_type`: `cmr`, `invoice`, `delivery_note`, `weight_ticket`, `report`, `cmr_scan` (added 00083 -- photographed paper CMR, distinct from the backend-generated `cmr`), `comanda` (added 00088 -- auto-generated transport-order PDF for the transporter feature), `cmr_scan_delivery` (added 00092 -- arrival-side counterpart to `cmr_scan`)
 
 ### Key design patterns
 
@@ -168,7 +170,7 @@ The backend checks this table before processing each sync mutation. If the key e
 
 ### Writing new migrations
 
-The next migration should be `supabase/migrations/00092_<descriptive_name>.sql` (current last: 00091).
+The next migration should be `supabase/migrations/00094_<descriptive_name>.sql` (current last: 00093).
 
 Rules:
 1. **Idempotent**: Safe to run multiple times.

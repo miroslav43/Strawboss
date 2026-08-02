@@ -521,10 +521,7 @@ export class TripsService implements OnModuleInit {
      * the state survives offline indefinitely.
      */
     const mannedConfirmEnabled = orgId
-      ? isFeatureEnabled(
-          await this.features.getDisabledForOrg(orgId),
-          'depot.manned_confirm',
-        )
+      ? isFeatureEnabled(await this.features.getDisabledForOrg(orgId), 'depot.manned_confirm')
       : true;
     const conditions: ReturnType<typeof sql>[] = [sql`t.id = ${id}`, sql`t.deleted_at IS NULL`];
     if (orgId !== null && orgId !== undefined) {
@@ -1071,7 +1068,7 @@ export class TripsService implements OnModuleInit {
         sql`INSERT INTO bale_loads (
               organization_id,
               id, trip_id, parcel_id, source_depot_id, loader_id, operator_id,
-              bale_count, loaded_at, gps_lat, gps_lon
+              bale_count, loaded_at, gps_lat, gps_lon, location_unverified
             ) VALUES (
               ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
               ${dto.idempotencyKey}, ${tripId},
@@ -1079,7 +1076,8 @@ export class TripsService implements OnModuleInit {
               ${dto.sourceDepotId ? sql`${dto.sourceDepotId}::uuid` : sql`NULL`},
               ${dto.loaderMachineId}, ${callerId},
               ${dto.baleCount}, NOW(),
-              ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null}
+              ${dto.gpsLat ?? null}, ${dto.gpsLon ?? null},
+              ${dto.locationUnverified === true}
             )`,
       );
 
@@ -1130,6 +1128,12 @@ export class TripsService implements OnModuleInit {
       return payload;
     });
 
+    if (dto.locationUnverified === true) {
+      this.winston.warn(
+        `register-load: geofence unverified, operator confirmed (trip ${result.trip.id as string})`,
+        { context: 'TripsService', tripId: result.trip.id },
+      );
+    }
     this.logTripFlow(
       result.trip.id as string,
       'REGISTER_LOAD',

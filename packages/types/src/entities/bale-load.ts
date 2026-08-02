@@ -15,6 +15,16 @@ export interface BaleLoad extends Timestamps, SoftDelete {
   gpsLon: number | null;
   farmtrackEventId: string | null;
   notes: string | null;
+  /**
+   * True when the loader confirmed registering this load while the app could
+   * not verify their GPS presence against the field's boundary (offline, or
+   * the boundary wasn't cached yet) — see migration 00094. `gpsLat`/`gpsLon`
+   * are still recorded either way; this only flags the row for review.
+   * `BaleLoadsService.list()` does `SELECT *` (snake_case), so a raw fetch
+   * from `/api/v1/bale-loads` returns `location_unverified`, not this key —
+   * map it explicitly if a consumer is added.
+   */
+  locationUnverified: boolean;
   clientId: string | null;
   syncVersion: number;
 }
