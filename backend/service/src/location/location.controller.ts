@@ -63,6 +63,11 @@ export class LocationController {
    * GET /api/v1/location/machines/:machineId/route?from=...&to=...
    * Admin-only: GPS route history for a specific machine within a time range,
    * scoped to the caller's organization.
+   *
+   * The track is noise-filtered and split into segments by default. Optional
+   * `raw=1` returns every stored ping untouched (the UI's "raw data" switch, and
+   * the way to audit what the filter removed); optional `maxAccuracyM` overrides
+   * the accuracy ceiling. Both are clamped service-side.
    */
   @Get('machines/:machineId/route')
   @Roles(UserRole.admin)
@@ -71,8 +76,14 @@ export class LocationController {
     @Query('from') from: string,
     @Query('to') to: string,
     @CurrentUser() user: RequestUser,
+    @Query('raw') rawRaw?: string,
+    @Query('maxAccuracyM') maxAccuracyMRaw?: string,
   ) {
-    return this.locationService.getRouteHistory(machineId, from, to, user.organizationId);
+    const maxAccuracyM = maxAccuracyMRaw ? Number(maxAccuracyMRaw) : undefined;
+    return this.locationService.getRouteHistory(machineId, from, to, user.organizationId, {
+      raw: rawRaw === '1' || rawRaw === 'true',
+      maxAccuracyM: Number.isFinite(maxAccuracyM) ? maxAccuracyM : undefined,
+    });
   }
 
   /**

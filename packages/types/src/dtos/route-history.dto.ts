@@ -8,6 +8,40 @@ export interface RoutePoint {
   recordedAt: string;
 }
 
+/**
+ * A contiguous run of points with no reporting outage between them. Both ends
+ * are inclusive indices into `RouteHistoryResponse.points`.
+ *
+ * A track is drawn as one polyline PER SEGMENT. Drawing a single line through
+ * every point would connect the two sides of an outage with a straight leg the
+ * machine never travelled.
+ */
+export interface RouteSegment {
+  startIndex: number;
+  endIndex: number;
+}
+
+/**
+ * What the server removed before returning the track, so the UI can say
+ * "N points (M filtered)" instead of silently showing less data.
+ */
+export interface RouteFilterStats {
+  /** Points matching the time window before any noise filtering. */
+  rawPoints: number;
+  /** Points actually returned. */
+  keptPoints: number;
+  /** Dropped because the device's own accuracy estimate was too poor. */
+  droppedLowAccuracy: number;
+  /** Dropped because the implied speed or leg length was impossible. */
+  droppedOutlier: number;
+  /** Dropped because the timestamp or coordinates were unusable. */
+  droppedBadTimestamp: number;
+  /** Accuracy ceiling applied, in metres. `null` when raw mode was requested. */
+  accuracyCapM: number | null;
+  /** True when the row cap was hit and the track is incomplete. */
+  truncated: boolean;
+}
+
 /** Response from GET /api/v1/location/machines/:machineId/route */
 export interface RouteHistoryResponse {
   machineId: string;
@@ -15,8 +49,13 @@ export interface RouteHistoryResponse {
   machineType: string | null;
   from: string;
   to: string;
+  /** Number of points returned (i.e. `points.length`), after filtering. */
   totalPoints: number;
   points: RoutePoint[];
+  /** Absent on legacy responses; treat as a single segment over all points. */
+  segments?: RouteSegment[];
+  /** Absent on legacy responses. */
+  filter?: RouteFilterStats;
 }
 
 /** A single day in the per-truck kilometre rollup (T18). */

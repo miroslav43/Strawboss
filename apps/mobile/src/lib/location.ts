@@ -118,12 +118,27 @@ interface TrackingParams {
   distanceInterval: number;
 }
 
+/**
+ * All three profiles request `Accuracy.High`. They used to differ — road and
+ * transition asked for `Balanced` to save battery — but on Android that maps to
+ * PRIORITY_BALANCED_POWER_ACCURACY, which lets the platform answer with a
+ * Wi-Fi/cell-tower fix instead of a GNSS one. Those fixes arrive with a
+ * suspiciously round ~100 m accuracy and can land tens of kilometres from the
+ * machine; on the admin Trasee map they drew a fan of straight lines across the
+ * whole county, and they inflated a telehandler's monthly distance roughly
+ * fivefold. Battery is saved through CADENCE (timeInterval) instead — the
+ * foreground service is running continuously either way, so the delta is the
+ * quality of each fix, not how often we wake up.
+ *
+ * `distanceInterval` stays 0 on every profile — see the note above on why a
+ * non-zero value silently stops a stationary machine from reporting at all.
+ */
 function trackingParamsForProfile(profile: SpeedProfile): TrackingParams {
   switch (profile) {
     case 'road':
       // Road: fast-moving — lighter cadence to save battery (still time-based).
       return {
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: Location.Accuracy.High,
         timeInterval: 30_000,
         distanceInterval: 0,
       };
@@ -138,7 +153,7 @@ function trackingParamsForProfile(profile: SpeedProfile): TrackingParams {
     case 'transition':
     default:
       return {
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: Location.Accuracy.High,
         timeInterval: 20_000,
         distanceInterval: 0,
       };
@@ -458,12 +473,27 @@ export async function postCurrentLocationNow(machineId: string): Promise<void> {
   }
 }
 
+/**
+ * Largest accuracy we will report. The server clamps too (and the column was
+ * widened in migration 00095), but a value that survives round-tripping through
+ * the outbox is cheaper to bound here. Anything this coarse is discarded when
+ * the track is drawn anyway — it is kept only because a rough position still
+ * answers "roughly where is this machine" for presence and geofencing.
+ */
+const MAX_REPORTED_ACCURACY_M = 9_999_999;
+
 function coordsToReport(machineId: string, loc: Location.LocationObject): LocationReportDto {
+  const rawAccuracy = loc.coords.accuracy;
+  const accuracyM =
+    typeof rawAccuracy === 'number' && Number.isFinite(rawAccuracy) && rawAccuracy >= 0
+      ? Math.min(rawAccuracy, MAX_REPORTED_ACCURACY_M)
+      : null;
+
   return {
     machineId,
     lat: loc.coords.latitude,
     lon: loc.coords.longitude,
-    accuracyM: loc.coords.accuracy ?? null,
+    accuracyM,
     headingDeg: loc.coords.heading ?? null,
     speedMs: loc.coords.speed ?? null,
     recordedAt: new Date(loc.timestamp).toISOString(),

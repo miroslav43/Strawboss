@@ -6,6 +6,8 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { ProfileService } from '../profile/profile.service';
 import { GeocodeService } from '../geocode/geocode.service';
 import { todayInRomania } from '../common/date';
+import { ACCURACY_CAP_M, SEGMENT_CAP_M, SPEED_CAP_MS, clampAccuracyM } from '../common/gps-noise';
+import { cleanRoutePoints } from '../common/route-cleaning';
 import { QUEUE_GEOFENCE_CHECK } from '../jobs/queues';
 import type {
   KmByDayResponse,
@@ -14,6 +16,17 @@ import type {
   RouteHistoryResponse,
   RoutePoint,
 } from '@strawboss/types';
+
+/** Tuning knobs for {@link LocationService.getRouteHistory}. */
+export interface RouteHistoryOptions {
+  /** Return every stored ping untouched — the UI's "raw data" switch. */
+  raw?: boolean;
+  /** Accuracy ceiling in metres. Defaults to {@link ACCURACY_CAP_M}. */
+  maxAccuracyM?: number;
+}
+
+/** Hard cap on rows pulled for one track, before filtering. */
+const ROUTE_HISTORY_LIMIT = 50_000;
 
 @Injectable()
 export class LocationService {
@@ -119,7 +132,7 @@ export class LocationService {
         ${operatorId}::uuid,
         ${dto.lat},
         ${dto.lon},
-        ${dto.accuracyM ?? null},
+        ${clampAccuracyM(dto.accuracyM)},
         ${dto.headingDeg ?? null},
         ${dto.speedMs ?? null},
         ${dto.recordedAt}::timestamptz
@@ -231,7 +244,7 @@ export class LocationService {
           ${operatorId}::uuid,
           ${dto.lat},
           ${dto.lon},
-          ${dto.accuracyM ?? null},
+          ${clampAccuracyM(dto.accuracyM)},
           ${dto.headingDeg ?? null},
           ${dto.speedMs ?? null},
           ${dto.recordedAt}::timestamptz
@@ -806,14 +819,22 @@ export class LocationService {
 
   /**
    * Return the GPS route history for a specific machine within a time range,
-   * scoped to the caller's organization.
-   * Points are ordered chronologically (ASC) with a safety cap of 50 000 rows.
+   * scoped to the caller's organization. Points are ordered chronologically
+   * (ASC) with a safety cap of {@link ROUTE_HISTORY_LIMIT} rows.
+   *
+   * The track is cleaned before it is returned: fixes the device itself flagged
+   * as inaccurate are removed, impossible legs are dropped, and the point list
+   * is cut into `segments` wherever reporting stopped — see
+   * {@link cleanRoutePoints}. Pass `{ raw: true }` to bypass all of it.
+   *
+   * Nothing is deleted from `machine_location_events`; this is a read-time view.
    */
   async getRouteHistory(
     machineId: string,
     from: string,
     to: string,
     orgId: string | null,
+    options: RouteHistoryOptions = {},
   ): Promise<RouteHistoryResponse> {
     // Validate machineId is a valid UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -861,23 +882,70 @@ export class LocationService {
       throw new BadRequestException('Machine not found');
     }
 
+    const raw = options.raw === true;
+    const maxAccuracyM =
+      Number.isFinite(options.maxAccuracyM) && (options.maxAccuracyM as number) > 0
+        ? Math.min(Math.max(options.maxAccuracyM as number, 5), 100_000)
+        : ACCURACY_CAP_M;
+
+    // The accuracy gate belongs INSIDE the row cap: filtering after LIMIT would
+    // silently truncate the tail of a noisy month instead of the noise.
+    const accuracyFilter = raw
+      ? sql``
+      : sql`AND accuracy_m IS NOT NULL AND accuracy_m <= ${maxAccuracyM}`;
+
+    // `::float` on every NUMERIC column. postgres.js returns NUMERIC as JS
+    // *strings*, and every sibling query in this file already casts (see
+    // getMachineLastLocations / getTrucksAtLoader). This one did not, so
+    // `RoutePoint.lat` was typed number but was "45.1234567" at runtime — it
+    // only worked because Leaflet coerces. Arithmetic below would not.
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
-        lat,
-        lon,
-        accuracy_m   AS "accuracyM",
-        heading_deg  AS "headingDeg",
-        speed_ms     AS "speedMs",
-        recorded_at  AS "recordedAt"
+        lat::float          AS lat,
+        lon::float          AS lon,
+        accuracy_m::float   AS "accuracyM",
+        heading_deg::float  AS "headingDeg",
+        speed_ms::float     AS "speedMs",
+        recorded_at         AS "recordedAt"
       FROM machine_location_events
       WHERE machine_id = ${machineId}::uuid
         AND recorded_at >= ${from}::timestamptz
         AND recorded_at <= ${to}::timestamptz
+        ${accuracyFilter}
       ORDER BY recorded_at ASC
-      LIMIT 50000
+      LIMIT ${ROUTE_HISTORY_LIMIT + 1}
     `);
 
-    const points = result as unknown as RoutePoint[];
+    // One row over the cap is a sentinel: it tells us the track is incomplete
+    // without making the caller guess from a suspiciously round count.
+    const fetched = result as unknown as RoutePoint[];
+    const truncated = fetched.length > ROUTE_HISTORY_LIMIT;
+    const bounded = truncated ? fetched.slice(0, ROUTE_HISTORY_LIMIT) : fetched;
+
+    // Raw mode is the UI's escape hatch: it must reproduce exactly what the
+    // endpoint used to return, so it bypasses the cleaner entirely.
+    const cleaned = raw
+      ? {
+          points: bounded,
+          segments: bounded.length > 0 ? [{ startIndex: 0, endIndex: bounded.length - 1 }] : [],
+          stats: {
+            rawPoints: bounded.length,
+            keptPoints: bounded.length,
+            droppedLowAccuracy: 0,
+            droppedOutlier: 0,
+            droppedBadTimestamp: 0,
+            segmentCount: bounded.length > 0 ? 1 : 0,
+          },
+        }
+      : cleanRoutePoints(bounded, {
+          maxAccuracyM,
+          maxSpeedMs: SPEED_CAP_MS,
+          maxLegM: SEGMENT_CAP_M,
+        });
+
+    // `rawPoints` must count what the window HOLDS, not what survived the SQL
+    // gate, otherwise the UI cannot report how much was hidden as noise.
+    const rawPoints = raw ? bounded.length : await this.countRoutePoints(machineId, from, to);
 
     return {
       machineId,
@@ -885,9 +953,32 @@ export class LocationService {
       machineType: machine?.machineType ?? null,
       from,
       to,
-      totalPoints: points.length,
-      points,
+      totalPoints: cleaned.points.length,
+      points: cleaned.points,
+      segments: cleaned.segments,
+      filter: {
+        rawPoints,
+        keptPoints: cleaned.points.length,
+        droppedLowAccuracy:
+          Math.max(0, rawPoints - bounded.length) + cleaned.stats.droppedLowAccuracy,
+        droppedOutlier: cleaned.stats.droppedOutlier,
+        droppedBadTimestamp: cleaned.stats.droppedBadTimestamp,
+        accuracyCapM: raw ? null : maxAccuracyM,
+        truncated,
+      },
     };
+  }
+
+  /** Unfiltered point count for a machine's time window (denominator for filter stats). */
+  private async countRoutePoints(machineId: string, from: string, to: string): Promise<number> {
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      SELECT COUNT(*)::int AS n
+      FROM machine_location_events
+      WHERE machine_id = ${machineId}::uuid
+        AND recorded_at >= ${from}::timestamptz
+        AND recorded_at <= ${to}::timestamptz
+    `)) as unknown as Array<{ n: number }>;
+    return rows[0]?.n ?? 0;
   }
 
   /**
@@ -896,6 +987,17 @@ export class LocationService {
    * `ST_DistanceSphere` legs between consecutive GPS samples in that UTC
    * day. Days with no data return `km=0, pointCount=0` (zero-fill via
    * `generate_series`) so charts stay contiguous.
+   *
+   * Noise handling mirrors `reports.service.ts`: fixes worse than
+   * {@link ACCURACY_CAP_M} are excluded, and a leg longer than
+   * {@link SEGMENT_CAP_M} or faster than {@link SPEED_CAP_MS} contributes zero.
+   * Without this a telehandler read ~4 518 km/month instead of ~878 — the noise
+   * was inflating distance roughly fivefold.
+   *
+   * Deliberate asymmetry with the map: a track SPLITS on a reporting outage
+   * because drawing a straight line across it would be a lie, but this SUMS
+   * across one, because the machine plausibly did travel while unreported. Only
+   * legs that are impossible (too far / too fast) are zeroed here.
    *
    * Validation:
    *  - `from`, `to` must be ISO dates and `from <= to`.
@@ -958,22 +1060,37 @@ export class LocationService {
         WHERE machine_id = ${machineId}::uuid
           AND recorded_at >= ${from}::date
           AND recorded_at <  (${to}::date + INTERVAL '1 day')
+          AND accuracy_m IS NOT NULL
+          AND accuracy_m <= ${ACCURACY_CAP_M}
       ),
       pairwise AS (
         SELECT
           day,
           ST_DistanceSphere(
-            LAG(geom) OVER (PARTITION BY day ORDER BY recorded_at),
+            LAG(geom) OVER w,
             geom
-          ) AS leg_m
+          ) AS leg_m,
+          EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)) AS dt_s
         FROM pts
+        WINDOW w AS (PARTITION BY day ORDER BY recorded_at)
+      ),
+      clean AS (
+        SELECT
+          day,
+          CASE
+            WHEN leg_m IS NULL OR dt_s IS NULL OR dt_s = 0 THEN 0
+            WHEN leg_m > ${SEGMENT_CAP_M} THEN 0
+            WHEN (leg_m / dt_s) > ${SPEED_CAP_MS} THEN 0
+            ELSE leg_m
+          END AS leg_m
+        FROM pairwise
       ),
       per_day AS (
         SELECT
           day,
           COALESCE(SUM(leg_m), 0) / 1000.0 AS km,
           COUNT(*)                          AS point_count
-        FROM pairwise
+        FROM clean
         GROUP BY day
       ),
       all_days AS (
