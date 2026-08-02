@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { RoutePoint } from '@strawboss/types';
+import type { RoutePoint, RouteSegment } from '@strawboss/types';
 import { useI18n } from '@/lib/i18n';
 import { esc } from '@/lib/html-escape';
 
@@ -16,6 +16,17 @@ export interface TrackRoute {
   weight: number;
   /** Optional label for the start/end tooltips. */
   label?: string;
+  /**
+   * Contiguous runs of points with no reporting outage between them. Absent
+   * (legacy / raw mode) means "treat the whole list as one run".
+   */
+  segments?: RouteSegment[];
+  /**
+   * Bumped by the parent on every successful fetch. This is what tells the
+   * redraw effect that the CONTENT changed — point count alone cannot, since
+   * toggling a filter can coincidentally preserve it.
+   */
+  rev?: number;
 }
 
 interface TracksMapProps {
@@ -47,9 +58,18 @@ export function TracksMap({ routes, className }: TracksMapProps) {
   });
 
   // Only redraw when the meaningful shape of the routes changes (not on every
-  // parent re-render): id + style + point count per route.
+  // parent re-render): id + style + revision + shape counts per route.
+  // `rev` is load-bearing — without it, switching between the filtered and raw
+  // views of the same window would not redraw whenever the two happened to
+  // return the same number of points.
   const sig = useMemo(
-    () => routes.map((r) => `${r.id}:${r.color}:${r.weight}:${r.points.length}`).join('|'),
+    () =>
+      routes
+        .map(
+          (r) =>
+            `${r.id}:${r.color}:${r.weight}:${r.rev ?? 0}:${r.points.length}:${r.segments?.length ?? 0}`,
+        )
+        .join('|'),
     [routes],
   );
 
@@ -161,11 +181,44 @@ export function TracksMap({ routes, className }: TracksMapProps) {
       const allLatLngs: any[] = [];
 
       for (const r of drawable) {
-        const latLngs = r.points.map((p) => [p.lat, p.lon] as [number, number]);
+        const latLngs = r.points.map((p) => [Number(p.lat), Number(p.lon)] as [number, number]);
         allLatLngs.push(...latLngs);
 
+        // One polyline PER SEGMENT. A single line through every point would
+        // connect the two sides of a reporting outage with a straight leg the
+        // machine never drove — that fake leg is the bug this page had.
+        const segments =
+          r.segments && r.segments.length > 0
+            ? r.segments
+            : [{ startIndex: 0, endIndex: latLngs.length - 1 }];
+
+        for (const s of segments) {
+          if (s.endIndex > s.startIndex) {
+            layers.push(
+              L.polyline(latLngs.slice(s.startIndex, s.endIndex + 1), {
+                color: r.color,
+                weight: r.weight,
+                opacity: 0.85,
+              }),
+            );
+          } else if (s.endIndex === s.startIndex) {
+            // A lone point between two outages still happened — show it as a
+            // dot rather than dropping it silently.
+            layers.push(
+              L.circleMarker(latLngs[s.startIndex], {
+                radius: Math.max(2, r.weight / 2),
+                color: r.color,
+                fillColor: r.color,
+                fillOpacity: 0.85,
+                weight: 1,
+              }),
+            );
+          }
+        }
+
+        // Exactly ONE start and ONE end marker per track, spanning all
+        // segments — not per segment, which would litter the map.
         layers.push(
-          L.polyline(latLngs, { color: r.color, weight: r.weight, opacity: 0.85 }),
           L.circleMarker(latLngs[0], {
             radius: 5,
             color: '#16a34a',

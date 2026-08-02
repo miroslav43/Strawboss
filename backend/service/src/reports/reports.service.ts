@@ -15,8 +15,7 @@ import type {
 } from '@strawboss/types';
 
 /** T18 — drop GPS legs that imply > 130 km/h (noise) or > 5 km in one segment. */
-const SPEED_CAP_MS = 36; // ≈ 130 km/h
-const SEGMENT_CAP_M = 5000; // 5 km
+import { SPEED_CAP_MS, SEGMENT_CAP_M } from '../common/gps-noise';
 
 interface ReportDateRange {
   dateFrom?: string;

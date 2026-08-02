@@ -6,7 +6,7 @@ import dynamicImport from 'next/dynamic';
 import { X, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useMachines } from '@strawboss/api';
 import { MachineType } from '@strawboss/types';
-import type { Machine, RouteHistoryResponse } from '@strawboss/types';
+import type { Machine, RouteFilterStats, RouteHistoryResponse } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -49,9 +49,26 @@ const PRESET_MS: Record<Exclude<Preset, 'custom'>, number> = {
 };
 
 interface Track extends TrackRoute {
+  /** Kept so the raw/filtered switch can refetch this exact track. */
+  machineId: string;
+  preset: Preset;
   from: string;
   to: string;
   visible: boolean;
+  filter?: RouteFilterStats;
+}
+
+/**
+ * Identity of a track in the legend. Deliberately excludes the resolved
+ * from/to timestamps and the colour: both change on every click (the presets
+ * are relative to `Date.now()` and the palette auto-advances), which used to
+ * make every press of "Show" append a duplicate entry for the same machine
+ * instead of replacing it.
+ */
+function trackKeyFor(machineId: string, preset: Preset, customFrom: string, customTo: string) {
+  return preset === 'custom'
+    ? `${machineId}|custom|${customFrom}|${customTo}`
+    : `${machineId}|${preset}`;
 }
 
 function toMachineList(raw: unknown): Machine[] {
@@ -63,6 +80,16 @@ function toMachineList(raw: unknown): Machine[] {
 
 function machineLabel(m: Machine): string {
   return `${m.internalCode} — ${m.make} ${m.model}`.trim();
+}
+
+/**
+ * How many stored pings this track is NOT showing because they were rejected
+ * as noise. Surfaced in the legend so a shorter track never looks like missing
+ * data — the points are still in the database, just not on the map.
+ */
+function hiddenAsNoise(tk: { filter?: RouteFilterStats; points: unknown[] }): number {
+  if (!tk.filter) return 0;
+  return Math.max(0, tk.filter.rawPoints - tk.points.length);
 }
 
 export default function TracksPage() {
@@ -80,6 +107,8 @@ export default function TracksPage() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Show every stored ping instead of the noise-filtered track. */
+  const [rawMode, setRawMode] = useState(false);
 
   const machinesOfType = useMemo(
     () => (type ? machines.filter((m) => m.machineType === type) : machines),
@@ -96,6 +125,8 @@ export default function TracksPage() {
           color: tk.color,
           weight: tk.weight,
           label: tk.label,
+          segments: tk.segments,
+          rev: tk.rev,
         })),
     [tracks],
   );
@@ -112,6 +143,13 @@ export default function TracksPage() {
     };
   }
 
+  function fetchTrack(mId: string, range: { from: string; to: string }, raw: boolean) {
+    return apiClient.get<RouteHistoryResponse>(
+      `/api/v1/location/machines/${mId}/route?from=${encodeURIComponent(range.from)}` +
+        `&to=${encodeURIComponent(range.to)}${raw ? '&raw=1' : ''}`,
+    );
+  }
+
   async function handleShow() {
     if (!machineId) {
       setError(t('tracks.selectMachineFirst'));
@@ -126,32 +164,72 @@ export default function TracksPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get<RouteHistoryResponse>(
-        `/api/v1/location/machines/${machineId}/route?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`,
-      );
+      const res = await fetchTrack(machineId, range, rawMode);
       const points = res.points ?? [];
       if (points.length < 2) {
         setError(t('tracks.noPoints'));
         return;
       }
-      const id = `${machineId}|${range.from}|${range.to}|${color}`;
-      setTracks((prev) => [
-        ...prev.filter((p) => p.id !== id),
-        {
-          id,
-          label: machine ? machineLabel(machine) : machineId,
-          color,
-          weight,
-          from: range.from,
-          to: range.to,
-          points,
-          visible: true,
-        },
-      ]);
-      // Advance to the next distinct palette colour for the following track.
-      setColor(PALETTE[(tracks.length + 1) % PALETTE.length]);
+      const id = trackKeyFor(machineId, preset, customFrom, customTo);
+      const existing = tracks.find((p) => p.id === id);
+      const next: Track = {
+        id,
+        machineId,
+        preset,
+        label: machine ? machineLabel(machine) : machineId,
+        color: existing?.color ?? color,
+        weight,
+        from: range.from,
+        to: range.to,
+        points,
+        segments: res.segments,
+        filter: res.filter,
+        // Forces TracksMap to redraw even when the point count is unchanged.
+        rev: (existing?.rev ?? 0) + 1,
+        // Re-showing a hidden track must not silently unhide it.
+        visible: existing?.visible ?? true,
+      };
+      setTracks((prev) =>
+        prev.some((p) => p.id === id) ? prev.map((p) => (p.id === id ? next : p)) : [...prev, next],
+      );
+      // Only advance the palette when a NEW entry was added — on a replace the
+      // list length is unchanged and advancing would drift the colours.
+      if (!existing) setColor(PALETTE[(tracks.length + 1) % PALETTE.length]);
     } catch {
       setError(t('tracks.error'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /**
+   * Flip between the noise-filtered track and every stored ping. Refetches the
+   * tracks already on the map so the switch shows its effect immediately —
+   * which is also how an operator can audit what the filter removed.
+   */
+  async function handleToggleRaw(nextRaw: boolean) {
+    setRawMode(nextRaw);
+    if (tracks.length === 0) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const refreshed = await Promise.all(
+        tracks.map(async (tk) => {
+          try {
+            const res = await fetchTrack(tk.machineId, { from: tk.from, to: tk.to }, nextRaw);
+            return {
+              ...tk,
+              points: res.points ?? [],
+              segments: res.segments,
+              filter: res.filter,
+              rev: (tk.rev ?? 0) + 1,
+            };
+          } catch {
+            return tk;
+          }
+        }),
+      );
+      setTracks(refreshed);
     } finally {
       setLoading(false);
     }
@@ -296,6 +374,20 @@ export default function TracksPage() {
           {loading ? t('tracks.loading') : t('tracks.show')}
         </button>
 
+        <label
+          className="flex cursor-pointer select-none items-center gap-2 self-end pb-2 text-xs text-neutral-600"
+          title={t('tracks.rawHint')}
+        >
+          <input
+            type="checkbox"
+            checked={rawMode}
+            disabled={loading}
+            onChange={(e) => void handleToggleRaw(e.target.checked)}
+            className="h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary"
+          />
+          {t('tracks.raw')}
+        </label>
+
         {error && <span className="self-center text-xs text-red-600">{error}</span>}
       </div>
 
@@ -337,7 +429,11 @@ export default function TracksPage() {
                   >
                     {tk.label}
                     <span className="ml-1 text-xs text-neutral-400">
-                      ({t('tracks.points', { n: tk.points.length })})
+                      ({t('tracks.points', { n: tk.points.length })}
+                      {hiddenAsNoise(tk) > 0
+                        ? `, ${t('tracks.filteredOut', { n: hiddenAsNoise(tk) })}`
+                        : ''}
+                      )
                     </span>
                   </span>
                   <button

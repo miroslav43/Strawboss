@@ -63,8 +63,10 @@ export const queryKeys = {
   },
   location: {
     machines: () => ['location', 'machines'] as const,
-    route: (machineId: string, from: string, to: string) =>
-      ['location', 'route', machineId, from, to] as const,
+    // `raw` is part of the key: the raw and noise-filtered views of the same
+    // window are different payloads and must not share a cache entry.
+    route: (machineId: string, from: string, to: string, raw = false) =>
+      ['location', 'route', machineId, from, to, raw] as const,
     related: () => ['location', 'related-machines'] as const,
     trucksAtLoader: (loaderMachineId: string) =>
       ['location', 'trucks-at-loader', loaderMachineId] as const,
