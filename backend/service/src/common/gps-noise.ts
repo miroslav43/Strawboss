@@ -27,15 +27,48 @@ export const SPEED_CAP_MS = 36;
 export const SEGMENT_CAP_M = 5000;
 
 /**
- * A fix whose own horizontal-accuracy estimate is worse than this is a wrong
- * position, not an imprecise one — it is excluded from tracks and distances.
+ * Accuracy ceiling for DISTANCE totals only. Not applied to tracks — see below.
  *
- * Note this is deliberately NOT applied at ingest: a coarse fix is still a
- * useful answer to "roughly where is this machine", which is what presence,
- * geofencing and the loader↔truck proximity board need. It is rejected only
- * where precision is what's being asked for.
+ * Distance is a sum, so it is vulnerable to something a drawn line is not:
+ * jitter. A parked machine whose fixes wander ±30 m contributes real metres to
+ * every leg, thousands of times a day, and neither the speed nor the leg cap
+ * notices because 30 m in 20 s is a perfectly legal 5 km/h. Gating on accuracy
+ * is what stops a stationary loader from "driving" 90 km/day.
+ *
+ * Deliberately NOT applied at ingest either: a coarse fix is still a useful
+ * answer to "roughly where is this machine", which is what presence, geofencing
+ * and the loader↔truck proximity board need.
  */
 export const ACCURACY_CAP_M = 100;
+
+/**
+ * A single point that leaves the path and comes straight back is a GPS
+ * excursion, not a detour — drop it.
+ *
+ * This catches what the speed and leg caps structurally cannot. A fix that
+ * lands 4 km away 3 minutes after the last one implies 80 km/h, which is
+ * entirely legal, and the fix after it returns to the route at another legal
+ * speed. Both legs pass every per-leg test; only the SHAPE gives it away.
+ * Measured on ten days of one machine: 65 such excursions out of 14 171 points
+ * (0.46%), together fabricating 102 km of travel.
+ *
+ * The test is `(out + back) > ratio × direct`, i.e. going via this point is
+ * more than three times longer than skipping it. Accuracy was evaluated as an
+ * additional condition and rejected: it catches under half of them (28/65 at
+ * >300 m) while implicating 2 844 perfectly good points. Geometry is the
+ * precise instrument here; the device's own error estimate is not.
+ */
+export const SPIKE_DETOUR_RATIO = 3;
+
+/** Excursions shorter than this are ordinary jitter, not spikes. */
+export const SPIKE_MIN_EXCURSION_M = 300;
+
+/**
+ * Never despike across sparse capture. With minutes between fixes the machine
+ * really could have gone somewhere and come back, so the shape stops being
+ * evidence. Every excursion measured in practice sat well inside this.
+ */
+export const SPIKE_MAX_LEG_S = 180;
 
 /**
  * No points for longer than this means the machine stopped reporting, not that

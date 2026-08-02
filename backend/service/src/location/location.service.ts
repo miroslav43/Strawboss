@@ -883,16 +883,23 @@ export class LocationService {
     }
 
     const raw = options.raw === true;
+    // No accuracy gate unless one is explicitly asked for. Gating a TRACK on
+    // accuracy was tried and reverted: it removed a third of a healthy day for
+    // no gain — the kinematic tests already caught every impossible leg — and
+    // the holes it opened tripped the outage split, fragmenting a continuous
+    // track. Distance totals still gate (see getKmByDay); a sum is vulnerable
+    // to jitter in a way a drawn line is not.
     const maxAccuracyM =
-      Number.isFinite(options.maxAccuracyM) && (options.maxAccuracyM as number) > 0
+      !raw && Number.isFinite(options.maxAccuracyM) && (options.maxAccuracyM as number) > 0
         ? Math.min(Math.max(options.maxAccuracyM as number, 5), 100_000)
-        : ACCURACY_CAP_M;
+        : null;
 
-    // The accuracy gate belongs INSIDE the row cap: filtering after LIMIT would
-    // silently truncate the tail of a noisy month instead of the noise.
-    const accuracyFilter = raw
-      ? sql``
-      : sql`AND accuracy_m IS NOT NULL AND accuracy_m <= ${maxAccuracyM}`;
+    // When a gate IS requested it belongs INSIDE the row cap: filtering after
+    // LIMIT would silently truncate the tail of a noisy month, not the noise.
+    const accuracyFilter =
+      maxAccuracyM === null
+        ? sql``
+        : sql`AND accuracy_m IS NOT NULL AND accuracy_m <= ${maxAccuracyM}`;
 
     // `::float` on every NUMERIC column. postgres.js returns NUMERIC as JS
     // *strings*, and every sibling query in this file already casts (see
@@ -934,11 +941,12 @@ export class LocationService {
             droppedLowAccuracy: 0,
             droppedOutlier: 0,
             droppedBadTimestamp: 0,
+            droppedSpike: 0,
             segmentCount: bounded.length > 0 ? 1 : 0,
           },
         }
       : cleanRoutePoints(bounded, {
-          maxAccuracyM,
+          ...(maxAccuracyM === null ? {} : { maxAccuracyM }),
           maxSpeedMs: SPEED_CAP_MS,
           maxLegM: SEGMENT_CAP_M,
         });
@@ -963,7 +971,8 @@ export class LocationService {
           Math.max(0, rawPoints - bounded.length) + cleaned.stats.droppedLowAccuracy,
         droppedOutlier: cleaned.stats.droppedOutlier,
         droppedBadTimestamp: cleaned.stats.droppedBadTimestamp,
-        accuracyCapM: raw ? null : maxAccuracyM,
+        droppedSpike: cleaned.stats.droppedSpike,
+        accuracyCapM: maxAccuracyM,
         truncated,
       },
     };

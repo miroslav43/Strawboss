@@ -1,4 +1,11 @@
-import { ACCURACY_CAP_M, GAP_SPLIT_S, SEGMENT_CAP_M, SPEED_CAP_MS } from './gps-noise';
+import {
+  GAP_SPLIT_S,
+  SEGMENT_CAP_M,
+  SPEED_CAP_MS,
+  SPIKE_DETOUR_RATIO,
+  SPIKE_MAX_LEG_S,
+  SPIKE_MIN_EXCURSION_M,
+} from './gps-noise';
 
 /** Earth mean radius in metres, matching PostGIS `ST_DistanceSphere`. */
 const EARTH_RADIUS_M = 6371008;
@@ -23,6 +30,17 @@ interface CleanablePoint {
 }
 
 export interface RouteCleanOptions {
+  /**
+   * Accuracy ceiling in metres. Defaults to `Infinity` — no gate.
+   *
+   * This used to default to 100 m and it was a mistake worth remembering: it
+   * threw away 35% of a healthy day's points for no gain in cleanliness (the
+   * kinematic tests below already removed every impossible leg on their own),
+   * and because it deletes runs of consecutive fixes it opened holes wide
+   * enough to trip the outage split — turning 9 real gaps into 38 and shredding
+   * a continuous track into fragments. Judge the relationship between points,
+   * not the label on one point.
+   */
   maxAccuracyM: number;
   maxSpeedMs: number;
   maxLegM: number;
@@ -32,6 +50,12 @@ export interface RouteCleanOptions {
    * that the ANCHOR was the outlier rather than all of them, and re-anchor.
    */
   maxConsecutiveRejects: number;
+  /** Detour multiple above which a lone point counts as an excursion. */
+  spikeDetourRatio: number;
+  /** Excursions shorter than this are ordinary jitter. */
+  spikeMinExcursionM: number;
+  /** Do not despike when fixes are further apart than this. */
+  spikeMaxLegS: number;
 }
 
 /** A contiguous run of points with no outage between them. Both ends inclusive. */
@@ -46,6 +70,8 @@ export interface RouteCleanStats {
   droppedLowAccuracy: number;
   droppedOutlier: number;
   droppedBadTimestamp: number;
+  /** Lone points that left the path and came straight back. */
+  droppedSpike: number;
   segmentCount: number;
 }
 
@@ -56,11 +82,17 @@ export interface RouteCleanResult<T> {
 }
 
 const DEFAULTS: RouteCleanOptions = {
-  maxAccuracyM: ACCURACY_CAP_M,
+  // No accuracy gate by default — see RouteCleanOptions.maxAccuracyM.
+  maxAccuracyM: Number.POSITIVE_INFINITY,
   maxSpeedMs: SPEED_CAP_MS,
   maxLegM: SEGMENT_CAP_M,
   gapS: GAP_SPLIT_S,
-  maxConsecutiveRejects: 3,
+  // 5 rather than 3: tolerating a little more noise before re-anchoring cut the
+  // segment count from 130 to 93 over ten days while keeping 95% of points.
+  maxConsecutiveRejects: 5,
+  spikeDetourRatio: SPIKE_DETOUR_RATIO,
+  spikeMinExcursionM: SPIKE_MIN_EXCURSION_M,
+  spikeMaxLegS: SPIKE_MAX_LEG_S,
 };
 
 /**
@@ -121,7 +153,9 @@ export function cleanRoutePoints<T extends CleanablePoint>(
       droppedBadTimestamp++;
       continue;
     }
-    if (p.accuracyM === null || !(p.accuracyM <= opts.maxAccuracyM)) {
+    // Only gate on accuracy when a finite ceiling was asked for. With the
+    // default (Infinity) a missing estimate is not a reason to discard a fix.
+    if (Number.isFinite(opts.maxAccuracyM) && !(Number(p.accuracyM) <= opts.maxAccuracyM)) {
       droppedLowAccuracy++;
       continue;
     }
@@ -169,16 +203,90 @@ export function cleanRoutePoints<T extends CleanablePoint>(
 
   closeSegment();
 
+  const despiked = removeExcursions(kept, segments, opts);
+
   return {
-    points: kept,
-    segments,
+    points: despiked.points,
+    segments: despiked.segments,
     stats: {
       rawPoints: points.length,
-      keptPoints: kept.length,
+      keptPoints: despiked.points.length,
       droppedLowAccuracy,
       droppedOutlier,
       droppedBadTimestamp,
-      segmentCount: segments.length,
+      droppedSpike: despiked.dropped,
+      segmentCount: despiked.segments.length,
     },
   };
+}
+
+/**
+ * Second pass: drop lone points that leave the path and come straight back.
+ *
+ * The forward pass cannot catch these. It only ever compares a point to the one
+ * anchor behind it, and each half of an excursion is individually plausible — 4
+ * km in 3 minutes is 80 km/h, a legal speed. What gives it away is the shape:
+ * travelling via the point is several times longer than skipping it. That needs
+ * the point AFTER, so it lives here rather than in the streaming loop.
+ *
+ * Runs within a segment only: across an outage boundary the geometry means
+ * nothing. `spikeMaxLegS` applies the same caution inside a segment — when
+ * fixes are minutes apart the machine really could have driven out and back.
+ *
+ * Deliberately a single sweep with a moving reference: after a point is
+ * rejected the next comparison still anchors on the last KEPT point, so two
+ * adjacent excursions are both caught, while a genuine turn is not re-judged
+ * against a point that was itself thrown away.
+ */
+function removeExcursions<T extends CleanablePoint>(
+  points: readonly T[],
+  segments: readonly RouteSegment[],
+  opts: RouteCleanOptions,
+): { points: T[]; segments: RouteSegment[]; dropped: number } {
+  const out: T[] = [];
+  const nextSegments: RouteSegment[] = [];
+  let dropped = 0;
+
+  for (const seg of segments) {
+    const segmentStart = out.length;
+    let prevIdx = -1;
+
+    for (let i = seg.startIndex; i <= seg.endIndex; i++) {
+      const p = points[i];
+      const isInterior = prevIdx >= 0 && i < seg.endIndex;
+
+      if (isInterior) {
+        const prev = points[prevIdx];
+        const next = points[i + 1];
+        const outM = haversineMeters(prev.lat, prev.lon, p.lat, p.lon);
+
+        if (outM > opts.spikeMinExcursionM) {
+          const dtOut = (Date.parse(p.recordedAt) - Date.parse(prev.recordedAt)) / 1000;
+          const dtBack = (Date.parse(next.recordedAt) - Date.parse(p.recordedAt)) / 1000;
+
+          if (dtOut <= opts.spikeMaxLegS && dtBack <= opts.spikeMaxLegS) {
+            const backM = haversineMeters(p.lat, p.lon, next.lat, next.lon);
+            const directM = haversineMeters(prev.lat, prev.lon, next.lat, next.lon);
+            // Guard the ratio: when prev and next are effectively the same
+            // place, any excursion at all is a round trip to nowhere.
+            const detour = directM > 1 ? (outM + backM) / directM : Number.POSITIVE_INFINITY;
+
+            if (detour > opts.spikeDetourRatio) {
+              dropped++;
+              continue;
+            }
+          }
+        }
+      }
+
+      prevIdx = i;
+      out.push(p);
+    }
+
+    if (out.length > segmentStart) {
+      nextSegments.push({ startIndex: segmentStart, endIndex: out.length - 1 });
+    }
+  }
+
+  return { points: out, segments: nextSegments, dropped };
 }

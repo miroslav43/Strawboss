@@ -36,7 +36,9 @@ export interface RouteFilterStats {
   droppedOutlier: number;
   /** Dropped because the timestamp or coordinates were unusable. */
   droppedBadTimestamp: number;
-  /** Accuracy ceiling applied, in metres. `null` when raw mode was requested. */
+  /** Lone points that left the path and came straight back (GPS excursions). */
+  droppedSpike: number;
+  /** Accuracy ceiling applied, in metres. `null` when no accuracy gate ran. */
   accuracyCapM: number | null;
   /** True when the row cap was hit and the track is incomplete. */
   truncated: boolean;
