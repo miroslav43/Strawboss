@@ -943,7 +943,8 @@ export const en = {
   },
 
   geofenceMap: {
-    bannerDrawDisabled: 'Drawing fields is switched off for your organization.',
+    bannerDrawDisabled:
+      'Drawing fields is switched off for your organization.',
     bannerIdle: 'Tap a button to add a field or depot',
     bannerFirstPoint: 'Centre the pin on the first point and tap "Add point"',
     bannerProgress: 'Point {count}/3 — continue (minimum 3 points)',

@@ -945,7 +945,8 @@ export const ro = {
   },
 
   geofenceMap: {
-    bannerDrawDisabled: 'Desenarea terenurilor este dezactivată pentru organizația ta.',
+    bannerDrawDisabled:
+      'Desenarea terenurilor este dezactivată pentru organizația ta.',
     bannerIdle: 'Apasă un buton pentru a adăuga un câmp sau depozit',
     bannerFirstPoint: 'Centrează pinul pe primul punct și apasă "Adaugă punct"',
     bannerProgress: 'Punct {count}/3 — continuă (minim 3 puncte)',
