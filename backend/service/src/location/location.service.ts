@@ -6,7 +6,14 @@ import { DrizzleProvider } from '../database/drizzle.provider';
 import { ProfileService } from '../profile/profile.service';
 import { GeocodeService } from '../geocode/geocode.service';
 import { todayInRomania } from '../common/date';
-import { ACCURACY_CAP_M, SEGMENT_CAP_M, SPEED_CAP_MS, clampAccuracyM } from '../common/gps-noise';
+import {
+  ACCURACY_CAP_M,
+  SEGMENT_CAP_M,
+  SLOW_MACHINE_MIN_LEG_M,
+  SLOW_MACHINE_SPEED_CAP_MS,
+  SPEED_CAP_MS,
+  clampAccuracyM,
+} from '../common/gps-noise';
 import { cleanRoutePoints } from '../common/route-cleaning';
 import { QUEUE_GEOFENCE_CHECK } from '../jobs/queues';
 import type {
@@ -27,6 +34,18 @@ export interface RouteHistoryOptions {
 
 /** Hard cap on rows pulled for one track, before filtering. */
 const ROUTE_HISTORY_LIMIT = 50_000;
+
+/**
+ * Whitelist the client-supplied fix source. `task` = the location foreground
+ * service (a real tracking fix); `checkin` = the 60 s presence alarm's
+ * best-effort fix (last-known + Balanced — a network position that exists to
+ * answer "roughly where", never to draw a track). Anything else — including
+ * everything sent by APKs older than vc56 — becomes NULL, which reads as
+ * "unknown, treat as task" so historical data keeps rendering.
+ */
+function normalizeLocationSource(source: unknown): 'task' | 'checkin' | null {
+  return source === 'task' || source === 'checkin' ? source : null;
+}
 
 @Injectable()
 export class LocationService {
@@ -126,7 +145,7 @@ export class LocationService {
 
     await this.drizzleProvider.db.execute(sql`
       INSERT INTO machine_location_events
-        (machine_id, operator_id, lat, lon, accuracy_m, heading_deg, speed_ms, recorded_at)
+        (machine_id, operator_id, lat, lon, accuracy_m, heading_deg, speed_ms, recorded_at, source)
       VALUES (
         ${machineId}::uuid,
         ${operatorId}::uuid,
@@ -135,7 +154,8 @@ export class LocationService {
         ${clampAccuracyM(dto.accuracyM)},
         ${dto.headingDeg ?? null},
         ${dto.speedMs ?? null},
-        ${dto.recordedAt}::timestamptz
+        ${dto.recordedAt}::timestamptz,
+        ${normalizeLocationSource(dto.source)}
       )
       ON CONFLICT DO NOTHING
     `);
@@ -247,7 +267,8 @@ export class LocationService {
           ${clampAccuracyM(dto.accuracyM)},
           ${dto.headingDeg ?? null},
           ${dto.speedMs ?? null},
-          ${dto.recordedAt}::timestamptz
+          ${dto.recordedAt}::timestamptz,
+          ${normalizeLocationSource(dto.source)}
         )`,
       ),
       sql`, `,
@@ -255,7 +276,7 @@ export class LocationService {
 
     await this.drizzleProvider.db.execute(sql`
       INSERT INTO machine_location_events
-        (machine_id, operator_id, lat, lon, accuracy_m, heading_deg, speed_ms, recorded_at)
+        (machine_id, operator_id, lat, lon, accuracy_m, heading_deg, speed_ms, recorded_at, source)
       VALUES ${rows}
       ON CONFLICT DO NOTHING
     `);
@@ -906,6 +927,12 @@ export class LocationService {
     // getMachineLastLocations / getTrucksAtLoader). This one did not, so
     // `RoutePoint.lat` was typed number but was "45.1234567" at runtime — it
     // only worked because Leaflet coerces. Arithmetic below would not.
+    // Check-in fixes are presence data, not track data (see the mobile
+    // getBestEffortPosition): a phone whose location task died still posts a
+    // network fix every 60 s, and those hop between cell towers kilometres
+    // apart. Raw mode keeps them — it must show exactly what was stored.
+    const sourceFilter = raw ? sql`` : sql`AND (source IS NULL OR source <> 'checkin')`;
+
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         lat::float          AS lat,
@@ -919,6 +946,7 @@ export class LocationService {
         AND recorded_at >= ${from}::timestamptz
         AND recorded_at <= ${to}::timestamptz
         ${accuracyFilter}
+        ${sourceFilter}
       ORDER BY recorded_at ASC
       LIMIT ${ROUTE_HISTORY_LIMIT + 1}
     `);
@@ -928,6 +956,14 @@ export class LocationService {
     const fetched = result as unknown as RoutePoint[];
     const truncated = fetched.length > ROUTE_HISTORY_LIMIT;
     const bounded = truncated ? fetched.slice(0, ROUTE_HISTORY_LIMIT) : fetched;
+
+    // Slow machines get two extra defences the truck-calibrated kinematics
+    // cannot provide: a type-appropriate speed cap (a telehandler doing a
+    // "legal" 118 km/h between cell towers is still noise) and the
+    // skeleton-consistency pass. Both are measured UNSAFE for trucks — their
+    // fused "exactly 100 m" road fixes are real positions that the skeleton
+    // would delete wholesale — so trucks keep the plain cleaner.
+    const isSlowMachine = machine.machineType !== 'truck';
 
     // Raw mode is the UI's escape hatch: it must reproduce exactly what the
     // endpoint used to return, so it bypasses the cleaner entirely.
@@ -942,6 +978,7 @@ export class LocationService {
             droppedOutlier: 0,
             droppedBadTimestamp: 0,
             droppedSpike: 0,
+            droppedPresence: 0,
             segmentCount: bounded.length > 0 ? 1 : 0,
           },
         }
@@ -949,11 +986,17 @@ export class LocationService {
           ...(maxAccuracyM === null ? {} : { maxAccuracyM }),
           maxSpeedMs: SPEED_CAP_MS,
           maxLegM: SEGMENT_CAP_M,
+          slowCap: isSlowMachine
+            ? { maxSpeedMs: SLOW_MACHINE_SPEED_CAP_MS, minLegM: SLOW_MACHINE_MIN_LEG_M }
+            : null,
+          skeleton: isSlowMachine,
         });
 
     // `rawPoints` must count what the window HOLDS, not what survived the SQL
     // gate, otherwise the UI cannot report how much was hidden as noise.
-    const rawPoints = raw ? bounded.length : await this.countRoutePoints(machineId, from, to);
+    const counts = raw
+      ? { total: bounded.length, checkin: 0 }
+      : await this.countRoutePoints(machineId, from, to);
 
     return {
       machineId,
@@ -965,29 +1008,44 @@ export class LocationService {
       points: cleaned.points,
       segments: cleaned.segments,
       filter: {
-        rawPoints,
+        rawPoints: counts.total,
         keptPoints: cleaned.points.length,
+        // Rows the SQL filters hid split by cause: check-in rows are presence
+        // data, the remainder (only present when an explicit accuracy cap was
+        // requested) fell to the accuracy gate.
         droppedLowAccuracy:
-          Math.max(0, rawPoints - bounded.length) + cleaned.stats.droppedLowAccuracy,
+          Math.max(0, counts.total - counts.checkin - bounded.length) +
+          cleaned.stats.droppedLowAccuracy,
         droppedOutlier: cleaned.stats.droppedOutlier,
         droppedBadTimestamp: cleaned.stats.droppedBadTimestamp,
         droppedSpike: cleaned.stats.droppedSpike,
+        droppedPresence: cleaned.stats.droppedPresence + counts.checkin,
         accuracyCapM: maxAccuracyM,
         truncated,
       },
     };
   }
 
-  /** Unfiltered point count for a machine's time window (denominator for filter stats). */
-  private async countRoutePoints(machineId: string, from: string, to: string): Promise<number> {
+  /**
+   * Unfiltered point count for a machine's time window (denominator for filter
+   * stats), plus how many of those are check-in-source presence fixes the
+   * track query excludes up front.
+   */
+  private async countRoutePoints(
+    machineId: string,
+    from: string,
+    to: string,
+  ): Promise<{ total: number; checkin: number }> {
     const rows = (await this.drizzleProvider.db.execute(sql`
-      SELECT COUNT(*)::int AS n
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE source = 'checkin')::int AS checkin
       FROM machine_location_events
       WHERE machine_id = ${machineId}::uuid
         AND recorded_at >= ${from}::timestamptz
         AND recorded_at <= ${to}::timestamptz
-    `)) as unknown as Array<{ n: number }>;
-    return rows[0]?.n ?? 0;
+    `)) as unknown as Array<{ total: number; checkin: number }>;
+    return rows[0] ?? { total: 0, checkin: 0 };
   }
 
   /**
@@ -1071,6 +1129,7 @@ export class LocationService {
           AND recorded_at <  (${to}::date + INTERVAL '1 day')
           AND accuracy_m IS NOT NULL
           AND accuracy_m <= ${ACCURACY_CAP_M}
+          AND (source IS NULL OR source <> 'checkin')
       ),
       pairwise AS (
         SELECT

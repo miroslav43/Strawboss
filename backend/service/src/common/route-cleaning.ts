@@ -1,6 +1,10 @@
 import {
   GAP_SPLIT_S,
+  GPS_TRUSTED_ACCURACY_M,
   SEGMENT_CAP_M,
+  SKELETON_TOLERANCE_CAP_M,
+  SKELETON_TOLERANCE_FLOOR_M,
+  SKELETON_WINDOW_S,
   SPEED_CAP_MS,
   SPIKE_DETOUR_RATIO,
   SPIKE_MAX_LEG_S,
@@ -46,6 +50,22 @@ export interface RouteCleanOptions {
   maxLegM: number;
   gapS: number;
   /**
+   * Additional speed cap for machines that physically cannot go fast
+   * (loader/baler), applied only to legs longer than `minLegM` so jitter on
+   * short legs cannot trip it. `null` (the default) disables it — trucks keep
+   * the single global cap.
+   */
+  slowCap: { maxSpeedMs: number; minLegM: number } | null;
+  /**
+   * Enable the skeleton-consistency pre-pass: trusted GNSS fixes
+   * (accuracy < GPS_TRUSTED_ACCURACY_M) form a skeleton, and every network fix
+   * must sit close to its time-interpolated skeleton position or it is dropped
+   * as presence data. Off by default — measured safe only for slow machines;
+   * on trucks the fused "exactly 100 m" fixes DRAW the real road track and the
+   * skeleton would delete it wholesale.
+   */
+  skeleton: boolean;
+  /**
    * After this many points in a row fail against the current anchor, conclude
    * that the ANCHOR was the outlier rather than all of them, and re-anchor.
    */
@@ -72,6 +92,8 @@ export interface RouteCleanStats {
   droppedBadTimestamp: number;
   /** Lone points that left the path and came straight back. */
   droppedSpike: number;
+  /** Network fixes inconsistent with (or orphaned from) the GNSS skeleton. */
+  droppedPresence: number;
   segmentCount: number;
 }
 
@@ -93,6 +115,8 @@ const DEFAULTS: RouteCleanOptions = {
   spikeDetourRatio: SPIKE_DETOUR_RATIO,
   spikeMinExcursionM: SPIKE_MIN_EXCURSION_M,
   spikeMaxLegS: SPIKE_MAX_LEG_S,
+  slowCap: null,
+  skeleton: false,
 };
 
 /**
@@ -129,6 +153,11 @@ export function cleanRoutePoints<T extends CleanablePoint>(
 ): RouteCleanResult<T> {
   const opts = { ...DEFAULTS, ...options };
 
+  const skeletonResult = opts.skeleton
+    ? filterAgainstSkeleton(points)
+    : { points, droppedPresence: 0 };
+  const input = skeletonResult.points;
+
   const kept: T[] = [];
   const segments: RouteSegment[] = [];
   let droppedLowAccuracy = 0;
@@ -147,7 +176,7 @@ export function cleanRoutePoints<T extends CleanablePoint>(
     segmentStart = kept.length;
   };
 
-  for (const p of points) {
+  for (const p of input) {
     const ms = Date.parse(p.recordedAt);
     if (!Number.isFinite(ms) || !Number.isFinite(p.lat) || !Number.isFinite(p.lon)) {
       droppedBadTimestamp++;
@@ -181,8 +210,15 @@ export function cleanRoutePoints<T extends CleanablePoint>(
         // dtS === 0 means two fixes share a timestamp; there is no speed to
         // derive, so only the distance test applies.
         const tooFast = dtS > 0 && legM / dtS > opts.maxSpeedMs;
+        // The slow-machine cap: only on legs long enough that jitter cannot
+        // fake the speed — see SLOW_MACHINE_MIN_LEG_M.
+        const tooFastForType =
+          opts.slowCap !== null &&
+          legM > opts.slowCap.minLegM &&
+          dtS > 0 &&
+          legM / dtS > opts.slowCap.maxSpeedMs;
 
-        if (tooFar || tooFast) {
+        if (tooFar || tooFast || tooFastForType) {
           consecutiveRejects++;
           if (consecutiveRejects < opts.maxConsecutiveRejects) {
             droppedOutlier++;
@@ -215,9 +251,121 @@ export function cleanRoutePoints<T extends CleanablePoint>(
       droppedOutlier,
       droppedBadTimestamp,
       droppedSpike: despiked.dropped,
+      droppedPresence: skeletonResult.droppedPresence,
       segmentCount: despiked.segments.length,
     },
   };
+}
+
+/**
+ * Skeleton-consistency pre-pass: keep a network fix only when it agrees with
+ * where the trusted GNSS fixes say the machine was.
+ *
+ * Why this exists: when the phone's location task dies, the only positions
+ * still flowing are the 60 s presence check-in's best-effort fixes — fused
+ * Wi-Fi/cell positions that hop between towers kilometres apart. At that
+ * cadence a 4 km hop is a "legal" 118 km/h, so the kinematic tests are
+ * structurally blind to them, and no per-point rule can tell a tower hop from
+ * a real drive. What CAN judge them is the surrounding trusted fixes:
+ *
+ *  - Trusted fixes (accuracy < {@link GPS_TRUSTED_ACCURACY_M}) always pass and
+ *    form the skeleton.
+ *  - A network fix bracketed by skeleton fixes within
+ *    {@link SKELETON_WINDOW_S} must sit within tolerance of the position
+ *    interpolated between them (one-sided: distance to the nearest). The
+ *    tolerance scales with the fix's own claimed accuracy —
+ *    `max(FLOOR, min(2×accuracy, CAP))` — so an honest 150 m fix near the
+ *    field is kept (no fragmentation of Balanced work hours) while a 3.7 km
+ *    tower fix is not.
+ *  - A network fix with NO skeleton inside the window is presence data from a
+ *    dead-task regime (overnight, phone frozen): dropped. A machine that
+ *    reported nothing but network fixes all day has no drawable track — the
+ *    honest render is a gap, not a spider web.
+ *
+ * Measured (30 h, sick loader stream / healthy loader stream): drawn km-scale
+ * legs 11 → 3 while the healthy stream keeps 95% of its points. NOT safe for
+ * trucks — their fused "exactly 100 m" road fixes ARE the track (a truck day
+ * measured 0% kept with this on) — which is why it is opt-in per machine type.
+ */
+function filterAgainstSkeleton<T extends CleanablePoint>(
+  points: readonly T[],
+): { points: T[]; droppedPresence: number } {
+  const windowMs = SKELETON_WINDOW_S * 1000;
+
+  interface SkeletonFix {
+    lat: number;
+    lon: number;
+    ms: number;
+  }
+  const skeleton: SkeletonFix[] = [];
+  for (const p of points) {
+    const ms = Date.parse(p.recordedAt);
+    if (
+      Number.isFinite(ms) &&
+      p.accuracyM !== null &&
+      Number.isFinite(p.accuracyM) &&
+      p.accuracyM < GPS_TRUSTED_ACCURACY_M
+    ) {
+      skeleton.push({ lat: p.lat, lon: p.lon, ms });
+    }
+  }
+
+  // No trusted fix in the whole window: an all-network stream holds no track.
+  if (skeleton.length === 0) {
+    return { points: [], droppedPresence: points.length };
+  }
+
+  const out: T[] = [];
+  let droppedPresence = 0;
+  // Points arrive in chronological order, so a single advancing cursor finds
+  // each point's bracketing skeleton pair in O(n) overall.
+  let cursor = 0;
+
+  for (const p of points) {
+    const ms = Date.parse(p.recordedAt);
+    const isTrusted =
+      p.accuracyM !== null && Number.isFinite(p.accuracyM) && p.accuracyM < GPS_TRUSTED_ACCURACY_M;
+    if (isTrusted || !Number.isFinite(ms)) {
+      // Bad timestamps fall through to the forward pass, which already counts
+      // and drops them — double-judging them here would skew the stats.
+      out.push(p);
+      continue;
+    }
+
+    while (cursor < skeleton.length && skeleton[cursor].ms <= ms) cursor++;
+    const before = cursor > 0 ? skeleton[cursor - 1] : null;
+    const after = cursor < skeleton.length ? skeleton[cursor] : null;
+
+    const accuracy = Number(p.accuracyM);
+    const tolerance = Math.max(
+      SKELETON_TOLERANCE_FLOOR_M,
+      Math.min(2 * accuracy, SKELETON_TOLERANCE_CAP_M),
+    );
+
+    let keep = false;
+    if (before && after && ms - before.ms <= windowMs && after.ms - ms <= windowMs) {
+      const f = (ms - before.ms) / (after.ms - before.ms || 1);
+      const iLat = before.lat + f * (after.lat - before.lat);
+      const iLon = before.lon + f * (after.lon - before.lon);
+      keep = haversineMeters(iLat, iLon, p.lat, p.lon) <= tolerance;
+    } else {
+      const near =
+        before && ms - before.ms <= windowMs
+          ? before
+          : after && after.ms - ms <= windowMs
+            ? after
+            : null;
+      keep = near !== null && haversineMeters(near.lat, near.lon, p.lat, p.lon) <= tolerance;
+    }
+
+    if (keep) {
+      out.push(p);
+    } else {
+      droppedPresence++;
+    }
+  }
+
+  return { points: out, droppedPresence };
 }
 
 /**

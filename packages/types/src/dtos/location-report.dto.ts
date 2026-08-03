@@ -10,6 +10,14 @@ export interface LocationReportDto {
   speedMs?: number | null;
   /** ISO-8601 timestamp when the position was recorded on the device */
   recordedAt: string;
+  /**
+   * Where the fix came from. `task` = the location foreground service (a real
+   * tracking fix); `checkin` = the 60 s presence alarm's best-effort fix
+   * (last-known + Balanced — network quality, for presence/geofence only,
+   * never drawn as a track). Absent on APKs older than vc56; the server
+   * stores that as NULL and treats it as `task`.
+   */
+  source?: 'task' | 'checkin';
 }
 
 /**

@@ -81,6 +81,63 @@ export const SPIKE_MAX_LEG_S = 180;
 export const GAP_SPLIT_S = 600;
 
 /**
+ * Speed cap for machines that physically cannot go fast (loader / telehandler /
+ * baler — anything but a truck). ≈ 54 km/h.
+ *
+ * Why the global SPEED_CAP_MS is not enough for them: the residual "spider web"
+ * after the first fix was cell-tower fixes arriving at the 60 s presence
+ * cadence with occasional missed beats — a 4 km hop over 122 s is 33 m/s,
+ * i.e. a perfectly legal 118 km/h under the truck-calibrated cap, but no
+ * telehandler on earth does that. Measured over 7 days of fleet data: of ALL
+ * non-truck legs longer than {@link SLOW_MACHINE_MIN_LEG_M} at over this speed
+ * (595 on one loader alone), exactly ZERO had a trusted GPS fix on both ends —
+ * there are no trailer transports in the data; every single one is network-fix
+ * noise.
+ */
+export const SLOW_MACHINE_SPEED_CAP_MS = 15;
+
+/**
+ * The slow-machine cap only applies to legs longer than this. On short legs
+ * jitter fakes speed (a 45 m wobble over 3 s reads as 15 m/s on a parked
+ * baler); above ~800 m at slow-machine speeds jitter cannot reach, so the test
+ * discriminates cleanly.
+ */
+export const SLOW_MACHINE_MIN_LEG_M = 800;
+
+/**
+ * A fix better than this is a real GNSS fix and anchors the "skeleton" the
+ * consistency filter trusts (see route-cleaning.ts). At/above it sits the
+ * network-fix regime: Android reports fused Wi-Fi/cell positions with a
+ * suspiciously round 100/300/500 label, and those can land kilometres away.
+ *
+ * CAUTION — this is a SKELETON-MEMBERSHIP threshold, not a drop gate. Dropping
+ * every >=100 m point outright was measured TWICE and failed twice: on healthy
+ * streams it deletes a third of the day for zero cleanliness gain, and on sick
+ * streams deleting the mid-accuracy anchors RE-EXPOSES big legs the kinematic
+ * chain was suppressing (11 → 19 drawn km-scale legs in the A/B run).
+ */
+export const GPS_TRUSTED_ACCURACY_M = 100;
+
+/**
+ * A network fix with no trusted skeleton fix within this window (either side)
+ * is presence data — the phone's location task was dead and only the 60 s
+ * check-in fallback was reporting (last-known + Balanced, see mobile
+ * getBestEffortPosition). Cell-tower hops in that regime fabricate travel;
+ * with no skeleton to judge them against, the honest answer is no track.
+ */
+export const SKELETON_WINDOW_S = 600;
+
+/** Minimum distance-from-skeleton tolerance before a network fix is rejected. */
+export const SKELETON_TOLERANCE_FLOOR_M = 500;
+
+/**
+ * Tolerance ceiling: 2×accuracy, but capped — a fix claiming 3.7 km of error
+ * must not buy itself a 7.4 km leash. Between FLOOR and CAP the tolerance
+ * scales with the fix's own honesty.
+ */
+export const SKELETON_TOLERANCE_CAP_M = 1000;
+
+/**
  * Largest value `machine_location_events.accuracy_m` can hold, per migration
  * 00095 which widened it to NUMERIC(9,2).
  *

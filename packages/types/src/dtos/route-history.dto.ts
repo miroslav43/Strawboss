@@ -38,6 +38,12 @@ export interface RouteFilterStats {
   droppedBadTimestamp: number;
   /** Lone points that left the path and came straight back (GPS excursions). */
   droppedSpike: number;
+  /**
+   * Presence-only fixes hidden from the track: check-in-source rows plus
+   * network fixes inconsistent with the trusted-GPS skeleton. Absent on
+   * responses from servers older than this field.
+   */
+  droppedPresence?: number;
   /** Accuracy ceiling applied, in metres. `null` when no accuracy gate ran. */
   accuracyCapM: number | null;
   /** True when the row cap was hit and the track is incomplete. */

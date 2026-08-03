@@ -482,7 +482,20 @@ export async function postCurrentLocationNow(machineId: string): Promise<void> {
  */
 const MAX_REPORTED_ACCURACY_M = 9_999_999;
 
-function coordsToReport(machineId: string, loc: Location.LocationObject): LocationReportDto {
+/**
+ * Ceiling of usefulness for the best-effort presence fix. Production measured
+ * check-in fixes claiming 2.5–6.3 km of error — positions that mislead every
+ * consumer they have (the "near <locality>" card, loader↔truck proximity,
+ * geofence). Past this we post nothing; presence itself rides the check-in
+ * call, not the fix.
+ */
+const CHECKIN_MAX_USEFUL_ACCURACY_M = 2_000;
+
+function coordsToReport(
+  machineId: string,
+  loc: Location.LocationObject,
+  source: 'task' | 'checkin' = 'task',
+): LocationReportDto {
   const rawAccuracy = loc.coords.accuracy;
   const accuracyM =
     typeof rawAccuracy === 'number' && Number.isFinite(rawAccuracy) && rawAccuracy >= 0
@@ -497,6 +510,10 @@ function coordsToReport(machineId: string, loc: Location.LocationObject): Locati
     headingDeg: loc.coords.heading ?? null,
     speedMs: loc.coords.speed ?? null,
     recordedAt: new Date(loc.timestamp).toISOString(),
+    // 'checkin' marks the best-effort presence fix (network quality) so the
+    // server can keep it OFF tracks and distance reports. See
+    // getBestEffortPosition for why those fixes must never draw a polyline.
+    source,
   };
 }
 
@@ -847,7 +864,7 @@ export async function getBestEffortPosition(machineId: string): Promise<Location
   let report: LocationReportDto | null = null;
   try {
     const last = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 });
-    if (last) report = coordsToReport(machineId, last);
+    if (last) report = coordsToReport(machineId, last, 'checkin');
   } catch {
     /* ignore — fall through to the fresh fix */
   }
@@ -856,9 +873,16 @@ export async function getBestEffortPosition(machineId: string): Promise<Location
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
     ]);
-    if (fresh) report = coordsToReport(machineId, fresh);
+    if (fresh) report = coordsToReport(machineId, fresh, 'checkin');
   } catch {
     /* ignore — keep the last-known fallback if we got one */
+  }
+  // A fix that admits being multiple kilometres off serves nobody: it is
+  // excluded from tracks by its 'checkin' tag anyway, and for presence it
+  // actively misleads ("near <wrong locality>", phantom geofence proximity).
+  // Better to report nothing — presence itself still flows via the check-in.
+  if (report && report.accuracyM != null && report.accuracyM > CHECKIN_MAX_USEFUL_ACCURACY_M) {
+    return null;
   }
   return report;
 }

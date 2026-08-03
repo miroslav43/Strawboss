@@ -381,6 +381,7 @@ export class ReportsService {
           ${machineFilter}
           AND mle.recorded_at >= ${params.from}::date
           AND mle.recorded_at <  (${params.to}::date + INTERVAL '1 day')
+          AND (mle.source IS NULL OR mle.source <> 'checkin')
       ),
       pairwise AS (
         SELECT
@@ -481,6 +482,7 @@ export class ReportsService {
           ${operatorFilter}
           AND mle.recorded_at >= ${params.from}::date
           AND mle.recorded_at <  (${params.to}::date + INTERVAL '1 day')
+          AND (mle.source IS NULL OR mle.source <> 'checkin')
       ),
       pairwise AS (
         SELECT
@@ -548,6 +550,7 @@ export class ReportsService {
           ${orgFilter}
           AND mle.recorded_at >= b.week_start
           AND mle.recorded_at <  (b.today + INTERVAL '1 day')
+          AND (mle.source IS NULL OR mle.source <> 'checkin')
       ),
       pairwise AS (
         SELECT
