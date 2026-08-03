@@ -13,6 +13,8 @@ import {
   SLOW_MACHINE_SPEED_CAP_MS,
   SPEED_CAP_MS,
   clampAccuracyM,
+  clampHeadingDeg,
+  clampSpeedMs,
 } from '../common/gps-noise';
 import { cleanRoutePoints } from '../common/route-cleaning';
 import { QUEUE_GEOFENCE_CHECK } from '../jobs/queues';
@@ -152,8 +154,8 @@ export class LocationService {
         ${dto.lat},
         ${dto.lon},
         ${clampAccuracyM(dto.accuracyM)},
-        ${dto.headingDeg ?? null},
-        ${dto.speedMs ?? null},
+        ${clampHeadingDeg(dto.headingDeg)},
+        ${clampSpeedMs(dto.speedMs)},
         ${dto.recordedAt}::timestamptz,
         ${normalizeLocationSource(dto.source)}
       )
@@ -265,8 +267,8 @@ export class LocationService {
           ${dto.lat},
           ${dto.lon},
           ${clampAccuracyM(dto.accuracyM)},
-          ${dto.headingDeg ?? null},
-          ${dto.speedMs ?? null},
+          ${clampHeadingDeg(dto.headingDeg)},
+          ${clampSpeedMs(dto.speedMs)},
           ${dto.recordedAt}::timestamptz,
           ${normalizeLocationSource(dto.source)}
         )`,

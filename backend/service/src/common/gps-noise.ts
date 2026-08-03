@@ -160,3 +160,31 @@ export function clampAccuracyM(value: number | null | undefined): number | null 
   if (!Number.isFinite(value) || value < 0) return null;
   return Math.min(value, ACCURACY_COLUMN_MAX_M);
 }
+
+/**
+ * Coerce a client-supplied compass heading into `heading_deg NUMERIC(5,2)`.
+ *
+ * Same failure shape clampAccuracyM exists for, different column: 52 batch
+ * inserts 500'd with `numeric field overflow` on 2026-08-03 morning, and
+ * NUMERIC(5,2)'s 999.99 ceiling is the tightest bound in the row. A heading is
+ * only meaningful in [0, 360); Android reports a negative value when the
+ * bearing is unknown. Anything outside the range is unknown, not data → null.
+ */
+export function clampHeadingDeg(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (!Number.isFinite(value) || value < 0 || value >= 360) return null;
+  return value;
+}
+
+/**
+ * Coerce a client-supplied speed into `speed_ms NUMERIC(6,2)` (ceiling
+ * 9999.99). Android reports a negative speed when unknown → null; a value past
+ * the column ceiling is sensor garbage, not motion → null rather than clamped,
+ * because unlike accuracy there is no "at least this much" reading of a
+ * nonsense speed.
+ */
+export function clampSpeedMs(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (!Number.isFinite(value) || value < 0 || value > 9_999.99) return null;
+  return value;
+}
