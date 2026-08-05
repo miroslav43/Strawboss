@@ -31,6 +31,7 @@ import {
   getPersistedMachineId,
   postBestEffortLocationNow,
   maybeFlushBatchedLocationReports,
+  isTrackingDeliveringFixes,
 } from './location';
 import { mobileLogger } from './logger';
 
@@ -79,10 +80,17 @@ export async function presenceCheckin(): Promise<void> {
     try {
       const machineId = await getPersistedMachineId();
       if (machineId) {
-        // Best-effort fast fix (last-known + Balanced) — a slow High-accuracy lock
-        // gets frozen out by PowerGenie before it returns on HONOR. See
-        // getBestEffortPosition().
-        await postBestEffortLocationNow(machineId);
+        // Only reach for GPS ourselves when the location foreground service is
+        // NOT delivering. When it is alive it already samples every 20–30 s, and
+        // duplicating that here would run the GNSS chip twice over on phones
+        // that spend the whole day on battery.
+        //
+        // When it is dead this is the entire track: one real satellite fix per
+        // minute. It used to be one cell-tower centroid per minute, which is
+        // what drew a spider web across the county.
+        if (!(await isTrackingDeliveringFixes())) {
+          await postBestEffortLocationNow(machineId);
+        }
         // Gated (~60s shared floor with the FGS tick): when the FGS is alive
         // both drivers would otherwise flush back-to-back every minute; when
         // the FGS is dead the stamp is stale and the flush proceeds — the

@@ -34,6 +34,17 @@ const LAST_SUCCESS_FILE = `${doc}strawboss-location-last-success.txt`;
 // recent foreground ping suppress a due background flush, or let an offline
 // stretch (no successes) retry every ~20-30s tick instead of every ~60s.
 const LAST_FLUSH_ATTEMPT_FILE = `${doc}strawboss-location-last-flush-attempt.txt`;
+/**
+ * Wall-clock of the last time the background location task actually DELIVERED a
+ * fix. This is the only trustworthy liveness signal for tracking.
+ *
+ * `Location.hasStartedLocationUpdatesAsync` is not: it queries expo-task-manager's
+ * PERSISTED task registry, which survives process death. After an OEM kill the
+ * registry still says "registered" while no foreground service is running, so the
+ * watchdog concluded all was well and never re-armed — phones sat with dead GPS
+ * for days while reporting themselves healthy.
+ */
+const LAST_TASK_TICK_FILE = `${doc}strawboss-location-last-task-tick.txt`;
 
 const MAX_PENDING_REPORTS = 400;
 const PENDING_REPORTS_WARN_THRESHOLD = Math.floor(MAX_PENDING_REPORTS * 0.9);
@@ -243,6 +254,44 @@ export async function readLastLocationSuccessIso(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function writeLastTaskTick(): Promise<void> {
+  try {
+    await FileSystem.writeAsStringAsync(LAST_TASK_TICK_FILE, String(Date.now()));
+  } catch {
+    /* non-critical */
+  }
+}
+
+async function readLastTaskTickMs(): Promise<number> {
+  try {
+    const info = await FileSystem.getInfoAsync(LAST_TASK_TICK_FILE);
+    if (!info.exists) return 0;
+    const raw = Number((await FileSystem.readAsStringAsync(LAST_TASK_TICK_FILE)).trim());
+    return Number.isFinite(raw) ? raw : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Is the RN host Activity in the foreground RIGHT NOW?
+ *
+ * This is load-bearing, not cosmetic. expo-location refuses to start a location
+ * foreground service unless its own `AppForegroundedSingleton.isForegrounded` is
+ * true, and that flag is driven purely by the Activity lifecycle
+ * (`onHostResume`/`onHostPause`) — it defaults to false and is ALWAYS false in a
+ * headless task, a WorkManager worker, or the background location task itself.
+ * `AppState.currentState === 'active'` is the JS mirror of exactly that flag.
+ *
+ * Any code path that stops tracking before restarting it MUST check this first:
+ * `stopLocationUpdatesAsync` has no such guard and always succeeds, so a
+ * stop-then-failed-start leaves the phone with no GPS at all and nothing to
+ * revive it. That asymmetry is what killed capture on ~80% of fleet hours.
+ */
+function isAppForegrounded(): boolean {
+  return AppState.currentState === 'active';
 }
 
 async function writeLastFlushAttempt(): Promise<void> {
@@ -483,13 +532,26 @@ export async function postCurrentLocationNow(machineId: string): Promise<void> {
 const MAX_REPORTED_ACCURACY_M = 9_999_999;
 
 /**
- * Ceiling of usefulness for the best-effort presence fix. Production measured
- * check-in fixes claiming 2.5–6.3 km of error — positions that mislead every
- * consumer they have (the "near <locality>" card, loader↔truck proximity,
- * geofence). Past this we post nothing; presence itself rides the check-in
- * call, not the fix.
+ * Hardest rule in this file: a position this imprecise never leaves the phone.
+ *
+ * expo-location talks only to Google's FUSED provider, which silently answers
+ * with a cell-tower or Wi-Fi centroid whenever it cannot get satellites — and
+ * those centroids land 10–60 km away. Their signature in production is a
+ * perfectly ROUND accuracy: exactly 100.00, 300.00, 800.00, 1000.00, 2400.00.
+ * One phone produced 1272 such fixes in a single day and they drew a spider web
+ * across the whole county.
+ *
+ * Strictly LESS THAN 100, not "at most": exactly 100.00 IS the network
+ * signature, so the boundary itself has to be excluded.
+ *
+ * This is a CAPTURE-time gate, which is why it is safe even though gating a
+ * drawn track on accuracy was measured twice to be harmful. Filtering on read
+ * deletes anchors out of a mixed stream and breaks the chain between the points
+ * that remain; refusing to record junk in the first place leaves a stream that
+ * was never mixed. Judge the relationship between points when reading — judge
+ * the fix itself when writing.
  */
-const CHECKIN_MAX_USEFUL_ACCURACY_M = 2_000;
+const MAX_USEFUL_ACCURACY_M = 100;
 
 function coordsToReport(
   machineId: string,
@@ -515,6 +577,17 @@ function coordsToReport(
     // getBestEffortPosition for why those fixes must never draw a polyline.
     source,
   };
+}
+
+/**
+ * Is this fix precise enough to be worth recording at all?
+ *
+ * A fix with no accuracy estimate is rejected: every real provider supplies one,
+ * so its absence means we cannot tell truth from a tower centroid.
+ */
+function isFixPreciseEnough(loc: Location.LocationObject): boolean {
+  const a = loc.coords.accuracy;
+  return typeof a === 'number' && Number.isFinite(a) && a >= 0 && a < MAX_USEFUL_ACCURACY_M;
 }
 
 // ---------------------------------------------------------------------------
@@ -646,6 +719,11 @@ export async function maybeFlushBatchedLocationReports(): Promise<void> {
 
 TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
   const { data, error } = taskBody;
+  // Stamp liveness FIRST, before any early return. The task firing at all is the
+  // proof that the foreground service is alive — even an error delivery or a
+  // presence-only tick proves it. This stamp is what the watchdog trusts instead
+  // of the persisted task registry, which lies after a process kill.
+  await writeLastTaskTick();
   if (error) {
     mobileLogger.warn('Location background task error', {
       message:
@@ -693,13 +771,26 @@ TaskManager.defineTask(LOCATION_UPDATES_TASK_NAME, async (taskBody) => {
   // gated flush above (and on the next tick(s) once ~60s has elapsed) drains
   // the outbox via chunked POST /report/batch. GPS capture cadence (20-30s)
   // is unchanged; only the transport to the server is batched.
+  let queued = 0;
+  let rejected = 0;
   for (const loc of locations) {
+    // Even the fused provider running at PRIORITY_HIGH_ACCURACY hands back
+    // tower centroids when it cannot see satellites. Those are not a coarse
+    // version of the truth, they are a different place entirely — drop them
+    // here so the server never has to guess which points were real.
+    if (!isFixPreciseEnough(loc)) {
+      rejected++;
+      continue;
+    }
     const report = coordsToReport(machineId, loc);
     await appendPendingReport(report);
+    queued++;
   }
   mobileLogger.debug('Location fixes queued (background, batched)', {
     machineId,
     count: locations.length,
+    queued,
+    rejectedImprecise: rejected,
     speedKmh,
   });
 
@@ -753,10 +844,25 @@ async function readLastProfile(): Promise<SpeedProfile | null> {
 }
 
 /**
- * Compare the current speed profile with the previously stored one.
- * If the category changed, restart `startLocationUpdatesAsync` with new
- * intervals. This is safe to call from inside the background task on Android
- * (foreground service stays alive during the restart).
+ * Compare the current speed profile with the previously stored one and, if the
+ * category changed, restart tracking with intervals suited to it.
+ *
+ * THIS FUNCTION USED TO DESTROY GPS CAPTURE ON THE WHOLE FLEET. It ran from
+ * inside the background location task (screen off) and did
+ * `stopLocationUpdatesAsync` followed by `startLocationUpdatesAsync`. The stop
+ * has no guard and always succeeds; the start throws
+ * `ForegroundServiceStartNotAllowedException` whenever the Activity is not
+ * foregrounded (expo-location LocationModule.kt:257). The throw was swallowed
+ * into a warn, so the moment a machine crossed 30 km/h with the screen off the
+ * app silently killed its own GPS and had no way to restart it. Measured
+ * consequence: ~80% of fleet hours had no real GPS at all, and the only
+ * positions still flowing were 60 s cell-tower fixes that drew a county-wide
+ * spider web on the map.
+ *
+ * So: never touch a running service unless we can put it back. A slightly wrong
+ * sampling interval is a rounding error; no GPS is a dead feature. The profile
+ * is deliberately NOT committed when we skip, so the switch still happens the
+ * next time the app is genuinely in the foreground.
  */
 async function restartWithAdaptiveParamsIfNeeded(
   machineId: string,
@@ -766,6 +872,15 @@ async function restartWithAdaptiveParamsIfNeeded(
   const lastProfile = await readLastProfile();
 
   if (lastProfile === newProfile) return; // no change — nothing to do
+
+  if (!isAppForegrounded()) {
+    mobileLogger.flow('GPS adaptive profile change deferred — app not foregrounded', {
+      from: lastProfile ?? 'unknown',
+      to: newProfile,
+      speedKmh,
+    });
+    return;
+  }
 
   await writeLastProfile(newProfile);
   const params = trackingParamsForProfile(newProfile);
@@ -796,8 +911,13 @@ async function restartWithAdaptiveParamsIfNeeded(
       },
     });
   } catch (err) {
-    mobileLogger.warn('GPS adaptive restart failed', {
+    // The start failed after the stop succeeded: tracking is now OFF and the
+    // profile file says otherwise. Roll it back so the next foreground pass
+    // re-arms instead of concluding nothing changed.
+    await writeLastProfile(lastProfile ?? 'field');
+    mobileLogger.warn('GPS adaptive restart failed — tracking is now OFF', {
       message: err instanceof Error ? err.message : String(err),
+      machineId,
     });
   }
 }
@@ -837,6 +957,7 @@ export async function getCurrentPosition(machineId: string): Promise<LocationRep
       accuracy: Location.Accuracy.High,
     });
 
+    if (!isFixPreciseEnough(loc)) return null;
     return coordsToReport(machineId, loc);
   } catch {
     return null;
@@ -844,47 +965,49 @@ export async function getCurrentPosition(machineId: string): Promise<LocationRep
 }
 
 /**
- * Best-effort position for the alarm-driven headless path on OEM ROMs that FREEZE
- * the app between native-alarm ticks (HONOR/MagicOS PowerGenie). A High-accuracy
- * `getCurrentPositionAsync` needs a GPS lock that can take 5–30 s — long enough for
- * the OEM to re-freeze the app before it returns, so nothing lands (verified on a
- * HONOR NLA-LX1: presence/check-in flowed every ~20 s screen-off but GPS never did).
- * Strategy that lands a fresh-ish fix inside the short alarm window instead:
- *   1) last-known (instant, ≤10 min old) — guarantees SOMETHING lands even if the
- *      app is re-frozen immediately after;
- *   2) a Balanced (fused cell/wifi) fix with a hard 10 s timeout — fast (~1–3 s),
- *      works indoors, and replaces the last-known when it arrives.
- * Accuracy is coarser (~100 m) than the foreground 20 s GPS FGS, but a fresh coarse
- * position every 60 s beats no position at all while the phone is frozen.
+ * Position for the 60 s alarm-driven headless path, used when the location
+ * foreground service is not delivering.
+ *
+ * THIS FUNCTION WAS THE SPIDER WEB. It used to ask for
+ * `Accuracy.Balanced` (= PRIORITY_BALANCED_POWER_ACCURACY, i.e. explicitly the
+ * cell/Wi-Fi provider) plus a ≤10-minute-old last-known fix, and posted whatever
+ * came back. On a phone whose tracking service had died that was the ONLY thing
+ * still reporting: exactly 60 tower centroids per hour, hopping 10–60 km between
+ * masts, drawn as a polyline across the county. One machine emitted 1272 such
+ * fixes in a day and not a single real one.
+ *
+ * Now it asks for real satellites (`Accuracy.Highest`) with a window long enough
+ * for a cold lock, and returns nothing rather than a centroid. Sparse truth beats
+ * dense fiction: a fix a minute is already 3× finer than the ~3 min it takes a
+ * telehandler to cross its own field.
+ *
+ * The last-known branch is gone. It answered "where were you within 10 minutes",
+ * which at 60 s cadence duplicates a stale point over and over and, worse,
+ * happily returned a cached NETWORK fix.
  */
 export async function getBestEffortPosition(machineId: string): Promise<LocationReportDto | null> {
   const { status } = await Location.getForegroundPermissionsAsync();
   if (status !== Location.PermissionStatus.GRANTED) return null;
 
-  let report: LocationReportDto | null = null;
   try {
-    const last = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 });
-    if (last) report = coordsToReport(machineId, last, 'checkin');
-  } catch {
-    /* ignore — fall through to the fresh fix */
-  }
-  try {
+    // 20 s, and the ceiling is not arbitrary: our caller runs inside
+    // PresenceCheckinService, whose HeadlessJsTaskConfig budget is 30 s
+    // (plugins/withDeviceOwner.js), and the fleet check-in plus heartbeat have
+    // already spent part of it. Ask for longer and Android kills the task before
+    // the fix arrives — we would wait, burn the GPS chip, and store nothing.
+    //
+    // A warm chip locks in 1–5 s, so once a single fix lands the following
+    // minutes are cheap. A cold lock may time out; the next tick retries, which
+    // is the right trade on phones that run all day on battery.
     const fresh = await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 20_000)),
     ]);
-    if (fresh) report = coordsToReport(machineId, fresh, 'checkin');
+    if (!fresh || !isFixPreciseEnough(fresh)) return null;
+    return coordsToReport(machineId, fresh, 'checkin');
   } catch {
-    /* ignore — keep the last-known fallback if we got one */
-  }
-  // A fix that admits being multiple kilometres off serves nobody: it is
-  // excluded from tracks by its 'checkin' tag anyway, and for presence it
-  // actively misleads ("near <wrong locality>", phantom geofence proximity).
-  // Better to report nothing — presence itself still flows via the check-in.
-  if (report && report.accuracyM != null && report.accuracyM > CHECKIN_MAX_USEFUL_ACCURACY_M) {
     return null;
   }
-  return report;
 }
 
 /**
@@ -956,6 +1079,27 @@ export async function startBackgroundLocationTracking(machineId: string): Promis
   await writeMachineIdToDisk(machineId);
 
   const already = await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
+
+  // Same trap as the adaptive restart: the stop below always succeeds while the
+  // start further down throws unless the Activity is foregrounded. Called from a
+  // WorkManager worker or a headless task, the old unconditional stop turned a
+  // healthy service into no service at all — the watchdog was making things
+  // worse every time it fired. When we cannot legally start, leave whatever is
+  // running alone and let the caller retry from the foreground.
+  if (!isAppForegrounded()) {
+    if (await isTrackingDeliveringFixes()) {
+      mobileLogger.flow(
+        'startBackgroundLocationTracking: backgrounded, fixes still flowing — leaving tracking alone',
+      );
+      return;
+    }
+    mobileLogger.warn(
+      'startBackgroundLocationTracking: backgrounded and no recent fixes — expo cannot start a location FGS here',
+      { machineId, registryClaimsStarted: already },
+    );
+    return;
+  }
+
   if (already) {
     await Location.stopLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
   }
@@ -1009,9 +1153,44 @@ export async function stopBackgroundLocationTracking(): Promise<void> {
   mobileLogger.flow('Background location updates stopped');
 }
 
+/**
+ * How long tracking may go without delivering a fix before we call it dead.
+ *
+ * The slowest profile samples every 30 s, so three missed windows plus slack is
+ * generous. Anything longer and the phone is not tracking, whatever the task
+ * registry claims.
+ */
+const TRACKING_STALE_AFTER_MS = 5 * 60_000;
+
+/**
+ * True when the location task has actually delivered a fix recently.
+ *
+ * Deliberately NOT `hasStartedLocationUpdatesAsync`: that reads a persisted
+ * registry that outlives the process, so it answers "was tracking ever armed",
+ * not "is tracking running". After an OEM kill it kept saying yes while the
+ * phone emitted nothing but cell-tower fixes.
+ */
+export async function isTrackingDeliveringFixes(): Promise<boolean> {
+  const last = await readLastTaskTickMs();
+  return last > 0 && Date.now() - last < TRACKING_STALE_AFTER_MS;
+}
+
+/**
+ * Should the watchdog consider tracking healthy?
+ *
+ * Registered AND delivering. Either alone is a lie: the registry survives death,
+ * and a fresh start has not ticked yet — hence the grace when the registry says
+ * started but no tick has ever been recorded.
+ */
 export async function isBackgroundLocationTrackingActive(): Promise<boolean> {
   try {
-    return await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
+    const registered = await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
+    if (!registered) return false;
+    const lastTick = await readLastTaskTickMs();
+    // Never ticked: tracking was just armed and no fix has arrived yet. Trust
+    // the registry this once rather than restarting a service that is warming up.
+    if (lastTick === 0) return true;
+    return Date.now() - lastTick < TRACKING_STALE_AFTER_MS;
   } catch {
     return false;
   }

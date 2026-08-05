@@ -11,8 +11,20 @@
  *
  * "Should be running" = a machine id is persisted on disk (written when tracking
  * starts, cleared on logout/stop) AND a valid Supabase session exists.
+ *
+ * Two things this watchdog got wrong for months, both now fixed at the source:
+ *  - It asked `hasStartedLocationUpdatesAsync` whether tracking was alive. That
+ *    reads a PERSISTED registry which survives process death, so it answered
+ *    "yes" on phones that had emitted nothing but tower fixes for days and the
+ *    watchdog returned early every single time. Liveness now means a fix was
+ *    actually delivered recently (see isBackgroundLocationTrackingActive).
+ *  - When it did fire from the WorkManager worker it made things WORSE:
+ *    `startBackgroundLocationTracking` stopped the running service before
+ *    starting it, and the start is refused off the foreground. That is now
+ *    guarded inside that function, so a background call can no longer destroy a
+ *    healthy service.
  */
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { getAuthToken } from './auth';
 import { mobileLogger } from './logger';
 import {
@@ -35,13 +47,21 @@ export async function ensureTrackingArmed(): Promise<void> {
   const running = await isBackgroundLocationTrackingActive();
   if (running) return;
 
+  // expo-location refuses to start a location foreground service unless the
+  // Activity is resumed, and the refusal comes AFTER the stop. Report the dead
+  // service and wait for a foreground pass rather than tearing anything down.
+  if (AppState.currentState !== 'active') {
+    mobileLogger.flow('Watchdog: tracking is dead but app is backgrounded — deferring re-arm', {
+      machineId,
+      appState: AppState.currentState,
+    });
+    return;
+  }
+
   mobileLogger.flow('Watchdog: tracking should be on but is not — restarting', { machineId });
   try {
     await startBackgroundLocationTracking(machineId);
   } catch (err) {
-    // Best-effort: starting a location foreground service can be refused when
-    // called from a backgrounded WorkManager worker on Android 14+. It will
-    // succeed on the next foreground pass (AppState 'active').
     mobileLogger.warn('Watchdog: failed to restart tracking', {
       message: err instanceof Error ? err.message : String(err),
     });
