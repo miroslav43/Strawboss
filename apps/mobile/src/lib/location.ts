@@ -14,6 +14,7 @@ import { mobileLogger } from './logger';
 import { runBackgroundSyncCycle } from '../sync/run-background-sync';
 import { maybeRaiseGeofenceWake } from './geofence-wake';
 import { runDeviceCheckin, hasActiveTrip } from './device-checkin';
+import { getSatelliteFix, isGpsProviderEnabled, isNativeGpsAvailable } from './native-gps';
 
 export type { LocationSubscription } from 'expo-location';
 
@@ -989,25 +990,42 @@ export async function getBestEffortPosition(machineId: string): Promise<Location
   const { status } = await Location.getForegroundPermissionsAsync();
   if (status !== Location.PermissionStatus.GRANTED) return null;
 
-  try {
-    // 20 s, and the ceiling is not arbitrary: our caller runs inside
-    // PresenceCheckinService, whose HeadlessJsTaskConfig budget is 30 s
-    // (plugins/withDeviceOwner.js), and the fleet check-in plus heartbeat have
-    // already spent part of it. Ask for longer and Android kills the task before
-    // the fix arrives — we would wait, burn the GPS chip, and store nothing.
-    //
-    // A warm chip locks in 1–5 s, so once a single fix lands the following
-    // minutes are cheap. A cold lock may time out; the next tick retries, which
-    // is the right trade on phones that run all day on battery.
-    const fresh = await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 20_000)),
-    ]);
-    if (!fresh || !isFixPreciseEnough(fresh)) return null;
-    return coordsToReport(machineId, fresh, 'checkin');
-  } catch {
+  // Satellites or nothing. The native module wraps LocationManager.GPS_PROVIDER,
+  // which has no network fallback by construction, so no answer from here can
+  // ever be a tower address. expo-location cannot make that promise: it speaks
+  // only to the fused provider, which substitutes a Wi-Fi/cell centroid silently
+  // and unmarkably.
+  //
+  // 20 s, and the ceiling is not arbitrary: our caller runs inside
+  // PresenceCheckinService, whose HeadlessJsTaskConfig budget is 30 s
+  // (plugins/withDeviceOwner.js), and the fleet check-in plus heartbeat have
+  // already spent part of it. Ask for longer and Android kills the task before
+  // the fix arrives — we would wait, burn the GPS chip, and store nothing.
+  //
+  // A warm chip locks in 1–5 s, so once a single fix lands the following minutes
+  // are cheap. A cold lock may time out; the next tick retries, which is the
+  // right trade on phones that run all day on battery.
+  if (!isNativeGpsAvailable()) {
+    // No native module in this build: report nothing rather than fall back to
+    // fused, which is exactly the path that produced the spider web.
+    mobileLogger.warn('Native GPS module missing — skipping best-effort fix');
     return null;
   }
+
+  const fix = await getSatelliteFix(20_000);
+  if (!fix) return null;
+  if (fix.accuracyM === null || !(fix.accuracyM < MAX_USEFUL_ACCURACY_M)) return null;
+
+  return {
+    machineId,
+    lat: fix.lat,
+    lon: fix.lon,
+    accuracyM: Math.min(fix.accuracyM, MAX_REPORTED_ACCURACY_M),
+    headingDeg: fix.headingDeg,
+    speedMs: fix.speedMs,
+    recordedAt: new Date(fix.timestamp).toISOString(),
+    source: 'checkin',
+  };
 }
 
 /**
@@ -1204,6 +1222,12 @@ export async function getLocationHealthSnapshot(): Promise<{
   lastSpeedKmh: number | null;
   lastProfile: string | null;
   pendingLocationReports: number;
+  /** Seconds since the location task last delivered a fix; null if never. */
+  secondsSinceLastFix: number | null;
+  /** Is the OS-level GPS provider switched on? False here explains everything else. */
+  gpsProviderEnabled: boolean;
+  /** Is the satellite-only native module present in this build? */
+  nativeGpsAvailable: boolean;
 }> {
   const safe = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
     try {
@@ -1212,6 +1236,7 @@ export async function getLocationHealthSnapshot(): Promise<{
       return fallback;
     }
   };
+  const lastTick = await safe(() => readLastTaskTickMs(), 0);
   return {
     assignedMachineId: await safe(() => readMachineIdFromDisk(), null),
     backgroundTrackingActive: await isBackgroundLocationTrackingActive(),
@@ -1219,5 +1244,11 @@ export async function getLocationHealthSnapshot(): Promise<{
     lastSpeedKmh: await safe(() => readLastSpeedKmh(), null),
     lastProfile: await safe(() => readLastProfile(), null),
     pendingLocationReports: await safe(async () => (await readPendingReports()).length, 0),
+    // The three fields that would have made this bug visible in a day instead of
+    // three weeks: how long since GPS actually delivered, whether the OS even has
+    // the GPS radio on, and whether this build can bypass the fused provider.
+    secondsSinceLastFix: lastTick > 0 ? Math.round((Date.now() - lastTick) / 1000) : null,
+    gpsProviderEnabled: await safe(() => isGpsProviderEnabled(), false),
+    nativeGpsAvailable: isNativeGpsAvailable(),
   };
 }

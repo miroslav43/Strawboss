@@ -52,6 +52,7 @@
       ],
       "./plugins/withAlwaysOnTracking",
       "./plugins/withDeviceOwner",
+      "./plugins/withGpsCapture",
       "./plugins/withMlKitDocScanner",
       "./plugins/withHeadlessProguard"
     ],

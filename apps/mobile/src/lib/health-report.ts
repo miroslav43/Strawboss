@@ -162,6 +162,9 @@ export async function gatherHealthReport(): Promise<DeviceHealthReport> {
     lastSpeedKmh: null as number | null,
     lastProfile: null as string | null,
     pendingLocationReports: 0,
+    secondsSinceLastFix: null as number | null,
+    gpsProviderEnabled: false,
+    nativeGpsAvailable: false,
   });
   const perms = await run(
     'locationPerms',
