@@ -720,13 +720,23 @@ locale?: Locale;
 cd /srv/apps/Strawboss && ./strawboss.sh build packages && ./strawboss.sh typecheck validation && ./strawboss.sh typecheck api
 ```
 
-- [ ] **Pas 5: Dovedește că enum-ul COMPILAT s-a schimbat**
+- [ ] **Pas 5: Dovedește că gardul COMPILAT acceptă `hu`**
+
+**Nu prin `grep`.** După ce schema importă `SUPPORTED_LOCALES` din `@strawboss/types` în loc să inlineze array-ul, în fișierul compilat nu mai apare niciun `hu` literal — un grep ar raporta fals că nimic nu s-a schimbat. Execută `dist`-ul și interoghează schema:
 
 ```bash
-cd /srv/apps/Strawboss && grep -rn "ro\|en\|hu" packages/validation/dist/schemas/profile.schema.js | head -5
+cd /srv/apps/Strawboss && node -e "
+const v=require('./packages/validation/dist/index.js');
+for (const loc of ['hu','ro','en','xx'])
+  console.log(loc.padEnd(4), v.updateProfileLocaleSchema.safeParse({locale:loc}).success);
+console.log('createUserSchema fara locale:',
+  v.createUserSchema.safeParse({fullName:'X', role:'driver'}).success);
+"
 ```
 
-Așteptat: enum-ul compilat conține `hu`. Asta e capcana numărul unu din tot planul — typecheck-ul trece local pe `.d.ts` vechi, faci deploy, iar backend-ul validează în continuare la runtime pe `.js`-ul vechi. UI-ul arată că limba se salvează; serverul refuză tăcut.
+Așteptat: `hu`/`ro`/`en` → `true`, `xx` → `false`, `createUserSchema` fără `locale` → `true`. Ultimele două contează la fel de mult ca prima — dovedesc că ai **lărgit** gardul, nu că l-ai dezactivat, și că apelanții existenți nu se rup.
+
+Asta e capcana numărul unu din tot planul — typecheck-ul trece local pe `.d.ts` vechi, faci deploy, iar backend-ul validează în continuare la runtime pe `.js`-ul vechi. UI-ul arată că limba se salvează; serverul refuză tăcut.
 
 - [ ] **Pas 6: Commit**
 
