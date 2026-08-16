@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import { SIGNATURE_URL_PATTERN } from '@strawboss/validation';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
+import { SeasonsService } from '../seasons/seasons.service';
 import { dateWindowClause, seasonWindow, tsWindowClause } from '../common/season-range';
 import { SEGMENT_CAP_M, SPEED_CAP_MS } from '../common/gps-noise';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -204,6 +205,7 @@ export class TripsService implements OnModuleInit {
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     private readonly cmrScansService: CmrScansService,
     private readonly features: FeaturesService,
+    private readonly seasons: SeasonsService,
   ) {}
 
   /** Public web base URL for driver-facing links (arrival-CMR upload). */
@@ -810,16 +812,10 @@ export class TripsService implements OnModuleInit {
    *   b) Global default destination (`delivery_destinations.is_default = TRUE`)
    *   c) NULL (driver picks before "Plecare")
    */
-  /**
-   * @param seasonYear the ACTIVE season, never a caller-selected one — this
-   *   path decides whether a loader standing in a field may record a load.
-   *   Omitted means all time (org has never closed a season).
-   */
   async registerLoad(
     dto: RegisterLoadInput,
     callerId: string,
     orgId: string | null,
-    seasonYear?: number,
   ): Promise<RegisterLoadResult> {
     const resolvedLoaderSignature = await this.resolveSpecimenSignature(
       callerId,
@@ -1040,7 +1036,6 @@ export class TripsService implements OnModuleInit {
             dto.parcelId,
             orgId,
             tx,
-            seasonYear,
           );
 
           if (remaining <= 0) {
@@ -2426,16 +2421,16 @@ export class TripsService implements OnModuleInit {
    *     admin carrying leftover bales into a new season records them as a
    *     signed delta, and a gate that ignores deltas would keep refusing.
    *
-   * @param seasonYear omitted means all time — an organization that has never
-   *   closed a season is unaffected by any of this.
+   * The season is resolved inside `parcelBaleTally`, not passed in — see the
+   * note there. An organization that has never closed a season resolves to no
+   * window and is unaffected by any of this.
    */
   private async computeRemainingBalesOnParcel(
     parcelId: string,
     orgId: string | null,
     executor?: Pick<DrizzleProvider['db'], 'execute'>,
-    seasonYear?: number,
   ): Promise<number> {
-    const { remaining } = await this.parcelBaleTally(parcelId, orgId, executor, seasonYear);
+    const { remaining } = await this.parcelBaleTally(parcelId, orgId, executor);
     return remaining;
   }
 
@@ -2451,9 +2446,17 @@ export class TripsService implements OnModuleInit {
     parcelId: string,
     orgId: string | null,
     executor?: Pick<DrizzleProvider['db'], 'execute'>,
-    seasonYear?: number,
   ): Promise<{ produced: number; loaded: number; remaining: number }> {
     const db = executor ?? this.drizzleProvider.db;
+    // Resolved HERE rather than accepted as a parameter. As a trailing optional
+    // argument it was passed at exactly one of the five call sites that ask this
+    // question; the other four silently kept the all-time window, so two gates
+    // deciding the same physical thing could disagree. A value the method looks
+    // up itself cannot be forgotten by a caller.
+    //
+    // Always the ACTIVE season, never one a user picked: this decides whether a
+    // loader in a field may load, and no dropdown may influence that.
+    const seasonYear = await this.seasons.getActiveSeasonYear(orgId);
     const org = orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``;
     const window = seasonYear === undefined ? undefined : seasonWindow(seasonYear);
     const producedWin = dateWindowClause(sql`production_date`, window);

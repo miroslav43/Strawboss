@@ -83,19 +83,13 @@ export class ParcelsController {
       return;
     }
 
-    const rows = await this.parcelsService.list(user.organizationId, filters, seasonYear);
+    const rows = await this.parcelsService.list(user.organizationId, filters);
     res.header('ETag', etag).status(200).send(rows);
   }
 
   @Get(':id/bale-availability')
   getBaleAvailability(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    // The ACTIVE season, not a query parameter — this is what the loader app
-    // reads to decide whether a field still has bales to take.
-    return this.parcelsService.getBaleAvailability(
-      id,
-      user.organizationId,
-      this.seasons.gateYear(user.organizationId, user.activeSeasonYear),
-    );
+    return this.parcelsService.getBaleAvailability(id, user.organizationId);
   }
 
   @Get(':id')

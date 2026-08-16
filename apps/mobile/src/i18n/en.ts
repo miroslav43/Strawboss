@@ -248,6 +248,8 @@ export const en = {
   syncDetails: {
     featureDisabled:
       'This feature was switched off by an administrator. The record stays saved and will be sent if it is switched back on.',
+    seasonClosed:
+      'The season this record belongs to has been closed by an administrator, so it no longer accepts new entries. Nothing you entered is lost — tell your administrator.',
     terminalRejection:
       'The server rejected this record. Retrying will not help — redo the action from its screen.',
     title: 'Pending data',

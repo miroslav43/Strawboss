@@ -491,8 +491,8 @@
       "loaded": "Încărcați",
       "remaining": "Rămași",
       "overrideHeading": "Override manual",
-      "reason": "Motiv (opțional)",
-      "reasonPlaceholder": "Ex: corecție după inventar",
+      "reason": "Motiv",
+      "reasonPlaceholder": "ex. baloți rămași pe câmp din 2026",
       "saveOverride": "Salvează override",
       "baler": "Balotieră (producător)",
       "selectBaler": "Alege o balotieră…",
@@ -508,11 +508,14 @@
       "remainingHint": "Rămași în câmp: {{count}}",
       "transferToDepot": "Transferă în depozit",
       "noValue": "Completează cel puțin un câmp (produși sau încărcați).",
-      "invalidNumber": "Introdu un număr valid (≥ 0).",
+      "invalidNumber": "Introdu un număr valid.",
       "invalidCount": "Introdu un număr valid de baloți.",
       "pickDepot": "Alege un depozit pentru transfer.",
       "overrideError": "Eroare la salvarea override-ului. Încearcă din nou.",
-      "transferError": "Eroare la transfer. Încearcă din nou."
+      "transferError": "Eroare la transfer. Încearcă din nou.",
+      "correctionHeading": "Corecție manuală",
+      "correctionHint": "Setează totalurile reale pentru acest câmp. Diferența se înregistrează ca ajustare cu semn — înregistrările operatorilor nu se modifică niciodată. Folosește asta ca să aduci în sezonul curent baloții rămași dintr-un sezon anterior.",
+      "applyCorrection": "Aplică corecția"
     },
     "loading": "Se încarcă câmpurile…",
     "loadError": "Nu s-au putut încărca câmpurile. Backend-ul poate fi oprit.",
@@ -2538,6 +2541,8 @@
       "confirm": "Închide {year}",
       "running": "Se închide…",
       "success": "Sezonul {year} a fost închis. Sezonul activ este acum {next}; s-au reportat {bales} baloți în {depots} depozite."
-    }
+    },
+    "settingsTitle": "Sezon",
+    "settingsDescription": "Închide anul încheiat: stocul din depozite se reportează, statisticile repornesc de la zero, iar sezonul închis nu mai poate fi modificat. Nimic nu se șterge — poți oricând comuta înapoi pe un sezon vechi din bara de sus."
   }
 }

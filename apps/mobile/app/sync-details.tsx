@@ -15,7 +15,11 @@ import { useSyncQueueStatus } from '@/hooks/useSyncQueueStatus';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import type { SyncQueueEntry } from '@/db/sync-queue-repo';
 import { useI18n } from '@/lib/i18n';
-import { FEATURE_DISABLED_ERROR, TERMINAL_REJECTION_ERROR } from '@/sync/push';
+import {
+  FEATURE_DISABLED_ERROR,
+  SEASON_CLOSED_ERROR,
+  TERMINAL_REJECTION_ERROR,
+} from '@/sync/push';
 
 const ENTITY_KEY: Record<string, string> = {
   trips: 'syncDetails.entityLabel.trips',
@@ -90,14 +94,19 @@ function EntryCard({ entry, onRetry, retrying, t }: EntryCardProps) {
               it gets a plain explanation instead of a raw server string. The
               record stays queued and sends intact if the flag is switched back
               on — nothing they entered is thrown away. */}
-          {entry.last_error.includes(FEATURE_DISABLED_ERROR)
-            ? t('syncDetails.featureDisabled')
-            : /* The server rejected the content itself, so retrying as-is cannot
+          {entry.last_error.includes(SEASON_CLOSED_ERROR)
+            ? /* The admin closed that year. Retrying cannot reopen it, and the
+                 entry keeps its payload — say so, so the operator stops tapping
+                 Retry and tells the admin instead. */
+              t('syncDetails.seasonClosed')
+            : entry.last_error.includes(FEATURE_DISABLED_ERROR)
+              ? t('syncDetails.featureDisabled')
+              : /* The server rejected the content itself, so retrying as-is cannot
                  help. Say so plainly rather than showing a raw code the operator
                  will keep tapping Retry against. */
-              entry.last_error.includes(TERMINAL_REJECTION_ERROR)
-              ? t('syncDetails.terminalRejection')
-              : entry.last_error}
+                entry.last_error.includes(TERMINAL_REJECTION_ERROR)
+                ? t('syncDetails.terminalRejection')
+                : entry.last_error}
         </Text>
       ) : null}
 

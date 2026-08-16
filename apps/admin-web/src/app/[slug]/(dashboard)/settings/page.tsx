@@ -635,8 +635,8 @@ export default function SettingsPage() {
             CLOSES the previous one, once field work has demonstrably synced. */}
         {profile?.role === 'admin' ? (
           <SettingsSection
-            title="Sezon"
-            description="Închide anul încheiat: stocul din depozite se reportează, statisticile repornesc de la zero, iar sezonul închis nu mai poate fi modificat. Nimic nu se șterge — poți oricând comuta înapoi pe un sezon vechi din bara de sus."
+            title={t('season.settingsTitle')}
+            description={t('season.settingsDescription')}
             icon={CalendarClock}
           >
             <SeasonSection />

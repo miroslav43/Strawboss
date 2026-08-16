@@ -1,4 +1,5 @@
 import type * as SQLite from 'expo-sqlite';
+import { SEASON_TIMEZONE } from '@strawboss/types';
 import { mobileLogger } from '../lib/logger';
 
 const ACTIVE_SEASON_KEY = 'active_season_year';
@@ -53,14 +54,88 @@ export async function setKnownSeasonYear(db: SQLite.SQLiteDatabase, year: number
  * the server's force-include arm protects. A trip that is still moving belongs
  * on the phone regardless of which season it started in.
  */
-const PRUNABLE: { table: string; dateColumn: string; extraWhere?: string }[] = [
-  { table: 'trips', dateColumn: 'created_at', extraWhere: "status IN ('completed', 'cancelled')" },
-  { table: 'bale_loads', dateColumn: 'loaded_at' },
-  { table: 'bale_productions', dateColumn: 'production_date' },
-  { table: 'fuel_logs', dateColumn: 'logged_at' },
-  { table: 'consumable_logs', dateColumn: 'logged_at' },
-  { table: 'task_assignments', dateColumn: 'assignment_date' },
+const PRUNABLE: {
+  table: string;
+  dateColumn: string;
+  /**
+   * 'date' compares against a bare calendar day; 'timestamptz' against the UTC
+   * instant of local midnight. Getting this wrong shifts every boundary by the
+   * Romanian offset — see `seasonBoundsFor` below.
+   */
+  kind: 'date' | 'timestamptz';
+  extraWhere?: string;
+}[] = [
+  {
+    table: 'trips',
+    dateColumn: 'created_at',
+    kind: 'timestamptz',
+    extraWhere: "status IN ('completed', 'cancelled')",
+  },
+  { table: 'bale_loads', dateColumn: 'loaded_at', kind: 'timestamptz' },
+  { table: 'bale_productions', dateColumn: 'production_date', kind: 'date' },
+  { table: 'fuel_logs', dateColumn: 'logged_at', kind: 'timestamptz' },
+  { table: 'consumable_logs', dateColumn: 'logged_at', kind: 'timestamptz' },
+  { table: 'task_assignments', dateColumn: 'assignment_date', kind: 'date' },
 ];
+
+/**
+ * The two boundary strings to compare a column against, by column kind.
+ *
+ * A DATE column holds a bare local calendar day (`todayInRomania()`), so it
+ * compares directly against `YYYY-01-01`.
+ *
+ * A TIMESTAMPTZ column holds a UTC instant (`new Date().toISOString()` locally,
+ * and the server's ISO serialisation on pulled rows). Comparing THAT against a
+ * bare local day is wrong by the Romanian offset: a bale loaded at 00:30 on 1
+ * January local time is stored as `...-12-31T22:30:00.000Z`, which sorts below
+ * `'YYYY-01-01'` and would be filed under the season that just ended — while
+ * the server, which converts with `AT TIME ZONE 'Europe/Bucharest'`, counts it
+ * in the new one. Two sides of the same system disagreeing about which season a
+ * row belongs to is exactly what this file exists to avoid.
+ *
+ * So a timestamptz boundary is the UTC instant OF local midnight, computed via
+ * Intl rather than a hardcoded +02:00 so it follows DST. (Both season
+ * boundaries fall in winter time, but the helper should not depend on that.)
+ */
+function seasonBoundsFor(year: number, kind: 'date' | 'timestamptz'): [string, string] {
+  if (kind === 'date') return [`${year}-01-01`, `${year + 1}-01-01`];
+  return [localMidnightUtcIso(year), localMidnightUtcIso(year + 1)];
+}
+
+/**
+ * The UTC ISO instant of 1 January 00:00 in the business timezone.
+ *
+ * Both sides of the offset calculation go through `Date.UTC`, deliberately: the
+ * obvious `new Date(instant).toLocaleString(...)` round-trip re-parses its own
+ * output in the RUNTIME's timezone, so it silently returns a different answer
+ * on a phone set to Bucharest than on a CI box set to UTC. Reading the zone's
+ * wall clock through `formatToParts` and re-assembling it as UTC is independent
+ * of wherever the device thinks it is.
+ */
+function localMidnightUtcIso(year: number): string {
+  const target = Date.UTC(year, 0, 1, 0, 0, 0);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SEASON_TIMEZONE,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(target));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  // `hour` can format as 24 for midnight under hour12:false in some runtimes.
+  const asUtc = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour') % 24,
+    get('minute'),
+    get('second'),
+  );
+  return new Date(target - (asUtc - target)).toISOString();
+}
 
 /**
  * Drop finished local rows that belong to a season the device is no longer in.
@@ -69,10 +144,22 @@ const PRUNABLE: { table: string; dateColumn: string; extraWhere?: string }[] = [
  *
  *   1. Its own date is outside the active season.
  *   2. It is in a terminal state (trips only — nothing half-done is touched).
- *   3. It has NO open `sync_queue` entry. This is the rule ParcelsRepo already
- *      states for its own pruning: the rows this must NEVER touch are the ones
- *      the server has not seen yet. Deleting one destroys field work that
- *      exists nowhere else.
+ *   3. THE SERVER HAS IT. `server_version > 0` is only ever written when a pull
+ *      confirms the row (locally-created rows start at 0), so this is a direct
+ *      statement of "this exists somewhere other than here".
+ *   4. It has NO open `sync_queue` entry.
+ *
+ * Guards 3 and 4 look redundant and are not. Guard 4 alone was the original
+ * design and it has a hole: `SyncQueueRepo.purgeStale()` deletes queue entries
+ * that failed more than ten times and are older than a week — i.e. work that
+ * never reached the server at all — after which guard 4 sees a clean row and
+ * waves it through. And `retry_count` climbs through ordinary repeated network
+ * interruptions in the field, not just through genuinely bad data, so the
+ * entries this destroys are legitimate work. Guard 3 closes that hole.
+ *
+ * Guard 4 still earns its place: a row accepted by the server but not yet
+ * re-pulled has `server_version = 0` while its queue entry is still open, so
+ * only the pair covers both directions.
  *
  * Never touched at all: `parcels` and `delivery_destinations` (master data, not
  * seasonal), `sync_queue` and `sync_cursors` (pruning a cursor forces a full
@@ -82,16 +169,13 @@ export async function pruneOutOfSeason(
   db: SQLite.SQLiteDatabase,
   seasonYear: number,
 ): Promise<number> {
-  const start = `${seasonYear}-01-01`;
-  const endExclusive = `${seasonYear + 1}-01-01`;
   let removed = 0;
 
-  for (const { table, dateColumn, extraWhere } of PRUNABLE) {
-    // Dates are stored as ISO strings, so a lexicographic comparison against
-    // 'YYYY-01-01' is also a chronological one — true for both bare days and
-    // full ISO instants, since the prefix is the same.
+  for (const { table, dateColumn, kind, extraWhere } of PRUNABLE) {
+    const [start, endExclusive] = seasonBoundsFor(seasonYear, kind);
     const conditions = [
       `(${dateColumn} IS NULL OR ${dateColumn} < ? OR ${dateColumn} >= ?)`,
+      `COALESCE(server_version, 0) > 0`,
       `id NOT IN (SELECT entity_id FROM sync_queue WHERE entity_id IS NOT NULL)`,
     ];
     if (extraWhere) conditions.push(extraWhere);

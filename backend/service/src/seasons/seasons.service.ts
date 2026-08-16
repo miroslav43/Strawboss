@@ -4,10 +4,13 @@ import {
   currentSeasonYear,
   resolveSeasonYear,
   seasonYearRange,
+  SEASON_MAX_YEAR,
+  SEASON_MIN_YEAR,
   type CloseSeasonResult,
   type SeasonContext,
   type SeasonPreflight,
 } from '@strawboss/types';
+import { seasonYearSchema } from '@strawboss/validation';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { FeaturesCacheService } from '../features/features-cache.service';
 import {
@@ -29,14 +32,43 @@ import { depotStockBales, depotStockNetWeight } from '../common/depot-stock';
  */
 const DEVICE_SILENT_HOURS = 24;
 
+/** Matches the AuthGuard user-context TTL — a season changes once a year. */
+const ACTIVE_YEAR_TTL_MS = 60_000;
+
 interface SeasonActor {
   userId: string;
   role: string;
 }
 
+/**
+ * Anything that can run a statement — the pool, or one transaction's pinned
+ * connection.
+ *
+ * Threaded explicitly rather than reached for via `this.db`, mirroring
+ * `TripsService.generateTripNumber(orgId, executor)`. Two reasons, and the
+ * first is correctness:
+ *
+ *   * A read issued on `this.db` from inside a `db.transaction()` callback runs
+ *     on a DIFFERENT connection, so it cannot see the transaction's uncommitted
+ *     state and is not protected by its advisory lock. `close()` re-runs the
+ *     preflight precisely to catch work created since the admin looked at it —
+ *     a check that means nothing if it reads outside the transaction.
+ *   * The pool is capped at 4 connections per replica (drizzle.provider.ts). A
+ *     transaction pins one while the preflight's Promise.all asks for four
+ *     more, so the excess queues behind the very transaction that is waiting
+ *     for it.
+ */
+type Executor = Pick<DrizzleProvider['db'], 'execute'>;
+
 @Injectable()
 export class SeasonsService {
   private readonly logger = new Logger(SeasonsService.name);
+
+  /** Per-org active season, invalidated by the shared generation token. */
+  private readonly activeYearCache = new Map<
+    string,
+    { at: number; gen: number; year: number | undefined }
+  >();
 
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
@@ -47,13 +79,39 @@ export class SeasonsService {
     return this.drizzleProvider.db;
   }
 
-  private orgClause(orgId: string | null, col = sql`organization_id`) {
-    return orgId === null ? sql`` : sql` AND ${col} = ${orgId}::uuid`;
+  private async scalar(
+    query: ReturnType<typeof sql>,
+    executor: Executor = this.db,
+  ): Promise<number> {
+    const rows = (await executor.execute(query)) as unknown as { value: unknown }[];
+    return Number(rows[0]?.value ?? 0);
   }
 
-  private async scalar(query: ReturnType<typeof sql>): Promise<number> {
-    const rows = (await this.db.execute(query)) as unknown as { value: unknown }[];
-    return Number(rows[0]?.value ?? 0);
+  /**
+   * Parse a `?season=` / `:year` value from a request into a season year.
+   *
+   * Exists because calling `seasonYearSchema.parse()` straight from a
+   * controller throws a raw `ZodError`, which is an `Error` but NOT an
+   * `HttpException` — so `AllExceptionsFilter` leaves the status at its 500
+   * default and ships the stringified Zod issue array to the client as the
+   * message. A typo in a query string then reads as "the server crashed" and
+   * lands in the error log at error level.
+   *
+   * That is precisely the failure `ZodValidationPipe` was written to end (see
+   * its own header comment, and the six days a field loader spent blocked by
+   * a validation error disguised as an internal error). Route and query params
+   * that cannot go through the pipe come through here instead.
+   */
+  parseSeasonParam(value: string | undefined): number | undefined {
+    if (value === undefined) return undefined;
+    const parsed = seasonYearSchema.safeParse(value);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: 'invalid_season',
+        message: `Sezon invalid: „${value}". Aștept un an între ${SEASON_MIN_YEAR} și ${SEASON_MAX_YEAR}.`,
+      });
+    }
+    return parsed.data;
   }
 
   /**
@@ -166,9 +224,55 @@ export class SeasonsService {
     return year == null ? currentSeasonYear() : Number(year);
   }
 
-  /** Whether writing into `year` is still allowed for this org. */
-  async isSeasonClosed(orgId: string, year: number): Promise<boolean> {
+  /**
+   * The org's active season, resolved from the database rather than threaded
+   * through a call chain.
+   *
+   * Exists because threading `seasonYear` as an optional trailing parameter was
+   * tried first and failed the way optional trailing parameters always do: of
+   * the five call sites that ask "how many bales are left on this field", only
+   * the one being edited got the argument. The other four silently kept the
+   * all-time window, so two gates answering the same physical question could
+   * disagree — including one that blocks a driver from starting a trip.
+   *
+   * A service that resolves this itself cannot be called wrongly. Cached per org
+   * behind the same TTL + generation token the feature flags use, so the gates
+   * on the hot registerLoad path cost no query, and a rollover invalidates it
+   * across replicas.
+   */
+  async getActiveSeasonYear(orgId: string | null): Promise<number | undefined> {
+    if (!orgId) return undefined;
+
+    const gen = this.featuresCache.currentGeneration();
+    const now = Date.now();
+    const cached = this.activeYearCache.get(orgId);
+    if (cached && cached.gen === gen && now - cached.at < ACTIVE_YEAR_TTL_MS) {
+      return cached.year;
+    }
+
     const rows = (await this.db.execute(
+      sql`SELECT active_season_year AS "activeSeasonYear"
+            FROM organizations
+           WHERE id = ${orgId}::uuid AND deleted_at IS NULL
+           LIMIT 1`,
+    )) as unknown as { activeSeasonYear: number | null }[];
+
+    // A missing org resolves to "no season filter" rather than throwing: this
+    // runs inside operational gates, where an exception would block field work
+    // over a bookkeeping question.
+    const raw = rows[0]?.activeSeasonYear;
+    const year = raw == null ? undefined : Number(raw);
+    this.activeYearCache.set(orgId, { at: now, gen, year });
+    return year;
+  }
+
+  /** Whether writing into `year` is still allowed for this org. */
+  async isSeasonClosed(
+    orgId: string,
+    year: number,
+    executor: Executor = this.db,
+  ): Promise<boolean> {
+    const rows = (await executor.execute(
       sql`SELECT 1 AS value FROM organization_seasons
            WHERE organization_id = ${orgId}::uuid AND year = ${year} AND status = 'closed'
            LIMIT 1`,
@@ -185,7 +289,11 @@ export class SeasonsService {
    * is destroyed after seven days along with the operator's work. A stable code
    * is what lets `push.ts` classify this as terminal, surface it, and stop.
    */
-  async assertSeasonWritable(orgId: string | null, businessDate: Date | string): Promise<void> {
+  async assertSeasonWritable(
+    orgId: string | null,
+    businessDate: Date | string,
+    executor: Executor = this.db,
+  ): Promise<void> {
     if (orgId === null) return;
     const instant = typeof businessDate === 'string' ? new Date(businessDate) : businessDate;
     if (Number.isNaN(instant.getTime())) return;
@@ -197,7 +305,7 @@ export class SeasonsService {
       }).format(instant),
     );
 
-    if (await this.isSeasonClosed(orgId, year)) {
+    if (await this.isSeasonClosed(orgId, year, executor)) {
       throw new BadRequestException({
         error: 'season_closed',
         message: `Sezonul ${year} este închis. Înregistrarea nu mai poate fi salvată.`,
@@ -212,7 +320,11 @@ export class SeasonsService {
    * Deliberately reuses the exact expressions the closing transaction will run,
    * so the preview cannot drift from the outcome.
    */
-  async preflight(orgId: string, year: number): Promise<SeasonPreflight> {
+  async preflight(
+    orgId: string,
+    year: number,
+    executor: Executor = this.db,
+  ): Promise<SeasonPreflight> {
     const window = seasonWindow(year);
     const current = currentSeasonYear();
 
@@ -222,7 +334,7 @@ export class SeasonsService {
         message: `Sezonul ${year} nu s-a încheiat încă. Poți închide doar un an calendaristic trecut.`,
       });
     }
-    if (await this.isSeasonClosed(orgId, year)) {
+    if (await this.isSeasonClosed(orgId, year, executor)) {
       throw new BadRequestException({
         error: 'season_already_closed',
         message: `Sezonul ${year} este deja închis.`,
@@ -231,31 +343,39 @@ export class SeasonsService {
 
     const [openTrips, devicesNotCheckedIn, unacknowledgedAlerts, parcelsToReset] =
       await Promise.all([
-        this.scalar(sql`
+        this.scalar(
+          sql`
           SELECT COUNT(*)::int AS value FROM trips t
            WHERE t.deleted_at IS NULL
              AND t.status NOT IN ('completed'::trip_status, 'cancelled'::trip_status)
              AND t.organization_id = ${orgId}::uuid
-             ${tsWindowClause(sql`t.created_at`, window)}`),
-        this.scalar(sql`
+             ${tsWindowClause(sql`t.created_at`, window)}`,
+        ),
+        this.scalar(
+          sql`
           SELECT COUNT(*)::int AS value FROM devices
            WHERE deleted_at IS NULL
              AND organization_id = ${orgId}::uuid
              AND (last_checkin_at IS NULL
-                  OR last_checkin_at < NOW() - INTERVAL '${sql.raw(String(DEVICE_SILENT_HOURS))} hours')`),
-        this.scalar(sql`
+                  OR last_checkin_at < NOW() - INTERVAL '${sql.raw(String(DEVICE_SILENT_HOURS))} hours')`,
+        ),
+        this.scalar(
+          sql`
           SELECT COUNT(*)::int AS value FROM alerts a
            WHERE a.is_acknowledged = false
              AND a.organization_id = ${orgId}::uuid
-             ${tsWindowClause(sql`a.created_at`, window)}`),
-        this.scalar(sql`
+             ${tsWindowClause(sql`a.created_at`, window)}`,
+        ),
+        this.scalar(
+          sql`
           SELECT COUNT(*)::int AS value FROM parcels
            WHERE deleted_at IS NULL
              AND organization_id = ${orgId}::uuid
-             AND harvest_status IS DISTINCT FROM 'planned'::harvest_status`),
+             AND harvest_status IS DISTINCT FROM 'planned'::harvest_status`,
+        ),
       ]);
 
-    const depots = await this.closingDepotStock(orgId, year);
+    const depots = await this.closingDepotStock(orgId, year, executor);
     const withStock = depots.filter((d) => d.baleCount > 0);
 
     return {
@@ -285,6 +405,7 @@ export class SeasonsService {
   private async closingDepotStock(
     orgId: string,
     year: number,
+    executor: Executor = this.db,
   ): Promise<{ id: string; baleCount: number; netWeightKg: number }[]> {
     const upTo: DateWindow = { dateTo: `${year}-12-31` };
     const opts = {
@@ -293,7 +414,7 @@ export class SeasonsService {
       orgId,
       window: upTo,
     };
-    const rows = (await this.db.execute(sql`
+    const rows = (await executor.execute(sql`
       SELECT d.id,
              ${depotStockBales(opts)}     AS "baleCount",
              ${depotStockNetWeight(opts)} AS "netWeightKg"
@@ -330,7 +451,7 @@ export class SeasonsService {
 
       // Re-checked INSIDE the transaction. The preflight the admin looked at is
       // a snapshot from seconds ago; a trip could have been created since.
-      const preflight = await this.preflight(orgId, year);
+      const preflight = await this.preflight(orgId, year, tx);
       if (!preflight.canClose) {
         throw new BadRequestException({
           error: 'season_has_open_work',
@@ -362,7 +483,7 @@ export class SeasonsService {
         RETURNING id`);
 
       // 2. Carry the depot stock into the opening season.
-      const depots = await this.closingDepotStock(orgId, year);
+      const depots = await this.closingDepotStock(orgId, year, tx);
       const withStock = depots.filter((d) => d.baleCount > 0 || d.netWeightKg > 0);
       for (const depot of withStock) {
         await tx.execute(sql`
@@ -458,6 +579,7 @@ export class SeasonsService {
     // ahead of the data would make it re-read the OLD active_season_year and
     // cache it under the NEW generation -- pinning the whole org to last season
     // until the TTL expired.
+    this.activeYearCache.delete(orgId);
     await this.featuresCache.bump();
 
     this.logger.log(

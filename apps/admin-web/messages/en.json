@@ -491,8 +491,8 @@
       "loaded": "Loaded",
       "remaining": "Remaining",
       "overrideHeading": "Manual override",
-      "reason": "Reason (optional)",
-      "reasonPlaceholder": "e.g. correction after stocktake",
+      "reason": "Reason",
+      "reasonPlaceholder": "e.g. bales left in the field from 2026",
       "saveOverride": "Save override",
       "baler": "Baler (producer)",
       "selectBaler": "Choose a baler…",
@@ -508,11 +508,14 @@
       "remainingHint": "Remaining in field: {{count}}",
       "transferToDepot": "Transfer to depot",
       "noValue": "Fill in at least one field (produced or loaded).",
-      "invalidNumber": "Enter a valid number (≥ 0).",
+      "invalidNumber": "Enter a valid number.",
       "invalidCount": "Enter a valid number of bales.",
       "pickDepot": "Choose a depot to transfer to.",
       "overrideError": "Failed to save the override. Please try again.",
-      "transferError": "Transfer failed. Please try again."
+      "transferError": "Transfer failed. Please try again.",
+      "correctionHeading": "Manual correction",
+      "correctionHint": "Set the real totals for this field. The difference is booked as a signed adjustment — operator records are never edited. Use this to bring bales left over from a previous season into the current one.",
+      "applyCorrection": "Apply correction"
     },
     "loading": "Loading parcels…",
     "loadError": "Failed to load parcels. The backend may not be running.",
@@ -2538,6 +2541,8 @@
       "confirm": "Close {year}",
       "running": "Closing…",
       "success": "Season {year} closed. Active season is now {next}; {bales} bales carried forward across {depots} depots."
-    }
+    },
+    "settingsTitle": "Season",
+    "settingsDescription": "Close the finished year: depot stock carries forward, statistics restart from zero, and the closed season can no longer be modified. Nothing is deleted — you can switch back to an older season from the top bar at any time."
   }
 }

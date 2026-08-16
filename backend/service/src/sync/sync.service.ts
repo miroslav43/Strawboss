@@ -12,6 +12,7 @@ import type {
 import { isFeatureEnabled } from '@strawboss/types';
 import { FeaturesService } from '../features/features.service';
 import { FEATURE_DISABLED_CODE } from '../features/feature-disabled.exception';
+import { SeasonsService } from '../seasons/seasons.service';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -34,6 +35,25 @@ const SYNC_TABLE_FEATURES: Record<string, FeatureKey> = {
   consumable_logs: 'costs.consumables',
   parcels: 'geo.parcels',
 };
+
+/**
+ * Which pushed column carries a DEVICE-chosen business date, per table.
+ *
+ * Only these can land in a closed season, so only these need the guard. Every
+ * other season-scoped table stamps its date server-side with `NOW()`, which by
+ * construction falls in a year that is still open.
+ *
+ * `bale_loads.loaded_at` is deliberately absent: it is written as `NOW()` in
+ * both write paths, so a late push is dated when it arrives, not when the work
+ * happened. That is a known limitation of the model, documented in
+ * packages/types/src/season.ts — not something this guard can fix.
+ */
+const SYNC_TABLE_SEASON_DATE: Record<string, string> = {
+  bale_productions: 'production_date',
+};
+
+/** Stable, client-recognised code for "this season no longer accepts writes". */
+export const SEASON_CLOSED_CODE = 'SEASON_CLOSED';
 
 const SYNCABLE_TABLES = new Set([
   'trips',
@@ -436,6 +456,7 @@ export class SyncService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly features: FeaturesService,
+    private readonly seasons: SeasonsService,
   ) {}
 
   /**
@@ -637,6 +658,44 @@ export class SyncService {
         data: null,
         error: `${FEATURE_DISABLED_CODE}: ${gated}`,
       };
+    }
+
+    /*
+     * Closed-season guard.
+     *
+     * `bale_productions.production_date` is the ONLY business date in the whole
+     * system chosen by the device rather than stamped with the server's NOW(),
+     * so it is the only value that can land in an already-closed year. Guarding
+     * only the REST controller was not enough: a baler operator never touches
+     * `POST /bale-productions` — that route serves admin-web. The phone enqueues
+     * `bale_productions` and it arrives HERE, on the generic table path, which
+     * is the flow that actually carries field work.
+     *
+     * The error code matters as much as the check. `season_closed` is stable and
+     * recognised by mobile's terminal-rejection list, so the entry fails ONCE,
+     * visibly, and stops. Returning an unrecognised failure instead would put it
+     * into quadratic backoff, where `purgeStale` destroys it after seven days —
+     * turning a data-integrity bug into silent loss of the operator's work.
+     */
+    const seasonDateColumn = SYNC_TABLE_SEASON_DATE[mutation.table];
+    if (seasonDateColumn && orgId) {
+      const businessDate = (mutation.data as Record<string, unknown> | undefined)?.[
+        seasonDateColumn
+      ];
+      if (typeof businessDate === 'string' && businessDate.length > 0) {
+        try {
+          await this.seasons.assertSeasonWritable(orgId, businessDate);
+        } catch {
+          return {
+            table: mutation.table,
+            recordId: mutation.recordId,
+            status: 'failed',
+            serverVersion: 0,
+            data: null,
+            error: SEASON_CLOSED_CODE,
+          };
+        }
+      }
     }
 
     // 1. Idempotency check — org-scoped so a client cannot replay another

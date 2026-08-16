@@ -12,6 +12,7 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { dateWindowClause, seasonWindow, tsWindowClause } from '../common/season-range';
 import { todayInRomania } from '../common/date';
+import { SeasonsService } from '../seasons/seasons.service';
 import { HarvestStatus } from '@strawboss/types';
 import type { ParcelImportResult } from '@strawboss/types';
 
@@ -47,6 +48,7 @@ function sanitizeImportError(err: unknown): string {
 export class ParcelsService {
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
+    private readonly seasons: SeasonsService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: WinstonLogger,
   ) {}
 
@@ -121,17 +123,16 @@ export class ParcelsService {
   }
 
   /**
-   * @param seasonYear the season whose tallies to report. Omitted means all
-   *   time — the behaviour an organization that has never closed a season keeps.
-   *   The mobile map reads this list, so the same rule as the gates applies:
-   *   what a field shows must not depend on a dropdown somebody left open.
+   * The mobile map reads this list, so the same rule as the gates applies: what
+   * a field shows must not depend on a dropdown somebody left open. The season
+   * is therefore resolved internally, like every other bale tally.
    */
   async list(
     orgId: string | null,
     filters?: { municipality?: string; isActive?: boolean; cropType?: string },
-    seasonYear?: number,
   ) {
     const where = sql.join(this.buildListConditions(orgId, filters), sql` AND `);
+    const seasonYear = await this.seasons.getActiveSeasonYear(orgId);
     const window = seasonYear === undefined ? undefined : seasonWindow(seasonYear);
     // The window goes INSIDE each pre-aggregated subquery, before the GROUP BY,
     // so a season filter costs nothing extra: it shrinks the set being grouped
@@ -208,16 +209,21 @@ export class ParcelsService {
    * a dropdown — an admin browsing last year's numbers must not be able to
    * block a truck.
    *
-   * @param seasonYear omitted means all time, which is what an organization
-   *   that has never closed a season gets. See SeasonsService.resolveYear:
-   *   until the admin closes a season, this behaves exactly as it did before
-   *   seasons existed, so leftover bales cannot become unloadable at midnight
-   *   on 1 January without anyone deciding it.
+   * The season is resolved HERE, not passed in. As a trailing optional
+   * parameter it was supplied by the controller but not by `overrideBales` or
+   * `transferToDepot`, which call this internally — so the admin saw a
+   * season-scoped figure on screen while the transfer cap was checked against
+   * an all-time one, and could move more bales than the screen said existed.
+   *
+   * An organization that has never closed a season resolves to no window and
+   * behaves exactly as it did before seasons existed, so leftover bales cannot
+   * become unloadable at midnight on 1 January without anyone deciding it.
    */
-  async getBaleAvailability(id: string, orgId: string | null, seasonYear?: number) {
+  async getBaleAvailability(id: string, orgId: string | null) {
     // Ownership check — throws NotFoundException if parcel doesn't exist or belongs to another org
     await this.findById(id, orgId);
 
+    const seasonYear = await this.seasons.getActiveSeasonYear(orgId);
     const window = seasonYear === undefined ? undefined : seasonWindow(seasonYear);
     const producedWin = dateWindowClause(sql`production_date`, window);
     const loadedWin = tsWindowClause(sql`loaded_at`, window);

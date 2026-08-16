@@ -5,7 +5,6 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.guard';
 import type { RequestUser } from '../auth/auth.guard';
 import { SeasonsService } from '../seasons/seasons.service';
-import { seasonYearSchema } from '@strawboss/validation';
 
 @Roles(UserRole.admin, UserRole.dispatcher)
 @Controller('dashboard')
@@ -25,7 +24,7 @@ export class DashboardController {
    */
   private window(user: RequestUser, season?: string, dateFrom?: string, dateTo?: string) {
     return this.seasons.resolveWindow(user.organizationId, user.activeSeasonYear, {
-      season: season === undefined ? undefined : seasonYearSchema.parse(season),
+      season: this.seasons.parseSeasonParam(season),
       dateFrom,
       dateTo,
     });

@@ -45,12 +45,16 @@ export class DashboardService {
   }
 
   /**
-   * @param range the season window. Only the two genuinely cumulative counters
-   *   take it: `pending_alerts` (an unacknowledged flag from a closed season
-   *   would ring the bell forever) and `active_trips`. The four "today"
-   *   counters are already bounded to today by definition and are left alone —
-   *   windowing them would make the card read zero whenever an admin is looking
-   *   at a past season, which is worse than leaving them as live operations.
+   * @param range the season window. ONLY `pending_alerts` takes it — an
+   *   unacknowledged flag from a closed season would otherwise ring the bell
+   *   forever, and `alerts` is the one transactional table with no `deleted_at`
+   *   to clear it.
+   *
+   *   Everything else here is deliberately unwindowed. `active_trips` counts
+   *   what is moving right now, and a trip that crossed the New Year is still
+   *   moving — filtering it on `created_at` would hide a truck in transit just
+   *   because it set off in the previous season. The four "today" counters are
+   *   bounded to today by definition.
    */
   async getOverview(
     orgId: string | null,

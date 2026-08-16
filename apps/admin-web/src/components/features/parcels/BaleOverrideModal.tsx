@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, Loader2, Boxes, Map as MapIcon, ArrowRightLeft } from 'lucide-react';
 import {
+  useOverrideParcelBales,
   useParcelBaleAvailability,
   useTransferParcelToDepot,
   useDeliveryDestinations,
@@ -37,8 +38,12 @@ export function BaleOverrideModal({ parcel, onClose }: BaleOverrideModalProps) {
   );
 
   const transferMutation = useTransferParcelToDepot(apiClient);
+  const overrideMutation = useOverrideParcelBales(apiClient);
 
   // Transfer section
+  const [correctedProduced, setCorrectedProduced] = useState('');
+  const [correctedLoaded, setCorrectedLoaded] = useState('');
+  const [correctionReason, setCorrectionReason] = useState('');
   const [transferDepotId, setTransferDepotId] = useState('');
   const [transferCount, setTransferCount] = useState('');
   const [showMap, setShowMap] = useState(false);
@@ -53,6 +58,40 @@ export function BaleOverrideModal({ parcel, onClose }: BaleOverrideModalProps) {
       setInitialized(true);
     }
   }, [availability, initialized]);
+
+  /**
+   * Book a signed correction against the field's tally.
+   *
+   * Sends absolute targets; the backend turns them into signed deltas in
+   * `parcel_bale_adjustments` rather than editing operator rows, so the
+   * operators' own records stay untouched and the correction is attributable.
+   */
+  const handleCorrection = useCallback(() => {
+    setError('');
+    const produced = correctedProduced === '' ? undefined : Number(correctedProduced);
+    const loaded = correctedLoaded === '' ? undefined : Number(correctedLoaded);
+    if (produced === undefined && loaded === undefined) return;
+    if ((produced !== undefined && !Number.isFinite(produced)) ||
+        (loaded !== undefined && !Number.isFinite(loaded))) {
+      setError(t('parcels.baleOverride.invalidNumber'));
+      return;
+    }
+    overrideMutation.mutate(
+      {
+        id: parcel.id,
+        data: { produced, loaded, reason: correctionReason || undefined },
+      },
+      {
+        onSuccess: () => {
+          setCorrectedProduced('');
+          setCorrectedLoaded('');
+          setCorrectionReason('');
+        },
+        onError: (err: unknown) =>
+          setError((err as { message?: string })?.message ?? t('common.error')),
+      },
+    );
+  }, [correctedProduced, correctedLoaded, correctionReason, parcel.id, overrideMutation, t]);
 
   const handleTransfer = useCallback(() => {
     setError('');
@@ -136,6 +175,76 @@ export function BaleOverrideModal({ parcel, onClose }: BaleOverrideModalProps) {
               </div>
             ))}
           </div>
+
+          {/* Section: manual correction.
+              Restored because it is the ONLY way to make bales that were baled
+              in a previous season loadable again after a rollover. Fields start
+              the new season at zero by design, so straw still lying in a field
+              on 1 January is invisible to the availability gate and the loader
+              is refused — the admin books the leftover here as a signed delta,
+              which lands in the new season because the adjustment carries its
+              own created_at. */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-neutral-700">
+              {t('parcels.baleOverride.correctionHeading')}
+            </h3>
+            <p className="text-xs text-neutral-500">
+              {t('parcels.baleOverride.correctionHint')}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-600">
+                  {t('parcels.baleOverride.produced')}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={correctedProduced}
+                  onChange={(e) => setCorrectedProduced(e.target.value)}
+                  placeholder={String(availability?.produced ?? 0)}
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-600">
+                  {t('parcels.baleOverride.loaded')}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={correctedLoaded}
+                  onChange={(e) => setCorrectedLoaded(e.target.value)}
+                  placeholder={String(availability?.loaded ?? 0)}
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-neutral-600">
+                {t('parcels.baleOverride.reason')}
+              </label>
+              <input
+                type="text"
+                value={correctionReason}
+                onChange={(e) => setCorrectionReason(e.target.value)}
+                placeholder={t('parcels.baleOverride.reasonPlaceholder')}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleCorrection}
+              disabled={overrideMutation.isPending || (!correctedProduced && !correctedLoaded)}
+              className="flex items-center gap-2 rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {overrideMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Boxes className="h-4 w-4" />
+              )}
+              {t('parcels.baleOverride.applyCorrection')}
+            </button>
+          </section>
 
           {/* Section: transfer to depot */}
           <section className="space-y-3">

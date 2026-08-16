@@ -11,7 +11,6 @@ import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
 import { RequireFeature } from '../features/require-feature.decorator';
 import { SeasonsService } from '../seasons/seasons.service';
-import { seasonYearSchema } from '@strawboss/validation';
 
 @Controller('delivery-destinations')
 export class DeliveryDestinationsController {
@@ -33,7 +32,7 @@ export class DeliveryDestinationsController {
     // active season, so a client that knows nothing about seasons — an old APK,
     // a bookmarked URL — keeps working and simply sees the current year.
     const seasonYear = this.seasons.resolveYear(user.organizationId, user.activeSeasonYear, {
-      season: season === undefined ? undefined : seasonYearSchema.parse(season),
+      season: this.seasons.parseSeasonParam(season),
     });
     return this.service.list(user.organizationId, filters, seasonYear);
   }

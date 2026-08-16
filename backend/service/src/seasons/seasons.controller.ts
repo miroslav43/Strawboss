@@ -1,11 +1,19 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  Post,
+} from '@nestjs/common';
 import {
   UserRole,
   type CloseSeasonResult,
   type SeasonContext,
   type SeasonPreflight,
 } from '@strawboss/types';
-import { closeSeasonSchema, seasonYearSchema } from '@strawboss/validation';
+import { closeSeasonSchema } from '@strawboss/validation';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
@@ -71,7 +79,10 @@ export class SeasonsController {
     @CurrentUser() user: RequestUser,
     @Param('year') year: string,
   ): Promise<SeasonPreflight> {
-    const parsed = seasonYearSchema.parse(year);
+    const parsed = this.seasonsService.parseSeasonParam(year);
+    if (parsed === undefined) {
+      throw new BadRequestException({ error: 'invalid_season', message: 'Sezon lipsă.' });
+    }
     return this.seasonsService.preflight(this.requireOrg(user), parsed);
   }
 

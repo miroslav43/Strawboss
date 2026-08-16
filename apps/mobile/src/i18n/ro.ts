@@ -249,6 +249,8 @@ export const ro = {
   syncDetails: {
     featureDisabled:
       'Această funcție a fost dezactivată de administrator. Înregistrarea rămâne salvată și se trimite dacă funcția e repornită.',
+    seasonClosed:
+      'Sezonul de care ține această înregistrare a fost închis de administrator și nu mai acceptă intrări noi. Nu se pierde nimic din ce ai introdus — anunță administratorul.',
     terminalRejection:
       'Serverul a respins această înregistrare. Reîncercarea nu ajută — reia operațiunea din ecranul respectiv.',
     title: 'Date în așteptare',

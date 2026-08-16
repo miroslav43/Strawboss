@@ -198,6 +198,21 @@ export const FEATURE_DISABLED_ERROR = 'FEATURE_DISABLED';
 export const TERMINAL_REJECTION_ERROR = 'TERMINAL_REJECTION';
 
 /**
+ * Marker for a write the server refused because its season has been closed.
+ *
+ * Only `bale_productions` can hit this: it is the one table whose business date
+ * is chosen on the device, so the one whose rows can be dated into a year the
+ * admin has already frozen.
+ *
+ * Recognised here rather than left as a raw server string for the same reason
+ * `FEATURE_DISABLED` is: a queue entry that fails keeps its payload, stays
+ * `failed` (so `dequeue` never picks it up again), and stays visible on the
+ * sync screen. What it must NOT do is present the operator with an opaque
+ * "server rejected bale_productions/<uuid>" and no idea what to do about it.
+ */
+export const SEASON_CLOSED_ERROR = 'SEASON_CLOSED';
+
+/**
  * Server codes that mean "this will never succeed as sent".
  *
  * Retrying them is worse than useless: the depot flow writes its result to local
@@ -499,7 +514,17 @@ export async function pushMutations(
           errors.push(errorMsg);
           failedEntries.push({ id: entry.id, error: errorMsg });
         } else if (result.status === 'failed') {
-          const errorMsg = `server rejected ${result.table}/${result.recordId}: ${result.error ?? 'unknown error'}`;
+          // A closed season is a refusal on content, not on transport — the
+          // admin froze that year and no amount of retrying changes it. Store
+          // the marker so the sync screen can explain it in words instead of
+          // showing a raw server string. The entry stays `failed` and keeps its
+          // payload either way, so nothing is lost: `dequeue` only picks up
+          // `pending` rows, and `purgeStale` needs retry_count > 10, which a
+          // row that never auto-retries cannot reach.
+          const errorMsg =
+            result.error === SEASON_CLOSED_ERROR
+              ? SEASON_CLOSED_ERROR
+              : `server rejected ${result.table}/${result.recordId}: ${result.error ?? 'unknown error'}`;
           errors.push(errorMsg);
           failedEntries.push({ id: entry.id, error: errorMsg });
         } else {

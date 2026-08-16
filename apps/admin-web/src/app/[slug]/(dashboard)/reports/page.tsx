@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {} from 'lucide-react';
 import {
   useFarmReports,
@@ -30,7 +30,7 @@ import { exportCsv } from '@/lib/csv';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
-import { useSeasonParam } from '@/lib/season';
+import { useSeason, useSeasonParam } from '@/lib/season';
 import { useFeatures } from '@/hooks/useFeatures';
 import { ExportButton } from '@/components/shared/ExportButton';
 import type { FeatureKey } from '@strawboss/types';
@@ -117,6 +117,35 @@ export default function ReportsPage() {
   }, [ready, visibleTabs, tab]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const season = useSeason();
+
+  /*
+   * Four tabs — machine production, km per truck, km per operator, connected
+   * hours — take ONLY dateFrom/dateTo and default to "the last 7 or 30 days of
+   * today". Their endpoints have no `season` parameter at all (required from/to,
+   * capped at 90 or 366 days), so the selector cannot reach them through the
+   * query string; the only way to season-scope them is to move the date inputs.
+   *
+   * Without this, picking 2026 left those tabs showing 2027 data underneath a
+   * banner announcing historical figures — the exact confusion the banner
+   * exists to prevent.
+   *
+   * Only on a NON-active season, and only while the admin has not typed their
+   * own dates: the everyday view keeps its familiar "recent" defaults.
+   */
+  const seasonWindowRef = useRef(season.window);
+  useEffect(() => {
+    const previous = seasonWindowRef.current;
+    seasonWindowRef.current = season.window;
+    if (previous.dateFrom === season.window.dateFrom) return;
+    if (season.isActiveSeason) {
+      setDateFrom('');
+      setDateTo('');
+    } else {
+      setDateFrom(season.window.dateFrom);
+      setDateTo(season.window.dateTo);
+    }
+  }, [season.window, season.isActiveSeason]);
   const [connectedHoursGroupBy, setConnectedHoursGroupBy] = useState<'day' | 'week' | 'month'>(
     'day',
   );

@@ -124,15 +124,7 @@ export class TripsController {
     @Body(new ZodValidationPipe(registerLoadSchema)) dto: RegisterLoadDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.tripsService.registerLoad(
-      dto,
-      user.id,
-      user.organizationId,
-      // The ACTIVE season, deliberately not a query parameter: this is the
-      // loader's field action, and no dropdown may influence whether it is
-      // allowed.
-      this.seasons.gateYear(user.organizationId, user.activeSeasonYear),
-    );
+    return this.tripsService.registerLoad(dto, user.id, user.organizationId);
   }
 
   /**
