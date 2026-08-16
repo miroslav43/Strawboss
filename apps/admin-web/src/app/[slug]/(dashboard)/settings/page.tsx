@@ -12,7 +12,9 @@ import {
   Loader2,
   Signature,
   KeyRound,
+  CalendarClock,
 } from 'lucide-react';
+import { SeasonSection } from '@/components/features/settings/SeasonSection';
 import {
   useProfile,
   useUpdateProfile,
@@ -627,6 +629,19 @@ export default function SettingsPage() {
 
         {/* ── Organization / request portal (admin only) ── */}
         {profile?.role === 'admin' ? <OrgRequestPortalSection /> : null}
+
+        {/* ── Seasons (admin only) ──
+            The year rolls over on its own at midnight; this is where the admin
+            CLOSES the previous one, once field work has demonstrably synced. */}
+        {profile?.role === 'admin' ? (
+          <SettingsSection
+            title="Sezon"
+            description="Închide anul încheiat: stocul din depozite se reportează, statisticile repornesc de la zero, iar sezonul închis nu mai poate fi modificat. Nimic nu se șterge — poți oricând comuta înapoi pe un sezon vechi din bara de sus."
+            icon={CalendarClock}
+          >
+            <SeasonSection />
+          </SettingsSection>
+        ) : null}
 
         {/* ── Signature specimen ── */}
         {profile ? (

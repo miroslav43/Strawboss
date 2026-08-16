@@ -54,11 +54,13 @@ export const queryKeys = {
     unacknowledged: () => ['alerts', 'unacknowledged'] as const,
   },
   dashboard: {
-    overview: () => ['dashboard', 'overview'] as const,
+    overview: (filters?: Record<string, unknown>) =>
+      ['dashboard', 'overview', filters ?? {}] as const,
     production: (filters?: Record<string, unknown>) =>
       ['dashboard', 'production', filters] as const,
     costs: (filters?: Record<string, unknown>) => ['dashboard', 'costs', filters] as const,
-    antiFraud: () => ['dashboard', 'antiFraud'] as const,
+    antiFraud: (filters?: Record<string, unknown>) =>
+      ['dashboard', 'antiFraud', filters ?? {}] as const,
     trending: () => ['dashboard', 'trending'] as const,
   },
   location: {

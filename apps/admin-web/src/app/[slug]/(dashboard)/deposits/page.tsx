@@ -21,6 +21,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { DepositFormModal } from '@/components/deposits/DepositFormModal';
 import { apiClient } from '@/lib/api';
+import { useSeasonParam } from '@/lib/season';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 
@@ -166,7 +167,12 @@ function ThSortIndicator({
 
 export default function DepositsPage() {
   const { t } = useI18n();
-  const { data: rawDeposits, isLoading, isError } = useDeliveryDestinations(apiClient);
+  const seasonParam = useSeasonParam();
+  const {
+    data: rawDeposits,
+    isLoading,
+    isError,
+  } = useDeliveryDestinations(apiClient, seasonParam);
 
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
 

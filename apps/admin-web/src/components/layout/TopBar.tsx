@@ -6,6 +6,7 @@ import { useUnacknowledgedAlerts } from '@strawboss/api';
 import { supabase } from '@/lib/supabase';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { SeasonSelector } from '@/components/layout/SeasonSelector';
 
 const BREADCRUMB_SEGMENT_KEYS: Record<string, string> = {
   operations: 'breadcrumb.operations',
@@ -70,6 +71,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
       </div>
 
       <div className="flex items-center gap-2">
+        <SeasonSelector />
         <button
           type="button"
           onClick={() => slug && router.push(`/${slug}/alerts`)}

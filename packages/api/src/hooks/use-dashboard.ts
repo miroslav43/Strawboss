@@ -8,10 +8,19 @@ import type {
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
-export function useDashboardOverview(client: ApiClient) {
+/** Drops empty values so an absent `season` sends no parameter at all. */
+function toQueryString(filters?: Record<string, unknown>): string {
+  if (!filters) return '';
+  const entries = Object.entries(filters).filter(([, v]) => v != null && v !== '');
+  if (entries.length === 0) return '';
+  return `?${new URLSearchParams(entries.map(([k, v]) => [k, String(v)]))}`;
+}
+
+export function useDashboardOverview(client: ApiClient, filters?: Record<string, unknown>) {
   return useQuery({
-    queryKey: queryKeys.dashboard.overview(),
-    queryFn: () => client.get<DashboardOverview>('/api/v1/dashboard/overview'),
+    queryKey: queryKeys.dashboard.overview(filters),
+    queryFn: () =>
+      client.get<DashboardOverview>(`/api/v1/dashboard/overview${toQueryString(filters)}`),
   });
 }
 
@@ -57,9 +66,10 @@ export function useDashboardTrending(client: ApiClient) {
   });
 }
 
-export function useAntiFraudReport(client: ApiClient) {
+export function useAntiFraudReport(client: ApiClient, filters?: Record<string, unknown>) {
   return useQuery({
-    queryKey: queryKeys.dashboard.antiFraud(),
-    queryFn: () => client.get<AntiFraudReport>('/api/v1/dashboard/anti-fraud'),
+    queryKey: queryKeys.dashboard.antiFraud(filters),
+    queryFn: () =>
+      client.get<AntiFraudReport>(`/api/v1/dashboard/anti-fraud${toQueryString(filters)}`),
   });
 }

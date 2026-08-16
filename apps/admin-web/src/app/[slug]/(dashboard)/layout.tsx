@@ -8,6 +8,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { RealtimeProvider } from '@/lib/realtime';
+import { SeasonProvider } from '@/lib/season';
+import { PastSeasonBanner } from '@/components/layout/PastSeasonBanner';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { RealtimeStatusBanner } from '@/components/layout/RealtimeStatusBanner';
@@ -145,30 +147,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {!ready ? (
         <LoadingScreen />
       ) : (
-        <div className="flex h-screen">
-          <ProfileLocaleHydration />
-          {/* Deep-link protection for feature-gated pages. Hiding the sidebar
+        <SeasonProvider>
+          <div className="flex h-screen">
+            <ProfileLocaleHydration />
+            {/* Deep-link protection for feature-gated pages. Hiding the sidebar
               link alone leaves a bookmarked or pasted URL fully reachable. */}
-          <FeatureRouteGuard />
+            <FeatureRouteGuard />
 
-          {/* W19: mobile overlay — shown only when sidebar open on small screens */}
-          {sidebarOpen && (
-            <div
-              className="fixed inset-0 z-20 bg-black/40 sm:hidden"
-              aria-hidden="true"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
+            {/* W19: mobile overlay — shown only when sidebar open on small screens */}
+            {sidebarOpen && (
+              <div
+                className="fixed inset-0 z-20 bg-black/40 sm:hidden"
+                aria-hidden="true"
+                onClick={() => setSidebarOpen(false)}
+              />
+            )}
 
-          <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
+            <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
 
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <TopBar onMenuClick={() => setSidebarOpen((v) => !v)} />
-            {/* W15: realtime disconnection banner */}
-            <RealtimeStatusBanner />
-            <main className="flex-1 overflow-y-auto p-6">{children}</main>
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <TopBar onMenuClick={() => setSidebarOpen((v) => !v)} />
+              {/* W15: realtime disconnection banner */}
+              <RealtimeStatusBanner />
+              {/* Two seasons render identically apart from the numbers, so a past
+                season has to announce itself. Without this someone reads last
+                year's dashboard as today's operations. */}
+              <PastSeasonBanner />
+              <main className="flex-1 overflow-y-auto p-6">{children}</main>
+            </div>
           </div>
-        </div>
+        </SeasonProvider>
       )}
     </RealtimeProvider>
   );

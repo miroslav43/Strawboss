@@ -18,6 +18,7 @@ import { TopOperators } from '@/components/features/dashboard/TopOperators';
 import type { OperatorStat } from '@/components/features/dashboard/TopOperators';
 import { RecentTrips } from '@/components/features/dashboard/RecentTrips';
 import { apiClient } from '@/lib/api';
+import { useSeasonParam } from '@/lib/season';
 import { todayInRomania } from '@/lib/date';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { toTripCamelList } from '@/lib/trip-mapper';
@@ -50,7 +51,8 @@ export default function DashboardPage() {
   const { t } = useI18n();
   const today = todayInRomania();
 
-  const overviewQuery = useDashboardOverview(apiClient);
+  const seasonParam = useSeasonParam();
+  const overviewQuery = useDashboardOverview(apiClient, seasonParam);
   const trendingQuery = useDashboardTrending(apiClient);
   const operatorStatsQuery = useBaleProductionStats(apiClient, {
     dateFrom: today,

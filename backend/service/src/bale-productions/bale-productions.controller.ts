@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Delete, Body, Param, Query } from '@nestjs/common';
 import { BaleProductionsService } from './bale-productions.service';
+import { SeasonsService } from '../seasons/seasons.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -10,7 +11,10 @@ import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('bale-productions')
 export class BaleProductionsController {
-  constructor(private readonly baleProductionsService: BaleProductionsService) {}
+  constructor(
+    private readonly baleProductionsService: BaleProductionsService,
+    private readonly seasons: SeasonsService,
+  ) {}
 
   @Get('stats')
   stats(
@@ -66,11 +70,18 @@ export class BaleProductionsController {
   @Post()
   @RequireFeature('bales.production')
   @Roles('baler_operator' as UserRole, 'admin' as UserRole)
-  create(
+  async create(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(createBaleProductionSchema))
     dto: Record<string, unknown>,
   ) {
+    // The one write in the system that carries a CLIENT-CHOSEN business date,
+    // so the only one that can land in an already-closed season by accident (or
+    // on purpose). Every other table stamps its date server-side with NOW(),
+    // which by construction falls in a season that is still open.
+    if (typeof dto.productionDate === 'string') {
+      await this.seasons.assertSeasonWritable(user.organizationId, dto.productionDate);
+    }
     return this.baleProductionsService.create(user.organizationId!, dto);
   }
 

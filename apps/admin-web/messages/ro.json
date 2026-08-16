@@ -2508,5 +2508,36 @@
         "transportator": "Transportator"
       }
     }
+  },
+  "season": {
+    "selectorLabel": "Sezon",
+    "optionClosed": "{year} (închis)",
+    "current": "Sezonul curent: {year}",
+    "closedList": "Sezoane închise: {years}",
+    "noneClosed": "Niciun sezon nu a fost închis încă.",
+    "alreadyClosed": "{year} este deja închis",
+    "viewingHistorical": "Vizualizezi sezonul {year}. Cifrele afișate sunt istorice.",
+    "closedSuffix": "Sezonul este închis și nu mai poate fi modificat.",
+    "backToActive": "Înapoi la {year}",
+    "gps": {
+      "unavailableTitle": "Traseele GPS nu se păstrează atât de mult",
+      "unavailableBody": "Pozițiile se păstrează 90 de zile. Pentru sezonul {year} datele de poziție nu mai există, deci kilometrii nu pot fi recalculați — nu e zero, e lipsă de date."
+    },
+    "rollover": {
+      "cta": "Închide sezonul {year}",
+      "title": "Închide sezonul {year}",
+      "checking": "Se verifică…",
+      "openTrips": "{count} curse nefinalizate în acest sezon",
+      "devices": "{count} telefoane nu s-au sincronizat în ultimele 24h",
+      "carry": "{bales} baloți din {depots} depozite se reportează ca sold de deschidere",
+      "parcels": "{count} parcele își resetează statusul de recoltare",
+      "fieldsFromZero": "Parcelele pornesc sezonul nou de la zero. Dacă au rămas baloți pe câmp, adaugă-i cu corecția manuală de baloți.",
+      "reasonLabel": "Motiv (se salvează în audit)",
+      "reasonPlaceholder": "ex. încheiere campanie 2026",
+      "typeYear": "Scrie {year} pentru confirmare",
+      "confirm": "Închide {year}",
+      "running": "Se închide…",
+      "success": "Sezonul {year} a fost închis. Sezonul activ este acum {next}; s-au reportat {bales} baloți în {depots} depozite."
+    }
   }
 }

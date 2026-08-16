@@ -165,6 +165,8 @@ export {
 export { useOrgFeatures, useUpdateOrgFeatures } from './use-org-features.js';
 export type { OrgFeatureChange, OrgFeaturesResponse } from './use-org-features.js';
 
+export { useSeasonContext, useSeasonPreflight, useCloseSeason } from './use-seasons.js';
+
 export {
   useBaleProductions,
   useBaleProductionStats,

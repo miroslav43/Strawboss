@@ -3,11 +3,20 @@ import type { DeliveryDestination } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
-export function useDeliveryDestinations(client: ApiClient) {
+/**
+ * @param filters carries the optional `season`. It must be part of the query
+ *   KEY as well as the query string: every depot row includes a stock figure,
+ *   and without the key a season switch would serve the previous season's stock
+ *   from cache under the new heading.
+ */
+export function useDeliveryDestinations(client: ApiClient, filters?: Record<string, unknown>) {
+  const qs =
+    filters && Object.keys(filters).length
+      ? `?${new URLSearchParams(Object.entries(filters).map(([k, v]) => [k, String(v)]))}`
+      : '';
   return useQuery({
-    queryKey: queryKeys.deliveryDestinations.list(),
-    queryFn: () =>
-      client.get<DeliveryDestination[]>('/api/v1/delivery-destinations'),
+    queryKey: queryKeys.deliveryDestinations.list(filters),
+    queryFn: () => client.get<DeliveryDestination[]>(`/api/v1/delivery-destinations${qs}`),
     staleTime: 30_000,
   });
 }

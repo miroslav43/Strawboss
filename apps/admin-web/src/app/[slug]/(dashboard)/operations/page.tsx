@@ -8,6 +8,7 @@ import type { Trip, DashboardOverview } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { OperationStatusGrid } from '@/components/features/operations/OperationStatusGrid';
 import { apiClient } from '@/lib/api';
+import { useSeasonParam } from '@/lib/season';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
@@ -38,7 +39,8 @@ function SummaryCard({ title, value, icon: Icon, color }: SummaryCardProps) {
 
 export default function OperationsPage() {
   const { t } = useI18n();
-  const overviewQuery = useDashboardOverview(apiClient);
+  const seasonParam = useSeasonParam();
+  const overviewQuery = useDashboardOverview(apiClient, seasonParam);
   // "Active" = all in-progress states; trip_status has no 'active' value
   const tripsQuery = useTrips(apiClient, {
     status: 'planned,loading,loaded,in_transit,arrived,delivering',

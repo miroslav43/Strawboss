@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import {  } from 'lucide-react';
+import {} from 'lucide-react';
 import {
   useFarmReports,
   useDepotReports,
@@ -30,6 +30,7 @@ import { exportCsv } from '@/lib/csv';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { useSeasonParam } from '@/lib/season';
 import { useFeatures } from '@/hooks/useFeatures';
 import { ExportButton } from '@/components/shared/ExportButton';
 import type { FeatureKey } from '@strawboss/types';
@@ -61,8 +62,16 @@ const TABS: { id: Tab; labelKey: string; feature?: FeatureKey }[] = [
   { id: 'operators', labelKey: 'reports.tabs.operators', feature: 'analytics.report_operators' },
   { id: 'machineProduction', labelKey: 'reports.tabs.machineProduction' },
   { id: 'kmPerTruck', labelKey: 'reports.tabs.kmPerTruck' },
-  { id: 'kmPerOperator', labelKey: 'reports.tabs.kmPerOperator', feature: 'analytics.report_operators' },
-  { id: 'connectedHours', labelKey: 'reports.tabs.connectedHours', feature: 'analytics.report_operators' },
+  {
+    id: 'kmPerOperator',
+    labelKey: 'reports.tabs.kmPerOperator',
+    feature: 'analytics.report_operators',
+  },
+  {
+    id: 'connectedHours',
+    labelKey: 'reports.tabs.connectedHours',
+    feature: 'analytics.report_operators',
+  },
 ];
 
 interface CostRow extends Record<string, unknown> {
@@ -112,7 +121,15 @@ export default function ReportsPage() {
     'day',
   );
 
-  const filters: Record<string, string> = {};
+  // The season rides in the filter object, so it lands in BOTH the query string
+  // and the TanStack query key. Without it in the key, switching seasons would
+  // serve the previous season's cached numbers under the new heading.
+  //
+  // `useSeasonParam` returns {} for the active season on purpose: omitting the
+  // parameter lets the backend resolve it, including the case where the
+  // organization has never closed a season and must not be filtered at all.
+  const seasonParam = useSeasonParam();
+  const filters: Record<string, string> = { ...seasonParam };
   if (dateFrom) filters.dateFrom = dateFrom;
   if (dateTo) filters.dateTo = dateTo;
   const hasFilters = Object.keys(filters).length > 0;

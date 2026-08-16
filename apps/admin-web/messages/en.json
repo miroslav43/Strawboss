@@ -2508,5 +2508,36 @@
         "transportator": "Transporter"
       }
     }
+  },
+  "season": {
+    "selectorLabel": "Season",
+    "optionClosed": "{year} (closed)",
+    "current": "Current season: {year}",
+    "closedList": "Closed seasons: {years}",
+    "noneClosed": "No season has been closed yet.",
+    "alreadyClosed": "{year} is already closed",
+    "viewingHistorical": "You are viewing season {year}. The figures shown are historical.",
+    "closedSuffix": "This season is closed and can no longer be modified.",
+    "backToActive": "Back to {year}",
+    "gps": {
+      "unavailableTitle": "GPS tracks are not kept this long",
+      "unavailableBody": "Positions are stored for 90 days. For season {year} the position data no longer exists, so distances cannot be recomputed — this is not zero kilometres, it is no data."
+    },
+    "rollover": {
+      "cta": "Close season {year}",
+      "title": "Close season {year}",
+      "checking": "Checking…",
+      "openTrips": "{count} unfinished trips in this season",
+      "devices": "{count} phones have not synced in the last 24h",
+      "carry": "{bales} bales in {depots} depots carry forward as opening stock",
+      "parcels": "{count} fields will have their harvest status reset",
+      "fieldsFromZero": "Fields start the new season at zero. If bales are still lying in a field, add them with the manual bale correction.",
+      "reasonLabel": "Reason (recorded in the audit trail)",
+      "reasonPlaceholder": "e.g. end of 2026 campaign",
+      "typeYear": "Type {year} to confirm",
+      "confirm": "Close {year}",
+      "running": "Closing…",
+      "success": "Season {year} closed. Active season is now {next}; {bales} bales carried forward across {depots} depots."
+    }
   }
 }
