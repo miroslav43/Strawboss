@@ -1,3 +1,4 @@
+import type * as SQLite from 'expo-sqlite';
 import type { ApiClient } from '@strawboss/api';
 import type { SyncResult as SyncResultDto, SyncTombstone } from '@strawboss/types';
 import { mobileLogger } from '../lib/logger';
@@ -13,6 +14,7 @@ import { SyncCursorsRepo } from '../db/sync-cursors-repo';
 import { pushMutations } from './push';
 import { pullUpdates } from './pull';
 import { mergeRecords } from './conflict';
+import { applySeasonChange } from '../db/season-prune';
 import { notifyDivergentFields } from './conflict-notify';
 import { uploadTodayMobileLogs } from './mobile-log-upload';
 import { uploadReceipt } from '../lib/receiptUpload';
@@ -49,6 +51,12 @@ export class SyncManager {
     private taskAssignmentsRepo?: TaskAssignmentsRepo,
     private parcelsRepo?: ParcelsRepo,
     private syncCursorsRepo?: SyncCursorsRepo,
+    /**
+     * Raw handle, only for the season-change housekeeping below. That work
+     * spans several tables and is a cache concern rather than an entity one, so
+     * it does not belong behind any single repo.
+     */
+    private db?: SQLite.SQLiteDatabase,
   ) {}
 
   /**
@@ -194,6 +202,13 @@ export class SyncManager {
 
       const result = await pullUpdates(lastVersions, this.apiClient);
 
+      // BEFORE the early return, because a season rollover changes no row: it
+      // writes the organization's active season and re-scopes every aggregate
+      // without bumping a single sync_version. The pull that carries the news
+      // is therefore very often an EMPTY one, and handling this after the
+      // early-out would mean the phone never noticed on a quiet day.
+      await this.handleSeasonChange(result.activeSeasonYear);
+
       if (result.updates.length === 0 && result.deletions.length === 0) {
         return { count: 0, errors: result.errors };
       }
@@ -250,6 +265,24 @@ export class SyncManager {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Pull failed';
       return { count: 0, errors: [message] };
+    }
+  }
+
+  /**
+   * React to the organization having rolled into a new season.
+   *
+   * Never throws: a cache that is one season stale is a cosmetic problem, a
+   * sync cycle that dies on the way to pushing a bale tally is not.
+   */
+  private async handleSeasonChange(activeSeasonYear: number | null): Promise<void> {
+    if (activeSeasonYear == null || !this.db) return;
+    try {
+      await applySeasonChange(this.db, activeSeasonYear);
+    } catch (err) {
+      mobileLogger.warn('season.change.failed', {
+        activeSeasonYear,
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

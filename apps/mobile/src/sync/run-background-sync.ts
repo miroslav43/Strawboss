@@ -83,6 +83,7 @@ export async function runBackgroundSyncCycle(): Promise<void> {
     // periodic updater) silently dropped every parcel change.
     parcelsRepo,
     syncCursorsRepo,
+    db,
   );
 
   const result = await manager.sync();

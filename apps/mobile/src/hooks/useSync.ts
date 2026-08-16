@@ -94,6 +94,7 @@ export function useSync() {
         taskAssignmentsRepo,
         parcelsRepo,
         syncCursorsRepo,
+        db,
       );
 
       const result = await manager.sync();

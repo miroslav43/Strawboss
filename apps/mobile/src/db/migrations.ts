@@ -23,6 +23,8 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync(TABLES.sync_cursors);
   // Plan C — deposit dashboard write-through cache for offline cold boot.
   await db.execAsync(TABLES.deposit_inventory_cache);
+  // Device-local protocol state (currently the last known active season).
+  await db.execAsync(TABLES.app_state);
 
   // Additive column migrations for users upgrading from older builds. SQLite
   // does not support `ADD COLUMN IF NOT EXISTS`, so we swallow the duplicate

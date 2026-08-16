@@ -68,6 +68,7 @@ export class SyncController {
       user.organizationId,
       callerSupportsTombstones(caps),
       user.role,
+      user.activeSeasonYear,
     );
   }
 

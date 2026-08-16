@@ -67,6 +67,7 @@ export async function clearLocalData(): Promise<void> {
     DELETE FROM delivery_destinations;
     DELETE FROM sync_cursors;
     DELETE FROM deposit_inventory_cache;
+    DELETE FROM app_state;
   `);
 
   // 2. Remove filesystem artefacts (all best-effort)

@@ -1,7 +1,7 @@
 export interface SyncMutation {
   table: string;
   recordId: string;
-  action: "insert" | "update" | "delete";
+  action: 'insert' | 'update' | 'delete';
   data: Record<string, unknown>;
   clientId: string;
   clientVersion: number;
@@ -19,7 +19,7 @@ export interface SyncPullRequest {
 export interface SyncResult {
   table: string;
   recordId: string;
-  status: "applied" | "conflict" | "skipped" | "failed";
+  status: 'applied' | 'conflict' | 'skipped' | 'failed';
   serverVersion: number;
   data: Record<string, unknown> | null;
   /** Optional human-readable error, present when status === "failed". */
@@ -48,4 +48,16 @@ export interface SyncResponse {
    * the legacy response without this field and continue to behave as before.
    */
   deletions?: SyncTombstone[];
+  /**
+   * The organization's current season (calendar year), or absent for an
+   * organization that has never closed one.
+   *
+   * Optional so an APK from three releases ago simply ignores it — the same
+   * forward-compatibility story as `deletions`. A phone that DOES understand it
+   * uses a CHANGE in this value as the trigger to drop caches that a season
+   * rollover invalidates without touching a single row's sync_version: the
+   * depot inventory snapshot above all, which has no TTL and would otherwise
+   * show last season's stock to an offline depot manager forever.
+   */
+  activeSeasonYear?: number;
 }

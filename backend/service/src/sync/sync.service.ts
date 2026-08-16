@@ -832,6 +832,7 @@ export class SyncService {
     orgId: string | null = null,
     supportsTombstones = false,
     callerRole?: string,
+    activeSeasonYear?: number | null,
   ): Promise<SyncResponse> {
     // Resolved once per pull, not per table — see the note on extraSelect below.
     const mannedConfirmEnabled = orgId
@@ -1075,6 +1076,14 @@ export class SyncService {
       // Omit `deletions` entirely for legacy clients so the wire shape stays
       // byte-identical to today's response.
       ...(tombstonesEnabled ? { deletions } : {}),
+      // Likewise omitted when the org has never closed a season: absent means
+      // "seasons are not in play here", which is what an untouched tenant is.
+      // NOTE: this is informational. The pull itself is deliberately NOT
+      // season-filtered — see the force-include arm above, which exists because
+      // an out-of-order sync_version once stranded an in_transit trip forever.
+      // Hiding rows here would recreate that class of bug, and the monotonic
+      // client cursor would give no signal that it had happened.
+      ...(activeSeasonYear != null ? { activeSeasonYear } : {}),
     };
   }
 

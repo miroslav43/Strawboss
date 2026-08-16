@@ -228,4 +228,19 @@ export const TABLES = {
     payload TEXT NOT NULL,
     fetched_at TEXT NOT NULL
   )`,
+
+  // Small key/value store for device-local protocol state that is neither a
+  // synced entity nor a per-table cursor. Currently one key:
+  // `active_season_year`, so the phone can notice that its organization rolled
+  // into a new season and drop the caches that a rollover invalidates without
+  // touching any row's sync_version.
+  //
+  // Deliberately NOT folded into sync_cursors: that table's upsert uses MAX()
+  // semantics, which happens to be right for a monotonic year and would be
+  // quietly wrong for the next thing anyone stores here.
+  app_state: `CREATE TABLE IF NOT EXISTS app_state (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
 } as const;

@@ -1,10 +1,5 @@
 import type { ApiClient } from '@strawboss/api';
-import type {
-  SyncPullRequest,
-  SyncResponse,
-  SyncResult,
-  SyncTombstone,
-} from '@strawboss/types';
+import type { SyncPullRequest, SyncResponse, SyncResult, SyncTombstone } from '@strawboss/types';
 
 export interface PullResult {
   count: number;
@@ -13,6 +8,14 @@ export interface PullResult {
   /** Tombstones for soft-deleted rows. Empty when the server didn't emit them. */
   deletions: SyncTombstone[];
   serverTime: string | null;
+  /**
+   * The organization's current season, when the server reports one.
+   *
+   * Null both for an older backend and for an organization that has never
+   * closed a season — the phone treats the two identically and does nothing,
+   * which is the correct behaviour for both.
+   */
+  activeSeasonYear: number | null;
 }
 
 /**
@@ -36,6 +39,7 @@ export async function pullUpdates(
       updates: response.results,
       deletions: response.deletions ?? [],
       serverTime: response.serverTime,
+      activeSeasonYear: response.activeSeasonYear ?? null,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Pull failed';
@@ -45,6 +49,7 @@ export async function pullUpdates(
       updates: [],
       deletions: [],
       serverTime: null,
+      activeSeasonYear: null,
     };
   }
 }
