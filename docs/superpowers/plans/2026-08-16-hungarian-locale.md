@@ -765,7 +765,17 @@ Astea sunt bug-urile care nu dau nicio eroare. Le grupez într-un task pentru c�
 - Modifică: `apps/admin-web/src/app/[slug]/(dashboard)/accounts/page.tsx:516,535,678,689`
 - Modifică: `apps/admin-web/messages/{en,ro}.json` (`settings.lang.hu`)
 
-- [ ] **Pas 1: Adaugă `settings.lang.hu` în ambele cataloage existente**
+- [ ] **Pas 1: Bifurcă `hu.json` din engleză**
+
+```bash
+cd /srv/apps/Strawboss/apps/admin-web && cp messages/en.json messages/hu.json
+```
+
+Din engleză, nu din română: ambele au aceleași 2189 de căi în aceeași ordine (verificat), dar engleza e sursa de traducere. Fișierul e deocamdată englezesc ca text — se traduce în Faza 3.
+
+> Se face **înaintea** cablării, deliberat, ca build-ul să nu treacă niciodată printr-o stare roșie. `Record<Locale, …>` de la Pasul 3 refuză să compileze fără fișierul ăsta.
+
+- [ ] **Pas 2: Adaugă `settings.lang.hu` în ambele cataloage existente**
 
 `settings.lang` (linia 208 în ambele fișiere) e **singurul loc din interiorul cataloagelor unde e enumerată mulțimea de limbi**. Convenția e endonimul în paranteză.
 
@@ -787,7 +797,7 @@ Astea sunt bug-urile care nu dau nicio eroare. Le grupez într-un task pentru c�
     },
 ```
 
-- [ ] **Pas 2: Cablează catalogul `hu` în provider — inclusiv cele două validatoare tăcute**
+- [ ] **Pas 3: Cablează catalogul `hu` în provider — inclusiv cele două validatoare tăcute**
 
 În `apps/admin-web/src/lib/i18n.tsx`:
 
@@ -832,7 +842,7 @@ export function normalizeUiLocale(raw: string | null | undefined): Locale {
 
 > Fără pasul ăsta, `setLocale` scrie `'hu'` în localStorage, iar cititorul îl respinge la următoarea încărcare — alegerea utilizatorului se „uită" la fiecare reload, și pentru că `hydrateFromProfile` iese devreme când există *orice* valoare în localStorage, nici profilul nu-l salvează.
 
-- [ ] **Pas 3: Repară linia care ȘTERGE limba utilizatorului**
+- [ ] **Pas 4: Repară linia care ȘTERGE limba utilizatorului**
 
 `settings/page.tsx:342` e cea mai distructivă linie din tot planul:
 
@@ -856,7 +866,7 @@ Colapsează orice valoare care nu e `ro` la `en`. Un utilizator cu `hu` în baza
                 ))}
 ```
 
-- [ ] **Pas 4: Repară formularul de conturi — inclusiv ternarul care ar eticheta maghiara „English"**
+- [ ] **Pas 5: Repară formularul de conturi — inclusiv ternarul care ar eticheta maghiara „English"**
 
 `accounts/page.tsx`. Linia 516 redeclară uniunea inline, deci lărgirea tipului partajat **nu ajunge aici**:
 
@@ -881,15 +891,17 @@ Linia 689 — ternarul binar. Lăsat așa, butonul maghiar ar scrie literal „E
 
 > Ăsta e pickerul prin care adminul setează limba aplicației **mobile** pe contul altcuiva — singura cale prin care un șofer maghiar poate fi vreodată configurat.
 
-- [ ] **Pas 5: Typecheck — se AȘTEAPTĂ să pice**
+- [ ] **Pas 6: Verifică — trebuie să treacă**
 
 ```bash
 cd /srv/apps/Strawboss && ./strawboss.sh typecheck admin-web
 ```
 
-Așteptat: **FAIL**, cu `Cannot find module '../../messages/hu.json'`. Asta e corect și e chiar semnalul pe care l-am proiectat: `Record<Locale, …>` refuză să compileze până când catalogul maghiar există. Se rezolvă în Task 3.1.
+Așteptat: **PASS**. Catalogul maghiar există structural (englezesc ca text), deci `Record<Locale, …>` e satisfăcut. Linterul de cataloage din `typecheck` va raporta însă `✗ hu.json — ~2130 netraduse`, ceea ce e corect și așteptat până la sfârșitul Fazei 3.
 
-- [ ] **Pas 6: Commit (build-ul e roșu intenționat)**
+> Dacă `typecheck` iese cu 0 dar linterul zice că hu e netradus, totul e în regulă. Dacă `tsc` însuși pică, ai uitat Pasul 1.
+
+- [ ] **Pas 7: Commit**
 
 ```bash
 cd /srv/apps/Strawboss
@@ -904,8 +916,9 @@ git commit -m "feat(admin-web): cablează hu și repar cele 4 eșecuri tăcute d
   'English'
 - normalizeUiLocale testa prefixele unul câte unul; acum delegă către SSOT
 
-Typecheck-ul e ROȘU intenționat până apare messages/hu.json (Task 3.1) —
-Record<Locale,…> e proiectat să rupă build-ul, singurul eșec zgomotos din lanț.
+Bifurc messages/hu.json (englezesc ca text) în același commit: Record<Locale,…>
+e proiectat să rupă build-ul fără el, și e singurul eșec ZGOMOTOS din tot lanțul
+— restul modurilor de eșec ale acestui feature sunt tăcute.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
@@ -1221,36 +1234,22 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3.1: Bifurcă `hu.json` și tradu primele patru namespace-uri
+### Task 3.1: Tradu primele patru namespace-uri
+
+`apps/admin-web/messages/hu.json` există deja din Task 1.4 — bifurcat din engleză, netradus. Aici începe traducerea.
 
 **Fișiere:**
-- Creează: `apps/admin-web/messages/hu.json`
+- Modifică: `apps/admin-web/messages/hu.json`
 
-- [ ] **Pas 1: Bifurcă din engleză**
-
-```bash
-cd /srv/apps/Strawboss/apps/admin-web && cp messages/en.json messages/hu.json
-```
-
-> Din engleză, nu din română: `en.json` și `ro.json` au aceleași 2189 de căi, în aceeași ordine (verificat), dar engleza e sursa de traducere.
-
-- [ ] **Pas 2: Confirmă că linterul pică acum, cu tot catalogul**
+- [ ] **Pas 1: Confirmă punctul de plecare**
 
 ```bash
 cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs
 ```
 
-Așteptat: FAIL — `✗ hu.json`, ~2130 chei „identice cu engleza (netraduse)". **Ăsta e testul care pică.** Fiecare lot îl face mai mic.
+Așteptat: FAIL — `✗ hu.json`, ~2130 chei „identice cu engleza (netraduse)", zero „lipsesc"/„în plus". **Ăsta e testul care pică.** Fiecare lot îl face mai mic; la finalul Fazei 3 trebuie să ajungă la zero.
 
-- [ ] **Pas 3: Confirmă că admin-web compilează din nou**
-
-```bash
-cd /srv/apps/Strawboss && ./strawboss.sh typecheck admin-web
-```
-
-Așteptat: eroarea `Cannot find module '../../messages/hu.json'` din Task 1.4 dispare. Linterul rămâne roșu — corect.
-
-- [ ] **Pas 4: Tradu namespace-urile `common`, `nav`, `login`, `settings`**
+- [ ] **Pas 2: Tradu namespace-urile `common`, `nav`, `login`, `settings`**
 
 ~130 de chei. Începi cu ele pentru că sunt vocabularul partajat pe care se sprijină restul catalogului — dacă alegi aici `tábla` pentru parcelă, tot restul urmează.
 
@@ -1279,7 +1278,7 @@ Traduceri obligatorii pentru elementele recurente de interfață:
 | Settings | Beállítások |
 | Export CSV / PDF | CSV / PDF exportálás |
 
-- [ ] **Pas 5: Verifică progresul lotului**
+- [ ] **Pas 3: Verifică progresul lotului**
 
 ```bash
 cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs 2>&1 | grep -c "^    " || true
@@ -1287,15 +1286,15 @@ cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs 2>&1
 
 Numărul de chei netraduse rămase trebuie să fi scăzut cu ~130. Confirmă și că nu apar chei `lipsesc` sau `în plus` — dacă apar, ai stricat structura JSON.
 
-- [ ] **Pas 6: Commit**
+- [ ] **Pas 4: Commit**
 
 ```bash
 cd /srv/apps/Strawboss
 git add apps/admin-web/messages/hu.json
 git commit -m "feat(i18n): catalog maghiar web — common, nav, login, settings
 
-Bifurcat din en.json (paritate verificată). Primele ~130 de chei: vocabularul
-partajat pe care se sprijină restul catalogului.
+Primele ~130 de chei: vocabularul partajat pe care se sprijină restul
+catalogului. Alegerile de aici (tábla, bála, fuvar) se propagă în tot restul.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
@@ -1347,7 +1346,18 @@ Trebuie să afișeze `i18n: 3 cataloage în paritate (2189 chei fiecare).` făr�
 **Fișiere:**
 - Modifică: `apps/mobile/src/lib/i18n.tsx:1-13,40-44,59-61,93-95`
 
-- [ ] **Pas 1: Importă catalogul și lărgește tipul**
+- [ ] **Pas 1: Bifurcă `hu.ts` din engleză**
+
+```bash
+cd /srv/apps/Strawboss/apps/mobile && sed 's/^export const en: TranslationKeys = {/export const hu: TranslationKeys = {/' src/i18n/en.ts > src/i18n/hu.ts
+head -3 src/i18n/hu.ts
+```
+
+Așteptat: prima linie e importul `TranslationKeys`, a treia e `export const hu: TranslationKeys = {`. Corectează manual dacă `sed` n-a prins (depinde de anotarea adăugată în Task 2.2).
+
+> Se face **înaintea** cablării, deliberat, ca `typecheck mobile` să nu treacă niciodată printr-o stare roșie. Fișierul e englezesc ca text — se traduce în Faza 4.
+
+- [ ] **Pas 2: Importă catalogul și lărgește tipul**
 
 ```tsx
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
@@ -1369,7 +1379,7 @@ const catalogs: Record<Locale, Record<string, unknown>> = {
 };
 ```
 
-- [ ] **Pas 2: Înlocuiește normalizatorul allowlist-de-unul**
+- [ ] **Pas 3: Înlocuiește normalizatorul allowlist-de-unul**
 
 Vechiul (liniile 40-44) era `raw.toLowerCase().startsWith('en') ? 'en' : 'ro'` — o listă albă de exact o limbă, cu ramura implicită „română".
 
@@ -1386,7 +1396,7 @@ export function normalizeLocale(raw: string | null | undefined): Locale {
 }
 ```
 
-- [ ] **Pas 3: Repară lanțul de fallback în AMBELE locuri**
+- [ ] **Pas 4: Repară lanțul de fallback în AMBELE locuri**
 
 Atât `t` (liniile 59-61) cât și `tStatic` (93-95) cad azi pe `catalogs.ro`. Trebuie să cadă pe engleză, nu pe română — altfel o cheie maghiară lipsă apare în română, care nu e nici măcar o a doua limbă plauzibilă pentru un vorbitor de maghiară.
 
@@ -1406,15 +1416,15 @@ Atât `t` (liniile 59-61) cât și `tStatic` (93-95) cad azi pe `catalogs.ro`. T
 
 Aplică exact aceeași cascadă în `tStatic`.
 
-- [ ] **Pas 4: Typecheck — se AȘTEAPTĂ să pice**
+- [ ] **Pas 5: Verifică — trebuie să treacă**
 
 ```bash
 cd /srv/apps/Strawboss && ./strawboss.sh typecheck mobile
 ```
 
-Așteptat: **FAIL** cu `Cannot find module '@/i18n/hu'`. Corect — se rezolvă în Task 4.2.
+Așteptat: **PASS**. Catalogul maghiar există structural (englezesc ca text), iar anotarea `TranslationKeys` din Task 2.2 garantează că e complet.
 
-- [ ] **Pas 5: Commit**
+- [ ] **Pas 6: Commit**
 
 ```bash
 cd /srv/apps/Strawboss
@@ -1427,46 +1437,34 @@ __DEV__, fără typecheck picat (auth-store tipizează locale ca string). Deleg�
 acum către SSOT. Mut și fallback-ul de cheie lipsă de pe română pe engleză, în
 t() ȘI în tStatic (acesta din urmă alimentează notificările push headless).
 
-Typecheck ROȘU intenționat până apare src/i18n/hu.ts (Task 4.2).
+Bifurc src/i18n/hu.ts (englezesc ca text) în același commit, ca typecheck-ul să
+nu treacă printr-o stare roșie.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 4.2: Bifurcă `hu.ts` și tradu namespace-urile mari
+### Task 4.2: Tradu namespace-urile mobile mari
+
+`apps/mobile/src/i18n/hu.ts` există deja din Task 4.1 — bifurcat din engleză, netradus.
 
 **Fișiere:**
-- Creează: `apps/mobile/src/i18n/hu.ts`
+- Modifică: `apps/mobile/src/i18n/hu.ts`
 
-- [ ] **Pas 1: Bifurcă din engleză, cu anotarea de tip**
-
-```bash
-cd /srv/apps/Strawboss/apps/mobile && sed 's/^export const en: TranslationKeys = {/export const hu: TranslationKeys = {/' src/i18n/en.ts > src/i18n/hu.ts
-head -3 src/i18n/hu.ts
-```
-
-Așteptat: prima linie e importul `TranslationKeys`, a treia e `export const hu: TranslationKeys = {`. Corectează manual dacă `sed` n-a prins.
-
-- [ ] **Pas 2: Confirmă că typecheck-ul trece din nou**
-
-```bash
-cd /srv/apps/Strawboss && ./strawboss.sh typecheck mobile
-```
-
-Așteptat: PASS. Catalogul e complet structural (englezesc ca text) — anotarea `TranslationKeys` din Task 2.2 garantează asta.
-
-- [ ] **Pas 3: Tradu `loader` (166), `shared` (97), `tabs` (66), `common` (18)**
+- [ ] **Pas 1: Tradu `loader` (166), `shared` (97), `tabs` (66), `common` (18)**
 
 347 de chei. `loader` e cel mai mare namespace mobil și e ecranul cel mai folosit din flotă. `shared` și `tabs` sunt navigația văzută de toate rolurile.
 
-- [ ] **Pas 4: Verifică**
+- [ ] **Pas 2: Verifică**
 
 ```bash
 cd /srv/apps/Strawboss && ./strawboss.sh typecheck mobile
 ```
 
-- [ ] **Pas 5: Commit**
+Anotarea `TranslationKeys` garantează că n-ai pierdut nicio cheie în timp ce traduceai.
+
+- [ ] **Pas 3: Commit**
 
 ```bash
 cd /srv/apps/Strawboss
@@ -2134,6 +2132,6 @@ Setează un cont de test pe `hu` din admin-web, forțează o sincronizare pe tel
 
 **Consecvența de tipuri.** `Locale`, `SUPPORTED_LOCALES`, `DEFAULT_LOCALE`, `LOCALE_ENDONYMS`, `LOCALE_BCP47`, `isLocale`, `normalizeLocale` sunt definite o dată în Task 1.1 și folosite cu aceleași nume în Taskurile 1.2–1.5, 4.1, 5.1, 5.2, 6.1, 6.2, 6.5. `tServer` e definit în 6.2 și folosit în 6.3, 6.4. `useLocaleFormat` e definit în 5.1 și folosit doar acolo. `dateLocaleFor` e definit în 5.2 și folosit doar acolo.
 
-**Două taskuri lasă intenționat build-ul roșu** (1.4 și 4.1), fiecare marcat explicit, cu taskul care-l repară numit (3.1, respectiv 4.2). Asta e proiectat: `Record<Locale, …>` e singurul eșec *zgomotos* din tot lanțul, restul sunt tăcute.
+**Build-ul nu trece niciodată prin roșu.** Taskurile 1.4 și 4.1 bifurcă fișierul de catalog *înainte* de a-l cabla, în același commit — `Record<Locale, …>` e proiectat să rupă compilarea fără el, și e singurul eșec *zgomotos* din tot lanțul (toate celelalte moduri de eșec ale acestui feature sunt tăcute). Fișierul bifurcat e englezesc ca text; linterul de cataloage rămâne roșu până la sfârșitul Fazei 3, ceea ce e o stare diferită și corectă — compilarea trece, traducerea e incompletă și vizibilă.
 
 **Numere verificate direct**, nu preluate: 2183 de chei web (rulând scriptul de paritate existent), 1123 mobil, 46 respectiv 33 de namespace-uri. Faza 0 adaugă 6 chei → 2189. Total tradus: **3312**.
