@@ -28,6 +28,7 @@ interface UserContext {
   organizationId: string | null;
   organizationSlug: string | null;
   disabledFeatures: FeatureKey[];
+  activeSeasonYear: number | null;
 }
 
 export interface RequestUser {
@@ -43,6 +44,20 @@ export interface RequestUser {
    * "everything enabled", never the reverse.
    */
   disabledFeatures: FeatureKey[];
+  /**
+   * The organization's current season (calendar year), or null for an org that
+   * has never closed one.
+   *
+   * Carried on the request rather than fetched per endpoint because it rides
+   * the users/organizations join AuthGuard already performs, behind the same
+   * TTL + generation cache as the feature flags — so season-scoping every
+   * report costs zero extra queries. A rollover bumps that generation, which
+   * is what makes the new season visible on the other replica.
+   *
+   * null for super_admin, who reads across organizations and is therefore never
+   * season-filtered (see SeasonsService.resolveWindow).
+   */
+  activeSeasonYear: number | null;
 }
 
 @Injectable()
@@ -110,7 +125,8 @@ export class AuthGuard implements CanActivate {
         u.is_active AS "isActive",
         u.organization_id AS "organizationId",
         o.slug AS "organizationSlug",
-        o.feature_overrides AS "featureOverrides"
+        o.feature_overrides AS "featureOverrides",
+        o.active_season_year AS "activeSeasonYear"
       FROM users u
       LEFT JOIN organizations o ON o.id = u.organization_id AND o.deleted_at IS NULL
       WHERE u.id = ${userId}::uuid AND u.deleted_at IS NULL
@@ -121,6 +137,7 @@ export class AuthGuard implements CanActivate {
       organizationId: string | null;
       organizationSlug: string | null;
       featureOverrides: FeatureOverrides | null;
+      activeSeasonYear: number | null;
     }[];
     const row = rows[0];
     if (!row) return null;
@@ -133,6 +150,7 @@ export class AuthGuard implements CanActivate {
         organizationId: null,
         organizationSlug: null,
         disabledFeatures: [],
+        activeSeasonYear: null,
       };
     }
 
@@ -143,6 +161,9 @@ export class AuthGuard implements CanActivate {
       organizationId: row.organizationId,
       organizationSlug: row.organizationSlug,
       disabledFeatures: this.featuresService.resolve(row.featureOverrides),
+      // Numeric in Postgres, but postgres.js hands back some numerics as
+      // strings — coerce here so every consumer can trust the type.
+      activeSeasonYear: row.activeSeasonYear == null ? null : Number(row.activeSeasonYear),
     };
   }
 
@@ -265,6 +286,7 @@ export class AuthGuard implements CanActivate {
       // through the is_active check to prevent a soft-deleted super_admin
       // from retaining access.
       let disabledFeatures: FeatureKey[] = [];
+      let activeSeasonYear: number | null = null;
       if (role !== 'super_admin') {
         const ctx = await this.getUserContext(sub, role);
         if (!ctx) {
@@ -276,6 +298,7 @@ export class AuthGuard implements CanActivate {
         organizationId = ctx.organizationId;
         organizationSlug = ctx.organizationSlug;
         disabledFeatures = ctx.disabledFeatures;
+        activeSeasonYear = ctx.activeSeasonYear;
       }
 
       request.user = {
@@ -285,6 +308,7 @@ export class AuthGuard implements CanActivate {
         organizationId,
         organizationSlug,
         disabledFeatures,
+        activeSeasonYear,
       } satisfies RequestUser;
 
       return true;

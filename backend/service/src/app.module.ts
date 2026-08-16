@@ -9,6 +9,7 @@ import { RedisModule } from './redis/redis.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { FeaturesModule } from './features/features.module';
+import { SeasonsModule } from './seasons/seasons.module';
 import { FeaturesGuard } from './features/features.guard';
 import { AuthGuard } from './auth/auth.guard';
 import { RolesGuard } from './auth/roles.guard';
@@ -69,6 +70,7 @@ const devModules =
     // Before AuthModule: AuthGuard injects FeaturesService to resolve an org's
     // flags inside the users/organizations join it already runs per request.
     FeaturesModule,
+    SeasonsModule,
     MessagingModule,
     MessagesModule,
     OrganizationsModule,

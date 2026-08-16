@@ -2,6 +2,7 @@ export * from './common.js';
 export * from './messaging.js';
 export * from './presence.js';
 export * from './features.js';
+export * from './season.js';
 
 export * from './entities/farm.js';
 export type {

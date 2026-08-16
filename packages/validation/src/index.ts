@@ -18,6 +18,9 @@ export {
 } from './schemas/features.schema.js';
 export type { UpdateOrgFeaturesInput } from './schemas/features.schema.js';
 
+export { seasonYearSchema, seasonQuerySchema, closeSeasonSchema } from './schemas/season.schema.js';
+export type { SeasonQuery, CloseSeasonInput } from './schemas/season.schema.js';
+
 export {
   userRoleSchema,
   userSchema,

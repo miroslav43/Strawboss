@@ -215,6 +215,8 @@ const EXEMPT = {
   'task-assignments/task-assignments.controller.ts':
     'CORE — the dispatch spine. No assignments means no work can reach anyone.',
   'profile/profile.controller.ts': 'CORE — identity, heartbeat, password, specimen.',
+  'seasons/seasons.controller.ts':
+    'CORE — closing a season is org administration, not a product module. Gating it would strand an organization in a year it can never leave, and every past season stays readable regardless.',
   'sync/sync.controller.ts':
     'IN-SERVICE — gated per mutation in SyncService.applyMutation; one push carries many types.',
   'admin-users/admin-users.controller.ts':
