@@ -11,6 +11,8 @@ export interface CreateUserPayload {
   phone?: string | null;
   /** Optional: admin override for the auto-generated username. */
   usernameOverride?: string;
+  /** UI language for the new account. Server falls back to DEFAULT_LOCALE when omitted. */
+  locale?: Locale;
 }
 
 export interface UpdateUserPayload {
