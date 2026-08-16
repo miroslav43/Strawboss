@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 export interface OperatorStat {
   operatorId?: string;
@@ -15,12 +16,10 @@ interface TopOperatorsProps {
 }
 
 export function TopOperators({ data, className }: TopOperatorsProps) {
+  const { t } = useI18n();
+
   if (data.length === 0) {
-    return (
-      <div className="py-8 text-center text-sm text-neutral-400">
-        Nu sunt date disponibile
-      </div>
-    );
+    return <div className="py-8 text-center text-sm text-neutral-400">{t('dashboard.noData')}</div>;
   }
 
   const sorted = [...data]
@@ -31,18 +30,14 @@ export function TopOperators({ data, className }: TopOperatorsProps) {
 
   return (
     <div className={cn('rounded-xl bg-white p-6 shadow-sm', className)}>
-      <h2 className="mb-4 text-lg font-semibold text-neutral-800">
-        Top operatori azi
-      </h2>
+      <h2 className="mb-4 text-lg font-semibold text-neutral-800">{t('dashboard.topOperators')}</h2>
       <div className="space-y-3">
         {sorted.map((op, idx) => {
           const bales = Number(op.totalBales) || 0;
           const percent = maxBales > 0 ? (bales / maxBales) * 100 : 0;
           return (
             <div key={op.operatorId ?? idx} className="flex items-center gap-3">
-              <span className="w-6 text-right text-sm font-bold text-neutral-400">
-                {idx + 1}
-              </span>
+              <span className="w-6 text-right text-sm font-bold text-neutral-400">{idx + 1}</span>
               <span className="w-28 truncate text-sm font-medium text-neutral-800">
                 {op.operatorName ?? 'N/A'}
               </span>

@@ -640,7 +640,7 @@
   },
   "trips_detail": {
     "signatures": "Signatures",
-    "loaderOperator": "Loader operator",
+    "loaderOperator": "Loader Operator",
     "driver": "Driver",
     "deposit": "Deposit",
     "documents": "Documents",
@@ -680,7 +680,24 @@
       "delivery_note": "Delivery Note",
       "weight_ticket": "Weight Ticket",
       "report": "Report"
+    },
+    "status": {
+      "pending": "Pending",
+      "generating": "Generating",
+      "partial": "Partial",
+      "generated": "Generated",
+      "sent": "Sent",
+      "failed": "Failed"
     }
+  },
+  "documentViewer": {
+    "open": "Open",
+    "download": "Download",
+    "noFile": "No file available",
+    "generated": "Generated",
+    "sent": "Sent",
+    "fileSize": "File size",
+    "type": "Type"
   },
   "settings_page": {
     "specimenSectionTitle": "Signature specimen"
@@ -2036,7 +2053,21 @@
     "newAlerts": "New alerts",
     "recentTrips": "Recent trips",
     "noRecentTrips": "No recent trips",
-    "trendVsYesterday": "% vs yesterday"
+    "trendVsYesterday": "% vs yesterday",
+    "days": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    },
+    "bales": "Bales",
+    "productionLast7Days": "Production — last 7 days",
+    "tripsCompletedLabel": "Completed trips:",
+    "topOperators": "Top operators today",
+    "noData": "No data available"
   },
   "realtime": {
     "reconnecting": "Reconnecting to live data…",
@@ -2108,7 +2139,7 @@
     "notes": "Notes",
     "depotConfirmation": "Depot confirmation",
     "depotConfirmedAt": "Confirmed at",
-    "depotOperator": "Depot operator",
+    "depotOperator": "Depot Manager",
     "scaleBroken": "Scale broken — count-only confirmation"
   },
   "trips_list": {

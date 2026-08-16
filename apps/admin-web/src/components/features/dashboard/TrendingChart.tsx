@@ -2,34 +2,25 @@
 
 import type { TrendingDay } from '@strawboss/api';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 interface TrendingChartProps {
   data: TrendingDay[];
   className?: string;
 }
 
-const DAY_LABELS: Record<number, string> = {
-  0: 'Dum',
-  1: 'Lun',
-  2: 'Mar',
-  3: 'Mie',
-  4: 'Joi',
-  5: 'Vin',
-  6: 'Sam',
-};
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
-function getDayLabel(dateStr: string): string {
+function getDayLabel(dateStr: string, t: (key: string) => string): string {
   const d = new Date(dateStr);
-  return DAY_LABELS[d.getDay()] ?? '?';
+  return t(`dashboard.days.${DAY_KEYS[d.getDay()]}`);
 }
 
 export function TrendingChart({ data, className }: TrendingChartProps) {
+  const { t } = useI18n();
+
   if (data.length === 0) {
-    return (
-      <div className="py-8 text-center text-sm text-neutral-400">
-        Nu sunt date disponibile
-      </div>
-    );
+    return <div className="py-8 text-center text-sm text-neutral-400">{t('dashboard.noData')}</div>;
   }
 
   const maxBales = Math.max(...data.map((d) => d.bales), 1);
@@ -37,7 +28,7 @@ export function TrendingChart({ data, className }: TrendingChartProps) {
   return (
     <div className={cn('rounded-xl bg-white p-6 shadow-sm', className)}>
       <h2 className="mb-4 text-lg font-semibold text-neutral-800">
-        Productie ultimele 7 zile
+        {t('dashboard.productionLast7Days')}
       </h2>
       <div className="space-y-3">
         {data.map((day) => {
@@ -45,7 +36,7 @@ export function TrendingChart({ data, className }: TrendingChartProps) {
           return (
             <div key={day.date} className="flex items-center gap-3">
               <span className="w-10 text-right text-sm font-medium text-neutral-500">
-                {getDayLabel(day.date)}
+                {getDayLabel(day.date, t)}
               </span>
               <div className="h-5 flex-1 overflow-hidden rounded-full bg-neutral-100">
                 <div
@@ -64,10 +55,11 @@ export function TrendingChart({ data, className }: TrendingChartProps) {
       {/* Trip completion summary */}
       <div className="mt-4 flex items-center gap-4 text-xs text-neutral-500">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-600" /> Baloti
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-600" />{' '}
+          {t('dashboard.bales')}
         </span>
         <span>
-          Curse finalizate:{' '}
+          {t('dashboard.tripsCompletedLabel')}{' '}
           <span className="font-medium text-neutral-700">
             {data.reduce((sum, d) => sum + d.tripsCompleted, 0)}
           </span>

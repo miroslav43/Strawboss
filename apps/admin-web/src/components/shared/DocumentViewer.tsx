@@ -88,7 +88,7 @@ export function DocumentViewer({ document: doc, className }: DocumentViewerProps
         <span
           className={cn('rounded-full px-2 py-0.5 text-xs font-medium', statusStyles[doc.status])}
         >
-          {doc.status}
+          {t(`documents.status.${doc.status}`)}
         </span>
       </div>
 
@@ -96,25 +96,25 @@ export function DocumentViewer({ document: doc, className }: DocumentViewerProps
       <div className="grid grid-cols-2 gap-4 p-4 text-xs">
         {doc.generatedAt && (
           <div>
-            <span className="text-neutral-400">Generated</span>
+            <span className="text-neutral-400">{t('documentViewer.generated')}</span>
             <p className="text-neutral-700">{new Date(doc.generatedAt).toLocaleString()}</p>
           </div>
         )}
         {doc.sentAt && (
           <div>
-            <span className="text-neutral-400">Sent</span>
+            <span className="text-neutral-400">{t('documentViewer.sent')}</span>
             <p className="text-neutral-700">{new Date(doc.sentAt).toLocaleString()}</p>
           </div>
         )}
         {doc.fileSizeBytes != null && (
           <div>
-            <span className="text-neutral-400">File size</span>
+            <span className="text-neutral-400">{t('documentViewer.fileSize')}</span>
             <p className="text-neutral-700">{(doc.fileSizeBytes / 1024).toFixed(1)} KB</p>
           </div>
         )}
         {doc.mimeType && (
           <div>
-            <span className="text-neutral-400">Type</span>
+            <span className="text-neutral-400">{t('documentViewer.type')}</span>
             <p className="text-neutral-700">{doc.mimeType}</p>
           </div>
         )}
@@ -131,7 +131,7 @@ export function DocumentViewer({ document: doc, className }: DocumentViewerProps
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90"
             >
               <ExternalLink className="h-3.5 w-3.5" />
-              Deschide
+              {t('documentViewer.open')}
             </a>
             <a
               href={objectUrl}
@@ -139,7 +139,7 @@ export function DocumentViewer({ document: doc, className }: DocumentViewerProps
               className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
             >
               <Download className="h-3.5 w-3.5" />
-              Descarcă
+              {t('documentViewer.download')}
             </a>
           </div>
           {isPdf && (
@@ -152,7 +152,7 @@ export function DocumentViewer({ document: doc, className }: DocumentViewerProps
         </div>
       ) : (
         <div className="border-t border-neutral-100 p-4 text-center text-xs text-neutral-400">
-          No file available
+          {t('documentViewer.noFile')}
         </div>
       )}
     </div>

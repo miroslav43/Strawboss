@@ -680,7 +680,24 @@
       "delivery_note": "Aviz",
       "weight_ticket": "Bon de cântar",
       "report": "Raport"
+    },
+    "status": {
+      "pending": "În așteptare",
+      "generating": "Se generează",
+      "partial": "Parțial",
+      "generated": "Generat",
+      "sent": "Trimis",
+      "failed": "Eșuat"
     }
+  },
+  "documentViewer": {
+    "open": "Deschide",
+    "download": "Descarcă",
+    "noFile": "Niciun fișier disponibil",
+    "generated": "Generat",
+    "sent": "Trimis",
+    "fileSize": "Mărime fișier",
+    "type": "Tip"
   },
   "settings_page": {
     "specimenSectionTitle": "Specimen de semnătură"
@@ -2036,7 +2053,21 @@
     "newAlerts": "Alerte noi",
     "recentTrips": "Curse recente",
     "noRecentTrips": "Nu sunt curse recente",
-    "trendVsYesterday": "% față de ieri"
+    "trendVsYesterday": "% față de ieri",
+    "days": {
+      "sun": "Dum",
+      "mon": "Lun",
+      "tue": "Mar",
+      "wed": "Mie",
+      "thu": "Joi",
+      "fri": "Vin",
+      "sat": "Sâm"
+    },
+    "bales": "Baloți",
+    "productionLast7Days": "Producție — ultimele 7 zile",
+    "tripsCompletedLabel": "Curse finalizate:",
+    "topOperators": "Top operatori azi",
+    "noData": "Nu sunt date disponibile"
   },
   "realtime": {
     "reconnecting": "Se reconectează la datele live…",
