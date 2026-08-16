@@ -241,7 +241,7 @@
     "serverFillsCode": "Codul, suprafața exactă și localitatea vor fi completate automat de server. Poți seta numele câmpului oricând cu butonul Editează.",
     "saveField": "Salvează câmpul",
     "saving": "Se salvează…",
-    "importKml": "Import KML",
+    "importKml": "Importă KML",
     "importKmlTitle": "Import KML — {{count}} parcelă găsită",
     "importKmlTitlePlural": "Import KML — {{count}} parcele găsite",
     "importing": "Se importă {{done}} / {{total}}…",
@@ -311,9 +311,9 @@
     "liveStatus": {
       "live": "LIVE",
       "reconnecting": "Reconectare…",
-      "offline": "Offline",
+      "offline": "Deconectat",
       "lastUpdateAgo": "Ultima actualizare: {{ago}}",
-      "onlineCount": "{{n}} online · {{off}} offline"
+      "onlineCount": "{{n}} online · {{off}} deconectat"
     }
   },
   "mapList": {
@@ -344,7 +344,7 @@
     "kmlNoPolygons": "Nicio parcelă cu poligon nu a fost găsită în fișier.",
     "kmlReadError": "Eroare la citirea fișierului KML.",
     "importKmlTooltip": "Import parcele din fișier KML",
-    "importKml": "Import KML",
+    "importKml": "Importă KML",
     "editParcelInfo": "Editează informații",
     "editParcelBoundary": "Editează limita pe hartă",
     "deleteParcelField": "Șterge câmpul",
@@ -378,7 +378,7 @@
     "delete": "Șterge",
     "showRoute": "Arată traseu",
     "online": "Online",
-    "offline": "Offline",
+    "offline": "Deconectat",
     "justNow": "chiar acum",
     "minsAgo": "acum {{n}} min",
     "hoursAgo": "acum {{n}} h",
@@ -396,7 +396,7 @@
     "statusActive": "● Activ",
     "statusInactive": "○ Inactiv",
     "onlineStatus": "● Online",
-    "offlineStatus": "○ Offline",
+    "offlineStatus": "○ Deconectat",
     "harvestStatus": "Stadiu recoltă",
     "balesSection": "Baloți",
     "deposits": "Depozite",
@@ -653,7 +653,7 @@
     "presence": {
       "online": "Online",
       "dozing": "Inactiv (repaus)",
-      "offline": "Offline",
+      "offline": "Deconectat",
       "neverSeen": "Niciodată conectat",
       "lastSeen": "Ultima verificare {{when}}",
       "ariaOnline": "dispozitiv online",
@@ -661,7 +661,7 @@
       "ariaOffline": "dispozitiv offline",
       "shortOnline": "Online",
       "shortDozing": "Repaus",
-      "shortOffline": "Offline"
+      "shortOffline": "Deconectat"
     }
   },
   "documents": {
@@ -779,12 +779,12 @@
       "lastSeen": "Ultima activitate {{when}}",
       "neverSeen": "Niciodată conectat",
       "shortOnline": "Online",
-      "shortOffline": "Offline",
+      "shortOffline": "Deconectat",
       "shortMinutesAgo": "{{n}} min",
       "shortHoursAgo": "{{n}} h",
       "shortDaysAgo": "{{n}} z",
       "ariaOnline": "online",
-      "ariaOffline": "offline"
+      "ariaOffline": "deconectat"
     },
     "truck": {
       "iterations": {
@@ -827,7 +827,7 @@
     "sectionNormalHint": "Flota proprie",
     "auxEmpty": "Nicio cursă auxiliară.",
     "normalEmpty": "Nicio cursă.",
-    "stageActive": "Active",
+    "stageActive": "Activă",
     "stageAll": "Toate stările",
     "dateTo": "până la"
   },
@@ -868,7 +868,7 @@
       "allTrucks": "Toate camioanele",
       "noMachines": "Nu există camioane în organizație.",
       "totalKm": "{{km}} km",
-      "export": "Export CSV",
+      "export": "Exportă CSV",
       "empty": "Nu există date GPS în intervalul selectat.",
       "colMachine": "Mașină",
       "colDriver": "Șofer",
@@ -888,8 +888,8 @@
       "loss": "Pierdere"
     },
     "common": {
-      "exportCsv": "Export CSV",
-      "exportPdf": "Export PDF",
+      "exportCsv": "Exportă CSV",
+      "exportPdf": "Exportă PDF",
       "loading": "Se încarcă datele…",
       "error": "Eroare la încărcarea datelor. Backend-ul poate fi oprit.",
       "noData": "Nu există date",
@@ -1305,7 +1305,7 @@
     "title": "Mașini",
     "newMachine": "Mașină nouă",
     "statTotal": "Total mașini",
-    "statActive": "Active",
+    "statActive": "Mașini active",
     "statTrucks": "Camioane",
     "statLoaders": "Încărcătoare",
     "statBalers": "Balotiere",
@@ -1329,7 +1329,7 @@
       "truck": "Camion"
     },
     "fuel": {
-      "diesel": "Diesel",
+      "diesel": "Motorină",
       "gasoline": "Benzină",
       "electric": "Electric"
     },
@@ -1366,8 +1366,8 @@
       "searchPlaceholder": "Caută după cod, marcă, model, nr. înmatriculare…",
       "allStatuses": "Toate statusurile",
       "anyFuel": "Orice combustibil",
-      "active": "Active",
-      "inactive": "Inactive",
+      "active": "Activ",
+      "inactive": "Inactiv",
       "statusActive": "Activă",
       "statusInactive": "Inactivă",
       "countSingular": "{{count}} mașină",
@@ -1442,8 +1442,8 @@
     "searchPlaceholder": "Caută după cod, nume, adresă…",
     "filterStatus": "Status",
     "filterAllStatuses": "Toate statusurile",
-    "filterActive": "Active",
-    "filterInactive": "Inactive",
+    "filterActive": "Activ",
+    "filterInactive": "Inactiv",
     "showOnMap": "Arată pe hartă",
     "drawBoundary": "Desenează conturul"
   },
@@ -1455,8 +1455,8 @@
     "statAdmins": "Administratori",
     "statOperators": "Operatori",
     "role": {
-      "super_admin": "Super Admin",
-      "admin": "Admin",
+      "super_admin": "Super Administrator",
+      "admin": "Administrator",
       "dispatcher": "Dispecer",
       "baler_operator": "Operator balotieră",
       "loader_operator": "Operator încărcător",
@@ -1498,16 +1498,16 @@
       "role": "Rol",
       "phone": "Telefon (opțional)",
       "phonePlaceholder": "+40 7xx xxx xxx",
-      "username": "Username",
+      "username": "Utilizator",
       "usernamePlaceholder": "mmaletici",
       "usernameOverrideTooltip": "Poți edita username-ul înainte de creare",
-      "reset": "Reset",
+      "reset": "Resetează",
       "pinLabel": "PIN (4 cifre)",
       "pinPlaceholder": "4 cifre",
       "pinHint": "Schimbarea PIN-ului actualizează și parola din Supabase Auth.",
       "generatedSection": "Date generate automat",
       "credentialsSection": "Credențiale acces",
-      "usernameRowLabel": "Username:",
+      "usernameRowLabel": "Utilizator:",
       "emailRowLabel": "Email:",
       "pinRowLabel": "PIN:",
       "pinServerGen": "generat de server (4 cifre)",
@@ -1550,8 +1550,8 @@
     "filter": {
       "searchPlaceholder": "Caută după nume, username, email, telefon…",
       "allStatuses": "Toate statusurile",
-      "active": "Active",
-      "inactive": "Inactive",
+      "active": "Activ",
+      "inactive": "Inactiv",
       "countSingular": "{{count}} cont",
       "countPlural": "{{count}} conturi"
     },
@@ -1563,7 +1563,7 @@
     },
     "table": {
       "colName": "Nume",
-      "colUsername": "Username",
+      "colUsername": "Utilizator",
       "colEmail": "Email",
       "colPin": "PIN",
       "colRole": "Rol",
@@ -1591,7 +1591,7 @@
       "gatewaysTitle": "Telefoane gateway",
       "noGateways": "Niciun telefon SMS-gateway încă. Marchează un dispozitiv ca SMS Gateway în pagina lui.",
       "online": "Online",
-      "offline": "Offline",
+      "offline": "Deconectat",
       "lastCheckin": "Ultimul check-in",
       "testSmsPlaceholder": "+40…",
       "testSmsBodyPlaceholder": "Mesaj (opțional) — gol = ping de test standard",
@@ -1644,7 +1644,7 @@
       "headerSubtitleSuffix": ".",
       "newAccount": "Cont nou",
       "statTotal": "Total conturi",
-      "statActive": "Active",
+      "statActive": "Utilizatori activi",
       "statAdmins": "Administratori",
       "statOperators": "Operatori",
       "state": {
@@ -1654,7 +1654,7 @@
       },
       "table": {
         "colName": "Nume",
-        "colUsername": "Username",
+        "colUsername": "Utilizator",
         "colEmail": "E-mail",
         "colPin": "PIN",
         "colRole": "Rol",
@@ -1702,14 +1702,14 @@
         "phonePlaceholder": "+40 7xx xxx xxx",
         "generatedSection": "Credențiale generate automat",
         "credentialsSection": "Credențiale autentificare",
-        "usernameRowLabel": "Username:",
+        "usernameRowLabel": "Utilizator:",
         "emailRowLabel": "E-mail:",
         "pinRowLabel": "PIN:",
         "pinServerGen": "generat de server (4 cifre) — afișat după creare",
-        "username": "Username",
+        "username": "Utilizator",
         "usernamePlaceholder": "ex. mmaletici",
         "usernameOverrideTooltip": "Modifică username-ul autogenerat înainte de creare",
-        "reset": "Reset",
+        "reset": "Resetează",
         "pinLabel": "PIN (4 cifre)",
         "pinPlaceholder": "4 cifre",
         "pinHint": "Schimbarea PIN-ului actualizează și parola Supabase Auth (folosită ca sb_PIN la autentificarea pe e-mail)."
@@ -1718,7 +1718,7 @@
         "titlePrefix": "Cont creat — ",
         "warning": "Copiază credențialele acum — PIN-ul e afișat doar aici. Le poți vedea și schimba ulterior din dialogul Editează.",
         "row": {
-          "username": "Username",
+          "username": "Utilizator",
           "email": "E-mail",
           "pin": "PIN",
           "password": "Parolă (autentificare pe e-mail)"
@@ -1738,7 +1738,7 @@
       "empty": "Nu există dispozitive înregistrate încă.",
       "unnamed": "Dispozitiv fără nume",
       "online": "Online",
-      "offline": "Offline",
+      "offline": "Deconectat",
       "groupUnassigned": "Neatribuite",
       "pushButton": "Trimite actualizare",
       "releasesLink": "Versiuni",
