@@ -313,7 +313,7 @@
       "reconnecting": "Reconectare…",
       "offline": "Deconectat",
       "lastUpdateAgo": "Ultima actualizare: {{ago}}",
-      "onlineCount": "{{n}} online · {{off}} deconectat"
+      "onlineCount": "{{n}} online · {{off}} deconectate"
     }
   },
   "mapList": {
@@ -1500,7 +1500,7 @@
       "phonePlaceholder": "+40 7xx xxx xxx",
       "username": "Utilizator",
       "usernamePlaceholder": "mmaletici",
-      "usernameOverrideTooltip": "Poți edita username-ul înainte de creare",
+      "usernameOverrideTooltip": "Poți edita utilizatorul înainte de creare",
       "reset": "Resetează",
       "pinLabel": "PIN (4 cifre)",
       "pinPlaceholder": "4 cifre",
@@ -1708,7 +1708,7 @@
         "pinServerGen": "generat de server (4 cifre) — afișat după creare",
         "username": "Utilizator",
         "usernamePlaceholder": "ex. mmaletici",
-        "usernameOverrideTooltip": "Modifică username-ul autogenerat înainte de creare",
+        "usernameOverrideTooltip": "Modifică utilizatorul autogenerat înainte de creare",
         "reset": "Resetează",
         "pinLabel": "PIN (4 cifre)",
         "pinPlaceholder": "4 cifre",
