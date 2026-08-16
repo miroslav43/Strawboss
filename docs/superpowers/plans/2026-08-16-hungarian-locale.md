@@ -128,81 +128,23 @@ Cheia `tripRequests.unplanConfirm` folosește `{label}` / `{who}`, dar `interpol
 Mobile-ul a rezolvat deja asta corect (`apps/mobile/src/lib/i18n.tsx:25-38`): două treceri, `{{x}}` prima, apoi `{x}` — iar `{x}` fără parametru corespunzător e **lăsat neatins**, ceea ce protejează `settings.organization.accessCodeHint`, unde `{slug}` e text literal, nu placeholder.
 
 **Fișiere:**
+- Creează: `apps/admin-web/src/lib/interpolate.ts`
 - Modifică: `apps/admin-web/src/lib/i18n.tsx:43-48`
+- Creează: `apps/admin-web/scripts/check-i18n-interpolation.mjs`
 - Verifică: `apps/admin-web/src/components/features/trips/AuxTripSection.tsx:133`
 
-- [ ] **Pas 1: Scrie testul care pică**
+> **De ce testul apelează funcția, nu scanează textul.** Bug-ul se poate repara în două feluri: schimbând catalogul (`{label}` → `{{label}}`) sau schimbând `interpolate()`. Alegem al doilea, pentru că mobile-ul l-a rezolvat deja așa și pentru că un catalog cu acolade simple e o formă legitimă. Consecința: **un scanner de text al catalogului nu poate dovedi nimic** — catalogul conține `{label}` și înainte, și după reparație, deci ieșirea lui e identică. Testul trebuie să cheme funcția reală.
 
-Creează `apps/admin-web/scripts/check-i18n-interpolation.mjs`:
+- [ ] **Pas 1: Extrage `interpolate` într-un modul propriu, ca să fie testabil**
 
-```js
-#!/usr/bin/env node
-/**
- * Fiecare placeholder dintr-un catalog trebuie să fie de o formă pe care
- * `interpolate()` din src/lib/i18n.tsx chiar o înlocuiește.
- *
- * Excepții: chei unde `{...}` e text literal, nu placeholder.
- */
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+Creează `apps/admin-web/src/lib/interpolate.ts` cu funcția de la Pasul 2, apoi importă-o în `i18n.tsx` (`import { interpolate } from '@/lib/interpolate';`) și șterge definiția locală. Modulul nu are nicio dependință — de asta poate fi compilat izolat de un script.
 
-const messagesDir = join(dirname(fileURLToPath(import.meta.url)), '../messages');
+- [ ] **Pas 2: Portează interpolarea cu două treceri din mobil**
 
-/** Chei unde acoladele sunt text literal afișat utilizatorului. */
-const LITERAL_BRACES = new Set(['settings.organization.accessCodeHint']);
-
-/** Chei interpolate manual la locul apelului, nu prin t(). */
-const MANUAL_INTERPOLATION = new Set([
-  'beneficiaries.deleteConfirm',
-  'beneficiaryPortal.pinStep1Title',
-]);
-
-function flatten(obj, prefix = '') {
-  const out = [];
-  for (const [k, v] of Object.entries(obj)) {
-    const p = prefix ? `${prefix}.${k}` : k;
-    if (v !== null && typeof v === 'object' && !Array.isArray(v)) out.push(...flatten(v, p));
-    else out.push([p, String(v)]);
-  }
-  return out;
-}
-
-let failures = 0;
-for (const file of readdirSync(messagesDir).filter((f) => f.endsWith('.json'))) {
-  const cat = JSON.parse(readFileSync(join(messagesDir, file), 'utf8'));
-  for (const [key, value] of flatten(cat)) {
-    if (LITERAL_BRACES.has(key) || MANUAL_INTERPOLATION.has(key)) continue;
-    // Scoate întâi {{x}}, apoi vezi dacă a mai rămas vreun {x}.
-    const leftover = value.replace(/\{\{(\w+)\}\}/g, '').match(/\{(\w+)\}/g);
-    if (leftover) {
-      console.error(`${file} :: ${key} — placeholder cu acoladă simplă: ${leftover.join(', ')}`);
-      failures++;
-    }
-  }
-}
-
-if (failures) {
-  console.error(`\ni18n: ${failures} placeholder(e) pe care interpolate() nu le înlocuiește.`);
-  process.exit(1);
-}
-console.log('i18n: toate placeholder-ele sunt de o formă interpolabilă.');
-```
-
-- [ ] **Pas 2: Rulează-l ca să confirmi că pică**
-
-```bash
-cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-interpolation.mjs
-```
-
-Așteptat: FAIL, exact două linii — `en.json :: tripRequests.unplanConfirm` și `ro.json :: tripRequests.unplanConfirm`, ambele raportând `{label}, {who}`.
-
-- [ ] **Pas 3: Portează interpolarea cu două treceri din mobil**
-
-În `apps/admin-web/src/lib/i18n.tsx`, înlocuiește funcția `interpolate` (liniile 43-48):
+Conținutul lui `apps/admin-web/src/lib/interpolate.ts`:
 
 ```tsx
-function interpolate(template: string, params?: Record<string, string | number>): string {
+export function interpolate(template: string, params?: Record<string, string | number>): string {
   if (!params) return template;
   // Cataloagele folosesc două convenții de placeholder. Le susținem pe ambele,
   // identic cu apps/mobile/src/lib/i18n.tsx:
@@ -217,14 +159,112 @@ function interpolate(template: string, params?: Record<string, string | number>)
 }
 ```
 
-- [ ] **Pas 4: Rulează din nou testul și typecheck-ul**
+- [ ] **Pas 3: Scrie testul de contract**
+
+Creează `apps/admin-web/scripts/check-i18n-interpolation.mjs`. Compilează modulul real cu `tsc`-ul deja instalat în `apps/admin-web` (fără dependință nouă, fără rețea) și verifică cele cinci comportamente ale contractului, apoi mătură cataloagele după placeholder-e **malformate** — forme pe care nicio trecere nu le poate înlocui.
+
+```js
+#!/usr/bin/env node
+/**
+ * Verifică CONTRACTUL de interpolare al admin-web, nu forma textului.
+ *
+ * Un scanner al catalogului nu poate dovedi nimic aici: reparația a fost în
+ * interpolate(), iar catalogul conține '{label}' și înainte, și după. Deci
+ * compilăm funcția reală și o apelăm.
+ */
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const appDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+const messagesDir = join(appDir, 'messages');
+
+const outDir = mkdtempSync(join(tmpdir(), 'sb-interp-'));
+let interpolate;
+try {
+  execFileSync(
+    'pnpm',
+    ['exec', 'tsc', join(appDir, 'src/lib/interpolate.ts'), '--outDir', outDir,
+     '--module', 'commonjs', '--target', 'es2020', '--skipLibCheck'],
+    { cwd: appDir, stdio: 'pipe' },
+  );
+  ({ interpolate } = createRequire(import.meta.url)(join(outDir, 'interpolate.js')));
+} catch (err) {
+  console.error('i18n: nu am putut compila src/lib/interpolate.ts\n' + (err.stderr?.toString() ?? err.message));
+  process.exit(1);
+}
+
+let failures = 0;
+const check = (label, actual, expected) => {
+  if (actual !== expected) {
+    console.error(`  ✗ ${label}\n      așteptat: ${JSON.stringify(expected)}\n      primit:   ${JSON.stringify(actual)}`);
+    failures++;
+  }
+};
+
+check('acoladă dublă substituită', interpolate('a {{x}} b', { x: 1 }), 'a 1 b');
+check('acoladă simplă substituită', interpolate('a {x} b', { x: 1 }), 'a 1 b');
+check('acoladă simplă fără parametru rămâne literală', interpolate('a {x} b', {}), 'a {x} b');
+check('acoladă dublă fără parametru devine gol', interpolate('a {{x}} b', {}), 'a  b');
+check('fără parametri, textul e neatins', interpolate('a {x} {{y}} b'), 'a {x} {{y}} b');
+
+/** Forme pe care NICIO trecere nu le înlocuiește — greșeli de scriere, nu convenții. */
+const MALFORMED = /\{\s+\w+\s*\}|\{\s*\w+\s+\}|\$\{\w+\}/;
+
+function flatten(obj, prefix = '') {
+  const out = [];
+  for (const [k, v] of Object.entries(obj)) {
+    const p = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) out.push(...flatten(v, p));
+    else out.push([p, String(v)]);
+  }
+  return out;
+}
+
+for (const file of readdirSync(messagesDir).filter((f) => f.endsWith('.json') && !f.startsWith('.'))) {
+  for (const [key, value] of flatten(JSON.parse(readFileSync(join(messagesDir, file), 'utf8')))) {
+    const m = value.match(MALFORMED);
+    if (m) {
+      console.error(`  ✗ ${file} :: ${key} — placeholder malformat: ${m[0]}`);
+      failures++;
+    }
+  }
+}
+
+rmSync(outDir, { recursive: true, force: true });
+
+if (failures) {
+  console.error(`\ni18n: ${failures} problemă/probleme de interpolare.`);
+  process.exit(1);
+}
+console.log('i18n: contract de interpolare respectat (5/5), niciun placeholder malformat.');
+```
+
+- [ ] **Pas 4: Dovedește RED, apoi GREEN**
+
+Testul trebuie să *pice* pe codul vechi, altfel nu e test. Revino temporar la trecerea unică:
 
 ```bash
-cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-interpolation.mjs
+cd /srv/apps/Strawboss/apps/admin-web
+# RED: comentează a doua trecere .replace(/\{(\w+)\}/g, …) din src/lib/interpolate.ts
+node scripts/check-i18n-interpolation.mjs; echo "exit=$?"
+```
+
+Așteptat: FAIL cu `✗ acoladă simplă substituită — așteptat: "a 1 b", primit: "a {x} b"`, exit 1.
+
+Pune a doua trecere la loc și rulează din nou:
+
+```bash
+node scripts/check-i18n-interpolation.mjs; echo "exit=$?"
 cd /srv/apps/Strawboss && ./strawboss.sh typecheck admin-web
 ```
 
-Așteptat: `i18n: toate placeholder-ele sunt de o formă interpolabilă.` și typecheck curat.
+Așteptat: `contract de interpolare respectat (5/5)`, exit 0, și typecheck curat.
+
+> Dacă măturarea de placeholder-e malformate raportează ceva în cataloagele existente, **nu-l adăuga la o listă de excepții** — raportează-l. E o constatare reală.
 
 - [ ] **Pas 5: Înregistrează scriptul în package.json**
 
@@ -238,12 +278,17 @@ Așteptat: `i18n: toate placeholder-ele sunt de o formă interpolabilă.` și ty
 
 ```bash
 cd /srv/apps/Strawboss
-git add apps/admin-web/src/lib/i18n.tsx apps/admin-web/scripts/check-i18n-interpolation.mjs apps/admin-web/package.json
+git add apps/admin-web/src/lib apps/admin-web/scripts/check-i18n-interpolation.mjs apps/admin-web/package.json
 git commit -m "fix(i18n): admin-web nu înlocuia placeholder-ele cu acoladă simplă
 
 tripRequests.unplanConfirm folosește {label}/{who}, dar interpolate() prindea
 doar {{...}} — dialogul de confirmare afișa literal '{label}'. Portez trecerea
 dublă din mobil, care lasă intacte acoladele literale ({slug} din accessCodeHint).
+
+Extrag interpolate() într-un modul propriu ca să fie testabil: reparația e în
+FUNCȚIE, deci un scanner al textului din catalog nu poate dovedi nimic — dă
+aceeași ieșire înainte și după. Testul compilează modulul cu tsc-ul local și
+verifică cele cinci comportamente ale contractului.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
