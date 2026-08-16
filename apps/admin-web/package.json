@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint src/ --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "i18n:parity": "node scripts/check-i18n-parity.mjs"
+    "i18n:parity": "node scripts/check-i18n-parity.mjs",
+    "i18n:interp": "node scripts/check-i18n-interpolation.mjs"
   },
   "dependencies": {
     "@dnd-kit/dom": "^0.1.21",
