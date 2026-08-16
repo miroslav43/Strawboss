@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Param,
-  Body,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query } from '@nestjs/common';
 import { DeliveryDestinationsService } from './delivery-destinations.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -19,17 +10,32 @@ import {
 import type { UserRole } from '@strawboss/types';
 import type { RequestUser } from '../auth/auth.guard';
 import { RequireFeature } from '../features/require-feature.decorator';
+import { SeasonsService } from '../seasons/seasons.service';
+import { seasonYearSchema } from '@strawboss/validation';
 
 @Controller('delivery-destinations')
 export class DeliveryDestinationsController {
-  constructor(private readonly service: DeliveryDestinationsService) {}
+  constructor(
+    private readonly service: DeliveryDestinationsService,
+    private readonly seasons: SeasonsService,
+  ) {}
 
   @Get()
-  list(@CurrentUser() user: RequestUser, @Query('isActive') isActive?: string) {
+  list(
+    @CurrentUser() user: RequestUser,
+    @Query('isActive') isActive?: string,
+    @Query('season') season?: string,
+  ) {
     const filters: { isActive?: boolean } = {};
     if (isActive === 'true') filters.isActive = true;
     if (isActive === 'false') filters.isActive = false;
-    return this.service.list(user.organizationId, filters);
+    // `?season` is optional everywhere: omitted, it resolves to the org's
+    // active season, so a client that knows nothing about seasons — an old APK,
+    // a bookmarked URL — keeps working and simply sees the current year.
+    const seasonYear = this.seasons.resolveYear(user.organizationId, user.activeSeasonYear, {
+      season: season === undefined ? undefined : seasonYearSchema.parse(season),
+    });
+    return this.service.list(user.organizationId, filters, seasonYear);
   }
 
   @Get(':id')

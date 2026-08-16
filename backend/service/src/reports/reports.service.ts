@@ -16,6 +16,8 @@ import type {
 
 /** T18 — drop GPS legs that imply > 130 km/h (noise) or > 5 km in one segment. */
 import { SPEED_CAP_MS, SEGMENT_CAP_M } from '../common/gps-noise';
+import { dateWindowClause, tsWindowClause } from '../common/season-range';
+import { depotStockBales } from '../common/depot-stock';
 
 interface ReportDateRange {
   dateFrom?: string;
@@ -44,33 +46,32 @@ export class ReportsService {
     return orgId !== null ? sql` AND ${col} = ${orgId}::uuid` : sql``;
   }
 
-  /** Date-range filter on a `DATE` column (bale_productions.production_date). */
+  /**
+   * Date-range filter on a `DATE` column (bale_productions.production_date).
+   *
+   * Delegates to the shared helper so every window in the backend is built one
+   * way. A DATE has no timezone, so it compares against the bare strings.
+   */
   private productionDateFilter(range?: ReportDateRange) {
-    const parts: ReturnType<typeof sql>[] = [];
-    if (range?.dateFrom) {
-      parts.push(sql`bp.production_date >= ${range.dateFrom}::date`);
-    }
-    if (range?.dateTo) {
-      parts.push(sql`bp.production_date <= ${range.dateTo}::date`);
-    }
-    if (parts.length === 0) return sql``;
-    return sql` AND ${sql.join(parts, sql` AND `)}`;
+    return dateWindowClause(sql`bp.production_date`, range);
   }
 
-  /** Date-range filter on a `TIMESTAMPTZ` column/expression. */
+  /**
+   * Date-range filter on a `TIMESTAMPTZ` column/expression.
+   *
+   * This used to build `col >= dateFrom::date AND col < dateTo::date + 1`,
+   * which compares a timestamptz against a UTC-anchored bound and so put every
+   * boundary 2-3 hours off in Romania: a delivery at 01:00 on the 1st counted
+   * as the previous month, and one at 23:30 on the last day fell out entirely.
+   * The shared helper applies the `::date::timestamp AT TIME ZONE` conversion
+   * that TripsService.list had already worked out and proved against the
+   * database.
+   */
   private timestampRangeFilter(
     range: ReportDateRange | undefined,
     colExpr: ReturnType<typeof sql>,
   ) {
-    const parts: ReturnType<typeof sql>[] = [];
-    if (range?.dateFrom) {
-      parts.push(sql`${colExpr} >= ${range.dateFrom}::date`);
-    }
-    if (range?.dateTo) {
-      parts.push(sql`${colExpr} < (${range.dateTo}::date + 1)`);
-    }
-    if (parts.length === 0) return sql``;
-    return sql` AND ${sql.join(parts, sql` AND `)}`;
+    return tsWindowClause(colExpr, range);
   }
 
   /**
@@ -184,48 +185,49 @@ export class ReportsService {
 
   /**
    * Stock per depot (delivery destination).
-   * NOTE: trips have no FK to delivery_destinations — they store a free-text
-   * `destination_name`. Stock is therefore matched by `trips.destination_name = d.name`.
+   *
+   * `total_stock` is a BALANCE and comes from the shared depot-stock expression
+   * (opening + inbound - outbound, keyed on the destination FK). It used to be
+   * a local copy joined on the free-text `t.destination_name = d.name` and
+   * unbounded in time — an accumulator that only ever grew, on a different
+   * definition of "this depot" than the delivery confirmation authorizes
+   * against.
+   *
+   * `received_in_period`, `arriving_now` and `delivery_count` are FLOW figures,
+   * so they stay inbound-only. All three are now bounded by the same window as
+   * the balance; `arriving_now` and `delivery_count` previously ignored the
+   * caller's range entirely, which is why a report for last March showed this
+   * morning's trucks.
    */
-  async getDepotReports(orgId: string | null, range?: ReportDateRange): Promise<DepotReport[]> {
+  async getDepotReports(
+    orgId: string | null,
+    range?: ReportDateRange,
+    seasonYear?: number,
+  ): Promise<DepotReport[]> {
     const tripOrg = this.orgFilter(orgId, sql`t.organization_id`);
     const depotOrg = this.orgFilter(orgId, sql`d.organization_id`);
     const receivedFilter = this.timestampRangeFilter(
       range,
       sql`COALESCE(t.delivered_at, t.completed_at)`,
     );
+    const stockOpts = {
+      depotIdExpr: sql`d.id`,
+      depotCoordsExpr: sql`d.coords`,
+      orgId,
+      window: range,
+      seasonYear,
+    };
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         d.id AS depot_id,
         d.name AS depot_name,
         d.code AS depot_code,
-        -- Stock = INBOUND - OUTBOUND. The outbound term (bales loaded straight out
-        -- of this depot, bale_loads.source_depot_id, added in 00073) was missing
-        -- entirely, so "stock" was an all-time accumulator that never went down.
-        -- received_in_period and arriving_now below are FLOW figures, not a
-        -- balance, so they are deliberately left inbound-only.
-        GREATEST(
-          COALESCE((
-            SELECT SUM(t.bale_count)::int
-            FROM trips t
-            WHERE t.destination_name = d.name
-              AND t.status IN ('delivered', 'completed')
-              AND t.deleted_at IS NULL ${tripOrg}
-          ), 0)
-          -
-          COALESCE((
-            SELECT SUM(bl.bale_count)::int
-            FROM bale_loads bl
-            WHERE bl.source_depot_id = d.id
-              AND bl.deleted_at IS NULL ${this.orgFilter(orgId, sql`bl.organization_id`)}
-          ), 0),
-          0
-        ) AS total_stock,
+        ${depotStockBales(stockOpts)} AS total_stock,
         COALESCE((
           SELECT SUM(t.bale_count)::int
           FROM trips t
-          WHERE t.destination_name = d.name
+          WHERE t.destination_id = d.id
             AND t.status IN ('delivered', 'completed')
             AND t.deleted_at IS NULL ${tripOrg}
             ${receivedFilter}
@@ -233,16 +235,17 @@ export class ReportsService {
         COALESCE((
           SELECT SUM(t.bale_count)::int
           FROM trips t
-          WHERE t.destination_name = d.name
+          WHERE t.destination_id = d.id
             AND t.status IN ('arrived', 'delivering')
             AND t.deleted_at IS NULL ${tripOrg}
         ), 0) AS arriving_now,
         COALESCE((
           SELECT COUNT(*)::int
           FROM trips t
-          WHERE t.destination_name = d.name
+          WHERE t.destination_id = d.id
             AND t.status IN ('delivered', 'completed')
             AND t.deleted_at IS NULL ${tripOrg}
+            ${receivedFilter}
         ), 0) AS delivery_count
       FROM delivery_destinations d
       WHERE d.deleted_at IS NULL ${depotOrg}

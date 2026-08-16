@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { depotStockBales } from '../common/depot-stock';
+import { seasonWindow } from '../common/season-range';
 
 /** Postgres unique_violation — an idempotent replay of a create, not a fault. */
 const PG_UNIQUE_VIOLATION = '23505';
@@ -25,7 +27,12 @@ const DEST_COLS = sql`
 export class DeliveryDestinationsService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
-  async list(orgId: string | null, filters?: { isActive?: boolean }) {
+  /**
+   * @param seasonYear the season whose stock to report. Omitted (super_admin
+   *   reading across tenants, or a caller with no season context) means all
+   *   time, i.e. exactly the pre-season behaviour.
+   */
+  async list(orgId: string | null, filters?: { isActive?: boolean }, seasonYear?: number) {
     const conditions: ReturnType<typeof sql>[] = [sql`d.deleted_at IS NULL`];
 
     if (orgId !== null) {
@@ -36,6 +43,13 @@ export class DeliveryDestinationsService {
     }
 
     const where = sql.join(conditions, sql` AND `);
+    const stockOpts = {
+      depotIdExpr: sql`d.id`,
+      depotCoordsExpr: sql`d.coords`,
+      orgId,
+      window: seasonYear === undefined ? undefined : seasonWindow(seasonYear),
+      seasonYear,
+    };
     // List projection: same columns as DEST_COLS plus a correlated subquery
     // that surfaces the most recent activity (task_assignments referencing the
     // destination). Used by the admin UI to show "ultima activitate".
@@ -59,31 +73,17 @@ export class DeliveryDestinationsService {
           FROM task_assignments ta
           WHERE ta.destination_id = d.id AND ta.deleted_at IS NULL
         ) AS "lastActivityAt",
-        -- read-only enrichment: current bales in the depot = INBOUND - OUTBOUND.
-        -- Outbound (bale_loads loaded straight out of this depot, 00073) used to be
-        -- missing entirely — the comment here literally read "No outbound in the
-        -- model" — so the figure was an all-time accumulator and overstated every
-        -- depot that had ever dispatched a truck from its own yard.
-        -- Same formula as reports.getDepotReports and DepositInventoryService.
-        GREATEST(
-          COALESCE((
-            SELECT SUM(t.bale_count)::int
-            FROM trips t
-            WHERE t.destination_name = d.name
-              AND t.status IN ('delivered', 'completed')
-              AND t.deleted_at IS NULL
-              AND t.organization_id = d.organization_id
-          ), 0)
-          -
-          COALESCE((
-            SELECT SUM(bl.bale_count)::int
-            FROM bale_loads bl
-            WHERE bl.source_depot_id = d.id
-              AND bl.deleted_at IS NULL
-              AND bl.organization_id = d.organization_id
-          ), 0),
-          0
-        ) AS "currentBaleStock"
+        -- Current bales in the depot = opening + inbound - outbound, from the
+        -- ONE shared expression in common/depot-stock.ts.
+        --
+        -- This used to be a local copy that joined trips on the free-text
+        -- t.destination_name = d.name, which is a different definition of
+        -- "this depot" from the FK the delivery confirmation authorizes
+        -- against — so a renamed depot silently reported zero stock. The FK is
+        -- now the rule everywhere, and the season term means the figure is
+        -- "what is in the building this season", not "everything ever
+        -- delivered here".
+        ${depotStockBales(stockOpts)} AS "currentBaleStock"
       FROM delivery_destinations d
       WHERE ${where}
       ORDER BY d.name ASC

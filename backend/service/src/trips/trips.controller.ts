@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Param, Body, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { TripsService } from './trips.service';
+import { SeasonsService } from '../seasons/seasons.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
@@ -45,7 +46,10 @@ import { RequireFeature } from '../features/require-feature.decorator';
 
 @Controller('trips')
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) {}
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly seasons: SeasonsService,
+  ) {}
 
   @Get()
   list(
@@ -120,7 +124,15 @@ export class TripsController {
     @Body(new ZodValidationPipe(registerLoadSchema)) dto: RegisterLoadDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.tripsService.registerLoad(dto, user.id, user.organizationId);
+    return this.tripsService.registerLoad(
+      dto,
+      user.id,
+      user.organizationId,
+      // The ACTIVE season, deliberately not a query parameter: this is the
+      // loader's field action, and no dropdown may influence whether it is
+      // allowed.
+      this.seasons.gateYear(user.organizationId, user.activeSeasonYear),
+    );
   }
 
   /**

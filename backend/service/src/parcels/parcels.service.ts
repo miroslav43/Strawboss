@@ -10,6 +10,7 @@ import { sql } from 'drizzle-orm';
 import type { Logger as WinstonLogger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { dateWindowClause, seasonWindow, tsWindowClause } from '../common/season-range';
 import { todayInRomania } from '../common/date';
 import { HarvestStatus } from '@strawboss/types';
 import type { ParcelImportResult } from '@strawboss/types';
@@ -119,11 +120,25 @@ export class ParcelsService {
     return { version: Number(rows[0]?.v ?? 0), count: Number(rows[0]?.c ?? 0) };
   }
 
+  /**
+   * @param seasonYear the season whose tallies to report. Omitted means all
+   *   time — the behaviour an organization that has never closed a season keeps.
+   *   The mobile map reads this list, so the same rule as the gates applies:
+   *   what a field shows must not depend on a dropdown somebody left open.
+   */
   async list(
     orgId: string | null,
     filters?: { municipality?: string; isActive?: boolean; cropType?: string },
+    seasonYear?: number,
   ) {
     const where = sql.join(this.buildListConditions(orgId, filters), sql` AND `);
+    const window = seasonYear === undefined ? undefined : seasonWindow(seasonYear);
+    // The window goes INSIDE each pre-aggregated subquery, before the GROUP BY,
+    // so a season filter costs nothing extra: it shrinks the set being grouped
+    // rather than filtering the joined result.
+    const producedWin = dateWindowClause(sql`production_date`, window);
+    const loadedWin = tsWindowClause(sql`loaded_at`, window);
+    const adjWin = tsWindowClause(sql`created_at`, window);
     // Bale tallies were previously two correlated subqueries PER ROW (2x on
     // bale_productions/bale_loads, plus 2x on parcel_bale_adjustments) — O(n)
     // subquery executions for an n-row result. Rewritten as pre-aggregated
@@ -156,25 +171,25 @@ export class ParcelsService {
       LEFT JOIN (
         SELECT parcel_id, SUM(bale_count) AS total
         FROM bale_productions
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL${producedWin}
         GROUP BY parcel_id
       ) bp ON bp.parcel_id = parcels.id
       LEFT JOIN (
         SELECT parcel_id, SUM(bale_count) AS total
         FROM bale_loads
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL${loadedWin}
         GROUP BY parcel_id
       ) bl ON bl.parcel_id = parcels.id
       LEFT JOIN (
         SELECT parcel_id, SUM(delta) AS total
         FROM parcel_bale_adjustments
-        WHERE kind = 'produced' AND deleted_at IS NULL
+        WHERE kind = 'produced' AND deleted_at IS NULL${adjWin}
         GROUP BY parcel_id
       ) adj_produced ON adj_produced.parcel_id = parcels.id
       LEFT JOIN (
         SELECT parcel_id, SUM(delta) AS total
         FROM parcel_bale_adjustments
-        WHERE kind = 'loaded' AND deleted_at IS NULL
+        WHERE kind = 'loaded' AND deleted_at IS NULL${adjWin}
         GROUP BY parcel_id
       ) adj_loaded ON adj_loaded.parcel_id = parcels.id
       WHERE ${where}
@@ -184,19 +199,44 @@ export class ParcelsService {
     return result;
   }
 
-  async getBaleAvailability(id: string, orgId: string | null) {
+  /**
+   * Produced / loaded / remaining for one field.
+   *
+   * THIS IS AN OPERATIONAL GATE, not a report. `remaining` is what decides
+   * whether a loader in a field is allowed to register a load, so it is scoped
+   * to the organization's ACTIVE season and never to a season a user picked in
+   * a dropdown — an admin browsing last year's numbers must not be able to
+   * block a truck.
+   *
+   * @param seasonYear omitted means all time, which is what an organization
+   *   that has never closed a season gets. See SeasonsService.resolveYear:
+   *   until the admin closes a season, this behaves exactly as it did before
+   *   seasons existed, so leftover bales cannot become unloadable at midnight
+   *   on 1 January without anyone deciding it.
+   */
+  async getBaleAvailability(id: string, orgId: string | null, seasonYear?: number) {
     // Ownership check — throws NotFoundException if parcel doesn't exist or belongs to another org
     await this.findById(id, orgId);
+
+    const window = seasonYear === undefined ? undefined : seasonWindow(seasonYear);
+    const producedWin = dateWindowClause(sql`production_date`, window);
+    const loadedWin = tsWindowClause(sql`loaded_at`, window);
+    const adjWin = tsWindowClause(sql`created_at`, window);
 
     // "produced"/"loaded" are the operator-recorded aggregates PLUS any signed
     // manual admin corrections (parcel_bale_adjustments) — the override path
     // appends deltas there rather than touching operator rows (00055).
+    //
+    // The adjustments term is also the escape hatch for the one case a season
+    // reset gets wrong: bales baled last season and still lying in the field.
+    // An admin adds them to the new season with the existing override flow, and
+    // because the delta carries its own created_at it lands in the right year.
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
-        COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = ${id} AND deleted_at IS NULL), 0)
-          + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = ${id} AND kind = 'produced' AND deleted_at IS NULL), 0) AS "produced",
-        COALESCE((SELECT SUM(bale_count) FROM bale_loads WHERE parcel_id = ${id} AND deleted_at IS NULL), 0)
-          + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = ${id} AND kind = 'loaded' AND deleted_at IS NULL), 0) AS "loaded"
+        COALESCE((SELECT SUM(bale_count) FROM bale_productions WHERE parcel_id = ${id} AND deleted_at IS NULL${producedWin}), 0)
+          + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = ${id} AND kind = 'produced' AND deleted_at IS NULL${adjWin}), 0) AS "produced",
+        COALESCE((SELECT SUM(bale_count) FROM bale_loads WHERE parcel_id = ${id} AND deleted_at IS NULL${loadedWin}), 0)
+          + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments WHERE parcel_id = ${id} AND kind = 'loaded' AND deleted_at IS NULL${adjWin}), 0) AS "loaded"
     `);
     const rows = result as unknown as Array<{ produced: number; loaded: number }>;
     const { produced, loaded } = rows[0];

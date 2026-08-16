@@ -15,21 +15,34 @@ import { Roles } from '../auth/roles.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
+import { SeasonsService } from '../seasons/seasons.service';
 
 @Roles(UserRole.admin, UserRole.dispatcher)
 @Controller('reports')
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly seasons: SeasonsService,
+  ) {}
+
+  /**
+   * The window every report reads.
+   *
+   * One call, so the three endpoints below cannot drift apart on what "no
+   * filter" means. An explicit range still wins — clamped to the season — and
+   * an organization that has never closed a season still gets its old
+   * unbounded behaviour.
+   */
+  private window(user: RequestUser, query: ReportQuery) {
+    return this.seasons.resolveWindow(user.organizationId, user.activeSeasonYear, query);
+  }
 
   @Get('farms')
   getFarms(
     @CurrentUser() user: RequestUser,
     @Query(new ZodValidationPipe(reportQuerySchema)) query: ReportQuery,
   ) {
-    return this.reportsService.getFarmReports(user.organizationId, {
-      dateFrom: query.dateFrom,
-      dateTo: query.dateTo,
-    });
+    return this.reportsService.getFarmReports(user.organizationId, this.window(user, query));
   }
 
   @Get('depots')
@@ -37,10 +50,11 @@ export class ReportsController {
     @CurrentUser() user: RequestUser,
     @Query(new ZodValidationPipe(reportQuerySchema)) query: ReportQuery,
   ) {
-    return this.reportsService.getDepotReports(user.organizationId, {
-      dateFrom: query.dateFrom,
-      dateTo: query.dateTo,
-    });
+    return this.reportsService.getDepotReports(
+      user.organizationId,
+      this.window(user, query),
+      this.seasons.resolveYear(user.organizationId, user.activeSeasonYear, query),
+    );
   }
 
   @Get('timeline')
@@ -50,7 +64,7 @@ export class ReportsController {
   ) {
     return this.reportsService.getTimeline(
       user.organizationId,
-      { dateFrom: query.dateFrom, dateTo: query.dateTo },
+      this.window(user, query),
       query.farmId,
     );
   }

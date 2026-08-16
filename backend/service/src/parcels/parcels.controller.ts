@@ -16,6 +16,7 @@ import type { FastifyReply } from 'fastify';
 import type { Logger as WinstonLogger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { ParcelsService } from './parcels.service';
+import { SeasonsService } from '../seasons/seasons.service';
 import { Roles } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -34,6 +35,7 @@ import { RequireFeature } from '../features/require-feature.decorator';
 export class ParcelsController {
   constructor(
     private readonly parcelsService: ParcelsService,
+    private readonly seasons: SeasonsService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: WinstonLogger,
   ) {}
 
@@ -67,21 +69,33 @@ export class ParcelsController {
       cropType,
     };
 
+    const seasonYear = this.seasons.gateYear(user.organizationId, user.activeSeasonYear);
     const meta = await this.parcelsService.getListCacheMeta(user.organizationId, filters);
-    const etag = `"p${meta.version}-${meta.count}"`;
+    // The season is part of the ETag because it changes the RESPONSE without
+    // changing any row: closing a season re-scopes every bale tally in this
+    // payload, but bumps no sync_version. Without it, a phone that validated
+    // before the rollover would keep getting 304 and keep showing last season's
+    // numbers on the map indefinitely.
+    const etag = `"p${meta.version}-${meta.count}-s${seasonYear ?? 'all'}"`;
 
     if (ifNoneMatch && ifNoneMatch === etag) {
       res.header('ETag', etag).status(304).send();
       return;
     }
 
-    const rows = await this.parcelsService.list(user.organizationId, filters);
+    const rows = await this.parcelsService.list(user.organizationId, filters, seasonYear);
     res.header('ETag', etag).status(200).send(rows);
   }
 
   @Get(':id/bale-availability')
   getBaleAvailability(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.parcelsService.getBaleAvailability(id, user.organizationId);
+    // The ACTIVE season, not a query parameter — this is what the loader app
+    // reads to decide whether a field still has bales to take.
+    return this.parcelsService.getBaleAvailability(
+      id,
+      user.organizationId,
+      this.seasons.gateYear(user.organizationId, user.activeSeasonYear),
+    );
   }
 
   @Get(':id')

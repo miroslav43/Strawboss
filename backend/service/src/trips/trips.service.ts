@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import { SIGNATURE_URL_PATTERN } from '@strawboss/validation';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
+import { dateWindowClause, seasonWindow, tsWindowClause } from '../common/season-range';
 import { SEGMENT_CAP_M, SPEED_CAP_MS } from '../common/gps-noise';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DeliveryDestinationsService } from '../delivery-destinations/delivery-destinations.service';
@@ -809,10 +810,16 @@ export class TripsService implements OnModuleInit {
    *   b) Global default destination (`delivery_destinations.is_default = TRUE`)
    *   c) NULL (driver picks before "Plecare")
    */
+  /**
+   * @param seasonYear the ACTIVE season, never a caller-selected one — this
+   *   path decides whether a loader standing in a field may record a load.
+   *   Omitted means all time (org has never closed a season).
+   */
   async registerLoad(
     dto: RegisterLoadInput,
     callerId: string,
     orgId: string | null,
+    seasonYear?: number,
   ): Promise<RegisterLoadResult> {
     const resolvedLoaderSignature = await this.resolveSpecimenSignature(
       callerId,
@@ -1022,21 +1029,19 @@ export class TripsService implements OnModuleInit {
         // has no per-parcel `bale_productions`, so skip it entirely for depot loads
         // (depot-inventory reconciliation is a future enhancement). The truck-capacity
         // guard (B) below still applies to both parcel and depot loads.
-        if (!dto.sourceDepotId) {
-          const availabilityRows = (await tx.execute(
-            sql`SELECT
-                  COALESCE((SELECT SUM(bale_count) FROM bale_productions
-                            WHERE parcel_id = ${dto.parcelId}
-                              AND deleted_at IS NULL
-                              ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS produced,
-                  COALESCE((SELECT SUM(bale_count) FROM bale_loads
-                            WHERE parcel_id = ${dto.parcelId}
-                              AND deleted_at IS NULL
-                              ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS loaded`,
-          )) as unknown as { produced: number; loaded: number }[];
-          const produced = Number(availabilityRows[0]?.produced ?? 0);
-          const loaded = Number(availabilityRows[0]?.loaded ?? 0);
-          const remaining = produced - loaded;
+        if (!dto.sourceDepotId && dto.parcelId) {
+          // Counted exactly as computeRemainingBalesOnParcel and
+          // ParcelsService.getBaleAvailability do — operator rows PLUS signed
+          // admin corrections, within the active season. All three used to
+          // disagree; this one ignoring `parcel_bale_adjustments` was the worst
+          // of the three, because it meant an admin could raise a field's count
+          // on screen and the loader would still be refused in the field.
+          const { produced, loaded, remaining } = await this.parcelBaleTally(
+            dto.parcelId,
+            orgId,
+            tx,
+            seasonYear,
+          );
 
           if (remaining <= 0) {
             throw new BadRequestException({
@@ -2409,23 +2414,65 @@ export class TripsService implements OnModuleInit {
    * Compute remaining bales on a parcel = SUM(produced) - SUM(loaded).
    * Used by both `createNextIteration` (block when 0) and `complete` hook
    * (decide whether to prompt loader / advance parcel harvest).
+   *
+   * TWO CORRECTIONS LAND HERE TOGETHER, and they are related:
+   *
+   *   * `parcel_bale_adjustments` now counts. It always did in
+   *     ParcelsService.getBaleAvailability but never here, so the two gates on
+   *     the same physical question could disagree — by 800 bales across 6 rows
+   *     in production at the time of writing. An admin correction that made a
+   *     field loadable on the loader's screen still blocked the next iteration.
+   *   * The season window. Which needs the adjustments term to be safe: an
+   *     admin carrying leftover bales into a new season records them as a
+   *     signed delta, and a gate that ignores deltas would keep refusing.
+   *
+   * @param seasonYear omitted means all time — an organization that has never
+   *   closed a season is unaffected by any of this.
    */
   private async computeRemainingBalesOnParcel(
     parcelId: string,
     orgId: string | null,
     executor?: Pick<DrizzleProvider['db'], 'execute'>,
+    seasonYear?: number,
   ): Promise<number> {
+    const { remaining } = await this.parcelBaleTally(parcelId, orgId, executor, seasonYear);
+    return remaining;
+  }
+
+  /**
+   * The full produced / loaded / remaining breakdown behind every bale gate.
+   *
+   * Exists so `registerLoad`'s rejection payload reports the same three numbers
+   * the decision was made on. Previously it ran its own query that counted
+   * neither adjustments nor seasons, so the error told the operator a different
+   * story from the one the gate acted on.
+   */
+  private async parcelBaleTally(
+    parcelId: string,
+    orgId: string | null,
+    executor?: Pick<DrizzleProvider['db'], 'execute'>,
+    seasonYear?: number,
+  ): Promise<{ produced: number; loaded: number; remaining: number }> {
     const db = executor ?? this.drizzleProvider.db;
+    const org = orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``;
+    const window = seasonYear === undefined ? undefined : seasonWindow(seasonYear);
+    const producedWin = dateWindowClause(sql`production_date`, window);
+    const loadedWin = tsWindowClause(sql`loaded_at`, window);
+    const adjWin = tsWindowClause(sql`created_at`, window);
     const rows = (await db.execute(sql`
       SELECT
-        COALESCE((SELECT SUM(bale_count) FROM bale_productions
-                  WHERE parcel_id = ${parcelId} AND deleted_at IS NULL
-                    ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS produced,
-        COALESCE((SELECT SUM(bale_count) FROM bale_loads
-                  WHERE parcel_id = ${parcelId} AND deleted_at IS NULL
-                    ${orgId !== null ? sql`AND organization_id = ${orgId}::uuid` : sql``}), 0)::int AS loaded
+        (COALESCE((SELECT SUM(bale_count) FROM bale_productions
+                  WHERE parcel_id = ${parcelId} AND deleted_at IS NULL ${org}${producedWin}), 0)
+         + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments
+                  WHERE parcel_id = ${parcelId} AND kind = 'produced' AND deleted_at IS NULL ${org}${adjWin}), 0))::int AS produced,
+        (COALESCE((SELECT SUM(bale_count) FROM bale_loads
+                  WHERE parcel_id = ${parcelId} AND deleted_at IS NULL ${org}${loadedWin}), 0)
+         + COALESCE((SELECT SUM(delta) FROM parcel_bale_adjustments
+                  WHERE parcel_id = ${parcelId} AND kind = 'loaded' AND deleted_at IS NULL ${org}${adjWin}), 0))::int AS loaded
     `)) as unknown as { produced: number; loaded: number }[];
-    return Math.max(0, Number(rows[0]?.produced ?? 0) - Number(rows[0]?.loaded ?? 0));
+    const produced = Number(rows[0]?.produced ?? 0);
+    const loaded = Number(rows[0]?.loaded ?? 0);
+    return { produced, loaded, remaining: Math.max(0, produced - loaded) };
   }
 
   /**

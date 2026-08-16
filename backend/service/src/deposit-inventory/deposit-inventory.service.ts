@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { depotStockBales, depotStockNetWeight } from '../common/depot-stock';
+import { seasonWindow } from '../common/season-range';
 
 /**
  * Plan C — read-only view of a depot's current inventory + incoming trucks.
@@ -39,7 +41,11 @@ export class DepositInventoryService {
     return rows;
   }
 
-  async getInventory(depotId: string, orgId: string | null) {
+  /**
+   * @param seasonYear the season whose stock to report. Omitted means all time,
+   *   i.e. exactly the pre-season behaviour.
+   */
+  async getInventory(depotId: string, orgId: string | null, seasonYear?: number) {
     // Verify depot exists + scope.
     const checkConditions: ReturnType<typeof sql>[] = [
       sql`id = ${depotId}::uuid`,
@@ -59,59 +65,40 @@ export class DepositInventoryService {
     if (!depot.length) throw new NotFoundException('Depot not found');
 
     /*
-     * INBOUND — bales delivered here.
+     * Stock = opening + inbound - outbound, from the ONE shared expression in
+     * common/depot-stock.ts. The three copies of this formula that used to live
+     * here, in DeliveryDestinationsService and in ReportsService disagreed on
+     * both the join key and the status set, so the same depot could report
+     * three different figures on three screens.
      *
-     * Keyed on the FK first, with the old 50 m spatial match kept ONLY for trips
-     * that never got a destination_id (the pre-00085 history the backfill
-     * deliberately skipped). Proximity alone used to be the whole rule, which put
-     * the stock figure on a different definition of "this depot" than the one
-     * `confirmDepotDelivery` authorizes against — two numbers, same name.
+     * Two behaviour changes came with the unification, both deliberate:
+     *   * `delivered` now counts alongside `completed`. A trip sits in
+     *     `delivered` until autocomplete runs, and excluding it made bales the
+     *     operator was standing next to invisible on their own screen.
+     *   * The season term. Stock is now "what is in the building this season",
+     *     with whatever the previous season carried in as the opening balance.
      */
-    const tripScopeConditions: ReturnType<typeof sql>[] = [
-      sql`t.deleted_at IS NULL`,
-      sql`t.status = 'completed'::trip_status`,
-      sql`(
-        t.destination_id = ${depotId}::uuid
-        OR (t.destination_id IS NULL
-            AND t.destination_coords IS NOT NULL
-            AND ST_DWithin(t.destination_coords::geography, dd.coords::geography, 50))
-      )`,
-    ];
-    if (orgId !== null) tripScopeConditions.push(sql`t.organization_id = ${orgId}::uuid`);
-    const tripScopeWhere = sql.join(tripScopeConditions, sql` AND `);
-
-    /*
-     * OUTBOUND — bales taken back OUT of this depot.
-     *
-     * Depot stock used to be inbound-only: an accumulator of everything ever
-     * delivered here, with no term for what left. `bale_loads.source_depot_id` has
-     * existed since 00073 and a loader can genuinely load a truck straight out of a
-     * depot — 12 such rows exist in production — but NOTHING read them for stock, so
-     * the number shown was permanently overstated. (The registerLoad comment called
-     * depot-inventory reconciliation "a future enhancement".)
-     *
-     * Keyed on the FK, not on the 50 m spatial match the inbound term uses: a load
-     * knows exactly which depot it came from, so there is nothing to infer.
-     */
-    const outboundConditions: ReturnType<typeof sql>[] = [
-      sql`bl.source_depot_id = ${depotId}::uuid`,
-      sql`bl.deleted_at IS NULL`,
-    ];
-    if (orgId !== null) outboundConditions.push(sql`bl.organization_id = ${orgId}::uuid`);
-    const outboundWhere = sql.join(outboundConditions, sql` AND `);
-    const outboundBales = sql`(
-      SELECT COALESCE(SUM(bl.bale_count), 0)::int FROM bale_loads bl WHERE ${outboundWhere}
-    )`;
+    const stockOpts = {
+      depotIdExpr: sql`${depotId}::uuid`,
+      depotCoordsExpr: sql`dd.coords`,
+      orgId,
+      window: seasonYear === undefined ? undefined : seasonWindow(seasonYear),
+      seasonYear,
+    };
 
     const inv = (await this.drizzleProvider.db.execute(sql`
       SELECT
-        GREATEST(COALESCE(SUM(t.bale_count), 0)::int - ${outboundBales}, 0)::int AS "totalBales",
-        COALESCE(SUM(GREATEST(COALESCE(t.gross_weight_kg, 0) - COALESCE(t.tare_weight_kg, 0), 0)), 0)::int AS "totalNetWeightKg",
-        MAX(t.completed_at)                                                AS "lastUpdate"
-        FROM trips t
-        JOIN delivery_destinations dd
-          ON dd.id = ${depotId}::uuid
-       WHERE ${tripScopeWhere}
+        ${depotStockBales(stockOpts)}::int      AS "totalBales",
+        ${depotStockNetWeight(stockOpts)}::int  AS "totalNetWeightKg",
+        (
+          SELECT MAX(COALESCE(t.delivered_at, t.completed_at))
+            FROM trips t
+           WHERE t.deleted_at IS NULL
+             AND t.status IN ('delivered'::trip_status, 'completed'::trip_status)
+             AND t.destination_id = ${depotId}::uuid
+        )                                       AS "lastUpdate"
+        FROM delivery_destinations dd
+       WHERE dd.id = ${depotId}::uuid
     `)) as unknown as Record<string, unknown>[];
 
     /*

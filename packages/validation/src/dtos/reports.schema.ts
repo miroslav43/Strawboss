@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { uuidSchema } from '../helpers/uuid.js';
 import { isoDateSchema } from '../helpers/iso-date.js';
+import { seasonYearSchema } from '../schemas/season.schema.js';
 
 export const fieldReportSchema = z.object({
   parcelId: uuidSchema,
@@ -46,6 +47,16 @@ export const reportQuerySchema = z.object({
   dateFrom: dateOnlySchema.optional(),
   dateTo: dateOnlySchema.optional(),
   farmId: uuidSchema.optional(),
+  /**
+   * Which season to report on. Omitted resolves server-side to the
+   * organization's active season — or, for an org that has never closed one, to
+   * no filter at all, which is the pre-season behaviour.
+   *
+   * When both `season` and an explicit range are sent, the range is clamped to
+   * the season: a report must not read across a season boundary just because a
+   * date picker was left on last month.
+   */
+  season: seasonYearSchema.optional(),
 });
 
 export type ReportQuery = z.infer<typeof reportQuerySchema>;

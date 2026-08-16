@@ -70,44 +70,66 @@ export class SeasonsService {
    *      one was named. A report must not read across a season boundary just
    *      because a date picker was left on last month.
    *   3. A season alone -> that season's full year.
-   *   4. Nothing -> the organization's active season. THIS is where "the
-   *      statistics reset" comes from: no caller changes, and every all-time
-   *      aggregate silently becomes a this-season aggregate.
+   *   4. Nothing, and the org HAS closed a season -> its active season. This is
+   *      where "the statistics reset" comes from: no caller changes, and every
+   *      all-time aggregate silently becomes a this-season aggregate.
+   *   5. Nothing, and the org has NEVER closed a season -> NO FILTER AT ALL.
+   *
+   * Rule 5 is the safety property that makes this whole feature shippable.
+   *
+   * Falling back to "the current calendar year" instead would arm every filter
+   * automatically at midnight on 1 January, before any human decided anything.
+   * The operational gate would be the casualty: bales baled in December and
+   * still lying in the field would become unloadable overnight, and the loader
+   * standing in front of them would get `parcel_fully_loaded` with no
+   * explanation and no admin action to point at.
+   *
+   * So an organization that has never closed a season behaves EXACTLY as it did
+   * before seasons existed. The filtering starts the moment the admin closes
+   * the first season -- having read a preflight that says, in counts, what is
+   * about to happen.
    */
   resolveWindow(
     orgId: string | null,
     activeSeasonYear: number | null,
     query?: { season?: number } & DateWindow,
   ): DateWindow {
-    if (orgId === null) return { dateFrom: query?.dateFrom, dateTo: query?.dateTo };
-
-    const year = resolveSeasonYear(query?.season, activeSeasonYear);
+    const year = this.resolveYear(orgId, activeSeasonYear, query);
+    if (year === undefined) return { dateFrom: query?.dateFrom, dateTo: query?.dateTo };
     if (query?.dateFrom || query?.dateTo) {
       return clampToSeason(year, { dateFrom: query.dateFrom, dateTo: query.dateTo });
     }
     return seasonWindow(year);
   }
 
-  /** The season a request is actually reading, for callers that need the number. */
+  /**
+   * The season a request is actually reading, or `undefined` for "all time".
+   *
+   * `undefined` in two distinct situations that must behave identically:
+   * super_admin reading across tenants (it has no season of its own, and
+   * filtering would hide other tenants behind one tenant's calendar), and an
+   * organization that has never closed a season (rule 5 above).
+   */
   resolveYear(
     orgId: string | null,
     activeSeasonYear: number | null,
     query?: { season?: number },
   ): number | undefined {
     if (orgId === null) return undefined;
-    return resolveSeasonYear(query?.season, activeSeasonYear);
+    if (query?.season !== undefined) return resolveSeasonYear(query.season, activeSeasonYear);
+    return activeSeasonYear ?? undefined;
   }
 
   /**
-   * The season an operational GATE must use.
+   * The season an operational GATE must use, or `undefined` for "all time".
    *
    * Never the season a user selected in a picker. A selector is a reporting
    * concern; whether a loader may load a field is a physical one, and letting a
    * dropdown change it would mean an admin browsing last year's report could
-   * block a truck in a field.
+   * block a truck standing in a field.
    */
-  gateYear(activeSeasonYear: number | null): number {
-    return resolveSeasonYear(undefined, activeSeasonYear);
+  gateYear(orgId: string | null, activeSeasonYear: number | null): number | undefined {
+    return this.resolveYear(orgId, activeSeasonYear);
   }
 
   /** Seasons this org can show in a picker, plus which ones are frozen. */
