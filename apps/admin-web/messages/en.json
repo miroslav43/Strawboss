@@ -2503,10 +2503,10 @@
       },
       "roles": {
         "driver": "Driver",
-        "loader_operator": "Loader operator",
-        "baler_operator": "Baler operator",
-        "geofence_maker": "Field planner",
-        "depot_manager": "Depot operator",
+        "loader_operator": "Loader Operator",
+        "baler_operator": "Baler Operator",
+        "geofence_maker": "Geofence Maker",
+        "depot_manager": "Depot Manager",
         "dispatcher": "Dispatcher",
         "transportator": "Transporter"
       }

@@ -2504,8 +2504,8 @@
       "roles": {
         "driver": "Șofer",
         "loader_operator": "Operator încărcător",
-        "baler_operator": "Operator presă",
-        "geofence_maker": "Planificator câmp",
+        "baler_operator": "Operator balotieră",
+        "geofence_maker": "Creator geofence",
         "depot_manager": "Operator depozit",
         "dispatcher": "Dispecer",
         "transportator": "Transportator"
