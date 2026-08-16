@@ -3,6 +3,7 @@ export * from './messaging.js';
 export * from './presence.js';
 export * from './features.js';
 export * from './season.js';
+export * from './locale.js';
 
 export * from './entities/farm.js';
 export type {
