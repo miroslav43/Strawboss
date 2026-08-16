@@ -16,7 +16,8 @@ Fiecare task moștenește implicit secțiunea asta.
 
 1. **Se lucrează direct pe `main`.** Fără branch-uri de feature. Commit + push pe main. O rutină auto-commit-uie arborele de lucru, deci nu lăsa fișiere pe jumătate scrise între taskuri.
 2. **Doar `typecheck`, niciodată `build` de UI.** Rulează `./strawboss.sh typecheck <target>`. Numele țintelor sunt numele de pachet fără prefix: `types`, `validation`, `api`, `backend`, `admin-web` (**nu** `admin`), `mobile`. O țintă greșită afișează fals „All typechecks passed".
-3. **Ordinea de build a pachetelor e obligatorie:** `types → validation → ui-tokens → domain → api`. Niciun consumator nu face alias `@strawboss/*` către sursă — totul se rezolvă prin `dist/`. Modificarea sursei fără `./strawboss.sh build packages` lasă enum-ul vechi compilat în viață.
+3. **Ordinea de build a pachetelor e obligatorie:** `types → validation → ui-tokens → domain → api`. Niciun consumator nu face alias `@strawboss/*` către sursă — totul se rezolvă prin `dist/`. Modificarea sursei fără `./strawboss.sh build packages` lasă enum-ul vechi compilat în viață **local**, deci `typecheck` trece pe `.d.ts` învechit și îți dă încredere falsă.
+   **`dist/` e gitignored** (`.gitignore:6`) și nu se commit-uiește niciodată. `Dockerfile.backend` și `Dockerfile.admin` rulează ele însele `pnpm --filter @strawboss/<pkg> build` în imagine, din sursă — deci producția e corectă atâta timp cât **sursa** e commit-uită. Rebuild-ul local e pentru onestitatea verificării, nu pentru deploy.
 4. **Commit înainte de deploy.** Imaginile Swarm sunt etichetate cu short-SHA-ul git; modificările necommit-uite produc aceeași etichetă, iar `strawboss.sh prod` face silențios no-op.
 5. **Limba țintă: maghiară standard (Ungaria).** Nu maghiară ardelenească, nu împrumuturi din română.
 6. **Glosarul de mai jos e obligatoriu.** Un termen = o traducere, în tot catalogul, web și mobil.
@@ -641,7 +642,7 @@ Așteptat: o linie care conține `['ro', 'en', 'hu']`. **Dacă nu apare, restul 
 
 ```bash
 cd /srv/apps/Strawboss
-git add packages/types/src/locale.ts packages/types/src/index.ts packages/types/dist
+git add packages/types/src/locale.ts packages/types/src/index.ts
 git commit -m "feat(types): SSOT pentru limbile de interfață, cu hu inclus
 
 Mulțimea de limbi era duplicată în 17 locuri. O centralizez după modelul
@@ -731,14 +732,15 @@ Așteptat: enum-ul compilat conține `hu`. Asta e capcana numărul unu din tot p
 
 ```bash
 cd /srv/apps/Strawboss
-git add packages/validation packages/api
+git add packages/validation/src packages/api/src
 git commit -m "feat(validation,api): acceptă hu; createUserSchema primește locale
 
 Enum-urile zod erau gardul dur care dădea 400 pe locale:'hu'. Le leg de
 SUPPORTED_LOCALES. Adaug și locale la createUserSchema — fără el un admin nu
 poate CREA un cont maghiar, doar unul român pe care să-l modifice apoi.
-Includ dist/ în commit: imaginile Swarm sunt etichetate cu SHA-ul git, iar un
-dist necommit-uit înseamnă deploy silențios no-op.
+dist/ e gitignored și se reconstruiește în imagine (Dockerfile.backend/admin rulează
+ele pnpm build) — deci commit-ez doar sursa. Rebuild-ul local rămâne obligatoriu
+înainte de typecheck, altfel verifici pe .d.ts învechit.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
@@ -2112,7 +2114,9 @@ grep -rn "hu" packages/validation/dist/schemas/profile.schema.js
 grep -rn "hu" packages/types/dist/locale.js
 ```
 
-Ambele trebuie să conțină `hu`. Dacă nu, `dist/` e vechi — re-rulează `build packages`.
+Ambele trebuie să conțină `hu`. Dacă nu, `dist/` local e vechi — re-rulează `build packages`.
+
+> Verificarea asta e **locală**, nu despre producție: `dist/` e gitignored, iar imaginile Docker își construiesc singure pachetele din sursă. Rostul ei e să garanteze că typecheck-urile de mai sus au rulat pe cod curent, nu pe `.d.ts` învechit.
 
 - [ ] **Pas 3: Confirmă că nu mai există literale de limbă**
 
