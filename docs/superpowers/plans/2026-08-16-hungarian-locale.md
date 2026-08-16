@@ -21,7 +21,11 @@ Fiecare task moștenește implicit secțiunea asta.
 5. **Limba țintă: maghiară standard (Ungaria).** Nu maghiară ardelenească, nu împrumuturi din română.
 6. **Glosarul de mai jos e obligatoriu.** Un termen = o traducere, în tot catalogul, web și mobil.
 7. **Nu redenumi niciodată valori de enum stocate în baza de date.** `crop_type` (`grau`, `orz`, `rapita`, `plante_nutret`, `altele`), `farm_entity_type`, `depot_type`, `user_role` (`transportator`) sunt cuvinte românești păstrate **ca date**. Se traduc doar etichetele de afișare.
-8. **Zero migrații de bază de date în acest plan.** `users.locale` e `TEXT DEFAULT 'en'` fără CHECK — verificat pe producție: zero constrângeri, 38 rânduri `ro`, 6 `en`, 0 NULL. Postgres acceptă `'hu'` de azi. *Decizie explicită: nu adăugăm CHECK*, pentru că ar introduce o suprafață de respingere inexistentă acum (ar eșua cu 23514 → 500 în loc de 400 curat) și ar transforma orice limbă viitoare în migrație.
+8. **Numerele de chei din acest plan sunt indicative, nu contractuale.** Alți agenți și o rutină programată commit-uiesc pe `main` în paralel și adaugă chei de catalog în timp ce lucrezi — între scrierea planului și primul task, `en.json` a crescut de la 2183 la 2188. **Niciodată nu compara cu un număr scris aici.** Măsoară înainte, măsoară după, și verifică *invariantul*: un task care traduce valori nu are voie să schimbe numărul de chei; un task care adaugă chei trebuie să adauge exact câte spune. Comanda de referință:
+   ```bash
+   cd apps/admin-web && node -e "const f=(o,p='')=>Object.entries(o).flatMap(([k,v])=>{const q=p?p+'.'+k:k;return (v&&typeof v==='object'&&!Array.isArray(v))?f(v,q):[q]});console.log(f(require('./messages/en.json')).length)"
+   ```
+9. **Zero migrații de bază de date în acest plan.** `users.locale` e `TEXT DEFAULT 'en'` fără CHECK — verificat pe producție: zero constrângeri, 38 rânduri `ro`, 6 `en`, 0 NULL. Postgres acceptă `'hu'` de azi. *Decizie explicită: nu adăugăm CHECK*, pentru că ar introduce o suprafață de respingere inexistentă acum (ar eșua cu 23514 → 500 în loc de 400 curat) și ar transforma orice limbă viitoare în migrație.
 
 ### Ieșit din scop — decizii conștiente, nu scăpări
 
@@ -98,7 +102,7 @@ Pluralele sunt chei-gemene alese printr-un ternar la locul apelului (7 perechi, 
 | Fișier | Responsabilitate |
 |---|---|
 | `packages/types/src/locale.ts` | SSOT: `SUPPORTED_LOCALES`, `Locale`, `DEFAULT_LOCALE`, `isLocale()` |
-| `apps/admin-web/messages/hu.json` | Catalogul web, 2183 frunze |
+| `apps/admin-web/messages/hu.json` | Catalogul web (~2190 frunze; măsoară, nu presupune) |
 | `apps/admin-web/messages/.identical-ok.json` | Lista de chei cărora li se permite să fie identice cu engleza |
 | `apps/admin-web/src/lib/use-locale-format.ts` | Un singur hook de formatare dată/număr conștient de limbă |
 | `apps/admin-web/src/components/shared/LangToggle.tsx` | Componenta unică de comutare a limbii (înlocuiește 3 copii identice) |
@@ -362,11 +366,13 @@ Traduceri obligatorii pentru cele recurente:
 
 - [ ] **Pas 4: Verifică paritatea de chei nealterată**
 
+Notează numărul raportat **înainte** de a începe, apoi rulează din nou la final:
+
 ```bash
 cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs
 ```
 
-Așteptat: `i18n: en.json and ro.json keys match (2183 keys).` — numărul **trebuie** să rămână 2183. Dacă s-a schimbat, ai adăugat sau șters o cheie din greșeală.
+Așteptat: același număr de chei ca înainte de a începe taskul. Traduci *valori* — dacă numărul s-a schimbat, ai adăugat sau șters o cheie din greșeală. Nu compara cu vreo cifră scrisă în acest plan (vezi Constrângerea globală 8).
 
 - [ ] **Pas 5: Commit**
 
@@ -387,7 +393,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ### Task 0.3: Reconciliază etichetele duplicate și contradictorii
 
-~120-150 din cele 2183 de frunze sunt concepte duplicate, iar duplicatele **se contrazic deja între ele**. Bifurcarea acum coace contradicțiile într-o a treia limbă și triplează costul reconcilierii de mai târziu.
+~120-150 de frunze sunt concepte duplicate, iar duplicatele **se contrazic deja între ele**. Bifurcarea acum coace contradicțiile într-o a treia limbă și triplează costul reconcilierii de mai târziu.
 
 **Fișiere:**
 - Modifică: `apps/admin-web/messages/en.json`, `apps/admin-web/messages/ro.json`
@@ -425,7 +431,7 @@ Așteptat — perechile divergente: `depot_manager` „Depot Manager" vs „Depo
 cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs && node scripts/check-i18n-interpolation.mjs
 ```
 
-Așteptat: tot 2183 de chei (reconciliem *valori*, nu ștergem chei) și interpolare curată.
+Așteptat: același număr de chei ca înainte de task (reconciliem *valori*, nu ștergem chei) și interpolare curată.
 
 - [ ] **Pas 4: Commit**
 
@@ -502,7 +508,7 @@ cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs
 cd /srv/apps/Strawboss && ./strawboss.sh typecheck admin-web
 ```
 
-Așteptat: numărul de chei crește de la 2183 la **2189** (6 chei noi), paritate OK, typecheck curat.
+Așteptat: numărul de chei crește cu **exact 6** față de măsurătoarea de dinaintea taskului, paritate OK, typecheck curat.
 
 - [ ] **Pas 5: Commit**
 
@@ -816,7 +822,7 @@ Astea sunt bug-urile care nu dau nicio eroare. Le grupez într-un task pentru c�
 cd /srv/apps/Strawboss/apps/admin-web && cp messages/en.json messages/hu.json
 ```
 
-Din engleză, nu din română: ambele au aceleași 2189 de căi în aceeași ordine (verificat), dar engleza e sursa de traducere. Fișierul e deocamdată englezesc ca text — se traduce în Faza 3.
+Din engleză, nu din română: ambele au exact aceleași căi, în aceeași ordine (garantat de linterul de paritate), dar engleza e sursa de traducere. Fișierul e deocamdată englezesc ca text — se traduce în Faza 3.
 
 > Se face **înaintea** cablării, deliberat, ca build-ul să nu treacă niciodată printr-o stare roșie. `Record<Locale, …>` de la Pasul 3 refuză să compileze fără fișierul ăsta.
 
@@ -1065,7 +1071,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ### Task 2.1: Rescrie linterul de cataloage să descopere limbile și să verifice valorile
 
-Scriptul actual hardcodează `'en.json'` și `'ro.json'` ca literale (liniile 27-28) și compară **doar mulțimea de chei**. Un `hu.json` clonat din engleză, cu toate cele 2189 de valori netraduse, trece curat. Și oricum nu-l rulează nimeni — verificat: absent din `strawboss.sh`, din toate cele patru `.github/workflows/*.yml` și din `.claude/settings.json`; nu există director `.husky`.
+Scriptul actual hardcodează `'en.json'` și `'ro.json'` ca literale (liniile 27-28) și compară **doar mulțimea de chei**. Un `hu.json` clonat din engleză, cu toate valorile netraduse, trece curat. Și oricum nu-l rulează nimeni — verificat: absent din `strawboss.sh`, din toate cele patru `.github/workflows/*.yml` și din `.claude/settings.json`; nu există director `.husky`.
 
 **Fișiere:**
 - Rescrie: `apps/admin-web/scripts/check-i18n-parity.mjs`
@@ -1167,7 +1173,7 @@ console.log(`\ni18n: ${locales.length} cataloage în paritate (${ref.size} chei 
 cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs
 ```
 
-Așteptat: `✓ ro.json — 2189 chei, toate traduse` și `i18n: 2 cataloage în paritate (2189 chei fiecare).`
+Așteptat: `✓ ro.json — <N> chei, toate traduse` și `i18n: 2 cataloage în paritate (<N> chei fiecare).`, unde `<N>` e numărul curent real.
 
 > Dacă raportează chei „identice cu engleza", allowlist-ul din Task 0.2 e incomplet. Completează-l acum — asta e exact motivul pentru care Faza 0 vine prima.
 
@@ -1262,7 +1268,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Faza 3 — Catalogul web (2189 chei)
+## Faza 3 — Catalogul web (~2190 chei — măsoară la început, vezi Constrângerea 8)
 
 **Regula de lucru pentru fiecare lot:** traduci un namespace complet, rulezi linterul, comiți. Linterul e verde doar când namespace-ul e integral tradus, deci nu poți „uita" jumătate.
 
@@ -1357,7 +1363,7 @@ Fiecare task de mai jos urmează **exact aceiași cinci pași**: tradu namespace
 | **3.4** | `parcels` (120), `farms` (65), `map` (79), `mapList` (47), `leaflet` (40) | 351 | Zona cu cel mai mare risc terminologic: parcelă → **`tábla`** peste tot, fermă → **`gazdaság`**. Aici sunt și 5 din cele 7 perechi de plural — ambii membri primesc același string. Etichetele de `crop_type` se traduc ca afișare. |
 | **3.5** | `tasks` (105), `machines` (65), `machineDetail` (100), `tracks` (31) | 301 | Utilaj → **`gép`**, niciodată `autó`. `machineDetail` conține producția de baloți — **`bála`** consecvent. |
 | **3.6** | `reports` (113), `deposits` (57), `accounts` (103), `features` (58) | 331 | `features` sunt cele 114 chei generate de `featureLabelKey()` din `packages/types/src/features.ts:752` — sunt nume de funcționalități văzute de super-admin. Depozit → **`raktár`**. Etichetele de rol respectă reconcilierea din Task 0.3. |
-| **3.7** | `beneficiaryPortal` (101), `portal` (52), `beneficiaries` (33), `season` (25) + tot ce a rămas | ~420 | Portalul public — ton mai formal, e văzut de clienți externi. Rulează linterul la final: trebuie să raporteze **`✓ hu.json — 2189 chei, toate traduse`**. |
+| **3.7** | `beneficiaryPortal` (101), `portal` (52), `beneficiaries` (33), `season` (25) + tot ce a rămas | ~420 | Portalul public — ton mai formal, e văzut de clienți externi. Rulează linterul la final: trebuie să raporteze **`✓ hu.json — <N> chei, toate traduse`**, cu zero linii `✗`. |
 
 - [ ] **Task 3.2** — `superAdmin`
 - [ ] **Task 3.3** — cursele și transportatorii
@@ -1372,7 +1378,7 @@ Fiecare task de mai jos urmează **exact aceiași cinci pași**: tradu namespace
 cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs
 ```
 
-Trebuie să afișeze `i18n: 3 cataloage în paritate (2189 chei fiecare).` fără nicio linie `✗`.
+Trebuie să afișeze `i18n: 3 cataloage în paritate (<N> chei fiecare).` fără nicio linie `✗`, unde `<N>` e numărul curent real.
 
 ---
 
@@ -2096,7 +2102,7 @@ cd /srv/apps/Strawboss
 cd apps/admin-web && node scripts/check-i18n-parity.mjs && node scripts/check-i18n-interpolation.mjs
 ```
 
-Așteptat: totul verde, iar linterul spune `i18n: 3 cataloage în paritate (2189 chei fiecare)`.
+Așteptat: totul verde, iar linterul spune `i18n: 3 cataloage în paritate (<N> chei fiecare)` fără nicio linie `✗`.
 
 - [ ] **Pas 2: Dovedește că enum-ul COMPILAT acceptă `hu`**
 
@@ -2179,4 +2185,4 @@ Setează un cont de test pe `hu` din admin-web, forțează o sincronizare pe tel
 
 **Build-ul nu trece niciodată prin roșu.** Taskurile 1.4 și 4.1 bifurcă fișierul de catalog *înainte* de a-l cabla, în același commit — `Record<Locale, …>` e proiectat să rupă compilarea fără el, și e singurul eșec *zgomotos* din tot lanțul (toate celelalte moduri de eșec ale acestui feature sunt tăcute). Fișierul bifurcat e englezesc ca text; linterul de cataloage rămâne roșu până la sfârșitul Fazei 3, ceea ce e o stare diferită și corectă — compilarea trece, traducerea e incompletă și vizibilă.
 
-**Numere verificate direct**, nu preluate: 2183 de chei web (rulând scriptul de paritate existent), 1123 mobil, 46 respectiv 33 de namespace-uri. Faza 0 adaugă 6 chei → 2189. Total tradus: **3312**.
+**Numere verificate direct**, nu preluate: la scrierea planului, 2183 de chei web (rulând scriptul de paritate existent) și 1123 mobil, în 46 respectiv 33 de namespace-uri. La pornirea execuției web-ul era deja la 2188, crescut de un commit concurent — de aici Constrângerea globală 8. Ordinul de mărime, care e ce contează pentru planificare: **~3300 de șiruri de tradus**.
