@@ -79,14 +79,23 @@ export class TruckIdleProcessor extends WorkerHost {
                'arrived'::trip_status, 'delivering'::trip_status
              )
         ) AS open_iterations,
+        -- Scoped to the owning org's active season. This figure drives a push
+        -- notification telling a driver there is still work on a field; without
+        -- the window, a field finished last season would keep nagging forever.
+        -- The correlated subquery on organizations is cheap (PK lookup, a
+        -- handful of orgs) and keeps the whole thing one statement.
         COALESCE(
           (SELECT SUM(bp.bale_count) FROM bale_productions bp
-            WHERE bp.parcel_id = lc.source_parcel_id AND bp.deleted_at IS NULL),
+            WHERE bp.parcel_id = lc.source_parcel_id AND bp.deleted_at IS NULL
+              AND (o.active_season_year IS NULL
+                   OR EXTRACT(YEAR FROM bp.production_date)::int = o.active_season_year)),
           0
         )::int
         - COALESCE(
           (SELECT SUM(bl.bale_count) FROM bale_loads bl
-            WHERE bl.parcel_id = lc.source_parcel_id AND bl.deleted_at IS NULL),
+            WHERE bl.parcel_id = lc.source_parcel_id AND bl.deleted_at IS NULL
+              AND (o.active_season_year IS NULL
+                   OR EXTRACT(YEAR FROM (bl.loaded_at AT TIME ZONE 'Europe/Bucharest'))::int = o.active_season_year)),
           0
         )::int AS remaining_bales,
         (
@@ -97,6 +106,10 @@ export class TruckIdleProcessor extends WorkerHost {
         ) AS active_tasks
       FROM last_completed lc
       JOIN machines m ON m.id = lc.truck_id AND m.deleted_at IS NULL
+      -- LEFT so a trip with no organization (pre-multi-tenancy rows) still
+      -- appears; o.active_season_year is then NULL, which the subqueries above
+      -- read as "no season filter".
+      LEFT JOIN organizations o ON o.id = lc.organization_id AND o.deleted_at IS NULL
       WHERE lc.completed_at < NOW() - (${IDLE_THRESHOLD_MIN} || ' minutes')::interval
     `)) as unknown as {
       truck_id: string;

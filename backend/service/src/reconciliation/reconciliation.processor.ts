@@ -55,9 +55,28 @@ export class ReconciliationProcessor extends WorkerHost {
     );
     const parcels = parcelsResult as unknown as { id: string; organization_id: string | null }[];
 
+    // Active season per org, resolved once per run rather than per parcel:
+    // there are a handful of organizations and hundreds of parcels. An org that
+    // has never closed a season maps to `undefined`, i.e. no window, which is
+    // the behaviour this job has always had.
+    const seasonByOrg = new Map<string, number | undefined>();
+    const seasonRows = (await this.drizzleProvider.db.execute(
+      sql`SELECT id, active_season_year AS "activeSeasonYear"
+            FROM organizations WHERE deleted_at IS NULL`,
+    )) as unknown as { id: string; activeSeasonYear: number | null }[];
+    for (const row of seasonRows) {
+      seasonByOrg.set(
+        row.id,
+        row.activeSeasonYear == null ? undefined : Number(row.activeSeasonYear),
+      );
+    }
+
     for (const parcel of parcels) {
       try {
-        const result = await this.reconciliationService.reconcileBalesForParcel(parcel.id);
+        const result = await this.reconciliationService.reconcileBalesForParcel(
+          parcel.id,
+          parcel.organization_id ? seasonByOrg.get(parcel.organization_id) : undefined,
+        );
         // Only alert on the "impossible" over-counts (loaded > produced or
         // delivered > loaded) — these always indicate a data error worth
         // surfacing. Mid-harvest shortfalls (loaded < produced) are expected

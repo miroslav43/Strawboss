@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { dateWindowClause, tsWindowClause } from '../common/season-range';
 import type {
   DashboardOverview,
   ProductionReport,
@@ -18,32 +19,20 @@ export class DashboardService {
   constructor(private readonly drizzleProvider: DrizzleProvider) {}
 
   private productionDateFilter(range?: DashboardDateRange) {
-    const parts: ReturnType<typeof sql>[] = [];
-    if (range?.dateFrom) {
-      parts.push(sql`bp.production_date >= ${range.dateFrom}::date`);
-    }
-    if (range?.dateTo) {
-      parts.push(sql`bp.production_date <= ${range.dateTo}::date`);
-    }
-    if (parts.length === 0) return sql``;
-    return sql` AND ${sql.join(parts, sql` AND `)}`;
+    return dateWindowClause(sql`bp.production_date`, range);
   }
 
-  /** Filter logged_at on fuel_logs / consumable_logs (mobile sends full-day Z on list APIs). */
+  /**
+   * Filter logged_at on fuel_logs / consumable_logs.
+   *
+   * This used to append a literal `T00:00:00.000Z` / `T23:59:59.999Z` to the
+   * bare day, i.e. anchor a Romanian operational day to UTC — so a refuel at
+   * 01:00 on the 1st was billed to the previous month and one at 23:30 on the
+   * last day vanished from both. The shared helper converts through
+   * Europe/Bucharest and follows DST.
+   */
   private loggedAtFilter(range: DashboardDateRange | undefined, alias: 'fl' | 'cl') {
-    const parts: ReturnType<typeof sql>[] = [];
-    if (range?.dateFrom) {
-      parts.push(
-        sql`${sql.raw(alias)}.logged_at >= ${`${range.dateFrom}T00:00:00.000Z`}::timestamptz`,
-      );
-    }
-    if (range?.dateTo) {
-      parts.push(
-        sql`${sql.raw(alias)}.logged_at <= ${`${range.dateTo}T23:59:59.999Z`}::timestamptz`,
-      );
-    }
-    if (parts.length === 0) return sql``;
-    return sql` AND ${sql.join(parts, sql` AND `)}`;
+    return tsWindowClause(sql`${sql.raw(alias)}.logged_at`, range);
   }
 
   /**
@@ -55,8 +44,21 @@ export class DashboardService {
     return callerRole === 'super_admin' ? sql`` : sql` AND organization_id = ${orgId}::uuid`;
   }
 
-  async getOverview(orgId: string | null, callerRole: string): Promise<DashboardOverview> {
+  /**
+   * @param range the season window. Only the two genuinely cumulative counters
+   *   take it: `pending_alerts` (an unacknowledged flag from a closed season
+   *   would ring the bell forever) and `active_trips`. The four "today"
+   *   counters are already bounded to today by definition and are left alone —
+   *   windowing them would make the card read zero whenever an admin is looking
+   *   at a past season, which is worse than leaving them as live operations.
+   */
+  async getOverview(
+    orgId: string | null,
+    callerRole: string,
+    range?: DashboardDateRange,
+  ): Promise<DashboardOverview> {
     const orgFilter = this.orgFilter(orgId, callerRole);
+    const alertsWin = tsWindowClause(sql`created_at`, range);
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
@@ -71,7 +73,7 @@ export class DashboardService {
          WHERE is_active = true AND deleted_at IS NULL ${orgFilter}
         ) AS active_machines,
         (SELECT COUNT(*)::int FROM alerts
-         WHERE is_acknowledged = false ${orgFilter}
+         WHERE is_acknowledged = false ${orgFilter}${alertsWin}
         ) AS pending_alerts,
         (SELECT COUNT(*)::int FROM trips
          WHERE created_at >= CURRENT_DATE AND deleted_at IS NULL ${orgFilter}
@@ -102,6 +104,16 @@ export class DashboardService {
     range?: DashboardDateRange,
   ): Promise<ProductionReport[]> {
     const prodExtra = this.productionDateFilter(range);
+    // The range used to be applied to `produced` ONLY, while `loaded` and
+    // `delivered` stayed all-time. Every loss percentage this report has ever
+    // shown for a bounded range was therefore computed from a windowed
+    // numerator over a lifetime denominator — routinely a negative loss, i.e.
+    // more bales loaded than grown. All three terms are windowed now.
+    const loadedExtra = tsWindowClause(sql`bl.loaded_at`, range);
+    const deliveredExtra = tsWindowClause(
+      sql`COALESCE(t2.delivered_at, t2.completed_at, t2.created_at)`,
+      range,
+    );
     const orgFilter = this.orgFilter(orgId, callerRole);
 
     const result = await this.drizzleProvider.db.execute(sql`
@@ -120,6 +132,7 @@ export class DashboardService {
           JOIN trips t ON t.id = bl.trip_id
           WHERE t.source_parcel_id = p.id
             AND bl.deleted_at IS NULL AND t.deleted_at IS NULL
+            ${loadedExtra}
         ), 0) AS loaded,
         COALESCE((
           SELECT SUM(t2.bale_count)::int
@@ -127,6 +140,7 @@ export class DashboardService {
           WHERE t2.source_parcel_id = p.id
             AND t2.status IN ('delivered', 'completed')
             AND t2.deleted_at IS NULL
+            ${deliveredExtra}
         ), 0) AS delivered
       FROM parcels p
       WHERE p.deleted_at IS NULL ${orgFilter}
@@ -283,19 +297,27 @@ export class DashboardService {
     return result;
   }
 
-  async getAntiFraud(orgId: string | null, callerRole: string): Promise<AntiFraudReport> {
+  async getAntiFraud(
+    orgId: string | null,
+    callerRole: string,
+    range?: DashboardDateRange,
+  ): Promise<AntiFraudReport> {
     const orgFilter = this.orgFilter(orgId, callerRole);
+    // `alerts` is the one transactional table with no `deleted_at`, and these
+    // counts were unbounded, so a fraud flag raised in 2026 stayed on the 2027
+    // dashboard forever. Windowed on when the alert was raised.
+    const win = tsWindowClause(sql`created_at`, range);
 
     const result = await this.drizzleProvider.db.execute(sql`
       SELECT
         (SELECT COUNT(*)::int FROM alerts
-         WHERE category = 'fraud' ${orgFilter}
+         WHERE category = 'fraud' ${orgFilter}${win}
         ) AS flagged_trips,
         (SELECT COUNT(*)::int FROM alerts
-         WHERE title LIKE '%Fuel%' ${orgFilter}
+         WHERE title LIKE '%Fuel%' ${orgFilter}${win}
         ) AS fuel_anomalies,
         (SELECT COUNT(*)::int FROM alerts
-         WHERE title LIKE '%timing%' ${orgFilter}
+         WHERE title LIKE '%timing%' ${orgFilter}${win}
         ) AS timing_anomalies
     `);
 
@@ -305,7 +327,7 @@ export class DashboardService {
     // Fetch recent alerts
     const alertsResult = await this.drizzleProvider.db.execute(
       sql`SELECT * FROM alerts
-          WHERE category IN ('fraud', 'anomaly') ${orgFilter}
+          WHERE category IN ('fraud', 'anomaly') ${orgFilter}${win}
           ORDER BY created_at DESC
           LIMIT 20`,
     );

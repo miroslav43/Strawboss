@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { dateWindowClause, seasonWindow, tsWindowClause } from '../common/season-range';
 import { reconcileBales, reconcileFuel } from '@strawboss/domain';
 import type { BaleReconciliationResult, FuelReconciliationResult } from '@strawboss/domain';
 
@@ -10,13 +11,29 @@ export class ReconciliationService {
 
   /**
    * Reconcile bale counts for a parcel: produced vs loaded vs delivered.
+   *
+   * @param seasonYear scope the three sums to one season. Omitted means all
+   *   time. This runs hourly over every active parcel and raises an alert when
+   *   more bales left a field than grew on it, so without a window a single
+   *   closed season's discrepancy would re-alert every hour, forever.
    */
-  async reconcileBalesForParcel(parcelId: string): Promise<BaleReconciliationResult> {
+  async reconcileBalesForParcel(
+    parcelId: string,
+    seasonYear?: number,
+  ): Promise<BaleReconciliationResult> {
+    const window = seasonYear === undefined ? undefined : seasonWindow(seasonYear);
+    const producedWin = dateWindowClause(sql`production_date`, window);
+    const loadedWin = tsWindowClause(sql`loaded_at`, window);
+    const deliveredWin = tsWindowClause(
+      sql`COALESCE(delivered_at, completed_at, created_at)`,
+      window,
+    );
+
     // Count bales produced (from bale_productions table)
     const producedResult = await this.drizzleProvider.db.execute(
       sql`SELECT COALESCE(SUM(bale_count), 0)::int AS total
           FROM bale_productions
-          WHERE parcel_id = ${parcelId} AND deleted_at IS NULL`,
+          WHERE parcel_id = ${parcelId} AND deleted_at IS NULL${producedWin}`,
     );
     const producedRows = producedResult as unknown as { total: number }[];
     const produced = producedRows[0]?.total ?? 0;
@@ -28,7 +45,7 @@ export class ReconciliationService {
     const loadedResult = await this.drizzleProvider.db.execute(
       sql`SELECT COALESCE(SUM(bale_count), 0)::int AS total
           FROM bale_loads
-          WHERE parcel_id = ${parcelId} AND deleted_at IS NULL`,
+          WHERE parcel_id = ${parcelId} AND deleted_at IS NULL${loadedWin}`,
     );
     const loadedRows = loadedResult as unknown as { total: number }[];
     const loaded = loadedRows[0]?.total ?? 0;
@@ -44,7 +61,7 @@ export class ReconciliationService {
           FROM trips
           WHERE source_parcel_id = ${parcelId}
             AND status IN ('delivered', 'completed')
-            AND deleted_at IS NULL`,
+            AND deleted_at IS NULL${deliveredWin}`,
     );
     const deliveredRows = deliveredResult as unknown as { total: number }[];
     const delivered = deliveredRows[0]?.total ?? 0;
