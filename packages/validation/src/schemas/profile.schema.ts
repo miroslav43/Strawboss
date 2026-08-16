@@ -1,15 +1,16 @@
 import { z } from 'zod';
+import { SUPPORTED_LOCALES } from '@strawboss/types';
 import { signatureUrlSchema } from '../helpers/signature-url.js';
 
-/** Admin UI locale — stored on users.locale, drives i18n in admin-web. */
+/** Limba interfeței — stocată pe users.locale, controlează i18n în admin-web și pe telefon. */
 export const updateProfileLocaleSchema = z.object({
-  locale: z.enum(['en', 'ro']),
+  locale: z.enum(SUPPORTED_LOCALES),
 });
 
 export const updateProfileSchema = z.object({
   fullName: z.string().min(1).optional(),
   phone: z.string().nullable().optional(),
-  locale: z.enum(['en', 'ro']).optional(),
+  locale: z.enum(SUPPORTED_LOCALES).optional(),
   notificationPrefs: z.record(z.boolean()).optional(),
   signatureSpecimenUrl: signatureUrlSchema.nullable().optional(),
 });

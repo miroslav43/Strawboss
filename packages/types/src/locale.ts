@@ -58,9 +58,9 @@ export function isLocale(value: unknown): value is Locale {
  * Acceptă etichete complete ('hu-HU', 'ro-RO') și e insensibilă la majuscule.
  * Orice necunoscut cade pe DEFAULT_LOCALE.
  *
- * ATENȚIE: extinderea `SUPPORTED_LOCALES` face funcția asta corectă automat.
- * Orice normalizator scris de mână care testează prefixe una câte una NU se
- * actualizează singur — exact așa a fost pierdută maghiara pe telefoane.
+ * Corect câtă vreme niciun cod suportat nu e prefix al altuia — adevărat azi
+ * pentru toate codurile ISO 639-1 de două litere, dar nu garantat de tipul
+ * `Locale` însuși dacă vreodată se adaugă un cod mai lung.
  */
 export function normalizeLocale(raw: string | null | undefined): Locale {
   if (!raw) return DEFAULT_LOCALE;

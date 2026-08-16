@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { UserRole } from '@strawboss/types';
+import { UserRole, SUPPORTED_LOCALES } from '@strawboss/types';
 import { uuidSchema } from '../helpers/uuid.js';
 import { isoDateSchema } from '../helpers/iso-date.js';
 import { timestampsSchema } from '../helpers/common.js';
@@ -63,6 +63,7 @@ export const createUserSchema = z.object({
   phone: z.string().nullable().optional(),
   /** Optional: admin can override the auto-generated username before submit. */
   usernameOverride: z.string().min(3).optional(),
+  locale: z.enum(SUPPORTED_LOCALES).optional(),
 });
 
 export const updateUserSchema = z
@@ -71,7 +72,7 @@ export const updateUserSchema = z
     role: adminAssignableRoleSchema,
     phone: z.string().nullable(),
     isActive: z.boolean(),
-    locale: z.enum(['en', 'ro']).optional(),
+    locale: z.enum(SUPPORTED_LOCALES).optional(),
     avatarUrl: z.string().url().nullable(),
     /** Admin can change the username (must be unique). */
     username: z.string().min(3),

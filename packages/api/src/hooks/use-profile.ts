@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { User, ProfileResponse } from '@strawboss/types';
+import type { User, ProfileResponse, Locale } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 
 const profileKey = ['profile'] as const;
@@ -31,11 +31,11 @@ export function useProfile(client: ApiClient) {
   });
 }
 
-/** Persist UI locale (en | ro) on the user row for cross-device sync. */
+/** Persist UI locale on the user row for cross-device sync. */
 export function useUpdateProfileLocale(client: ApiClient) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (locale: 'en' | 'ro') => client.patch<User>('/api/v1/profile', { locale }),
+    mutationFn: (locale: Locale) => client.patch<User>('/api/v1/profile', { locale }),
     onSuccess: mergeProfile(qc),
   });
 }
@@ -47,7 +47,7 @@ export function useUpdateProfile(client: ApiClient) {
     mutationFn: (dto: {
       fullName?: string;
       phone?: string | null;
-      locale?: 'en' | 'ro';
+      locale?: Locale;
       notificationPrefs?: Record<string, boolean>;
       avatarUrl?: string | null;
       signatureSpecimenUrl?: string | null;

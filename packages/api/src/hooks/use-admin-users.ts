@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { User, UserRole } from '@strawboss/types';
+import type { User, UserRole, Locale } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
 
@@ -25,7 +25,7 @@ export interface UpdateUserPayload {
   /** Admin can edit the 4-digit PIN (also updates Supabase Auth password). */
   pin?: string;
   /** UI locale preference for this user. */
-  locale?: 'en' | 'ro';
+  locale?: Locale;
 }
 
 export interface UseAdminUsersOptions {
