@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import { CropType } from '@strawboss/types';
 import type { PortalInfo, CreateTripRequestDto } from '@strawboss/types';
-import { useI18n, normalizeUiLocale, type Locale } from '@/lib/i18n';
+import { useI18n, normalizeUiLocale, STORAGE_KEY } from '@/lib/i18n';
+import { LangToggle } from '@/components/shared/LangToggle';
 
 const TRACTOR = '/brand/strawboss-tractor.svg';
 
@@ -197,26 +198,6 @@ function BrandPanel({ orgName, t }: { orgName: string | null; t: (k: string) => 
   );
 }
 
-function LangToggle({ locale, onPick }: { locale: Locale; onPick: (l: Locale) => void }) {
-  return (
-    <div className="inline-flex items-center rounded-full border border-stone-200 bg-white/80 p-0.5 text-xs font-semibold shadow-sm backdrop-blur">
-      {(['ro', 'en'] as const).map((l) => (
-        <button
-          key={l}
-          type="button"
-          onClick={() => onPick(l)}
-          aria-pressed={locale === l}
-          className={`rounded-full px-3 py-1 uppercase tracking-wide transition-colors ${
-            locale === l ? 'bg-primary text-white' : 'text-stone-500 hover:text-stone-800'
-          }`}
-        >
-          {l}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export default function RequestPortalPage() {
   const { t, locale, setLocale } = useI18n();
   const params = useParams<{ slug: string }>();
@@ -240,7 +221,7 @@ export default function RequestPortalPage() {
   // persist:false keeps it a soft default — an explicit toggle still wins/persists.
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined' && !localStorage.getItem('strawboss-locale')) {
+      if (typeof window !== 'undefined' && !localStorage.getItem(STORAGE_KEY)) {
         setLocale(normalizeUiLocale(navigator.language), { persist: false });
       }
     } catch {

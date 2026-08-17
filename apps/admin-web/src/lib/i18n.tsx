@@ -18,7 +18,7 @@ import { interpolate } from '@/lib/interpolate';
 
 export type { Locale };
 
-const STORAGE_KEY = 'strawboss-locale';
+export const STORAGE_KEY = 'strawboss-locale';
 
 // Record<Locale, …> is deliberate: adding a language to the SSOT breaks the
 // build here until its catalog actually exists. It's the one loud failure in

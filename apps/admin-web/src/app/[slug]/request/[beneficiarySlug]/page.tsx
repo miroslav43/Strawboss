@@ -21,8 +21,9 @@ import type {
   BeneficiaryTruck,
   BeneficiaryDriver,
 } from '@strawboss/types';
-import { useI18n, normalizeUiLocale, type Locale } from '@/lib/i18n';
+import { useI18n, normalizeUiLocale, STORAGE_KEY } from '@/lib/i18n';
 import { apiV1Url } from '@/lib/api';
+import { LangToggle } from '@/components/shared/LangToggle';
 import { BeneficiarySavedSelect } from './BeneficiarySavedSelect';
 import { BeneficiaryRecordModal, type RecordKind } from './BeneficiaryRecordModal';
 import { BeneficiaryRecordDeleteDialog } from './BeneficiaryRecordDeleteDialog';
@@ -181,28 +182,6 @@ function BrandPanel({ orgName, t }: { orgName: string | null; t: (k: string) => 
   );
 }
 
-// ── Language toggle ────────────────────────────────────────────────────────
-
-function LangToggle({ locale, onPick }: { locale: Locale; onPick: (l: Locale) => void }) {
-  return (
-    <div className="inline-flex items-center rounded-full border border-stone-200 bg-white/80 p-0.5 text-xs font-semibold shadow-sm backdrop-blur">
-      {(['ro', 'en'] as const).map((l) => (
-        <button
-          key={l}
-          type="button"
-          onClick={() => onPick(l)}
-          aria-pressed={locale === l}
-          className={`rounded-full px-3 py-1 uppercase tracking-wide transition-colors ${
-            locale === l ? 'bg-primary text-white' : 'text-stone-500 hover:text-stone-800'
-          }`}
-        >
-          {l}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ── Read-only chip ─────────────────────────────────────────────────────────
 
 function ReadOnlyChip({ value }: { value: string | null | undefined }) {
@@ -311,7 +290,7 @@ export default function BeneficiaryPortalPage() {
   // Auto-detect locale on first visit
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined' && !localStorage.getItem('strawboss-locale')) {
+      if (typeof window !== 'undefined' && !localStorage.getItem(STORAGE_KEY)) {
         setLocale(normalizeUiLocale(navigator.language), { persist: false });
       }
     } catch {
