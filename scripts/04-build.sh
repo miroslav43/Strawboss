@@ -93,6 +93,18 @@ cmd_typecheck() {
       ;;
   esac
 
+  if [ "$target" = "all" ] || [ "$target" = "admin-web" ]; then
+    printf "  ${ARROW}  %-20s" "i18n catalogs"
+    if (cd "$STRAWBOSS_ROOT/apps/admin-web" \
+        && node scripts/check-i18n-parity.mjs >/dev/null \
+        && node scripts/check-i18n-interpolation.mjs >/dev/null); then
+      echo -e "${GREEN}pass${NC}"
+    else
+      echo -e "${RED}FAIL${NC}"
+      failed=1
+    fi
+  fi
+
   [ "$failed" -eq 0 ] && success "All typechecks passed." || { error "Some typechecks failed."; exit 1; }
 }
 

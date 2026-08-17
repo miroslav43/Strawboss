@@ -9,6 +9,7 @@
     "lint": "eslint src/ --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "i18n:parity": "node scripts/check-i18n-parity.mjs",
+    "i18n:parity:strict": "node scripts/check-i18n-parity.mjs --strict",
     "i18n:interp": "node scripts/check-i18n-interpolation.mjs"
   },
   "dependencies": {
