@@ -2,7 +2,7 @@ import { Controller, Get, Patch, Post, Body, Req, BadRequestException } from '@n
 import type { FastifyRequest } from 'fastify';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/auth.guard';
-import type { User, ProfileResponse } from '@strawboss/types';
+import type { User, ProfileResponse, Locale } from '@strawboss/types';
 import { updateProfileSchema, changePasswordSchema } from '@strawboss/validation';
 import { ProfileService } from './profile.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -46,7 +46,7 @@ export class ProfileController {
     dto: {
       fullName?: string;
       phone?: string | null;
-      locale?: 'en' | 'ro';
+      locale?: Locale;
       notificationPrefs?: Record<string, boolean>;
       signatureSpecimenUrl?: string | null;
     },

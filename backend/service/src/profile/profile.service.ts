@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import type { User } from '@strawboss/types';
+import type { User, Locale } from '@strawboss/types';
 import { USER_TOUCH_THROTTLE_MS } from '@strawboss/types';
 
 @Injectable()
@@ -174,7 +174,7 @@ export class ProfileService {
     dto: {
       fullName?: string;
       phone?: string | null;
-      locale?: 'en' | 'ro';
+      locale?: Locale;
       notificationPrefs?: Record<string, boolean>;
       avatarUrl?: string | null;
       signatureSpecimenUrl?: string | null;

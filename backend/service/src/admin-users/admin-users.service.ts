@@ -9,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import type { User, UserRole, FeatureKey } from '@strawboss/types';
-import { MachineType, FEATURES } from '@strawboss/types';
+import type { User, UserRole, FeatureKey, Locale } from '@strawboss/types';
+import { MachineType, FEATURES, DEFAULT_LOCALE } from '@strawboss/types';
 import { FeaturesService } from '../features/features.service';
 
 /** Roles an org admin is allowed to assign — super_admin is excluded. */
@@ -23,6 +23,8 @@ export interface CreateUserDto {
   phone?: string | null;
   /** Optional: admin can override the auto-generated username before submit. */
   usernameOverride?: string;
+  /** Limba de interfață pentru contul nou. Implicit DEFAULT_LOCALE. */
+  locale?: Locale;
 }
 
 export interface UpdateUserDto {
@@ -39,7 +41,7 @@ export interface UpdateUserDto {
   /** Admin can change the 4-digit PIN (also updates Supabase Auth password). */
   pin?: string;
   /** UI locale preference for this user. */
-  locale?: 'en' | 'ro';
+  locale?: Locale;
 }
 
 /** Maps each operator role to its compatible machine type. */
@@ -166,7 +168,7 @@ export class AdminUsersService {
         ${dto.fullName},
         ${dto.role}::user_role,
         true,
-        'ro',
+        ${dto.locale ?? DEFAULT_LOCALE},
         ${orgId}::uuid
       )
       RETURNING ${USER_SELECT_COLS}
