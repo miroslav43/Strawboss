@@ -1083,6 +1083,12 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ### Task 2.1: Rescrie linterul de cataloage să descopere limbile și să verifice valorile
 
+> **Două niveluri de severitate, deliberat.** Linterul distinge între două feluri de defecte:
+> - **Structural** (chei lipsă, chei în plus, valori goale) — eșuează **întotdeauna**. Astea sunt rupturi reale: o cheie lipsă afișează altă limbă utilizatorului.
+> - **Netradus** (valoare identică cu engleza, neaflată în allowlist) — se **raportează întotdeauna** ca număr, dar eșuează doar cu `--strict`.
+>
+> Motivul e practic: `hu.json` e bifurcat din engleză la începutul Fazei 1 și rămâne netradus până la finalul Fazei 3. Dacă „netradus" ar fi eșec în modul implicit, `./strawboss.sh typecheck admin-web` ar fi roșu pentru zece taskuri consecutive — iar un gard care țipă mereu e un gard pe care toată lumea învață să-l ignore, exact patologia pe care faza asta vine s-o repare. Modul implicit rulează în `typecheck`; `--strict` e poarta de ieșire a Fazei 3 și a verificării finale.
+
 Scriptul actual hardcodează `'en.json'` și `'ro.json'` ca literale (liniile 27-28) și compară **doar mulțimea de chei**. Un `hu.json` clonat din engleză, cu toate valorile netraduse, trece curat. Și oricum nu-l rulează nimeni — verificat: absent din `strawboss.sh`, din toate cele patru `.github/workflows/*.yml` și din `.claude/settings.json`; nu există director `.husky`.
 
 **Fișiere:**
@@ -1387,7 +1393,7 @@ Fiecare task de mai jos urmează **exact aceiași cinci pași**: tradu namespace
 **Poarta de ieșire din Faza 3:**
 
 ```bash
-cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs
+cd /srv/apps/Strawboss/apps/admin-web && cd /srv/apps/Strawboss/apps/admin-web && node scripts/check-i18n-parity.mjs --strict
 ```
 
 Trebuie să afișeze `i18n: 3 cataloage în paritate (<N> chei fiecare).` fără nicio linie `✗`, unde `<N>` e numărul curent real.
@@ -2111,7 +2117,7 @@ cd /srv/apps/Strawboss
 ./strawboss.sh typecheck types && ./strawboss.sh typecheck validation && ./strawboss.sh typecheck api
 ./strawboss.sh typecheck backend && ./strawboss.sh typecheck admin-web && ./strawboss.sh typecheck mobile
 ./strawboss.sh lint
-cd apps/admin-web && node scripts/check-i18n-parity.mjs && node scripts/check-i18n-interpolation.mjs
+cd apps/admin-web && node scripts/check-i18n-parity.mjs --strict && node scripts/check-i18n-interpolation.mjs
 ```
 
 Așteptat: totul verde, iar linterul spune `i18n: 3 cataloage în paritate (<N> chei fiecare)` fără nicio linie `✗`.
