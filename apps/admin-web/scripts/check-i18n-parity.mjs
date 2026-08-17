@@ -54,7 +54,12 @@ import { fileURLToPath } from 'node:url';
 const strict = process.argv.includes('--strict');
 const messagesDir = join(dirname(fileURLToPath(import.meta.url)), '../messages');
 const REFERENCE = 'en';
-/** Numele de bază al unui catalog de limbă: exact două litere minuscule. */
+/**
+ * Numele de bază al unui catalog de limbă: exact două litere minuscule
+ * (cod ISO 639-1, cum e SSOT-ul acum). Dacă se adaugă vreodată o variantă
+ * regională (ex. `pt-BR.json`), extinde la /^[a-z]{2}(-[A-Z]{2})?$/ — nu e
+ * nevoie acum, deci nu o generalizăm prematur.
+ */
 const LOCALE_RE = /^[a-z]{2}$/;
 
 /** @param {string} path @returns {unknown} */
