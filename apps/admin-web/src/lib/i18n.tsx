@@ -11,16 +11,22 @@ import {
 } from 'react';
 import enMessages from '../../messages/en.json';
 import roMessages from '../../messages/ro.json';
+import huMessages from '../../messages/hu.json';
+import { isLocale, SUPPORTED_LOCALES, type Locale } from '@strawboss/types';
 import { clientLogger } from '@/lib/client-logger';
 import { interpolate } from '@/lib/interpolate';
 
-export type Locale = 'en' | 'ro';
+export type { Locale };
 
 const STORAGE_KEY = 'strawboss-locale';
 
+// Record<Locale, …> is deliberate: adding a language to the SSOT breaks the
+// build here until its catalog actually exists. It's the one loud failure in
+// the chain.
 const catalogs: Record<Locale, Record<string, unknown>> = {
   en: enMessages as Record<string, unknown>,
   ro: roMessages as Record<string, unknown>,
+  hu: huMessages as Record<string, unknown>,
 };
 
 function getByPath(obj: Record<string, unknown>, path: string): unknown {
@@ -33,12 +39,16 @@ function getByPath(obj: Record<string, unknown>, path: string): unknown {
   return cur;
 }
 
-/** Map DB/user locale string to supported UI locale. */
+/** Map DB/user locale string to a supported UI locale. */
 export function normalizeUiLocale(raw: string | null | undefined): Locale {
   if (!raw) return 'en';
   const lower = raw.toLowerCase();
-  if (lower.startsWith('ro')) return 'ro';
-  return 'en';
+  // Derives the set from SUPPORTED_LOCALES so a new locale is recognised without
+  // editing this function. The 'en' fallback is deliberately admin-web's own and
+  // deliberately NOT DEFAULT_LOCALE ('ro') — the web app has always fallen back to
+  // English and mobile has always fallen back to Romanian. Changing that here would
+  // be an unrequested behaviour change for every account with an unset locale.
+  return SUPPORTED_LOCALES.find((l) => lower.startsWith(l)) ?? 'en';
 }
 
 type I18nContextValue = {
@@ -54,7 +64,7 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 function readStoredLocale(): Locale | null {
   if (typeof window === 'undefined') return null;
   const s = localStorage.getItem(STORAGE_KEY);
-  return s === 'en' || s === 'ro' ? s : null;
+  return isLocale(s) ? s : null;
 }
 
 export function LocaleProvider({ children }: { children: ReactNode }) {

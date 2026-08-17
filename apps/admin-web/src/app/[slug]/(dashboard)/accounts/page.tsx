@@ -29,14 +29,20 @@ import {
   type CreateUserPayload,
   type UpdateUserPayload,
 } from '@strawboss/api';
-import { UserRole, MachineType, FEATURES } from '@strawboss/types';
+import {
+  UserRole,
+  MachineType,
+  FEATURES,
+  SUPPORTED_LOCALES,
+  LOCALE_ENDONYMS,
+} from '@strawboss/types';
 import type { User, Machine, DeliveryDestination, FeatureKey } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { apiClient } from '@/lib/api';
-import { useI18n } from '@/lib/i18n';
+import { useI18n, normalizeUiLocale, type Locale } from '@/lib/i18n';
 import { useFeatures } from '@/hooks/useFeatures';
 import { AssignBeneficiariesModal } from './AssignBeneficiariesModal';
 
@@ -513,7 +519,7 @@ interface EditForm {
   role: UserRole;
   phone: string;
   isActive: boolean;
-  locale: 'en' | 'ro';
+  locale: Locale;
 }
 
 function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
@@ -532,7 +538,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
     role: user.role,
     phone: user.phone ?? '',
     isActive: user.isActive,
-    locale: (user.locale as 'en' | 'ro') ?? 'ro',
+    locale: normalizeUiLocale(user.locale),
   });
   const [showPin, setShowPin] = useState(false);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
@@ -675,7 +681,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
 
           <FormField label={t('accounts.form.language')} required>
             <div className="flex gap-2">
-              {(['ro', 'en'] as const).map((l) => (
+              {SUPPORTED_LOCALES.map((l) => (
                 <button
                   key={l}
                   type="button"
@@ -686,7 +692,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }) {
                       : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'
                   }`}
                 >
-                  {l === 'ro' ? 'Română' : 'English'}
+                  {LOCALE_ENDONYMS[l]}
                 </button>
               ))}
             </div>

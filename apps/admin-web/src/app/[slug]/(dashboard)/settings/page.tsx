@@ -23,11 +23,11 @@ import {
   useOrgRequestSettings,
   useUpdateOrgRequestSettings,
 } from '@strawboss/api';
-import { CropType } from '@strawboss/types';
+import { CropType, SUPPORTED_LOCALES } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SpecimenSection } from '@/components/features/profile/SpecimenSection';
 import { apiClient } from '@/lib/api';
-import { useI18n, type Locale } from '@/lib/i18n';
+import { useI18n, normalizeUiLocale, type Locale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 const APP_VERSION = '0.0.1';
@@ -339,7 +339,7 @@ export default function SettingsPage() {
     if (profile) {
       setFullName(profile.fullName ?? '');
       setPhone(profile.phone ?? '');
-      setSelectedLocale((profile.locale as Locale) === 'ro' ? 'ro' : 'en');
+      setSelectedLocale(normalizeUiLocale(profile.locale));
     }
   }, [profile]);
 
@@ -507,8 +507,11 @@ export default function SettingsPage() {
                   'disabled:cursor-not-allowed disabled:opacity-60',
                 )}
               >
-                <option value="en">{t('settings.lang.en')}</option>
-                <option value="ro">{t('settings.lang.ro')}</option>
+                {SUPPORTED_LOCALES.map((l) => (
+                  <option key={l} value={l}>
+                    {t(`settings.lang.${l}`)}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
