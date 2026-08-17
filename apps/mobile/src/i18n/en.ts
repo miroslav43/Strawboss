@@ -1,3 +1,17 @@
+import type { TranslationKeys } from './ro';
+
+// `ro.ts` is declared `as const`, so `TranslationKeys` (= typeof ro) types every
+// string leaf as its own literal (e.g. "Salvează"), not as `string`. Checking `en`
+// directly against `TranslationKeys` — with either `: TranslationKeys` or
+// `satisfies TranslationKeys` — fails on every translated string, since "Save" is
+// not assignable to the literal type "Salvează"; it is not a key-parity check.
+// `CatalogShape<T>` preserves the exact key structure of `T` but widens every
+// leaf to `string`, so the compiler enforces key parity only — missing or extra
+// keys become compile errors, differing translated text does not.
+type CatalogShape<T> = {
+  [K in keyof T]: T[K] extends string ? string : CatalogShape<T[K]>;
+};
+
 export const en = {
   common: {
     save: 'Save',
@@ -968,8 +982,7 @@ export const en = {
   },
 
   geofenceMap: {
-    bannerDrawDisabled:
-      'Drawing fields is switched off for your organization.',
+    bannerDrawDisabled: 'Drawing fields is switched off for your organization.',
     bannerIdle: 'Tap a button to add a field or depot',
     bannerFirstPoint: 'Centre the pin on the first point and tap "Add point"',
     bannerProgress: 'Point {count}/3 — continue (minimum 3 points)',
@@ -1728,4 +1741,4 @@ export const en = {
       navigate_alertTitle: 'Navigation',
     },
   },
-} as const;
+} as const satisfies CatalogShape<TranslationKeys>;
