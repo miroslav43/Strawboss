@@ -6,8 +6,12 @@ import type { TranslationKeys } from './ro';
 // `satisfies TranslationKeys` — fails on every translated string, since "Save" is
 // not assignable to the literal type "Salvează"; it is not a key-parity check.
 // `CatalogShape<T>` preserves the exact key structure of `T` but widens every
-// leaf to `string`, so the compiler enforces key parity only — missing or extra
-// keys become compile errors, differing translated text does not.
+// string leaf to `string`, so the compiler enforces key parity in both directions
+// — missing or extra keys become compile errors — while differing translated text
+// does not. This only holds for leaves that are strings or nested objects: a leaf
+// that is an array, number, boolean, etc. is not meaningfully checked (e.g. an
+// array's length and contents pass unconstrained). Catalog leaves must stay
+// strings — do not add a non-string leaf to an i18n catalog.
 type CatalogShape<T> = {
   [K in keyof T]: T[K] extends string ? string : CatalogShape<T[K]>;
 };
