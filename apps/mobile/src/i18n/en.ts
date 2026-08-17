@@ -8,12 +8,18 @@ import type { TranslationKeys } from './ro';
 // `CatalogShape<T>` preserves the exact key structure of `T` but widens every
 // string leaf to `string`, so the compiler enforces key parity in both directions
 // — missing or extra keys become compile errors — while differing translated text
-// does not. This only holds for leaves that are strings or nested objects: a leaf
-// that is an array, number, boolean, etc. is not meaningfully checked (e.g. an
-// array's length and contents pass unconstrained). Catalog leaves must stay
-// strings — do not add a non-string leaf to an i18n catalog.
+// does not. A leaf that is an array maps to `never` instead of recursing, so it is
+// a compile error by construction the moment one is authored — the resulting
+// `Type '...[]' is not assignable to type 'never'` just means "this leaf must be
+// a string or a nested object, not an array." (A non-array primitive, e.g. a
+// number, is already constrained to its exact literal value by the same fallback
+// branch — over-strict, not a silent gap.)
 type CatalogShape<T> = {
-  [K in keyof T]: T[K] extends string ? string : CatalogShape<T[K]>;
+  [K in keyof T]: T[K] extends string
+    ? string
+    : T[K] extends readonly unknown[]
+      ? never
+      : CatalogShape<T[K]>;
 };
 
 export const en = {
