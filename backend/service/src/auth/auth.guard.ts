@@ -76,9 +76,16 @@ export interface RequestUser {
    * packages/types/src/locale.ts), so a null or legacy value never leaks
    * through as an untyped string.
    *
+   * Unlike `activeSeasonYear` above, a locale write does NOT bump the
+   * cluster-wide generation counter — propagation is the plain 60s TTL only.
+   * Deliberate: that counter evicts every user's cached context on every
+   * replica, which is right for a rare org-wide event but disproportionate
+   * for one user's language preference.
+   *
    * `DEFAULT_LOCALE` for super_admin: that role never runs the users/
    * organizations query in the first place (it is exempt from the org lookup
-   * below), so there is no row to read a locale from.
+   * below), so there is no row to read a locale from — this is a placeholder,
+   * not a reflection of any preference that role actually set.
    */
   locale: Locale;
 }
