@@ -42,7 +42,11 @@ export class ReportsController {
     @CurrentUser() user: RequestUser,
     @Query(new ZodValidationPipe(reportQuerySchema)) query: ReportQuery,
   ) {
-    return this.reportsService.getFarmReports(user.organizationId, this.window(user, query));
+    return this.reportsService.getFarmReports(
+      user.organizationId,
+      this.window(user, query),
+      user.locale,
+    );
   }
 
   @Get('depots')

@@ -12,7 +12,9 @@ import type {
   ConnectedHoursGroupBy,
   ConnectedHoursReport,
   ConnectedHoursRow,
+  Locale,
 } from '@strawboss/types';
+import { DEFAULT_LOCALE, LOCALE_BCP47 } from '@strawboss/types';
 
 /** T18 — drop GPS legs that imply > 130 km/h (noise) or > 5 km in one segment. */
 import { SPEED_CAP_MS, SEGMENT_CAP_M } from '../common/gps-noise';
@@ -78,7 +80,11 @@ export class ReportsService {
    * Production per farm, with a per-field (parcel) breakdown.
    * Parcels with no farm fall into a synthetic "Fără fermă" bucket.
    */
-  async getFarmReports(orgId: string | null, range?: ReportDateRange): Promise<FarmReport[]> {
+  async getFarmReports(
+    orgId: string | null,
+    range?: ReportDateRange,
+    locale: Locale = DEFAULT_LOCALE,
+  ): Promise<FarmReport[]> {
     const prodFilter = this.productionDateFilter(range);
     const loadedFilter = this.timestampRangeFilter(range, sql`bl.loaded_at`);
     const deliveredFilter = this.timestampRangeFilter(
@@ -174,10 +180,17 @@ export class ReportsService {
     }
 
     // Named farms alphabetically; the synthetic "no farm" bucket last.
+    //
+    // Built once outside the sort (not `a.farmName.localeCompare(b.farmName)`
+    // per pair) — cheaper on a large report, and gives Hungarian/Romanian
+    // names correct collation (hu digraphs cs/dz/gy/ly/ny/sz/ty/zs sort as one
+    // letter; ro ă/â/î/ș/ț sort by base letter) instead of the runtime's
+    // default locale, which in a container is typically C/POSIX byte order.
+    const collator = new Intl.Collator(LOCALE_BCP47[locale]);
     farms.sort((a, b) => {
       if (a.farmId === null) return 1;
       if (b.farmId === null) return -1;
-      return a.farmName.localeCompare(b.farmName);
+      return collator.compare(a.farmName, b.farmName);
     });
 
     return farms;
