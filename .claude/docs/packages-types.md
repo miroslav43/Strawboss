@@ -2,7 +2,7 @@
 type: doc
 title: "@strawboss/types"
 created: 2026-04-16
-updated: 2026-07-31
+updated: 2026-08-18
 tags: [doc, package, types, typescript]
 status: mature
 related:
@@ -65,6 +65,50 @@ Instead: **`OrgFeatureSettings`** (`featureOverrides`, `planLabel`, `activeUsers
 super-admin console's read shape, and **`UpdateOrgFeaturesDto`** (`featureOverrides`, `planLabel?`,
 mandatory `reason`) is its write payload — see [[feature-toggles]].
 
+## Locale (`locale.ts`) — added Aug 2026
+
+SSOT for interface languages, modelled on `features.ts`/`presence.ts`. Replaced a set duplicated in
+17 places (TS unions, zod enums, backend DTOs, picker arrays) — a forgotten 18th either failed loud
+(zod 400, TS compile error) or failed silent (a picker array just never showed the new language).
+
+- **`SUPPORTED_LOCALES = ['ro', 'en', 'hu'] as const`** — order is picker order. **`Locale`** is
+  `(typeof SUPPORTED_LOCALES)[number]`.
+- **`DEFAULT_LOCALE: Locale = 'ro'`** — not `'en'`. Romanian is the live operational language (38/44
+  production accounts) and what mobile has always assumed; the `users.locale` DB column default of
+  `'en'` is a leftover no account actually reaches (`admin-users.service.ts` always writes `'ro'` on
+  create).
+- **`LOCALE_ENDONYMS: Record<Locale, string>`** — `{ ro: 'Română', en: 'English', hu: 'Magyar' }`, for
+  pickers.
+- **`LOCALE_BCP47: Record<Locale, string>`** — `{ ro: 'ro-RO', en: 'en-GB', hu: 'hu-HU' }`, the full
+  tag `Intl.DateTimeFormat`/`NumberFormat`/`Collator` need (separate from `Locale` because Intl wants
+  more than a bare two-letter code).
+- **`isLocale(value): value is Locale`** — type guard for anything from DB/localStorage/network.
+- **`normalizeLocale(raw: string | null | undefined): Locale`** — accepts full tags (`'hu-HU'`),
+  case-insensitive, prefix-matched against `SUPPORTED_LOCALES`; unknown/missing → `DEFAULT_LOCALE`.
+  Correct as long as no supported code is a prefix of another (true today for all two-letter ISO
+  639-1 codes, not guaranteed by the `Locale` type itself if a longer code is ever added).
+
+**No DB migration backs this.** `users.locale` is `TEXT DEFAULT 'en'` with **no CHECK constraint** —
+deliberate: a CHECK would fail with `23514` → a raw 500 instead of a clean 400, and would turn every
+future language into a migration. The runtime guard is the zod enum built from `SUPPORTED_LOCALES`
+(`packages/validation/src/schemas/{profile,user}.schema.ts` — `z.enum(SUPPORTED_LOCALES)`), not the
+database.
+
+**Adding a 4th language:** add its code to `SUPPORTED_LOCALES` (+ endonym + BCP-47 tag) here, then
+create its three sibling catalogs — `backend/service/src/common/i18n/catalogs/<code>.ts`,
+`apps/admin-web/messages/<code>.json`, `apps/mobile/src/i18n/<code>.ts`. Nothing else needs editing:
+each `Record<Locale, …>` map that assembles the catalogs (admin-web's `i18n.tsx`, mobile's
+`i18n.tsx`, backend's `common/i18n/index.ts`) won't compile until the new catalog exists — that's the
+one loud failure the whole design is built around. `apps/admin-web/scripts/check-i18n-parity.mjs`
+needs no edit either — it **discovers** locales by scanning `messages/*.json` for a two-letter
+filename, not from a hardcoded list.
+
+**Verification trap:** the compiled union is not `grep`-able. `z.enum(SUPPORTED_LOCALES)` imports the
+array rather than inlining its members, so `'hu'` never appears as a source literal in the emitted
+schema — searching validation/backend source for `"hu"` proves nothing about whether the enum
+actually accepts it. Verify by running the built `dist/` and calling `.safeParse('hu')`, not by
+reading source.
+
 ## Entities
 
 ### User (`entities/user.ts`)
@@ -85,7 +129,7 @@ Extends `Timestamps`, `SoftDelete`.
 | `fullName` | `string` |
 | `role` | `UserRole` |
 | `isActive` | `boolean` |
-| `locale` | `string` |
+| `locale` | `string` (interface language — validated against `SUPPORTED_LOCALES` on write, see [[packages-types#Locale (locale.ts)]]; the DB column itself is unconstrained `TEXT`) |
 | `avatarUrl` | `string \| null` |
 | `signatureSpecimenUrl` | `string \| null` |
 | `lastLoginAt` | `string \| null` |
@@ -326,6 +370,7 @@ See [[database]] for the backing SQL enums and [[packages-validation]] for the c
   - **`ForceStatusDto`** (added Jul 2026): `status`, optional `reason`, optional `expectedStatus` (optimistic-lock guard). Forcing a trip to `loaded` or beyond used to move only the status, leaving a phantom trip with 0 bales and no stock movement (4 existed in production). Now, when the target status implies goods were picked up and the trip carries no load yet, `baleCount` + exactly one of `parcelId`/`sourceDepotId` become **required** (server rejects with `load_required`); inserting the `bale_loads` row IS the stock deduction. Also carries an optional `idempotencyKey` (client-side `bale_load` UUID) so a retried override doesn't double-count.
 - **SyncPushRequest / SyncPullRequest / SyncResponse** (`dtos/sync-payload.dto.ts`): See [sync-protocol.md](sync-protocol.md).
 - **Dashboard DTOs** (`dtos/dashboard.dto.ts`): `DashboardOverview`, `ProductionReport`, `CostReport`, `AntiFraudReport`.
-- **LocationReportDto** (`dtos/location-report.dto.ts`): `machineId`, `lat`, `lon`, optional `accuracyM`, `headingDeg`, `speedMs`, `recordedAt`.
-- **RouteHistoryResponse** (`dtos/route-history.dto.ts`): `machineId`, `machineCode`, `machineType`, `from`, `to`, `totalPoints`, `points: RoutePoint[]`.
-- **KmByDayResponse** (`dtos/route-history.dto.ts`): `machineId`, `from`, `to`, `days: { date: string; km: number }[]`.
+- **LocationReportDto** (`dtos/location-report.dto.ts`): `machineId`, `lat`, `lon`, optional `accuracyM`, `headingDeg`, `speedMs`, `recordedAt`, optional `source?: 'task' | 'checkin'` (added Aug 2026, migration `00097`) — `task` = the location foreground service (a real tracking fix); `checkin` = the 60 s presence alarm's best-effort fix (last-known + Balanced accuracy, network quality, presence/geofence only — never drawn as a track). Absent on APKs older than vc56; the server stores that as `NULL` and treats it as `task`. See [[backend]] "GPS Noise Filtering" and [[mobile]] "Location Tracking".
+- **RouteHistoryResponse** (`dtos/route-history.dto.ts`): `machineId`, `machineCode`, `machineType`, `from`, `to`, `totalPoints`, `points: RoutePoint[]`, optional `segments?: RouteSegment[]` (absent on legacy responses — treat as one segment over all points), optional `filter?: RouteFilterStats`.
+- **RouteFilterStats** (`dtos/route-history.dto.ts`): what the server removed before returning the track, so the UI can render "N points (M filtered)". `rawPoints`, `keptPoints`, `droppedLowAccuracy` (distance-total accuracy gate only, never applied to the track itself), `droppedOutlier` (impossible speed/leg), `droppedBadTimestamp`, `droppedSpike` (lone GPS excursions), optional `droppedPresence?: number` (added Aug 2026 — check-in-source rows plus network fixes inconsistent with the trusted-GPS skeleton; absent on responses from servers older than this field), `accuracyCapM` (`null` when no accuracy gate ran), `truncated`.
+- **KmByDayResponse** (`dtos/route-history.dto.ts`): `machineId`, `from`, `to`, `days: { date: string; km: number; pointCount: number }[]`.

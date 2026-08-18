@@ -2,7 +2,7 @@
 type: doc
 title: "Mobile App (apps/mobile)"
 created: 2026-04-16
-updated: 2026-07-31
+updated: 2026-08-18
 tags: [doc, mobile, layer, expo, react-native, offline-first]
 status: mature
 related:
@@ -72,6 +72,19 @@ If `segments[0]` does not match the target segment for the user's role, the auth
 **Admin/fallback** (`app/(tabs)/_layout.tsx`): Home, Scan, Trips, Sync, Profil
 
 All role-specific layouts (baler/driver/loader) mount `GeofenceOverlay` on top of all screens via `useGeofenceNotifications()`.
+
+---
+
+## i18n / Locale (`src/lib/i18n.tsx`)
+
+Trilingual since Aug 2026: Romanian, English, Hungarian (`SUPPORTED_LOCALES` in `@strawboss/types` — see [[packages-types]] "Locale"). **No in-app language picker** — an admin sets `users.locale` from the web Settings page; the phone just reads it.
+
+- Catalogs: `src/i18n/{ro,en,hu}.ts`, one `Record<Locale, …>` in `i18n.tsx` — a locale added to the SSOT without a matching catalog file won't compile.
+- **Compile-time catalog parity** (`CatalogShape<T>`, defined locally in `en.ts`/`hu.ts` against `ro.ts`'s `TranslationKeys`): widens every string leaf of the reference catalog to plain `string` (so a *different* translated value type-checks) while preserving the exact key structure (so a missing/extra key does not) — an array leaf maps to `never`, making it a compile error to author one by accident (`771de60`). Same trick as the backend's `ServerCatalog` type.
+- `LocaleProvider` reads `locale` from the Zustand auth store (`useAuthStore`, hydrated from the profile fetch), normalized via `normalizeLocale()` — which now **delegates to the `@strawboss/types` SSOT** (`0e8647a`; the old version tested one hardcoded prefix and silently collapsed every other locale to Romanian, no crash, no warning).
+- `t(key, params?)` / `tStatic(key, params?)` (the latter for background tasks / pre-provider screens, reads the store directly) both fall back **`locale → en → ro`** — English before Romanian, deliberately the opposite order of the "unknown locale defaults to Romanian" rule elsewhere, because a missing key must surface in an internationally-readable language, not the local one; this also feeds push notifications built from the headless sync task via `tStatic`.
+- Interpolation: same two-pass `{{param}}`/`{param}` convention as admin-web (double-brace consumed first, single-brace left literal when unmatched) — admin-web's version was ported FROM this one.
+- **Date/number formatting**: `dateLocaleFor(locale): string` returns the `LOCALE_BCP47` tag for any `toLocaleDateString`/`toLocaleTimeString`/`Intl.*` call. Added Aug 2026 (`d04b715`) — before this, mobile had **zero** locale branching: all date/time formatting was unconditionally `'ro-RO'`, so English and Hungarian accounts already saw Romanian-formatted dates. Wired into all 19 call sites found via `grep -rn "'ro-RO'"` (not just an initially-enumerated subset), plus the `localeCompare` collation in `point-in-geojson.ts` and the hardcoded `lang="ro"` in the two Leaflet map containers (`leaflet-map-content.ts`, `leaflet-geofence-editor.ts`) and the generated daily-report PDF. For a `ro` account every output is byte-identical to before (`dateLocaleFor('ro') === 'ro-RO'`); `en`/`hu` accounts now get correctly formatted dates.
 
 ---
 
@@ -467,7 +480,7 @@ On any failure in either branch, a failure report `{ commandId, status: 'failure
 ### useLocationTracking (`src/hooks/useLocationTracking.ts`)
 
 - `startTracking(machineId)`: requests foreground permission via `requestLocationPermission()`, starts `startLocationWatcher()` from `src/lib/location.ts`
-- Each GPS update POSTs to `POST /api/v1/location/report` with `{ machineId, lat, lon, accuracyM, headingDeg, speedMs, recordedAt }` — this single-report foreground path is unaffected by the background batching below
+- Each GPS update POSTs to `POST /api/v1/location/report` with `{ machineId, lat, lon, accuracyM, headingDeg, speedMs, recordedAt, source }` — this single-report foreground path is unaffected by the background batching below
 - Returns `{ isTracking, error, lastReportedAt, startTracking, stopTracking }`
 - All errors and successes logged via `mobileLogger`
 
@@ -492,6 +505,18 @@ Background piggyback sync interval is now trip-state-adaptive, not a flat value:
 | Background, no active trip | 180 000 ms (`PIGGYBACK_SYNC_MIN_INTERVAL_BG_IDLE_MS`) |
 
 `hasActiveTripCached()` wraps `hasActiveTrip()` (now exported from `src/lib/device-checkin.ts` for this reuse) with a 60 s in-memory TTL cache so a background tick every 20-30 s doesn't hit SQLite on every wake. Both this throttle and the presence-checkin throttle (`PIGGYBACK_CHECKIN_MIN_INTERVAL_MS = 55_000`) now apply a ±10% jitter to desync the ~30-phone fleet from synchronized request bursts.
+
+### Fix-source tagging + best-effort accuracy cutoff (`src/lib/location.ts`, vc56 / 1.0.52, Aug 2026)
+
+`coordsToReport(machineId, loc, source: 'task' | 'checkin' = 'task')` now stamps every `LocationReportDto` with where the fix came from, so the server can keep presence data off drawn tracks (see [[backend]] "GPS Noise Filtering", [[database]] migration `00097`):
+
+- The foreground-tracking path (`getCurrentPosition`, `startLocationWatcher`) posts `source: 'task'` (the default) — a real GPS fix.
+- `getBestEffortPosition()` — the alarm-driven headless path used when an OEM ROM (HONOR/MagicOS-class) freezes the app between native-alarm ticks, tried in order: last-known position (≤10 min old, instant) then a Balanced-accuracy fix (10 s hard timeout) — tags **both** branches `'checkin'`. These are deliberately network-quality fixes (fused Wi-Fi/cell, can land kilometres off) that exist only to answer "roughly where", posted from `presence-checkin-task.ts`'s 60 s native-alarm tick.
+- **`CHECKIN_MAX_USEFUL_ACCURACY_M = 2_000`**: if the best-effort fix itself admits more than 2 km of error, `getBestEffortPosition()` returns `null` and posts nothing — production measured check-in fixes claiming 2.5-6.3 km of error, which would mislead every consumer that reads a machine's last position (the "near \<locality\>" card, loader↔truck proximity, geofence) even though the `'checkin'` tag already keeps it off the track. Presence itself still flows via the fleet check-in call regardless.
+
+### Related-fix guardrails (`clampHeadingDeg`/`clampSpeedMs`, backend, Aug 2026)
+
+Not a mobile-side change, but relevant to anyone touching `location.ts`: the backend now clamps `headingDeg`/`speedMs` to `NULL` when they fall outside `[0, 360)` / `[0, 9999.99]` before insert (`clampHeadingDeg`/`clampSpeedMs` in `backend/service/src/common/gps-noise.ts`) — a sensor value outside those bounds used to raise a Postgres `numeric field overflow` (52 batch inserts 500'd in one morning), and the mobile outbox retries any 5xx forever. Nothing to change on the mobile side; a malformed sensor reading is now silently dropped to `NULL` server-side instead of failing the whole batch.
 
 ---
 
@@ -671,7 +696,7 @@ Several TanStack Query hooks had their `refetchInterval` widened to cut aggregat
 
 ### App config (`app.json`)
 - Package: `com.strawboss.mobile`
-- Version: `version` / `android.versionCode` are bumped by `scripts/bump-version.mjs` (kept in lockstep with `android/app/build.gradle`'s `versionName`/`versionCode`). Last **committed** values (commit `1ab36c5`, 2026-07-13): `versionCode 43` / `versionName "1.0.39"`. The working tree at last inspection carried a further **uncommitted** local bump to `versionCode 49` / `versionName "1.0.45"` (from an uncommitted `mobile-build-local` run) — check `git status`/`git diff` on `app.json` + `android/app/build.gradle` before trusting either number.
+- Version: `version` / `android.versionCode` are bumped by `scripts/bump-version.mjs` (kept in lockstep with `android/app/build.gradle`'s `versionName`/`versionCode`). Last **committed** values (commit `078d99c`, 2026-08-03): `versionCode 56` / `versionName "1.0.52"`. Always check `git status`/`git diff` on `app.json` + `android/app/build.gradle` before trusting either number — the APK for this build had **not** been built/OTA'd yet as of this commit (rollout was still on vc55).
 - Plugins: expo-router, expo-camera, expo-image-picker, `react-native-document-scanner-plugin` (CMR scan, config: `cameraPermission`), expo-sqlite, expo-location, expo-notifications, `./plugins/withAlwaysOnTracking`, `./plugins/withDeviceOwner`, `./plugins/withMlKitDocScanner`, `./plugins/withHeadlessProguard` (new — see "R8/Proguard: keep the headless JS app loader" below)
   - `expo-notifications` config: `color: "#0A5C36"` — **no custom sounds declared** (see note below)
 - Android permissions: `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `FOREGROUND_SERVICE_SPECIAL_USE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`, `CAMERA`, `RECORD_AUDIO`

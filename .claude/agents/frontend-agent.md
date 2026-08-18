@@ -3,7 +3,7 @@ name: frontend-agent
 description: Specialist in the Next.js admin dashboard -- App Router, TanStack Query, i18n, Leaflet maps
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-07-31
+updated: 2026-08-18
 ---
 
 # StrawBoss Frontend Agent
@@ -75,7 +75,7 @@ const createTrip = useCreateTrip(apiClient);
 
 ### i18n system
 
-Bilingual: English and Romanian. Uses a custom `useI18n()` hook from `@/lib/i18n.tsx`.
+Trilingual since Aug 2026: Romanian, English, Hungarian (`SUPPORTED_LOCALES` in `@strawboss/types` — see [[packages-types]] "Locale"). Uses a custom `useI18n()` hook from `@/lib/i18n.tsx`.
 
 ```typescript
 import { useI18n } from '@/lib/i18n';
@@ -85,12 +85,16 @@ const { t } = useI18n();
 return <h1>{t('trips.title')}</h1>;
 ```
 
-- Message catalogs: `messages/en.json` and `messages/ro.json`.
-- Interpolation: `t('trips.count', { count: 5 })` -> `"5 trips"` (uses `{{count}}` in template).
-- Locale persistence: `localStorage` key `strawboss-locale`.
+- Message catalogs: `messages/en.json`, `messages/ro.json`, `messages/hu.json` — one `Record<Locale, …>` assembled in `i18n.tsx`, so a 4th locale added to the SSOT won't compile until its catalog file exists.
+- Interpolation: `t('trips.count', { count: 5 })` -> `"5 trips"`. Two conventions both work — `{{count}}` (replaced, or emptied if the param is missing) and `{count}` (replaced, but left literal if there's no matching param — needed for genuine literal braces like `settings.organization.accessCodeHint`'s `{slug}`). Lives in `src/lib/interpolate.ts`, unit-tested by `scripts/check-i18n-interpolation.mjs` (compiles and calls the real function — a text scanner of the catalog can't prove anything about interpolation behaviour).
+- Date/number formatting: use `useLocaleFormat()` from `@/lib/use-locale-format.ts`, NOT a hand-rolled `locale === 'ro' ? 'ro-RO' : 'en-US'` ternary — that pattern silently falls through to the US format for any third locale. Returns `{ date, dateTime, time, number, compare, tag }` (`Intl.*` instances, memoized on `locale`); `compare` is an `Intl.Collator` (needed for correct Hungarian digraph/diacritic sort).
+- Locale persistence: `localStorage` key `strawboss-locale`. `normalizeUiLocale(raw)` falls back to `'en'`, not `DEFAULT_LOCALE` (`'ro'`) — admin-web's own long-standing default, don't "fix" it to match mobile.
 - Profile-driven: `ProfileLocaleHydration` component sets locale from user profile on load.
+- Public/unauthenticated pages (login, request portals): use the shared `LangToggle` component (`src/components/shared/LangToggle.tsx`), not a bespoke picker — it already maps `SUPPORTED_LOCALES`.
 - RULE: Every user-visible string MUST use `t()`. No hardcoded English in JSX.
 - RULE: Labels derived from a `@strawboss/types` enum (e.g. `DocumentType`) must be built as `` t(`namespace.subkey.${value}`) `` inside the component (via `useMemo`, keyed on `t`) so they re-resolve on locale change — never a hardcoded `Record<Enum, string>` map at module scope. See `documents/page.tsx` and `DocumentViewer.tsx` (`documents.types.*`, `documents.allTypes`), which replaced a hardcoded English map this way.
+- RULE: before deciding a new key should stay untranslated in a non-English catalog, check what `ro.json` did with that **exact same key** — if Romanian translated it, Hungarian (or the next locale) almost certainly should too. A word being technical-sounding in English is not evidence it's untranslatable.
+- RULE: a "borrowed" word (e.g. `online`, `web`) belongs in `messages/.identical-ok.json`'s `byLocale.<code>`, never the universal `allow` list — a naturalized loanword is a claim about ONE language, not every language ever added. `allow` is reserved for genuine non-words: units, document/institution codes, file formats, placeholders, proper nouns.
 
 ### Shared components (`src/components/shared/`)
 
@@ -263,7 +267,7 @@ The admin-web runs as a Swarm service with a healthcheck on `GET /healthz`. When
 5. Always use `normalizeList<T>()` for list API responses where the shape may vary.
 6. Add `'use client'` directive to pages that use hooks or browser APIs.
 7. Wrap pages with `LoggingErrorBoundary` for error handling.
-8. Add i18n keys to BOTH `messages/en.json` and `messages/ro.json`.
+8. Add i18n keys to ALL THREE catalogs (`messages/en.json`, `messages/ro.json`, `messages/hu.json`) — a missing key in any one fails `check-i18n-parity.mjs` (structural, always fatal, no `--strict` needed). Never copy the English value verbatim into `ro.json`/`hu.json` without translating it, or add the key to `.identical-ok.json` if it's genuinely a non-word.
 9. Add navigation links for new pages in `components/layout/Sidebar.tsx`.
 10. After making changes, run: `pnpm --filter @strawboss/admin-web build` to verify the build.
 11. After code changes, update `.claude/docs/admin-web.md` (and `agents/frontend-agent.md` if patterns changed), or run the `strawboss-sync-docs` skill.

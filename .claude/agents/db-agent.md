@@ -3,7 +3,7 @@ name: db-agent
 description: Specialist in PostgreSQL + PostGIS -- migrations, RLS, spatial queries, sync versioning
 model: sonnet
 tools: [Read, Grep, Glob, Bash, Write, Edit]
-updated: 2026-07-27
+updated: 2026-08-18
 ---
 
 # StrawBoss Database Agent
@@ -66,6 +66,10 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 00091_parcel_cross_org_fk_hardening.sql    -- Cross-org composite FK hardening for EVERY parcel reference (flagged by automated review): adds parcels_org_id_key UNIQUE (organization_id, id) + composite FKs on trip_requests.source_parcel_id, trips.source_parcel_id, bale_loads.parcel_id, task_assignments.parcel_id -- mirrors the pattern already applied to delivery_destinations (00070) and beneficiaries (00063/00068). Verified zero existing violations before adding (plain FK, not NOT VALID).
 00092_cmr_scan_delivery_document_type.sql  -- ALTER TYPE document_type ADD VALUE IF NOT EXISTS 'cmr_scan_delivery' -- the ARRIVAL-side counterpart to 'cmr_scan' (pickup-side): photographed through a one-time public link when an aux load reaches its destination. Single-statement file (same PG 12+ restriction as 00083/00087/00088).
 00093_org_feature_overrides.sql            -- Per-org feature-toggle storage: organizations.feature_overrides (JSONB NOT NULL DEFAULT '{}', CHECK jsonb_typeof = 'object') + organizations.plan_label (cosmetic, <=64 chars) + organization_feature_changes audit table (one row per changed key: feature_key, old_enabled nullable, new_enabled, actor_user_id/role, reason NOT NULL, created_at). RLS on organization_feature_changes with no permissive policy (service-role only); org_read_own (00052) already covers the two new organizations columns. See `.claude/docs/feature-toggles.md` for the full system (registry, resolver, backend enforcement).
+00094_bale_loads_location_unverified.sql   -- bale_loads.location_unverified (BOOLEAN NOT NULL DEFAULT false) -- a load registered while its GPS could not be checked against the parcel boundary, after the operator confirmed an explicit override prompt. gps_lat/gps_lon still recorded; flag only marks the row for admin review.
+00095_widen_location_accuracy.sql          -- machine_location_events.accuracy_m NUMERIC(6,2) -> NUMERIC(9,2) (metadata-only widen, no rewrite): a cell-tower fallback fix had already recorded 9906.20 m, ~94 m from the old 9999.99 ceiling; one fix past it would 500 and the mobile outbox retries any 5xx forever. Backend additionally clamps to this bound (clampAccuracyM, gps-noise.ts).
+00096_depot_unload_flow.sql                -- Two-step depot unloading: trips.depot_unload_started_at (stamped by POST /trips/:id/start-depot-unload) + trips.depot_confirm_location_unverified (mirrors bale_loads.location_unverified 00094). Replaces the single-action arrived|delivering->completed confirm with "Începe descărcarea" -> "Finalizează" so the waiting driver sees a mid-state instead of a mute hourglass.
+00097_location_event_source.sql            -- machine_location_events.source TEXT ('task'/'checkin'/NULL, whitelisted server-side by normalizeLocationSource() -- no enum, no index). Tags every GPS fix by origin: 'task' = location foreground service, 'checkin' = the 60s presence alarm's best-effort fix (network-quality, presence/geofence only). Tracks + every distance report now exclude source='checkin' up front -- the permanent fix for cell-tower hops (4km/122s = a "legal" 118km/h) masquerading as travel when a phone's location task dies. NULL (pre-vc56 APKs) treated as 'task'.
 ```
 
 ### Key enums (current values)
@@ -93,6 +97,10 @@ Migrations are numbered SQL files applied in order via `./strawboss.sh db:migrat
 **UUID primary keys**: All tables use `UUID DEFAULT gen_random_uuid()` as primary key.
 
 **ISO 8601 timestamps**: All timestamp columns use `TIMESTAMPTZ`.
+
+**Plain TEXT + server-side whitelist over an enum, when the value set is still evolving**: `machine_location_events.source` (00097, `'task'`/`'checkin'`/`NULL`) is a bare `TEXT` column, not an enum, precisely because `ALTER TYPE ... ADD VALUE` is a whole migration per new value and this field is expected to grow more provenance tags later. The column-level type safety is deliberately traded for a single server-side whitelist function (`normalizeLocationSource()` in `location.service.ts`) that maps anything unrecognised to `NULL`. Prefer this over an enum when (a) the set of values is genuinely open-ended and (b) a stray/legacy value degrading to a safe default (here, "treat as the pre-existing behaviour") is acceptable.
+
+**Plain TEXT + app-level enum, no CHECK, for a value set expected to grow (`users.locale`, Aug 2026)**: adding Hungarian as a 3rd interface language needed **zero migration** — `users.locale` was already unconstrained `TEXT DEFAULT 'en'`, and the decision was to keep it that way rather than add a `CHECK (locale IN (...))`. Same underlying trade-off as the `source` column above, one step further: not even a whitelist function at the DB layer, purely a `z.enum(SUPPORTED_LOCALES)` in `@strawboss/validation` (SSOT: `packages/types/src/locale.ts`). Rationale worth repeating for the next "should this be a CHECK/enum" question: a CHECK failure surfaces as Postgres error `23514` → an ORM's generic 500, not a clean 400 the client can render; and a CHECK turns every future addition to the value set into a migration + deploy, when the real gate (zod, compiled per-replica) already rejects an unsupported value before it reaches SQL.
 
 **Cross-org composite FK hardening**: A bare `some_id UUID REFERENCES other_table(id)` lets a row in org A reference a row in org B if the application layer ever forgets an org check. The established fix, applied incrementally to `beneficiaries` (00063/00068), `delivery_destinations` (00070), `users`/`transporter_beneficiaries` (00087), and every remaining `parcels` reference (00091 -- `trip_requests.source_parcel_id`, `trips.source_parcel_id`, `bale_loads.parcel_id`, `task_assignments.parcel_id`):
 1. Add a composite unique constraint on the *referenced* table: `ALTER TABLE parcels ADD CONSTRAINT parcels_org_id_key UNIQUE (organization_id, id);` (id is already the PK, so this is purely additive).
@@ -170,7 +178,7 @@ The backend checks this table before processing each sync mutation. If the key e
 
 ### Writing new migrations
 
-The next migration should be `supabase/migrations/00094_<descriptive_name>.sql` (current last: 00093).
+The next migration should be `supabase/migrations/00098_<descriptive_name>.sql` (current last: 00097).
 
 Rules:
 1. **Idempotent**: Safe to run multiple times.

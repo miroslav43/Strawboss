@@ -2,7 +2,7 @@
 type: doc
 title: "Backend Service (backend/service)"
 created: 2026-04-16
-updated: 2026-07-31
+updated: 2026-08-18
 tags: [doc, backend, layer, nestjs, drizzle, bullmq]
 status: mature
 related:
@@ -91,7 +91,16 @@ Role extraction order: `payload.app_metadata.role` -> `payload.user_role` -> `pa
 
 **Organization hydration fallback**: if the JWT hook omits org claims, `hydrateOrganizationFromJwt()` loads them from the DB before attaching the user to the request.
 
-The resolved user is attached to `request.user` as `RequestUser { id, email, role }`.
+The resolved user is attached to `request.user` as `RequestUser` — `id`, `email`, `role`,
+`organizationId`, `organizationSlug`, `disabledFeatures`, `activeSeasonYear`, and (added Aug 2026)
+**`locale: Locale`** — the interface language for server-generated strings (push/email/SMS/PDF/error
+text), normalized via `normalizeLocale()`. It rides the same `users`/`organizations` join and 60s TTL
+cache as `activeSeasonYear` (zero extra queries), but unlike `activeSeasonYear` a locale write does
+**not** bump the cluster-wide feature-flag generation counter — that would evict every user's cached
+context on every replica for one person's language preference, disproportionate for a rare-write
+field. `super_admin` never runs the org lookup, so its `locale` is a placeholder `DEFAULT_LOCALE`, not
+a reflection of a real preference. See [[packages-types#Locale (locale.ts)]] and the
+"Server-Side i18n" section below.
 
 ### Decorators
 
@@ -186,6 +195,7 @@ Generates the "comandă" (transport order) PDF from a `trip_requests` row + its 
 - Per-beneficiary **order counter** (`beneficiary_order_settings.order_counter`) is assigned exactly once and is idempotent across regeneration (`trip_requests.comanda_order_no` caches the assigned number).
 - Auto-queued (best-effort, `attempts: 2`) via `QUEUE_COMANDA_GENERATION` (`ComandaProcessor`) at the end of `TripRequestsService.insertBeneficiaryRequest()` -- fires for both the public PIN portal and the authenticated transporter form.
 - "One comandă per request" -- retires the previous `comanda` document (`softDeleteByTripRequest`) before inserting the new one, same pattern as CMR scans.
+- **Localized labels (Aug 2026):** static labels render via `tServer(locale, 'pdf.comanda.<key>', …)`, same mechanism as the CMR above, but `locale` is hardcoded to `DEFAULT_LOCALE` here -- the requester (public portal or beneficiary-scoped transporter form) frequently has no linked `users` row at all, and the document is generated off a BullMQ job with no request context to thread a locale through even when one exists. The two Romanian-law clauses in `comanda.hbs` (BNR exchange rate, CMR insurance) are content, not translation, and stay in Romanian regardless of `locale`.
 
 ### Geocode Service (`src/geocode/geocode.service.ts`)
 
@@ -204,13 +214,30 @@ Reverse-geocode cache (`geocode_cache`, migration `00089`, RLS-on/service-role-o
 - `GET /sync/status` -- any authenticated -- last processed version per table for client
 
 ### Location (`src/location/location.controller.ts`)
-- `POST /location/report` -- any authenticated -- store GPS ping (lat, lon, accuracy, heading, speed); also calls `ProfileService.touchLastSeen(operatorId)` best-effort (non-fatal) to refresh `users.last_seen_at` — keeps machine-bound operators "online" on the dashboard while their JS heartbeat is paused (backgrounded). See [[backend]] module deps: `LocationModule` imports `ProfileModule`.
+- `POST /location/report` -- any authenticated -- store GPS ping (lat, lon, accuracy, heading, speed, optional `source: 'task'|'checkin'`); also calls `ProfileService.touchLastSeen(operatorId)` best-effort (non-fatal) to refresh `users.last_seen_at` — keeps machine-bound operators "online" on the dashboard while their JS heartbeat is paused (backgrounded). See [[backend]] module deps: `LocationModule` imports `ProfileModule`. `accuracyM`/`headingDeg`/`speedMs` are all clamped before insert (`clampAccuracyM`/`clampHeadingDeg`/`clampSpeedMs`, see "GPS Noise Filtering" below) and `source` is whitelisted (`normalizeLocationSource`) -- an out-of-range or unrecognised value becomes `NULL`, never a raw insert.
 - `POST /location/report/batch` -- any authenticated -- batch variant of `report`: body `{ reports: LocationReportDto[] }`, 1–30 items, for flushing the mobile offline outbox in one request. `LocationService.reportLocationBatch()` hoists the per-request work (assigned-machine lookup, org check, `touchLastSeen`, geofence nudge) to run once per batch instead of once per item, then does one multi-row `INSERT ... ON CONFLICT DO NOTHING`. Returns 204 even when every row was a duplicate. No `ZodValidationPipe`/`@strawboss/validation` schema exists for location bodies (matches the single endpoint's pattern — plain typed DTO + manual bounds checks in the service); the 1–30 size check and lat/lon range check are manual `BadRequestException`s in the service, same as `reportLocation`. Old app builds keep using the single endpoint unmodified during rollout.
-- `GET /location/machines` -- @Roles(admin) -- last known position of all machines. Reads `machine_last_positions` (migration 00081, one row per machine, kept current by an `AFTER INSERT` trigger on `machine_location_events`) instead of a `SELECT DISTINCT ON` scan over full `machine_location_events` history — same output columns/org-scoping, no time window (a machine parked for weeks still shows its last fix). Rows are enriched with `locality` via `GeocodeService.attachLocalities()` (best-effort, see [[backend#Geocode Service]]).
+- `GET /location/machines` -- @Roles(admin) -- last known position of all machines. Reads `machine_last_positions` (migration 00081, one row per machine, kept current by an `AFTER INSERT` trigger on `machine_location_events`) instead of a `SELECT DISTINCT ON` scan over full `machine_location_events` history — same output columns/org-scoping, no time window (a machine parked for weeks still shows its last fix). Rows are enriched with `locality` via `GeocodeService.attachLocalities()` (best-effort, see [[backend#Geocode Service]]). Unlike the track/distance queries below, this endpoint does **not** exclude `source = 'checkin'` rows -- a fresh coarse fix still answers "roughly where is this machine".
 - `GET /location/related-machines` -- any authenticated -- positions of machines sharing today's assignments (siblings via parent_assignment_id)
-- `GET /location/machines/:machineId/route?from=...&to=...` -- @Roles(admin) -- GPS route history (up to 50,000 points)
-- `GET /location/machines/:machineId/km-by-day?from=...&to=...` -- @Roles(admin) -- km driven per day (returns `KmByDayResponse`)
+- `GET /location/machines/:machineId/route?from=...&to=...&raw=...` -- @Roles(admin) -- GPS route history (up to 50,000 points), cleaned by `cleanRoutePoints()` (see "GPS Noise Filtering / Route Cleaning" below). `raw=true` bypasses the cleaner entirely and returns exactly what is stored (including `checkin`-source rows) -- the UI's escape hatch to compare against the cleaned view.
+- `GET /location/machines/:machineId/km-by-day?from=...&to=...` -- @Roles(admin) -- km driven per day (returns `KmByDayResponse`); excludes `source = 'checkin'` rows same as the route query.
 - `GET /location/loader-board/:loaderMachineId` -- @Roles(admin, loader_operator) -- the loader's work board (`51d3e5d`/`357f603`): trucks **assigned** to this loader (`trips.loader_id`, status `planned|loading|loaded`) with a `presence` badge (`here` within `radiusM` of the loader's last GPS fix / `enroute` / `loaded` / `unknown`) and `loadState`, plus trucks merely within GPS proximity (`getTrucksAtLoader`) that are **not** assigned (`nearbyUnassigned`). Optional `radiusM` (default 75 m) and `windowMinutes` (default 15) query params, coerced to `Number` and validated `Number.isFinite`. `windowMinutes` is bound as a SQL parameter (`${windowMinutes} * INTERVAL '1 minute'`), not `sql.raw()` -- an earlier revision interpolated it via `sql.raw()`, fixed same-day. Machine/parcel joins carry `deleted_at IS NULL` guards, matching `getTrucksAtLoader`.
+
+### GPS Noise Filtering / Route Cleaning (`src/common/gps-noise.ts`, `src/common/route-cleaning.ts`)
+
+Every query that turns `machine_location_events` rows into a track (`GET /location/machines/:id/route`) or a distance total (`km-by-day`, and the three `reports.service.ts` CTEs) runs the raw rows through this shared cleaner first. Two independent problems, two independent defences, both measured against production data before being tuned:
+
+**1. Kinematic noise (`cleanRoutePoints()`)** -- a per-point walk (not a SQL window function, because a window function cannot re-anchor after one bad point):
+- `SPEED_CAP_MS` (36 m/s, ≈130 km/h) / `SEGMENT_CAP_M` (5 km) -- a leg implying more than this is noise, not travel; the anchor stays put and the track joins its neighbours instead of detouring. `maxConsecutiveRejects` (5) guards the opposite failure: if the *anchor itself* is the bad fix, every later point would fail against it and the rest of the day would vanish -- after 5 rejections in a row the code assumes the anchor was wrong and re-anchors.
+- `GAP_SPLIT_S` (600 s) -- no fixes for 10+ minutes means the machine stopped reporting, not that it teleported; the track breaks into a new segment (runs *before* the speed test, since a real outage's displacement must not be judged as noise).
+- `removeExcursions()` (second pass, needs the point *after* so it cannot live in the streaming loop) -- a lone point that leaves the path and comes straight back (`(out + back) > SPIKE_DETOUR_RATIO (3) × direct`, excursion `> SPIKE_MIN_EXCURSION_M` (300 m), both legs `<= SPIKE_MAX_LEG_S` (180 s)) is a GPS spike, not a detour; each half-leg is individually a legal speed, only the shape gives it away.
+- `ACCURACY_CAP_M` (100 m) applies **only to distance totals**, never to a drawn track (`RouteCleanOptions.maxAccuracyM` defaults to `Infinity` for the track query) -- gating a *track* on accuracy was measured and reverted: it deleted 35% of a healthy day's points for zero cleanliness gain and shredded 9 real gaps into 38 by opening holes wide enough to trip the gap-split. **Do not re-introduce an accuracy gate on the track path** -- geometry/kinematics is the precise instrument here, the device's own error estimate is not.
+- **Slow-machine speed cap** (`slowCap: { maxSpeedMs: SLOW_MACHINE_SPEED_CAP_MS (15 m/s, ≈54 km/h), minLegM: SLOW_MACHINE_MIN_LEG_M (800 m) }`) -- an *additional* cap applied only to non-truck machines (loader/baler), only on legs longer than 800 m so short-leg jitter cannot trip it. The single truck-calibrated `SPEED_CAP_MS` cannot catch a cell-tower hop at 60 s presence-checkin cadence (4 km / 122 s = a "legal" 118 km/h) -- of every non-truck leg in 7 days of fleet data that broke this cap, zero had a trusted GPS fix on either end.
+
+**2. Presence data mislabelled as track (`filterAgainstSkeleton()`, the "skeleton-consistency pass", opt-in via `skeleton: boolean`)** -- when a phone's location task dies (Android 14+ FGS-restart hole), the only fixes still flowing are the 60 s presence check-in's best-effort ones (see [[mobile]] `getBestEffortPosition`), and no per-point kinematic rule can distinguish a legitimate drive from a tower hop at that cadence. The pre-pass: trusted GNSS fixes (`accuracyM < GPS_TRUSTED_ACCURACY_M` = 100 m) form a "skeleton"; every network fix must sit within a tolerance (`max(SKELETON_TOLERANCE_FLOOR_M (500 m), min(2×its own accuracy, SKELETON_TOLERANCE_CAP_M (1000 m)))`) of its time-interpolated skeleton position (within `SKELETON_WINDOW_S` = 600 s either side), or it is dropped as presence data (`droppedPresence` in `RouteCleanStats`/`RouteFilterStats`); a network fix with **no** skeleton fix in the whole window has nothing to judge it against and is dropped outright -- a machine that reported only network fixes all day gets an honest gap, not a spider web. **Enabled only for non-truck machine types** (`getRouteHistory`: `isSlowMachine = machine.machineType !== 'truck'`) -- measured unsafe for trucks, whose fused "exactly 100 m" road fixes ARE the real track (a truck day kept 0% of its points under the skeleton; a sick loader day went 11 → 3 drawn km-scale legs, a healthy loader day kept 95-96%).
+
+**Permanent fix vs. read-side patch**: migration `00097` tags every new fix's origin (`machine_location_events.source`, `'task'`/`'checkin'`/`NULL`) at ingest, and the track/distance queries now exclude `source = 'checkin'` up front (see [[database]] "GPS Fix Source Tagging"). The kinematic slow-machine-cap + skeleton pass above still run on top -- they are what makes history readable for fixes recorded before an APK reaches **vc56 / 1.0.52** (which is the first build stamping `source`), and NULL-source rows still need the skeleton to separate presence from travel.
+
+**Accuracy ceilings were measured and rejected twice** for the same reason each time: dropping every point at or above a fixed accuracy outright (rather than using it as a skeleton-membership threshold) deletes healthy points for no cleanliness gain and, on a sick stream, removing the mid-accuracy anchors *re-exposes* big legs the kinematic chain was suppressing (11 → 19 drawn km-scale legs in the A/B run that tried it). If a future accuracy-based idea surfaces, re-run that A/B before shipping it.
 
 ### Profile (`src/profile/profile.controller.ts`)
 - `GET /profile` -- any authenticated -- current user's profile
@@ -223,6 +250,8 @@ Reverse-geocode cache (`geocode_cache`, migration `00089`, RLS-on/service-role-o
 - `POST /notifications/loader-recall-response` -- @Roles(loader_operator) -- loader's yes/no answer to a truck-idle recall prompt (Plan C)
 
 **Recipient targeting hardening** (`d7c0430`, fixed after reports that "notifications went to everyone"): `NotificationsService.sendPush()` now stamps `recipientUserId` on the `data` payload of **every** push -- a single choke point covering all 18 call sites -- so the mobile client's `isPushForCurrentUser()` guard (new `push-recipient.ts`) can drop any push whose `recipientUserId` doesn't match the logged-in user (closes a shared-device stale-Expo-token leak; needs an OTA/APK release to take effect client-side). Also: `broadcast(kind: 'all')` with a **null** organization now throws `ForbiddenException` instead of blasting every org's accounts (previously fell through to `SELECT DISTINCT user_id FROM device_push_tokens` with no org filter at all); `sendTruckIdleAdminAlert` / `sendParcelLoadMismatchAlert` now no-op (with a `winston.warn`) on a null org instead of fanning out to every admin/dispatcher across every organization.
+
+**Localized pushes (Aug 2026):** `sendPush(userId, title, body, data)` became **`sendPush(userId, key, params?, data?)`** — every fixed-wording call site (geofence prompts, trip transitions, alerts; 15 call sites across `geofence.service.ts`/`task-assignments.service.ts`/`trips.service.ts`/`notifications.service.ts` itself) now renders `${key}.title`/`${key}.body` from the server catalog via `tServer(locale, key, params)` instead of building English text inline. `sendPushRaw(userId, title, body, data)` is unchanged and is still the low-level Expo-facing funnel — it's what free-text pushes (admin broadcast) and the already-rendered dev/QA simulator (`buildSimulatedPush`) call directly, since neither has a catalog key for text a human typed at send time. The recipient's locale is resolved by `localeForUser(userId)`, a per-replica 60s-TTL cache mirroring `AuthGuard`'s user-context cache shape (a per-push DB query would be a query storm at 30+ phones). **Gotcha fixed same-day (`41b50f4`):** in a `Promise.all` fan-out to mixed-locale recipients, the `localeForUser` lookup + fallback-text resolution must sit **inside** each row's own `try/catch`, not just the `sendPush(...).catch()` at the end — otherwise one recipient's locale-lookup failure propagates out of that row's Promise and both drops that one push silently *and* trips the batch-level failure log even though every other recipient succeeded.
 
 ### Bale Productions (`src/bale-productions/bale-productions.controller.ts`)
 - `GET /bale-productions` -- any authenticated -- list with filters (operatorId, parcelId, dateFrom, dateTo)
@@ -392,6 +421,7 @@ Two-stage generation via BullMQ:
 - **Stage 2** (at `complete`): `TripsService.complete()` queues `{ tripId, stage: 2 }`. Produces the final PDF; document status set to `generated`.
 
 - `CmrService` (`cmr.service.ts`): loads `cmr.hbs` Handlebars template at construction. `generateCmr(tripId, stage)` fetches trip + parcel + truck + driver + bale_loads, renders HTML, converts to PDF via Puppeteer (`headless: true, --no-sandbox`), stores base64 data URL. Stage 1 omits weight/arrival/delivery fields (only populated from stage 2 onward). **As of `5a8ce2a`/`b6beb2e` (2026-07-24), `trip.driver_signature_url` and `trip.receiver_signature_url` are always NULL** -- neither `/depart` nor `/complete` collects them anymore (see [[backend#Trips]]) -- so `driverSignatureUrl`/`receiverSignatureUrl` render blank on both stages; `loaderSignatureUrl` (resolved server-side from the loader's specimen, see `register-load`) is the only signature still on the document.
+- **Localized labels (Aug 2026):** every static label (`sectionSender`, `truck`, `grossWeight`, ...) is rendered via `tServer(locale, 'pdf.cmr.<key>', …)` instead of a hardcoded Romanian string in `cmr.hbs`. `locale` is the **CMR recipient's** (the trip's driver) locale, not the requesting dispatcher's — a printed document can't render in three languages at once, and there is no driver-locale override on the DTO chain today. A driver with no linked `users` row (external hauler on an aux trip) falls back to `DEFAULT_LOCALE`.
 - `CmrProcessor` (`cmr.processor.ts`): BullMQ processor on `cmr-generation` queue, reads `job.data.stage` and calls `cmrService.generateCmr(tripId, stage)`
 - On-demand override: `POST /trips/:tripId/generate-cmr` (`@Roles(admin, dispatcher)`).
 
@@ -593,18 +623,75 @@ The lock is session-scoped and self-releases if the process dies. Does not fire 
 
 ---
 
+## Server-Side i18n (`src/common/i18n/`) — added Aug 2026
+
+The backend had zero i18n before this — every push/email/SMS/PDF/error string was a literal at its
+emit site. This is the runtime that renders server-generated text (never database-stored content —
+see "Deliberately out of scope" below) in the recipient's language.
+
+- **`tServer(locale, key, params?): string`** (`src/common/i18n/index.ts`) — the single rendering
+  point. Looks up `key` (dot-path, e.g. `'push.truckArrivedAtLoader.title'`) in the locale's catalog,
+  falling back `locale → DEFAULT_LOCALE → en`; a key missing from every catalog returns the raw `key`
+  itself (visible in the push/log, never blank).
+- **Catalogs** (`src/common/i18n/catalogs/{en,ro,hu}.ts`) — three namespaces: `errors` (the handful of
+  operator-facing HTTP error strings, not all ~339 thrown messages in the backend — see the file's own
+  header comment for the exact criterion), `push` (notification title/body per push type), `pdf` (CMR
+  and comandă document labels). `en.ts` is the shape source: `ro.ts`/`hu.ts` each declare a
+  locally-defined `CatalogShape<typeof en>` (same trick as the mobile catalogs, see [[mobile]]) that
+  widens every literal leaf to plain `string` — a missing or extra key is a compile error, a
+  differently-worded translation is not. `Record<Locale, ServerCatalog>` in `index.ts` is what forces
+  a 4th catalog to exist before the backend compiles at all.
+- **`RequestUser.locale`** (see Auth System above) is how a controller/service knows a locale without
+  a fresh query — it rides the same cached users/organizations join as `activeSeasonYear`.
+- **`NotificationsService.localeForUser(userId)`** — a *recipient's* locale, separate from the caller's
+  `RequestUser.locale`: pushes fan out over `userIds.map(...)` to people other than the caller, so each
+  needs its own lookup. Own 60s-TTL, 5000-entry FIFO-capped per-replica cache, same shape as
+  `AuthGuard`'s user-context cache. See "Notifications" above for `sendPush`'s new
+  `(userId, key, params?, data?)` signature and the per-recipient `try/catch` gotcha.
+- **`messageTemplates[kind][locale](ctx)`** (`src/messaging/message-templates.ts`, rewritten from a
+  389-line 100%-Romanian file with no locale parameter) — email/SMS bodies. Deliberately does **not**
+  route through the shared `tServer` catalog above: several templates (`transport_confirmed`,
+  `aviz_uploaded`) interleave dozens of conditional lines and HTML fragments per kind, and decomposing
+  every fragment into a flat catalog key would fragment sentences unnaturally across languages. Instead
+  each kind keeps one render function parameterized by a small file-local `Record<Locale, {...}>`
+  strings dictionary. The `ro` branch of every kind is byte-identical to the pre-rewrite Romanian-only
+  implementation — only wrapped in the new shape, never reworded. Locale resolution varies by call
+  site: `aviz-notification.service.ts`/`transport-confirmation.processor.ts` use the recipient's own
+  `locale`; `trip-requests.service.ts` uses `normalizeLocale(a.locale)` per admin recipient; two
+  external-driver notifications in `trips.service.ts` (`driver_arrival_cmr_link`, `driver_assigned`)
+  hardcode `DEFAULT_LOCALE` since an SMS-only external driver has no `users` row to read a locale from.
+- **PDF labels** — see "CMR Generation" and "Comandă (transport order) PDF" above; both route through
+  `tServer(locale, 'pdf.<doc>.<key>', …)`.
+- **`errors.invalidData`/`errors.invalidRequest`/`errors.accountNotFound`/`errors.accountInactive`** —
+  see `ZodValidationPipe`, `AllExceptionsFilter`, and `AuthGuard` below/above for how a throw site with
+  no request context asks the filter to translate on its behalf via a stable `i18nKey`.
+- **Locale-aware sort** (`222a3ae`): `ReportsService.getFarmReports()` used to sort farm names with
+  bare `a.farmName.localeCompare(b.farmName)` — no language argument, so it sorted by the container's
+  default collator (typically C/POSIX byte order), mis-ordering both Romanian diacritics (ă/â/î/ș/ț)
+  and Hungarian digraphs (cs/dz/gy/ly/ny/sz/ty/zs, which must sort as one letter). Now takes `locale`
+  from `RequestUser` and builds one `Intl.Collator(LOCALE_BCP47[locale])` outside the sort instead of a
+  `localeCompare` call per pair.
+- **Deliberately out of scope**: text already **stored** in the database (alert titles/descriptions,
+  audit notes) is frozen at INSERT time and is not retranslated on read — only newly generated content
+  is localized. Nothing here changes `Europe/Bucharest` (`src/common/date.ts`) — the interface language
+  does not move where the organization operates.
+
+---
+
 ## Error Handling
 
 ### `AllExceptionsFilter` (`src/common/filters/all-exceptions.filter.ts`)
 Catches all exceptions. For `HttpException`, extracts status + message. Logs 5xx as `error`, 4xx as `warn`. Returns JSON: `{ statusCode, message, error, timestamp, requestId?, ...details? }`.
 
-**Fixed `ac1640b`**: every Zod validation failure used to reach the client as a generic "Internal server error" -- `ZodValidationPipe` threw `result.error.flatten()` (which has no `message` key), and the filter's `resp.message ?? 'Internal server error'` fell straight through to the 500-fallback text on a 400. 329 rejected requests in the logs carried this bug, 13 of them on `register-load`, and the actual `fieldErrors` were logged nowhere. The filter now: handles `resp.message` being an **array** (Nest's own built-in `ValidationPipe` emits `string[]`) by joining it; falls back to `'Cerere invalidă.'` (not the 500 text) for any status `< 500` with no message; and surfaces `fieldErrors`/`formErrors` as top-level `details` on both the Winston log line and the JSON response, whenever the thrown exception carries them.
+**Fixed `ac1640b`**: every Zod validation failure used to reach the client as a generic "Internal server error" -- `ZodValidationPipe` threw `result.error.flatten()` (which has no `message` key), and the filter's `resp.message ?? 'Internal server error'` fell straight through to the 500-fallback text on a 400. 329 rejected requests in the logs carried this bug, 13 of them on `register-load`, and the actual `fieldErrors` were logged nowhere. The filter now: handles `resp.message` being an **array** (Nest's own built-in `ValidationPipe` emits `string[]`) by joining it; falls back to a translated generic message for any status `< 500` with no message; and surfaces `fieldErrors`/`formErrors` as top-level `details` on both the Winston log line and the JSON response, whenever the thrown exception carries them.
+
+**Locale-aware `message` (Aug 2026):** this is the **one place in the backend** that can resolve a caller's locale for an HTTP error, because `ArgumentsHost` gives it the request (`request.user?.locale`, populated by `AuthGuard` — see the Auth section above). If the thrown exception's response object carries an `i18nKey` (and optional `i18nParams`), it wins over any literal `resp.message` and the filter renders it via `tServer(locale, i18nKey, i18nParams)` — this is how a throw site with no request context of its own (`ZodValidationPipe`, constructed with a bare `new` at route-registration time, bypassing DI) or no populated `request.user` yet (`AuthGuard`'s own `errors.accountNotFound`/`errors.accountInactive` rejections, thrown before `request.user` is assigned) asks the filter to translate on its behalf. `resolveLocale()` falls back `request.user?.locale → Accept-Language header (best-effort; neither client sets one deliberately today) → DEFAULT_LOCALE`.
 
 ### `LoggingInterceptor` (`src/common/interceptors/logging.interceptor.ts`)
 Assigns `X-Request-Id` (from header or `randomUUID()`). Logs one line per request at Winston level `http` with: method, path, statusCode, durationMs, userId, ip.
 
 ### `ZodValidationPipe` (`src/common/pipes/zod-validation.pipe.ts`)
-Wraps `schema.safeParse()`. On failure, throws `BadRequestException({ statusCode: 400, error: 'validation_failed', message, fieldErrors, formErrors })` (fixed alongside the filter above, `ac1640b`) -- `message` is a real per-field summary (`"baleCount: Expected number, received string"`, joined with whole-object refine failures from `formErrors`, e.g. "exactly one of parcelId or sourceDepotId is required"), not Zod's bare `flatten()` object. Also exposes a public `.transform(value)` method (used by `TransporterController` where the Zod schema is picked dynamically per record-kind, so the pipe can't be applied via the `@Body(new ZodValidationPipe(schema))` decorator pattern).
+Wraps `schema.safeParse()`. On failure, throws `BadRequestException({ statusCode: 400, error: 'validation_failed', i18nKey: 'errors.invalidData', message, fieldErrors, formErrors })` -- `fieldErrors`/`formErrors` are still Zod's own (English) per-field detail, exactly as before (`ac1640b`), surfaced separately so a caller can diagnose which field failed. **`message` changed shape in Aug 2026**: it used to carry that same per-field English summary; now it's just a Romanian safety-net string (`'Date invalide.'`), because the pipe has no reliable way to know the caller's locale (see above) and previously "solved" that by leaking Zod's raw English text onto a Romanian or Hungarian phone (`baleCount: Expected number, received string`). The actual localized text comes from `i18nKey` via `AllExceptionsFilter`, the one place that has both the request and the catalog. Also exposes a public `.transform(value)` method (used by `TransporterController` where the Zod schema is picked dynamically per record-kind, so the pipe can't be applied via the `@Body(new ZodValidationPipe(schema))` decorator pattern).
 
 ---
 

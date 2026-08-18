@@ -2,7 +2,7 @@
 type: doc
 title: "Admin Web (apps/admin-web)"
 created: 2026-04-16
-updated: 2026-07-31
+updated: 2026-08-18
 tags: [doc, frontend, layer, nextjs]
 status: mature
 related:
@@ -13,6 +13,12 @@ related:
   - "[[feature-toggles]]"
 ---
 
+<!-- updated 2026-08-18: third UI language (Hungarian, `hu`) -- `messages/hu.json` (2223 leaves,
+     structural + untranslated parity enforced by rewritten check-i18n-parity.mjs, --strict green);
+     LangToggle shared component replaces 3 hardcoded ro/en copies; new useLocaleFormat hook replaces
+     6 `locale === 'ro' ? 'ro-RO' : 'en-US'` ternaries; i18n.tsx/normalizeUiLocale now driven by
+     SUPPORTED_LOCALES (@strawboss/types) instead of a hardcoded 2-locale union. See [[packages-types]]
+     "Locale" and [[backend]] "Server-Side i18n". -->
 <!-- updated 2026-07-31: last 13 feature switches wired (57/57, e275b3c) -- shared `ExportButton`
      (src/components/shared/ExportButton.tsx) replaces 11 independent `analytics.export` checks across
      7 report tabs + reports page (CSV/PDF) + transporter XLSX export; 5 report tabs gated on
@@ -480,21 +486,32 @@ When adding a new exportable view, use this component rather than a bespoke `ana
 
 - Profile editing: full name, phone
 - Password change: current + new password
-- Locale toggle: switches between 'en' and 'ro'
+- Locale toggle: three-way switch (`Română` / `English` / `Magyar`, via `LangToggle` — see below)
 - Notification preferences: toggle switches
 
 ---
 
 ## i18n (`src/lib/i18n.tsx`)
 
-Custom lightweight i18n (not next-intl despite CLAUDE.md mention):
+Custom lightweight i18n (not next-intl despite CLAUDE.md mention). **Trilingual since Aug 2026** (`ro`/`en`/`hu`, was bilingual `ro`/`en`) — driven entirely by `SUPPORTED_LOCALES` from `@strawboss/types` (see [[packages-types]] "Locale"), not a hardcoded union.
 
-- `LocaleProvider` wraps the app. Reads from `localStorage('strawboss-locale')`, defaults to 'en'
-- Catalogs: `messages/en.json` and `messages/ro.json` imported directly
-- `useI18n()` hook returns `{ locale, setLocale, hydrateFromProfile, t }`
-- `t(key, params?)` resolves dot-path keys with `{{param}}` interpolation (regex: `/\{\{(\w+)\}\}/g`). Falls back to English if Romanian key missing. Placeholder format is `{{...}}` — do NOT use `{...}` (H-9 fix, commit `de58e10`)
-- `normalizeUiLocale(raw)` maps DB locale strings to 'en' or 'ro'
-- `ProfileLocaleHydration` component (`src/components/layout/ProfileLocaleHydration.tsx`) calls `hydrateFromProfile()` once after profile fetch (only if no localStorage override)
+- `LocaleProvider` wraps the app. Reads from `localStorage('strawboss-locale')`, defaults to `'en'`.
+- Catalogs: `messages/{en,ro,hu}.json`, imported directly and assembled into `Record<Locale, …>` — that map (not a `switch`/if-chain) is what won't compile if a locale is added to the SSOT without a matching catalog file existing.
+- `useI18n()` hook returns `{ locale, setLocale, hydrateFromProfile, t }`.
+- `t(key, params?)` resolves dot-path keys, two-pass interpolation via the shared `interpolate()` helper (`src/lib/interpolate.ts`, extracted so it's unit-testable and shared with the mobile-matching contract test below): `{{param}}` replaced (or emptied if missing, legacy behaviour), then `{param}` replaced but **left untouched** when there's no matching param (so a literal brace, e.g. `settings.organization.accessCodeHint`'s `{slug}`, survives). Falls back to English if the current-locale key is missing.
+- `normalizeUiLocale(raw)` maps a DB/localStorage locale string to a supported `Locale`, derived from `SUPPORTED_LOCALES.find(...)`. Falls back to `'en'` — **deliberately not `DEFAULT_LOCALE` (`'ro'`)**: admin-web has always defaulted unset accounts to English and mobile has always defaulted to Romanian; unifying the two would be an unrequested behaviour change.
+- `ProfileLocaleHydration` component (`src/components/layout/ProfileLocaleHydration.tsx`) calls `hydrateFromProfile()` once after profile fetch (only if no localStorage override).
+- **`LangToggle`** (`src/components/shared/LangToggle.tsx`, added Aug 2026): the language switcher for unauthenticated public entry points (login, request portals). Used to exist as three byte-identical hardcoded ro/en copies; now a single component that maps `SUPPORTED_LOCALES` — adding a locale needs no edit here.
+- **`useLocaleFormat()`** (`src/lib/use-locale-format.ts`, added Aug 2026): one hook replacing six scattered `locale === 'ro' ? 'ro-RO' : 'en-US'` ternaries (which silently fell through to the US format for any third locale — MM/DD/YYYY dates, `1,234.56` grouping, in an otherwise-Hungarian UI). Returns `{ tag, date, dateTime, time, number, compare }` — `Intl.DateTimeFormat`/`NumberFormat`/`Collator` instances built from `LOCALE_BCP47[locale]`, memoized on `locale`. `compare` is an `Intl.Collator` (needed for Hungarian digraphs — cs/dz/gy/ly/ny/sz/ty/zs — and ő/ű). Timezone stays `Europe/Bucharest` (`ROMANIA_TZ`) regardless of interface language — the language doesn't move the operation.
+
+### Catalog quality gate (`scripts/check-i18n-parity.mjs`, rewritten Aug 2026)
+
+Runs as part of `./strawboss.sh typecheck admin-web` (wired in `scripts/04-build.sh`). Previously hardcoded `'en.json'`/`'ro.json'` as literals and checked only key-set parity, so a `hu.json` clone of English with zero translation would have passed silently. Now:
+
+- **Discovers** locales by scanning `messages/*.json` for a bare two-letter filename (`/^[a-z]{2}$/`) — adding a locale needs no script edit, only dropping the file. A non-matching `*.json` (e.g. an editor's stray `en.backup.json`) is ignored but the ignore is announced on stderr.
+- **Two severity levels, deliberately.** STRUCTURAL problems (missing key / extra key / empty value) fail **always**, any mode — these are real breakage, a missing key shows the wrong language. UNTRANSLATED (value byte-identical to `en.json`, not in that locale's allowlist) is always *reported* but only *fails* under `--strict`. Default mode stays green while a catalog is mid-translation (`hu.json` was bifurcated from English at the start of the Hungarian work and stayed structurally-parity-but-untranslated for most of it) — an always-red gate teaches everyone to ignore it. `--strict` is the phase-exit / final-verification gate; ran clean (0 untranslated) at ship time.
+- **Per-locale allowlist, not one shared list**: `messages/.identical-ok.json` has `allow` (universal — units, document/institution codes, file formats, placeholders, proper nouns: identical in ANY language) and `byLocale.<code>` (locale-specific exemptions). A naturalized loanword is a claim about ONE language, not all of them — Romanian keeps `Total`/`Status` unmodified but Hungarian needs `Összesen`/`Státusz`; `PIN` is `PIN-kód` in Hungarian, not a bare loanword. Effective allowance for a locale is `allow ∪ byLocale[locale]`. **Rule for future translators: adding a key here is a claim it's not a word in that language — verify against `byLocale`, don't reach for the universal `allow` list to silence the gate.**
+- Companion gate `scripts/check-i18n-interpolation.mjs` compiles the real `interpolate.ts` (via `tsc` to a temp dir) and calls it with known inputs — a catalog-text scanner can't prove anything about interpolation, since the same `{label}` string is correct both before and after a bug fix in `interpolate()` itself; the fix has to live in the function, and the test has to call the function.
 
 ---
 
@@ -530,6 +547,7 @@ Subscribes a per-component channel to a specific table and invalidates the given
 - `PageHeader` (`src/components/layout/PageHeader.tsx`) -- page title + optional actions
 
 ### Shared UI
+- `LangToggle` (`src/components/shared/LangToggle.tsx`) -- three-way language switch (`SUPPORTED_LOCALES`-driven) for unauthenticated public pages; see "i18n" above
 - `StatusBadge` (`src/components/shared/StatusBadge.tsx`) -- colored pill for trip/assignment/harvest status
 - `DataTable` (`src/components/shared/DataTable.tsx`) -- generic table with sorting
 - `DocumentViewer` (`src/components/shared/DocumentViewer.tsx`) -- PDF/image preview. Document-type label resolved via `` t(`documents.types.${doc.documentType}`) `` (all seven `DocumentType` values, including `cmr_scan` and `comanda`) — replaced a hardcoded English `typeLabels: Record<DocumentType, string>` map

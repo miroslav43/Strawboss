@@ -2,7 +2,7 @@
 type: doc
 title: "Database Schema"
 created: 2026-04-16
-updated: 2026-07-31
+updated: 2026-08-18
 tags: [doc, database, schema, postgres, postgis, rls]
 status: mature
 related:
@@ -15,7 +15,7 @@ related:
 
 # Database Schema
 
-PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00093).
+PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` (00001-00097).
 
 ## Extensions (00001)
 
@@ -50,7 +50,7 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 
 ### Core Tables (00002)
 
-**users**: `id` (UUID PK), `email` (UNIQUE), `phone`, `full_name`, `role` (user_role, default `driver`), `password_hash`, `is_active`, `locale` (default `en`), `avatar_url`, `last_login_at`, `assigned_machine_id` (FK machines, added 00011), `notification_prefs` (JSONB, added 00021), `last_seen_at` (TIMESTAMPTZ nullable, updated by `POST /profile/heartbeat` every 30s from mobile, added 00043), timestamps, `deleted_at`.
+**users**: `id` (UUID PK), `email` (UNIQUE), `phone`, `full_name`, `role` (user_role, default `driver`), `password_hash`, `is_active`, `locale` (`TEXT`, default `en`, **no CHECK constraint** — added Aug 2026, deliberate: the runtime guard is the `SUPPORTED_LOCALES` zod enum in `@strawboss/validation`, not the DB, so a new language never needs a migration; a CHECK would also turn a bad value into a raw `23514` 500 instead of a clean 400. In practice no row ever keeps the `'en'` column default — `admin-users.service.ts` writes `'ro'` on create, and the app-level default is `DEFAULT_LOCALE` = `'ro'` from `packages/types/src/locale.ts`), `avatar_url`, `last_login_at`, `assigned_machine_id` (FK machines, added 00011), `notification_prefs` (JSONB, added 00021), `last_seen_at` (TIMESTAMPTZ nullable, updated by `POST /profile/heartbeat` every 30s from mobile, added 00043), timestamps, `deleted_at`.
 
 **parcels**: `id` (UUID PK), `code` (UNIQUE), `name` (nullable per 00010), `area_hectares` (NUMERIC 10,2), `boundary` (GEOMETRY Polygon 4326), `centroid` (GEOMETRY Point 4326), `address`, `municipality`, `farmtrack_geofence_id`, `farm_id` (FK farms, added 00014), `harvest_status` (added 00017, default `planned`; extended ladder 00042), `crop_type` (crop_type enum, nullable, added 00042), `notes`, `is_active`, timestamps, `deleted_at`.
 
@@ -88,7 +88,7 @@ PostgreSQL on Supabase Cloud with PostGIS. Migrations in `supabase/migrations/` 
 
 ### Later Migrations
 
-**machine_location_events** (00009): `id`, `machine_id` (FK), `operator_id` (FK), `lat`, `lon`, `coords` (**GENERATED** via `ST_SetSRID(ST_MakePoint(lon, lat), 4326)`), `accuracy_m`, `heading_deg`, `speed_ms`, `recorded_at`, `created_at`.
+**machine_location_events** (00009): `id`, `machine_id` (FK), `operator_id` (FK), `lat`, `lon`, `coords` (**GENERATED** via `ST_SetSRID(ST_MakePoint(lon, lat), 4326)`), `accuracy_m` (NUMERIC, widened 00009→00095, see below), `heading_deg`, `speed_ms`, `recorded_at`, `created_at`, `source` (TEXT, nullable, added 00097 — `'task'`/`'checkin'`/`NULL`, see below).
 
 **farms** (00014): `id`, `name` (NOT NULL), `address`, `phone`, `fiscal_code`, `registration_number`, `bank_account`, `bank_name`, timestamps, `deleted_at`.
 
@@ -234,6 +234,28 @@ This closes the same class of gap as the composite FKs already shipped for `deli
   automatically — acceptable, since a member of an org may read its own flags and both clients are told
   them anyway. No INSERT/UPDATE policy exists on `organizations`, so direct PostgREST writes stay
   fail-closed; the NestJS backend bypasses RLS as table owner.
+
+### bale_loads.location_unverified (00094)
+
+`00094_bale_loads_location_unverified.sql` adds `bale_loads.location_unverified` (BOOLEAN NOT NULL DEFAULT false): set when a loader registers a bale load whose in-field GPS presence could not be checked against the parcel boundary (offline, or the field's geometry wasn't cached yet on the phone) but the operator explicitly confirmed a "position unverified" prompt anyway. `gps_lat`/`gps_lon` are still recorded on the row -- the flag only means "we couldn't verify these against the boundary", so the row can surface for admin review instead of looking identical to a verified load. Mirrored later by `trips.depot_confirm_location_unverified` (00096).
+
+### machine_location_events.accuracy_m widened (00095)
+
+`00095_widen_location_accuracy.sql` widens `accuracy_m` from `NUMERIC(6,2)` (ceiling 9999.99) to `NUMERIC(9,2)` (ceiling 9 999 999.99): production had already recorded a 9906.20 m cell-tower fallback fix, ~94 m short of the old ceiling. A fix past it raised `numeric field overflow` on insert, and the mobile outbox treats any 5xx as transient and re-posts the same batch forever -- the same retry-storm shape commit `5a38ed8` had already had to put down once. Metadata-only widen (no table rewrite, no long lock). The backend additionally clamps every incoming value to this bound (`clampAccuracyM`, `backend/service/src/common/gps-noise.ts`, see [[backend]] "GPS Noise Filtering") so APKs already in the field are covered too.
+
+### Two-step depot unloading (00096)
+
+`00096_depot_unload_flow.sql` adds `trips.depot_unload_started_at` (TIMESTAMPTZ, stamped by `POST /trips/:id/start-depot-unload`) and `trips.depot_confirm_location_unverified` (BOOLEAN NOT NULL DEFAULT false, mirrors `bale_loads.location_unverified` 00094). Until this migration the depot operator's confirmation collapsed `arrived|delivering -> completed` in one action, so the driver waiting at the ramp had no signal that anyone had even started on him; the flow is now "Începe descărcarea" -> "Finalizează", and `depot_unload_started_at` is what the driver's phone reads to render the middle state. The unverified flag records that the operator confirmed a truck whose GPS could not be checked against the depot perimeter (dead phone / stale fix) via an explicit override -- flagged for admin review rather than indistinguishable from a GPS-verified confirmation. Partial index `idx_trips_depot_confirm_unverified` covers only the (rare) `true` rows.
+
+### GPS Fix Source Tagging (00097)
+
+`00097_location_event_source.sql` adds `machine_location_events.source TEXT` (plain -- not an enum; two known values whitelisted server-side by `normalizeLocationSource()` in `location.service.ts`, so adding a future source needs no migration; no index -- every reader already narrows by `(machine_id, recorded_at)` first):
+
+- `'task'` -- a real fix from the location foreground service.
+- `'checkin'` -- the 60 s presence alarm's best-effort fix (`getBestEffortPosition` in `apps/mobile/src/lib/location.ts`: last-known position + a Balanced-accuracy fix, deliberately network-quality, meant only to answer "roughly where is this machine").
+- `NULL` -- an APK older than **vc56 / 1.0.52** that predates the `source` field; treated as `'task'` so historical tracks keep rendering unchanged.
+
+This is the permanent fix for the residual county-wide "spider web" that remained on the Tracks page after the first GPS-noise pass (00095 + `route-cleaning.ts`): when a phone's location task dies (the documented Android 14+ FGS-restart hole), the check-in stream is ALL that keeps flowing -- cell-tower hops at 60 s cadence can land kilometres apart, and a 4 km hop over 122 s reads as a "legal" 118 km/h, structurally invisible to the kinematic track cleaner. Tracks and every distance report now exclude `source = 'checkin'` rows up front; presence, last-known-positions and geofence keep them, since a fresh coarse fix still answers "roughly where". Full read-side mechanics (slow-machine speed cap, skeleton-consistency pass for old APKs) in [[backend]] "GPS Noise Filtering / Route Cleaning".
 
 ## Generated Columns
 
