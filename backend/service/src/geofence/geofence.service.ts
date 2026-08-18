@@ -630,13 +630,19 @@ export class GeofenceService {
 
       // Fan-out to possibly-mixed-locale loaders/balers — resolve the
       // fallback plate/field text per recipient (locale lookup is cached).
+      // The whole per-row body is guarded, not just `sendPush`: a
+      // `localeForUser` rejection (e.g. a transient DB blip) must not
+      // propagate out of this row's Promise, or it silently drops the push
+      // for this recipient AND surfaces as a batch-level failure below
+      // (skipping the "Notified N loader(s)" flow log even though every
+      // other recipient succeeded).
       await Promise.all(
         loaderRows.map(async (row) => {
-          const locale = await this.notificationsService.localeForUser(row.userId);
-          const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruck');
-          const where = parcelName ?? tServer(locale, 'push.common.yourField');
-          await this.notificationsService
-            .sendPush(
+          try {
+            const locale = await this.notificationsService.localeForUser(row.userId);
+            const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruck');
+            const where = parcelName ?? tServer(locale, 'push.common.yourField');
+            await this.notificationsService.sendPush(
               row.userId,
               'push.truckArrivedAtLoader',
               { plate, where },
@@ -648,10 +654,11 @@ export class GeofenceService {
                 truckPlate: plate,
                 parcelName,
               },
-            )
-            .catch(() => {
-              // Best-effort — push failures must not break the geofence loop.
-            });
+            );
+          } catch {
+            // Best-effort — one recipient's failure must not break the
+            // geofence loop or affect a sibling recipient.
+          }
         }),
       );
 
@@ -703,13 +710,18 @@ export class GeofenceService {
       if (rows.length === 0) return;
 
       // Fan-out to possibly-mixed-locale depot operators — resolve the
-      // fallback plate text per recipient (locale lookup is cached).
+      // fallback plate text per recipient (locale lookup is cached). The
+      // whole per-row body is guarded, not just `sendPush`: a
+      // `localeForUser` rejection must not propagate out of this row's
+      // Promise, or it silently drops the push for this recipient AND
+      // surfaces as a batch-level failure below (skipping the flow log
+      // even though every other recipient succeeded).
       await Promise.all(
         rows.map(async (row) => {
-          const locale = await this.notificationsService.localeForUser(row.userId);
-          const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruckCapitalized');
-          await this.notificationsService
-            .sendPush(
+          try {
+            const locale = await this.notificationsService.localeForUser(row.userId);
+            const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruckCapitalized');
+            await this.notificationsService.sendPush(
               row.userId,
               'push.depotTruckArrived',
               { plate },
@@ -719,10 +731,11 @@ export class GeofenceService {
                 truckMachineId,
                 tripId,
               },
-            )
-            .catch(() => {
-              // Best-effort — push failures must not break the geofence loop.
-            });
+            );
+          } catch {
+            // Best-effort — one recipient's failure must not break the
+            // geofence loop or affect a sibling recipient.
+          }
         }),
       );
 
@@ -776,13 +789,18 @@ export class GeofenceService {
       const km = (distanceM / 1000).toFixed(distanceM < 1000 ? 1 : 0);
 
       // Fan-out to possibly-mixed-locale depot operators — resolve the
-      // fallback plate text per recipient (locale lookup is cached).
+      // fallback plate text per recipient (locale lookup is cached). The
+      // whole per-row body is guarded, not just `sendPush`: a
+      // `localeForUser` rejection must not propagate out of this row's
+      // Promise, or it silently drops the push for this recipient AND
+      // surfaces as a batch-level failure below (skipping the flow log
+      // even though every other recipient succeeded).
       await Promise.all(
         rows.map(async (row) => {
-          const locale = await this.notificationsService.localeForUser(row.userId);
-          const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruckCapitalized');
-          await this.notificationsService
-            .sendPush(
+          try {
+            const locale = await this.notificationsService.localeForUser(row.userId);
+            const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruckCapitalized');
+            await this.notificationsService.sendPush(
               row.userId,
               'push.depotTruckApproaching',
               { plate, km },
@@ -793,10 +811,11 @@ export class GeofenceService {
                 tripId,
                 distanceM,
               },
-            )
-            .catch(() => {
-              // Best-effort — push failures must not break the geofence loop.
-            });
+            );
+          } catch {
+            // Best-effort — one recipient's failure must not break the
+            // geofence loop or affect a sibling recipient.
+          }
         }),
       );
 
@@ -857,13 +876,18 @@ export class GeofenceService {
       if (loaderRows.length === 0) return;
 
       // Fan-out to possibly-mixed-locale loaders/balers — resolve the
-      // fallback plate text per recipient (locale lookup is cached).
+      // fallback plate text per recipient (locale lookup is cached). The
+      // whole per-row body is guarded, not just `sendPush`: a
+      // `localeForUser` rejection must not propagate out of this row's
+      // Promise, or it silently drops the push for this recipient AND
+      // surfaces as a batch-level failure below (skipping the flow log
+      // even though every other recipient succeeded).
       await Promise.all(
         loaderRows.map(async (row) => {
-          const locale = await this.notificationsService.localeForUser(row.userId);
-          const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruck');
-          await this.notificationsService
-            .sendPush(
+          try {
+            const locale = await this.notificationsService.localeForUser(row.userId);
+            const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruck');
+            await this.notificationsService.sendPush(
               row.userId,
               'push.truckApproachingLoader',
               { plate },
@@ -876,10 +900,11 @@ export class GeofenceService {
                 parcelName,
                 distanceM,
               },
-            )
-            .catch(() => {
-              // Best-effort — push failures must not break the geofence loop.
-            });
+            );
+          } catch {
+            // Best-effort — one recipient's failure must not break the
+            // geofence loop or affect a sibling recipient.
+          }
         }),
       );
 

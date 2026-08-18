@@ -859,17 +859,27 @@ export class NotificationsService {
     const missing = Math.max(0, produced - loaded);
     // Fan-out to possibly-mixed-locale admins/dispatchers — resolve the
     // fallback label per recipient (locale lookup is cached, see
-    // localeForUser) rather than once for the whole batch.
+    // localeForUser) rather than once for the whole batch. The whole
+    // per-row body is guarded, not just `sendPush`: a `localeForUser`
+    // rejection must not propagate out of this row's Promise, or it
+    // silently drops the push for this recipient without going through the
+    // same best-effort path as everything else here.
     await Promise.all(
       rows.map(async (r) => {
-        const locale = await this.localeForUser(r.id);
-        const label = parcelName ?? tServer(locale, 'push.common.aParcel');
-        await this.sendPush(
-          r.id,
-          'push.parcelLoadMismatch',
-          { label, missing, produced, loaded },
-          { type: 'parcel_load_mismatch', produced, loaded, missing, parcelName },
-        ).catch(() => {});
+        try {
+          const locale = await this.localeForUser(r.id);
+          const label = parcelName ?? tServer(locale, 'push.common.aParcel');
+          await this.sendPush(
+            r.id,
+            'push.parcelLoadMismatch',
+            { label, missing, produced, loaded },
+            { type: 'parcel_load_mismatch', produced, loaded, missing, parcelName },
+          );
+        } catch {
+          // Best-effort — one recipient's failure must not affect a
+          // sibling recipient or the caller (see the outer .catch above
+          // this method's own call site).
+        }
       }),
     );
   }
