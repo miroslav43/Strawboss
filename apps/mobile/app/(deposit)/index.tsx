@@ -24,7 +24,7 @@ import {
 import { DepotTruckCard } from '@/components/features/deposit/DepotTruckCard';
 import { useStartDepotUnload } from '@/hooks/useStartDepotUnload';
 import { useTheme } from '@/lib/theme';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 import { useIsFeatureEnabled } from '@/stores/features-store';
 import { fontScale } from '@/utils/responsive';
 import { colors, radii } from '@strawboss/ui-tokens';
@@ -46,7 +46,7 @@ export default function DepositInventoryScreen() {
   const inventoryEnabled = useIsFeatureEnabled('depot.inventory');
   if (!inventoryEnabled) return <Redirect href="/(deposit)/trips" />;
 
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { colors: themeColors } = useTheme();
   const { data: depots } = useDepotList();
   // Shared with the Curse tab and the confirm screen, which used to hardcode
@@ -75,8 +75,8 @@ export default function DepositInventoryScreen() {
   );
   const lastUpdate = useMemo(() => {
     if (!payload?.inventory.lastUpdate) return null;
-    return new Date(payload.inventory.lastUpdate).toLocaleString('ro-RO');
-  }, [payload?.inventory.lastUpdate]);
+    return new Date(payload.inventory.lastUpdate).toLocaleString(dateLocaleFor(locale));
+  }, [payload?.inventory.lastUpdate, locale]);
 
   return (
     <View style={[styles.outer, { backgroundColor: themeColors.primary }]}>

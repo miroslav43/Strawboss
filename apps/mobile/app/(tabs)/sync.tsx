@@ -14,10 +14,10 @@ import { useSync } from '@/hooks/useSync';
 import { getDatabase } from '@/lib/storage';
 import { SyncQueueRepo, type SyncQueueEntry } from '@/db/sync-queue-repo';
 import { mobileLogger } from '@/lib/logger';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 
 export default function SyncScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { isConnected } = useNetworkStatus();
   const { syncing, lastSyncAt, pendingCount, errors, triggerSync } = useSync();
   const [failedEntries, setFailedEntries] = useState<SyncQueueEntry[]>([]);
@@ -103,7 +103,7 @@ export default function SyncScreen() {
             <Text style={styles.label}>{t('tabs.sync.lastSyncLabel')}</Text>
             <Text style={styles.value} numberOfLines={1}>
               {lastSyncAt
-                ? new Date(lastSyncAt).toLocaleString('ro-RO')
+                ? new Date(lastSyncAt).toLocaleString(dateLocaleFor(locale))
                 : t('tabs.sync.lastSyncNever')}
             </Text>
           </View>

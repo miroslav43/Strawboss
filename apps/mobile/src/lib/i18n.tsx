@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
-import { normalizeLocale as normalizeSupported, type Locale } from '@strawboss/types';
+import { normalizeLocale as normalizeSupported, LOCALE_BCP47, type Locale } from '@strawboss/types';
 import { ro } from '@/i18n/ro';
 import { en } from '@/i18n/en';
 import { hu } from '@/i18n/hu';
@@ -50,6 +50,18 @@ function interpolate(template: string, params?: Record<string, string | number>)
  */
 export function normalizeLocale(raw: string | null | undefined): Locale {
   return normalizeSupported(raw);
+}
+
+/**
+ * Eticheta BCP-47 pentru apelurile toLocale*.
+ *
+ * Mobile-ul n-avea NICIO ramificare pe limbă — toate cele cinci formatoare erau
+ * necondiționat 'ro-RO', deci și utilizatorii englezi primeau date românești.
+ * Cine caută tiparul de ternar din admin-web va concluziona că mobile-ul e curat
+ * și va rata toate cele cinci locuri.
+ */
+export function dateLocaleFor(locale: Locale): string {
+  return LOCALE_BCP47[locale];
 }
 
 type I18nContextValue = {

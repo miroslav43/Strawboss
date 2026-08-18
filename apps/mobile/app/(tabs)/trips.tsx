@@ -13,7 +13,7 @@ import { useRouter } from 'expo-router';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo, type LocalTrip } from '@/db/trips-repo';
 import { mobileLogger } from '@/lib/logger';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 
 const STATUS_COLORS: Record<string, string> = {
   planned: '#1565C0',
@@ -31,7 +31,7 @@ export default function TripsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const loadTrips = useCallback(async () => {
     try {
@@ -107,7 +107,7 @@ export default function TripsScreen() {
                 {item.departure_at ? (
                   <Text style={[styles.metaText, styles.metaTextShrink]} numberOfLines={1}>
                     {t('tabs.trips.departed', {
-                      time: new Date(item.departure_at).toLocaleString('ro-RO'),
+                      time: new Date(item.departure_at).toLocaleString(dateLocaleFor(locale)),
                     })}
                   </Text>
                 ) : null}

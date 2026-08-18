@@ -38,7 +38,7 @@ import { colors, radii } from '@strawboss/ui-tokens';
 import { mobileLogger } from '@/lib/logger';
 import { mobileApiClient } from '@/lib/api-client';
 import type { TripTransitionPayload } from '@/sync/push';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -50,7 +50,7 @@ export default function TripDetailScreen() {
   const { data: relatedMachines } = useRelatedMachines();
   // Only the driver runs the trip workflow. Loaders, balers and others reach
   // this screen via a notification and may only watch the trip's progress.
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const isDriver = useAuthStore((s) => s.role) === 'driver';
   const [trip, setTrip] = useState<LocalTrip | null>(null);
   const [loading, setLoading] = useState(true);
@@ -298,19 +298,19 @@ export default function TripDetailScreen() {
             {trip.departure_at && (
               <InfoRow
                 label={t('tripDetail.infoRow.departedAt')}
-                value={new Date(trip.departure_at).toLocaleString('ro-RO')}
+                value={new Date(trip.departure_at).toLocaleString(dateLocaleFor(locale))}
               />
             )}
             {trip.arrival_at && (
               <InfoRow
                 label={t('tripDetail.infoRow.arrivedAt')}
-                value={new Date(trip.arrival_at).toLocaleString('ro-RO')}
+                value={new Date(trip.arrival_at).toLocaleString(dateLocaleFor(locale))}
               />
             )}
             {trip.delivered_at && (
               <InfoRow
                 label={t('tripDetail.infoRow.deliveredAt')}
-                value={new Date(trip.delivered_at).toLocaleString('ro-RO')}
+                value={new Date(trip.delivered_at).toLocaleString(dateLocaleFor(locale))}
               />
             )}
           </View>

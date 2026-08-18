@@ -3,6 +3,9 @@
  * Holes in Polygon: point must be inside the exterior ring and outside all holes.
  */
 
+import { dateLocaleFor, normalizeLocale } from '@/lib/i18n';
+import { useAuthStore } from '@/stores/auth-store';
+
 type Ring = [number, number][];
 
 function pointInRing(lon: number, lat: number, ring: Ring): boolean {
@@ -232,10 +235,13 @@ export function pickSmallestContainingParcel<T extends ParcelLikeForHitTest>(
   const hits = valid.filter((p) => pointInBoundary(lon, lat, p.boundary));
   if (hits.length === 1) return hits[0];
   if (hits.length > 1) {
+    // Outside React (no useI18n reachable here) — read the account's locale
+    // directly from the auth store, same pattern as tStatic().
+    const dateLocale = dateLocaleFor(normalizeLocale(useAuthStore.getState().locale));
     const sorted = [...hits].sort((a, b) => {
       const da = Number(a.areaHectares) - Number(b.areaHectares);
       if (da !== 0) return da;
-      return a.name.localeCompare(b.name);
+      return a.name.localeCompare(b.name, dateLocale);
     });
     return sorted[0] ?? null;
   }

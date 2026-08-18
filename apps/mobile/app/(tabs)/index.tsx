@@ -16,7 +16,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSync } from '@/hooks/useSync';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
 import { mobileApiClient } from '@/lib/api-client';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 
 type MachineIconName = 'wrench' | 'grain' | 'truck' | 'map-marker';
 const MACHINE_MDI: Record<string, MachineIconName> = {
@@ -32,7 +32,7 @@ const MACHINE_TYPE_KEY: Record<string, string> = {
 };
 
 export default function HomeScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { isConnected } = useNetworkStatus();
   const { pendingCount, lastSyncAt, triggerSync, syncing } = useSync();
   const [refreshing, setRefreshing] = useState(false);
@@ -205,7 +205,9 @@ export default function HomeScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.label}>{t('tabs.home.syncLastSyncLabel')}</Text>
             <Text style={styles.value} numberOfLines={1} ellipsizeMode="tail">
-              {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : t('tabs.home.syncNever')}
+              {lastSyncAt
+                ? new Date(lastSyncAt).toLocaleString(dateLocaleFor(locale))
+                : t('tabs.home.syncNever')}
             </Text>
           </View>
           {syncing && <Text style={styles.syncingText}>{t('tabs.home.syncing')}</Text>}

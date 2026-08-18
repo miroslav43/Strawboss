@@ -17,7 +17,7 @@ import type { MobileNotification } from '@/types/notifications';
 import { MobileNotificationSeverity, MobileNotificationType } from '@/types/notifications';
 import { useNotifications } from '@/hooks/useNotifications';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -29,15 +29,16 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-function formatTime(ts: number): string {
+function formatTime(ts: number, dateLocale: string): string {
   const d = new Date(ts);
-  return d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' });
 }
 
 function groupByDay(
   items: MobileNotification[],
   today: string,
   yesterday: string,
+  dateLocale: string,
 ): { date: string; data: MobileNotification[] }[] {
   const now = new Date();
   const yesterdayDate = new Date(now.getTime() - MS_PER_DAY);
@@ -50,7 +51,7 @@ function groupByDay(
     } else if (isSameDay(d, yesterdayDate)) {
       key = yesterday;
     } else {
-      key = d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
+      key = d.toLocaleDateString(dateLocale, { day: '2-digit', month: 'long', year: 'numeric' });
     }
     const arr = map.get(key) ?? [];
     arr.push(item);
@@ -112,6 +113,7 @@ interface NotificationItemProps {
 }
 
 function NotificationItem({ item, onPress, onLongPress }: NotificationItemProps) {
+  const { locale } = useI18n();
   const stripeColor = severityColor(item.severity);
   const icon = typeIcon(item.type);
 
@@ -133,7 +135,7 @@ function NotificationItem({ item, onPress, onLongPress }: NotificationItemProps)
             {item.title}
           </Text>
           <Text style={styles.itemTime} numberOfLines={1}>
-            {formatTime(item.createdAt)}
+            {formatTime(item.createdAt, dateLocaleFor(locale))}
           </Text>
         </View>
         <Text style={styles.itemBody} numberOfLines={2}>
@@ -147,7 +149,7 @@ function NotificationItem({ item, onPress, onLongPress }: NotificationItemProps)
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { items, unreadCount, markAsRead, markAllAsRead, deleteNotification, refresh } =
     useNotifications();
   const [refreshing, setRefreshing] = useState(false);
@@ -202,7 +204,12 @@ export default function NotificationsScreen() {
     void markAllAsRead();
   }, [markAllAsRead]);
 
-  const groups = groupByDay(items, t('notifications.dayToday'), t('notifications.dayYesterday'));
+  const groups = groupByDay(
+    items,
+    t('notifications.dayToday'),
+    t('notifications.dayYesterday'),
+    dateLocaleFor(locale),
+  );
 
   const unreadLabel =
     unreadCount === 1

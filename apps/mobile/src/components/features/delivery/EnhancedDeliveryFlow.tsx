@@ -10,7 +10,7 @@ import {
   Linking,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDeliveryDestinations } from '@strawboss/api';
 import { useModal } from '@/hooks/useModal';
@@ -139,7 +139,7 @@ export function EnhancedDeliveryFlow({
 
   // Receiver = the depot's contact person. Resolve from the destinations list;
   // fall back to the depot name so `complete` always has a non-empty name.
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { data: depots } = useDeliveryDestinations(mobileApiClient);
   const depot = destinationId ? (depots ?? []).find((d) => d.id === destinationId) : undefined;
   const receiverName = (
@@ -383,7 +383,7 @@ export function EnhancedDeliveryFlow({
     const isConfirmed = depotConfirmedBaleCount != null && depotConfirmedBaleCount > 0;
     const isUnloading = !isConfirmed && depotUnloadStartedAt != null;
     const startedAtLabel = depotUnloadStartedAt
-      ? new Date(depotUnloadStartedAt).toLocaleTimeString('ro-RO', {
+      ? new Date(depotUnloadStartedAt).toLocaleTimeString(dateLocaleFor(locale), {
           hour: '2-digit',
           minute: '2-digit',
         })

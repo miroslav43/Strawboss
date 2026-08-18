@@ -14,12 +14,8 @@ import { colors } from '@strawboss/ui-tokens';
 import { useSyncQueueStatus } from '@/hooks/useSyncQueueStatus';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import type { SyncQueueEntry } from '@/db/sync-queue-repo';
-import { useI18n } from '@/lib/i18n';
-import {
-  FEATURE_DISABLED_ERROR,
-  SEASON_CLOSED_ERROR,
-  TERMINAL_REJECTION_ERROR,
-} from '@/sync/push';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
+import { FEATURE_DISABLED_ERROR, SEASON_CLOSED_ERROR, TERMINAL_REJECTION_ERROR } from '@/sync/push';
 
 const ENTITY_KEY: Record<string, string> = {
   trips: 'syncDetails.entityLabel.trips',
@@ -38,9 +34,9 @@ const ACTION_KEY: Record<string, string> = {
   transition: 'syncDetails.actionLabel.transition',
 };
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, dateLocale: string): string {
   try {
-    return new Date(iso).toLocaleString('ro-RO', {
+    return new Date(iso).toLocaleString(dateLocale, {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
@@ -56,9 +52,10 @@ interface EntryCardProps {
   onRetry: (id: number) => void;
   retrying: boolean;
   t: (key: string, params?: Record<string, string | number>) => string;
+  dateLocale: string;
 }
 
-function EntryCard({ entry, onRetry, retrying, t }: EntryCardProps) {
+function EntryCard({ entry, onRetry, retrying, t, dateLocale }: EntryCardProps) {
   const isFailed = entry.status === 'failed';
   const statusColor = isFailed ? colors.danger : colors.warning;
   const statusLabel = isFailed ? t('syncDetails.statusFailed') : t('syncDetails.statusPending');
@@ -79,7 +76,7 @@ function EntryCard({ entry, onRetry, retrying, t }: EntryCardProps) {
 
       <View style={styles.entryMeta}>
         <Text style={styles.metaText} numberOfLines={1}>
-          {formatDate(entry.created_at)}
+          {formatDate(entry.created_at, dateLocale)}
         </Text>
         {entry.retry_count > 0 && (
           <Text style={styles.metaText} numberOfLines={1}>
@@ -131,7 +128,8 @@ function EntryCard({ entry, onRetry, retrying, t }: EntryCardProps) {
 
 export default function SyncDetailsScreen() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const dateLocale = dateLocaleFor(locale);
   const { isConnected } = useNetworkStatus();
   const {
     syncing,
@@ -165,9 +163,15 @@ export default function SyncDetailsScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: SyncQueueEntry }) => (
-      <EntryCard entry={item} onRetry={handleRetryEntry} retrying={syncing} t={t} />
+      <EntryCard
+        entry={item}
+        onRetry={handleRetryEntry}
+        retrying={syncing}
+        t={t}
+        dateLocale={dateLocale}
+      />
     ),
-    [handleRetryEntry, syncing, t],
+    [handleRetryEntry, syncing, t, dateLocale],
   );
 
   const keyExtractor = useCallback((item: SyncQueueEntry) => String(item.id), []);
@@ -233,7 +237,7 @@ export default function SyncDetailsScreen() {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('syncDetails.lastSyncLabel')}</Text>
             <Text style={[styles.summaryValue, styles.summaryValueShrink]} numberOfLines={1}>
-              {lastSyncAt ? formatDate(lastSyncAt) : t('syncDetails.lastSyncNever')}
+              {lastSyncAt ? formatDate(lastSyncAt, dateLocale) : t('syncDetails.lastSyncNever')}
             </Text>
           </View>
         </View>

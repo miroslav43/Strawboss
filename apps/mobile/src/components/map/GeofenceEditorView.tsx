@@ -1,9 +1,9 @@
-import { useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
+import { useRef, useImperativeHandle, forwardRef, useState, useCallback, useMemo } from 'react';
 import { View, ActivityIndicator, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { GeofenceEditorCommand, GeofenceEditorEvent } from '@/map/map-bridge';
 import { serializeEditorCommand, parseGeofenceEditorEvent } from '@/map/map-bridge';
-import { LEAFLET_GEOFENCE_EDITOR_HTML } from '@/map/leaflet-geofence-editor';
+import { buildLeafletGeofenceEditorHtml } from '@/map/leaflet-geofence-editor';
 import { useI18n } from '@/lib/i18n';
 
 export interface GeofenceEditorViewHandle {
@@ -21,7 +21,8 @@ export const GeofenceEditorView = forwardRef<GeofenceEditorViewHandle, GeofenceE
     const webViewRef = useRef<WebView>(null);
     const [loading, setLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
-    const { t } = useI18n();
+    const { t, locale } = useI18n();
+    const html = useMemo(() => buildLeafletGeofenceEditorHtml(locale), [locale]);
 
     useImperativeHandle(ref, () => ({
       sendCommand(cmd: GeofenceEditorCommand) {
@@ -58,7 +59,7 @@ export const GeofenceEditorView = forwardRef<GeofenceEditorViewHandle, GeofenceE
       <View style={[styles.container, style]}>
         <WebView
           ref={webViewRef}
-          source={{ html: LEAFLET_GEOFENCE_EDITOR_HTML, baseUrl: 'https://localhost/' }}
+          source={{ html, baseUrl: 'https://localhost/' }}
           style={styles.webview}
           javaScriptEnabled
           originWhitelist={['https://*', 'about:*']}

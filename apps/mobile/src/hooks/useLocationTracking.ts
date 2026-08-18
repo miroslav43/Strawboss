@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { AppState } from 'react-native';
 import { isBackgroundLocationTrackingActive, readLastLocationSuccessIso } from '@/lib/location';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 
 interface UseLocationTrackingResult {
   /** True when Android background location updates (FGS) are active. */
@@ -16,6 +17,7 @@ interface UseLocationTrackingResult {
  * from `AuthGate` when the user has an assigned machine; there is no in-app toggle here.
  */
 export function useLocationTracking(): UseLocationTrackingResult {
+  const { locale } = useI18n();
   const [isTracking, setIsTracking] = useState(false);
   const [lastReportedAt, setLastReportedAt] = useState<string | null>(null);
   const [error] = useState<string | null>(null);
@@ -26,14 +28,14 @@ export function useLocationTracking(): UseLocationTrackingResult {
     const iso = await readLastLocationSuccessIso();
     setLastReportedAt(
       iso
-        ? new Date(iso).toLocaleTimeString('ro-RO', {
+        ? new Date(iso).toLocaleTimeString(dateLocaleFor(locale), {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
           })
         : null,
     );
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     void refresh();

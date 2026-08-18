@@ -26,14 +26,15 @@ import { colors } from '@strawboss/ui-tokens';
 import { useAuthStore } from '@/stores/auth-store';
 import { useTodayActivity, type ActivityEntry } from '@/hooks/useTodayActivity';
 import { todayInRomania } from '@/lib/date';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
+import type { Locale } from '@strawboss/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, dateLocale: string): string {
   try {
     const d = new Date(dateStr);
-    return d.toLocaleString('ro-RO', {
+    return d.toLocaleString(dateLocale, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -74,6 +75,7 @@ function syncBadgeColor(status: ActivityEntry['syncStatus']): string {
 function buildHtml(
   entries: ActivityEntry[],
   today: string,
+  locale: Locale,
   labels: {
     title: string;
     noRecords: string;
@@ -92,8 +94,12 @@ function buildHtml(
     syncSynced: string;
     syncPending: string;
     syncFailed: string;
+    dateLabel: string;
+    generatedAtLabel: string;
+    footerGeneratedFrom: string;
   },
 ): string {
+  const dateLocale = dateLocaleFor(locale);
   const productions = entries.filter((e) => e.kind === 'production');
   const fuels = entries.filter((e) => e.kind === 'fuel');
   const consumables = entries.filter((e) => e.kind === 'consumable');
@@ -127,7 +133,7 @@ function buildHtml(
           .map(
             (e) => `
     <tr>
-      <td style="padding:6px 4px;font-size:13px;">${formatDate(e.timestamp)}</td>
+      <td style="padding:6px 4px;font-size:13px;">${formatDate(e.timestamp, dateLocale)}</td>
       <td style="padding:6px 4px;font-size:13px;">${e.detail}</td>
       <td style="padding:6px 4px;font-size:12px;color:${syncBadgeColor(e.syncStatus)};">${syncLabel(e.syncStatus)}</td>
     </tr>`,
@@ -135,7 +141,7 @@ function buildHtml(
           .join('');
 
   return `<!DOCTYPE html>
-<html lang="ro">
+<html lang="${locale}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -158,7 +164,7 @@ function buildHtml(
 </head>
 <body>
   <h1>${labels.title}</h1>
-  <p class="subtitle">Data: ${today} &nbsp;·&nbsp; Generat la: ${new Date().toLocaleString('ro-RO')}</p>
+  <p class="subtitle">${labels.dateLabel} ${today} &nbsp;·&nbsp; ${labels.generatedAtLabel} ${new Date().toLocaleString(dateLocale)}</p>
 
   <div class="kpi-row">
     <div class="kpi">
@@ -219,7 +225,7 @@ function buildHtml(
       : ''
   }
 
-  <p class="footer">Generat din aplicația StrawBoss &nbsp;·&nbsp; ${today}</p>
+  <p class="footer">${labels.footerGeneratedFrom} &nbsp;·&nbsp; ${today}</p>
 </body>
 </html>`;
 }
@@ -228,7 +234,8 @@ function buildHtml(
 
 export default function DailyReportScreen() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const dateLocale = dateLocaleFor(locale);
   const userId = useAuthStore((s) => s.userId);
   const today = todayInRomania();
 
@@ -240,7 +247,7 @@ export default function DailyReportScreen() {
     setExporting(true);
     setExportError(null);
     try {
-      const html = buildHtml(entries, today, {
+      const html = buildHtml(entries, today, locale, {
         title: t('dailyReport.pdf.title'),
         noRecords: t('dailyReport.pdf.noRecords'),
         balesProduced: t('dailyReport.pdf.kpi.balesProduced'),
@@ -258,6 +265,9 @@ export default function DailyReportScreen() {
         syncSynced: t('dailyReport.syncStatus.synced'),
         syncPending: t('dailyReport.syncStatus.pending'),
         syncFailed: t('dailyReport.syncStatus.failed'),
+        dateLabel: t('dailyReport.pdf.dateLabel'),
+        generatedAtLabel: t('dailyReport.pdf.generatedAtLabel'),
+        footerGeneratedFrom: t('dailyReport.pdf.footerGeneratedFrom'),
       });
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, {
@@ -269,7 +279,7 @@ export default function DailyReportScreen() {
     } finally {
       setExporting(false);
     }
-  }, [entries, today, t]);
+  }, [entries, today, t, locale]);
 
   const syncBadge = (status: ActivityEntry['syncStatus']): string => {
     switch (status) {
@@ -361,7 +371,7 @@ export default function DailyReportScreen() {
                 <View style={styles.entryBody}>
                   <Text style={styles.entryLabel}>{entry.label}</Text>
                   <Text style={styles.entryDetail}>{entry.detail}</Text>
-                  <Text style={styles.entryTime}>{formatDate(entry.timestamp)}</Text>
+                  <Text style={styles.entryTime}>{formatDate(entry.timestamp, dateLocale)}</Text>
                 </View>
                 <Text style={[styles.syncBadge, { color: syncBadgeColor(entry.syncStatus) }]}>
                   {syncBadge(entry.syncStatus)}

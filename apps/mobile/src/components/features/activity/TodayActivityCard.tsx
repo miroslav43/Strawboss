@@ -19,7 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, radii } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { useTodayActivity, type ActivityEntry, type ActivityKind } from '@/hooks/useTodayActivity';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 
 // ---- Icon map ---------------------------------------------------------------
 
@@ -52,9 +52,9 @@ const SYNC_BADGE_KEYS: Record<
 
 // ---- Helpers ----------------------------------------------------------------
 
-function formatTime(isoTimestamp: string): string {
+function formatTime(isoTimestamp: string, dateLocale: string): string {
   try {
-    return new Date(isoTimestamp).toLocaleTimeString('ro-RO', {
+    return new Date(isoTimestamp).toLocaleTimeString(dateLocale, {
       hour: '2-digit',
       minute: '2-digit',
       timeZone: 'Europe/Bucharest',
@@ -66,7 +66,15 @@ function formatTime(isoTimestamp: string): string {
 
 // ---- Entry row --------------------------------------------------------------
 
-function ActivityRow({ entry, t }: { entry: ActivityEntry; t: (key: string) => string }) {
+function ActivityRow({
+  entry,
+  t,
+  dateLocale,
+}: {
+  entry: ActivityEntry;
+  t: (key: string) => string;
+  dateLocale: string;
+}) {
   const badge = SYNC_BADGE_KEYS[entry.syncStatus];
   const iconColor = KIND_COLOR[entry.kind];
 
@@ -80,7 +88,7 @@ function ActivityRow({ entry, t }: { entry: ActivityEntry; t: (key: string) => s
           <Text style={styles.rowLabel} numberOfLines={1}>
             {entry.label}
           </Text>
-          <Text style={styles.rowTime}>{formatTime(entry.timestamp)}</Text>
+          <Text style={styles.rowTime}>{formatTime(entry.timestamp, dateLocale)}</Text>
         </View>
         <View style={styles.rowBottom}>
           <Text style={styles.rowDetail} numberOfLines={1}>
@@ -102,7 +110,8 @@ interface TodayActivityCardProps {
 }
 
 export function TodayActivityCard({ operatorId }: TodayActivityCardProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const dateLocale = dateLocaleFor(locale);
   const [expanded, setExpanded] = useState(false);
   const { entries, loading, error, refresh } = useTodayActivity(operatorId);
 
@@ -177,7 +186,7 @@ export function TodayActivityCard({ operatorId }: TodayActivityCardProps) {
             <FlatList
               data={entries}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <ActivityRow entry={item} t={t} />}
+              renderItem={({ item }) => <ActivityRow entry={item} t={t} dateLocale={dateLocale} />}
               ItemSeparatorComponent={() => <View style={styles.separator} />}
               scrollEnabled={false}
               style={styles.list}

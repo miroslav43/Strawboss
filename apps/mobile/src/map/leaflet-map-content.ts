@@ -1,3 +1,5 @@
+import type { Locale } from '@strawboss/types';
+
 // Leaflet map HTML served to the WebView.
 //
 // Kept as an inlined string (instead of require('./leaflet-map.html')) because
@@ -8,8 +10,12 @@
 //
 // String.raw preserves the \uXXXX emoji escapes so the browser's JS engine
 // (not the TS parser) decodes them when parsing the inline <script>.
-export const LEAFLET_MAP_HTML = String.raw`<!DOCTYPE html>
-<html lang="ro">
+//
+// `locale` only feeds the <html lang> attribute below — this document has no
+// user-facing text of its own, so there is nothing else to localize here.
+export function buildLeafletMapHtml(locale: Locale): string {
+  return String.raw`<!DOCTYPE html>
+<html lang="${locale}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
@@ -417,3 +423,4 @@ setTimeout(function() {
 </script>
 </body>
 </html>`;
+}

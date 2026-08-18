@@ -39,7 +39,7 @@ import { AvatarPicker } from '@/components/shared/AvatarPicker';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSync } from '@/hooks/useSync';
 import { useTapSequence } from '@/hooks/useTapSequence';
-import { useI18n } from '@/lib/i18n';
+import { dateLocaleFor, useI18n } from '@/lib/i18n';
 
 const ROLE_KEY: Record<string, string> = {
   driver: 'profile.role.driver',
@@ -59,7 +59,7 @@ const MACHINE_MDI: Record<string, MachineIconName> = {
 
 export function ProfileScreen() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { clear } = useAuthStore();
   const { devSyncVisible, revealSync, hideSync } = useDevModeStore();
   const { highContrast, toggleHighContrast } = useThemeStore();
@@ -360,7 +360,7 @@ export function ProfileScreen() {
             <View style={styles.syncRow}>
               <Text style={styles.syncLabel}>{t('profile.sync.lastSync')}</Text>
               <Text style={styles.syncValue}>
-                {lastSyncAt ? new Date(lastSyncAt).toLocaleString('ro-RO') : '—'}
+                {lastSyncAt ? new Date(lastSyncAt).toLocaleString(dateLocaleFor(locale)) : '—'}
               </Text>
             </View>
             {syncing ? <Text style={styles.syncHint}>{t('profile.sync.syncing')}</Text> : null}
