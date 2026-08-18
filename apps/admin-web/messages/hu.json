@@ -792,8 +792,8 @@
     "overviewEmpty": "Erre a napra nincs tervezett feladat.",
     "overviewHint": "A hozzárendelések létrehozásához nyissa meg a Bálázók, Rakodógépek vagy Kamionok fület.",
     "online": {
-      "online": "Online",
-      "offline": "Offline",
+      "online": "Csatlakoztatva",
+      "offline": "Leválasztva",
       "lastSeen": "Utolsó aktivitás: {{when}}",
       "neverSeen": "Soha nem csatlakozott",
       "shortOnline": "Online",
@@ -1859,8 +1859,8 @@
       },
       "tailscale": {
         "colHeader": "Tailscale",
-        "online": "Tailscale online",
-        "offline": "Tailscale offline",
+        "online": "Tailscale aktív",
+        "offline": "Tailscale inaktív",
         "pending": "Tailscale függőben",
         "enable": "Tailscale engedélyezése",
         "disable": "Tailscale letiltása",
