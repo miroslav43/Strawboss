@@ -149,7 +149,7 @@
       "saveProfile": "Profil mentése",
       "placeholderName": "Az Ön neve",
       "placeholderEmail": "email@example.com",
-      "placeholderPhone": "+1 234 567 890",
+      "placeholderPhone": "+40 721 234 567",
       "specimen": {
         "imageAlt": "Aláírásminta",
         "empty": "Még nincs aláírásmintája.",
@@ -1511,13 +1511,13 @@
     },
     "form": {
       "fullName": "Teljes név",
-      "fullNamePlaceholder": "John Smith",
+      "fullNamePlaceholder": "Kovács János",
       "fullNameHint": "Pontosan 2 szót adjon meg: keresztnév + vezetéknév",
       "role": "Szerepkör",
       "phone": "Telefonszám (nem kötelező)",
       "phonePlaceholder": "+40 7xx xxx xxx",
       "username": "Felhasználónév",
-      "usernamePlaceholder": "jsmith",
+      "usernamePlaceholder": "kovacsj",
       "usernameOverrideTooltip": "A felhasználónevet létrehozás előtt szerkesztheti",
       "reset": "Visszaállítás",
       "pinLabel": "PIN-kód (4 számjegy)",
@@ -1604,8 +1604,8 @@
     "brand": "Super Admin",
     "messages": {
       "navLabel": "Üzenetek",
-      "title": "SMS Gateway Messages",
-      "subtitle": "All outbound SMS/email across every organization — including test messages from unassigned gateways.",
+      "title": "SMS Gateway üzenetek",
+      "subtitle": "Minden szervezet összes kimenő SMS/e-mail üzenete — beleértve a hozzá nem rendelt gateway-ek teszt üzeneteit is.",
       "gatewaysTitle": "Gateway telefonok",
       "noGateways": "Még nincs SMS-gateway telefon. Jelöljön meg egy eszközt SMS Gateway-ként az eszköz oldalán.",
       "online": "Online",
@@ -2203,7 +2203,7 @@
     "sectionRequester": "Igénylő adatai",
     "sectionTruck": "Kamion és sofőr",
     "sectionRequest": "Fuvar részletei",
-    "poweredBy": "Powered by StrawBoss",
+    "poweredBy": "Üzemelteti: StrawBoss",
     "crop": {
       "grau": "Búza",
       "orz": "Árpa",
@@ -2414,7 +2414,7 @@
     "trust1": "Gyors visszaigazolás csapatunktól",
     "trust2": "PIN-kóddal védett — naponta egy kód",
     "trust3": "Adatai közvetlenül a diszpécsercsapathoz kerülnek",
-    "poweredBy": "Powered by StrawBoss",
+    "poweredBy": "Üzemelteti: StrawBoss",
     "destinationAddressPlaceholder": "Állomás utca 4., 2. raktár",
     "destinationLocality": "Szállítási helység",
     "destinationLocalityPlaceholder": "Lugoj"
