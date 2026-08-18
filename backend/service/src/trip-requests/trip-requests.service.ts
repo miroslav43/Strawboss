@@ -14,6 +14,7 @@ import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
+import { clampInt } from '../common/clamp';
 import { AlertsService } from '../alerts/alerts.service';
 import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -25,7 +26,7 @@ import type { Queue } from 'bullmq';
 import { QUEUE_MESSAGE_SEND, QUEUE_COMANDA_GENERATION } from '../jobs/queues';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates } from '../messaging/message-templates';
-import { MessageKind, RequestStatus } from '@strawboss/types';
+import { MessageKind, RequestStatus, normalizeLocale } from '@strawboss/types';
 import { composeAuxStage, canDeleteAuxStage } from '@strawboss/domain';
 import type {
   TripRequest,
@@ -207,12 +208,6 @@ const DEFAULT_LIST_LIMIT = 200;
 const MAX_LIST_LIMIT = 1000;
 const MAX_LIST_OFFSET = 100_000;
 
-/** Coerce an untrusted numeric query param into a sane bound. */
-function clampInt(value: number | undefined, fallback: number, max: number): number {
-  if (value === undefined || !Number.isFinite(value)) return fallback;
-  return Math.min(Math.max(Math.trunc(value), 0), max);
-}
-
 interface OrgPortalRow {
   id: string;
   name: string;
@@ -383,10 +378,7 @@ export class TripRequestsService {
        * BEFORE the machines INSERT below — rejecting afterwards would leave an
        * orphan one-time auxiliary truck behind.
        */
-      await this.featuresService.assertEnabledForOrg(
-        req.organizationId,
-        'aux.field_pickup',
-      );
+      await this.featuresService.assertEnabledForOrg(req.organizationId, 'aux.field_pickup');
     }
 
     const code = internalCode ?? `AUX-${randomUUID().slice(0, 6).toUpperCase()}`;
@@ -751,14 +743,18 @@ export class TripRequestsService {
 
     // Email each org admin (stubbed). Best-effort.
     try {
+      // `u.locale` rides along so each admin gets this email in their own
+      // interface language — unlike the driver/beneficiary/notify_recipients
+      // contacts elsewhere in this file, these ARE `users` rows, so a real
+      // per-recipient locale exists here.
       const admins = (await this.drizzleProvider.db.execute(
-        sql`SELECT email FROM users
+        sql`SELECT email, locale FROM users
             WHERE organization_id = ${org.id}::uuid
               AND role = 'admin'::user_role
               AND deleted_at IS NULL
               AND email IS NOT NULL`,
-      )) as unknown as { email: string }[];
-      const tpl = messageTemplates[MessageKind.new_request_admin]({
+      )) as unknown as { email: string; locale: string | null }[];
+      const ctx = {
         companyName: dto.companyName ?? null,
         requesterName: dto.requesterName,
         requesterPhone: dto.requesterPhone,
@@ -766,8 +762,9 @@ export class TripRequestsService {
         neededDate: dto.neededDate ?? null,
         tonsRequested: dto.tonsRequested ?? null,
         destinationAddress: dto.destinationAddress ?? null,
-      });
+      };
       for (const a of admins) {
+        const tpl = messageTemplates[MessageKind.new_request_admin][normalizeLocale(a.locale)](ctx);
         await this.messaging.sendEmail({
           to: a.email,
           subject: tpl.subject,
@@ -978,14 +975,16 @@ export class TripRequestsService {
 
     // Email each org admin (stubbed). Best-effort.
     try {
+      // Same reasoning as submitPublicRequest above: `u.locale` rides along so
+      // each admin gets this email in their own interface language.
       const admins = (await this.drizzleProvider.db.execute(
-        sql`SELECT email FROM users
+        sql`SELECT email, locale FROM users
             WHERE organization_id = ${org.id}::uuid
               AND role = 'admin'::user_role
               AND deleted_at IS NULL
               AND email IS NOT NULL`,
-      )) as unknown as { email: string }[];
-      const tpl = messageTemplates[MessageKind.new_request_admin]({
+      )) as unknown as { email: string; locale: string | null }[];
+      const ctx = {
         companyName: beneficiary.companyName,
         requesterName: fields.requesterName,
         requesterPhone: fields.requesterPhone,
@@ -994,8 +993,9 @@ export class TripRequestsService {
         neededDate: fields.neededDate ?? null,
         tonsRequested: fields.tonsRequested ?? null,
         destinationAddress: fields.destinationAddress ?? null,
-      });
+      };
       for (const a of admins) {
+        const tpl = messageTemplates[MessageKind.new_request_admin][normalizeLocale(a.locale)](ctx);
         await this.messaging.sendEmail({
           to: a.email,
           subject: tpl.subject,

@@ -19,6 +19,7 @@ import { SIGNATURE_URL_PATTERN } from '@strawboss/validation';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { todayInRomania } from '../common/date';
 import { SeasonsService } from '../seasons/seasons.service';
+import { clampInt } from '../common/clamp';
 import { dateWindowClause, seasonWindow, tsWindowClause } from '../common/season-range';
 import { SEGMENT_CAP_M, SPEED_CAP_MS } from '../common/gps-noise';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -30,6 +31,7 @@ import { messageTemplates, fmtCoordsUrl } from '../messaging/message-templates';
 import {
   TripStatus,
   MessageKind,
+  DEFAULT_LOCALE,
   type UserRole,
   type PublicSignInfo,
   type PublicArrivalCmrInfo,
@@ -73,6 +75,8 @@ const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
  * so a caller-supplied limit would truncate before their filter runs.
  */
 const TRIP_LIST_CAP = 1000;
+/** Ceiling on `?offset=` — a deep-page scan is a report bug, not a use case. */
+const MAX_LIST_OFFSET = 100_000;
 
 /**
  * The client-facing projection of a trip row. Replaces `SELECT t.*` on the two
@@ -371,6 +375,17 @@ export class TripsService implements OnModuleInit {
       isAuxiliary?: string;
       /** Free-text over trip number / truck / driver (incl. external) / destination / parcel. */
       search?: string;
+      /**
+       * Opt-in pagination. Present ⇒ the query is paged AND every row carries a
+       * `total_count` window column so the caller knows when to stop.
+       *
+       * Absent ⇒ the historical behaviour, unchanged: `LIMIT TRIP_LIST_CAP`, no
+       * offset, no extra column. That default is load-bearing — the fleet
+       * phones and several admin pages poll this endpoint and must not start
+       * paying for a window function, nor start receiving a key they never had.
+       */
+      pageSize?: number;
+      offset?: number;
     },
   ) {
     const conditions: ReturnType<typeof sql>[] = [sql`t.deleted_at IS NULL`];
@@ -502,6 +517,26 @@ export class TripsService implements OnModuleInit {
           m.registration_plate                         AS truck_registration_plate,
           m.internal_code                              AS truck_internal_code`
         : sql``;
+
+    /*
+     * Pagination, opt-in on `pageSize` — same contract as `include=refs` above.
+     *
+     * `count(*) OVER()` is what lets one round trip answer both "here is the
+     * page" and "how many are there in total", which a season-wide report needs
+     * to say "1 of 3 pages" honestly rather than guessing from a short page.
+     * It is emitted ONLY on the paged path: the unpaged one is hit in a loop by
+     * ~30 fleet phones, and making them all pay for a window function — and
+     * handing them a column that was not there yesterday — for a report they
+     * never open would be the wrong trade.
+     *
+     * The `min = 1` on the page size matters: `Number('')` is 0, and a bare
+     * `?pageSize=` would otherwise become `LIMIT 0` — an empty report that
+     * looks exactly like "there is no data".
+     */
+    const paged = filters?.pageSize !== undefined;
+    const limit = clampInt(filters?.pageSize, TRIP_LIST_CAP, TRIP_LIST_CAP, 1);
+    const offset = clampInt(filters?.offset, 0, MAX_LIST_OFFSET);
+    const totalSelect = paged ? sql`, count(*) OVER() AS total_count` : sql``;
     const result = await this.drizzleProvider.db.execute(
       sql`
         SELECT
@@ -513,7 +548,7 @@ export class TripsService implements OnModuleInit {
           p.code                                       AS source_parcel_code,
           p.municipality                               AS source_parcel_municipality,
           f.name                                       AS source_farm_name,
-          sd.name                                      AS source_depot_name${refsSelect}
+          sd.name                                      AS source_depot_name${refsSelect}${totalSelect}
         FROM trips t
         LEFT JOIN machines m ON m.id = t.truck_id
         LEFT JOIN users    u ON u.id = t.driver_id
@@ -522,7 +557,7 @@ export class TripsService implements OnModuleInit {
         LEFT JOIN delivery_destinations sd ON sd.id = t.source_depot_id
         WHERE ${where}
         ORDER BY t.created_at DESC
-        LIMIT ${TRIP_LIST_CAP}
+        LIMIT ${limit} OFFSET ${offset}
       `,
     );
     return result;
@@ -1456,7 +1491,11 @@ export class TripsService implements OnModuleInit {
       const cmrUrl = slug
         ? `${this.publicWebBaseUrl()}/${slug}/cmr/${token}`
         : `${this.publicWebBaseUrl()}/cmr/${token}`;
-      const tpl = messageTemplates[MessageKind.driver_arrival_cmr_link]({
+      // Locale: `row.external_driver_phone` is a free-text field on an
+      // auxiliary trip (`is_auxiliary = true`) — this driver has no `users`
+      // row, so there is no locale preference to read. DEFAULT_LOCALE matches
+      // the pre-existing (always-Romanian) behavior.
+      const tpl = messageTemplates[MessageKind.driver_arrival_cmr_link][DEFAULT_LOCALE]({
         cmrUrl,
         baleCount: Number(row.bale_count ?? 0),
       });
@@ -3490,7 +3529,11 @@ export class TripsService implements OnModuleInit {
         locality = p[0]?.municipality ?? null;
         mapsUrl = fmtCoordsUrl(p[0]?.lat, p[0]?.lon);
       }
-      const tpl = messageTemplates[MessageKind.driver_assigned]({
+      // Locale: this SMS goes to the auxiliary trip's external driver
+      // (`sendDriverAssignedSms`, "SMS the external driver..." above) —
+      // sourced from trip_requests.driver_phone, a free-text field with no
+      // linked `users` row and therefore no locale preference to read.
+      const tpl = messageTemplates[MessageKind.driver_assigned][DEFAULT_LOCALE]({
         loaderName,
         loaderPhone,
         parcelName,

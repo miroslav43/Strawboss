@@ -138,4 +138,70 @@ export const ro: CatalogShape<typeof en> = {
       body: 'Transportul tău a intrat în dispută. Contactează dispeceratul.',
     },
   },
+  /**
+   * PDF document labels (Task 6.3). These are literals moved verbatim from
+   * documents/cmr/templates/cmr.hbs and documents/comanda/templates/comanda.hbs
+   * — not rewrites. See task-6.3-report.md for the byte-identity table.
+   */
+  pdf: {
+    cmr: {
+      title: 'SCRISOARE DE TRANSPORT CMR',
+      tripNoLabel: 'Nr. cursă:',
+      sectionSender: '1. EXPEDITOR',
+      parcel: 'Parcelă',
+      address: 'Adresă',
+      sectionRecipient: '2. DESTINATAR',
+      depotName: 'Nume depozit',
+      sectionCarrier: '3. TRANSPORTATOR',
+      truck: 'Camion',
+      driver: 'Șofer',
+      sectionGoods: '4. MARFA TRANSPORTATĂ',
+      baleCount: 'Nr. baloți',
+      loadCount: 'Nr. încărcări',
+      grossWeight: 'Greutate brută (kg)',
+      tareWeight: 'Tară camion (kg)',
+      netWeight: 'Greutate netă (kg)',
+      weightTicket: 'Nr. tichet cântar',
+      sectionTripDetails: '5. DETALII CURSĂ',
+      departure: 'Plecare',
+      arrival: 'Sosire',
+      deliveryConfirmed: 'Livrare confirmată',
+      distance: 'Distanță parcursă (km)',
+      sectionObservations: '6. OBSERVAȚII',
+      sectionSignatures: 'SEMNĂTURI',
+      senderOperatorSignature: 'EXPEDITOR / OPERATOR',
+      operatorSignatureAlt: 'Semnătura operatorului',
+      driverCarrierSignature: 'ȘOFER / TRANSPORTATOR',
+      driverSignatureAlt: 'Semnătura șoferului',
+      receiver: 'PRIMITOR',
+      receiverSignatureAlt: 'Semnătura primitorului',
+      footerGenerated: 'Document generat automat de',
+      footerTrip: 'Cursă',
+    },
+    comanda: {
+      docTitleWord: 'Comandă',
+      orderHeading: 'COMANDA',
+      to: 'Către:',
+      attentionOf: 'În atenția',
+      // Embedded newline + 4-space indent matches the original comanda.hbs
+      // source's line-wrap exactly (byte-identical rendered text — the
+      // `.intro` block never set `white-space: pre`, so this was already
+      // whitespace-collapsed to one space on screen; keeping the literal
+      // source bytes here just removes any need to reason about that).
+      intro:
+        'În urma discuției telefonice avute cu dumneavoastră, vă comandam ferm un\n    autocamion pentru un transport cu urmatoarele date:',
+      goodsLabel: 'Denumirea marfii:',
+      truckNoLabel: 'Nr. auto:',
+      driverLabel: 'Șofer:',
+      loadingLabel: 'Încarcare:',
+      unloadingLabel: 'Descarcare:',
+      valueLabel: 'Valoare transport:',
+      paymentPrefix: 'Modalitatea de plată: OP la ',
+      paymentSuffix: ' de zile de la primirea actelor în original',
+      obsLabel: 'OBS:',
+      otherClauses: 'ALTE CLAUZE:',
+      confirmation: 'CONFIRMARE,',
+      transporterWord: 'TRANSPORTATOR',
+    },
+  },
 };

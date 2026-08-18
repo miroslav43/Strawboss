@@ -8,7 +8,8 @@ import Handlebars from 'handlebars';
 import { DrizzleProvider } from '../../database/drizzle.provider';
 import { DocumentsService } from '../documents.service';
 import { UploadsService } from '../../uploads/uploads.service';
-import { DocumentType, DocumentStatus } from '@strawboss/types';
+import { DocumentType, DocumentStatus, DEFAULT_LOCALE, LOCALE_BCP47 } from '@strawboss/types';
+import { tServer } from '../../common';
 
 interface ComandaRow {
   id: string;
@@ -132,7 +133,39 @@ export class ComandaService {
       );
     }
 
-    const today = new Date().toLocaleDateString('ro-RO', {
+    // Locale: the comandă's recipient (the carrier, named only as free text —
+    // `transporter_name`/`driver_name` — no linked `users` row) has no locale
+    // to read, same as the CMR's auxiliary-trip fallback. Unlike the CMR,
+    // there is also no single "requesting user" to fall back to: this method
+    // is reached both from an unauthenticated public/PIN beneficiary portal
+    // (no RequestUser at all) and from an authenticated "transportator"-role
+    // submission — threading that user's locale through the BullMQ job
+    // (comandaQueue.add in trip-requests.service.ts) would need a job-payload
+    // change for a path that, half the time, has no user to read from anyway.
+    // DEFAULT_LOCALE keeps both paths' current (Romanian) output unchanged.
+    const locale = DEFAULT_LOCALE;
+    const labels = {
+      docTitleWord: tServer(locale, 'pdf.comanda.docTitleWord'),
+      orderHeading: tServer(locale, 'pdf.comanda.orderHeading'),
+      to: tServer(locale, 'pdf.comanda.to'),
+      attentionOf: tServer(locale, 'pdf.comanda.attentionOf'),
+      intro: tServer(locale, 'pdf.comanda.intro'),
+      goodsLabel: tServer(locale, 'pdf.comanda.goodsLabel'),
+      truckNoLabel: tServer(locale, 'pdf.comanda.truckNoLabel'),
+      driverLabel: tServer(locale, 'pdf.comanda.driverLabel'),
+      loadingLabel: tServer(locale, 'pdf.comanda.loadingLabel'),
+      unloadingLabel: tServer(locale, 'pdf.comanda.unloadingLabel'),
+      valueLabel: tServer(locale, 'pdf.comanda.valueLabel'),
+      paymentPrefix: tServer(locale, 'pdf.comanda.paymentPrefix'),
+      paymentSuffix: tServer(locale, 'pdf.comanda.paymentSuffix'),
+      obsLabel: tServer(locale, 'pdf.comanda.obsLabel'),
+      otherClauses: tServer(locale, 'pdf.comanda.otherClauses'),
+      confirmation: tServer(locale, 'pdf.comanda.confirmation'),
+      transporterWord: tServer(locale, 'pdf.comanda.transporterWord'),
+    };
+    const htmlLang = LOCALE_BCP47[locale].slice(0, 2);
+
+    const today = new Date().toLocaleDateString(LOCALE_BCP47[locale], {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -161,6 +194,8 @@ export class ComandaService {
       r.transport_value != null ? `${r.transport_value} ${r.currency ?? 'EUR'}`.trim() : '';
 
     const html = this.template({
+      lang: htmlLang,
+      labels,
       expeditorName: r.company_name ?? '',
       expeditorVat: r.company_cui ?? '',
       orderNo,
@@ -215,7 +250,7 @@ export class ComandaService {
     const docResult = (await this.documentsService.create(orgId, {
       tripRequestId: requestId,
       documentType: DocumentType.comanda,
-      title: `Comandă ${orderNo}`,
+      title: `${labels.docTitleWord} ${orderNo}`,
       status: DocumentStatus.generated,
       fileUrl: saved.url,
       fileSizeBytes: saved.sizeBytes,

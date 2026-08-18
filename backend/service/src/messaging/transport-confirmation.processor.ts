@@ -10,7 +10,7 @@ import { MESSAGING_SERVICE, type IMessagingService } from './messaging.tokens';
 import { messageTemplates, fmtCoordsUrl, fmtDirectionsUrl } from './message-templates';
 import { buildRoute, staticMapUrl, type LatLon } from './route-map';
 import { AvizNotificationService } from './aviz-notification.service';
-import { MessageKind } from '@strawboss/types';
+import { MessageKind, DEFAULT_LOCALE } from '@strawboss/types';
 import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
 
 interface NotifyRecipientRow {
@@ -177,8 +177,17 @@ export class TransportConfirmationProcessor extends WorkerHost {
     // Optional raster brand logo for the email header (unset → text-only header).
     const logoUrl = this.config.get<string>('EMAIL_LOGO_URL') ?? null;
 
+    // Locale: every recipient here (driver, beneficiary, notify_recipients
+    // contact, requester fallback) is a free-text contact on trip_requests —
+    // none of them is a `users` row, so there is no locale to read for any of
+    // them (unlike the two new_request_admin call sites in
+    // trip-requests.service.ts, which notify actual `users`). DEFAULT_LOCALE
+    // preserves the current all-Romanian behavior exactly; wiring a real
+    // per-contact locale would need a schema change (a locale column on
+    // trip_requests/notify_recipients), out of scope here.
+    const locale = DEFAULT_LOCALE;
     const renderEmail = (recipientName: string | null) =>
-      messageTemplates[MessageKind.transport_confirmed]({
+      messageTemplates[MessageKind.transport_confirmed][locale]({
         organizationName: orgName,
         recipientName,
         driverName: req.driver_name,
@@ -264,7 +273,9 @@ export class TransportConfirmationProcessor extends WorkerHost {
     // SMS to every distinct phone (driver + contacts). Body is recipient-agnostic,
     // rendered once; the SIM-gateway phone claims each pending row on /fleet/checkin.
     if (smsRecipients.length) {
-      const sms = messageTemplates[MessageKind.transport_confirmed_driver_sms]({
+      // Same locale reasoning as renderEmail above — no per-recipient locale
+      // exists for these external contacts.
+      const sms = messageTemplates[MessageKind.transport_confirmed_driver_sms][locale]({
         pickupName: pickup.label,
         pickupMapsUrl: pickup.mapsUrl,
         deliveryAddress: delivery.address,

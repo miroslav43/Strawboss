@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="{{lang}}">
 <head>
   <meta charset="UTF-8" />
   <title>CMR — {{tripNumber}}</title>
@@ -33,53 +33,53 @@
 </head>
 <body>
   <div class="logo-row">STRAWBOSS</div>
-  <h1>SCRISOARE DE TRANSPORT CMR</h1>
-  <p class="subtitle">Nr. cursă: <strong>{{tripNumber}}</strong> &mdash; {{date}}</p>
+  <h1>{{labels.title}}</h1>
+  <p class="subtitle">{{labels.tripNoLabel}} <strong>{{tripNumber}}</strong> &mdash; {{date}}</p>
 
   <!-- 1. Expeditor -->
   <table>
-    <tr class="section-header"><td colspan="2">1. EXPEDITOR</td></tr>
-    <tr><th>Parcelă</th><td class="highlight">{{parcelName}}</td></tr>
-    <tr><th>Adresă</th><td>{{senderAddress}}{{#if senderMunicipality}}, {{senderMunicipality}}{{/if}}</td></tr>
+    <tr class="section-header"><td colspan="2">{{labels.sectionSender}}</td></tr>
+    <tr><th>{{labels.parcel}}</th><td class="highlight">{{parcelName}}</td></tr>
+    <tr><th>{{labels.address}}</th><td>{{senderAddress}}{{#if senderMunicipality}}, {{senderMunicipality}}{{/if}}</td></tr>
   </table>
 
   <!-- 2. Destinatar -->
   <table>
-    <tr class="section-header"><td colspan="2">2. DESTINATAR</td></tr>
-    <tr><th>Nume depozit</th><td class="highlight">{{destinationName}}</td></tr>
-    <tr><th>Adresă</th><td>{{destinationAddress}}</td></tr>
+    <tr class="section-header"><td colspan="2">{{labels.sectionRecipient}}</td></tr>
+    <tr><th>{{labels.depotName}}</th><td class="highlight">{{destinationName}}</td></tr>
+    <tr><th>{{labels.address}}</th><td>{{destinationAddress}}</td></tr>
   </table>
 
   <!-- 3. Transportator -->
   <table>
-    <tr class="section-header"><td colspan="2">3. TRANSPORTATOR</td></tr>
-    <tr><th>Camion</th><td>{{truckName}} &mdash; <strong>{{truckPlate}}</strong></td></tr>
-    <tr><th>Șofer</th><td class="highlight">{{driverName}}</td></tr>
+    <tr class="section-header"><td colspan="2">{{labels.sectionCarrier}}</td></tr>
+    <tr><th>{{labels.truck}}</th><td>{{truckName}} &mdash; <strong>{{truckPlate}}</strong></td></tr>
+    <tr><th>{{labels.driver}}</th><td class="highlight">{{driverName}}</td></tr>
   </table>
 
   <!-- 4. Marfa -->
   <table>
-    <tr class="section-header"><td colspan="2">4. MARFA TRANSPORTATĂ</td></tr>
-    <tr><th>Nr. baloți</th><td class="highlight">{{baleCount}}</td></tr>
-    <tr><th>Nr. încărcări</th><td>{{baleLoadCount}}</td></tr>
-    <tr><th>Greutate brută (kg)</th><td>{{grossWeightKg}}</td></tr>
-    <tr><th>Tară camion (kg)</th><td>{{tareWeightKg}}</td></tr>
-    <tr><th>Greutate netă (kg)</th><td class="highlight">{{netWeightKg}}</td></tr>
-    <tr><th>Nr. tichet cântar</th><td>{{weightTicketNumber}}</td></tr>
+    <tr class="section-header"><td colspan="2">{{labels.sectionGoods}}</td></tr>
+    <tr><th>{{labels.baleCount}}</th><td class="highlight">{{baleCount}}</td></tr>
+    <tr><th>{{labels.loadCount}}</th><td>{{baleLoadCount}}</td></tr>
+    <tr><th>{{labels.grossWeight}}</th><td>{{grossWeightKg}}</td></tr>
+    <tr><th>{{labels.tareWeight}}</th><td>{{tareWeightKg}}</td></tr>
+    <tr><th>{{labels.netWeight}}</th><td class="highlight">{{netWeightKg}}</td></tr>
+    <tr><th>{{labels.weightTicket}}</th><td>{{weightTicketNumber}}</td></tr>
   </table>
 
   <!-- 5. Detalii cursă -->
   <table>
-    <tr class="section-header"><td colspan="2">5. DETALII CURSĂ</td></tr>
-    <tr><th>Plecare</th><td>{{departureAt}}</td></tr>
-    <tr><th>Sosire</th><td>{{arrivalAt}}</td></tr>
-    <tr><th>Livrare confirmată</th><td>{{deliveredAt}}</td></tr>
-    <tr><th>Distanță parcursă (km)</th><td class="highlight">{{gpsDistanceKm}}</td></tr>
+    <tr class="section-header"><td colspan="2">{{labels.sectionTripDetails}}</td></tr>
+    <tr><th>{{labels.departure}}</th><td>{{departureAt}}</td></tr>
+    <tr><th>{{labels.arrival}}</th><td>{{arrivalAt}}</td></tr>
+    <tr><th>{{labels.deliveryConfirmed}}</th><td>{{deliveredAt}}</td></tr>
+    <tr><th>{{labels.distance}}</th><td class="highlight">{{gpsDistanceKm}}</td></tr>
   </table>
 
   {{#if deliveryNotes}}
   <table>
-    <tr class="section-header"><td colspan="2">6. OBSERVAȚII</td></tr>
+    <tr class="section-header"><td colspan="2">{{labels.sectionObservations}}</td></tr>
     <tr><td colspan="2">{{deliveryNotes}}</td></tr>
   </table>
   {{/if}}
@@ -87,32 +87,32 @@
   <!-- Semnături -->
   <div class="signatures">
     <table>
-      <tr class="section-header"><td colspan="2">{{#if deliveryNotes}}7{{else}}6{{/if}}. SEMNĂTURI</td></tr>
+      <tr class="section-header"><td colspan="2">{{#if deliveryNotes}}7{{else}}6{{/if}}. {{labels.sectionSignatures}}</td></tr>
     </table>
     <div class="sig-grid">
       <div class="sig-box">
-        <div class="label">EXPEDITOR / OPERATOR</div>
+        <div class="label">{{labels.senderOperatorSignature}}</div>
         <div class="name">{{#if loaderName}}{{loaderName}}{{else}}&nbsp;{{/if}}</div>
         {{#if loaderSignatureUrl}}
-        <img src="{{loaderSignatureUrl}}" alt="Semnătura operatorului" />
+        <img src="{{loaderSignatureUrl}}" alt="{{labels.operatorSignatureAlt}}" />
         {{else}}
         <div class="sig-empty"></div>
         {{/if}}
       </div>
       <div class="sig-box">
-        <div class="label">ȘOFER / TRANSPORTATOR</div>
+        <div class="label">{{labels.driverCarrierSignature}}</div>
         <div class="name">{{driverName}}</div>
         {{#if driverSignatureUrl}}
-        <img src="{{driverSignatureUrl}}" alt="Semnătura șoferului" />
+        <img src="{{driverSignatureUrl}}" alt="{{labels.driverSignatureAlt}}" />
         {{else}}
         <div class="sig-empty"></div>
         {{/if}}
       </div>
       <div class="sig-box">
-        <div class="label">PRIMITOR</div>
+        <div class="label">{{labels.receiver}}</div>
         <div class="name">{{#if receiverName}}{{receiverName}}{{else}}&nbsp;{{/if}}</div>
         {{#if receiverSignatureUrl}}
-        <img src="{{receiverSignatureUrl}}" alt="Semnătura primitorului" />
+        <img src="{{receiverSignatureUrl}}" alt="{{labels.receiverSignatureAlt}}" />
         {{else}}
         <div class="sig-empty"></div>
         {{/if}}
@@ -121,7 +121,7 @@
   </div>
 
   <div class="footer">
-    Document generat automat de StrawBoss &mdash; {{date}} &mdash; Cursă {{tripNumber}}
+    {{labels.footerGenerated}} StrawBoss &mdash; {{date}} &mdash; {{labels.footerTrip}} {{tripNumber}}
   </div>
 </body>
 </html>

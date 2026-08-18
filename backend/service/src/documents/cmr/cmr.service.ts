@@ -7,7 +7,15 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import Handlebars from 'handlebars';
 import { DrizzleProvider } from '../../database/drizzle.provider';
 import { DocumentsService } from '../documents.service';
-import { DocumentType, DocumentStatus } from '@strawboss/types';
+import {
+  DocumentType,
+  DocumentStatus,
+  DEFAULT_LOCALE,
+  LOCALE_BCP47,
+  normalizeLocale,
+  type Locale,
+} from '@strawboss/types';
+import { tServer } from '../../common';
 
 @Injectable()
 export class CmrService {
@@ -75,7 +83,7 @@ export class CmrService {
           : Promise.resolve([]),
         trip.driver_id
           ? this.drizzleProvider.db.execute(
-              sql`SELECT id, full_name, email FROM users WHERE id = ${trip.driver_id as string}::uuid LIMIT 1`,
+              sql`SELECT id, full_name, email, locale FROM users WHERE id = ${trip.driver_id as string}::uuid LIMIT 1`,
             )
           : Promise.resolve([]),
         this.drizzleProvider.db.execute(
@@ -100,6 +108,63 @@ export class CmrService {
       (driver?.full_name as string | undefined) ??
       (trip.external_driver_name as string | null) ??
       null;
+
+    // Locale: the CMR is ONE physical/PDF document shared by the loader
+    // operator, the driver (who carries it through both stages and signs it
+    // at departure AND arrival) and the receiver (who signs at delivery) — it
+    // cannot render in three languages at once, so one party's locale has to
+    // govern. The driver is the constant across both stages (the loader only
+    // appears at stage 1, the receiver only at stage 2), and is the one who
+    // actually reads the printed labels in the field to know what to sign, so
+    // their preference governs. Auxiliary trips have no linked driver `users`
+    // row (external_driver_name only) — those always fall back to
+    // DEFAULT_LOCALE, same as today.
+    //
+    // This is the document RECIPIENT's locale, not the requesting user's: the
+    // controller call (admin/dispatcher clicking "generate CMR") and the
+    // BullMQ job (fired from trip transitions) both trigger this method
+    // without a driver-locale override, and neither path threads a
+    // RequestUser through — so the super_admin-always-DEFAULT_LOCALE
+    // limitation from Task 6.1 does NOT apply here regardless of who
+    // triggered generation.
+    const locale: Locale = driver?.locale
+      ? normalizeLocale(driver.locale as string)
+      : DEFAULT_LOCALE;
+    const labels = {
+      title: tServer(locale, 'pdf.cmr.title'),
+      tripNoLabel: tServer(locale, 'pdf.cmr.tripNoLabel'),
+      sectionSender: tServer(locale, 'pdf.cmr.sectionSender'),
+      parcel: tServer(locale, 'pdf.cmr.parcel'),
+      address: tServer(locale, 'pdf.cmr.address'),
+      sectionRecipient: tServer(locale, 'pdf.cmr.sectionRecipient'),
+      depotName: tServer(locale, 'pdf.cmr.depotName'),
+      sectionCarrier: tServer(locale, 'pdf.cmr.sectionCarrier'),
+      truck: tServer(locale, 'pdf.cmr.truck'),
+      driver: tServer(locale, 'pdf.cmr.driver'),
+      sectionGoods: tServer(locale, 'pdf.cmr.sectionGoods'),
+      baleCount: tServer(locale, 'pdf.cmr.baleCount'),
+      loadCount: tServer(locale, 'pdf.cmr.loadCount'),
+      grossWeight: tServer(locale, 'pdf.cmr.grossWeight'),
+      tareWeight: tServer(locale, 'pdf.cmr.tareWeight'),
+      netWeight: tServer(locale, 'pdf.cmr.netWeight'),
+      weightTicket: tServer(locale, 'pdf.cmr.weightTicket'),
+      sectionTripDetails: tServer(locale, 'pdf.cmr.sectionTripDetails'),
+      departure: tServer(locale, 'pdf.cmr.departure'),
+      arrival: tServer(locale, 'pdf.cmr.arrival'),
+      deliveryConfirmed: tServer(locale, 'pdf.cmr.deliveryConfirmed'),
+      distance: tServer(locale, 'pdf.cmr.distance'),
+      sectionObservations: tServer(locale, 'pdf.cmr.sectionObservations'),
+      sectionSignatures: tServer(locale, 'pdf.cmr.sectionSignatures'),
+      senderOperatorSignature: tServer(locale, 'pdf.cmr.senderOperatorSignature'),
+      operatorSignatureAlt: tServer(locale, 'pdf.cmr.operatorSignatureAlt'),
+      driverCarrierSignature: tServer(locale, 'pdf.cmr.driverCarrierSignature'),
+      driverSignatureAlt: tServer(locale, 'pdf.cmr.driverSignatureAlt'),
+      receiver: tServer(locale, 'pdf.cmr.receiver'),
+      receiverSignatureAlt: tServer(locale, 'pdf.cmr.receiverSignatureAlt'),
+      footerGenerated: tServer(locale, 'pdf.cmr.footerGenerated'),
+      footerTrip: tServer(locale, 'pdf.cmr.footerTrip'),
+    };
+    const htmlLang = LOCALE_BCP47[locale].slice(0, 2);
 
     // 3. Find existing partial document (for stage 2 update) or create a new record
     let docId: string;
@@ -173,10 +238,16 @@ export class CmrService {
       // 4. Render Handlebars template
       const now = new Date();
       const html = this.template({
+        lang: htmlLang,
+        labels,
         tripNumber: trip.trip_number,
         stage,
         isPartial: isStage1,
-        date: now.toLocaleDateString('ro-RO', { year: 'numeric', month: 'long', day: 'numeric' }),
+        date: now.toLocaleDateString(LOCALE_BCP47[locale], {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }),
         parcelName: parcel?.name ?? parcel?.code ?? 'N/A',
         senderAddress: parcel?.address ?? 'N/A',
         senderMunicipality: parcel?.municipality ?? '',
@@ -200,17 +271,17 @@ export class CmrService {
         // exists from stage-2 onward.
         gpsDistanceKm: isStage1 ? null : (trip.gps_distance_km ?? 'N/A'),
         departureAt: trip.departure_at
-          ? new Date(trip.departure_at as string).toLocaleString('ro-RO')
+          ? new Date(trip.departure_at as string).toLocaleString(LOCALE_BCP47[locale])
           : 'N/A',
         arrivalAt: isStage1
           ? null
           : trip.arrival_at
-            ? new Date(trip.arrival_at as string).toLocaleString('ro-RO')
+            ? new Date(trip.arrival_at as string).toLocaleString(LOCALE_BCP47[locale])
             : 'N/A',
         deliveredAt: isStage1
           ? null
           : trip.delivered_at
-            ? new Date(trip.delivered_at as string).toLocaleString('ro-RO')
+            ? new Date(trip.delivered_at as string).toLocaleString(LOCALE_BCP47[locale])
             : 'N/A',
         receiverName: isStage1 ? null : (trip.receiver_name ?? 'N/A'),
         loaderSignatureUrl: this.sanitizeSignatureUrl(trip.loader_signature_url),

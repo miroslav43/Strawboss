@@ -12,7 +12,7 @@ import {
   type EmailAttachment,
 } from './messaging.tokens';
 import { messageTemplates } from './message-templates';
-import { MessageKind } from '@strawboss/types';
+import { MessageKind, DEFAULT_LOCALE } from '@strawboss/types';
 import { signUploadUrl, UPLOADS_URL_PREFIX } from '../uploads/uploads-signing';
 import { resolveUploadsRoot } from '../uploads/uploads.service';
 
@@ -154,9 +154,14 @@ export class AvizNotificationService {
 
     const logoUrl = this.config.get<string>('EMAIL_LOGO_URL') ?? null;
 
+    // Locale: same reasoning as TransportConfirmationProcessor — every
+    // recipient here is a free-text contact on trip_requests, not a `users`
+    // row, so there is no per-recipient locale to resolve.
+    const locale = DEFAULT_LOCALE;
+
     // One email per distinct recipient (personalized greeting + PDF attachment).
     for (const r of emailRecipients) {
-      const tpl = messageTemplates[MessageKind.aviz_uploaded]({
+      const tpl = messageTemplates[MessageKind.aviz_uploaded][locale]({
         organizationName: orgName,
         recipientName: r.name,
         companyName: req.company_name,
@@ -178,7 +183,7 @@ export class AvizNotificationService {
 
     // One SMS (download link) per distinct phone.
     if (smsRecipients.length) {
-      const sms = messageTemplates[MessageKind.aviz_uploaded_sms]({
+      const sms = messageTemplates[MessageKind.aviz_uploaded_sms][locale]({
         truckRegistrationPlate: req.truck_registration_plate,
         downloadUrl,
       });

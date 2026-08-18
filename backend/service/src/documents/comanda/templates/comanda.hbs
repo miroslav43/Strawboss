@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="{{lang}}">
 <head>
   <meta charset="UTF-8" />
-  <title>Comandă {{orderNo}}</title>
+  <title>{{labels.docTitleWord}} {{orderNo}}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -29,33 +29,51 @@
   <div class="hdr">{{expeditorVat}}</div>
 
   <div class="sp"></div><div class="sp"></div><div class="sp"></div>
-  <div class="order">COMANDA {{orderNo}}/{{date}}</div>
+  <div class="order">{{labels.orderHeading}} {{orderNo}}/{{date}}</div>
 
   <div class="sp"></div><div class="sp"></div><div class="sp"></div><div class="sp"></div>
-  <div class="b">Către:&emsp;{{carrierName}}</div>
-  <div class="b">În atenția&emsp;{{contactName}} / {{contactPhone}}</div>
+  <div class="b">{{labels.to}}&emsp;{{carrierName}}</div>
+  <div class="b">{{labels.attentionOf}}&emsp;{{contactName}} / {{contactPhone}}</div>
   <div class="sp"></div>
   <div class="b">{{contactEmail}}</div>
 
   <div class="sp"></div><div class="sp"></div><div class="sp"></div>
-  <p class="intro">În urma discuției telefonice avute cu dumneavoastră, vă comandam ferm un
-    autocamion pentru un transport cu urmatoarele date:</p>
+  <p class="intro">{{labels.intro}}</p>
 
   <div class="sp"></div>
-  <div class="row"><span>Denumirea marfii:</span><span>{{goods}}</span></div>
-  <div class="row"><span>Nr. auto:</span><span>{{truckDescription}}</span></div>
+  <div class="row"><span>{{labels.goodsLabel}}</span><span>{{goods}}</span></div>
+  <div class="row"><span>{{labels.truckNoLabel}}</span><span>{{truckDescription}}</span></div>
   <div class="row"><span></span><span class="b">{{plates}}</span></div>
-  <div class="row"><span>Șofer:</span><span>{{driverName}}</span></div>
-  <div class="row"><span>Încarcare:</span><span>{{loading}}</span></div>
-  <div class="row"><span>Descarcare:</span><span>{{unloading}}</span></div>
-  <div class="row"><span>Valoare transport:</span><span>{{value}}</span></div>
-  <div>Modalitatea de plată: OP la {{paymentDays}} de zile de la primirea actelor în original</div>
+  <div class="row"><span>{{labels.driverLabel}}</span><span>{{driverName}}</span></div>
+  <div class="row"><span>{{labels.loadingLabel}}</span><span>{{loading}}</span></div>
+  <div class="row"><span>{{labels.unloadingLabel}}</span><span>{{unloading}}</span></div>
+  <div class="row"><span>{{labels.valueLabel}}</span><span>{{value}}</span></div>
+  <div>{{labels.paymentPrefix}}{{paymentDays}}{{labels.paymentSuffix}}</div>
 
   <div class="sp"></div>
-  <div class="b">OBS: {{obs}}</div>
+  <div class="b">{{labels.obsLabel}} {{obs}}</div>
 
   <div class="sp"></div><div class="sp"></div>
-  <div>ALTE CLAUZE:</div>
+  <div>{{labels.otherClauses}}</div>
+  <!--
+    Task 6.3 (Hungarian locale): the paragraphs below are Romanian
+    transport-contract LAW, not UI copy, and stay in Romanian in every
+    locale — this is a deliberate, product-owner-approved decision, not an
+    oversight or a missed translation.
+
+    The two sentences the task explicitly called out — the BNR
+    (Banca Națională a României) exchange-rate clause and the CMR insurance
+    request — are the clearest examples, but the boundary was drawn around
+    the WHOLE .clauses block, not just those two: every paragraph here is
+    part of one integrated contractual clause list governed by Romanian law
+    (it names Law 469/09.07.2002 by number and repeatedly defers to
+    "legea în vigoare" — the law in force). Translating some of these
+    paragraphs into Hungarian while leaving the BNR/CMR-insurance sentences
+    in Romanian would produce a legally incoherent, mixed-language contract
+    — worse than an all-Romanian one. Only the surrounding FORM labels
+    (above and below this block) are localized; a Hungarian comandă's
+    contractual terms are a question for a lawyer, not a translator.
+  -->
   <div class="clauses">
     <p>Transportatorul trebuie sa să dispună de documente de transport și va raspunde de întocmirea acestora în conformitate cu prezenta comandă de transport, orice neconcordanță fiind anunțată imediat la EXPEDITOR.</p>
     <p>Nu se va da curs altor instrucțiuni decat cele din comanda de transport fără acordul expres al EXPEDITORULUI.</p>
@@ -69,7 +87,7 @@
   </div>
 
   <div class="sp"></div><div class="sp"></div><div class="sp"></div>
-  <div class="b">CONFIRMARE,</div>
-  <div class="b">TRANSPORTATOR</div>
+  <div class="b">{{labels.confirmation}}</div>
+  <div class="b">{{labels.transporterWord}}</div>
 </body>
 </html>
