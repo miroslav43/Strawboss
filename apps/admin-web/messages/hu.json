@@ -1,19 +1,19 @@
 {
   "common": {
-    "save": "Save",
-    "cancel": "Cancel",
-    "delete": "Delete",
-    "edit": "Edit",
-    "close": "Close",
-    "loading": "Loading…",
-    "search": "Search",
-    "yes": "Yes",
-    "no": "No",
+    "save": "Mentés",
+    "cancel": "Mégse",
+    "delete": "Törlés",
+    "edit": "Szerkesztés",
+    "close": "Bezárás",
+    "loading": "Betöltés…",
+    "search": "Keresés",
+    "yes": "Igen",
+    "no": "Nem",
     "none": "—",
-    "active": "Active",
-    "inactive": "Inactive",
-    "error": "Something went wrong.",
-    "back": "Back"
+    "active": "Aktív",
+    "inactive": "Inaktív",
+    "error": "Hiba történt.",
+    "back": "Vissza"
   },
   "fuelLogs": {
     "dateFrom": "From",
@@ -28,31 +28,31 @@
     "empty": "No consumable logs in this range."
   },
   "nav": {
-    "operations": "Operations",
-    "tasks": "Tasks",
-    "trips": "Trips",
-    "transportTrips": "My Trips",
-    "transportNew": "New Request",
-    "transportBeneficiaries": "Beneficiaries",
-    "documents": "Documents",
-    "reports": "Reports",
-    "alerts": "Alerts",
-    "map": "Map",
-    "farms": "Farms",
-    "parcels": "Parcels",
-    "machines": "Machines",
-    "deposits": "Deposits",
-    "accounts": "Accounts",
-    "fuelLogs": "Fuel logs",
-    "consumableLogs": "Consumables",
-    "settings": "Settings",
-    "collapseSidebar": "Collapse sidebar",
-    "expandSidebar": "Expand sidebar",
-    "commandCenter": "Command Center",
-    "tracks": "Tracks",
-    "tripRequests": "Trip Requests",
-    "messages": "Messages",
-    "beneficiaries": "Beneficiaries"
+    "operations": "Műveletek",
+    "tasks": "Feladatok",
+    "trips": "Fuvarok",
+    "transportTrips": "Fuvaraim",
+    "transportNew": "Új igény",
+    "transportBeneficiaries": "Megrendelők",
+    "documents": "Dokumentumok",
+    "reports": "Jelentések",
+    "alerts": "Riasztások",
+    "map": "Térkép",
+    "farms": "Gazdaságok",
+    "parcels": "Táblák",
+    "machines": "Gépek",
+    "deposits": "Raktárak",
+    "accounts": "Fiókok",
+    "fuelLogs": "Üzemanyagnaplók",
+    "consumableLogs": "Fogyóeszközök",
+    "settings": "Beállítások",
+    "collapseSidebar": "Oldalsáv összecsukása",
+    "expandSidebar": "Oldalsáv kinyitása",
+    "commandCenter": "Vezérlőközpont",
+    "tracks": "Nyomvonalak",
+    "tripRequests": "Fuvarigények",
+    "messages": "Üzenetek",
+    "beneficiaries": "Megrendelők"
   },
   "tracks": {
     "title": "Tracks",
@@ -88,52 +88,52 @@
     "removeTrack": "Remove track"
   },
   "topBar": {
-    "toggleMenu": "Toggle menu",
-    "notifications": "Notifications",
-    "signOut": "Sign out",
-    "dashboard": "Dashboard"
+    "toggleMenu": "Menü megnyitása/bezárása",
+    "notifications": "Értesítések",
+    "signOut": "Kijelentkezés",
+    "dashboard": "Irányítópult"
   },
   "breadcrumb": {
-    "map": "Map",
-    "parcels": "Parcels",
-    "farms": "Farms",
-    "settings": "Settings",
-    "operations": "Operations",
-    "tasks": "Tasks",
-    "trips": "Trips",
-    "documents": "Documents",
-    "reports": "Reports",
-    "alerts": "Alerts",
-    "machines": "Machines",
-    "deposits": "Deposits",
-    "accounts": "Accounts"
+    "map": "Térkép",
+    "parcels": "Táblák",
+    "farms": "Gazdaságok",
+    "settings": "Beállítások",
+    "operations": "Műveletek",
+    "tasks": "Feladatok",
+    "trips": "Fuvarok",
+    "documents": "Dokumentumok",
+    "reports": "Jelentések",
+    "alerts": "Riasztások",
+    "machines": "Gépek",
+    "deposits": "Raktárak",
+    "accounts": "Fiókok"
   },
   "login": {
     "title": "StrawBoss Admin",
-    "subtitle": "Sign in to continue",
-    "email": "Email",
-    "password": "Password",
-    "usernameOrEmail": "Username or email",
-    "passwordOrPin": "Password or PIN",
-    "usernamePlaceholder": "username or admin@email.com",
-    "passwordPlaceholder": "4-digit PIN or password",
-    "showPassword": "Show password",
-    "hidePassword": "Hide password",
-    "signIn": "Sign in",
-    "signingIn": "Signing in…",
+    "subtitle": "Jelentkezzen be a folytatáshoz",
+    "email": "E-mail",
+    "password": "Jelszó",
+    "usernameOrEmail": "Felhasználónév vagy e-mail",
+    "passwordOrPin": "Jelszó vagy PIN-kód",
+    "usernamePlaceholder": "felhasználónév vagy admin@email.com",
+    "passwordPlaceholder": "4 jegyű PIN-kód vagy jelszó",
+    "showPassword": "Jelszó megjelenítése",
+    "hidePassword": "Jelszó elrejtése",
+    "signIn": "Bejelentkezés",
+    "signingIn": "Bejelentkezés…",
     "placeholderEmail": "admin@strawboss.app",
-    "welcome": "Welcome back",
-    "brandEyebrow": "Agricultural logistics",
-    "heroHeadline": "Run the whole harvest from one place",
-    "heroSub": "Trucks, loaders, depots and bales — tracked live and reconciled automatically.",
-    "cap1": "Live fleet & geofence tracking",
-    "cap2": "Bale & fuel reconciliation",
-    "cap3": "Signed CMR delivery documents",
+    "welcome": "Üdvözöljük újra",
+    "brandEyebrow": "Mezőgazdasági logisztika",
+    "heroHeadline": "Vezesse a teljes betakarítást egy helyről",
+    "heroSub": "Kamionok, rakodógépek, raktárak és bálák — élő nyomon követés és automatikus egyeztetés.",
+    "cap1": "Élő flotta- és geokerítés-követés",
+    "cap2": "Bála- és üzemanyag-egyeztetés",
+    "cap3": "Aláírt CMR fuvarlevelek",
     "poweredBy": "nortiauno",
     "errors": {
-      "unknownUser": "Username not found. Please check the details you entered.",
-      "invalidCredentials": "Invalid username or password. Please try again.",
-      "noOrganization": "Your account has no assigned organization. Contact the administrator."
+      "unknownUser": "A felhasználónév nem található. Kérjük, ellenőrizze a megadott adatokat.",
+      "invalidCredentials": "Hibás felhasználónév vagy jelszó. Kérjük, próbálja újra.",
+      "noOrganization": "A fiókjához nincs szervezet hozzárendelve. Vegye fel a kapcsolatot az adminisztrátorral."
     }
   },
   "settings": {
@@ -701,7 +701,7 @@
     "type": "Type"
   },
   "settings_page": {
-    "specimenSectionTitle": "Signature specimen"
+    "specimenSectionTitle": "Aláírásminta"
   },
   "tasks": {
     "title": "Tasks",
@@ -2071,15 +2071,15 @@
     "noData": "No data available"
   },
   "realtime": {
-    "reconnecting": "Reconnecting to live data…",
-    "disconnected": "Live data connection lost.",
-    "reconnectButton": "Reconnect"
+    "reconnecting": "Újrakapcsolódás az élő adatokhoz…",
+    "disconnected": "Az élő adatkapcsolat megszakadt.",
+    "reconnectButton": "Újrakapcsolódás"
   },
   "auth": {
-    "checkingSession": "Checking session…"
+    "checkingSession": "Munkamenet ellenőrzése…"
   },
   "common_table": {
-    "noData": "No data available"
+    "noData": "Nincs megjeleníthető adat"
   },
   "trips_status": {
     "planned": "Planned",
