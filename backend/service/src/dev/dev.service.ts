@@ -4,7 +4,11 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
-import { buildSimulatedPush, isSimulatePushEvent, type SimulatePushEvent } from '../notifications/simulate-push-templates';
+import {
+  buildSimulatedPush,
+  isSimulatePushEvent,
+  type SimulatePushEvent,
+} from '../notifications/simulate-push-templates';
 
 export type SimulateEvent = SimulatePushEvent;
 
@@ -32,7 +36,10 @@ export class DevService {
    * Simulate a notification event by calling NotificationsService directly,
    * skipping geofence/trip workflow. Used by mock test scripts.
    */
-  async simulate(input: SimulateInput, orgId: string | null): Promise<{ targetedUserIds: string[]; sentCount: number }> {
+  async simulate(
+    input: SimulateInput,
+    orgId: string | null,
+  ): Promise<{ targetedUserIds: string[]; sentCount: number }> {
     if (!isSimulatePushEvent(input.event)) {
       throw new BadRequestException(`Unknown event: ${input.event}`);
     }
@@ -48,13 +55,17 @@ export class DevService {
     }
 
     const vars = input.vars ?? {};
-    const { title, body, data } = buildSimulatedPush(input.event, vars);
 
+    // Fan-out to possibly-mixed-locale target users — render per recipient
+    // (locale lookup is cached, see NotificationsService.localeForUser)
+    // rather than once for the whole batch.
     let sent = 0;
     await Promise.all(
       userIds.map(async (uid) => {
         try {
-          await this.notificationsService.sendPush(uid, title, body, data);
+          const locale = await this.notificationsService.localeForUser(uid);
+          const { title, body, data } = buildSimulatedPush(input.event, locale, vars);
+          await this.notificationsService.sendPushRaw(uid, title, body, data);
           sent += 1;
         } catch (err) {
           this.winston.warn(`Dev simulate sendPush failed for user ${uid}`, {
@@ -66,22 +77,21 @@ export class DevService {
       }),
     );
 
-    this.winston.log(
-      'flow',
-      `Dev simulate '${input.event}' → ${sent}/${userIds.length} push(es)`,
-      {
-        context: 'DevService',
-        event: input.event,
-        target: input.target,
-        targetedUsers: userIds.length,
-        sentCount: sent,
-      },
-    );
+    this.winston.log('flow', `Dev simulate '${input.event}' → ${sent}/${userIds.length} push(es)`, {
+      context: 'DevService',
+      event: input.event,
+      target: input.target,
+      targetedUsers: userIds.length,
+      sentCount: sent,
+    });
 
     return { targetedUserIds: userIds, sentCount: sent };
   }
 
-  private async resolveTargetUserIds(target: SimulateTarget, orgId: string | null): Promise<string[]> {
+  private async resolveTargetUserIds(
+    target: SimulateTarget,
+    orgId: string | null,
+  ): Promise<string[]> {
     if (target.userId) {
       if (orgId !== null) {
         const rows = (await this.drizzleProvider.db.execute(sql`
@@ -122,8 +132,6 @@ export class DevService {
       `)) as unknown as { id: string }[];
       return rows.map((r) => r.id);
     }
-    throw new BadRequestException(
-      'target must specify at least one of: userId, role, machineId',
-    );
+    throw new BadRequestException('target must specify at least one of: userId, role, machineId');
   }
 }

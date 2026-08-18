@@ -7,6 +7,7 @@ import type { TripStatus } from '@strawboss/types';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
 import { todayInRomania } from '../common/date';
+import { tServer } from '../common';
 import { isFeatureEnabled } from '@strawboss/types';
 import { FeaturesService } from '../features/features.service';
 
@@ -479,16 +480,11 @@ export class GeofenceService {
           // trip-driver fallback so it fires even when the truck task has no
           // assigned_user_id (the common case — this was the silent gap).
           if (geofenceType === 'deposit' && recipientId) {
-            await this.notificationsService.sendPush(
-              recipientId,
-              'Ai ajuns la depozit',
-              'Confirmă sosirea ca să închei cursa.',
-              {
-                type: 'deposit_entry',
-                assignmentId: assignment.assignmentId,
-                tripId: assignment.tripId,
-              },
-            );
+            await this.notificationsService.sendPush(recipientId, 'push.depositEntry', undefined, {
+              type: 'deposit_entry',
+              assignmentId: assignment.assignmentId,
+              tripId: assignment.tripId,
+            });
           }
 
           // Also notify the depot operator(s) assigned to this destination that a
@@ -585,16 +581,11 @@ export class GeofenceService {
             assignment.tripStatus &&
             getAvailableTransitions(assignment.tripStatus as TripStatus).includes('DEPART')
           ) {
-            await this.notificationsService.sendPush(
-              recipientId,
-              'Ai plecat de la câmp?',
-              'Confirmă plecarea ca să pornești cursa spre depozit.',
-              {
-                type: 'depart_prompt',
-                assignmentId: assignment.assignmentId,
-                tripId: assignment.tripId,
-              },
-            );
+            await this.notificationsService.sendPush(recipientId, 'push.departPrompt', undefined, {
+              type: 'depart_prompt',
+              assignmentId: assignment.assignmentId,
+              tripId: assignment.tripId,
+            });
           }
         }
       }
@@ -637,24 +628,31 @@ export class GeofenceService {
 
       if (loaderRows.length === 0) return;
 
-      const plate = loaderRows[0]?.truckPlate ?? 'un camion';
-      const where = parcelName ?? 'câmpul tău';
-
+      // Fan-out to possibly-mixed-locale loaders/balers — resolve the
+      // fallback plate/field text per recipient (locale lookup is cached).
       await Promise.all(
-        loaderRows.map((row) =>
-          this.notificationsService
-            .sendPush(row.userId, 'A sosit un camion', `Camionul ${plate} a ajuns la ${where}.`, {
-              type: 'truck_arrived_at_loader',
-              assignmentId: row.assignmentId,
-              truckMachineId,
-              truckAssignmentId,
-              truckPlate: plate,
-              parcelName,
-            })
+        loaderRows.map(async (row) => {
+          const locale = await this.notificationsService.localeForUser(row.userId);
+          const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruck');
+          const where = parcelName ?? tServer(locale, 'push.common.yourField');
+          await this.notificationsService
+            .sendPush(
+              row.userId,
+              'push.truckArrivedAtLoader',
+              { plate, where },
+              {
+                type: 'truck_arrived_at_loader',
+                assignmentId: row.assignmentId,
+                truckMachineId,
+                truckAssignmentId,
+                truckPlate: plate,
+                parcelName,
+              },
+            )
             .catch(() => {
               // Best-effort — push failures must not break the geofence loop.
-            }),
-        ),
+            });
+        }),
       );
 
       this.winston.log(
@@ -704,15 +702,17 @@ export class GeofenceService {
 
       if (rows.length === 0) return;
 
-      const plate = rows[0]?.truckPlate ?? 'Un camion';
-
+      // Fan-out to possibly-mixed-locale depot operators — resolve the
+      // fallback plate text per recipient (locale lookup is cached).
       await Promise.all(
-        rows.map((row) =>
-          this.notificationsService
+        rows.map(async (row) => {
+          const locale = await this.notificationsService.localeForUser(row.userId);
+          const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruckCapitalized');
+          await this.notificationsService
             .sendPush(
               row.userId,
-              'Camion sosit la depozit',
-              `Camionul ${plate} a sosit. Confirmă baloții pentru a descărca.`,
+              'push.depotTruckArrived',
+              { plate },
               {
                 type: 'depot_truck_arrived',
                 destinationId,
@@ -722,8 +722,8 @@ export class GeofenceService {
             )
             .catch(() => {
               // Best-effort — push failures must not break the geofence loop.
-            }),
-        ),
+            });
+        }),
       );
 
       this.winston.log(
@@ -773,16 +773,19 @@ export class GeofenceService {
 
       if (rows.length === 0) return;
 
-      const plate = rows[0]?.truckPlate ?? 'Un camion';
       const km = (distanceM / 1000).toFixed(distanceM < 1000 ? 1 : 0);
 
+      // Fan-out to possibly-mixed-locale depot operators — resolve the
+      // fallback plate text per recipient (locale lookup is cached).
       await Promise.all(
-        rows.map((row) =>
-          this.notificationsService
+        rows.map(async (row) => {
+          const locale = await this.notificationsService.localeForUser(row.userId);
+          const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruckCapitalized');
+          await this.notificationsService
             .sendPush(
               row.userId,
-              'Camion în apropiere',
-              `Camionul ${plate} se apropie de depozit (~${km} km).`,
+              'push.depotTruckApproaching',
+              { plate, km },
               {
                 type: 'depot_truck_approaching',
                 destinationId,
@@ -793,8 +796,8 @@ export class GeofenceService {
             )
             .catch(() => {
               // Best-effort — push failures must not break the geofence loop.
-            }),
-        ),
+            });
+        }),
       );
 
       this.winston.log(
@@ -853,15 +856,17 @@ export class GeofenceService {
 
       if (loaderRows.length === 0) return;
 
-      const plate = loaderRows[0]?.truckPlate ?? 'un camion';
-
+      // Fan-out to possibly-mixed-locale loaders/balers — resolve the
+      // fallback plate text per recipient (locale lookup is cached).
       await Promise.all(
-        loaderRows.map((row) =>
-          this.notificationsService
+        loaderRows.map(async (row) => {
+          const locale = await this.notificationsService.localeForUser(row.userId);
+          const plate = row.truckPlate ?? tServer(locale, 'push.common.aTruck');
+          await this.notificationsService
             .sendPush(
               row.userId,
-              'Camion în apropiere',
-              `Camionul ${plate} — șoferul se apropie spre tine.`,
+              'push.truckApproachingLoader',
+              { plate },
               {
                 type: 'truck_approaching_loader',
                 assignmentId: row.assignmentId,
@@ -874,8 +879,8 @@ export class GeofenceService {
             )
             .catch(() => {
               // Best-effort — push failures must not break the geofence loop.
-            }),
-        ),
+            });
+        }),
       );
 
       this.winston.log(

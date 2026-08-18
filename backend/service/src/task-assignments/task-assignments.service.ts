@@ -11,6 +11,7 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TripsService } from '../trips/trips.service';
+import { tServer } from '../common';
 
 @Injectable()
 export class TaskAssignmentsService {
@@ -665,7 +666,8 @@ export class TaskAssignmentsService {
     assignmentId: string,
   ): Promise<void> {
     try {
-      let parcelName = 'parcelă nouă';
+      const locale = await this.notificationsService.localeForUser(userId);
+      let parcelName = tServer(locale, 'push.common.newParcel');
       if (parcelId) {
         const parcelRows = (await this.drizzleProvider.db.execute(
           sql`SELECT name FROM parcels WHERE id = ${parcelId} LIMIT 1`,
@@ -674,8 +676,8 @@ export class TaskAssignmentsService {
       }
       await this.notificationsService.sendPush(
         userId,
-        'Sarcină nouă',
-        `Ai o sarcină pe parcela ${parcelName}`,
+        'push.assignmentCreated',
+        { parcelName },
         { type: 'assignment_created', assignmentId, parcelName },
       );
     } catch {

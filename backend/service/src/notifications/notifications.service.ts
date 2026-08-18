@@ -2,6 +2,8 @@ import { Inject, Injectable, ForbiddenException } from '@nestjs/common';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { sql } from 'drizzle-orm';
+import { normalizeLocale, type Locale } from '@strawboss/types';
+import { tServer } from '../common';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { AlertsService } from '../alerts/alerts.service';
@@ -9,12 +11,59 @@ import { buildSimulatedPush, type SimulatePushEvent } from './simulate-push-temp
 
 @Injectable()
 export class NotificationsService {
+  /** TTL (ms) for the per-instance recipient-locale cache below. */
+  private static readonly LOCALE_CACHE_TTL_MS = 60_000;
+  /** Hard cap on cached entries; evicted FIFO on overflow. */
+  private static readonly LOCALE_CACHE_MAX_ENTRIES = 5_000;
+
+  /**
+   * Per-replica cache of `users.locale`, keyed by userId. `sendPush` is called
+   * in bursts fanned out over `userIds.map(...)` (broadcast, truck-idle admin
+   * alert, load-mismatch alert, ...), and each push needs the RECIPIENT's
+   * locale — not the caller's, which is the only locale AuthGuard's own cache
+   * carries. A per-user query inside those loops would be a query storm, so
+   * this mirrors AuthGuard's user-context cache shape (60s TTL, FIFO-capped
+   * Map, per-replica) rather than sharing it.
+   */
+  private readonly localeCache = new Map<string, { at: number; locale: Locale }>();
+
   constructor(
     private readonly drizzleProvider: DrizzleProvider,
     private readonly reconciliationService: ReconciliationService,
     private readonly alertsService: AlertsService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger,
   ) {}
+
+  /**
+   * Resolve a recipient's interface language for server-rendered strings.
+   * Cached (see {@link localeCache}) — callers that already have a
+   * pre-rendered title/body (the dev/QA simulator, admin broadcast free
+   * text) still need this to pick the right `buildSimulatedPush` variant or
+   * to know which locale a batch of pushes belongs to.
+   */
+  async localeForUser(userId: string): Promise<Locale> {
+    const now = Date.now();
+    const cached = this.localeCache.get(userId);
+    if (cached && now - cached.at < NotificationsService.LOCALE_CACHE_TTL_MS) {
+      return cached.locale;
+    }
+
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      SELECT locale FROM users WHERE id = ${userId}::uuid AND deleted_at IS NULL LIMIT 1
+    `)) as unknown as { locale: string | null }[];
+    const locale = normalizeLocale(rows[0]?.locale ?? null);
+
+    // Refresh-in-place would leave a stale insertion position, so drop before
+    // re-inserting to keep FIFO eviction meaningful for hot keys.
+    this.localeCache.delete(userId);
+    if (this.localeCache.size >= NotificationsService.LOCALE_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.localeCache.keys().next().value;
+      if (oldestKey !== undefined) this.localeCache.delete(oldestKey);
+    }
+    this.localeCache.set(userId, { at: now, locale });
+
+    return locale;
+  }
 
   /**
    * Register or update a push token for a user/machine pair.
@@ -87,12 +136,41 @@ export class NotificationsService {
         throw new ForbiddenException('Target user not found in your organization');
       }
     }
-    const { title, body, data } = buildSimulatedPush(event, vars);
-    await this.sendPush(userId, title, body, data);
+    const locale = await this.localeForUser(userId);
+    const { title, body, data } = buildSimulatedPush(event, locale, vars);
+    await this.sendPushRaw(userId, title, body, data);
   }
 
-  /** Send a push notification via Expo's push API. */
+  /**
+   * Send a localized push notification. Resolves the recipient's locale
+   * (cached — see {@link localeForUser}) and renders `${key}.title` /
+   * `${key}.body` from the server i18n catalog via {@link tServer}, then
+   * hands off to {@link sendPushRaw}, the actual Expo-facing funnel.
+   *
+   * This is the path for every FIXED-wording push (geofence prompts, trip
+   * transitions, alerts...). Free-text pushes (admin broadcast) and
+   * already-rendered ones (the dev/QA simulator's `buildSimulatedPush`) call
+   * {@link sendPushRaw} directly — there is no catalog key for text a human
+   * typed at send time.
+   */
   async sendPush(
+    userId: string,
+    key: string,
+    params?: Record<string, string | number>,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    const locale = await this.localeForUser(userId);
+    const title = tServer(locale, `${key}.title`, params);
+    const body = tServer(locale, `${key}.body`, params);
+    await this.sendPushRaw(userId, title, body, data);
+  }
+
+  /**
+   * Send a push notification via Expo's push API, given an already-rendered
+   * title/body. The single low-level funnel every push — localized or raw —
+   * converges on; do not call the Expo API from anywhere else.
+   */
+  async sendPushRaw(
     userId: string,
     title: string,
     body: string,
@@ -239,7 +317,9 @@ export class NotificationsService {
     }
 
     await Promise.all(
-      userIds.map((uid) => this.sendPush(uid, title, body, { type: 'broadcast' }).catch(() => {})),
+      userIds.map((uid) =>
+        this.sendPushRaw(uid, title, body, { type: 'broadcast' }).catch(() => {}),
+      ),
     );
 
     this.winston.log('info', `Broadcast sent to ${userIds.length} user(s)`, {
@@ -265,15 +345,20 @@ export class NotificationsService {
     parcel: { id: string; code: string; name: string | null },
     action: 'load' | 'truck',
   ): Promise<void> {
-    const title = action === 'truck' ? 'Ai ajuns la câmp?' : 'Începi încărcarea?';
-    await this.sendPush(userId, title, `Parcela ${parcel.code}. Confirmare automată în 10 s.`, {
-      type: 'field_entry_confirm',
-      assignmentId,
-      parcelId: parcel.id,
-      parcelCode: parcel.code,
-      parcelName: parcel.name,
-      action,
-    });
+    const key = action === 'truck' ? 'push.fieldEntryConfirmTruck' : 'push.fieldEntryConfirmLoad';
+    await this.sendPush(
+      userId,
+      key,
+      { code: parcel.code },
+      {
+        type: 'field_entry_confirm',
+        assignmentId,
+        parcelId: parcel.id,
+        parcelCode: parcel.code,
+        parcelName: parcel.name,
+        action,
+      },
+    );
   }
 
   /**
@@ -287,10 +372,11 @@ export class NotificationsService {
     assignmentId: string,
     parcel: { id: string; name: string | null },
   ): Promise<void> {
+    const locale = await this.localeForUser(userId);
     await this.sendPush(
       userId,
-      'Ai terminat de încărcat?',
-      `Ai ieșit din ${parcel.name ?? 'câmp'}. Ai încărcat toți baloții?`,
+      'push.loaderFieldExitConfirm',
+      { parcelName: parcel.name ?? tServer(locale, 'push.common.genericField') },
       {
         type: 'loader_exit_confirm',
         assignmentId,
@@ -514,11 +600,12 @@ export class NotificationsService {
       cropType: string | null;
     },
   ): Promise<void> {
-    const cropLabel = parcel.cropType ?? 'cultură necunoscută';
+    const locale = await this.localeForUser(userId);
+    const cropLabel = parcel.cropType ?? tServer(locale, 'push.common.unknownCrop');
     await this.sendPush(
       userId,
-      'Începi balotarea?',
-      `Parcela ${parcel.code} — ${cropLabel}. Confirmare automată în 10 s.`,
+      'push.balerFieldEntryConfirm',
+      { code: parcel.code, cropLabel },
       {
         type: 'field_entry_confirm',
         assignmentId,
@@ -542,8 +629,8 @@ export class NotificationsService {
   ): Promise<void> {
     await this.sendPush(
       userId,
-      'Ai ieșit din parcelă',
-      `Introdu numărul de baloți pentru ${parcel.code}.`,
+      'push.balerFieldExitProduction',
+      { code: parcel.code },
       {
         type: 'field_exit_production',
         assignmentId,
@@ -573,8 +660,8 @@ export class NotificationsService {
   ): Promise<void> {
     await this.sendPush(
       loaderId,
-      'Camion descărcat',
-      `Camionul ${truckCode} a descărcat. Îl chemi înapoi?`,
+      'push.truckUnloadedLoaderPrompt',
+      { truckCode },
       {
         type: 'loader_recall_prompt',
         tripId,
@@ -611,21 +698,23 @@ export class NotificationsService {
         AND organization_id = ${orgId}::uuid
     `)) as unknown as { id: string }[];
 
-    const title = reason === 'loader_declined' ? 'Camion eliberat' : 'Camion inactiv';
-    const body =
-      reason === 'loader_declined'
-        ? `Loaderul a refuzat rechemarea — camionul ${truckCode} e liber.`
-        : `Camionul ${truckCode} stă neutilizat de ${idleMinutes} min.`;
+    const key =
+      reason === 'loader_declined' ? 'push.truckIdleLoaderDeclined' : 'push.truckIdleTimeout';
     await Promise.all(
       rows.map((r) =>
-        this.sendPush(r.id, title, body, {
-          type: 'truck_idle',
-          truckId,
-          truckCode,
-          lastSeenAt,
-          idleMinutes,
-          reason,
-        }).catch(() => {}),
+        this.sendPush(
+          r.id,
+          key,
+          { truckCode, idleMinutes },
+          {
+            type: 'truck_idle',
+            truckId,
+            truckCode,
+            lastSeenAt,
+            idleMinutes,
+            reason,
+          },
+        ).catch(() => {}),
       ),
     );
   }
@@ -768,16 +857,20 @@ export class NotificationsService {
     `)) as unknown as { id: string }[];
 
     const missing = Math.max(0, produced - loaded);
-    const label = parcelName ?? 'o parcelă';
+    // Fan-out to possibly-mixed-locale admins/dispatchers — resolve the
+    // fallback label per recipient (locale lookup is cached, see
+    // localeForUser) rather than once for the whole batch.
     await Promise.all(
-      rows.map((r) =>
-        this.sendPush(
+      rows.map(async (r) => {
+        const locale = await this.localeForUser(r.id);
+        const label = parcelName ?? tServer(locale, 'push.common.aParcel');
+        await this.sendPush(
           r.id,
-          'Câmp neîncărcat complet',
-          `${label}: lipsă ${missing} baloți (produși ${produced}, încărcați ${loaded}).`,
+          'push.parcelLoadMismatch',
+          { label, missing, produced, loaded },
           { type: 'parcel_load_mismatch', produced, loaded, missing, parcelName },
-        ).catch(() => {}),
-      ),
+        ).catch(() => {});
+      }),
     );
   }
   // endregion: loader-exit ================================================

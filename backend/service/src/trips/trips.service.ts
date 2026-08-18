@@ -56,8 +56,9 @@ import type {
 } from '@strawboss/types';
 import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss/domain';
 import { isFeatureEnabled } from '@strawboss/types';
-import type { FeatureKey } from '@strawboss/types';
+import type { FeatureKey, Locale } from '@strawboss/types';
 import { FeaturesService } from '../features/features.service';
+import { tServer } from '../common';
 
 /**
  * A bare calendar day, as an <input type="date"> sends it. Mobile instead sends
@@ -294,18 +295,33 @@ export class TripsService implements OnModuleInit {
     }
   }
 
+  /**
+   * `key`/`params` render through `NotificationsService.sendPush`'s server
+   * i18n catalog. `params` may be a plain object, or — when a value needs a
+   * locale-correct fallback word (e.g. tripDeparted's destination) — a
+   * function of the resolved recipient `Locale`, since that locale is only
+   * known here (after `driver_id` is fetched), not at the call site.
+   */
   private async pushToDriver(
     tripId: string,
-    title: string,
-    body: string,
+    key: string,
+    params:
+      | Record<string, string | number>
+      | ((locale: Locale) => Record<string, string | number>)
+      | undefined,
     type: string,
   ): Promise<void> {
     try {
       const rows = (await this.drizzleProvider.db.execute(
         sql`SELECT driver_id FROM trips WHERE id = ${tripId} AND driver_id IS NOT NULL LIMIT 1`,
       )) as unknown as { driver_id: string }[];
-      if (rows[0]?.driver_id) {
-        await this.notificationsService.sendPush(rows[0].driver_id, title, body, { type, tripId });
+      const driverId = rows[0]?.driver_id;
+      if (driverId) {
+        const resolvedParams =
+          typeof params === 'function'
+            ? params(await this.notificationsService.localeForUser(driverId))
+            : params;
+        await this.notificationsService.sendPush(driverId, key, resolvedParams, { type, tripId });
       }
     } catch {
       // Best-effort — never fail a trip transition due to push error
@@ -736,12 +752,7 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'START_LOADING', from, TripStatus.loading);
-    void this.pushToDriver(
-      id,
-      'Începe încărcarea',
-      'Loaderul a început încărcarea camionului.',
-      'assignment_created',
-    );
+    void this.pushToDriver(id, 'push.startLoading', undefined, 'assignment_created');
     const parcelId = trip.source_parcel_id as string | null;
     if (parcelId) {
       try {
@@ -787,12 +798,7 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'COMPLETE_LOADING', from, TripStatus.loaded);
-    void this.pushToDriver(
-      id,
-      'Transport pregătit',
-      'Baloții au fost încărcați. Poți pleca.',
-      'trip_loaded',
-    );
+    void this.pushToDriver(id, 'push.tripLoaded', undefined, 'trip_loaded');
     return result;
   }
 
@@ -1151,12 +1157,7 @@ export class TripsService implements OnModuleInit {
       result.created ? 'new' : (result.trip.status as string),
       TripStatus.loaded,
     );
-    void this.pushToDriver(
-      result.trip.id as string,
-      'Transport pregătit',
-      'Baloții au fost încărcați. Poți pleca.',
-      'trip_loaded',
-    );
+    void this.pushToDriver(result.trip.id as string, 'push.tripLoaded', undefined, 'trip_loaded');
 
     // Harvest-rank advancement is parcel-scoped; depot loads have no parcel to
     // advance, so this only runs for parcel-sourced loads.
@@ -1676,10 +1677,11 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'DEPART', from, TripStatus.in_transit);
+    const destinationName = trip.destination_name as string | null;
     void this.pushToDriver(
       id,
-      'Drum bun',
-      `Cursa este în drum spre ${(trip.destination_name as string | null) ?? 'destinație'}.`,
+      'push.tripDeparted',
+      (locale) => ({ destination: destinationName ?? tServer(locale, 'push.common.destination') }),
       'trip_departed',
     );
 
@@ -1752,12 +1754,7 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'ARRIVE', from, TripStatus.arrived);
-    void this.pushToDriver(
-      id,
-      'Ai ajuns la destinație',
-      'Confirmă livrarea când ești gata.',
-      'trip_arrived',
-    );
+    void this.pushToDriver(id, 'push.tripArrived', undefined, 'trip_arrived');
     return result;
   }
 
@@ -1870,12 +1867,7 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'COMPLETE', from, TripStatus.completed);
-    void this.pushToDriver(
-      id,
-      'Transport finalizat',
-      'Transportul a fost completat cu succes.',
-      'trip_completed',
-    );
+    void this.pushToDriver(id, 'push.tripCompleted', undefined, 'trip_completed');
 
     // CMR stage 2 — regenerate/complete the document with receiver signature
     await this.cmrQueue.add('generate', { tripId: id, orgId: orgId, stage: 2 });
@@ -2200,12 +2192,7 @@ export class TripsService implements OnModuleInit {
         destinationId,
       });
     }
-    void this.pushToDriver(
-      id,
-      'Se descarcă',
-      'Operatorul depozitului a început descărcarea.',
-      'trip_depot_unload_started',
-    );
+    void this.pushToDriver(id, 'push.depotUnloadStarted', undefined, 'trip_depot_unload_started');
     if (locationUnverified) {
       await this.raiseDepotOverrideAlert(id, trip, orgId);
     }
@@ -2351,12 +2338,7 @@ export class TripsService implements OnModuleInit {
         destinationId,
       });
     }
-    void this.pushToDriver(
-      id,
-      'Livrare confirmată la depozit',
-      'Depozitul a confirmat baloții. Cursa este finalizată.',
-      'trip_depot_confirmed',
-    );
+    void this.pushToDriver(id, 'push.depotConfirmed', undefined, 'trip_depot_confirmed');
     if (locationUnverified) {
       await this.raiseDepotOverrideAlert(id, trip, orgId);
     }
@@ -2629,8 +2611,8 @@ export class TripsService implements OnModuleInit {
       if (recall) {
         void this.pushToDriver(
           newTrip.id as string,
-          'Cursă nouă',
-          `Loaderul te cheamă înapoi — cursa ${iterationIndex}.`,
+          'push.tripNextIteration',
+          { iterationIndex },
           'trip_next_iteration',
         );
       }
@@ -3039,12 +3021,7 @@ export class TripsService implements OnModuleInit {
       throw new BadRequestException('Trip status changed concurrently');
     }
     this.logTripFlow(id, 'DISPUTE', from, TripStatus.disputed);
-    void this.pushToDriver(
-      id,
-      'Dispută transport',
-      'Transportul tău a intrat în dispută. Contactează dispeceratul.',
-      'trip_disputed',
-    );
+    void this.pushToDriver(id, 'push.tripDisputed', undefined, 'trip_disputed');
     return result;
   }
 
