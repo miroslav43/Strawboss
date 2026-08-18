@@ -1,15 +1,19 @@
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import { normalizeLocale as normalizeSupported, type Locale } from '@strawboss/types';
 import { ro } from '@/i18n/ro';
 import { en } from '@/i18n/en';
+import { hu } from '@/i18n/hu';
 import { useAuthStore } from '@/stores/auth-store';
 
-export { ro, en };
+export { ro, en, hu };
+export type { Locale };
 
-export type Locale = 'ro' | 'en';
-
+// Record<Locale, …>: adding a language to the SSOT breaks this compilation
+// until its catalog actually exists.
 const catalogs: Record<Locale, Record<string, unknown>> = {
   ro: ro as unknown as Record<string, unknown>,
   en: en as unknown as Record<string, unknown>,
+  hu: hu as unknown as Record<string, unknown>,
 };
 
 function getByPath(obj: Record<string, unknown>, path: string): unknown {
@@ -37,10 +41,15 @@ function interpolate(template: string, params?: Record<string, string | number>)
     .replace(/\{(\w+)\}/g, (match, k) => (params[k] != null ? String(params[k]) : match));
 }
 
+/**
+ * Maps the locale stored on the account to a supported locale.
+ *
+ * Delegates to the SSOT in @strawboss/types. The old version tested a single
+ * prefix and sent everything else to Romanian — any locale added to the DB
+ * was silently collapsed, with no crash, no warning, no type error.
+ */
 export function normalizeLocale(raw: string | null | undefined): Locale {
-  if (!raw) return 'ro';
-  if (raw.toLowerCase().startsWith('en')) return 'en';
-  return 'ro';
+  return normalizeSupported(raw);
 }
 
 type I18nContextValue = {
@@ -57,6 +66,12 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const t = useCallback(
     (key: string, params?: Record<string, string | number>) => {
       let raw = getByPath(catalogs[locale], key);
+      // Fall back to ENGLISH, not Romanian: a missing key must surface in an
+      // international language, not the local one. Matters for push
+      // notifications too, which go through tStatic from the headless task.
+      if (typeof raw !== 'string' && locale !== 'en') {
+        raw = getByPath(catalogs.en, key);
+      }
       if (typeof raw !== 'string') {
         raw = getByPath(catalogs.ro, key);
       }
@@ -92,6 +107,10 @@ export function tStatic(key: string, params?: Record<string, string | number>): 
   const storeLocale = useAuthStore.getState().locale;
   const locale = normalizeLocale(storeLocale);
   let raw = getByPath(catalogs[locale], key);
+  // Same cascade as t(): ENGLISH first, Romanian last. This feeds background
+  // push notifications from the headless sync task, so getting it wrong puts
+  // Romanian text in a Hungarian user's notification shade.
+  if (typeof raw !== 'string' && locale !== 'en') raw = getByPath(catalogs.en, key);
   if (typeof raw !== 'string') raw = getByPath(catalogs.ro, key);
   if (typeof raw !== 'string') {
     if (__DEV__) console.warn('[i18n] Missing key (static):', key);

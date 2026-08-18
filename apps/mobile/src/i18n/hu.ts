@@ -1,0 +1,1755 @@
+import type { TranslationKeys } from './ro';
+
+// `ro.ts` is declared `as const`, so `TranslationKeys` (= typeof ro) types every
+// string leaf as its own literal (e.g. "Salvează"), not as `string`. Checking `hu`
+// directly against `TranslationKeys` — with either `: TranslationKeys` or
+// `satisfies TranslationKeys` — fails on every translated string, since a Hungarian
+// string is not assignable to the literal type "Salvează"; it is not a key-parity
+// check.
+// `CatalogShape<T>` preserves the exact key structure of `T` but widens every
+// string leaf to `string`, so the compiler enforces key parity in both directions
+// — missing or extra keys become compile errors — while differing translated text
+// does not. A leaf that is an array maps to `never` instead of recursing, so it is
+// a compile error by construction the moment one is authored — the resulting
+// `Type '...[]' is not assignable to type 'never'` just means "this leaf must be
+// a string or a nested object, not an array." (A non-array primitive, e.g. a
+// number, is already constrained to its exact literal value by the same fallback
+// branch — over-strict, not a silent gap.)
+type CatalogShape<T> = {
+  [K in keyof T]: T[K] extends string
+    ? string
+    : T[K] extends readonly unknown[]
+      ? never
+      : CatalogShape<T[K]>;
+};
+
+export const hu = {
+  common: {
+    save: 'Save',
+    cancel: 'Cancel',
+    loading: 'Loading…',
+    error: 'An error occurred',
+    retry: 'Retry',
+    back: 'Back',
+    confirm: 'Confirm',
+    yes: 'Yes',
+    no: 'No',
+    ok: 'OK',
+    none: '—',
+    close: 'Close',
+    active: 'Active',
+    inactive: 'Inactive',
+    add: 'Add',
+    edit: 'Edit',
+    delete: 'Delete',
+    search: 'Search',
+  },
+
+  app: {
+    dbError: 'The database could not be initialized.',
+    dbRetry: 'Try again',
+    profileErrorTitle: 'Connection error',
+    profileErrorMessage: 'Could not load profile. Check your connection and try again.',
+  },
+
+  auth: {
+    brandTitle: 'StrawBoss',
+    brandSubtitle: 'Agricultural Logistics',
+    usernamePlaceholder: 'Username or Email',
+    passwordPlaceholder: 'PIN or password',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
+    loginButton: 'Log in',
+    errorRequired: 'Username/email and password are required',
+    errorUnexpected: 'An unexpected error occurred',
+    errorUserNotFound:
+      'User not found on the server the app is connected to. If you see them in the admin site, set the same EXPO_PUBLIC_API_URL in .env.dev as the admin domain (or use test data on the local backend).',
+    errorApiInvalidResponse: 'Invalid API response (no email).',
+    errorMissingApiUrl:
+      'EXPO_PUBLIC_API_URL is missing. Fill in apps/mobile/.env.dev and restart Metro.',
+    errorLoopback:
+      'Cannot connect to {{origin}}. On the phone (USB): run "adb reverse tcp:3001 tcp:3001", then start the backend on your Mac on port 3001. Network error: {{errMsg}}',
+    errorCannotContactApi:
+      'Cannot reach the API at {{origin}}. Check your Wi-Fi/firewall and that the backend is listening on 0.0.0.0 (not just localhost). {{errMsg}}',
+    errorApiResolve: 'API error while resolving user ({{status}}).',
+    errorTimeout:
+      'Cannot reach the API server (timeout). Check that the backend is running, that the phone is on the same Wi-Fi as the Mac, and that EXPO_PUBLIC_API_URL uses the correct IP (same prefix as shown in Metro).',
+  },
+
+  notifications: {
+    push: {
+      taskAssigned: {
+        title: 'New task for today',
+        body: 'You have received a new task. Open the app for details.',
+      },
+      conflictTitle: 'Data updated from server',
+      fieldUpdated: '{{label}} was updated from server: {{local}} → {{server}}',
+      fieldLabel: {
+        bale_count: 'Bale count',
+        parcel_id: 'Parcel',
+        notes: 'Notes',
+        gross_weight_kg: 'Gross weight (kg)',
+        tare_weight_kg: 'Tare weight (kg)',
+        quantity: 'Quantity',
+        quantity_liters: 'Liters',
+        avg_bale_weight_kg: 'Average bale weight (kg)',
+      },
+    },
+    title: 'Notifications',
+    unreadSingular: '{{count}} unread notification',
+    unreadPlural: '{{count}} unread notifications',
+    allRead: 'All notifications read',
+    markAllButton: 'Mark all as read',
+    markAllAccessibility: 'Mark all as read',
+    emptyTitle: 'No notifications',
+    emptyBody: 'Notifications about your trips will appear here.',
+    deleteConfirmTitle: 'Delete notification?',
+    deleteConfirmButton: 'Delete',
+    dayToday: 'Today',
+    dayYesterday: 'Yesterday',
+  },
+
+  onboarding: {
+    skipButton: 'Skip',
+    skipAccessibility: 'Skip tutorial',
+    backButton: 'Back',
+    nextButton: 'Next',
+    finishButton: 'Got it',
+    driver: {
+      slide1: {
+        title: 'Your tasks',
+        body: 'On the main screen you will see trips assigned for the current day. Active trips are shown at the top of the list.',
+      },
+      slide2: {
+        title: 'Trip flow',
+        body: 'Each trip goes through steps: Departure → Arrival → Delivery. At departure, you enter the odometer reading and sign.',
+      },
+      slide3: {
+        title: 'Fuel log',
+        body: 'Log fuel fill-ups from the "Fuel" tab. You can photograph the receipt — it is sent to the server automatically.',
+      },
+      slide4: {
+        title: 'Works offline too',
+        body: 'All records are saved locally on the phone and synced to the server when you regain signal.',
+      },
+    },
+    loader: {
+      slide1: {
+        title: "Today's tasks",
+        body: 'On the main screen you will see parcels assigned for the current day, in priority order.',
+      },
+      slide2: {
+        title: 'Loading bales',
+        body: 'Tap "Load bales" on the main screen. GPS automatically detects the current parcel. Enter the number of bales and confirm.',
+      },
+      slide3: {
+        title: 'Active geofence',
+        body: 'The app checks whether you are inside the assigned parcel. You will receive a notification when entering and leaving the field.',
+      },
+      slide4: {
+        title: 'Works offline too',
+        body: 'All records are saved locally and sync automatically on reconnect. The parcel map is available even without internet.',
+      },
+    },
+    baler: {
+      slide1: {
+        title: "Today's tasks",
+        body: 'On the main screen you will see parcels you need to work on today, sorted by priority.',
+      },
+      slide2: {
+        title: 'Recording production',
+        body: 'Use the number pad on the "Production" screen to enter the number of bales. Tap "Save" after each batch.',
+      },
+      slide3: {
+        title: 'Consumables',
+        body: 'Log twine, netting or other consumable usage from the "Consumables" tab. You can photograph the receipt.',
+      },
+      slide4: {
+        title: 'Works offline too',
+        body: "All data is stored locally and sent to the server automatically when signal is available. You won't lose any record.",
+      },
+    },
+    geofence: {
+      slide1: {
+        title: 'Draw geofences',
+        body: 'On the "Map" screen, tap "New field" and draw the parcel outline by tapping points on the map.',
+      },
+      slide2: {
+        title: 'Precise outline',
+        body: 'Follow the field edges as closely as possible. Tap "Finish" when the outline is complete. You can correct it before saving.',
+      },
+      slide3: {
+        title: 'Farms and parcels',
+        body: 'Parcels are organised by farm. Select the right farm before adding a new geofence.',
+      },
+    },
+    default: {
+      slide1: {
+        title: 'Welcome to StrawBoss',
+        body: 'Monitor trips, bale production and the fleet of machines in real time.',
+      },
+      slide2: {
+        title: 'Synchronised data',
+        body: 'All data from operator phones syncs automatically with the web dashboard.',
+      },
+    },
+  },
+
+  trackingSetup: {
+    title: 'Always-on tracking',
+    subtitle:
+      'For your position to be transmitted at all times — even with the screen off or the app in the background — complete the {{stepCount}} steps below. This is done once on this phone.',
+    step1: {
+      title: 'Location "Allow all the time"',
+      body: 'Grant background location permission (choose "Allow all the time").',
+      actionGranted: 'Granted',
+      actionGrant: 'Grant',
+    },
+    step2: {
+      title: 'No battery optimisation',
+      body: 'Exclude the app from battery optimisation so the system does not stop it in the background.',
+      actionExempt: 'Exempted',
+      actionDisable: 'Disable',
+    },
+    step3: {
+      title: 'Auto-start',
+      body: 'Enable "Autostart" for StrawBoss in the manufacturer settings so it restarts after a reboot.',
+      action: 'Open',
+    },
+    step4: {
+      title: 'Full-screen alerts',
+      body: 'Allow alerts to be shown over the lock screen so you immediately see when entering/leaving a field.',
+      actionGranted: 'Granted',
+      actionOpen: 'Open',
+    },
+    finishButton: 'Done, continue',
+  },
+
+  dailyReport: {
+    headerTitle: 'Daily report',
+    backAccessibility: 'Back',
+    loadingText: 'Loading activity...',
+    emptyText: 'No activity recorded today.',
+    retryButton: 'Try again',
+    exportButton: 'Export PDF',
+    exportButtonAccessibility: 'Export PDF',
+    exportErrorFallback: 'Could not generate the PDF.',
+    kpi: {
+      bales: 'Bales produced',
+      fuel: 'Fuel',
+      loads: 'Loads',
+      consumables: 'Consumables',
+    },
+    syncStatus: {
+      synced: 'synced ✓',
+      pending: 'pending',
+      failed: 'failed ✗',
+    },
+    pdf: {
+      title: 'StrawBoss — Daily report',
+      noRecords: 'No records',
+      kpi: {
+        balesProduced: 'Bales produced',
+        fuelFilled: 'Fuel filled',
+        baleLoads: 'Bale loads',
+        consumablesLogged: 'Consumables logged',
+      },
+      section: {
+        production: 'Bale production',
+        fuel: 'Fuel',
+        loads: 'Bale loads',
+        consumables: 'Consumables',
+      },
+      col: {
+        time: 'Time',
+        quantity: 'Quantity',
+        details: 'Details',
+        sync: 'Sync',
+      },
+    },
+    shareDialogTitle: 'StrawBoss daily report — {{date}}',
+  },
+
+  syncDetails: {
+    featureDisabled:
+      'This feature was switched off by an administrator. The record stays saved and will be sent if it is switched back on.',
+    seasonClosed:
+      'The season this record belongs to has been closed by an administrator, so it no longer accepts new entries. Nothing you entered is lost — tell your administrator.',
+    terminalRejection:
+      'The server rejected this record. Retrying will not help — redo the action from its screen.',
+    title: 'Pending data',
+    refreshAccessibility: 'Refresh',
+    backAccessibility: 'Back',
+    networkLabel: 'Network:',
+    online: 'Online',
+    offline: 'Offline',
+    pendingLabel: 'Pending:',
+    failedLabel: 'Failed:',
+    lastSyncLabel: 'Last sync:',
+    lastSyncNever: 'Never',
+    retryAllButton: 'Retry all',
+    retryAllAccessibility: 'Retry all failed records',
+    syncNowButton: 'Sync now',
+    syncNowNoConnection: 'No connection',
+    syncNowAccessibility: 'Sync now',
+    retryEntryButton: 'Retry',
+    retryEntryAccessibility: 'Retry this record',
+    statusPending: 'pending',
+    statusFailed: 'failed',
+    retryCount: 'Retries: {{count}}',
+    emptyTitle: 'Everything is synced',
+    emptySubtitle: 'There are no pending or failed records.',
+    entityLabel: {
+      trips: 'Trip',
+      baleLoads: 'Bale load',
+      baleProductions: 'Bale production',
+      fuelLogs: 'Fuel log',
+      consumableLogs: 'Consumable',
+      operations: 'Operation',
+      taskAssignments: 'Task',
+    },
+    actionLabel: {
+      create: 'create',
+      update: 'update',
+      delete: 'delete',
+      transition: 'transition',
+    },
+  },
+
+  specimenCapture: {
+    headerTitleNew: 'Signature specimen',
+    headerTitleRedo: 'Change specimen',
+    titleNew: 'Create your signature',
+    titleRedo: 'Redraw your signature',
+    hint: 'The specimen will be used on all trips (driver departure, operator load). Make sure it is legible.',
+    signatureLabel: 'Your signature',
+    cancelButton: 'Cancel',
+    errorTitle: 'Error',
+    errorFallback: 'The specimen could not be saved. Check your connection and try again.',
+  },
+
+  webOnly: {
+    title: 'Managed from the web dashboard',
+    body: 'Your account (dispatcher/admin) is managed from the StrawBoss web dashboard. There is nothing to do in this mobile app — it is built for drivers and field operators.',
+  },
+
+  tabs: {
+    label: {
+      home: 'Home',
+      production: 'Production',
+      map: 'Map',
+      consumables: 'Consumables',
+      profile: 'Profile',
+      myTrips: 'My Trips',
+      delivery: 'Delivery',
+      fuel: 'Fuel',
+      trucks: 'Trucks',
+      loads: 'Loads',
+      diesel: 'Diesel',
+      farms: 'Farms',
+      inventory: 'Inventory',
+      incomingTrips: 'Trips',
+      scan: 'Scan',
+      sync: 'Sync',
+    },
+    home: {
+      title: 'StrawBoss',
+      subtitle: 'Agricultural Logistics',
+      connectionCardTitle: 'Connection',
+      online: 'Online',
+      offline: 'Offline',
+      machineCardTitle: 'My machine',
+      noMachineTitle: 'No machine assigned',
+      noMachineSubtitle: 'Contact the administrator to have a machine assigned to you.',
+      machineTypeLoader: 'Loader',
+      machineTypeBaler: 'Baler',
+      machineTypeTruck: 'Truck',
+      gpsActiveAndroid: 'GPS active (including in background)',
+      gpsInactiveAndroid: 'GPS not running — check "All the time" permissions',
+      gpsActiveIos: 'GPS active',
+      gpsInactiveIos: 'GPS: enable from app settings (iOS)',
+      lastPing: 'Last ping: {{time}}',
+      waitingFirstPing: 'Waiting for first ping…',
+      machineLoadError: 'Could not load the assigned machine.',
+      syncCardTitle: 'Sync',
+      syncQueueLabel: 'Queued (including errors):',
+      syncLastSyncLabel: 'Last sync:',
+      syncNever: 'Never',
+      syncing: 'Syncing...',
+    },
+    scan: {
+      requestingPermission: 'Requesting camera permission...',
+      permissionRequired: 'Camera access is required to scan QR codes',
+      grantPermission: 'Grant Permission',
+      instruction: 'Point camera at a StrawBoss QR code',
+      scanAgain: 'Scan Again',
+      scannedTitle: 'Scanned',
+      scannedMessage: 'Code: {{data}}',
+    },
+    sync: {
+      title: 'Sync',
+      networkLabel: 'Network:',
+      online: 'Online',
+      offline: 'Offline',
+      queueLabel: 'Queued (including errors):',
+      lastSyncLabel: 'Last sync:',
+      lastSyncNever: 'Never',
+      syncNowButton: 'Sync now',
+      noConnectionButton: 'No connection',
+      recentErrorsTitle: 'Recent errors',
+      failedEntriesTitle: 'Failed entries ({{count}})',
+      unknownError: 'Unknown error',
+      retryCountLabel: 'Retries: {{count}}',
+      retryButton: 'Retry',
+    },
+    trips: {
+      title: 'Active Trips',
+      noNumber: 'No number',
+      baleCount: 'Bales: {{count}}',
+      departed: 'Departed: {{time}}',
+      emptyTitle: 'No active trips',
+      emptySubtext: 'Assigned trips will appear here',
+    },
+  },
+
+  driver: {
+    screenTitle: {
+      myTrips: 'My Trips',
+      delivery: 'Delivery',
+    },
+    statusLabel: {
+      planned: 'Planned',
+      loading: 'Loading',
+      loaded: 'Loaded',
+      inTransit: 'In Transit',
+      arrived: 'Arrived',
+      delivering: 'Delivering',
+      delivered: 'Delivered',
+      completed: 'Completed',
+    },
+    taskStatusLabel: {
+      available: 'Not Started',
+      inProgress: 'In Progress',
+      done: 'Done',
+    },
+    card: {
+      activeLoaders: 'Active Loaders',
+      noNearbyLoader: 'No loaders nearby.',
+      todayTask: "Today's Task",
+      tripNotStarted: 'Trip not started yet',
+    },
+    badge: {
+      new: 'NEW',
+    },
+    trip: {
+      fallbackName: 'Trip',
+      baleCount: 'bales',
+      iterationLabel: 'Trip {n}',
+    },
+    hint: {
+      tapToDeliver: 'Tap to deliver',
+      tapToDepart: 'Tap to depart',
+    },
+    empty: {
+      noActiveTrips: 'No active trips.',
+      assignedTripsHint: 'Assigned trips will appear here.',
+    },
+    delivery: {
+      empty: {
+        noActiveTrip: 'No active trip.',
+        hint: 'The trip appears here while active, until delivery.',
+      },
+    },
+    activeTripCard: {
+      sectionLabel: 'Active trip',
+      status: {
+        planned: 'Planned',
+        loading: 'Loading',
+        loaded: 'Loaded',
+        inTransit: 'In transit',
+        arrived: 'Arrived',
+        delivering: 'Delivering',
+        delivered: 'Delivered',
+        completed: 'Completed',
+      },
+      action: {
+        depart: 'Depart',
+        markArrival: 'Mark arrival',
+        startDelivery: 'Start delivery',
+        confirmDelivery: 'Confirm delivery',
+        finalize: 'Finalize',
+      },
+      tripFallbackLabel: 'Trip',
+      baleCount: '{count} bales',
+      insideGeofence: 'Inside geofence',
+      viewDetails: 'View details',
+    },
+    depotArrivalOverlay: {
+      actionLabel: 'Arrival at depot',
+      confirmLabel: 'Confirm now',
+    },
+    tripLoadedOverlay: {
+      title: 'Truck Loaded!',
+      subtitle: 'Trip {tripNumber}',
+      balesLoaded: '{count} bales loaded',
+      noDestination: 'Destination not set — select from details',
+      action: {
+        startTrip: 'Start trip',
+        chooseDestination: 'Choose destination',
+        later: 'Later',
+      },
+    },
+  },
+
+  deliveryFlow: {
+    error: {
+      tripNotFound: 'Trip not found.',
+    },
+    button: {
+      backToTrips: 'Back to trips',
+    },
+    trip: {
+      fallbackName: 'Trip',
+    },
+  },
+
+  departureFlow: {
+    screenTitle: 'Trip departure',
+    hint: 'Confirm that you departed, to start the trip to the depot.',
+    button: {
+      confirmDeparture: 'Confirm departure',
+      cancel: 'Cancel',
+    },
+    countdown: {
+      actionLabel: 'Departing from field',
+    },
+    alert: {
+      error: {
+        title: 'Error',
+        message: 'Could not start the trip. Please try again.',
+      },
+    },
+  },
+
+  tripDetail: {
+    screenTitle: {
+      fallback: 'Trip',
+    },
+    loading: {
+      text: 'Loading...',
+    },
+    error: {
+      notFound: 'Trip not found',
+    },
+    button: {
+      back: 'Back',
+    },
+    navigate: {
+      toLoaderLive: 'Navigate to loader',
+      toField: 'Navigate to field',
+      unavailable: 'Loader location unavailable',
+    },
+    card: {
+      tripDetails: 'Trip Details',
+    },
+    infoRow: {
+      tripNumber: 'Trip no.',
+      parcel: 'Parcel',
+      loader: 'Loader',
+      destination: 'Destination',
+      address: 'Address',
+      bales: 'Bales',
+      grossWeight: 'Gross weight',
+      departedAt: 'Departed at',
+      arrivedAt: 'Arrived at',
+      deliveredAt: 'Delivered at',
+    },
+    actions: {
+      sectionTitle: 'Actions',
+      waitingForLoader: 'Waiting for the loader to load the truck.',
+      chooseDepot: {
+        title: 'Choose depot',
+        subtitle: 'Select destination before departing',
+      },
+      depart: {
+        title: 'Departure',
+        subtitle: 'Sign to depart',
+      },
+      arrive: {
+        title: 'Arrived at destination',
+        subtitle: 'Confirm arrival',
+      },
+      delivery: {
+        title: 'Delivery',
+        subtitle: 'Weighing, photo and recipient signature',
+      },
+    },
+    done: {
+      completed: 'The trip is completed.',
+      cancelled: 'The trip is cancelled.',
+    },
+    viewer: {
+      text: "You are viewing this trip's status. Actions are performed by the driver.",
+    },
+    modal: {
+      chooseDepot: {
+        title: 'Choose depot',
+      },
+      error: {
+        loadDepots: 'Could not load depots.',
+      },
+      empty: {
+        noActiveDepots: 'No active depots.',
+      },
+      defaultBadge: 'default',
+    },
+    alert: {
+      error: {
+        saveDepot: 'Could not save the depot.',
+        arrive: 'Could not mark arrival.',
+        title: 'Error',
+      },
+    },
+  },
+
+  loader: {
+    home: {
+      screenTitle: 'Trucks',
+      recallTitle: 'Truck unloaded',
+      recallBody: 'Truck {truckCode} has finished unloading. Do you want to call it back?',
+      recallConfirm: 'Call back',
+      recallDecline: "Don't call back",
+      sectionTrucksAtLoader: 'Trucks at loader',
+      noLoaderAssignedTitle: 'No loader assigned',
+      noLoaderAssignedSubtitle: 'Ask your administrator to assign a loader to you.',
+      searchingTrucks: 'Looking for trucks...',
+      noTrucksNearbyTitle: 'No trucks nearby',
+      noTrucksNearbySubtitle:
+        'The list updates automatically every 10 seconds. When a truck approaches, it will appear here.',
+      sectionAuxTrucks: 'Auxiliary trucks',
+      searchingAuxTrucks: 'Looking for auxiliary trucks...',
+      noAuxTrucksTitle: 'No auxiliary trucks',
+      noAuxTrucksSubtitle:
+        'Auxiliary trucks assigned by the dispatcher appear here regardless of distance.',
+      truckFallbackLabel: 'Truck',
+      truckDistancePrefix: '{distance} away',
+      badgeLoaded: 'Loaded',
+      badgeReadyToLoad: 'Ready to load',
+      auxTruckFallbackLabel: 'Auxiliary truck',
+      baleCountSuffix: '{count} bales',
+      baleQualityLabel: 'Bale quality',
+      quality1: 'Quality 1',
+      quality2: 'Quality 2',
+      // Assignment-aware loader board
+      sectionAssignedTrucks: 'Trucks to load',
+      sectionNearbyUnassigned: 'Other trucks nearby',
+      noAssignedTrucksTitle: 'No trucks assigned today',
+      noAssignedTrucksSubtitle: 'Trucks the dispatcher assigned to this loader show up here.',
+      badgeHereNow: '● Here now',
+      badgeEnroute: '○ On the way',
+      badgePresenceLoaded: '✓ Loaded',
+      fieldPrefix: 'Field: {field}',
+      tagUnassigned: 'unassigned',
+      distanceMeters: '{distance} m',
+      distanceKm: '{distance} km',
+    },
+    bales: {
+      screenTitle: 'Loads',
+      statusPlanned: 'Planned',
+      statusLoading: 'Loading',
+      statusLoaded: 'Loaded',
+      statusInTransit: 'In transit',
+      statusCompleted: 'Completed',
+      truckFallbackLabel: 'Unknown truck',
+      tripBaleCountLoaded: '{count} bales loaded',
+      tripCtaText: 'Tap to register a load →',
+      sectionTrucksToLoad: 'Trucks to load today',
+      loadingTrips: 'Loading trips...',
+      noTripsPlanned: 'No trips planned today.',
+      noTripsSubtext:
+        'The administrator has not planned any trips or you are not assigned as a loader operator.',
+      sectionLoadsToday: 'Loads recorded today',
+      noLoadsToday: 'No loads recorded today.',
+      cardLabelBales: 'Bales',
+      cardLabelTime: 'Time',
+    },
+    consumables: {
+      screenTitle: 'Fuel',
+      subtitle: 'Record a fuel fill-up',
+    },
+    loadBales: {
+      screenTitle: 'Full truck',
+      errorNoTruck: 'Error',
+      errorNoTruckMessage: 'No truck identified.',
+      errorNoTruckOk: 'OK',
+      gpsActive: 'GPS active',
+      gpsLocating: 'Locating...',
+      gpsNone: 'No GPS',
+      parcelCardLabel: 'Field',
+      depotCardLabel: 'Depot',
+      depotRequiresConnectionTitle: 'Connection required',
+      depotRequiresConnectionMessage:
+        'Loading from a depot requires an internet connection. Reconnect and try again.',
+      parcelIdentifying: 'Identifying...',
+      parcelUnconfirmedFallback: 'Determining the field from your position…',
+      fieldStateNoAssignmentTitle: 'No field assigned today',
+      fieldStateNoAssignmentBody:
+        'The dispatcher has not assigned you a field for today. Contact them, then retry.',
+      fieldStateOutsideTitle: 'You are not on any of your fields',
+      fieldStateOutsideBody:
+        'Drive onto the field you are working. It is detected automatically from your position — it cannot be chosen by hand.',
+      fieldStateLocatingTitle: 'Searching for GPS signal…',
+      fieldStateLocatingBody:
+        'Keep the phone in the open. As soon as there is a fix, the field is identified on its own.',
+      fieldStateGpsOffTitle: 'Location is off',
+      fieldStateGpsOffBody:
+        'Enable location for the app — without it the field cannot be identified.',
+      fieldStateMissingGeometryTitle: 'Field outlines not downloaded',
+      fieldStateMissingGeometryBody:
+        'This phone does not yet have the outlines of your fields, so your position cannot be matched to one. Download them and it resolves on its own.',
+      fieldStateMissingGeometryOfflineBody:
+        'This phone does not yet have the outlines of your fields, and there is no connection to fetch them. Connect to the internet and this resolves on its own.',
+      fieldStateAssignedListTitle: 'Your fields today:',
+      fieldStateDownloadOutlines: 'Download outlines',
+      fieldStateDownloadingOutlines: 'Downloading…',
+      fieldStateRetryGps: 'Retry GPS',
+      presenceInside: '● You are in the field',
+      presenceAwayFromField: '● {distance} m from the field — move closer to load',
+      presenceNear: '● Near the field ({distance} m)',
+      presenceGpsUnavailable: '● GPS unavailable — enable location',
+      presenceVerifying: 'Verifying position…',
+      baleCountFieldLabel: 'Number of bales loaded',
+      fullTruckButton: 'Full truck ({count} bales)',
+      registerButton: 'Register',
+      cancelButton: 'Cancel',
+      gateHintAwayFromField: 'You must be in the field to load ({distance} m from the field).',
+      gateHintGpsUnavailable: 'Cannot confirm position — enable GPS to load.',
+      gateHintWaitingGps: 'Waiting for GPS signal to confirm you are in the field…',
+      gateHintAuxGpsUnavailable: 'Enable GPS or confirm the field on the main screen to load.',
+      gateHintAuxDeterminingField: 'Determining the field from your location…',
+      modalNotInFieldTitle: 'You are not in the field',
+      modalNotInFieldMessage:
+        'You must be on the field {parcelName} to load. You are {distance} m from the field — move closer and try again.',
+      modalPositionUnconfirmedTitle: 'Position not confirmed',
+      modalPositionUnconfirmedMessage:
+        'Cannot confirm you are on the field (GPS unavailable or location disabled). Enable location and try again.',
+      modalRetryGps: 'Retry GPS',
+      modalDeterminingPositionTitle: 'Determining position',
+      modalDeterminingPositionMessage:
+        'Wait for the GPS signal to confirm you are in the field, then try again.',
+      modalUnderstood: 'Got it',
+      modalDuplicateLoadTitle: 'Recent load detected',
+      modalDuplicateLoadMessage:
+        'You already registered {totalBales} bales for this truck and field {minutesAgo} min ago. Continue with a new registration?',
+      modalContinue: 'Yes, continue',
+      modalParcelFullyLoadedTitle: 'Field fully loaded',
+      modalParcelFullyLoadedMessage:
+        'All bales on this field have already been loaded. Choose another field or notify the dispatcher.',
+      modalParcelCountExceedsTitle: 'Quantity too high for field',
+      modalParcelCountExceedsMessage:
+        'Only {remaining} bales are still available on this field. Reduce the quantity or choose another field.',
+      modalTruckCapacityTitle: 'Truck capacity exceeded',
+      modalTruckCapacityMessage: 'The truck can carry a maximum of {maxBales} bales.',
+      successScreenTitle: 'Full truck',
+      successText: 'Registered!',
+      successSubtext: 'The trip has been generated for the driver.',
+      signatureScreenTitle: 'Operator signature',
+      signatureTitle: 'Sign the load',
+      signatureHint: 'Confirm that you loaded {baleCount} bales into truck {truckLabel}.',
+      specimenLabel: 'Signature specimen',
+      specimenMissing: "You don't have a specimen yet.",
+      signWithSpecimenButton: 'Sign with specimen',
+      specimenMissingAlertTitle: 'Missing specimen',
+      specimenMissingAlertMessage:
+        "You don't have a signature specimen yet. Create one from your profile.",
+      specimenMissingAlertAction: 'Create specimen',
+      cmrScanScreenTitle: 'CMR',
+      cmrScanTitle: 'Scan the CMR',
+      cmrScanHint:
+        'Photograph the transport document (CMR) the driver handed you. You loaded {baleCount} bales into truck {truckLabel}.',
+      cmrScanButton: 'Scan CMR',
+      cmrScanAddPage: 'Add another page',
+      cmrScanDeletePage: 'Remove page',
+      cmrScanPagesLabel: '{count} pages scanned',
+      cmrScanConfirmButton: 'Confirm and send',
+      cmrScanBuildingPdf: 'Preparing the document…',
+      cmrScanUnavailableTitle: 'Scanner unavailable',
+      cmrScanUnavailableMessage:
+        'The document scanner is not available on this phone. You can take a plain photo instead, without automatic cropping.',
+      cmrScanFallbackPhotoButton: 'Take a photo',
+      cmrScanPdfFailedTitle: 'Could not build the document',
+      cmrScanPdfFailedMessage: 'Try scanning the pages again.',
+      cmrScanNoTripTitle: 'Trip cannot be identified',
+      cmrScanNoTripMessage:
+        'Offline, the CMR cannot be attached to the trip. Re-open the auxiliary truck from the home screen, or get back online.',
+      giveUpButton: 'Give up',
+      truckFallbackLoading: '...',
+      truckFallbackUnknown: 'Unknown truck',
+      alertErrorTitle: 'Error',
+      alertErrorFallbackMessage: 'Could not register the load.',
+      alertParcelCountExceedsTitle: 'Quantity too high for field',
+      alertParcelCountExceedsFallback: '{remaining} bales are still available on this field.',
+      alertParcelFullyLoadedTitle: 'Field fully loaded',
+      alertParcelFullyLoadedFallback: 'All bales on this field have already been loaded.',
+      alertTruckCapacityTitle: 'Truck capacity exceeded',
+      alertTruckCapacityFallback: 'The truck has a maximum capacity of {truckCap} bales.',
+      modalCancel: 'Cancel',
+      // Presence when we have a GPS fix but nothing to check it against —
+      // distinct from "still locating" (presenceVerifying) and from "no GPS
+      // at all" (presenceGpsUnavailable).
+      presenceUnverifiableOffline: '● Position cannot be verified (offline)',
+      presenceUnverifiableNoGeometry: "● This field's outline isn't cached on this phone",
+      gateHintUnverifiable:
+        "We can't verify your position offline. You can still register — the GPS position is saved for review.",
+      modalUnverifiableTitle: 'Position not verified',
+      modalUnverifiableMessage:
+        "We don't have the outline of field {parcelName} cached on this phone (you're offline). The load will be saved with your GPS position and reviewed once synced. Continue?",
+      modalUnverifiableConfirm: 'Yes, register',
+      modalUnverifiableCancel: 'Cancel',
+      offlineBannerTitle: "You're offline",
+      offlineBannerBody:
+        "Working from the phone's cache. This will send automatically once reconnected.",
+    },
+    recallOverlay: {
+      title: 'Truck unloaded',
+      question: 'Do you want to call it back for another trip?',
+      action: {
+        yes: 'Yes, call it back',
+        no: 'No',
+      },
+    },
+  },
+
+  baler: {
+    home: {
+      screenTitle: 'Baler',
+      operatorFallback: 'Operator',
+    },
+    consumables: {
+      screenTitle: 'Consumables',
+    },
+    production: {
+      screenTitle: 'Production',
+      subtitle: 'Enter the number of bales',
+      fieldActiveToggleLabel: 'Active field',
+      fieldActiveToggleAccessibility: 'Activate Active Field mode',
+      fieldActiveBadge: 'Active field',
+      exitButton: 'Exit',
+      exitButtonAccessibility: 'Exit Active Field mode',
+    },
+    parcelDetail: {
+      primaryActionLabel: 'Record production',
+    },
+    productionEntry: {
+      screenTitleWithCode: 'Production — {{parcelCode}}',
+      screenTitleFallback: 'Production',
+      baleCountLabel: 'How many bales did you produce?',
+      finishFieldLabel: 'How did you finish the field?',
+      submitButton: 'Submit',
+      submitButtonSaving: 'Sending…',
+      errorNoFinish: 'Choose Partial or Complete before submitting.',
+      errorNoAssignment: 'Task identifier is missing.',
+      errorSubmitFailed: 'Could not submit. Check your connection and try again.',
+    },
+  },
+
+  deposit: {
+    screenTitle: 'Depot Inventory',
+    noDepotTitle: 'No depot assigned',
+    noDepotSubtitle: 'Ask your administrator to assign a depot to your account.',
+    dataUnavailableTitle: 'Data unavailable',
+    dataUnavailableSubtitle: 'Connect to the internet and pull down to sync.',
+    statLabelBales: 'bales',
+    statLabelTons: 'tonnes',
+    lastDelivery: 'Last delivery: {date}',
+    incomingTripsCount: '{count} trips on the way',
+    noIncomingTripsInline: 'No incoming trips.',
+    tripIteration: 'trip {index}',
+    tripBaleCount: '{count} bales',
+  },
+
+  confirmDelivery: {
+    successScreenTitle: 'Delivery confirmed',
+    successMessage: 'Delivery confirmed!',
+    successSubtext: '{count} bales recorded for {truck}.',
+    notFoundScreenTitle: 'Confirm delivery',
+    notFoundTitle: 'Trip not found',
+    notFoundSubtitle: 'The trip may already be confirmed or is not directed to your depot.',
+    backButton: 'Back',
+    mainScreenTitle: 'Confirm delivery',
+    geofenceInsideLabel: 'The truck is within the depot perimeter',
+    geofenceDistanceLabel: '{distance} m from the depot',
+    geofenceUnknownPosition: 'Unknown position',
+    geofenceInPerimeter: 'Inside perimeter',
+    geofenceWaiting: 'Waiting for the truck to enter the confirmation radius.',
+    geofenceNoRecentLocation: 'No recent location data available.',
+    truckBalesLoaded: '{count} bales loaded',
+    fieldLabelBaleCount: 'Confirmed bale count',
+    scaleBrokenLabel: 'Scale is broken',
+    scaleBrokenSubtitle: 'Enable if the scale is broken — only the bale count will be recorded.',
+    fieldLabelWeights: 'Weights (kg)',
+    weightFieldGross: 'Gross (weighed)',
+    weightFieldTare: 'Tare (empty truck)',
+    netLabel: 'Net',
+    tareExceedsGrossError: 'Tare cannot be greater than gross weight.',
+    editingHint: 'Editing: {field}',
+    editingFieldGross: 'Gross',
+    editingFieldTare: 'Tare',
+    scaleBrokenNotice: 'Weights will not be recorded (scale broken).',
+    gateHintWithDistance: 'Confirmation is disabled — the truck is {distance} m from the depot.',
+    gateHintNoPosition: "Confirmation is disabled — the truck's position is unknown.",
+    perimeterWarnWithDistance:
+      'The truck appears to be {distance} m from the depot. You can still confirm — you will be asked to vouch for it.',
+    perimeterWarnNoPosition:
+      'The truck position is unknown. You can still confirm — you will be asked to vouch for it.',
+    submitButtonSaving: 'Saving...',
+    submitButton: 'Confirm delivery',
+    cancelButton: 'Cancel',
+    modalGeofenceTitle: 'You are not within the depot perimeter',
+    modalGeofenceMessageWithDistance:
+      'You must be within the confirmation radius. You are {distance} m from the depot.',
+    modalGeofenceMessageNoPosition:
+      "The truck's position relative to the depot cannot be determined.",
+    modalGeofenceConfirm: 'Got it',
+    alertIncompleteBalesTitle: 'Incomplete data',
+    alertIncompleteBalesMessage: 'Please enter the number of bales.',
+    alertIncompleteWeightsTitle: 'Incomplete data',
+    alertIncompleteWeightsMessage: 'Please enter the gross weight and tare correctly.',
+    errorTitle: 'Error',
+    errorMessage: 'Could not confirm the delivery. Please try again.',
+  },
+
+  depositTrips: {
+    screenTitle: 'Incoming trips',
+    statusInTransit: 'In transit',
+    statusArrived: 'Arrived',
+    statusDelivering: 'Delivering',
+    emptyTitle: 'No incoming trips',
+    emptySubtitle: 'Trips heading to the depot will appear here.',
+    tripIteration: 'trip {index}',
+    geofenceBadge: 'in perimeter',
+    tripBaleCount: '{count} bales',
+    distanceInsideGeofence: 'Within depot perimeter',
+    distanceFromDepot: '{distance} m from depot',
+    distanceUnknown: 'Unknown position',
+    confirmDeliveryButton: 'Confirm delivery',
+    // Two-step unloading + GPS override
+    statusUnloading: 'Unloading',
+    startUnloadButton: 'Start unloading',
+    finishUnloadButton: 'Finish unloading',
+    confirmAnywayButton: 'Confirm anyway',
+    distanceFromDepotKm: '{distance} km from the depot',
+    blockedNoGps: 'The truck has not reported its position recently.',
+    blockedOutside: 'The truck is {distance} m from the depot.',
+    blockedUnlinked: 'This trip is not linked to your depot — a valid GPS position is required.',
+    overrideTitle: 'Confirm without GPS verification?',
+    overrideMessageDistance:
+      'The truck position places it {distance} m from the depot. Confirm only if you can see the truck at the ramp — the action will be flagged for review.',
+    overrideMessageNoGps:
+      'The truck has not reported a recent position. Confirm only if you can see the truck at the ramp — the action will be flagged for review.',
+    overrideConfirm: 'Yes, the truck is here',
+    startFailedTitle: 'Could not start unloading',
+    startFailedMessage: 'Try again in a moment.',
+  },
+
+  geofenceFarms: {
+    screenTitle: 'Farms',
+    addFarmButton: 'New farm',
+    loadingText: 'Loading farms...',
+    emptyTitle: 'No farms registered',
+    emptySub: 'Tap "New farm" to add the first farm.',
+    entityTypeLegal: 'Legal entity',
+    entityTypeNatural: 'Natural person',
+    farmFieldCount: '{count} fields',
+    noParcelsForFarm: 'No fields assigned to this farm.',
+    unassignedFarmName: 'No farm',
+    unassignedParcelCount: '{count} unassigned fields',
+    harvestStatusPlanned: 'Planned',
+    harvestStatusToHarvest: 'To harvest',
+    harvestStatusHarvesting: 'Harvesting',
+    harvestStatusHarvested: 'Harvested',
+    parcelNoName: '(no name)',
+    parcelAreaUnit: '{area} ha',
+    parcelViewOnMapA11y: 'View on map',
+    parcelAssignFarmA11y: 'Assign farm',
+    createModalTitle: 'New farm',
+    inputLabelFarmName: 'Farm name',
+    placeholderFarmName: 'e.g. Danube Farm',
+    inputLabelPhone: 'Phone',
+    placeholderPhone: 'e.g. 0722 123 456',
+    inputLabelEntityType: 'Entity type',
+    inputLabelCui: 'CUI',
+    placeholderCui: 'e.g. RO12345678 (optional)',
+    inputLabelApiaCode: 'RO APIA code',
+    placeholderApiaCode: 'Farm APIA code (optional)',
+    inputLabelAddress: 'Address',
+    placeholderAddress: 'Address (optional)',
+    createModalCancelButton: 'Cancel',
+    createModalSaveButton: 'Create farm',
+    errorTitle: 'Error',
+    errorNameRequired: 'Farm name is required.',
+    errorPhoneRequired: 'Phone number is required.',
+    errorCreateFailed: 'Could not create the farm. Please try again.',
+  },
+
+  geofenceMap: {
+    bannerDrawDisabled: 'Drawing fields is switched off for your organization.',
+    bannerIdle: 'Tap a button to add a field or depot',
+    bannerFirstPoint: 'Centre the pin on the first point and tap "Add point"',
+    bannerProgress: 'Point {count}/3 — continue (minimum 3 points)',
+    bannerEnoughPoints: '{count} points — tap "Finish" or add more',
+    cancelDrawButton: 'Cancel',
+    fabNewFieldLabel: 'New field',
+    fabNewFieldA11y: 'Add new field',
+    fabNewDepotLabel: 'New depot',
+    fabNewDepotA11y: 'Add new depot',
+    locateFabA11y: 'Re-centre on my location',
+    addPointButton: 'Add point',
+    addPointA11y: 'Add point at map centre',
+    undoPointButton: 'Undo',
+    undoPointA11y: 'Delete last point',
+    finishPolygonButton: 'Finish',
+    finishPolygonA11y: 'Finish polygon',
+    successParcelTitle: 'Success',
+    successParcelMessage: 'The field has been saved and will sync when reconnected.',
+    errorParcelTitle: 'Error',
+    errorParcelMessage: 'Could not save the field. Please try again.',
+    successDepotTitle: 'Success',
+    successDepotMessage: 'The depot has been saved and will sync when reconnected.',
+    errorDepotTitle: 'Error',
+    errorDepotMessage: 'Could not save the depot. Please try again.',
+    locationPermissionTitle: 'Location',
+    locationPermissionMessage: 'Please enable location permission.',
+    locationErrorTitle: 'Error',
+    locationErrorMessage: 'Could not get your location.',
+  },
+
+  shared: {
+    offlineBanner: {
+      noConnection: 'No connection',
+      message: 'Offline — changes will sync when you are connected',
+    },
+    syncQueueBanner: {
+      allSynced: 'All synced',
+      failedSingular: '1 unsynced record — tap for details',
+      failedPlural: '{{count}} unsynced records — tap for details',
+      pendingSingular: '1 record pending',
+      pendingPlural: '{{count}} records pending',
+      syncing: 'syncing…',
+      tapForDetails: 'Tap for details.',
+    },
+    connectionStatusBadge: {
+      online: 'Online',
+      offline: 'Offline',
+      a11yConnected: 'Connected to the internet',
+      a11yDisconnected: 'No connection',
+    },
+    alertBanner: {
+      a11yWarning: 'Warning',
+      a11yError: 'Error',
+      dismiss: 'Dismiss alert',
+    },
+    confirmCountdown: {
+      executesIn: 'executes in',
+      cancel: 'Cancel',
+      cancelA11y: 'Cancel action',
+    },
+    problemReportModal: {
+      title: 'Report a problem',
+      placeholder: 'Describe the technical problem...',
+      validationEmpty: 'Please describe the problem.',
+      alertTitle: 'Technical problem',
+      errorMessage: 'An error occurred. Please try again.',
+      submit: 'Send',
+      cancel: 'Cancel',
+      successMessage: 'Problem reported successfully!',
+    },
+    taskList: {
+      noTasks: 'No tasks assigned for today.',
+      sectionTitle: "Today's Tasks",
+      statusAvailable: 'Available',
+      statusInProgress: 'In progress',
+      statusDone: 'Done',
+      priorityUrgent: 'Urgent',
+      priorityHigh: 'High priority',
+      fallbackLabel: 'Task #{{order}}',
+    },
+    tripProgress: {
+      planned: 'Planned',
+      loading: 'Loading',
+      loaded: 'Loaded',
+      inTransit: 'En route',
+      arrived: 'Arrived',
+      delivering: 'Delivering',
+      delivered: 'Delivered',
+      completed: 'Completed',
+    },
+    undoToast: {
+      undoButton: 'Undo',
+      a11yUndo: 'Undo the record',
+    },
+    activeFieldCard: {
+      sectionLabel: 'Active field',
+      depotSectionLabel: 'Active depot',
+      depotTag: 'Depot',
+      loading: 'Loading…',
+      openFieldA11y: 'Open field details',
+      assignedField: 'Assigned field',
+      presenceInside: 'You are on the field',
+      presenceOutsideWithDistance: '{{distance}} m to the field',
+      presenceOutside: 'Go to the field',
+      presenceUnknown: 'Checking position…',
+      presenceUnverifiable: 'Position not verified (offline)',
+      presenceNoGeometry: 'Field outline not cached',
+      tapForDetails: 'tap for details',
+      gpsNoDetect: 'GPS — you are not detected on the field',
+      noFieldAssigned: 'No field assigned',
+      helpUnavailable: 'Ask the dispatcher to assign you to a parcel today.',
+      helpGpsError:
+        'Go to the parcel you are working on and tap "Retry GPS". The field is detected automatically by location — it cannot be chosen manually.',
+      candidatesTitle: 'Your assigned fields:',
+      openParcelA11y: 'Open details for {{name}}',
+      parcelFallback: 'Parcel',
+      retryGps: 'Retry GPS',
+      outlinesMissing: 'Field outlines not downloaded',
+      helpMissingGeometry:
+        'This phone does not yet have the outlines of your fields, so your position cannot be matched to one. Download them — then the field is detected automatically, as usual.',
+      downloadOutlines: 'Download outlines',
+      downloadingOutlines: 'Downloading…',
+    },
+    pendingTransitionBadge: {
+      a11y: 'Transition pending sync',
+      label: 'will be sent on reconnect',
+      failedA11y: 'Transition failed to sync, tap to retry',
+      failedLabel: 'sync failed — tap to retry',
+    },
+    syncStatusIndicator: {
+      syncing: 'Sync in progress',
+      pendingA11y: '{{count}} operations in sync queue',
+      synced: 'Synced',
+    },
+    appHeader: {
+      title: 'Strawboss',
+    },
+    qrScanner: {
+      defaultInstruction: 'Scan QR code',
+    },
+    photoCapture: {
+      retake: 'Retake photo',
+      noPhoto: 'No photo taken',
+      takePhoto: 'Take photo',
+    },
+    avatarPicker: {
+      permission: {
+        title: 'Permission required',
+        camera: 'To take a photo you must allow access to the camera.',
+        gallery: 'To choose a photo you must allow access to the gallery.',
+      },
+      upload: {
+        failedTitle: 'Upload failed',
+        failedDefault: 'Could not upload the photo. Please try again.',
+      },
+      offline: {
+        title: 'You are offline',
+        message: 'Connect to the internet to change your profile photo.',
+      },
+      sheet: {
+        title: 'Profile photo',
+        subtitle: 'Choose a source',
+        takePhoto: 'Take a photo',
+        chooseFromGallery: 'Choose from gallery',
+        cancel: 'Cancel',
+      },
+      accessibilityLabel: 'Change profile photo',
+    },
+    consumableTypeSelector: {
+      diesel: 'Diesel',
+      twine: 'Twine',
+    },
+  },
+
+  delivery: {
+    cmr: {
+      title: 'CMR Confirmation',
+      row: {
+        trip: 'Trip',
+        destination: 'Destination',
+        locality: 'Locality',
+        bales: 'Bales',
+        grossWeight: 'Gross weight',
+        tare: 'Tare',
+        netWeight: 'Net weight',
+        notWeighed: 'Not weighed',
+        receiver: 'Receiver',
+      },
+      action: {
+        confirm: 'Confirm delivery',
+        back: 'Back',
+      },
+      countdownActionLabel: 'CMR Confirmation',
+    },
+    enhancedFlow: {
+      step: {
+        weighing: 'Weighing',
+        confirmation: 'Delivery confirmation',
+      },
+      receiverFallback: 'Receiver',
+      deliverWithoutWeighing: {
+        action: 'Deliver without weighing',
+        confirmTitle: 'Deliver without weighing?',
+        confirmMessage:
+          'Only use this if the depot has no working scale. The trip will be recorded with no weight.',
+        confirmAction: 'Yes, deliver without weighing',
+      },
+      operatorWait: {
+        title: 'Awaiting depot confirmation',
+        confirmedTitle: 'Delivery confirmed by operator',
+        pendingTitle: 'Delivery will be confirmed by the depot operator',
+        confirmedSubtitle: 'The depot operator confirmed {count} bales.',
+        pendingSubtitle:
+          'Awaiting confirmation. You do not need to enter weights or a signature — the depot operator does that.',
+        unloadingTitle: 'Being unloaded now',
+        unloadingSubtitle: 'The operator started unloading at {time}.',
+        callOperator: 'Call',
+        confirmedByDepot: 'confirmed by depot',
+      },
+      error: {
+        title: 'Error',
+        confirmFailed: 'Could not confirm the delivery.',
+      },
+    },
+    weightInput: {
+      grossLabel: 'Gross (weighed)',
+      tareLabel: 'Tare (empty truck)',
+      netLabel: 'Net',
+      tareOverGrossError: 'Tare cannot be greater than the gross weight.',
+      editingHint: 'Editing: {field}',
+      editingHint_gross: 'Gross',
+      editingHint_tare: 'Tare',
+      action: {
+        continue: 'Continue',
+      },
+    },
+  },
+
+  production: {
+    balerEntry: {
+      crop: {
+        grau: 'Wheat',
+        orz: 'Barley',
+        rapita: 'Rapeseed',
+        planteNutret: 'Fodder plants',
+      },
+      defaultLabel: 'Starting baling in {parcelCode}',
+    },
+    fieldNumpad: {
+      todayLabel: 'Today',
+      balesUnit: 'bales',
+      displayLabel: 'bales',
+      taskParcelFallback: 'Assigned field',
+      accessibility: {
+        deleteLastDigit: 'Delete last digit',
+        clearAll: 'Clear all',
+        saveProduction: 'Save production',
+      },
+      toast: {
+        saved: 'Recorded — {count} bales',
+      },
+      saveButton: {
+        saving: 'Saving…',
+        label: 'SAVE',
+      },
+      error: {
+        title: 'Error',
+        saveFailed: 'Could not save the production',
+      },
+    },
+    harvestFinish: {
+      partial: 'Partially completed',
+      total: 'Fully completed',
+    },
+    numpad: {
+      parcelLabel: 'Field',
+      displayLabel: 'bales',
+      parcelSource: {
+        gps: 'Detected from GPS',
+        task: "From today's plan",
+      },
+      gps: {
+        loading: 'Detecting location…',
+        denied: 'GPS denied — grant location permission',
+        unavailable: 'GPS unavailable — try again in the field',
+        outsideParcels: 'Outside delimited fields — move closer to the field',
+        detecting: 'Detecting field from GPS…',
+        nearField: 'Near the field ({distance} m from the edge)',
+        outlinesMissing: 'Field outlines not downloaded on this phone',
+        noAssignment: 'No field assigned to you today',
+      },
+      noParcel: 'You are not on any delimited field',
+      loadingParcels: 'Loading parcels…',
+      // Parcels now come from the offline-first cache and no longer fail to
+      // load, so this key is no longer a live error string — kept for any
+      // stale reference, superseded by `parcelsFromCache`.
+      parcelsError: 'Could not load parcels. Check your connection.',
+      parcelsFromCache: "From today's plan (offline)",
+      accessibility: {
+        deleteLastDigit: 'Delete last digit',
+        clearAll: 'Clear all',
+      },
+      duplicateModal: {
+        title: 'Production already recorded',
+        message:
+          'You have already recorded {total} bales on this field today ({minutes} min ago). Continue with a new entry?',
+        confirm: 'Yes, continue',
+        cancel: 'Cancel',
+      },
+      saveButton: {
+        saving: 'Saving…',
+        label: 'SAVE PRODUCTION',
+      },
+      toast: {
+        saved: 'Recorded — {count} bales',
+      },
+      error: {
+        title: 'Error',
+        saveFailed: 'Could not save the production',
+      },
+    },
+  },
+
+  stats: {
+    operator: {
+      balesProduced: 'Bales produced today',
+      balesTransported: 'Bales transported today',
+      balesLoaded: 'Bales loaded today',
+      fuel: 'Diesel today',
+      twine: 'Twine today',
+      error: {
+        loadFailed: 'Could not load statistics',
+      },
+    },
+  },
+
+  activity: {
+    todayCard: {
+      headerTitle: 'My activity today',
+      accessibility: {
+        expand: "Expand today's activity",
+        collapse: "Collapse today's activity",
+        pendingCount: '{count} unsynced',
+      },
+      syncStatus: {
+        synced: 'synced',
+        pending: 'pending',
+        failed: 'failed',
+      },
+      empty: {
+        text: 'No entries today.',
+        subtext: 'Productions, fuelings and loads will appear here after you save them.',
+      },
+      retry: 'Retry',
+    },
+  },
+
+  consumables: {
+    flow: {
+      twine: {
+        title: 'Twine quantity (kg)',
+        action: {
+          save: 'Save',
+          back: 'Back',
+        },
+      },
+      typeSelector: {
+        title: 'Consumable type',
+        action: {
+          continue: 'Continue',
+        },
+      },
+      toast: {
+        twine: 'Recorded — {qty} kg twine',
+      },
+      error: {
+        title: 'Error',
+        saveFailed: 'Could not save the consumable',
+      },
+    },
+  },
+
+  fuel: {
+    entryFlow: {
+      step: {
+        liters: 'Liters fueled',
+        stationPhoto: 'Fuel station photo',
+        confirm: 'Fuel confirmation',
+      },
+      liters: {
+        subtitle: 'How many liters did you fuel?',
+        action: {
+          continue: 'Continue',
+          cancel: 'Cancel',
+        },
+      },
+      stationPhoto: {
+        subtitle: 'Take a photo of the fuel station. A receipt is NOT required.',
+        captureLabel: 'Station photo',
+        action: {
+          continue: 'Continue',
+          back: 'Back',
+        },
+      },
+      confirm: {
+        row: {
+          liters: 'Liters',
+          photo: 'Photo',
+        },
+        action: {
+          save: 'Save',
+          back: 'Back',
+        },
+      },
+      toast: {
+        saved: 'Recorded — {liters} L fuel',
+      },
+      error: {
+        title: 'Error',
+        saveFailed: 'Could not save the fueling',
+        noMachine:
+          'No machine is assigned to you, so this fueling cannot be recorded. Ask the dispatcher to assign your machine, then try again.',
+      },
+    },
+  },
+
+  profile: {
+    role: {
+      driver: 'Driver',
+      loaderOperator: 'Loader Operator',
+      balerOperator: 'Baler Operator',
+      dispatcher: 'Dispatcher',
+      admin: 'Administrator',
+      geofenceMaker: 'Geofence Maker',
+    },
+    devMode: {
+      syncActivated: {
+        title: 'Sync enabled',
+        message: 'The sync control will be visible until the app is closed.',
+      },
+    },
+    error: {
+      loadProfile: 'Could not load profile data',
+    },
+    sync: {
+      cardTitle: 'Synchronisation',
+      network: 'Network',
+      online: 'Online',
+      offline: 'Offline',
+      inQueue: 'In queue',
+      failedHint: 'Last sync failed for {count} {item} — use the button below.',
+      failedHint_record_singular: 'record',
+      failedHint_record_plural: 'records',
+      lastSync: 'Last sync',
+      syncing: 'Syncing…',
+      syncNow: 'Sync now',
+      retryFailed: 'Retry failed records',
+      clearQueue: 'Clear failed queue',
+    },
+    machine: {
+      cardTitle: 'Assigned machine',
+      none: 'No machine assigned',
+      loadError: 'Could not load machine',
+    },
+    stats: {
+      sectionTitle: 'My status',
+    },
+    signature: {
+      cardTitle: 'Signature specimen',
+      noSpecimen: "You don't have a specimen yet.",
+      changeSpecimen: 'Change specimen',
+      createSpecimen: 'Create specimen',
+      accessibilityLabel: 'Change signature specimen',
+    },
+    dailyReport: 'Daily PDF report',
+    trackingSetup: 'Tracking setup',
+    trackingSetup_accessibilityLabel: 'Configure permanent tracking',
+    display: {
+      cardTitle: 'Display',
+      highContrast: {
+        label: 'Bright light mode',
+        hint: 'White background, black text — easier to read in sunlight',
+        accessibilityLabel: 'Enable high-contrast mode',
+      },
+    },
+    deviceAdmin: {
+      cardTitle: 'Device management',
+      hint: 'Managed phone (Device Owner). Releasing stops the protection and allows uninstalling the app.',
+      release: 'Release device',
+    },
+    logout: 'Log out',
+    version: 'Version {version}',
+    modal: {
+      releaseDevice: {
+        title: 'Release device',
+        message:
+          'Stops Device Owner protection: the app will be stoppable and uninstallable again. Use only when decommissioning this phone. Continue?',
+        confirm: 'Release',
+        cancel: 'Cancel',
+        successTitle: 'Done',
+        successMessage: 'The device has been released. The app can now be uninstalled.',
+        errorTitle: 'Error',
+        errorMessage: 'Could not release the device.',
+      },
+      clearQueue: {
+        title: 'Clear failed queue',
+        message:
+          'Failed records will be permanently deleted from the phone. Records already sent to the server remain unchanged. Continue?',
+        confirm: 'Delete',
+        cancel: 'Cancel',
+        successTitle: 'Done',
+        successDeleted: '{count} records deleted from the queue.',
+        successEmpty: 'There were no failed records.',
+        errorTitle: 'Error',
+        errorDefault: 'Could not clear the queue.',
+      },
+      logoutPending: {
+        title: 'Unsynced records',
+        message:
+          'You have {count} unsynced records on this phone. If you log out now, they will be permanently lost. Sync first or log out anyway.',
+        confirm: 'Log out anyway',
+        syncNow: 'Sync now',
+      },
+    },
+  },
+
+  geofenceMaker: {
+    assignFarm: {
+      title: 'Assign farm',
+      loading: 'Loading farms...',
+      empty: 'No farms available. Create one first from the Farms tab.',
+      error: {
+        title: 'Error',
+        message: 'Could not assign the farm. Please try again.',
+      },
+    },
+    createDeposit: {
+      title: 'New depot',
+      label: {
+        code: 'Depot code',
+        name: 'Depot name',
+        address: 'Address',
+        contactName: 'Contact person',
+        contactPhone: 'Contact phone',
+        isDefault: 'Default depot',
+      },
+      placeholder: {
+        code: 'e.g. DEP-01',
+        name: 'e.g. Central Depot',
+        address: 'Street, city, county',
+        contactName: 'Full name (optional)',
+        contactPhone: 'e.g. 0722 123 456 (optional)',
+      },
+      hint: {
+        isDefault: 'Automatically selected depot for deliveries',
+      },
+      error: {
+        codeRequired: 'The depot code is required.',
+        nameRequired: 'The depot name is required.',
+        addressRequired: 'The depot address is required.',
+      },
+      cancel: 'Cancel',
+      save: 'Save depot',
+    },
+    createParcel: {
+      title: 'New field',
+      label: {
+        name: 'Field name',
+        farm: 'Farm',
+        crop: 'Crop',
+        municipality: 'Municipality',
+        notes: 'Notes',
+      },
+      placeholder: {
+        name: 'e.g. North Field 12',
+        farm: 'Select farm (optional)',
+        crop: 'Select crop (optional)',
+        municipality: 'Auto-detected from location',
+        notes: 'Additional notes (optional)',
+      },
+      error: {
+        nameRequired: 'The field name is required.',
+      },
+      cancel: 'Cancel',
+      save: 'Save field',
+      selectFarm: {
+        title: 'Select farm',
+        back: 'Back',
+        empty: 'No farms created yet.',
+        addNew: 'Add new farm',
+      },
+      selectCrop: {
+        title: 'Select crop',
+        back: 'Back',
+      },
+      cropLabel: {
+        grau: 'Wheat',
+        orz: 'Barley',
+        rapita: 'Rapeseed',
+        planteNutret: 'Fodder plants',
+        altele: 'Other',
+      },
+      createFarm: {
+        title: 'New farm',
+        back: 'Back',
+        label: {
+          name: 'Farm name',
+          phone: 'Phone',
+          entityType: 'Entity type',
+          cui: 'Tax ID (CUI)',
+          apiaCode: 'APIA Code',
+          address: 'Address',
+        },
+        placeholder: {
+          name: 'e.g. Ionescu Farm',
+          phone: 'e.g. 0722 123 456',
+          cui: 'e.g. RO12345678 (optional)',
+          apiaCode: 'Farm APIA code (optional)',
+          address: 'e.g. Deta, Timiș (optional)',
+        },
+        entityType: {
+          juridica: 'Legal entity',
+          fizica: 'Individual',
+        },
+        error: {
+          nameRequired: 'The farm name is required.',
+          phoneRequired: 'The phone number is required.',
+          createFailed: 'Could not create the farm. Please try again.',
+        },
+        cancel: 'Cancel',
+        submit: 'Create farm',
+      },
+    },
+    geofenceAssign: {
+      title: 'Assign drawn area',
+      toggle: {
+        parcel: 'Field',
+        deposit: 'Depot',
+      },
+      hint: {
+        selectParcel: 'Select field:',
+        selectDeposit: 'Select depot:',
+      },
+      empty: {
+        parcel: 'No fields available.',
+        deposit: 'No depots available.',
+      },
+      cancel: 'Cancel',
+      save: 'Save',
+    },
+  },
+
+  map: {
+    geofenceEditor: {
+      loadingMap: 'Loading map...',
+      error: 'The map could not be loaded. Try again.',
+      retry: 'Retry',
+    },
+    parcelSheet: {
+      harvestStatus: {
+        planned: 'Planned',
+        toHarvest: 'To harvest',
+        harvesting: 'Harvesting',
+        harvested: 'Harvested',
+      },
+      routeSummaryLabel: 'Route on map',
+      routeSummary: {
+        straightLine: '{distance} km (straight line)',
+      },
+      startGoogleMaps: 'Start in Google Maps',
+      previewRoute: 'Preview route',
+      close: 'Close',
+      noCoordsWarning:
+        'Destination coordinates are not available for this selection. Route preview and navigation cannot be opened.',
+      info: {
+        area: 'Area',
+        status: 'Status',
+        municipality: 'Municipality',
+      },
+      enableLocationHint: 'Enable location to calculate the route on the map.',
+      error: {
+        googleMaps: {
+          title: 'Error',
+          message: 'Could not open Google Maps or navigation.',
+        },
+      },
+    },
+    mapScreen: {
+      offlineBanner: 'Parcels from local cache (offline)',
+      legendAssigned: 'Your fields today',
+      reset: 'Reset',
+      resetAccessibilityLabel: 'Reset map',
+      recenterAccessibilityLabel: 'Re-centre on my location',
+      location: {
+        title: 'Location',
+        permissionMessage: 'Enable location permission to re-position yourself on the map.',
+      },
+      error: {
+        locationTitle: 'Error',
+        locationMessage: 'Could not get the current location.',
+        noCurrentLocation: 'Current location is not available.',
+        noDestinationCoords: 'Destination coordinates are not available.',
+      },
+      routeInfo: {
+        title: 'Info',
+        offlineMessage: 'Detailed route requires internet. Showing straight line.',
+      },
+    },
+  },
+
+  parcel: {
+    detail: {
+      screenTitle: 'Parcel',
+      error: {
+        cannotLoad: {
+          title: 'Field could not be loaded',
+          subtitle: 'Check your internet connection and try again.',
+          back: 'Back',
+        },
+      },
+      bales: {
+        label: 'Bales on field',
+        sub: 'produced {produced} · loaded {loaded}',
+        unavailableOffline: 'unavailable offline',
+      },
+      crop: {
+        label: 'Crop',
+        undefined: 'undefined',
+      },
+      cropLabel: {
+        grau: 'Wheat',
+        orz: 'Barley',
+        rapita: 'Rapeseed',
+        planteNutret: 'Fodder plants',
+      },
+      harvestStatus: {
+        planned: 'Planned',
+        toHarvest: 'To harvest',
+        harvesting: 'Harvesting',
+        partialHarvested: 'Partially harvested',
+        harvested: 'Harvested',
+        inLoading: 'Loading',
+        loaded: 'Loaded',
+        completed: 'Completed',
+      },
+      location: {
+        municipality: 'Municipality',
+        address: 'Address',
+      },
+      notes: {
+        label: 'Notes',
+      },
+      navigate: 'Navigate there',
+      openOnMap: 'Open on map',
+      navigate_error: 'Could not open the navigation app.',
+      navigate_alertTitle: 'Navigation',
+    },
+  },
+} as const satisfies CatalogShape<TranslationKeys>;
