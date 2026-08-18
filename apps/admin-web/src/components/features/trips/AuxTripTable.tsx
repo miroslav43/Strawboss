@@ -8,6 +8,7 @@ import { canDeleteAuxStage } from '@strawboss/domain';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { fmtDate, EMPTY } from '@/lib/date';
 import type { AuxRow } from '@/lib/aux-rows';
 import { AuxStageBadge } from '@/components/features/trip-requests/AuxStageBadge';
@@ -84,6 +85,7 @@ export function AuxTripTable({
   emptyMessage,
 }: AuxTripTableProps) {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const slug = useOrgSlug();
 
   const columns: Column<AuxRow>[] = [
@@ -197,7 +199,7 @@ export function AuxTripTable({
       sortable: true,
       render: (row) => (
         <span className="whitespace-nowrap text-xs text-neutral-600">
-          {fmtDate(row.request.neededDate)}
+          {fmtDate(row.request.neededDate, fmt.tag)}
         </span>
       ),
     },

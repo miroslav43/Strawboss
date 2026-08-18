@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import {  } from 'lucide-react';
+import {} from 'lucide-react';
 import type { FarmReport } from '@strawboss/types';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { exportCsv } from '@/lib/csv';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { ExportButton } from '@/components/shared/ExportButton';
 
 interface FieldRow extends Record<string, unknown> {
@@ -31,9 +32,9 @@ interface FieldReportTabProps {
  * flattens it across all farms into one sortable table.
  */
 export function FieldReportTab({ farms, isLoading, isError }: FieldReportTabProps) {
-  const { t, locale } = useI18n();
-  const numberLocale = locale === 'ro' ? 'ro-RO' : 'en-US';
-  const fmt = (n: number) => n.toLocaleString(numberLocale);
+  const { t } = useI18n();
+  const localeFmt = useLocaleFormat();
+  const fmt = (n: number) => localeFmt.number.format(n);
 
   const rows: FieldRow[] = useMemo(() => {
     const out: FieldRow[] = [];

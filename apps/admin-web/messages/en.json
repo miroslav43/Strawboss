@@ -855,6 +855,8 @@
       "farms": "Farms",
       "fields": "Fields",
       "depots": "Depots",
+      "tripsReport": "Trips",
+      "auxTripsReport": "Aux trips",
       "rankings": "Rankings",
       "costs": "Costs",
       "operators": "Operators",
@@ -911,7 +913,8 @@
       "loading": "Loading data…",
       "error": "Failed to load data. The backend may not be running.",
       "noData": "No data available",
-      "bales": "bales"
+      "bales": "bales",
+      "capNotice": "Showing the most recent {{count}} rows — the selected period holds more. Narrow the range or the filters."
     },
     "farms": {
       "heading": "Production per farm",
@@ -946,6 +949,23 @@
       "deliveries": "Deliveries",
       "chartTitle": "Stock distribution",
       "matchNote": "Depots are matched to trips by destination name."
+    },
+    "trips": {
+      "heading": "Trips — own fleet",
+      "kpiTotal": "Total trips",
+      "kpiCompleted": "Completed",
+      "kpiCancelled": "Cancelled",
+      "kpiBales": "Bales",
+      "kpiNetWeight": "Net weight (kg)"
+    },
+    "auxTrips": {
+      "heading": "Aux trips — external transporters",
+      "searchPlaceholder": "Search by requester, company, truck, driver, trip…",
+      "kpiTotal": "Total transports",
+      "kpiCompleted": "Completed",
+      "kpiPending": "Pending",
+      "kpiCancelled": "Cancelled",
+      "kpiBales": "Bales"
     },
     "rankings": {
       "heading": "Rankings",
@@ -2055,15 +2075,6 @@
     "recentTrips": "Recent trips",
     "noRecentTrips": "No recent trips",
     "trendVsYesterday": "% vs yesterday",
-    "days": {
-      "sun": "Sun",
-      "mon": "Mon",
-      "tue": "Tue",
-      "wed": "Wed",
-      "thu": "Thu",
-      "fri": "Fri",
-      "sat": "Sat"
-    },
     "bales": "Bales",
     "productionLast7Days": "Production — last 7 days",
     "tripsCompletedLabel": "Completed trips:",

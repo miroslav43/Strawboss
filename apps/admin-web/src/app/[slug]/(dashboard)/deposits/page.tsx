@@ -23,6 +23,7 @@ import { DepositFormModal } from '@/components/deposits/DepositFormModal';
 import { apiClient } from '@/lib/api';
 import { useSeasonParam } from '@/lib/season';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 
 // ─── DepositLastActivity ─────────────────────────────────────────────────────
@@ -30,7 +31,8 @@ import { normalizeList as normalize } from '@/lib/normalize-api-list';
 // Reuses the shared `tasks.online.short*` i18n strings used by UserPresenceDot
 // so the wording stays consistent across the app.
 function DepositLastActivity({ at }: { at: string | null }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const fmt = useLocaleFormat();
   if (!at) {
     return <span className="text-xs text-neutral-300">{t('deposits.lastActivityNone')}</span>;
   }
@@ -44,7 +46,7 @@ function DepositLastActivity({ at }: { at: string | null }) {
     const days = Math.floor(hours / 24);
     return t('tasks.online.shortDaysAgo', { n: days });
   })();
-  const title = new Date(at).toLocaleString(locale === 'ro' ? 'ro-RO' : 'en-US');
+  const title = fmt.dateTime.format(new Date(at));
   return (
     <span title={title} className="text-xs text-neutral-600">
       {label}
@@ -167,12 +169,9 @@ function ThSortIndicator({
 
 export default function DepositsPage() {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const seasonParam = useSeasonParam();
-  const {
-    data: rawDeposits,
-    isLoading,
-    isError,
-  } = useDeliveryDestinations(apiClient, seasonParam);
+  const { data: rawDeposits, isLoading, isError } = useDeliveryDestinations(apiClient, seasonParam);
 
   const deposits = useMemo(() => normalize<DeliveryDestination>(rawDeposits), [rawDeposits]);
 
@@ -227,13 +226,13 @@ export default function DepositsPage() {
       } else {
         const sa = (a[sortKey] ?? '') as string;
         const sb = (b[sortKey] ?? '') as string;
-        cmp = sa.localeCompare(sb, 'ro', { sensitivity: 'base' });
+        cmp = fmt.compare(sa, sb);
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
 
     return list;
-  }, [deposits, search, statusFilter, tableSort]);
+  }, [deposits, search, statusFilter, tableSort, fmt]);
 
   // Stats
   const stats = useMemo(

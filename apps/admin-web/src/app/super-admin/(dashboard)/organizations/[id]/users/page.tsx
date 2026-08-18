@@ -33,6 +33,7 @@ import { UserAvatar } from '@/components/shared/UserAvatar';
 import { apiClient } from '@/lib/api';
 import { clientLogger } from '@/lib/client-logger';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 
 // ── Role config (mirrors /[slug]/(dashboard)/accounts/page.tsx) ───────────
 
@@ -699,6 +700,7 @@ function EditUserModal({
 
 export default function SuperAdminOrgUsersPage() {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const params = useParams<{ id: string }>();
   const orgId = params?.id ?? '';
 
@@ -750,9 +752,9 @@ export default function SuperAdminOrgUsersPage() {
       role,
       users: users
         .filter((u) => u.role === role)
-        .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ro')),
+        .sort((a, b) => fmt.compare(a.fullName, b.fullName)),
     })).filter((g) => g.users.length > 0);
-  }, [users]);
+  }, [users, fmt]);
 
   const handleDeactivate = () => {
     if (!deactivateTarget) return;

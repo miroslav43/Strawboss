@@ -7,6 +7,7 @@ import { useImportParcels } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { parseKml, type KmlParsedParcel } from '@/lib/kml-parser';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { clientLogger } from '@/lib/client-logger';
 
 interface KmlImportToFarmModalProps {
@@ -36,6 +37,7 @@ export function KmlImportToFarmModal({
   onClose,
 }: KmlImportToFarmModalProps) {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const importParcels = useImportParcels(apiClient);
 
   const [parsed, setParsed] = useState<KmlParsedParcel[] | null>(null);
@@ -120,8 +122,8 @@ export function KmlImportToFarmModal({
   }, [parsed, selectedFarmId, importParcels]);
 
   const farmOptions = useMemo(() => {
-    return [...farms].sort((a, b) => a.name.localeCompare(b.name, 'ro'));
-  }, [farms]);
+    return [...farms].sort((a, b) => fmt.compare(a.name, b.name));
+  }, [farms, fmt]);
 
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">

@@ -855,6 +855,8 @@
       "farms": "Gazdaságok",
       "fields": "Táblák",
       "depots": "Raktárak",
+      "tripsReport": "Fuvarok",
+      "auxTripsReport": "Külsős fuvarok",
       "rankings": "Rangsorok",
       "costs": "Költségek",
       "operators": "Kezelők",
@@ -911,7 +913,8 @@
       "loading": "Adatok betöltése…",
       "error": "Nem sikerült betölteni az adatokat. Lehet, hogy a háttérrendszer nem fut.",
       "noData": "Nincs megjeleníthető adat",
-      "bales": "bála"
+      "bales": "bála",
+      "capNotice": "A legutóbbi {{count}} sor látszik — a kiválasztott időszak ennél többet tartalmaz. Szűkítsd az intervallumot vagy a szűrőket."
     },
     "farms": {
       "heading": "Termelés gazdaságonként",
@@ -946,6 +949,23 @@
       "deliveries": "Leszállítások",
       "chartTitle": "Készlet megoszlása",
       "matchNote": "A raktárak az átadási hely neve alapján párosulnak a fuvarokhoz."
+    },
+    "trips": {
+      "heading": "Fuvarok — saját flotta",
+      "kpiTotal": "Összes fuvar",
+      "kpiCompleted": "Lezárt",
+      "kpiCancelled": "Törölt",
+      "kpiBales": "Bálák",
+      "kpiNetWeight": "Nettó tömeg (kg)"
+    },
+    "auxTrips": {
+      "heading": "Külsős fuvarok — külső fuvarozók",
+      "searchPlaceholder": "Keresés igénylő, cég, kamion, sofőr, fuvar szerint…",
+      "kpiTotal": "Összes fuvar",
+      "kpiCompleted": "Lezárt",
+      "kpiPending": "Függőben",
+      "kpiCancelled": "Törölt",
+      "kpiBales": "Bálák"
     },
     "rankings": {
       "heading": "Rangsorok",
@@ -2055,15 +2075,6 @@
     "recentTrips": "Legutóbbi fuvarok",
     "noRecentTrips": "Nincs legutóbbi fuvar",
     "trendVsYesterday": "% a tegnapihoz képest",
-    "days": {
-      "sun": "V",
-      "mon": "H",
-      "tue": "K",
-      "wed": "Sze",
-      "thu": "Cs",
-      "fri": "P",
-      "sat": "Szo"
-    },
     "bales": "Bálák",
     "productionLast7Days": "Termelés — elmúlt 7 nap",
     "tripsCompletedLabel": "Lezárt fuvarok:",

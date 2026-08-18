@@ -30,6 +30,7 @@ import { exportCsv } from '@/lib/csv';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { useSeason, useSeasonParam } from '@/lib/season';
 import { useFeatures } from '@/hooks/useFeatures';
 import { ExportButton } from '@/components/shared/ExportButton';
@@ -93,8 +94,8 @@ interface OperatorRow extends Record<string, unknown> {
 }
 
 export default function ReportsPage() {
-  const { t, locale } = useI18n();
-  const numberLocale = locale === 'ro' ? 'ro-RO' : 'en-US';
+  const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const [tab, setTab] = useState<Tab>('farms');
   const { isEnabled, ready } = useFeatures();
 
@@ -238,13 +239,13 @@ export default function ReportsPage() {
       key: 'fuelCost',
       header: t('reports.costs.fuelCost'),
       sortable: true,
-      render: (row) => row.fuelCost.toLocaleString(numberLocale),
+      render: (row) => fmt.number.format(row.fuelCost),
     },
     {
       key: 'consumableCost',
       header: t('reports.costs.consumableCost'),
       sortable: true,
-      render: (row) => row.consumableCost.toLocaleString(numberLocale),
+      render: (row) => fmt.number.format(row.consumableCost),
     },
     {
       key: 'totalCost',
@@ -252,7 +253,7 @@ export default function ReportsPage() {
       sortable: true,
       render: (row) => (
         <span className="font-semibold text-neutral-800">
-          {row.totalCost.toLocaleString(numberLocale)}
+          {fmt.number.format(row.totalCost)}
         </span>
       ),
     },

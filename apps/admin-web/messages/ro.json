@@ -855,6 +855,8 @@
       "farms": "Ferme",
       "fields": "Câmpuri",
       "depots": "Depozite",
+      "tripsReport": "Curse",
+      "auxTripsReport": "Curse Aux",
       "rankings": "Clasamente",
       "costs": "Costuri",
       "operators": "Operatori",
@@ -911,7 +913,8 @@
       "loading": "Se încarcă datele…",
       "error": "Eroare la încărcarea datelor. Backend-ul poate fi oprit.",
       "noData": "Nu există date",
-      "bales": "baloți"
+      "bales": "baloți",
+      "capNotice": "Se afișează cele mai recente {{count}} rânduri — perioada selectată conține mai multe. Restrânge intervalul sau filtrele."
     },
     "farms": {
       "heading": "Producție per fermă",
@@ -946,6 +949,23 @@
       "deliveries": "Livrări",
       "chartTitle": "Distribuția stocului",
       "matchNote": "Depozitele sunt asociate curselor după numele destinației."
+    },
+    "trips": {
+      "heading": "Curse — flota proprie",
+      "kpiTotal": "Total curse",
+      "kpiCompleted": "Finalizate",
+      "kpiCancelled": "Anulate",
+      "kpiBales": "Baloți",
+      "kpiNetWeight": "Greutate netă (kg)"
+    },
+    "auxTrips": {
+      "heading": "Curse Aux — transportatori externi",
+      "searchPlaceholder": "Caută după solicitant, firmă, camion, șofer, cursă…",
+      "kpiTotal": "Total transporturi",
+      "kpiCompleted": "Finalizate",
+      "kpiPending": "În așteptare",
+      "kpiCancelled": "Anulate",
+      "kpiBales": "Baloți"
     },
     "rankings": {
       "heading": "Clasamente",
@@ -2055,15 +2075,6 @@
     "recentTrips": "Curse recente",
     "noRecentTrips": "Nu sunt curse recente",
     "trendVsYesterday": "% față de ieri",
-    "days": {
-      "sun": "Dum",
-      "mon": "Lun",
-      "tue": "Mar",
-      "wed": "Mie",
-      "thu": "Joi",
-      "fri": "Vin",
-      "sat": "Sâm"
-    },
     "bales": "Baloți",
     "productionLast7Days": "Producție — ultimele 7 zile",
     "tripsCompletedLabel": "Curse finalizate:",

@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { DEVICE_ONLINE_WINDOW_MS, DEVICE_IDLE_WINDOW_MS } from '@strawboss/types';
 import { usePresenceState, shortAgo } from './usePresenceState';
 
@@ -28,7 +29,8 @@ export function DevicePresenceDot({
   className?: string;
   variant?: 'dot' | 'badge';
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const { state, ageMs } = usePresenceState(lastSeenAt, {
     online: DEVICE_ONLINE_WINDOW_MS,
     idle: DEVICE_IDLE_WINDOW_MS,
@@ -42,9 +44,7 @@ export function DevicePresenceDot({
         : state === 'never'
           ? t('fleet.presence.neverSeen')
           : t('fleet.presence.lastSeen', {
-              when: new Date(lastSeenAt as string).toLocaleString(
-                locale === 'ro' ? 'ro-RO' : 'en-US',
-              ),
+              when: fmt.dateTime.format(new Date(lastSeenAt as string)),
             });
 
   const aria =

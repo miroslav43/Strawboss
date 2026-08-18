@@ -2,6 +2,7 @@
 
 import { Calendar } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { cn } from '@/lib/utils';
 import { todayInRomania, tomorrowInRomania } from '@/lib/date';
 
@@ -11,12 +12,13 @@ interface DayNavigatorProps {
 }
 
 export function DayNavigator({ selectedDate, onDateChange }: DayNavigatorProps) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const today = todayInRomania();
   const tomorrow = tomorrowInRomania();
 
   const displayDate = new Date(selectedDate + 'T12:00:00');
-  const formattedDate = displayDate.toLocaleDateString(locale === 'ro' ? 'ro-RO' : 'en-US', {
+  const formattedDate = displayDate.toLocaleDateString(fmt.tag, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',

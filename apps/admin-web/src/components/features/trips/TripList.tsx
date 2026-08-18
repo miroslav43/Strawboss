@@ -9,6 +9,7 @@ import { DataTable, type Column } from '@/components/shared/DataTable';
 import { apiClient } from '@/lib/api';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { fmtDateTime, EMPTY } from '@/lib/date';
 import { driverLabel, sourceLabel, truckLabel, baleLabel, hasBaleShortfall } from './trip-labels';
 import { cn } from '@/lib/utils';
@@ -24,7 +25,7 @@ type TripRow = Trip & Record<string, unknown>;
 
 type TFunc = (key: string) => string;
 
-function buildColumns(t: TFunc): Column<TripRow>[] {
+function buildColumns(t: TFunc, localeTag: string): Column<TripRow>[] {
   return [
     {
       key: 'tripNumber',
@@ -105,7 +106,7 @@ function buildColumns(t: TFunc): Column<TripRow>[] {
       header: t('trips_list.colCreated'),
       sortable: true,
       render: (row) => (
-        <span className="text-xs text-neutral-500">{fmtDateTime(row.createdAt)}</span>
+        <span className="text-xs text-neutral-500">{fmtDateTime(row.createdAt, localeTag)}</span>
       ),
     },
   ];
@@ -125,12 +126,13 @@ export function TripList({ trips, canDelete = false, emptyMessage }: TripListPro
   const router = useRouter();
   const slug = useOrgSlug();
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const deleteTrip = useDeleteTrip(apiClient);
 
   const rows = trips as TripRow[];
 
   const columns: Column<TripRow>[] = [
-    ...buildColumns(t),
+    ...buildColumns(t, fmt.tag),
     ...(canDelete
       ? [
           {

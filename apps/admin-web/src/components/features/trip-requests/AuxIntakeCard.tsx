@@ -3,6 +3,7 @@
 import { CheckCircle2, XCircle, Eye } from 'lucide-react';
 import type { TripRequest } from '@strawboss/types';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { fmtDate } from '@/lib/date';
 import { DetailField } from '@/components/shared/DetailField';
 import { qualityLabelKey } from './labels';
@@ -29,6 +30,7 @@ export function AuxIntakeCard({
   onViewDetails: (r: TripRequest) => void;
 }) {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
 
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
@@ -99,7 +101,7 @@ export function AuxIntakeCard({
         />
         <DetailField
           label={t('tripRequests.colNeededDate')}
-          value={request.neededDate ? fmtDate(request.neededDate) : null}
+          value={request.neededDate ? fmtDate(request.neededDate, fmt.tag) : null}
         />
         <DetailField
           label={t('tripRequests.colTons')}

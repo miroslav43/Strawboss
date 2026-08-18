@@ -33,6 +33,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { BaleOverrideModal } from '@/components/features/parcels/BaleOverrideModal';
 import { parseHa, fmtHa, remainingBales } from '@/lib/parcel-bales';
@@ -450,6 +451,7 @@ function ThSortIndicator({
 
 export default function ParcelsPage() {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const { data: rawParcels, isLoading, isError } = useParcels(apiClient);
   const { data: rawFarms } = useFarms(apiClient);
 
@@ -514,15 +516,15 @@ export default function ParcelsPage() {
       } else if (sortKey === 'harvestStatus') {
         const sa = String(a.harvestStatus ?? HarvestStatus.planned);
         const sb = String(b.harvestStatus ?? HarvestStatus.planned);
-        cmp = sa.localeCompare(sb, 'ro', { sensitivity: 'base' });
+        cmp = fmt.compare(sa, sb);
       } else if (sortKey === 'cropType') {
         const sa = String(a.cropType ?? '');
         const sb = String(b.cropType ?? '');
-        cmp = sa.localeCompare(sb, 'ro', { sensitivity: 'base' });
+        cmp = fmt.compare(sa, sb);
       } else if (sortKey === 'farmId') {
         const sa = a.farmId ? (farmMap.get(a.farmId) ?? '') : '';
         const sb = b.farmId ? (farmMap.get(b.farmId) ?? '') : '';
-        cmp = sa.localeCompare(sb, 'ro', { sensitivity: 'base' });
+        cmp = fmt.compare(sa, sb);
       } else if (sortKey === 'balesProduced' || sortKey === 'balesLoaded') {
         const na = Number(a[sortKey] ?? 0);
         const nb = Number(b[sortKey] ?? 0);
@@ -536,14 +538,14 @@ export default function ParcelsPage() {
         const bVal = b[sortKey];
         const sa = aVal == null ? '' : String(aVal);
         const sb = bVal == null ? '' : String(bVal);
-        cmp = sa.localeCompare(sb, 'ro', { sensitivity: 'base' });
+        cmp = fmt.compare(sa, sb);
       }
 
       return sortDir === 'asc' ? cmp : -cmp;
     });
 
     return list;
-  }, [parcels, search, harvestFilter, municipalityFilter, farmFilter, tableSort, farmMap]);
+  }, [parcels, search, harvestFilter, municipalityFilter, farmFilter, tableSort, farmMap, fmt]);
 
   // Stats (T9.2 — active counter dropped; with-crop counter added)
   const stats = useMemo(

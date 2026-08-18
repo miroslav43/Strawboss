@@ -8,6 +8,7 @@ import type { TripRequest } from '@strawboss/types';
 import { AUX_STAGE_ORDER } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { buildAuxRows, type AuxRow } from '@/lib/aux-rows';
 import { fmtDate, fmtDateTime, romaniaDateString } from '@/lib/date';
@@ -43,6 +44,7 @@ const STAGE_OPTIONS = AUX_STAGE_ORDER;
  */
 export default function TransporterTripsPage() {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const slug = useOrgSlug();
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -117,31 +119,34 @@ export default function TransporterTripsPage() {
       },
       {
         header: t('tripRequests.colNeededDate'),
-        value: (r) => fmtDate(r.request.neededDate),
+        value: (r) => fmtDate(r.request.neededDate, fmt.tag),
       },
       {
         header: t('transporter.export.unloadingDate'),
-        value: (r) => fmtDate(r.request.unloadingDate),
+        value: (r) => fmtDate(r.request.unloadingDate, fmt.tag),
       },
       { header: t('tripRequests.colTrip'), value: (r) => r.request.tripNumber },
       { header: t('transporter.export.baleCount'), value: (r) => r.request.tripBaleCount },
       {
         header: t('transporter.export.loadingCompletedAt'),
-        value: (r) => fmtDateTime(r.request.tripLoadingCompletedAt),
+        value: (r) => fmtDateTime(r.request.tripLoadingCompletedAt, fmt.tag),
       },
       {
         header: t('transporter.export.arrivalCmrAt'),
-        value: (r) => fmtDateTime(r.request.tripSignedAt),
+        value: (r) => fmtDateTime(r.request.tripSignedAt, fmt.tag),
       },
       {
         header: t('transporter.export.completedAt'),
-        value: (r) => fmtDateTime(r.request.tripCompletedAt),
+        value: (r) => fmtDateTime(r.request.tripCompletedAt, fmt.tag),
       },
-      { header: t('transporter.export.createdAt'), value: (r) => fmtDateTime(r.request.createdAt) },
+      {
+        header: t('transporter.export.createdAt'),
+        value: (r) => fmtDateTime(r.request.createdAt, fmt.tag),
+      },
       { header: t('transporter.export.confirmedBy'), value: (r) => r.request.confirmedByName },
       {
         header: t('transporter.export.cancelledAt'),
-        value: (r) => fmtDateTime(r.request.cancelledAt),
+        value: (r) => fmtDateTime(r.request.cancelledAt, fmt.tag),
       },
       {
         header: t('transporter.export.cancellationReason'),

@@ -5,6 +5,7 @@ import { Search, MapPin, Sprout, Tractor, X } from 'lucide-react';
 import type { Parcel } from '@strawboss/types';
 import { HarvestStatus } from '@strawboss/types';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { cn } from '@/lib/utils';
 import { HarvestStatusBadge } from '@/components/shared/StatusBadge';
 
@@ -42,6 +43,7 @@ export function FarmParcelCascade({
   onClose: () => void;
 }) {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [farmSearch, setFarmSearch] = useState('');
   const [parcelSearch, setParcelSearch] = useState('');
@@ -80,13 +82,13 @@ export function FarmParcelCascade({
     arr.sort((a, b) => {
       if (a.key === UNASSIGNED) return 1;
       if (b.key === UNASSIGNED) return -1;
-      return a.name.localeCompare(b.name, 'ro');
+      return fmt.compare(a.name, b.name);
     });
     for (const g of arr) {
-      g.parcels.sort((a, b) => (a.code || '').localeCompare(b.code || '', 'ro'));
+      g.parcels.sort((a, b) => fmt.compare(a.code || '', b.code || ''));
     }
     return arr;
-  }, [parcels, excludeParcelIds, t]);
+  }, [parcels, excludeParcelIds, t, fmt]);
 
   const filteredFarms = useMemo(() => {
     const q = farmSearch.trim().toLowerCase();

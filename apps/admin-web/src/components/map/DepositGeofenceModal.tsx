@@ -6,6 +6,7 @@ import { useCreateDeliveryDestination, useUpdateDeliveryDestination } from '@str
 import type { DeliveryDestination } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 
 function hasDepositBoundary(d: DeliveryDestination): boolean {
   const b = d.boundary as unknown;
@@ -25,6 +26,7 @@ type TabKey = 'existing' | 'new';
 
 export function DepositGeofenceModal({ geometry, deposits, onClose }: DepositGeofenceModalProps) {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const [tab, setTab] = useState<TabKey>('existing');
   const [selectedId, setSelectedId] = useState('');
   const [error, setError] = useState('');
@@ -45,12 +47,8 @@ export function DepositGeofenceModal({ geometry, deposits, onClose }: DepositGeo
     () =>
       [...deposits]
         .filter((d) => !hasDepositBoundary(d))
-        .sort((a, b) =>
-          (a.name || a.code).localeCompare(b.name || b.code, 'ro', {
-            sensitivity: 'base',
-          }),
-        ),
-    [deposits],
+        .sort((a, b) => fmt.compare(a.name || a.code, b.name || b.code)),
+    [deposits, fmt],
   );
 
   useEffect(() => {

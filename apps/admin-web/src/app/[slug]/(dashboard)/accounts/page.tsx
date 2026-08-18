@@ -43,6 +43,7 @@ import { UserAvatar } from '@/components/shared/UserAvatar';
 import { UserPresenceDot } from '@/components/shared/UserPresenceDot';
 import { apiClient } from '@/lib/api';
 import { useI18n, normalizeUiLocale, type Locale } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { useFeatures } from '@/hooks/useFeatures';
 import { AssignBeneficiariesModal } from './AssignBeneficiariesModal';
 
@@ -1051,6 +1052,7 @@ function AssignDepotModal({ user, onClose }: { user: User; onClose: () => void }
 
 export default function AccountsPage() {
   const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [assignTarget, setAssignTarget] = useState<User | null>(null);
@@ -1109,9 +1111,9 @@ export default function AccountsPage() {
       role,
       users: filtered
         .filter((u) => u.role === role)
-        .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ro')),
+        .sort((a, b) => fmt.compare(a.fullName, b.fullName)),
     })).filter((g) => g.users.length > 0);
-  }, [users, search, statusFilter]);
+  }, [users, search, statusFilter, fmt]);
 
   const totalVisible = groups.reduce((sum, g) => sum + g.users.length, 0);
 

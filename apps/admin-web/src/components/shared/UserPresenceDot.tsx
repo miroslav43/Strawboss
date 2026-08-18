@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { useLocaleFormat } from '@/lib/use-locale-format';
 import { USER_ONLINE_WINDOW_MS } from '@strawboss/types';
 import { usePresenceState, shortAgo } from './usePresenceState';
 
@@ -43,7 +44,8 @@ export function UserPresenceDot({
   variant = 'dot',
   thresholdMs = USER_ONLINE_WINDOW_MS,
 }: UserPresenceDotProps) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const fmt = useLocaleFormat();
   const { state, ageMs } = usePresenceState(lastSeenAt, { online: thresholdMs });
   const isOnline = state === 'online';
 
@@ -51,7 +53,7 @@ export function UserPresenceDot({
     ? isOnline
       ? t('tasks.online.online')
       : t('tasks.online.lastSeen', {
-          when: new Date(lastSeenAt).toLocaleString(locale === 'ro' ? 'ro-RO' : 'en-US'),
+          when: fmt.dateTime.format(new Date(lastSeenAt)),
         })
     : t('tasks.online.neverSeen');
 
