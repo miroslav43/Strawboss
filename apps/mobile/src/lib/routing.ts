@@ -1,4 +1,5 @@
 import * as Linking from 'expo-linking';
+import { tStatic } from './i18n';
 
 export interface RouteResult {
   points: { lat: number; lon: number }[];
@@ -106,7 +107,7 @@ export async function openExternalNavigation(lat: number, lon: number): Promise<
       lastError = e;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error('Nu s-a putut deschide navigația');
+  throw lastError instanceof Error ? lastError : new Error(tStatic('routing.navigationOpenFailed'));
 }
 
 /** Rough straight-line distance in km (for UI when OSRM is unavailable). */

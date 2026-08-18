@@ -21,12 +21,15 @@ import { useI18n } from '@/lib/i18n';
 
 type ModalView = 'form' | 'pick_farm' | 'create_farm' | 'pick_crop';
 
-const CROP_LABELS: Record<CropType, string> = {
-  [CropType.grau]: 'Grâu',
-  [CropType.orz]: 'Orz',
-  [CropType.rapita]: 'Rapiță',
-  [CropType.plante_nutret]: 'Plante de nutreț',
-  [CropType.altele]: 'Altele',
+// crop_type enum value → i18n key. These reuse the catalog entries already
+// translated for this same screen (geofenceMaker.createParcel.cropLabel) —
+// the DB enum stays snake_case, the catalog key is camelCase.
+const CROP_LABEL_KEYS: Record<CropType, string> = {
+  [CropType.grau]: 'geofenceMaker.createParcel.cropLabel.grau',
+  [CropType.orz]: 'geofenceMaker.createParcel.cropLabel.orz',
+  [CropType.rapita]: 'geofenceMaker.createParcel.cropLabel.rapita',
+  [CropType.plante_nutret]: 'geofenceMaker.createParcel.cropLabel.planteNutret',
+  [CropType.altele]: 'geofenceMaker.createParcel.cropLabel.altele',
 };
 
 const CROP_OPTIONS: CropType[] = [
@@ -247,7 +250,7 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                 <TouchableOpacity style={styles.pickerField} onPress={() => setView('pick_crop')}>
                   <Text style={cropType ? styles.pickerValue : styles.pickerPlaceholder}>
                     {cropType
-                      ? CROP_LABELS[cropType]
+                      ? t(CROP_LABEL_KEYS[cropType])
                       : t('geofenceMaker.createParcel.placeholder.crop')}
                   </Text>
                   <View style={styles.pickerRight}>
@@ -405,7 +408,9 @@ export function CreateParcelModal({ visible, onSave, onClose, isSaving }: Props)
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.farmItemName, { flex: 1 }]}>{CROP_LABELS[option]}</Text>
+                    <Text style={[styles.farmItemName, { flex: 1 }]}>
+                      {t(CROP_LABEL_KEYS[option])}
+                    </Text>
                     {option === cropType && (
                       <MaterialCommunityIcons name="check" size={20} color="#0A5C36" />
                     )}

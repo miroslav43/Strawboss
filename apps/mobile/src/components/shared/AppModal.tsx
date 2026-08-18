@@ -3,6 +3,7 @@ import { View, Text, Pressable, Modal, StyleSheet, Animated, ScrollView } from '
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { scale, fontScale } from '@/utils/responsive';
 import { radii } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 export type AppModalType = 'error' | 'warning' | 'success' | 'confirm';
 
@@ -60,15 +61,18 @@ export function AppModal({
   title,
   message,
   confirmText,
-  cancelText = 'Anulează',
+  cancelText,
   onConfirm,
   onCancel,
   autoDismiss = false,
 }: AppModalProps) {
+  const { t } = useI18n();
   const config = SEVERITY_CONFIG[type];
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const showCancel = onCancel !== undefined;
-  const resolvedConfirmText = confirmText ?? (type === 'confirm' ? 'Da' : 'OK');
+  const resolvedCancelText = cancelText ?? t('common.cancel');
+  const resolvedConfirmText =
+    confirmText ?? (type === 'confirm' ? t('common.yes') : t('common.ok'));
 
   useEffect(() => {
     if (visible) {
@@ -122,10 +126,10 @@ export function AppModal({
                   style={[styles.btn, styles.btnCancel]}
                   onPress={onCancel}
                   accessibilityRole="button"
-                  accessibilityLabel={cancelText}
+                  accessibilityLabel={resolvedCancelText}
                   android_ripple={{ color: '#ddd' }}
                 >
-                  <Text style={styles.btnCancelText}>{cancelText}</Text>
+                  <Text style={styles.btnCancelText}>{resolvedCancelText}</Text>
                 </Pressable>
               )}
               <Pressable

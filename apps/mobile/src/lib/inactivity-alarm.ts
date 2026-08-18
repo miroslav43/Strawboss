@@ -16,6 +16,7 @@ import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system/legacy';
 import { mobileLogger } from './logger';
 import { readLastLocationSuccessIso } from './location';
+import { tStatic } from './i18n';
 
 // ---------------------------------------------------------------------------
 // Configuration constants (change these to adjust thresholds)
@@ -118,8 +119,8 @@ export async function checkMachineInactivity(machineId: string | null | undefine
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Mașina nu a raportat locație',
-        body: `Nicio actualizare GPS de ${elapsedLabel}. Verificați dacă GPS-ul este activ.`,
+        title: tStatic('inactivityAlarm.title'),
+        body: tStatic('inactivityAlarm.body', { elapsedLabel }),
         data: { type: 'inactivity_alarm', machineId },
         // Importance is handled by the channel on Android
       },

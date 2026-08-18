@@ -42,6 +42,7 @@ export const en = {
     edit: 'Edit',
     delete: 'Delete',
     search: 'Search',
+    completed: 'Completed',
   },
 
   app: {
@@ -222,6 +223,8 @@ export const en = {
       actionOpen: 'Open',
     },
     finishButton: 'Done, continue',
+    fgsTitle: 'StrawBoss — location active',
+    fgsBody: 'Sending your position to the dispatcher.',
   },
 
   dailyReport: {
@@ -276,6 +279,7 @@ export const en = {
       'The season this record belongs to has been closed by an administrator, so it no longer accepts new entries. Nothing you entered is lost — tell your administrator.',
     terminalRejection:
       'The server rejected this record. Retrying will not help — redo the action from its screen.',
+    incompleteResponseError: 'Incomplete server response for this record',
     title: 'Pending data',
     refreshAccessibility: 'Refresh',
     backAccessibility: 'Back',
@@ -1021,6 +1025,53 @@ export const en = {
     locationPermissionMessage: 'Please enable location permission.',
     locationErrorTitle: 'Error',
     locationErrorMessage: 'Could not get your location.',
+  },
+
+  geofenceOverlay: {
+    entryConfirm: {
+      loadAction: 'Start loading at {code}',
+      truckAction: 'Confirm arrival at {code}',
+    },
+    banner: {
+      fieldEntry: 'You started field {parcelName}',
+      truckApproaching: 'Truck {plate} — the driver is approaching you',
+    },
+    fieldFallback: 'Field',
+    notFinishedButton: 'Not finished yet',
+    exitConfirm: {
+      titlePrefix: 'Have you finished field',
+      titleSuffix: '',
+      subtitle: 'How many bales did you produce on this field?',
+    },
+    loaderExit: {
+      titlePrefix: 'Have you finished loading',
+      titleSuffix: '',
+      subtitle: 'Were all bales baled and loaded?',
+      confirmButton: 'Yes, finished',
+      shortageTitle: 'Field not fully loaded',
+      shortageMessage:
+        'Produced {produced}, loaded {loaded}. Missing {missing} bales. The field stays open — an administrator has been notified.',
+      acknowledgeButton: 'Got it',
+    },
+  },
+
+  numericPad: {
+    backspaceA11y: 'Delete last digit',
+    clearA11y: 'Clear all',
+    digitA11y: 'Digit {key}',
+  },
+
+  inactivityAlarm: {
+    title: 'The machine has not reported a location',
+    body: 'No GPS update for {elapsedLabel}. Check whether GPS is active.',
+  },
+
+  tripTransition: {
+    illegalTransition: 'Transition "{transition}" is not allowed from state "{currentStatus}".',
+  },
+
+  routing: {
+    navigationOpenFailed: 'Could not open navigation',
   },
 
   shared: {

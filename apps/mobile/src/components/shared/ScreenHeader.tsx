@@ -6,6 +6,7 @@ import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { NotificationBell } from './NotificationBell';
 import { useTheme } from '@/lib/theme';
+import { useI18n } from '@/lib/i18n';
 
 interface ScreenHeaderProps {
   /** Big white title displayed on the green surface. */
@@ -37,6 +38,7 @@ const TITLE_SIZE = fontScale(24);
  */
 export function ScreenHeader({ title, children, right, onBack, style }: ScreenHeaderProps) {
   const { colors: themeColors } = useTheme();
+  const { t } = useI18n();
   const rightNode = right === undefined ? <NotificationBell /> : right;
 
   // In high-contrast mode the header background shifts to a darker primary so
@@ -54,7 +56,7 @@ export function ScreenHeader({ title, children, right, onBack, style }: ScreenHe
             hitSlop={12}
             style={styles.backButton}
             accessibilityRole="button"
-            accessibilityLabel="Înapoi"
+            accessibilityLabel={t('common.back')}
           >
             <MaterialCommunityIcons name="chevron-left" size={28} color="#FFFFFF" />
           </Pressable>

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
 import { BigButton } from '../ui/BigButton';
 import { colors } from '@strawboss/ui-tokens';
+import { useI18n } from '@/lib/i18n';
 
 const CANVAS_HEIGHT = Math.min(
   280,
@@ -16,6 +17,7 @@ interface SignatureCaptureProps {
 
 export function SignatureCapture({ onSave, label }: SignatureCaptureProps) {
   const ref = useRef<SignatureViewRef>(null);
+  const { t } = useI18n();
 
   // Start every signature on a blank canvas — no strokes carried over from a
   // previous signer or a previous mount of this component.
@@ -40,13 +42,13 @@ export function SignatureCapture({ onSave, label }: SignatureCaptureProps) {
       <View style={styles.actions}>
         <View style={styles.actionButton}>
           <BigButton
-            title="Șterge"
+            title={t('common.delete')}
             variant="outline"
             onPress={() => ref.current?.clearSignature()}
           />
         </View>
         <View style={styles.actionButton}>
-          <BigButton title="Confirmă" onPress={() => ref.current?.readSignature()} />
+          <BigButton title={t('common.confirm')} onPress={() => ref.current?.readSignature()} />
         </View>
       </View>
     </View>

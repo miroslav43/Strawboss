@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { nativeColors } from '@strawboss/ui-tokens/native';
 import { scale } from '@/utils/responsive';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useI18n } from '@/lib/i18n';
 
 const BELL_SIZE = Math.max(44, scale(44)); // iOS minimum 44pt touch target
 const BADGE_SIZE = scale(16);
@@ -15,21 +16,20 @@ interface NotificationBellProps {
 export function NotificationBell({ color = '#FFFFFF' }: NotificationBellProps) {
   const router = useRouter();
   const { unreadCount } = useNotifications();
+  const { t } = useI18n();
 
   return (
     <TouchableOpacity
       style={styles.container}
       onPress={() => router.push('/notifications')}
-      accessibilityLabel="Notificări"
+      accessibilityLabel={t('notifications.title')}
       accessibilityRole="button"
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
       <MaterialCommunityIcons name="bell-outline" size={24} color={color} />
       {unreadCount > 0 && (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>
-            {unreadCount > 99 ? '99+' : String(unreadCount)}
-          </Text>
+          <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : String(unreadCount)}</Text>
         </View>
       )}
     </TouchableOpacity>

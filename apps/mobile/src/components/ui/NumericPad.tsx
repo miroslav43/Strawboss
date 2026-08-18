@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@strawboss/ui-tokens';
 import { scale, fontScale, SCREEN_WIDTH } from '@/utils/responsive';
+import { useI18n } from '@/lib/i18n';
 
 interface NumericPadProps {
   value: string;
@@ -11,6 +12,7 @@ interface NumericPadProps {
 }
 
 export function NumericPad({ value, onChange, maxLength = 6, decimal = false }: NumericPadProps) {
+  const { t } = useI18n();
   const handlePress = (key: string) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (key === 'backspace') {
@@ -55,10 +57,10 @@ export function NumericPad({ value, onChange, maxLength = 6, decimal = false }: 
                 accessibilityRole="button"
                 accessibilityLabel={
                   key === 'backspace'
-                    ? 'Șterge ultima cifră'
+                    ? t('numericPad.backspaceA11y')
                     : key === 'clear'
-                      ? 'Șterge tot'
-                      : `Cifra ${key}`
+                      ? t('numericPad.clearA11y')
+                      : t('numericPad.digitA11y', { key })
                 }
               >
                 <Text

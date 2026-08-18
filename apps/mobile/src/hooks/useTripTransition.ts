@@ -5,6 +5,7 @@ import { TripsRepo } from '../db/trips-repo';
 import { SyncQueueRepo } from '../db/sync-queue-repo';
 import { mobileLogger } from '../lib/logger';
 import { useSync } from './useSync';
+import { useI18n } from '../lib/i18n';
 import type { TripTransitionPayload } from '../sync/push';
 
 /**
@@ -74,6 +75,7 @@ export interface UseTripTransitionResult {
 export function useTripTransition(): UseTripTransitionResult {
   const { triggerSync } = useSync();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
 
   const enqueueTransition = useCallback(
     async (opts: EnqueueTransitionOptions) => {
@@ -82,7 +84,7 @@ export function useTripTransition(): UseTripTransitionResult {
       // --- Local pre-validation -----------------------------------------------
       const allowed = ALLOWED_TRANSITIONS[currentStatus] ?? [];
       if (!allowed.includes(transition)) {
-        const msg = `Tranziția "${transition}" nu este permisă din starea "${currentStatus}".`;
+        const msg = t('tripTransition.illegalTransition', { transition, currentStatus });
         mobileLogger.warn('useTripTransition: illegal transition attempted', {
           tripId,
           currentStatus,
@@ -139,7 +141,7 @@ export function useTripTransition(): UseTripTransitionResult {
       // Best-effort sync — do not await, caller's UI should already be updated.
       void triggerSync().catch(() => {});
     },
-    [triggerSync, queryClient],
+    [triggerSync, queryClient, t],
   );
 
   return { enqueueTransition };

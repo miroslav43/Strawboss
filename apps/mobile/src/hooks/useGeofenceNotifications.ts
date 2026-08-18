@@ -6,6 +6,7 @@ import { drainPendingWakes } from '@/lib/wake-alert';
 import { mobileApiClient } from '@/lib/api-client';
 import { mobileLogger } from '@/lib/logger';
 import { useAuthStore } from '@/stores/auth-store';
+import { useI18n } from '@/lib/i18n';
 
 interface NotificationData {
   type?: string;
@@ -65,6 +66,8 @@ const GEOFENCE_ALERT_DEBOUNCE_MS = 60_000;
  *     `/baler-ops/production-entry` (the loud-horn screen).
  */
 export function useGeofenceNotifications() {
+  const { t } = useI18n();
+  const fieldFallback = t('geofenceOverlay.fieldFallback');
   const [alertQueue, setAlertQueue] = useState<GeofenceAlert[]>([]);
   const activeAlert = alertQueue[0] ?? null;
   const userId = useAuthStore((s) => s.userId);
@@ -239,7 +242,7 @@ export function useGeofenceNotifications() {
           });
           pushAlert({
             type: 'field_entry',
-            parcelName: data.parcelName ?? 'Câmp',
+            parcelName: data.parcelName ?? fieldFallback,
             assignmentId,
           });
           break;
@@ -251,7 +254,7 @@ export function useGeofenceNotifications() {
           });
           pushAlert({
             type: 'entry_confirm',
-            parcelName: data.parcelName ?? data.parcelCode ?? 'Câmp',
+            parcelName: data.parcelName ?? data.parcelCode ?? fieldFallback,
             parcelCode: data.parcelCode,
             parcelId: data.parcelId,
             cropType: data.cropType ?? null,
@@ -269,7 +272,7 @@ export function useGeofenceNotifications() {
           });
           pushAlert({
             type: 'loaded_confirm',
-            parcelName: data.parcelName ?? 'Câmp',
+            parcelName: data.parcelName ?? fieldFallback,
             parcelId: data.parcelId,
             assignmentId,
           });
@@ -296,7 +299,7 @@ export function useGeofenceNotifications() {
           });
           pushAlert({
             type: 'exit_confirm',
-            parcelName: data.parcelName ?? 'Câmp',
+            parcelName: data.parcelName ?? fieldFallback,
             assignmentId,
           });
           break;
@@ -307,7 +310,7 @@ export function useGeofenceNotifications() {
           });
           pushAlert({
             type: 'truck_approaching',
-            parcelName: data.parcelName ?? 'Câmp',
+            parcelName: data.parcelName ?? fieldFallback,
             truckPlate: data.truckPlate,
             assignmentId,
           });
@@ -329,7 +332,7 @@ export function useGeofenceNotifications() {
         // Show the exit modal so user can enter bale count
         pushAlert({
           type: 'exit_confirm',
-          parcelName: data.parcelName ?? 'Câmp',
+          parcelName: data.parcelName ?? fieldFallback,
           assignmentId,
         });
       } else if (data.type === 'deposit_entry') {
@@ -345,7 +348,7 @@ export function useGeofenceNotifications() {
         // overlay even when the app was backgrounded.
         pushAlert({
           type: 'entry_confirm',
-          parcelName: data.parcelName ?? data.parcelCode ?? 'Câmp',
+          parcelName: data.parcelName ?? data.parcelCode ?? fieldFallback,
           parcelCode: data.parcelCode,
           parcelId: data.parcelId,
           cropType: data.cropType ?? null,
@@ -357,7 +360,7 @@ export function useGeofenceNotifications() {
       } else if (data.type === 'loader_exit_confirm') {
         pushAlert({
           type: 'loaded_confirm',
-          parcelName: data.parcelName ?? 'Câmp',
+          parcelName: data.parcelName ?? fieldFallback,
           parcelId: data.parcelId,
           assignmentId,
         });
@@ -366,7 +369,7 @@ export function useGeofenceNotifications() {
       } else if (data.type === 'truck_approaching_loader') {
         pushAlert({
           type: 'truck_approaching',
-          parcelName: data.parcelName ?? 'Câmp',
+          parcelName: data.parcelName ?? fieldFallback,
           truckPlate: data.truckPlate,
           assignmentId,
         });

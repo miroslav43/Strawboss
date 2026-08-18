@@ -43,13 +43,15 @@ export const hu = {
     edit: 'Szerkesztés',
     delete: 'Törlés',
     search: 'Keresés',
+    completed: 'Kész',
   },
 
   app: {
     dbError: 'Nem sikerült inicializálni az adatbázist.',
     dbRetry: 'Próbálja újra',
     profileErrorTitle: 'Kapcsolódási hiba',
-    profileErrorMessage: 'Nem sikerült betölteni a profilt. Ellenőrizze a kapcsolatot, és próbálja újra.',
+    profileErrorMessage:
+      'Nem sikerült betölteni a profilt. Ellenőrizze a kapcsolatot, és próbálja újra.',
   },
 
   auth: {
@@ -135,7 +137,7 @@ export const hu = {
     },
     loader: {
       slide1: {
-        title: "Mai feladatok",
+        title: 'Mai feladatok',
         body: 'A főképernyőn látja az aznapra kiosztott táblákat, fontossági sorrendben.',
       },
       slide2: {
@@ -153,7 +155,7 @@ export const hu = {
     },
     baler: {
       slide1: {
-        title: "Mai feladatok",
+        title: 'Mai feladatok',
         body: 'A főképernyőn látja az aznap megmunkálandó táblákat, fontossági sorrendben.',
       },
       slide2: {
@@ -166,7 +168,7 @@ export const hu = {
       },
       slide4: {
         title: 'Offline is működik',
-        body: "Minden adat helyben tárolódik, és jelerősség esetén automatikusan elküldésre kerül a szerverre. Egyetlen bejegyzés sem vész el.",
+        body: 'Minden adat helyben tárolódik, és jelerősség esetén automatikusan elküldésre kerül a szerverre. Egyetlen bejegyzés sem vész el.',
       },
     },
     geofence: {
@@ -223,6 +225,8 @@ export const hu = {
       actionOpen: 'Megnyitás',
     },
     finishButton: 'Kész, tovább',
+    fgsTitle: 'StrawBoss — helymeghatározás aktív',
+    fgsBody: 'A pozíciót továbbítjuk a diszpécsernek.',
   },
 
   dailyReport: {
@@ -277,6 +281,7 @@ export const hu = {
       'Az a szezon, amelyhez ez a bejegyzés tartozik, le lett zárva egy adminisztrátor által, ezért már nem fogad új bejegyzéseket. A megadott adatok nem vesznek el — értesítse az adminisztrátort.',
     terminalRejection:
       'A szerver elutasította ezt a bejegyzést. Az újrapróbálkozás nem segít — végezze el újra a műveletet a hozzá tartozó képernyőn.',
+    incompleteResponseError: 'Hiányos szerverválasz ehhez a bejegyzéshez',
     title: 'Függőben lévő adatok',
     refreshAccessibility: 'Frissítés',
     backAccessibility: 'Vissza',
@@ -325,7 +330,8 @@ export const hu = {
     signatureLabel: 'Az Ön aláírása',
     cancelButton: 'Mégse',
     errorTitle: 'Hiba',
-    errorFallback: 'Az aláírásmintát nem sikerült menteni. Ellenőrizze a kapcsolatot, és próbálja újra.',
+    errorFallback:
+      'Az aláírásmintát nem sikerült menteni. Ellenőrizze a kapcsolatot, és próbálja újra.',
   },
 
   webOnly: {
@@ -435,7 +441,7 @@ export const hu = {
     card: {
       activeLoaders: 'Aktív rakodógépek',
       noNearbyLoader: 'Nincs rakodógép a közelben.',
-      todayTask: "Mai feladat",
+      todayTask: 'Mai feladat',
       tripNotStarted: 'A fuvar még nem indult el',
     },
     badge: {
@@ -589,7 +595,7 @@ export const hu = {
       cancelled: 'A fuvar törölve.',
     },
     viewer: {
-      text: "Ön a fuvar státuszát tekinti meg. A műveleteket a sofőr végzi.",
+      text: 'Ön a fuvar státuszát tekinti meg. A műveleteket a sofőr végzi.',
     },
     modal: {
       chooseDepot: {
@@ -618,10 +624,11 @@ export const hu = {
       recallTitle: 'Kamion kirakodva',
       recallBody: 'A(z) {truckCode} kamion befejezte a kirakodást. Visszahívja?',
       recallConfirm: 'Visszahívás',
-      recallDecline: "Nem hívom vissza",
+      recallDecline: 'Nem hívom vissza',
       sectionTrucksAtLoader: 'Kamionok a rakodógépnél',
       noLoaderAssignedTitle: 'Nincs hozzárendelt rakodógép',
-      noLoaderAssignedSubtitle: 'Kérje meg az adminisztrátort, hogy rendeljen Önhöz egy rakodógépet.',
+      noLoaderAssignedSubtitle:
+        'Kérje meg az adminisztrátort, hogy rendeljen Önhöz egy rakodógépet.',
       searchingTrucks: 'Kamionok keresése…',
       noTrucksNearbyTitle: 'Nincs kamion a közelben',
       noTrucksNearbySubtitle:
@@ -644,7 +651,8 @@ export const hu = {
       sectionAssignedTrucks: 'Rakodandó kamionok',
       sectionNearbyUnassigned: 'Egyéb kamionok a közelben',
       noAssignedTrucksTitle: 'Ma nincs hozzárendelt kamion',
-      noAssignedTrucksSubtitle: 'A diszpécser által ehhez a rakodógéphez rendelt kamionok itt jelennek meg.',
+      noAssignedTrucksSubtitle:
+        'A diszpécser által ehhez a rakodógéphez rendelt kamionok itt jelennek meg.',
       badgeHereNow: '● Itt van',
       badgeEnroute: '○ Úton',
       badgePresenceLoaded: '✓ Felrakodva',
@@ -725,7 +733,8 @@ export const hu = {
       gateHintAwayFromField: 'A rakodáshoz a táblán kell tartózkodnia ({distance} m a táblától).',
       gateHintGpsUnavailable: 'A pozíció nem igazolható — a rakodáshoz engedélyezze a GPS-t.',
       gateHintWaitingGps: 'GPS-jelre várakozás annak igazolásához, hogy a táblán tartózkodik…',
-      gateHintAuxGpsUnavailable: 'A rakodáshoz engedélyezze a GPS-t, vagy erősítse meg a táblát a főképernyőn.',
+      gateHintAuxGpsUnavailable:
+        'A rakodáshoz engedélyezze a GPS-t, vagy erősítse meg a táblát a főképernyőn.',
       gateHintAuxDeterminingField: 'A tábla meghatározása a pozíció alapján…',
       modalNotInFieldTitle: 'Ön nincs a táblán',
       modalNotInFieldMessage:
@@ -757,11 +766,10 @@ export const hu = {
       signatureTitle: 'Rakodás aláírása',
       signatureHint: 'Erősítse meg, hogy {baleCount} bálát rakodott a(z) {truckLabel} kamionba.',
       specimenLabel: 'Aláírásminta',
-      specimenMissing: "Még nincs aláírásmintája.",
+      specimenMissing: 'Még nincs aláírásmintája.',
       signWithSpecimenButton: 'Aláírás mintával',
       specimenMissingAlertTitle: 'Hiányzó aláírásminta',
-      specimenMissingAlertMessage:
-        "Még nincs aláírásmintája. Hozzon létre egyet a profiljából.",
+      specimenMissingAlertMessage: 'Még nincs aláírásmintája. Hozzon létre egyet a profiljából.',
       specimenMissingAlertAction: 'Aláírásminta létrehozása',
       cmrScanScreenTitle: 'CMR',
       cmrScanTitle: 'CMR beolvasása',
@@ -798,17 +806,18 @@ export const hu = {
       // distinct from "still locating" (presenceVerifying) and from "no GPS
       // at all" (presenceGpsUnavailable).
       presenceUnverifiableOffline: '● A pozíció nem ellenőrizhető (offline)',
-      presenceUnverifiableNoGeometry: "● Ennek a táblának a körvonala nincs eltárolva ezen a telefonon",
+      presenceUnverifiableNoGeometry:
+        '● Ennek a táblának a körvonala nincs eltárolva ezen a telefonon',
       gateHintUnverifiable:
-        "Offline módban nem tudjuk ellenőrizni a pozícióját. Így is rögzítheti — a GPS-pozíció mentésre kerül ellenőrzés céljából.",
+        'Offline módban nem tudjuk ellenőrizni a pozícióját. Így is rögzítheti — a GPS-pozíció mentésre kerül ellenőrzés céljából.',
       modalUnverifiableTitle: 'A pozíció nincs ellenőrizve',
       modalUnverifiableMessage:
-        "A(z) {parcelName} tábla körvonala nincs eltárolva ezen a telefonon (Ön offline van). A rakodás a GPS-pozíciójával kerül mentésre, és szinkronizáláskor felülvizsgálatra kerül. Folytatja?",
+        'A(z) {parcelName} tábla körvonala nincs eltárolva ezen a telefonon (Ön offline van). A rakodás a GPS-pozíciójával kerül mentésre, és szinkronizáláskor felülvizsgálatra kerül. Folytatja?',
       modalUnverifiableConfirm: 'Igen, rögzítés',
       modalUnverifiableCancel: 'Mégse',
-      offlineBannerTitle: "Ön offline van",
+      offlineBannerTitle: 'Ön offline van',
       offlineBannerBody:
-        "A telefon gyorsítótárából dolgozik. Ez automatikusan elküldésre kerül, amint újra csatlakozik.",
+        'A telefon gyorsítótárából dolgozik. Ez automatikusan elküldésre kerül, amint újra csatlakozik.',
     },
     recallOverlay: {
       title: 'Kamion kirakodva',
@@ -874,7 +883,8 @@ export const hu = {
     successSubtext: '{count} bála rögzítve — {truck}.',
     notFoundScreenTitle: 'Leszállítás megerősítése',
     notFoundTitle: 'A fuvar nem található',
-    notFoundSubtitle: 'Előfordulhat, hogy a fuvar már megerősítve van, vagy nem az Ön raktárához irányul.',
+    notFoundSubtitle:
+      'Előfordulhat, hogy a fuvar már megerősítve van, vagy nem az Ön raktárához irányul.',
     backButton: 'Vissza',
     mainScreenTitle: 'Leszállítás megerősítése',
     geofenceInsideLabel: 'A kamion a raktár kerületén belül van',
@@ -897,7 +907,7 @@ export const hu = {
     editingFieldTare: 'Önsúly',
     scaleBrokenNotice: 'A tömegek nem kerülnek rögzítésre (a mérleg elromlott).',
     gateHintWithDistance: 'A megerősítés nem elérhető — a kamion {distance} m-re van a raktártól.',
-    gateHintNoPosition: "A megerősítés nem elérhető — a kamion pozíciója ismeretlen.",
+    gateHintNoPosition: 'A megerősítés nem elérhető — a kamion pozíciója ismeretlen.',
     perimeterWarnWithDistance:
       'Úgy tűnik, a kamion {distance} m-re van a raktártól. Ekkor is megerősítheti — ilyenkor szavatolnia kell érte.',
     perimeterWarnNoPosition:
@@ -909,7 +919,7 @@ export const hu = {
     modalGeofenceMessageWithDistance:
       'A megerősítési sugáron belül kell lennie. Ön {distance} m-re van a raktártól.',
     modalGeofenceMessageNoPosition:
-      "A kamion raktárhoz viszonyított pozíciója nem határozható meg.",
+      'A kamion raktárhoz viszonyított pozíciója nem határozható meg.',
     modalGeofenceConfirm: 'Rendben',
     alertIncompleteBalesTitle: 'Hiányos adatok',
     alertIncompleteBalesMessage: 'Adja meg a bálák számát.',
@@ -941,7 +951,8 @@ export const hu = {
     distanceFromDepotKm: '{distance} km a raktártól',
     blockedNoGps: 'A kamion mostanában nem jelentett pozíciót.',
     blockedOutside: 'A kamion {distance} m-re van a raktártól.',
-    blockedUnlinked: 'Ez a fuvar nincs az Ön raktárához kapcsolva — érvényes GPS-pozíció szükséges.',
+    blockedUnlinked:
+      'Ez a fuvar nincs az Ön raktárához kapcsolva — érvényes GPS-pozíció szükséges.',
     overrideTitle: 'Megerősíti GPS-ellenőrzés nélkül?',
     overrideMessageDistance:
       'A kamion pozíciója szerint {distance} m-re van a raktártól. Csak akkor erősítse meg, ha látja a kamiont a rámpánál — a művelet felülvizsgálatra lesz megjelölve.',
@@ -995,7 +1006,8 @@ export const hu = {
   geofenceMap: {
     bannerDrawDisabled: 'A táblák rajzolása ki van kapcsolva az Ön szervezeténél.',
     bannerIdle: 'Koppintson egy gombra tábla vagy raktár hozzáadásához',
-    bannerFirstPoint: 'Állítsa a jelölőt az első pontra, majd koppintson a „Pont hozzáadása” gombra',
+    bannerFirstPoint:
+      'Állítsa a jelölőt az első pontra, majd koppintson a „Pont hozzáadása” gombra',
     bannerProgress: '{count}/3. pont — folytassa (minimum 3 pont szükséges)',
     bannerEnoughPoints: '{count} pont — koppintson a „Befejezés” gombra, vagy adjon hozzá többet',
     cancelDrawButton: 'Mégse',
@@ -1022,6 +1034,54 @@ export const hu = {
     locationPermissionMessage: 'Kérjük, engedélyezze a helymeghatározást.',
     locationErrorTitle: 'Hiba',
     locationErrorMessage: 'Nem sikerült meghatározni a helyzetét.',
+  },
+
+  geofenceOverlay: {
+    entryConfirm: {
+      loadAction: 'Rakodás indítása itt: {code}',
+      truckAction: 'Érkezés megerősítése itt: {code}',
+    },
+    banner: {
+      fieldEntry: 'Megkezdte a(z) {parcelName} táblát',
+      truckApproaching: '{plate} kamion — a sofőr közeledik Önhöz',
+    },
+    fieldFallback: 'Tábla',
+    notFinishedButton: 'Még nem fejeztem be',
+    exitConfirm: {
+      titlePrefix: 'Befejezte a(z)',
+      titleSuffix: ' táblát',
+      subtitle: 'Hány bálát termelt ezen a táblán?',
+    },
+    loaderExit: {
+      titlePrefix: 'Befejezte a rakodást a(z)',
+      titleSuffix: ' táblán',
+      subtitle: 'Minden bála be lett bálázva és felrakodva?',
+      confirmButton: 'Igen, befejeztem',
+      shortageTitle: 'A tábla nincs teljesen felrakodva',
+      shortageMessage:
+        'Termelt {produced}, felrakodott {loaded}. Hiányzik {missing} bála. A tábla nyitva marad — egy adminisztrátor értesítést kapott.',
+      acknowledgeButton: 'Rendben',
+    },
+  },
+
+  numericPad: {
+    backspaceA11y: 'Utolsó számjegy törlése',
+    clearA11y: 'Összes törlése',
+    digitA11y: 'Számjegy {key}',
+  },
+
+  inactivityAlarm: {
+    title: 'A gép nem küldött helyadatot',
+    body: '{elapsedLabel} óta nincs GPS-frissítés. Ellenőrizze, hogy aktív-e a GPS.',
+  },
+
+  tripTransition: {
+    illegalTransition:
+      'A(z) "{transition}" átmenet nem engedélyezett a(z) "{currentStatus}" állapotból.',
+  },
+
+  routing: {
+    navigationOpenFailed: 'Nem sikerült megnyitni a navigációt',
   },
 
   shared: {
@@ -1066,7 +1126,7 @@ export const hu = {
     },
     taskList: {
       noTasks: 'Ma nincs hozzárendelt feladat.',
-      sectionTitle: "Mai feladatok",
+      sectionTitle: 'Mai feladatok',
       statusAvailable: 'Elérhető',
       statusInProgress: 'Folyamatban',
       statusDone: 'Kész',
@@ -1273,7 +1333,7 @@ export const hu = {
       displayLabel: 'bála',
       parcelSource: {
         gps: 'GPS alapján felismerve',
-        task: "A mai terv alapján",
+        task: 'A mai terv alapján',
       },
       gps: {
         loading: 'Helyzet meghatározása…',
@@ -1291,7 +1351,7 @@ export const hu = {
       // load, so this key is no longer a live error string — kept for any
       // stale reference, superseded by `parcelsFromCache`.
       parcelsError: 'Nem sikerült betölteni a táblákat. Ellenőrizze a kapcsolatot.',
-      parcelsFromCache: "A mai terv alapján (offline)",
+      parcelsFromCache: 'A mai terv alapján (offline)',
       accessibility: {
         deleteLastDigit: 'Utolsó számjegy törlése',
         clearAll: 'Összes törlése',
@@ -1334,8 +1394,8 @@ export const hu = {
     todayCard: {
       headerTitle: 'Mai tevékenységem',
       accessibility: {
-        expand: "Mai tevékenység kibontása",
-        collapse: "Mai tevékenység összecsukása",
+        expand: 'Mai tevékenység kibontása',
+        collapse: 'Mai tevékenység összecsukása',
         pendingCount: '{count} nincs szinkronizálva',
       },
       syncStatus: {
@@ -1444,7 +1504,8 @@ export const hu = {
       online: 'Online',
       offline: 'Offline',
       inQueue: 'Sorban áll',
-      failedHint: 'Az utolsó szinkronizálás {count} {item} esetében sikertelen volt — használja a lenti gombot.',
+      failedHint:
+        'Az utolsó szinkronizálás {count} {item} esetében sikertelen volt — használja a lenti gombot.',
       failedHint_record_singular: 'bejegyzés',
       failedHint_record_plural: 'bejegyzés',
       lastSync: 'Utolsó szinkronizálás',
@@ -1463,7 +1524,7 @@ export const hu = {
     },
     signature: {
       cardTitle: 'Aláírásminta',
-      noSpecimen: "Még nincs aláírásmintája.",
+      noSpecimen: 'Még nincs aláírásmintája.',
       changeSpecimen: 'Aláírásminta módosítása',
       createSpecimen: 'Aláírásminta létrehozása',
       accessibilityLabel: 'Aláírásminta módosítása',
@@ -1689,7 +1750,8 @@ export const hu = {
       recenterAccessibilityLabel: 'Saját helyzet középre igazítása',
       location: {
         title: 'Helyzet',
-        permissionMessage: 'Engedélyezze a helymeghatározást, hogy megjelenjen a saját helyzete a térképen.',
+        permissionMessage:
+          'Engedélyezze a helymeghatározást, hogy megjelenjen a saját helyzete a térképen.',
       },
       error: {
         locationTitle: 'Hiba',
@@ -1699,7 +1761,8 @@ export const hu = {
       },
       routeInfo: {
         title: 'Információ',
-        offlineMessage: 'A részletes útvonalhoz internetkapcsolat szükséges. Egyenes vonal jelenik meg.',
+        offlineMessage:
+          'A részletes útvonalhoz internetkapcsolat szükséges. Egyenes vonal jelenik meg.',
       },
     },
   },

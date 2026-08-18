@@ -18,6 +18,7 @@ export const ro = {
     edit: 'Editează',
     delete: 'Șterge',
     search: 'Caută',
+    completed: 'Finalizat',
   },
 
   app: {
@@ -199,6 +200,8 @@ export const ro = {
       actionOpen: 'Deschide',
     },
     finishButton: 'Gata, continuă',
+    fgsTitle: 'StrawBoss — locație activă',
+    fgsBody: 'Transmitem poziția în câmp către dispecer.',
   },
 
   dailyReport: {
@@ -253,6 +256,7 @@ export const ro = {
       'Sezonul de care ține această înregistrare a fost închis de administrator și nu mai acceptă intrări noi. Nu se pierde nimic din ce ai introdus — anunță administratorul.',
     terminalRejection:
       'Serverul a respins această înregistrare. Reîncercarea nu ajută — reia operațiunea din ecranul respectiv.',
+    incompleteResponseError: 'Răspuns incomplet de la server pentru această înregistrare',
     title: 'Date în așteptare',
     refreshAccessibility: 'Reîmprospătează',
     backAccessibility: 'Înapoi',
@@ -970,8 +974,7 @@ export const ro = {
   },
 
   geofenceMap: {
-    bannerDrawDisabled:
-      'Desenarea terenurilor este dezactivată pentru organizația ta.',
+    bannerDrawDisabled: 'Desenarea terenurilor este dezactivată pentru organizația ta.',
     bannerIdle: 'Apasă un buton pentru a adăuga un câmp sau depozit',
     bannerFirstPoint: 'Centrează pinul pe primul punct și apasă "Adaugă punct"',
     bannerProgress: 'Punct {count}/3 — continuă (minim 3 puncte)',
@@ -1000,6 +1003,53 @@ export const ro = {
     locationPermissionMessage: 'Activează permisiunea de locație.',
     locationErrorTitle: 'Eroare',
     locationErrorMessage: 'Nu s-a putut obține locația.',
+  },
+
+  geofenceOverlay: {
+    entryConfirm: {
+      loadAction: 'Începi încărcarea în {code}',
+      truckAction: 'Confirmi sosirea la {code}',
+    },
+    banner: {
+      fieldEntry: 'Ai început câmpul {parcelName}',
+      truckApproaching: 'Camionul {plate} — șoferul se apropie spre tine',
+    },
+    fieldFallback: 'Câmp',
+    notFinishedButton: 'Nu am terminat',
+    exitConfirm: {
+      titlePrefix: 'Ai terminat câmpul',
+      titleSuffix: '',
+      subtitle: 'Câți baloți ai produs pe acest câmp?',
+    },
+    loaderExit: {
+      titlePrefix: 'Ai terminat de încărcat',
+      titleSuffix: '',
+      subtitle: 'Au fost toți baloții balotați și încărcați?',
+      confirmButton: 'Da, am terminat',
+      shortageTitle: 'Câmp neîncărcat complet',
+      shortageMessage:
+        'Produși {produced}, încărcați {loaded}. Lipsă {missing} baloți. Câmpul rămâne deschis — un administrator a fost anunțat.',
+      acknowledgeButton: 'Am înțeles',
+    },
+  },
+
+  numericPad: {
+    backspaceA11y: 'Șterge ultima cifră',
+    clearA11y: 'Șterge tot',
+    digitA11y: 'Cifra {key}',
+  },
+
+  inactivityAlarm: {
+    title: 'Mașina nu a raportat locație',
+    body: 'Nicio actualizare GPS de {elapsedLabel}. Verificați dacă GPS-ul este activ.',
+  },
+
+  tripTransition: {
+    illegalTransition: 'Tranziția "{transition}" nu este permisă din starea "{currentStatus}".',
+  },
+
+  routing: {
+    navigationOpenFailed: 'Nu s-a putut deschide navigația',
   },
 
   shared: {

@@ -11,6 +11,7 @@ import { ApiClient, ApiError } from '@strawboss/api';
 import type { LocationReportDto } from '@strawboss/types';
 import { getAuthToken } from './auth';
 import { mobileLogger } from './logger';
+import { tStatic } from './i18n';
 import { runBackgroundSyncCycle } from '../sync/run-background-sync';
 import { maybeRaiseGeofenceWake } from './geofence-wake';
 import { runDeviceCheckin, hasActiveTrip } from './device-checkin';
@@ -906,8 +907,8 @@ async function restartWithAdaptiveParamsIfNeeded(
       activityType: Location.ActivityType.OtherNavigation,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
-        notificationTitle: 'StrawBoss — locație activă',
-        notificationBody: 'Transmitem poziția în câmp către dispecer.',
+        notificationTitle: tStatic('trackingSetup.fgsTitle'),
+        notificationBody: tStatic('trackingSetup.fgsBody'),
         notificationColor: '#0A5C36',
       },
     });
@@ -1147,8 +1148,8 @@ export async function startBackgroundLocationTracking(machineId: string): Promis
     showsBackgroundLocationIndicator: true,
     // Android-specific: keeps the process alive as a foreground service
     foregroundService: {
-      notificationTitle: 'StrawBoss — locație activă',
-      notificationBody: 'Transmitem poziția în câmp către dispecer.',
+      notificationTitle: tStatic('trackingSetup.fgsTitle'),
+      notificationBody: tStatic('trackingSetup.fgsBody'),
       notificationColor: '#0A5C36',
     },
   });

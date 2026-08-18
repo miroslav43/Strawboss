@@ -3,6 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, radii } from '@strawboss/ui-tokens';
 import { scale, fontScale } from '@/utils/responsive';
 import { useTheme } from '@/lib/theme';
+import { useI18n } from '@/lib/i18n';
 
 interface ActionCardProps {
   title: string;
@@ -22,6 +23,7 @@ export function ActionCard({
   disabled = false,
 }: ActionCardProps) {
   const { colors: themeColors } = useTheme();
+  const { t } = useI18n();
 
   return (
     <TouchableOpacity
@@ -68,7 +70,7 @@ export function ActionCard({
           name="check-circle"
           size={24}
           color={themeColors.success}
-          accessibilityLabel="Finalizat"
+          accessibilityLabel={t('common.completed')}
         />
       )}
     </TouchableOpacity>

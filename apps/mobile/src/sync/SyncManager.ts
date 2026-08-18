@@ -18,6 +18,7 @@ import { applySeasonChange } from '../db/season-prune';
 import { notifyDivergentFields } from './conflict-notify';
 import { uploadTodayMobileLogs } from './mobile-log-upload';
 import { uploadReceipt } from '../lib/receiptUpload';
+import { tStatic } from '../lib/i18n';
 import { useAuthStore } from '../stores/auth-store';
 
 export interface SyncResult {
@@ -173,10 +174,7 @@ export class SyncManager {
       const handled = new Set([...result.completedIds, ...result.failedEntries.map((f) => f.id)]);
       for (const id of batchIds) {
         if (!handled.has(id)) {
-          await this.syncQueueRepo.markFailed(
-            id,
-            'Răspuns incomplet de la server pentru această înregistrare',
-          );
+          await this.syncQueueRepo.markFailed(id, tStatic('syncDetails.incompleteResponseError'));
         }
       }
 

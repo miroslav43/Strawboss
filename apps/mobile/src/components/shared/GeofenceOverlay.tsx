@@ -11,6 +11,7 @@ import { useTripTransition } from '@/hooks/useTripTransition';
 import { getDatabase } from '@/lib/storage';
 import { TripsRepo } from '@/db/trips-repo';
 import { mobileLogger } from '@/lib/logger';
+import { useI18n } from '@/lib/i18n';
 import type { GeofenceAlert } from '@/hooks/useGeofenceNotifications';
 
 interface GeofenceOverlayProps {
@@ -51,15 +52,16 @@ export function GeofenceOverlay({
   onCancelParcelEntry,
   onConfirmParcelLoaded,
 }: GeofenceOverlayProps) {
+  const { t } = useI18n();
   if (!alert) return null;
 
   if (alert.type === 'entry_confirm') {
     const code = alert.parcelCode ?? alert.parcelName;
     const label =
       alert.action === 'load'
-        ? `Începi încărcarea în ${code}`
+        ? t('geofenceOverlay.entryConfirm.loadAction', { code })
         : alert.action === 'truck'
-          ? `Confirmi sosirea la ${code}`
+          ? t('geofenceOverlay.entryConfirm.truckAction', { code })
           : undefined; // undefined → BalerEntryCountdown's default baler copy
     return (
       <BalerEntryCountdown
@@ -111,6 +113,7 @@ export function GeofenceOverlay({
 // ── Entry Banner (field_entry) ───────────────────────────────────────
 
 function EntryBanner({ alert, onDismiss }: { alert: GeofenceAlert; onDismiss: () => void }) {
+  const { t } = useI18n();
   const slideAnim = useRef(new Animated.Value(-100)).current;
   const insets = useSafeAreaInsets();
 
@@ -149,7 +152,7 @@ function EntryBanner({ alert, onDismiss }: { alert: GeofenceAlert; onDismiss: ()
       <Pressable style={styles.bannerContent} onPress={onDismiss}>
         <MaterialCommunityIcons name="grain" size={28} color="#FFF" />
         <Text style={styles.bannerText} numberOfLines={2}>
-          Ai început câmpul {alert.parcelName}
+          {t('geofenceOverlay.banner.fieldEntry', { parcelName: alert.parcelName })}
         </Text>
       </Pressable>
     </Animated.View>
@@ -170,6 +173,7 @@ function TruckApproachingBanner({
   alert: GeofenceAlert;
   onDismiss: () => void;
 }) {
+  const { t } = useI18n();
   const slideAnim = useRef(new Animated.Value(-120)).current;
   const insets = useSafeAreaInsets();
 
@@ -210,13 +214,13 @@ function TruckApproachingBanner({
       <View style={styles.bannerContent}>
         <MaterialCommunityIcons name="truck-fast" size={28} color="#FFF" />
         <Text style={styles.bannerText} numberOfLines={2}>
-          Camionul {plate} — șoferul se apropie spre tine
+          {t('geofenceOverlay.banner.truckApproaching', { plate })}
         </Text>
         <Pressable
           onPress={close}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="Închide"
+          accessibilityLabel={t('common.close')}
         >
           <MaterialCommunityIcons name="close" size={26} color="#FFF" />
         </Pressable>
@@ -240,6 +244,7 @@ function DepositArrivalCountdown({
   alert: GeofenceAlert;
   onDismiss: () => void;
 }) {
+  const { t } = useI18n();
   const { enqueueTransition } = useTripTransition();
 
   const doArrive = useCallback(async () => {
@@ -276,9 +281,9 @@ function DepositArrivalCountdown({
   return (
     <ConfirmCountdown
       visible
-      actionLabel="Sosire la depozit"
+      actionLabel={t('driver.depotArrivalOverlay.actionLabel')}
       countdownSeconds={10}
-      confirmLabel="Confirmă acum"
+      confirmLabel={t('driver.depotArrivalOverlay.confirmLabel')}
       onConfirmed={handleConfirmed}
       onCancel={onDismiss}
     />
@@ -296,6 +301,7 @@ function ExitConfirmModal({
   onDismiss: () => void;
   onConfirm: (assignmentId: string, baleCount?: number) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [baleCount, setBaleCount] = useState('');
   const [saving, setSaving] = useState(false);
   const insets = useSafeAreaInsets();
@@ -327,19 +333,21 @@ function ExitConfirmModal({
 
           <MaterialCommunityIcons name="grain" size={48} color="#0A5C36" />
           <Text style={styles.modalTitle}>
-            Ai terminat câmpul{'\n'}
-            <Text style={styles.modalParcelName}>{alert.parcelName}</Text>?
+            {t('geofenceOverlay.exitConfirm.titlePrefix')}
+            {'\n'}
+            <Text style={styles.modalParcelName}>{alert.parcelName}</Text>
+            {t('geofenceOverlay.exitConfirm.titleSuffix')}?
           </Text>
 
-          <Text style={styles.modalSubtitle}>Câți baloți ai produs pe acest câmp?</Text>
+          <Text style={styles.modalSubtitle}>{t('geofenceOverlay.exitConfirm.subtitle')}</Text>
 
           <NumericPad value={baleCount} onChange={setBaleCount} maxLength={4} />
         </ScrollView>
 
         <View style={styles.modalActions}>
-          <BigButton title="Confirmă" onPress={handleConfirm} loading={saving} />
+          <BigButton title={t('common.confirm')} onPress={handleConfirm} loading={saving} />
           <BigButton
-            title="Nu am terminat"
+            title={t('geofenceOverlay.notFinishedButton')}
             variant="outline"
             onPress={onDismiss}
             disabled={saving}
@@ -363,6 +371,7 @@ function LoaderExitConfirmModal({
     assignmentId: string,
   ) => Promise<{ completed: boolean; produced: number; loaded: number; missing: number } | null>;
 }) {
+  const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{
     completed: boolean;
@@ -401,27 +410,39 @@ function LoaderExitConfirmModal({
         {result ? (
           <>
             <MaterialCommunityIcons name="alert" size={48} color="#C62828" />
-            <Text style={styles.modalTitle}>Câmp neîncărcat complet</Text>
+            <Text style={styles.modalTitle}>{t('geofenceOverlay.loaderExit.shortageTitle')}</Text>
             <Text style={styles.modalSubtitle}>
-              Produși {result.produced}, încărcați {result.loaded}. Lipsă {result.missing} baloți.
-              Câmpul rămâne deschis — un administrator a fost anunțat.
+              {t('geofenceOverlay.loaderExit.shortageMessage', {
+                produced: result.produced,
+                loaded: result.loaded,
+                missing: result.missing,
+              })}
             </Text>
             <View style={styles.modalActions}>
-              <BigButton title="Am înțeles" onPress={onDismiss} />
+              <BigButton
+                title={t('geofenceOverlay.loaderExit.acknowledgeButton')}
+                onPress={onDismiss}
+              />
             </View>
           </>
         ) : (
           <>
             <MaterialCommunityIcons name="package-variant-closed" size={48} color="#0A5C36" />
             <Text style={styles.modalTitle}>
-              Ai terminat de încărcat{'\n'}
-              <Text style={styles.modalParcelName}>{alert.parcelName}</Text>?
+              {t('geofenceOverlay.loaderExit.titlePrefix')}
+              {'\n'}
+              <Text style={styles.modalParcelName}>{alert.parcelName}</Text>
+              {t('geofenceOverlay.loaderExit.titleSuffix')}?
             </Text>
-            <Text style={styles.modalSubtitle}>Au fost toți baloții balotați și încărcați?</Text>
+            <Text style={styles.modalSubtitle}>{t('geofenceOverlay.loaderExit.subtitle')}</Text>
             <View style={styles.modalActions}>
-              <BigButton title="Da, am terminat" onPress={handleYes} loading={saving} />
               <BigButton
-                title="Nu am terminat"
+                title={t('geofenceOverlay.loaderExit.confirmButton')}
+                onPress={handleYes}
+                loading={saving}
+              />
+              <BigButton
+                title={t('geofenceOverlay.notFinishedButton')}
                 variant="outline"
                 onPress={onDismiss}
                 disabled={saving}
