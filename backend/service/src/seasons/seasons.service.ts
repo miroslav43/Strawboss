@@ -308,7 +308,16 @@ export class SeasonsService {
     if (await this.isSeasonClosed(orgId, year, executor)) {
       throw new BadRequestException({
         error: 'season_closed',
+        // Romanian safety net (byte-identical to the pre-i18n literal) — the
+        // real, locale-correct text is resolved by AllExceptionsFilter from
+        // `i18nKey` below, using the caller's `request.user.locale` (both
+        // call sites — bale-productions.controller.ts and sync.service.ts —
+        // run inside an authenticated request, so that locale is available).
+        // Task 6.4: mobile's sync/push.ts classifies `error: 'season_closed'`
+        // as terminal and can surface `message` to the operator verbatim.
         message: `Sezonul ${year} este închis. Înregistrarea nu mai poate fi salvată.`,
+        i18nKey: 'errors.seasonClosed',
+        i18nParams: { year },
         season: year,
       });
     }
@@ -319,6 +328,11 @@ export class SeasonsService {
    *
    * Deliberately reuses the exact expressions the closing transaction will run,
    * so the preview cannot drift from the outcome.
+   *
+   * `season_not_finished` / `season_already_closed` below are deliberately
+   * left un-i18n'd (Task 6.4): both only fire from the season-close admin
+   * action (admin-web's own settings page), never from a field operator's
+   * write — unlike `assertSeasonWritable`'s `season_closed` above.
    */
   async preflight(
     orgId: string,

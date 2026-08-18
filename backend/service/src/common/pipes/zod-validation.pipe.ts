@@ -16,10 +16,29 @@ import { ZodSchema } from 'zod';
  * sent nowhere. We were blind to our own validation failures.
  *
  * Now the exception carries:
- *   - `message`: a human-readable summary ("baleCount: Expected number, received
- *      string"), so the phone shows something true and actionable;
- *   - `error: 'validation_failed'`: a stable code for clients to branch on;
- *   - `fieldErrors` / `formErrors`: the full detail, which the filter logs.
+ *   - `message`: a Romanian safety-net summary, never Zod's own (English) text
+ *      — see the i18n note below for why;
+ *   - `error: 'validation_failed'`: a stable code for clients to branch on
+ *      (unchanged — do not rename, it is a machine-readable contract);
+ *   - `fieldErrors` / `formErrors`: the full per-field detail, in Zod's own
+ *      words. This is what makes the failure diagnosable — it survives in the
+ *      log (AllExceptionsFilter) AND in the response body sent to the client
+ *      (same filter), even though it never enters the human `message` string.
+ *
+ * i18n (Task 6.4): this pipe is instantiated with a bare `new
+ * ZodValidationPipe(schema)` inline in a controller's `@Body()`/`@Query()`
+ * decorator at EVERY call site (see zod-validation.pipe usages across every
+ * *.controller.ts file) — that bypasses Nest's DI container entirely, so
+ * `@Inject(REQUEST)` here would silently never resolve. The pipe therefore
+ * has no reliable way to know the caller's locale, and previously "solved"
+ * that by leaking Zod's own English messages straight into `message` — a bad
+ * field on a Romanian phone read as `baleCount: Expected number, received
+ * string`. Instead of guessing, this pipe stays locale-agnostic: it throws a
+ * stable `i18nKey` ('errors.invalidData') and AllExceptionsFilter — which DOES
+ * have the request, and therefore `request.user?.locale` — resolves the
+ * actual text at the one place that can. `message` below is only the
+ * Romanian safety net for the case the filter doesn't apply the key for some
+ * reason; it is never shown mixed with Zod's raw detail.
  */
 @Injectable()
 export class ZodValidationPipe implements PipeTransform {
@@ -30,20 +49,11 @@ export class ZodValidationPipe implements PipeTransform {
     if (!result.success) {
       const flat = result.error.flatten();
 
-      // "field: reason" per bad field, plus any whole-object refine failures
-      // (e.g. "exactly one of parcelId or sourceDepotId is required"), which live
-      // in formErrors and would otherwise be invisible.
-      const parts = [
-        ...Object.entries(flat.fieldErrors).map(
-          ([field, errs]) => `${field}: ${(errs ?? []).join(', ')}`,
-        ),
-        ...flat.formErrors,
-      ];
-
       throw new BadRequestException({
         statusCode: 400,
         error: 'validation_failed',
-        message: parts.length ? parts.join('; ') : 'Date invalide.',
+        i18nKey: 'errors.invalidData',
+        message: 'Date invalide.',
         fieldErrors: flat.fieldErrors,
         formErrors: flat.formErrors,
       });

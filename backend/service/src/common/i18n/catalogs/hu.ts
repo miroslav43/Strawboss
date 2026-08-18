@@ -22,13 +22,27 @@ type CatalogShape<T> = {
  * source lines reused.
  */
 export const hu: CatalogShape<typeof en> = {
+  /**
+   * Task 6.4. Wording reuses vocabulary already shipped in
+   * apps/mobile/src/i18n/hu.ts (see syncDetails.seasonClosed there, and
+   * errorApiInvalidResponse for "Érvénytelen") and
+   * apps/admin-web/messages/hu.json (see season.* — "szezon", "lezárva" —
+   * and accounts.* — "fiók", "Inaktív").
+   */
+  errors: {
+    invalidData: 'Érvénytelen adatok.',
+    invalidRequest: 'Érvénytelen kérés.',
+    seasonClosed: 'A(z) {year}. szezon le van zárva. A bejegyzés már nem menthető.',
+    accountNotFound: 'A fiók nem létezik vagy törölve lett',
+    accountInactive: 'A fiók inaktív',
+  },
   push: {
     common: {
       genericField: 'tábla',
       unknownCrop: 'ismeretlen termény',
       newParcel: 'új tábla',
       aParcel: 'egy tábla',
-      destination: 'úticél',
+      destination: 'célállomás',
       aTruck: 'egy kamion',
       aTruckCapitalized: 'Egy kamion',
       yourField: 'az Ön táblája',

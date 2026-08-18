@@ -10,6 +10,48 @@ import {
 import type { FastifyReply } from 'fastify';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { DEFAULT_LOCALE, normalizeLocale, type Locale } from '@strawboss/types';
+import { tServer } from '../i18n';
+
+/**
+ * The locale to translate an error's `message` into.
+ *
+ * This is the ONE place in the backend that can resolve it for an HTTP
+ * exception: `ArgumentsHost` gives access to the request, so
+ * `request.user?.locale` is available whenever AuthGuard already ran and
+ * attached `RequestUser` (Task 6.1). ZodValidationPipe, by contrast, is
+ * constructed with a bare `new` at route-registration time and never sees a
+ * request at all — see that file's header comment.
+ *
+ * Two cases have NO `RequestUser`, deliberately handled the same way:
+ *   - a genuinely unauthenticated route (public request portal, a 404, a
+ *     malformed/missing Authorization header);
+ *   - AuthGuard's own rejections (`errors.accountNotFound` /
+ *     `errors.accountInactive` in auth.guard.ts) — the JWT was presented but
+ *     rejected BEFORE `request.user` is assigned, even though the guard did,
+ *     in the "inactive" case, load the account row (and therefore knows its
+ *     stored locale). Deliberately not threaded through as a one-off
+ *     override — this filter is the single, consistent fallback point for
+ *     every locale-less request.
+ *
+ * Fallback chosen: an `Accept-Language` header read (best-effort — neither
+ * mobile nor admin-web sets one deliberately today, so in practice this
+ * mostly lands on the next step), then `DEFAULT_LOCALE` ('ro' — see
+ * packages/types/src/locale.ts: still the overwhelming majority of accounts).
+ * `normalizeLocale` already treats a missing/unparseable value as
+ * `DEFAULT_LOCALE`, so this never throws.
+ */
+function resolveLocale(request: {
+  user?: { locale?: string };
+  headers?: Record<string, unknown>;
+}): Locale {
+  if (request.user?.locale) return normalizeLocale(request.user.locale);
+  const acceptLanguage = request.headers?.['accept-language'];
+  if (typeof acceptLanguage === 'string' && acceptLanguage.length > 0) {
+    return normalizeLocale(acceptLanguage.split(',')[0]);
+  }
+  return DEFAULT_LOCALE;
+}
 
 @Catch()
 @Injectable()
@@ -29,7 +71,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       url?: string;
       requestId?: string;
       headers?: Record<string, unknown>;
+      user?: { locale?: string };
     }>();
+    const locale = resolveLocale(request);
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
@@ -68,13 +112,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
          * saw "Internal server error" for what was really a bad field.
          *
          * Never let a 4xx inherit the 500 fallback text.
+         *
+         * `resp.i18nKey` (Task 6.4) is checked FIRST and wins: it is how a
+         * throw site with no request context of its own (ZodValidationPipe) or
+         * no populated `request.user` yet (AuthGuard's own rejections) asks
+         * THIS filter — the one place that has both the request and the
+         * catalog — to render its message in the caller's locale, instead of
+         * baking one language into `message` at the throw site. The literal
+         * `resp.message` a locale-unaware throw already set (e.g. Zod's own
+         * English text, never used as `message` any more — see
+         * zod-validation.pipe.ts) is superseded, not read, when a key is
+         * present.
          */
-        if (Array.isArray(resp.message)) {
+        if (typeof resp.i18nKey === 'string') {
+          message = tServer(
+            locale,
+            resp.i18nKey,
+            resp.i18nParams as Record<string, string | number> | undefined,
+          );
+        } else if (Array.isArray(resp.message)) {
           message = (resp.message as unknown[]).join('; ');
         } else if (typeof resp.message === 'string' && resp.message.length > 0) {
           message = resp.message;
         } else if (statusCode < 500) {
-          message = 'Cerere invalidă.';
+          message = tServer(locale, 'errors.invalidRequest');
         }
         error = (resp.error as string) ?? (statusCode < 500 ? 'Bad Request' : error);
 

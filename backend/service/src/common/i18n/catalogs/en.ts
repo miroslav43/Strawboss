@@ -15,6 +15,35 @@
  * that decision belongs to whoever designs those namespaces.
  */
 export const en = {
+  /**
+   * Operator-facing HTTP error text (Task 6.4). Scoped deliberately: this is
+   * NOT a translation of all ~339 thrown messages in the backend, only the
+   * handful that reach an authenticated operator's screen or a mobile sync
+   * failure banner — the global exception-filter fallback, the Zod
+   * validation-pipe fallback, and the season-closed write gate. See
+   * task-6.4-report.md for the full criterion and the messages deliberately
+   * left untranslated (admin-only actions, internal 500s, the other ~317).
+   */
+  errors: {
+    /** zod-validation.pipe.ts fallback — the pipe never sees the caller's
+     *  locale (see that file's header comment), so it throws this key and
+     *  AllExceptionsFilter resolves the text. The raw per-field Zod detail
+     *  (English) is carried separately in `fieldErrors`/`formErrors`, never
+     *  mixed into this message. */
+    invalidData: 'Invalid data.',
+    /** all-exceptions.filter.ts's own fallback — the only HTTP-error
+     *  chokepoint in the app; every client in every language passes through
+     *  it whenever a 4xx exception carries no other message. */
+    invalidRequest: 'Invalid request.',
+    /** seasons.service.ts assertSeasonWritable — the write-time gate mobile's
+     *  sync/push.ts classifies as a terminal rejection and can surface
+     *  verbatim to the operator. */
+    seasonClosed: 'Season {year} is closed. This entry can no longer be saved.',
+    /** auth.guard.ts — the JWT verifies but the user row is gone/soft-deleted. */
+    accountNotFound: 'Account does not exist or was deleted',
+    /** auth.guard.ts — the JWT verifies but the account was deactivated. */
+    accountInactive: 'Account inactive',
+  },
   push: {
     /**
      * Locale-correct fallback words substituted into a push body when the

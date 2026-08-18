@@ -332,10 +332,28 @@ export class AuthGuard implements CanActivate {
       if (role !== 'super_admin') {
         const ctx = await this.getUserContext(sub, role);
         if (!ctx) {
-          throw new UnauthorizedException('Cont inexistent sau șters');
+          // i18n (Task 6.4): thrown BEFORE `request.user` is assigned below,
+          // so AllExceptionsFilter has no `RequestUser.locale` to read for
+          // this one — it falls back to Accept-Language / DEFAULT_LOCALE,
+          // same as every other locale-less rejection (see that filter's
+          // `resolveLocale` doc comment). `message` is the Romanian safety
+          // net; `i18nKey` is what actually renders in the caller's locale.
+          throw new UnauthorizedException({
+            error: 'Unauthorized',
+            message: 'Cont inexistent sau șters',
+            i18nKey: 'errors.accountNotFound',
+          });
         }
         if (!ctx.isActive) {
-          throw new UnauthorizedException('Cont inactiv');
+          // Same locale caveat as above — even though `ctx.locale` IS known
+          // here (the user row loaded fine, just `is_active = false`), this
+          // is deliberately not threaded through as a one-off override; see
+          // the filter's `resolveLocale` comment for why.
+          throw new UnauthorizedException({
+            error: 'Unauthorized',
+            message: 'Cont inactiv',
+            i18nKey: 'errors.accountInactive',
+          });
         }
         organizationId = ctx.organizationId;
         organizationSlug = ctx.organizationSlug;

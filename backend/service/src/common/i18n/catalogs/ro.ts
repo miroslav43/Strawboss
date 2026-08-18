@@ -26,6 +26,20 @@ type CatalogShape<T> = {
  * rewrites. See task-6.2-report.md for the byte-identity table.
  */
 export const ro: CatalogShape<typeof en> = {
+  /**
+   * Task 6.4. Every entry here is the literal moved verbatim from its old
+   * emit site (zod-validation.pipe.ts, all-exceptions.filter.ts,
+   * seasons.service.ts, auth.guard.ts) — not a rewrite. A Romanian operator
+   * (still the overwhelming majority of accounts) sees byte-identical text
+   * to before this catalog existed.
+   */
+  errors: {
+    invalidData: 'Date invalide.',
+    invalidRequest: 'Cerere invalidă.',
+    seasonClosed: 'Sezonul {year} este închis. Înregistrarea nu mai poate fi salvată.',
+    accountNotFound: 'Cont inexistent sau șters',
+    accountInactive: 'Cont inactiv',
+  },
   push: {
     common: {
       genericField: 'câmp',
