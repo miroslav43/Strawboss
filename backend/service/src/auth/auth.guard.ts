@@ -9,7 +9,14 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import * as jose from 'jose';
 import { sql } from 'drizzle-orm';
-import { UserRole, type FeatureKey, type FeatureOverrides } from '@strawboss/types';
+import {
+  UserRole,
+  type FeatureKey,
+  type FeatureOverrides,
+  type Locale,
+  DEFAULT_LOCALE,
+  normalizeLocale,
+} from '@strawboss/types';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { FeaturesService } from '../features/features.service';
 
@@ -29,6 +36,7 @@ interface UserContext {
   organizationSlug: string | null;
   disabledFeatures: FeatureKey[];
   activeSeasonYear: number | null;
+  locale: Locale;
 }
 
 export interface RequestUser {
@@ -58,6 +66,21 @@ export interface RequestUser {
    * season-filtered (see SeasonsService.resolveWindow).
    */
   activeSeasonYear: number | null;
+  /**
+   * The user's interface language, for server-generated strings (push, email,
+   * SMS, PDFs, error messages) that have no request-time locale to read.
+   *
+   * Rides the same users/organizations join and cache as the fields above, so
+   * it costs zero extra queries. Normalised with `normalizeLocale` on read —
+   * the `users.locale` column is plain TEXT with no CHECK constraint (see
+   * packages/types/src/locale.ts), so a null or legacy value never leaks
+   * through as an untyped string.
+   *
+   * `DEFAULT_LOCALE` for super_admin: that role never runs the users/
+   * organizations query in the first place (it is exempt from the org lookup
+   * below), so there is no row to read a locale from.
+   */
+  locale: Locale;
 }
 
 @Injectable()
@@ -124,6 +147,7 @@ export class AuthGuard implements CanActivate {
       SELECT
         u.is_active AS "isActive",
         u.organization_id AS "organizationId",
+        u.locale,
         o.slug AS "organizationSlug",
         o.feature_overrides AS "featureOverrides",
         o.active_season_year AS "activeSeasonYear"
@@ -135,6 +159,7 @@ export class AuthGuard implements CanActivate {
     const rows = result as unknown as {
       isActive: boolean;
       organizationId: string | null;
+      locale: string | null;
       organizationSlug: string | null;
       featureOverrides: FeatureOverrides | null;
       activeSeasonYear: number | null;
@@ -143,7 +168,9 @@ export class AuthGuard implements CanActivate {
     if (!row) return null;
 
     // super_admin lives outside any org — drop the org fields to mirror the
-    // previous behaviour. It therefore has no flags of its own either.
+    // previous behaviour. It therefore has no flags of its own either. (This
+    // branch is unreachable from canActivate today — see the class comment
+    // above `locale` — but kept correct in case that ever changes.)
     if (role === 'super_admin') {
       return {
         isActive: row.isActive,
@@ -151,6 +178,7 @@ export class AuthGuard implements CanActivate {
         organizationSlug: null,
         disabledFeatures: [],
         activeSeasonYear: null,
+        locale: normalizeLocale(row.locale),
       };
     }
 
@@ -164,6 +192,9 @@ export class AuthGuard implements CanActivate {
       // Numeric in Postgres, but postgres.js hands back some numerics as
       // strings — coerce here so every consumer can trust the type.
       activeSeasonYear: row.activeSeasonYear == null ? null : Number(row.activeSeasonYear),
+      // users.locale is plain TEXT (no CHECK — see packages/types/src/locale.ts),
+      // so a null or legacy/unsupported value must be normalised, not trusted.
+      locale: normalizeLocale(row.locale),
     };
   }
 
@@ -287,6 +318,10 @@ export class AuthGuard implements CanActivate {
       // from retaining access.
       let disabledFeatures: FeatureKey[] = [];
       let activeSeasonYear: number | null = null;
+      // super_admin never runs the users/organizations query below, so there is
+      // no row to read a locale from — DEFAULT_LOCALE mirrors how
+      // activeSeasonYear defaults to null for the same reason.
+      let locale: Locale = DEFAULT_LOCALE;
       if (role !== 'super_admin') {
         const ctx = await this.getUserContext(sub, role);
         if (!ctx) {
@@ -299,6 +334,7 @@ export class AuthGuard implements CanActivate {
         organizationSlug = ctx.organizationSlug;
         disabledFeatures = ctx.disabledFeatures;
         activeSeasonYear = ctx.activeSeasonYear;
+        locale = ctx.locale;
       }
 
       request.user = {
@@ -309,6 +345,7 @@ export class AuthGuard implements CanActivate {
         organizationSlug,
         disabledFeatures,
         activeSeasonYear,
+        locale,
       } satisfies RequestUser;
 
       return true;
