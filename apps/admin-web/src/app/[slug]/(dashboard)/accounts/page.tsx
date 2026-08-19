@@ -35,6 +35,7 @@ import {
   FEATURES,
   SUPPORTED_LOCALES,
   LOCALE_ENDONYMS,
+  DEFAULT_LOCALE,
 } from '@strawboss/types';
 import type { User, Machine, DeliveryDestination, FeatureKey } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -345,6 +346,7 @@ interface CreateForm {
   role: UserRole;
   phone: string;
   usernameOverride: string;
+  locale: Locale;
 }
 
 function CreateAccountModal({ onClose }: { onClose: () => void }) {
@@ -355,6 +357,7 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
     role: UserRole.driver,
     phone: '',
     usernameOverride: '',
+    locale: DEFAULT_LOCALE,
   });
 
   // Keep the selection inside the creatable set. `role` defaults to driver, but
@@ -378,6 +381,7 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
       fullName: form.fullName,
       role: form.role,
       phone: form.phone || null,
+      locale: form.locale,
       ...(form.usernameOverride ? { usernameOverride: form.usernameOverride } : {}),
     };
     createUser.mutate(payload, { onSuccess: () => onClose() });
@@ -437,6 +441,25 @@ function CreateAccountModal({ onClose }: { onClose: () => void }) {
               className={inputCls}
               placeholder={t('accounts.form.phonePlaceholder')}
             />
+          </FormField>
+
+          <FormField label={t('accounts.form.language')} required>
+            <div className="flex gap-2">
+              {SUPPORTED_LOCALES.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, locale: l }))}
+                  className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    form.locale === l
+                      ? 'border-primary bg-primary text-white'
+                      : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'
+                  }`}
+                >
+                  {LOCALE_ENDONYMS[l]}
+                </button>
+              ))}
+            </div>
           </FormField>
 
           {/* Auto-generated credentials preview */}

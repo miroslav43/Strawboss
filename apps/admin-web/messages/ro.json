@@ -2248,6 +2248,7 @@
     "emailLabel": "E-mail",
     "companyAddressLabel": "Adresă firmă",
     "companyCuiLabel": "CUI firmă",
+    "localeLabel": "Limba email-urilor",
     "isActive": "Activ",
     "deleteTitle": "Șterge beneficiar",
     "deleteConfirm": "Ești sigur că vrei să ștergi \"{name}\"? Acțiunea este ireversibilă.",

@@ -2248,6 +2248,7 @@
     "emailLabel": "E-mail",
     "companyAddressLabel": "Cég címe",
     "companyCuiLabel": "Cég CUI-ja",
+    "localeLabel": "E-mailek nyelve",
     "isActive": "Aktív",
     "deleteTitle": "Megrendelő törlése",
     "deleteConfirm": "Biztosan törli a(z) \"{name}\" megrendelőt? Ez a művelet nem vonható vissza.",

@@ -10,7 +10,7 @@ import { MESSAGING_SERVICE, type IMessagingService } from './messaging.tokens';
 import { messageTemplates, fmtCoordsUrl, fmtDirectionsUrl } from './message-templates';
 import { buildRoute, staticMapUrl, type LatLon } from './route-map';
 import { AvizNotificationService } from './aviz-notification.service';
-import { MessageKind, DEFAULT_LOCALE } from '@strawboss/types';
+import { MessageKind, DEFAULT_LOCALE, isLocale, type Locale } from '@strawboss/types';
 import { QUEUE_MESSAGE_SEND } from '../jobs/queues';
 
 interface NotifyRecipientRow {
@@ -45,6 +45,7 @@ interface RequestRow {
   organization_id: string;
   beneficiary_email: string | null;
   beneficiary_name: string | null;
+  beneficiary_locale: string | null;
   dest_lat: number | null;
   dest_lon: number | null;
 }
@@ -99,6 +100,7 @@ export class TransportConfirmationProcessor extends WorkerHost {
                  tr.organization_id,
                  b.email        AS beneficiary_email,
                  b.display_name AS beneficiary_name,
+                 b.locale       AS beneficiary_locale,
                  ST_Y(tr.destination_coords) AS dest_lat, ST_X(tr.destination_coords) AS dest_lon
           FROM trip_requests tr
           LEFT JOIN beneficiaries b
@@ -177,16 +179,14 @@ export class TransportConfirmationProcessor extends WorkerHost {
     // Optional raster brand logo for the email header (unset → text-only header).
     const logoUrl = this.config.get<string>('EMAIL_LOGO_URL') ?? null;
 
-    // Locale: every recipient here (driver, beneficiary, notify_recipients
-    // contact, requester fallback) is a free-text contact on trip_requests —
-    // none of them is a `users` row, so there is no locale to read for any of
-    // them (unlike the two new_request_admin call sites in
-    // trip-requests.service.ts, which notify actual `users`). DEFAULT_LOCALE
-    // preserves the current all-Romanian behavior exactly; wiring a real
-    // per-contact locale would need a schema change (a locale column on
-    // trip_requests/notify_recipients), out of scope here.
-    const locale = DEFAULT_LOCALE;
-    const renderEmail = (recipientName: string | null) =>
+    // Locale: driver, notify_recipients contacts and the requester fallback
+    // are free-text contacts on trip_requests, not `users` rows, so they still
+    // have no locale to read (unlike the two new_request_admin call sites in
+    // trip-requests.service.ts, which notify actual `users`) — DEFAULT_LOCALE
+    // for those. The beneficiary is the one exception: b.locale is a real
+    // per-beneficiary setting (see beneficiaries.locale), so its email is
+    // rendered in that language below instead of the shared default.
+    const renderEmail = (recipientName: string | null, locale: Locale) =>
       messageTemplates[MessageKind.transport_confirmed][locale]({
         organizationName: orgName,
         recipientName,
@@ -220,15 +220,15 @@ export class TransportConfirmationProcessor extends WorkerHost {
     // pre-migration rows AND the non-beneficiary public portal.
     const seenEmails = new Set<string>();
     const seenPhones = new Set<string>();
-    const emailRecipients: Array<{ to: string; name: string | null }> = [];
+    const emailRecipients: Array<{ to: string; name: string | null; locale: Locale }> = [];
     const smsRecipients: string[] = [];
 
-    const addEmail = (raw: string | null, name: string | null) => {
+    const addEmail = (raw: string | null, name: string | null, locale: Locale = DEFAULT_LOCALE) => {
       if (!raw) return;
       const key = raw.trim().toLowerCase();
       if (!key || seenEmails.has(key)) return;
       seenEmails.add(key);
-      emailRecipients.push({ to: raw, name });
+      emailRecipients.push({ to: raw, name, locale });
     };
     const addSms = (raw: string | null) => {
       if (!raw) return;
@@ -244,7 +244,10 @@ export class TransportConfirmationProcessor extends WorkerHost {
     // The beneficiary company's own email (set on the beneficiary record). Always a
     // recipient when the request came from a beneficiary portal; dedup skips it if it
     // matches a contact/requester address. NULL for generic public requests.
-    addEmail(req.beneficiary_email, req.beneficiary_name ?? req.company_name);
+    const beneficiaryLocale = isLocale(req.beneficiary_locale)
+      ? req.beneficiary_locale
+      : DEFAULT_LOCALE;
+    addEmail(req.beneficiary_email, req.beneficiary_name ?? req.company_name, beneficiaryLocale);
 
     const notifyRecipients = Array.isArray(req.notify_recipients) ? req.notify_recipients : [];
     for (const r of notifyRecipients) {
@@ -259,7 +262,7 @@ export class TransportConfirmationProcessor extends WorkerHost {
     // One detailed email per distinct recipient (personalized greeting) — each is
     // its own outbox row, individually retryable from /messages.
     for (const r of emailRecipients) {
-      const tpl = renderEmail(r.name);
+      const tpl = renderEmail(r.name, r.locale);
       await this.messaging.sendEmail({
         to: r.to,
         subject: tpl.subject,
@@ -273,9 +276,9 @@ export class TransportConfirmationProcessor extends WorkerHost {
     // SMS to every distinct phone (driver + contacts). Body is recipient-agnostic,
     // rendered once; the SIM-gateway phone claims each pending row on /fleet/checkin.
     if (smsRecipients.length) {
-      // Same locale reasoning as renderEmail above — no per-recipient locale
-      // exists for these external contacts.
-      const sms = messageTemplates[MessageKind.transport_confirmed_driver_sms][locale]({
+      // SMS recipients are driver + free-text contacts only (the beneficiary
+      // never receives an SMS here), so DEFAULT_LOCALE applies to all of them.
+      const sms = messageTemplates[MessageKind.transport_confirmed_driver_sms][DEFAULT_LOCALE]({
         pickupName: pickup.label,
         pickupMapsUrl: pickup.mapsUrl,
         deliveryAddress: delivery.address,

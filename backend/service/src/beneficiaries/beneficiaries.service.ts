@@ -4,7 +4,13 @@ import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
-import type { Beneficiary, CreateBeneficiaryDto, UpdateBeneficiaryDto } from '@strawboss/types';
+import {
+  DEFAULT_LOCALE,
+  type Beneficiary,
+  type CreateBeneficiaryDto,
+  type Locale,
+  type UpdateBeneficiaryDto,
+} from '@strawboss/types';
 
 const BEN_COLS = sql`
   id,
@@ -18,6 +24,7 @@ const BEN_COLS = sql`
   daily_pin        AS "dailyPin",
   pin_generated_at AS "pinGeneratedAt",
   is_active        AS "isActive",
+  locale,
   created_at       AS "createdAt",
   updated_at       AS "updatedAt",
   deleted_at       AS "deletedAt"
@@ -44,6 +51,7 @@ interface OrgJoinRow {
   daily_pin: string;
   pin_generated_at: string;
   is_active: boolean;
+  locale: Locale;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -107,6 +115,7 @@ export class BeneficiariesService {
             b.daily_pin,
             b.pin_generated_at,
             b.is_active,
+            b.locale,
             b.created_at,
             b.updated_at,
             b.deleted_at,
@@ -138,6 +147,7 @@ export class BeneficiariesService {
         dailyPin: r.daily_pin,
         pinGeneratedAt: r.pin_generated_at,
         isActive: r.is_active,
+        locale: r.locale,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
         deletedAt: r.deleted_at,
@@ -171,6 +181,7 @@ export class BeneficiariesService {
             b.daily_pin,
             b.pin_generated_at,
             b.is_active,
+            b.locale,
             b.created_at,
             b.updated_at,
             b.deleted_at,
@@ -202,6 +213,7 @@ export class BeneficiariesService {
         dailyPin: r.daily_pin,
         pinGeneratedAt: r.pin_generated_at,
         isActive: r.is_active,
+        locale: r.locale,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
         deletedAt: r.deleted_at,
@@ -221,10 +233,11 @@ export class BeneficiariesService {
       rows = await this.drizzleProvider.db.execute(
         sql`INSERT INTO beneficiaries (
               organization_id, slug, display_name, company_name,
-              email, company_address, company_cui, daily_pin, pin_generated_at
+              email, company_address, company_cui, daily_pin, pin_generated_at, locale
             ) VALUES (
               ${orgId}::uuid, ${dto.slug}, ${dto.displayName}, ${dto.companyName},
-              ${dto.email}, ${dto.companyAddress ?? null}, ${dto.companyCui ?? null}, ${pin}, now()
+              ${dto.email}, ${dto.companyAddress ?? null}, ${dto.companyCui ?? null}, ${pin}, now(),
+              ${dto.locale ?? DEFAULT_LOCALE}
             )
             RETURNING ${BEN_COLS}`,
       );
@@ -252,6 +265,7 @@ export class BeneficiariesService {
     if ('companyAddress' in dto)
       setClauses.push(sql`company_address = ${dto.companyAddress ?? null}`);
     if ('companyCui' in dto) setClauses.push(sql`company_cui = ${dto.companyCui ?? null}`);
+    if (dto.locale !== undefined) setClauses.push(sql`locale = ${dto.locale}`);
     if (dto.isActive !== undefined) {
       if (dto.isActive) {
         // Reactivating (was inactive) → refresh the PIN so it's immediately valid,

@@ -1,4 +1,5 @@
 import type { CropType } from './parcel.js';
+import type { Locale } from '../locale.js';
 
 export interface Beneficiary {
   id: string;
@@ -12,6 +13,8 @@ export interface Beneficiary {
   dailyPin: string;
   pinGeneratedAt: string;
   isActive: boolean;
+  /** Default language for server-sent correspondence (transport-confirmation, aviz emails). */
+  locale: Locale;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -35,6 +38,8 @@ export interface CreateBeneficiaryDto {
   email: string;
   companyAddress?: string | null;
   companyCui?: string | null;
+  /** Defaults to DEFAULT_LOCALE when omitted. */
+  locale?: Locale;
 }
 
 export type UpdateBeneficiaryDto = Partial<CreateBeneficiaryDto> & {

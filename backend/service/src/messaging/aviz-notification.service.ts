@@ -12,7 +12,7 @@ import {
   type EmailAttachment,
 } from './messaging.tokens';
 import { messageTemplates } from './message-templates';
-import { MessageKind, DEFAULT_LOCALE } from '@strawboss/types';
+import { MessageKind, DEFAULT_LOCALE, isLocale, type Locale } from '@strawboss/types';
 import { signUploadUrl, UPLOADS_URL_PREFIX } from '../uploads/uploads-signing';
 import { resolveUploadsRoot } from '../uploads/uploads.service';
 
@@ -36,6 +36,7 @@ interface AvizRequestRow {
   organization_id: string;
   beneficiary_email: string | null;
   beneficiary_name: string | null;
+  beneficiary_locale: string | null;
 }
 
 /**
@@ -74,7 +75,8 @@ export class AvizNotificationService {
                  tr.company_name, tr.truck_registration_plate, tr.needed_date,
                  tr.notify_recipients, tr.organization_id,
                  b.email        AS beneficiary_email,
-                 b.display_name AS beneficiary_name
+                 b.display_name AS beneficiary_name,
+                 b.locale       AS beneficiary_locale
           FROM trip_requests tr
           LEFT JOIN beneficiaries b ON b.id = tr.beneficiary_id AND b.deleted_at IS NULL
           WHERE tr.id = ${requestId}::uuid LIMIT 1`,
@@ -121,15 +123,15 @@ export class AvizNotificationService {
     // a legacy fallback to the single requester when notify_recipients is empty.
     const seenEmails = new Set<string>();
     const seenPhones = new Set<string>();
-    const emailRecipients: Array<{ to: string; name: string | null }> = [];
+    const emailRecipients: Array<{ to: string; name: string | null; locale: Locale }> = [];
     const smsRecipients: string[] = [];
 
-    const addEmail = (raw: string | null, name: string | null) => {
+    const addEmail = (raw: string | null, name: string | null, locale: Locale = DEFAULT_LOCALE) => {
       if (!raw) return;
       const key = raw.trim().toLowerCase();
       if (!key || seenEmails.has(key)) return;
       seenEmails.add(key);
-      emailRecipients.push({ to: raw, name });
+      emailRecipients.push({ to: raw, name, locale });
     };
     const addSms = (raw: string | null) => {
       if (!raw) return;
@@ -141,7 +143,10 @@ export class AvizNotificationService {
 
     addEmail(req.driver_email, req.driver_name);
     addSms(req.driver_phone);
-    addEmail(req.beneficiary_email, req.beneficiary_name ?? req.company_name);
+    const beneficiaryLocale = isLocale(req.beneficiary_locale)
+      ? req.beneficiary_locale
+      : DEFAULT_LOCALE;
+    addEmail(req.beneficiary_email, req.beneficiary_name ?? req.company_name, beneficiaryLocale);
     const notifyRecipients = Array.isArray(req.notify_recipients) ? req.notify_recipients : [];
     for (const r of notifyRecipients) {
       addEmail(r.email, r.name);
@@ -154,14 +159,15 @@ export class AvizNotificationService {
 
     const logoUrl = this.config.get<string>('EMAIL_LOGO_URL') ?? null;
 
-    // Locale: same reasoning as TransportConfirmationProcessor — every
-    // recipient here is a free-text contact on trip_requests, not a `users`
-    // row, so there is no per-recipient locale to resolve.
-    const locale = DEFAULT_LOCALE;
+    // Locale: same reasoning as TransportConfirmationProcessor — driver,
+    // notify_recipients contacts and the requester fallback are free-text
+    // contacts on trip_requests with no locale of their own, so DEFAULT_LOCALE
+    // applies to them. The beneficiary carries its own locale (see
+    // beneficiaries.locale) and is rendered per-recipient below instead.
 
     // One email per distinct recipient (personalized greeting + PDF attachment).
     for (const r of emailRecipients) {
-      const tpl = messageTemplates[MessageKind.aviz_uploaded][locale]({
+      const tpl = messageTemplates[MessageKind.aviz_uploaded][r.locale]({
         organizationName: orgName,
         recipientName: r.name,
         companyName: req.company_name,
@@ -181,9 +187,11 @@ export class AvizNotificationService {
       });
     }
 
-    // One SMS (download link) per distinct phone.
+    // One SMS (download link) per distinct phone. SMS recipients are driver +
+    // free-text contacts only (the beneficiary has no phone in this flow), so
+    // DEFAULT_LOCALE applies to all of them.
     if (smsRecipients.length) {
-      const sms = messageTemplates[MessageKind.aviz_uploaded_sms][locale]({
+      const sms = messageTemplates[MessageKind.aviz_uploaded_sms][DEFAULT_LOCALE]({
         truckRegistrationPlate: req.truck_registration_plate,
         downloadUrl,
       });

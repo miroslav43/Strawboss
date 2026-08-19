@@ -22,10 +22,11 @@ import {
   useDeleteBeneficiary,
   useRegenBeneficiaryPin,
 } from '@strawboss/api';
+import { SUPPORTED_LOCALES, LOCALE_ENDONYMS, DEFAULT_LOCALE } from '@strawboss/types';
 import type { Beneficiary } from '@strawboss/types';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiClient } from '@/lib/api';
-import { useI18n } from '@/lib/i18n';
+import { useI18n, normalizeUiLocale, type Locale } from '@/lib/i18n';
 import { normalizeList } from '@/lib/normalize-api-list';
 import { cn } from '@/lib/utils';
 import { LoggingErrorBoundary } from '@/components/shared/LoggingErrorBoundary';
@@ -45,6 +46,7 @@ type BeneficiaryFormData = {
   email: string;
   companyAddress: string;
   companyCui: string;
+  locale: Locale;
 };
 
 const BLANK_FORM: BeneficiaryFormData = {
@@ -54,6 +56,7 @@ const BLANK_FORM: BeneficiaryFormData = {
   email: '',
   companyAddress: '',
   companyCui: '',
+  locale: DEFAULT_LOCALE,
 };
 
 function BeneficiaryModal({
@@ -75,6 +78,7 @@ function BeneficiaryModal({
           email: editing.email ?? '',
           companyAddress: editing.companyAddress ?? '',
           companyCui: editing.companyCui ?? '',
+          locale: normalizeUiLocale(editing.locale),
         }
       : BLANK_FORM,
   );
@@ -97,6 +101,7 @@ function BeneficiaryModal({
       email: trim(form.email),
       companyAddress: trim(form.companyAddress) || undefined,
       companyCui: trim(form.companyCui) || undefined,
+      locale: form.locale,
     };
 
     if (isEdit) {
@@ -203,6 +208,29 @@ function BeneficiaryModal({
               onChange={(e) => patch({ companyCui: e.target.value })}
               className={cn(inputCls, 'mt-1')}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700">
+              {t('beneficiaries.localeLabel')}
+            </label>
+            <div className="mt-1 flex gap-2">
+              {SUPPORTED_LOCALES.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => patch({ locale: l })}
+                  className={cn(
+                    'flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors',
+                    form.locale === l
+                      ? 'border-primary bg-primary text-white'
+                      : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50',
+                  )}
+                >
+                  {LOCALE_ENDONYMS[l]}
+                </button>
+              ))}
+            </div>
           </div>
 
           {isError && (

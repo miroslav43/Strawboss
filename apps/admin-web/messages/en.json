@@ -2248,6 +2248,7 @@
     "emailLabel": "Email",
     "companyAddressLabel": "Company address",
     "companyCuiLabel": "Company CUI",
+    "localeLabel": "Email language",
     "isActive": "Active",
     "deleteTitle": "Delete beneficiary",
     "deleteConfirm": "Are you sure you want to delete \"{name}\"? This cannot be undone.",

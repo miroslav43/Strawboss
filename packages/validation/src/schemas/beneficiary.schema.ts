@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SUPPORTED_LOCALES } from '@strawboss/types';
 
 export const createBeneficiarySchema = z.object({
   slug: z
@@ -11,6 +12,8 @@ export const createBeneficiarySchema = z.object({
   email: z.string().trim().email().max(255),
   companyAddress: z.string().max(300).nullable().optional(),
   companyCui: z.string().max(20).nullable().optional(),
+  /** Default language for server-sent correspondence to this beneficiary. */
+  locale: z.enum(SUPPORTED_LOCALES).optional(),
 });
 export type CreateBeneficiaryInput = z.infer<typeof createBeneficiarySchema>;
 
