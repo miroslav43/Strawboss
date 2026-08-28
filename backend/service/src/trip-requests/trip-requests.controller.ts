@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -13,7 +14,12 @@ import type { FastifyRequest } from 'fastify';
 import { TripRequestsService } from './trip-requests.service';
 import { Roles, CurrentUser, type RequestUser } from '../auth';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { confirmTripRequestSchema, cancelTripRequestSchema } from '@strawboss/validation';
+import {
+  confirmTripRequestSchema,
+  cancelTripRequestSchema,
+  updateTripRequestSchema,
+  type UpdateTripRequestInput,
+} from '@strawboss/validation';
 import { UserRole } from '@strawboss/types';
 import { AVIZ_MAX_BYTES } from '../uploads/uploads.service';
 import { RequireFeature } from '../features/require-feature.decorator';
@@ -87,6 +93,29 @@ export class TripRequestsController {
     @Body(new ZodValidationPipe(cancelTripRequestSchema)) dto: { reason?: string },
   ) {
     return this.service.cancel(this.requireOrg(user), id, dto.reason);
+  }
+
+  /**
+   * Correct an aux transport in place — the alternative to deleting it and
+   * re-creating it when something was entered wrong.
+   *
+   * PATCH semantics: only the keys sent are written. The service recomputes the
+   * composed `AuxStage` and refuses once the transport is loading, awaiting the
+   * arrival CMR, completed or cancelled — the greyed pencil in the admin table
+   * is a courtesy, this is the enforcement.
+   *
+   * Same feature flag as confirm/cancel: an org with aux requests switched off
+   * must not get exactly one mutation that ignores the switch.
+   */
+  @Patch(':id')
+  @Roles(UserRole.admin, UserRole.dispatcher)
+  @RequireFeature('aux.requests')
+  update(
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateTripRequestSchema)) dto: UpdateTripRequestInput,
+  ) {
+    return this.service.updateAuxRequest(this.requireOrg(user), id, dto);
   }
 
   /**

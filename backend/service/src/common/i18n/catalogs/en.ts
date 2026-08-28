@@ -43,6 +43,16 @@ export const en = {
     accountNotFound: 'Account does not exist or was deleted',
     /** auth.guard.ts — the JWT verifies but the account was deactivated. */
     accountInactive: 'Account inactive',
+    /** trip-requests.service.ts updateAuxRequest — the aux transport has already
+     *  started loading, or is finished/cancelled, so its data can no longer be
+     *  corrected in place. The admin UI greys the pencil for the same stages,
+     *  but this is the enforcement. */
+    stageNotEditable:
+      'This transport has already started or is finished and can no longer be edited.',
+    /** trip-requests.service.ts updateAuxRequest — the loader started the load
+     *  BETWEEN the stage check and the write, so the edit was refused rather
+     *  than half-applied. */
+    stageChangedMidEdit: 'The transport started loading in the meantime. Reload the page.',
   },
   push: {
     /**

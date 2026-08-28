@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { TripRequest, BeneficiaryOrderSettings, Document } from '@strawboss/types';
 import type {
   CreateTransporterRequestInput,
@@ -6,6 +6,7 @@ import type {
 } from '@strawboss/validation';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
+import { fetchAllPages, type LedgerResult } from './paged-ledger.js';
 
 /** URL segment for the saved-record kind. */
 export type TransporterRecordKind = 'contacts' | 'trucks' | 'drivers';
@@ -123,6 +124,46 @@ export function useTransporterRequests(
       const qs = params.toString();
       return client.get<TripRequest[]>(`/api/v1/transporter/requests${qs ? `?${qs}` : ''}`);
     },
+  });
+}
+
+/**
+ * The transporter's ledger, WHOLE — every page of it.
+ *
+ * `useTransporterRequests` sends no `limit`, so it takes the server's default of
+ * 200 rows ordered `created_at DESC`, while the page filters by `AuxStage`
+ * CLIENT-side afterwards. That is the same truncation the admin ledger had: with
+ * no stage filter the window rarely binds, but widen it and rows go missing from
+ * the middle of a date-sorted list, because created_at order is not needed_date
+ * order.
+ *
+ * `GET /transporter/requests` is `TripRequestsService.list()` with
+ * `createdByUserId` pinned to the caller, so it takes the same `limit`/`offset`
+ * and carries the same unique ORDER BY tiebreaker that makes OFFSET paging safe.
+ */
+export function useAllTransporterRequests(
+  client: ApiClient,
+  filters?: Record<string, string | undefined>,
+  options?: { enabled?: boolean },
+) {
+  return useQuery<LedgerResult<TripRequest>>({
+    queryKey: queryKeys.transporter.requestsAll(filters),
+    enabled: options?.enabled ?? true,
+    // Keeps the table (and therefore DataTable's sort state) alive across a
+    // filter change — see the same note on `useAllTripRequests`.
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchAllPages<TripRequest>(client, '/api/v1/transporter/requests', (offset, pageSize) => {
+        // URLSearchParams stringifies `undefined` to the literal "undefined",
+        // which the server would then try to parse — only send real values.
+        const params = new URLSearchParams();
+        for (const [k, v] of Object.entries(filters ?? {})) {
+          if (v !== undefined && v !== '') params.set(k, v);
+        }
+        params.set('limit', String(pageSize));
+        params.set('offset', String(offset));
+        return `?${params.toString()}`;
+      }),
   });
 }
 

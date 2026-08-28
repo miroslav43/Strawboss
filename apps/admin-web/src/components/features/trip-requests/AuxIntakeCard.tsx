@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, XCircle, Eye } from 'lucide-react';
+import { CheckCircle2, XCircle, Eye, Pencil } from 'lucide-react';
 import type { TripRequest } from '@strawboss/types';
 import { useI18n } from '@/lib/i18n';
 import { useLocaleFormat } from '@/lib/use-locale-format';
@@ -23,11 +23,18 @@ export function AuxIntakeCard({
   onConfirm,
   onCancel,
   onViewDetails,
+  onEdit,
 }: {
   request: TripRequest;
   onConfirm: (r: TripRequest) => void;
   onCancel: (r: TripRequest) => void;
   onViewDetails: (r: TripRequest) => void;
+  /**
+   * Correct the request before committing a truck to it. A `pending` request is
+   * never a row in the aux table, so without this entry point the NEWEST request
+   * would be the one you cannot fix — and it is where a portal typo is freshest.
+   */
+  onEdit?: (r: TripRequest) => void;
 }) {
   const { t } = useI18n();
   const fmt = useLocaleFormat();
@@ -56,6 +63,15 @@ export function AuxIntakeCard({
             <Eye className="h-3.5 w-3.5" />
             {t('tripRequests.viewDetails')}
           </button>
+          {onEdit && (
+            <button
+              onClick={() => onEdit(request)}
+              className="flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              {t('tripRequests.editTitle')}
+            </button>
+          )}
           <button
             onClick={() => onConfirm(request)}
             className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"

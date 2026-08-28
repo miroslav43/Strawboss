@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, AlertTriangle, Trash2 } from 'lucide-react';
+import { Eye, AlertTriangle, Trash2, Pencil } from 'lucide-react';
 import type { TripRequest } from '@strawboss/types';
 import { AuxStage } from '@strawboss/types';
-import { canDeleteAuxStage } from '@strawboss/domain';
+import { canDeleteAuxStage, canEditAuxStage } from '@strawboss/domain';
 import { DataTable, type Column } from '@/components/shared/DataTable';
+import type { SortDirection } from '@/lib/table-sort';
+import { cn } from '@/lib/utils';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { useI18n } from '@/lib/i18n';
 import { useLocaleFormat } from '@/lib/use-locale-format';
@@ -44,7 +46,18 @@ interface AuxTripTableProps {
    * `canDeleteAuxStage` — see the actions-column comment.
    */
   onDelete?: (row: AuxRow) => void;
+  /**
+   * Correct the request's data in place, instead of deleting and re-creating it.
+   * Admin ledger only — the transporter ledger and the report tab pass
+   * `readOnly` and never wire this, so they stay action-free by construction.
+   */
+  onEdit?: (r: TripRequest) => void;
   emptyMessage?: string;
+  /** Column sorted on mount — see DataTable. Without one the table opens with no chevron. */
+  defaultSortKey?: string;
+  defaultSortDir?: SortDirection;
+  /** Secondary sort key, always ascending. */
+  tieBreakKey?: string;
 }
 
 /**
@@ -82,7 +95,11 @@ export function AuxTripTable({
   onRowClick,
   onViewComanda,
   onDelete,
+  onEdit,
   emptyMessage,
+  defaultSortKey,
+  defaultSortDir,
+  tieBreakKey,
 }: AuxTripTableProps) {
   const { t } = useI18n();
   const fmt = useLocaleFormat();
@@ -151,8 +168,16 @@ export function AuxTripTable({
       ),
     },
     {
-      key: 'cropType',
+      // Sorts on what the cell SHOWS. `cropSort` mirrors the raw enum, so in
+      // ro/hu the visible order was alphabetical in a language nobody sees. The
+      // mirror stays in `buildAuxRow` — the report's CSV path still uses it.
+      key: 'cropSort',
       header: t('tripRequests.colCrop'),
+      sortable: true,
+      sortValue: (row) =>
+        [row.request.cropType, row.request.quality ? t(qualityLabelKey(row.request.quality)) : null]
+          .filter(Boolean)
+          .join(' · ') || null,
       render: (row) => {
         const crop = row.request.cropType;
         const quality = row.request.quality ? t(qualityLabelKey(row.request.quality)) : null;
@@ -165,8 +190,9 @@ export function AuxTripTable({
     // blank for most rows is worse than no column. The value still shows on the
     // intake card and in the details modal when a request actually carries one.
     {
-      key: 'pickup',
+      key: 'pickupSort',
       header: t('tripRequests.colPickup'),
+      sortable: true,
       render: (row) => {
         // What actually happened beats what was planned; show both when both exist.
         const parcel = row.request.tripSourceParcelName ?? row.request.sourceParcelName;
@@ -176,8 +202,9 @@ export function AuxTripTable({
       },
     },
     {
-      key: 'destinationLocality',
+      key: 'destinationSort',
       header: t('tripRequests.colDestination'),
+      sortable: true,
       render: (row) => (
         <div className="min-w-0">
           {/* The request's own destination — NOT trips.destination_name, which is a
@@ -300,6 +327,43 @@ export function AuxTripTable({
               <Eye className="h-4 w-4" />
             </button>
             {/*
+              Correct the transport instead of deleting and re-creating it.
+
+              DISABLED, not hidden: a button that vanishes teaches nothing, a
+              greyed one with a reason teaches the rule. Same contract as the
+              delete icon below — the backend re-derives the stage from
+              `composeAuxStage` and refuses regardless of what this shows, so
+              this gate is a UX nicety, never the enforcement.
+            */}
+            {onEdit &&
+              (() => {
+                const editable = canEditAuxStage(row.stage);
+                const label = editable
+                  ? t('tripRequests.editAria')
+                  : t('tripRequests.editLocked');
+                return (
+                  <button
+                    type="button"
+                    disabled={!editable}
+                    aria-disabled={!editable}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (editable) onEdit(row.request);
+                    }}
+                    className={cn(
+                      'rounded p-1 transition',
+                      editable
+                        ? 'text-neutral-400 hover:bg-primary/10 hover:text-primary'
+                        : 'cursor-not-allowed text-neutral-200',
+                    )}
+                    aria-label={label}
+                    title={label}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                );
+              })()}
+            {/*
               One trash icon, two meanings — an escalation, not an ambiguity:
                 has a trip  -> UN-PLAN it. The request returns to "Confirmată —
                                neplanificată" and can be re-assigned to another truck.
@@ -350,6 +414,9 @@ export function AuxTripTable({
       keyExtractor={(row) => row.id}
       onRowClick={onRowClick}
       emptyMessage={emptyMessage}
+      defaultSortKey={defaultSortKey}
+      defaultSortDir={defaultSortDir}
+      tieBreakKey={tieBreakKey}
       rowClassName={(row) =>
         row.stage === AuxStage.cancelled
           ? 'bg-neutral-50 text-neutral-400'

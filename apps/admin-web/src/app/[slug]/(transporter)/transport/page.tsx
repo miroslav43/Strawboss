@@ -3,13 +3,13 @@ export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useTransporterRequests } from '@strawboss/api';
+import { useAllTransporterRequests } from '@strawboss/api';
 import type { TripRequest } from '@strawboss/types';
 import { AUX_STAGE_ORDER } from '@strawboss/types';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useLocaleFormat } from '@/lib/use-locale-format';
-import { normalizeList } from '@/lib/normalize-api-list';
+import { cn } from '@/lib/utils';
 import { buildAuxRows, type AuxRow } from '@/lib/aux-rows';
 import { fmtDate, fmtDateTime, romaniaDateString } from '@/lib/date';
 import { exportXlsx, type XlsxColumn } from '@/lib/xlsx';
@@ -65,8 +65,17 @@ export default function TransporterTripsPage() {
     return Object.keys(f).length ? f : undefined;
   }, [search, dateFrom, dateTo]);
 
-  const { data, isLoading, isError } = useTransporterRequests(apiClient, filters);
-  const requests = useMemo(() => normalizeList<TripRequest>(data), [data]);
+  /*
+   * WHOLE, not the newest 200. This ledger renders the same AuxTripTable as
+   * /trips and had the identical bug: the server caps at 200 rows by created_at
+   * while the stage filter below runs client-side, so widening the filter made
+   * rows disappear from the middle of a date-sorted list.
+   */
+  const ledger = useAllTransporterRequests(apiClient, filters);
+  const { isLoading, isError } = ledger;
+  // NOT normalizeList(): this hook resolves to LedgerResult<TripRequest>, which
+  // normalizeList would silently flatten to [] with no compile error.
+  const requests = useMemo(() => ledger.data?.rows ?? [], [ledger.data]);
   const allRows = useMemo(() => buildAuxRows(requests), [requests]);
   const rows = useMemo(
     () => (stageFilter ? allRows.filter((r) => r.stage === stageFilter) : allRows),
@@ -221,23 +230,32 @@ export default function TransporterTripsPage() {
         <p className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-400">
           {t('tripRequests.loadError')}
         </p>
-      ) : isLoading ? (
+      ) : isLoading && !ledger.data ? (
         <div className="flex items-center justify-center gap-2 py-10 text-sm text-neutral-400">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t('common.loading')}
         </div>
       ) : (
-        <AuxTripTable
-          rows={rows}
-          readOnly
-          onRowClick={(row) => setDetailsTarget(row.request)}
-          onUploadAviz={(r) => setAvizTarget(r)}
-          onUploadCmr={(r) => setCmrTarget(r)}
-          onUploadCmrArrival={(r) => setCmrArrivalTarget(r)}
-          onViewComanda={(r) => setComandaTarget(r)}
-          onDelete={(row) => setDeleteTarget(row.request)}
-          emptyMessage={t('transporter.empty')}
-        />
+        // Rendered even while refetching: swapping in a spinner would remount
+        // DataTable, which owns its sort state, and silently reset the sort on
+        // every search/date keystroke.
+        <div className={cn('transition-opacity', ledger.isFetching && 'opacity-60')}>
+          <AuxTripTable
+            rows={rows}
+            readOnly
+            onRowClick={(row) => setDetailsTarget(row.request)}
+            onUploadAviz={(r) => setAvizTarget(r)}
+            onUploadCmr={(r) => setCmrTarget(r)}
+            onUploadCmrArrival={(r) => setCmrArrivalTarget(r)}
+            onViewComanda={(r) => setComandaTarget(r)}
+            onDelete={(row) => setDeleteTarget(row.request)}
+            emptyMessage={t('transporter.empty')}
+            // Same defaults as the admin ledger — one table, one order.
+            defaultSortKey="neededDate"
+            defaultSortDir="desc"
+            tieBreakKey="requesterName"
+          />
+        </div>
       )}
 
       {detailsTarget && (

@@ -1,5 +1,6 @@
 export {
   useTrips,
+  useAllTrips,
   useTrip,
   useCreateTrip,
   useStartLoading,
@@ -79,9 +80,11 @@ export { useAlerts, useUnacknowledgedAlerts, useAcknowledgeAlert } from './use-a
 
 export {
   useTripRequests,
+  useAllTripRequests,
   useTripRequest,
   useConfirmTripRequest,
   useCancelTripRequest,
+  useUpdateTripRequest,
   useRequestAvize,
   useUploadAviz,
   useRequestCmrScans,
@@ -90,6 +93,9 @@ export {
   useUpdateOrgRequestSettings,
 } from './use-trip-requests.js';
 export type { DocVariant, CmrKind } from './use-trip-requests.js';
+
+export { LEDGER_PAGE_SIZE, LEDGER_MAX_PAGES } from './paged-ledger.js';
+export type { LedgerResult } from './paged-ledger.js';
 
 export {
   useMessages,
@@ -135,6 +141,7 @@ export {
   useDeleteTransporterRecord,
   useSubmitTransporterRequest,
   useTransporterRequests,
+  useAllTransporterRequests,
   useDeleteTransporterRequest,
   useBeneficiaryOrderSettings,
   useSaveBeneficiaryOrderSettings,

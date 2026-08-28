@@ -3,7 +3,7 @@ import { AuxStage, AUX_STAGE_ORDER, RequestStatus, TripStatus } from '@strawboss
 /**
  * The subset of an auxiliary request + its live trip that determines the stage.
  * Deliberately structural rather than `TripRequest`, so this stays callable from
- * a report, an export or an alert that only has these five fields.
+ * a report, an export or an alert that only has these four fields.
  */
 export interface AuxStageInput {
   /** The commercial axis: trip_requests.status. */
@@ -109,4 +109,51 @@ export const DELETABLE_AUX_STAGES: readonly AuxStage[] = [
 /** Whether an aux transport at this stage may still be deleted (see above). */
 export function canDeleteAuxStage(stage: AuxStage): boolean {
   return DELETABLE_AUX_STAGES.includes(stage);
+}
+
+/**
+ * Stages at which an aux transport's REQUEST fields may still be CORRECTED.
+ *
+ * Deliberately `DELETABLE_AUX_STAGES` minus `cancelled`: the same physical line
+ * (nothing has been loaded yet), but a cancelled transport is a dead record —
+ * deletable so a transporter can clear their own ledger, never editable,
+ * because there is nothing downstream left for an edit to reach.
+ *
+ * `loading` is excluded for the reason delete excludes it: a loader is on the
+ * truck with a phone that already holds the trip and may hold an unsent offline
+ * `register_load` addressed by the truck's MACHINE id. `awaitingArrivalCmr` and
+ * `completed` are excluded because the aux `machines` row is already
+ * soft-deleted, the departure CMR is rendered and the one-time arrival link is
+ * already SMS'd — an edit cannot recall any of them.
+ *
+ * So the two lists read as ONE rule for the operator: what you could have
+ * deleted and re-created, you can now correct in place instead.
+ */
+export const EDITABLE_AUX_STAGES: readonly AuxStage[] = [
+  AuxStage.pending,
+  AuxStage.unplanned,
+  AuxStage.planned,
+] as const;
+
+/** Whether an aux transport at this stage may still be edited (see above). */
+export function canEditAuxStage(stage: AuxStage): boolean {
+  return EDITABLE_AUX_STAGES.includes(stage);
+}
+
+/**
+ * The `destination_name` an aux trip takes from its request.
+ *
+ * TWO writers now — the mint/re-plan in `autoUpsertAuxiliaryTrip` and the edit
+ * cascade in `updateAuxRequest`. If they drift, the loader's phone and the admin
+ * table describe different destinations, so the ladder lives in one place.
+ *
+ * The final fallback is a literal the UI is aware of: `AuxTripTable` renders the
+ * REQUEST's own destination precisely because `trips.destination_name` can carry
+ * these words.
+ */
+export function auxTripDestinationName(r: {
+  destinationLocality?: string | null;
+  companyName?: string | null;
+}): string {
+  return r.destinationLocality ?? r.companyName ?? 'Adresă solicitant';
 }

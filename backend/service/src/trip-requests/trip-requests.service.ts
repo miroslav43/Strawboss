@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Readable } from 'node:stream';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { DrizzleProvider } from '../database/drizzle.provider';
@@ -21,13 +21,19 @@ import { UploadsService } from '../uploads/uploads.service';
 import { DocumentsService } from '../documents/documents.service';
 import { PinThrottleService } from './pin-throttle.service';
 import { FeaturesService } from '../features/features.service';
+import { SeasonsService } from '../seasons/seasons.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { QUEUE_MESSAGE_SEND, QUEUE_COMANDA_GENERATION } from '../jobs/queues';
 import { MESSAGING_SERVICE, type IMessagingService } from '../messaging/messaging.tokens';
 import { messageTemplates } from '../messaging/message-templates';
-import { MessageKind, RequestStatus, normalizeLocale } from '@strawboss/types';
-import { composeAuxStage, canDeleteAuxStage } from '@strawboss/domain';
+import { MessageKind, RequestStatus, TripStatus, normalizeLocale } from '@strawboss/types';
+import {
+  composeAuxStage,
+  canDeleteAuxStage,
+  canEditAuxStage,
+  auxTripDestinationName,
+} from '@strawboss/domain';
 import type {
   TripRequest,
   PortalInfo,
@@ -38,6 +44,7 @@ import type {
 import type {
   CreateBeneficiaryRequestInput,
   CreateTransporterRequestInput,
+  UpdateTripRequestInput,
 } from '@strawboss/validation';
 import type { OrgBeneficiaryRow } from '../beneficiaries/beneficiaries.service';
 import type { Beneficiary } from '@strawboss/types';
@@ -236,6 +243,7 @@ export class TripRequestsService {
     private readonly documents: DocumentsService,
     private readonly pinThrottle: PinThrottleService,
     private readonly featuresService: FeaturesService,
+    private readonly seasonsService: SeasonsService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     @InjectQueue(QUEUE_MESSAGE_SEND) private readonly messageQueue: Queue,
     @InjectQueue(QUEUE_COMANDA_GENERATION) private readonly comandaQueue: Queue,
@@ -315,7 +323,12 @@ export class TripRequestsService {
             FROM trip_requests
             ${TR_TRIP_JOIN}
            WHERE ${where}
-           ORDER BY trip_requests.created_at DESC
+           -- id DESC is not cosmetic: the UI now PAGES this endpoint with
+           -- LIMIT/OFFSET (packages/api/src/hooks/paged-ledger.ts), and OFFSET
+           -- over a non-unique ORDER BY can duplicate a row on one page and skip
+           -- it on the next whenever two requests share a created_at — portal
+           -- submissions land in bursts that do exactly that.
+           ORDER BY trip_requests.created_at DESC, trip_requests.id DESC
            LIMIT ${limit} OFFSET ${offset}`,
     );
     return rows as unknown as TripRequest[];
@@ -503,6 +516,376 @@ export class TripRequestsService {
     });
 
     return updated[0];
+  }
+
+  /**
+   * Correct an aux transport IN PLACE — "s-a greșit ceva, să nu trebuiască
+   * șters, doar editat".
+   *
+   * The hard part is not the UPDATE, it is that an auxiliary request's data is
+   * COPIED into two other rows and nothing re-syncs it:
+   *   - `machines` at confirm()  — plate, make/model, owner company. The fleet
+   *     list, the truck board, the CMR PDF and the geofence push text all read
+   *     the truck THERE.
+   *   - `trips` at plan time (autoUpsertAuxiliaryTrip) — external driver name /
+   *     phone / email and the destination. That row is what the loader's phone
+   *     holds.
+   * An UPDATE that touched only `trip_requests` would look perfectly correct in
+   * the admin ledger (which reads the request) while the phone, the documents
+   * and the arrival SMS kept the old values — a desync invisible from exactly
+   * where it was made. So all three rows move in ONE transaction.
+   *
+   * Two things this deliberately does NOT write, and both are load-bearing:
+   *
+   *   - `trips.truck_id` / a NEW machines row. `registerAuxiliaryLoad` resolves
+   *     the trip by `truck_id`, the loader navigates by that machine id, and an
+   *     offline `register_load` sitting in a phone's queue carries it in its
+   *     payload. Re-minting the truck would strand every queued load on
+   *     "Camionul auxiliar nu are o cursă activă", permanently. The plate is
+   *     updated IN PLACE on the same machine id.
+   *
+   *   - `trips.destination_coords`. It is not just a map pin: an aux trip
+   *     carries `destination_id = NULL` by construction, so `depotInboundBales`
+   *     / `depotInboundNetWeight` attribute its delivery to a depot by
+   *     `ST_DWithin(destination_coords, depot, 50m)`. NULLing it here would
+   *     silently drop the load out of that depot's inventory once the trip
+   *     completes. Only the REQUEST's own coordinate is cleared when the
+   *     destination text changes — that one is paper (it draws the route in the
+   *     confirmation e-mail), and a missing route link beats a wrong one.
+   *
+   * Gated by `canEditAuxStage` on the COMPOSED stage, recomputed server-side
+   * from the same read model the ledger renders — never the client's snapshot,
+   * and never `trip_requests.status`, which freezes at 'confirmed' the moment
+   * confirm() runs and would happily wave through a loaded transport.
+   */
+  async updateAuxRequest(
+    orgId: string | null,
+    id: string,
+    dto: UpdateTripRequestInput,
+  ): Promise<TripRequest> {
+    const req = await this.findById(orgId, id); // 404 + org check
+
+    const stage = composeAuxStage({
+      status: req.status,
+      tripStatus: req.tripStatus,
+      tripSignedAt: req.tripSignedAt,
+      tripCompletedAt: req.tripCompletedAt,
+    });
+    if (!canEditAuxStage(stage)) {
+      throw new BadRequestException({
+        error: 'stage_not_editable',
+        stage,
+        // Romanian safety net; the locale-correct text is resolved by
+        // AllExceptionsFilter from `i18nKey`, same as assertSeasonWritable.
+        message:
+          'Această cursă a început deja sau este finalizată și nu mai poate fi modificată.',
+        i18nKey: 'errors.stageNotEditable',
+      });
+    }
+
+    const { resendConfirmation, ...fields } = dto;
+    // Key PRESENCE, not truthiness: an explicit `null` must clear the column, an
+    // absent key must not appear in the SET list at all, and '' is a legal value.
+    const has = (k: keyof typeof fields) => Object.prototype.hasOwnProperty.call(fields, k);
+    const changed = Object.keys(fields);
+
+    // The post-edit truth for a mirrored column: the submitted value where one
+    // was submitted, the stored value otherwise. The copies in `machines` /
+    // `trips` must carry the MERGED record, not just this request's delta.
+    const merged = <K extends keyof typeof fields>(k: K): unknown =>
+      has(k) ? (fields[k] ?? null) : ((req as unknown as Record<string, unknown>)[k] ?? null);
+
+    // A closed season is a write gate, not a read filter — the same one the
+    // bale-production and sync paths honour. Both date columns are business
+    // dates, so both must pass.
+    if (has('neededDate') && fields.neededDate) {
+      await this.seasonsService.assertSeasonWritable(orgId, fields.neededDate);
+    }
+    if (has('unloadingDate') && fields.unloadingDate) {
+      await this.seasonsService.assertSeasonWritable(orgId, fields.unloadingDate);
+    }
+
+    // Pickup source: re-run confirm()'s exact validations BEFORE any write, so a
+    // bad depot/parcel is a 400 rather than a half-applied edit.
+    const touchesSource = has('sourceDepotId') || has('sourceParcelId');
+    const nextDepotId = (fields.sourceDepotId ?? null) as string | null;
+    const nextParcelId = nextDepotId ? null : ((fields.sourceParcelId ?? null) as string | null);
+    if (touchesSource && nextDepotId) {
+      const depotRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT 1 FROM delivery_destinations
+            WHERE id = ${nextDepotId}::uuid
+              AND organization_id = ${req.organizationId}::uuid
+              AND deleted_at IS NULL
+            LIMIT 1`,
+      )) as unknown as unknown[];
+      if (!depotRows.length) throw new BadRequestException('Depozit invalid.');
+    } else if (touchesSource && nextParcelId) {
+      const parcelRows = (await this.drizzleProvider.db.execute(
+        sql`SELECT 1 FROM parcels
+            WHERE id = ${nextParcelId}::uuid
+              AND organization_id = ${req.organizationId}::uuid
+              AND deleted_at IS NULL
+            LIMIT 1`,
+      )) as unknown as unknown[];
+      if (!parcelRows.length) throw new BadRequestException('Parcelă invalidă.');
+      await this.featuresService.assertEnabledForOrg(req.organizationId, 'aux.field_pickup');
+    }
+
+    // One explicit line per column — greppable, and no sql.raw anywhere near a
+    // column name.
+    const set: SQL[] = [];
+    if (has('requesterName')) set.push(sql`requester_name = ${fields.requesterName ?? null}`);
+    if (has('requesterPhone')) set.push(sql`requester_phone = ${fields.requesterPhone ?? null}`);
+    if (has('requesterEmail')) set.push(sql`requester_email = ${fields.requesterEmail ?? null}`);
+    if (has('companyName')) set.push(sql`company_name = ${fields.companyName ?? null}`);
+    if (has('companyAddress')) set.push(sql`company_address = ${fields.companyAddress ?? null}`);
+    if (has('companyCui')) set.push(sql`company_cui = ${fields.companyCui ?? null}`);
+    if (has('truckRegistrationPlate'))
+      set.push(sql`truck_registration_plate = ${fields.truckRegistrationPlate ?? null}`);
+    if (has('truckMake')) set.push(sql`truck_make = ${fields.truckMake ?? null}`);
+    if (has('truckModel')) set.push(sql`truck_model = ${fields.truckModel ?? null}`);
+    if (has('truckCapacityTons'))
+      set.push(sql`truck_capacity_tons = ${fields.truckCapacityTons ?? null}::numeric`);
+    if (has('trailerRegistrationPlate'))
+      set.push(sql`trailer_registration_plate = ${fields.trailerRegistrationPlate ?? null}`);
+    if (has('transporterName')) set.push(sql`transporter_name = ${fields.transporterName ?? null}`);
+    if (has('transporterCui')) set.push(sql`transporter_cui = ${fields.transporterCui ?? null}`);
+    if (has('transporterAddress'))
+      set.push(sql`transporter_address = ${fields.transporterAddress ?? null}`);
+    if (has('driverName')) set.push(sql`driver_name = ${fields.driverName ?? null}`);
+    if (has('driverPhone')) set.push(sql`driver_phone = ${fields.driverPhone ?? null}`);
+    if (has('driverEmail')) set.push(sql`driver_email = ${fields.driverEmail ?? null}`);
+    // crop_type and quality are PG ENUMs — cast when setting, bind a cleared
+    // value as a bare NULL (a NULL parameter cannot be cast to an enum).
+    if (has('cropType'))
+      set.push(
+        fields.cropType ? sql`crop_type = ${fields.cropType}::crop_type` : sql`crop_type = NULL`,
+      );
+    if (has('quality'))
+      set.push(fields.quality ? sql`quality = ${fields.quality}` : sql`quality = NULL`);
+    if (has('tonsRequested'))
+      set.push(sql`tons_requested = ${fields.tonsRequested ?? null}::numeric`);
+    // Explicit ::date — the column is DATE and an untyped text parameter is a
+    // 500 waiting to happen (see insertBeneficiaryRequest, which casts).
+    if (has('neededDate')) set.push(sql`needed_date = ${fields.neededDate ?? null}::date`);
+    if (has('unloadingDate')) set.push(sql`unloading_date = ${fields.unloadingDate ?? null}::date`);
+    if (has('destinationAddress'))
+      set.push(sql`destination_address = ${fields.destinationAddress ?? null}`);
+    if (has('destinationLocality'))
+      set.push(sql`destination_locality = ${fields.destinationLocality ?? null}`);
+    if (has('notes')) set.push(sql`notes = ${fields.notes ?? null}`);
+    if (touchesSource) {
+      // ONE block for the pair: Postgres rejects two assignments to the same
+      // column, and the XOR has to hold in the ROW, not just in the DTO.
+      set.push(sql`source_depot_id = ${nextDepotId}::uuid`);
+      set.push(sql`source_parcel_id = ${nextParcelId}::uuid`);
+    }
+
+    // A destination retyped as text can no longer be described by the old point,
+    // and a STALE coordinate is worse than none — it is what the confirmation
+    // e-mail draws its route to. The TRIP's coordinate stays put (see the header).
+    const destTouched = has('destinationAddress') || has('destinationLocality');
+    if (destTouched) set.push(sql`destination_coords = NULL`);
+
+    if (!set.length && !resendConfirmation) return req;
+    // No trigger on trip_requests — every writer here sets updated_at by hand.
+    set.push(sql`updated_at = NOW()`);
+
+    const orgFilter = orgId !== null ? sql` AND organization_id = ${orgId}::uuid` : sql``;
+    const touchesMachine = (
+      [
+        'truckRegistrationPlate',
+        'truckMake',
+        'truckModel',
+        'companyName',
+        'companyAddress',
+        'companyCui',
+      ] as (keyof typeof fields)[]
+    ).some(has);
+    const touchesTrip =
+      destTouched ||
+      (['driverName', 'driverPhone', 'driverEmail', 'companyName'] as (keyof typeof fields)[]).some(
+        has,
+      );
+
+    let cascadedTripId: string | null = null;
+
+    await this.drizzleProvider.db.transaction(async (tx) => {
+      /*
+       * Re-assert the stage INSIDE the transaction, holding the trip row.
+       * `registerAuxiliaryLoad` takes the same lock path, so a loader pressing
+       * "start loading" mid-edit either waits for us or makes us fail — it can
+       * never interleave into a half-corrected transport.
+       *
+       * Same ordering TR_TRIP_JOIN uses to pick the live trip: a cancelled row
+       * loses to a live one, newest first.
+       */
+      const live = (await tx.execute(
+        sql`SELECT id, status FROM trips
+             WHERE trip_request_id = ${id}::uuid
+               AND organization_id = ${req.organizationId}::uuid
+               AND deleted_at IS NULL
+             ORDER BY (status = 'cancelled'::trip_status), created_at DESC
+             LIMIT 1
+             FOR UPDATE`,
+      )) as unknown as { id: string; status: string }[];
+      const trip = live[0];
+      if (trip && trip.status !== TripStatus.planned && trip.status !== TripStatus.cancelled) {
+        throw new BadRequestException({
+          error: 'stage_not_editable',
+          stage: composeAuxStage({ status: req.status, tripStatus: trip.status }),
+          message: 'Cursa a intrat în încărcare între timp. Reîncarcă pagina.',
+          i18nKey: 'errors.stageChangedMidEdit',
+        });
+      }
+
+      // RETURNING + a row-count check, not a fire-and-forget UPDATE: cancel()
+      // or deleteAuxRequest() can soft-delete this request between the
+      // findById() above and this statement. Without the check all three writes
+      // would match zero rows, the transaction would commit as a silent no-op,
+      // and the caller would learn about it only from a bare 404 out of the
+      // final re-read. Fail the same way the trip-status race does instead.
+      const written = (await tx.execute(
+        sql`UPDATE trip_requests SET ${sql.join(set, sql`, `)}
+             WHERE id = ${id}::uuid AND deleted_at IS NULL${orgFilter}
+             RETURNING id`,
+      )) as unknown as { id: string }[];
+      if (!written.length) {
+        throw new BadRequestException({
+          error: 'stage_not_editable',
+          stage,
+          message: 'Cursa a fost modificată sau ștearsă între timp. Reîncarcă pagina.',
+          i18nKey: 'errors.stageChangedMidEdit',
+        });
+      }
+
+      // CASCADE 1 — the one-time auxiliary truck, IN PLACE on the SAME id.
+      // `deleted_at IS NULL` is the correct semantic rather than a bug: the
+      // truck is retired at load/cancel/delete, so a cancelled request's dead
+      // truck simply no-ops instead of being resurrected.
+      if (req.machineId && touchesMachine) {
+        await tx.execute(
+          sql`UPDATE machines SET
+                registration_plate    = ${merged('truckRegistrationPlate')},
+                make                  = ${merged('truckMake')},
+                model                 = ${merged('truckModel')},
+                owner_company_name    = ${merged('companyName')},
+                owner_company_address = ${merged('companyAddress')},
+                owner_company_cui     = ${merged('companyCui')},
+                updated_at = NOW()
+              WHERE id = ${req.machineId}::uuid
+                AND organization_id = ${req.organizationId}::uuid
+                AND is_auxiliary = true
+                AND deleted_at IS NULL`,
+        );
+      }
+
+      // CASCADE 2 — the live trip. autoUpsertAuxiliaryTrip copies the external
+      // driver + destination in at mint, and its re-plan UPDATE re-copies ONLY
+      // destination_name/address — external_driver_* are absent from that SET
+      // list, so no existing code path could ever repair them.
+      //
+      // `status = 'planned'` stays in the WHERE as well as in the check above:
+      // it is the same predicate the re-plan path uses, and it costs nothing.
+      if (trip && trip.status === TripStatus.planned && touchesTrip) {
+        await tx.execute(
+          sql`UPDATE trips SET
+                external_driver_name  = ${merged('driverName')},
+                external_driver_phone = ${merged('driverPhone')},
+                external_driver_email = ${merged('driverEmail')},
+                destination_name      = ${auxTripDestinationName({
+                  destinationLocality: merged('destinationLocality') as string | null,
+                  companyName: merged('companyName') as string | null,
+                })},
+                destination_address   = ${merged('destinationAddress')},
+                updated_at = NOW()
+              WHERE id = ${trip.id}::uuid
+                AND organization_id = ${req.organizationId}::uuid
+                AND status = ${TripStatus.planned}::trip_status
+                AND deleted_at IS NULL`,
+        );
+        cascadedTripId = trip.id;
+      }
+    });
+
+    /*
+     * The comandă snapshots the request at render time, so a corrected field
+     * leaves a stale PDF behind. Regeneration is idempotent: `comanda_order_no`
+     * was written back at first generation, so the order keeps its number.
+     * Guarded on `hasComanda` so we never generate one that never existed.
+     */
+    const COMANDA_FIELDS = new Set([
+      'companyName',
+      'companyCui',
+      'transporterName',
+      'requesterName',
+      'requesterPhone',
+      'requesterEmail',
+      'driverName',
+      'truckRegistrationPlate',
+      'trailerRegistrationPlate',
+      'destinationLocality',
+      'destinationAddress',
+      'neededDate',
+      'unloadingDate',
+    ]);
+    if (req.hasComanda && req.beneficiaryId && changed.some((k) => COMANDA_FIELDS.has(k))) {
+      try {
+        await this.comandaQueue.add(
+          'generate',
+          { requestId: id, orgId: req.organizationId },
+          { removeOnComplete: true, attempts: 2 },
+        );
+      } catch (err) {
+        // A queue hiccup must never fail the edit the operator just made.
+        this.winston.warn('updateAuxRequest: comandă re-enqueue failed', {
+          context: 'TripRequestsService',
+          requestId: id,
+          err: err instanceof Error ? { message: err.message } : err,
+        });
+      }
+    }
+
+    // Opt-in re-notification: the confirmation e-mail + driver SMS already went
+    // out with the OLD data. The processor reads the request live, so it sends
+    // the corrected values.
+    let resent = false;
+    if (resendConfirmation && req.status === RequestStatus.confirmed) {
+      try {
+        await this.messageQueue.add(
+          'transport-confirmation',
+          {
+            requestId: id,
+            depotId: (touchesSource ? nextDepotId : req.sourceDepotId) ?? undefined,
+            parcelId: (touchesSource ? nextParcelId : req.sourceParcelId) ?? undefined,
+          },
+          { removeOnComplete: true, attempts: 1 },
+        );
+        resent = true;
+      } catch (err) {
+        this.winston.warn('updateAuxRequest: confirmation re-enqueue failed', {
+          context: 'TripRequestsService',
+          requestId: id,
+          err: err instanceof Error ? { message: err.message } : err,
+        });
+      }
+    }
+
+    // Field KEYS only — the values are PII (names, phones, addresses).
+    this.winston.log('flow', `Trip request ${id} edited at stage '${stage}'`, {
+      context: 'TripRequestsService',
+      requestId: id,
+      stage,
+      fields: changed,
+      cascadedMachineId: touchesMachine ? (req.machineId ?? null) : null,
+      cascadedTripId,
+      resent,
+    });
+
+    // Re-read rather than RETURNING: `UPDATE ... RETURNING ${TR_COLS}` cannot see
+    // TR_TRIP_JOIN (a LATERAL lives in a SELECT's FROM), so the caller would get
+    // a row missing the whole live-trip read model the ledger renders.
+    return this.findById(orgId, id);
   }
 
   /**

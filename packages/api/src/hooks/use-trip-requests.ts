@@ -1,7 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { TripRequest, OrgRequestSettings, Document } from '@strawboss/types';
+import type { UpdateTripRequestInput } from '@strawboss/validation';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
+import { fetchAllPages, type LedgerResult } from './paged-ledger.js';
 
 /**
  * Admin/dispatcher: list external trip requests.
@@ -21,6 +23,54 @@ export function useTripRequests(client: ApiClient, filters?: Record<string, unkn
       const params = filters ? `?${new URLSearchParams(filters as Record<string, string>)}` : '';
       return client.get<TripRequest[]>(`/api/v1/trip-requests${params}`);
     },
+  });
+}
+
+/**
+ * Every trip request matching `filters`, across as many server pages as it takes.
+ *
+ * `GET /trip-requests` already paginates (`limit`/`offset`, default 200,
+ * `MAX_LIST_LIMIT` 1000) — the UI simply never used it, so the aux ledger
+ * silently stopped at the 200 most recent requests until the working table on
+ * `/trips` was moved onto this hook too. The Curse Aux report
+ * covers a whole season and filters by `AuxStage` client-side (the stage is
+ * composed from two axes and is not a server-side column), so it needs the full
+ * set or its stage counts would be wrong.
+ *
+ * No `status` filter is applied here on purpose: `trip_requests.status` freezes
+ * at `confirmed` while the transport is out, so filtering on it would drop live
+ * work. Filter on the composed `AuxStage` after `buildAuxRows()` instead.
+ */
+export function useAllTripRequests(
+  client: ApiClient,
+  filters?: Record<string, unknown>,
+  options?: { enabled?: boolean },
+) {
+  return useQuery<LedgerResult<TripRequest>>({
+    queryKey: queryKeys.tripRequests.listAll(filters),
+    enabled: options?.enabled ?? true,
+    /*
+     * A filter change is a NEW query key, so without this `data` goes undefined
+     * for the duration of the refetch. The consumer then swaps the table for a
+     * spinner, and `DataTable` — which owns its sort state locally — remounts
+     * with the sort RESET. Typing one character in the search box silently threw
+     * away the column the operator had just sorted by.
+     *
+     * Also removes the report tab's empty-flash between date ranges.
+     */
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchAllPages<TripRequest>(
+        client,
+        '/api/v1/trip-requests',
+        (offset, pageSize) =>
+          `?${new URLSearchParams({
+            ...((filters ?? {}) as Record<string, string>),
+            limit: String(pageSize),
+            offset: String(offset),
+          })}`,
+        // This endpoint reports no total; the accumulated length stands in.
+      ),
   });
 }
 
@@ -80,6 +130,38 @@ export function useCancelTripRequest(client: ApiClient) {
       // the task board too, or it lingers as a phantom truck you can still plan.
       void qc.invalidateQueries({ queryKey: queryKeys.machines.all });
       void qc.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
+    },
+  });
+}
+
+/**
+ * Correct an aux transport in place (admin/dispatcher) — the alternative to
+ * deleting it and re-creating it.
+ *
+ * PATCH semantics: only the keys sent are written; `null` clears a nullable
+ * column, an absent key leaves it alone.
+ *
+ * Invalidates far more than trip-requests because ONE PATCH writes THREE tables:
+ * the request, the one-time auxiliary `machines` row (plate + owner company —
+ * the fleet list, the truck board and the CMR read the truck THERE) and the
+ * planned `trips` row (external driver + destination the loader's phone shows).
+ * `transporter.all` because the same request is a row in the transporter's own
+ * ledger. `tripRequests.all` already prefixes list, listAll AND detail.
+ *
+ * Refused with `error: 'stage_not_editable'` (plus the composed `stage`) once
+ * the transport is loading, awaiting the arrival CMR, completed or cancelled.
+ */
+export function useUpdateTripRequest(client: ApiClient) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateTripRequestInput }) =>
+      client.patch<TripRequest>(`/api/v1/trip-requests/${id}`, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tripRequests.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.machines.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.trips.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.taskAssignments.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.transporter.all });
     },
   });
 }

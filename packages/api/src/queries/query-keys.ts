@@ -2,6 +2,14 @@ export const queryKeys = {
   trips: {
     all: ['trips'] as const,
     list: (filters?: Record<string, unknown>) => ['trips', 'list', filters] as const,
+    /**
+     * The season-wide ledger behind the Curse report — every page walked and
+     * concatenated. Deliberately a SEPARATE key from `list`: the two hold
+     * different shapes (`{rows,total,truncated}` vs a bare array) and different
+     * row counts for the same filters, so sharing a key would let one clobber
+     * the other in cache. Still under `trips.all`, so a mutation invalidates both.
+     */
+    listAll: (filters?: Record<string, unknown>) => ['trips', 'listAll', filters] as const,
     detail: (id: string) => ['trips', 'detail', id] as const,
   },
   parcels: {
@@ -106,6 +114,8 @@ export const queryKeys = {
   tripRequests: {
     all: ['tripRequests'] as const,
     list: (filters?: Record<string, unknown>) => ['tripRequests', 'list', filters] as const,
+    /** Season-wide aux ledger for the report — see the note on `trips.listAll`. */
+    listAll: (filters?: Record<string, unknown>) => ['tripRequests', 'listAll', filters] as const,
     detail: (id: string) => ['tripRequests', 'detail', id] as const,
     avize: (id: string) => ['tripRequests', 'avize', id] as const,
     // `kind` distinguishes the departure CMR ('loading', the default — every
@@ -135,6 +145,9 @@ export const queryKeys = {
     records: (beneficiaryId: string, kind: string) =>
       ['transporter', 'records', beneficiaryId, kind] as const,
     requests: (filters?: Record<string, unknown>) => ['transporter', 'requests', filters] as const,
+    /** The ledger walked across every server page — see `useAllTransporterRequests`. */
+    requestsAll: (filters?: Record<string, unknown>) =>
+      ['transporter', 'requests', 'all', filters] as const,
     orderSettings: (beneficiaryId: string) =>
       ['transporter', 'orderSettings', beneficiaryId] as const,
     comanda: (requestId: string) => ['transporter', 'comanda', requestId] as const,

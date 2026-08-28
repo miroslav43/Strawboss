@@ -131,6 +131,7 @@ export {
   updateOrgRequestSettingsSchema,
   confirmTripRequestSchema,
   cancelTripRequestSchema,
+  updateTripRequestSchema,
 } from './schemas/trip-request.schema.js';
 export type {
   CreateTripRequestInput,
@@ -140,6 +141,7 @@ export type {
   VerifyPortalCodeInput,
   SignTripInput,
   UpdateOrgRequestSettingsInput,
+  UpdateTripRequestInput,
 } from './schemas/trip-request.schema.js';
 
 export {

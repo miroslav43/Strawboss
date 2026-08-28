@@ -164,3 +164,101 @@ export type ConfirmTripRequestInput = z.infer<typeof confirmTripRequestSchema>;
 export const cancelTripRequestSchema = z.object({
   reason: z.string().max(500).optional(),
 });
+
+/**
+ * Correcting an aux transport IN PLACE (admin/dispatcher) — PATCH /trip-requests/:id.
+ *
+ * The operator's ask: "if something was typed wrong I want to fix it, not have
+ * to delete the transport and re-create it."
+ *
+ * PATCH semantics: only the keys PRESENT are written. An explicit `null` clears
+ * a nullable column; an absent key leaves it alone. That is why the clearable
+ * fields are `.nullable()` rather than `.optional()` before `.partial()` — the
+ * two mean different things here, and the service branches on key presence, not
+ * on truthiness.
+ *
+ * The exceptions are deliberate and are exactly the NOT NULL columns:
+ * `requesterName`, `requesterPhone`, `truckRegistrationPlate`, `driverName` and
+ * `driverPhone`. Sending `null` for one of those is a 400 here rather than a
+ * constraint violation surfacing as a 500. Everything else follows the column —
+ * `neededDate` included, because `needed_date` IS nullable and the portal
+ * already stores requests without one, so refusing to clear it would make the
+ * modal offer an edit that can only ever fail.
+ *
+ * `.strict()` is load-bearing, not style: it turns `status`, `machineId`,
+ * `tripId`, `comandaOrderNo`, `beneficiaryId`, `notifyRecipients`, `confirmedBy`
+ * and every read-only join field (`tripNumber`, `machinePlate`, `hasAviz`…) into
+ * a 400 rather than a key that is silently ignored.
+ *
+ * Enumerated explicitly, never `createBeneficiaryRequestSchema.partial()`: that
+ * schema carries `pin`, `contactIds` and `beneficiaryId`, which are credentials
+ * and provenance — not facts a human mistypes. Bounds mirror it field for field.
+ *
+ * Absent on purpose:
+ *   - lifecycle columns (owned by confirm/cancel and by the trip itself);
+ *   - `comandaOrderNo` + `beneficiaryId` — the per-beneficiary counter is drawn
+ *     ONCE and written back so regeneration is idempotent; repointing either
+ *     corrupts it;
+ *   - `notifyRecipients` — a snapshot whose fan-out has already fired;
+ *   - `destinationCoords` — there is no map picker in the edit modal, so the
+ *     service NULLs the REQUEST's point when the destination text changes rather
+ *     than keeping a stale pin. It never touches the TRIP's point: that one is a
+ *     stock-attribution key (see `depotInboundBales`).
+ */
+export const updateTripRequestSchema = z
+  .object({
+    // who is requesting
+    requesterName: z.string().min(1).max(120),
+    requesterPhone: z.string().min(4).max(40),
+    requesterEmail: z.string().email().max(160).nullable(),
+    companyName: z.string().min(1).max(160).nullable(),
+    companyAddress: z.string().max(300).nullable(),
+    companyCui: z.string().max(40).nullable(),
+    // their truck — cascaded onto the one-time auxiliary `machines` row
+    truckRegistrationPlate: z.string().min(1).max(40),
+    truckMake: z.string().max(80).nullable(),
+    truckModel: z.string().max(80).nullable(),
+    truckCapacityTons: z.number().positive().max(1000).nullable(),
+    trailerRegistrationPlate: z.string().max(40).nullable(),
+    // transporter company
+    transporterName: z.string().max(200).nullable(),
+    transporterCui: z.string().max(20).nullable(),
+    transporterAddress: z.string().max(300).nullable(),
+    // their driver — cascaded onto the live trip's external_driver_* columns
+    driverName: z.string().min(1).max(120),
+    driverPhone: z.string().min(4).max(40),
+    driverEmail: z.string().email().max(160).nullable(),
+    // the ask
+    cropType: cropTypeSchema.nullable(),
+    // Mirrors the CHECK constraint — an invalid grade must be a 400, not a
+    // constraint violation surfacing as a 500.
+    quality: z.enum(['quality_1', 'quality_2']).nullable(),
+    tonsRequested: z.number().positive().max(100000).nullable(),
+    neededDate: isoDateSchema.nullable(),
+    unloadingDate: isoDateSchema.nullable(),
+    destinationAddress: z.string().max(300).nullable(),
+    destinationLocality: z.string().max(160).nullable(),
+    notes: z.string().max(2000).nullable(),
+    // Pickup source — "I picked the wrong depot at confirm". Same XOR the
+    // confirm body enforces: goods come off a field or out of a depot, never
+    // both. Sending BOTH as non-null is rejected below; sending one clears the
+    // other server-side, because the pair must hold in the ROW, not just here.
+    sourceDepotId: uuidSchema.nullable(),
+    sourceParcelId: uuidSchema.nullable(),
+    /**
+     * Re-send the transport-confirmation e-mail + driver SMS with the corrected
+     * data. OFF by default — the operator decides: a tonnage typo does not
+     * deserve an SMS, a wrong driver phone number does.
+     */
+    resendConfirmation: z.boolean(),
+  })
+  .partial()
+  .strict()
+  .refine((d) => !(d.sourceDepotId && d.sourceParcelId), {
+    message: 'at most one of sourceDepotId or sourceParcelId may be set',
+  })
+  .refine((d) => Object.keys(d).some((k) => k !== 'resendConfirmation'), {
+    message: 'at least one field must be provided',
+  });
+export type UpdateTripRequestInput = z.infer<typeof updateTripRequestSchema>;
+

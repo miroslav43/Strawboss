@@ -56,7 +56,11 @@ import type {
   RegisterLoadDto,
   RegisterLoadResult,
 } from '@strawboss/types';
-import { getAvailableTransitions, DEFAULT_MAX_BALES_PER_TRUCK } from '@strawboss/domain';
+import {
+  getAvailableTransitions,
+  DEFAULT_MAX_BALES_PER_TRUCK,
+  auxTripDestinationName,
+} from '@strawboss/domain';
 import { isFeatureEnabled } from '@strawboss/types';
 import type { FeatureKey, Locale } from '@strawboss/types';
 import { FeaturesService } from '../features/features.service';
@@ -556,7 +560,13 @@ export class TripsService implements OnModuleInit {
         LEFT JOIN farms    f ON f.id = p.farm_id
         LEFT JOIN delivery_destinations sd ON sd.id = t.source_depot_id
         WHERE ${where}
-        ORDER BY t.created_at DESC
+        -- t.id DESC is load-bearing now that the reports ledger PAGES this
+        -- endpoint (pageSize/offset -> packages/api paged-ledger.ts): OFFSET over
+        -- a non-unique ORDER BY can duplicate a row on one page and skip it on
+        -- the next. trips.created_at defaults to now(), the TRANSACTION clock,
+        -- and several paths mint more than one trip per transaction, so ties are
+        -- routine rather than theoretical. Same fix as TripRequestsService.list().
+        ORDER BY t.created_at DESC, t.id DESC
         LIMIT ${limit} OFFSET ${offset}
       `,
     );
@@ -3353,7 +3363,12 @@ export class TripsService implements OnModuleInit {
     const req = reqRows[0];
     if (!req) return;
 
-    const destName = req.destination_locality ?? req.company_name ?? 'Adresă solicitant';
+    // Shared with `updateAuxRequest`'s edit cascade — two writers, one ladder,
+    // or the loader's phone and the admin table describe different destinations.
+    const destName = auxTripDestinationName({
+      destinationLocality: req.destination_locality,
+      companyName: req.company_name,
+    });
     const destAddress = req.destination_address ?? null;
 
     /*

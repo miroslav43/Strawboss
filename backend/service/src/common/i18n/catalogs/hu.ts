@@ -35,6 +35,9 @@ export const hu: CatalogShape<typeof en> = {
     seasonClosed: 'A(z) {year}. szezon le van zárva. A bejegyzés már nem menthető.',
     accountNotFound: 'A fiók nem létezik vagy törölve lett',
     accountInactive: 'A fiók inaktív',
+    stageNotEditable:
+      'Ez a fuvar már elindult vagy lezárult, ezért többé nem módosítható.',
+    stageChangedMidEdit: 'A fuvar közben rakodásba lépett. Töltsd újra az oldalt.',
   },
   push: {
     common: {

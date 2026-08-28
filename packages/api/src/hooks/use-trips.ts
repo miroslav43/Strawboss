@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type {
   Trip,
   TripCreateDto,
@@ -17,6 +17,7 @@ import type {
 } from '@strawboss/types';
 import type { ApiClient } from '../client/api-client.js';
 import { queryKeys } from '../queries/query-keys.js';
+import { fetchAllPages, type LedgerResult } from './paged-ledger.js';
 
 /**
  * `GET /api/v1/trips` returns a bare JSON array of raw snake_case trip rows
@@ -31,6 +32,54 @@ export function useTrips(client: ApiClient, filters?: Record<string, unknown>) {
       const params = filters ? `?${new URLSearchParams(filters as Record<string, string>)}` : '';
       return client.get<unknown[]>(`/api/v1/trips${params}`);
     },
+  });
+}
+
+/**
+ * Every trip matching `filters`, across as many server pages as it takes.
+ *
+ * The Curse report sorts and searches client-side over a whole season, so it
+ * needs the complete set — `useTrips` would hand it only the newest 1000 rows
+ * and no way to know rows were missing. Uses the `pageSize`/`offset` pair on
+ * `GET /trips` (opt-in; omitting them is what keeps every other caller's
+ * response unchanged) and reads the `total_count` window column the server adds
+ * on that path.
+ *
+ * Rows come back RAW and snake_case, exactly as `useTrips` returns them — run
+ * them through `normalizeList()` + `toTripCamelList()` before reading fields.
+ */
+export function useAllTrips(
+  client: ApiClient,
+  filters?: Record<string, unknown>,
+  options?: { enabled?: boolean },
+) {
+  return useQuery<LedgerResult<unknown>>({
+    queryKey: queryKeys.trips.listAll(filters),
+    enabled: options?.enabled ?? true,
+    // A filter change is a NEW query key, so without this `data` goes undefined
+    // and the consumer swaps its table for a spinner — remounting it and losing
+    // the column sort the operator just picked, on every debounced keystroke.
+    // Same reason as `useAllTripRequests`.
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchAllPages<unknown>(
+        client,
+        '/api/v1/trips',
+        (offset, pageSize) =>
+          `?${new URLSearchParams({
+            ...((filters ?? {}) as Record<string, string>),
+            pageSize: String(pageSize),
+            offset: String(offset),
+          })}`,
+        // `total_count` rides on every row of the paged query (count(*) OVER()),
+        // so the first row of the first page is enough — and an empty first page
+        // legitimately yields undefined, which falls back to rows.length = 0.
+        (page) => {
+          const first = page[0] as Record<string, unknown> | undefined;
+          const raw = first?.total_count;
+          return raw === undefined || raw === null ? undefined : Number(raw);
+        },
+      ),
   });
 }
 

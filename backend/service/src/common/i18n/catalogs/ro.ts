@@ -39,6 +39,9 @@ export const ro: CatalogShape<typeof en> = {
     seasonClosed: 'Sezonul {year} este închis. Înregistrarea nu mai poate fi salvată.',
     accountNotFound: 'Cont inexistent sau șters',
     accountInactive: 'Cont inactiv',
+    stageNotEditable:
+      'Această cursă a început deja sau este finalizată și nu mai poate fi modificată.',
+    stageChangedMidEdit: 'Cursa a intrat în încărcare între timp. Reîncarcă pagina.',
   },
   push: {
     common: {
