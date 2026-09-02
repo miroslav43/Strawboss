@@ -3575,6 +3575,7 @@ export class TripsService implements OnModuleInit {
         loaderName,
         loaderPhone,
         parcelName,
+        isDepotSource: !args.sourceParcelId && !!args.sourceDepotId,
         locality,
         mapsUrl,
         cropType: args.cropType,

@@ -56,6 +56,9 @@ export interface DriverAssignedCtx {
   loaderName: string | null;
   loaderPhone: string | null;
   parcelName: string | null;
+  /** True when `parcelName`/`locality` describe a depot (delivery_destinations)
+   * pickup rather than a field — swaps the SMS label accordingly. */
+  isDepotSource?: boolean;
   locality: string | null;
   mapsUrl: string | null;
   cropType: string | null;
@@ -293,6 +296,7 @@ const DRIVER_ASSIGNED_STRINGS: Record<
   {
     intro: string;
     parcelLabel: string;
+    depotLabel: string;
     loaderLabel: string;
     telLabel: string;
     cropLabel: string;
@@ -302,6 +306,7 @@ const DRIVER_ASSIGNED_STRINGS: Record<
   ro: {
     intro: 'Ați fost asignat pentru încărcare.\n',
     parcelLabel: 'Parcelă',
+    depotLabel: 'Depozit',
     loaderLabel: 'Operator încărcare',
     telLabel: 'tel',
     cropLabel: 'Recoltă',
@@ -310,6 +315,7 @@ const DRIVER_ASSIGNED_STRINGS: Record<
   en: {
     intro: 'You have been assigned for loading.\n',
     parcelLabel: 'Field',
+    depotLabel: 'Depot',
     loaderLabel: 'Loading operator',
     telLabel: 'tel',
     cropLabel: 'Crop',
@@ -318,6 +324,7 @@ const DRIVER_ASSIGNED_STRINGS: Record<
   hu: {
     intro: 'Rakodásra lett kijelölve.\n',
     parcelLabel: 'Tábla',
+    depotLabel: 'Raktár',
     loaderLabel: 'Rakodó kezelő',
     telLabel: 'tel',
     cropLabel: 'Termény',
@@ -327,9 +334,10 @@ const DRIVER_ASSIGNED_STRINGS: Record<
 
 function renderDriverAssigned(ctx: DriverAssignedCtx, locale: Locale) {
   const s = DRIVER_ASSIGNED_STRINGS[locale];
+  const sourceLabel = ctx.isDepotSource ? s.depotLabel : s.parcelLabel;
   const body =
     s.intro +
-    (ctx.parcelName ? `${s.parcelLabel}: ${ctx.parcelName}` : `${s.parcelLabel}: -`) +
+    (ctx.parcelName ? `${sourceLabel}: ${ctx.parcelName}` : `${sourceLabel}: -`) +
     (ctx.locality ? `, ${ctx.locality}` : '') +
     `\n` +
     (ctx.loaderName ? `${s.loaderLabel}: ${ctx.loaderName}` : '') +
