@@ -8,6 +8,7 @@ import {
 import { sql } from 'drizzle-orm';
 import type { Logger } from 'winston';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { pickLoaderMatch } from '@strawboss/domain';
 import { DrizzleProvider } from '../database/drizzle.provider';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TripsService } from '../trips/trips.service';
@@ -45,6 +46,235 @@ export class TaskAssignmentsService {
       this.winston.error(`autoCancelForTruckTask failed for task ${taskId}`, {
         context: 'TaskAssignmentsService',
         taskId,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
+    }
+  }
+
+  /**
+   * Loader task_assignments rows on `assignmentDate` whose parcel/depot
+   * matches a confirmed aux truck's pickup source. One row per matching
+   * loader (a loader can have several rows for the day — parcels + depots —
+   * so this can return more than one id per loader machine; picking any of
+   * them as `parentAssignmentId` is equivalent, `autoUpsertAuxiliaryTrip`
+   * only reads `machine_id`/`parcel_id`/`destination_id` off it).
+   */
+  private async findMatchingLoaderTaskIds(
+    orgId: string,
+    assignmentDate: string,
+    sourceParcelId: string | null,
+    sourceDepotId: string | null,
+  ): Promise<string[]> {
+    if (!sourceParcelId && !sourceDepotId) return [];
+    const rows = (await this.drizzleProvider.db.execute(sql`
+      SELECT ta.id
+      FROM task_assignments ta
+      JOIN machines m ON m.id = ta.machine_id
+      WHERE ta.organization_id = ${orgId}::uuid
+        AND ta.assignment_date = ${assignmentDate}
+        AND ta.deleted_at IS NULL
+        AND m.machine_type = 'loader'::machine_type
+        AND m.deleted_at IS NULL
+        AND (
+          (${sourceParcelId}::uuid IS NOT NULL AND ta.parcel_id = ${sourceParcelId}::uuid)
+          OR (${sourceDepotId}::uuid IS NOT NULL AND ta.destination_id = ${sourceDepotId}::uuid)
+        )
+    `)) as unknown as { id: string }[];
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Auto-assign part 1/2: place a confirmed aux truck onto a currently-
+   * matching loader for `assignmentDate`, iff it has no task_assignments
+   * row for that date yet. A manual dispatcher placement (or a prior auto
+   * placement) always wins — this never touches a truck that already has a
+   * row, and once placed the truck is never revisited even if the match
+   * that produced it later stops holding.
+   *
+   * Called (a) right after a trip_request is confirmed, in case a matching
+   * loader is already on the board, and (b) whenever a loader's own
+   * parcel/depot assignment changes, via `sweepUnassignedAuxTrucks` below.
+   * Best-effort: planning flows must never fail because auto-assign did.
+   */
+  async tryAutoAssignAuxTruck(
+    orgId: string | null,
+    args: {
+      machineId: string;
+      assignmentDate: string | null;
+      sourceParcelId: string | null;
+      sourceDepotId: string | null;
+    },
+  ): Promise<void> {
+    if (!orgId || !args.assignmentDate) return;
+    if (!args.sourceParcelId && !args.sourceDepotId) return;
+
+    try {
+      // Two independent triggers (confirm() and the loader-side sweep, itself
+      // fireable from both create() and update()) can race to place the same
+      // truck+date. Serialize with an advisory lock (same idiom as the trip
+      // iteration mint above) so only one writer ever sees "no row yet" and
+      // reaches the INSERT below — a plain check-then-create() here let two
+      // concurrent callers both pass the check and both insert.
+      const newId = await this.drizzleProvider.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext('aux-assign:' || ${args.machineId} || ':' || ${args.assignmentDate}))`,
+        );
+
+        // Re-check under the lock. `deleted_at IS NULL` is deliberately
+        // omitted: a row that once existed and was soft-deleted (dispatcher
+        // removed this truck from the board) must stay "touched" forever for
+        // this date, or the next sweep would silently re-place a truck a
+        // dispatcher deliberately took off — same "manual is final" rule,
+        // extended to removal.
+        const existing = (await tx.execute(sql`
+          SELECT id FROM task_assignments
+          WHERE machine_id = ${args.machineId}::uuid
+            AND assignment_date = ${args.assignmentDate}
+          LIMIT 1
+        `)) as unknown as { id: string }[];
+        if (existing.length) return null;
+
+        const candidates = await this.findMatchingLoaderTaskIds(
+          orgId,
+          args.assignmentDate as string,
+          args.sourceParcelId,
+          args.sourceDepotId,
+        );
+        const chosenLoaderTaskId = pickLoaderMatch(candidates);
+        if (!chosenLoaderTaskId) return null;
+
+        const seqRows = (await tx.execute(sql`
+          SELECT COALESCE(MAX(sequence_order), -1) + 1 AS n
+          FROM task_assignments
+          WHERE assignment_date = ${args.assignmentDate} AND machine_id = ${args.machineId}
+        `)) as unknown as { n: number }[];
+        const sequenceOrder = Number(seqRows[0]?.n ?? 0);
+
+        const inserted = (await tx.execute(sql`
+          INSERT INTO task_assignments (
+            organization_id, assignment_date, machine_id,
+            status, sequence_order, parent_assignment_id
+          ) VALUES (
+            ${orgId}::uuid, ${args.assignmentDate}, ${args.machineId}::uuid,
+            'in_progress'::task_assignment_status, ${sequenceOrder}, ${chosenLoaderTaskId}::uuid
+          ) RETURNING id
+        `)) as unknown as { id: string }[];
+
+        this.winston.log(
+          'flow',
+          `Auto-assigned aux truck ${args.machineId} to loader task ${chosenLoaderTaskId} for ${args.assignmentDate}`,
+          {
+            context: 'TaskAssignmentsService',
+            machineId: args.machineId,
+            assignmentDate: args.assignmentDate,
+            loaderTaskId: chosenLoaderTaskId,
+            candidateCount: candidates.length,
+          },
+        );
+        return inserted[0]?.id ?? null;
+      });
+
+      // Materialize the trip after the placement has committed — same order
+      // create() already uses for a manual placement.
+      if (newId) {
+        await this.autoUpsertTripSafe(newId);
+      }
+    } catch (err) {
+      this.winston.error(`Aux truck auto-assign failed for machine ${args.machineId}`, {
+        context: 'TaskAssignmentsService',
+        machineId: args.machineId,
+        assignmentDate: args.assignmentDate,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
+    }
+  }
+
+  /**
+   * Best-effort wrapper around the sweep trigger: resolves whether `machineId`
+   * is a loader (reusing `knownMachineType` when the caller already has it,
+   * to skip a redundant query) and, if so, sweeps unplaced aux trucks for
+   * `assignmentDate`. Never throws — this only exists to decide whether to
+   * fire an unrelated side effect, and must not turn a transient failure
+   * here into a broken create()/update() for a caller that has nothing to
+   * do with aux trucks or loaders.
+   */
+  private async maybeSweepAfterLoaderWrite(
+    orgId: string | null,
+    machineId: string,
+    assignmentDate: string,
+    knownMachineType: string | null,
+  ): Promise<void> {
+    try {
+      let machineType = knownMachineType;
+      if (machineType === null) {
+        const typeRows = (await this.drizzleProvider.db.execute(sql`
+          SELECT machine_type FROM machines WHERE id = ${machineId}::uuid LIMIT 1
+        `)) as unknown as { machine_type: string }[];
+        machineType = typeRows[0]?.machine_type ?? null;
+      }
+      if (machineType === 'loader') {
+        await this.sweepUnassignedAuxTrucks(orgId, assignmentDate);
+      }
+    } catch (err) {
+      this.winston.error(`Loader-change aux sweep check failed for machine ${machineId}`, {
+        context: 'TaskAssignmentsService',
+        machineId,
+        assignmentDate,
+        err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      });
+    }
+  }
+
+  /**
+   * Auto-assign part 2/2: whenever a loader's own parcel/depot assignment
+   * changes for a date, sweep confirmed aux trucks that are still
+   * unplaced for that same date and see if the new assignment matches any
+   * of them. Only trucks with no task_assignments row at all are touched —
+   * see `tryAutoAssignAuxTruck`.
+   */
+  private async sweepUnassignedAuxTrucks(
+    orgId: string | null,
+    assignmentDate: string | null,
+  ): Promise<void> {
+    if (!orgId || !assignmentDate) return;
+    try {
+      const pending = (await this.drizzleProvider.db.execute(sql`
+        SELECT tr.machine_id, tr.source_parcel_id, tr.source_depot_id
+        FROM trip_requests tr
+        JOIN machines m ON m.id = tr.machine_id
+        WHERE tr.organization_id = ${orgId}::uuid
+          AND tr.status = 'confirmed'::request_status
+          AND tr.needed_date = ${assignmentDate}
+          AND tr.machine_id IS NOT NULL
+          AND tr.deleted_at IS NULL
+          AND m.deleted_at IS NULL
+          -- Not gated on deleted_at IS NULL here either: a truck once placed
+          -- (even if the dispatcher later removed the row) has been
+          -- "touched" for this date and must never be swept back in — see
+          -- tryAutoAssignAuxTruck's own (authoritative) re-check.
+          AND NOT EXISTS (
+            SELECT 1 FROM task_assignments ta
+            WHERE ta.machine_id = tr.machine_id
+              AND ta.assignment_date = ${assignmentDate}
+          )
+      `)) as unknown as {
+        machine_id: string;
+        source_parcel_id: string | null;
+        source_depot_id: string | null;
+      }[];
+
+      for (const row of pending) {
+        await this.tryAutoAssignAuxTruck(orgId, {
+          machineId: row.machine_id,
+          assignmentDate,
+          sourceParcelId: row.source_parcel_id,
+          sourceDepotId: row.source_depot_id,
+        });
+      }
+    } catch (err) {
+      this.winston.error(`Aux truck sweep failed for ${assignmentDate}`, {
+        context: 'TaskAssignmentsService',
+        assignmentDate,
         err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
       });
     }
@@ -580,13 +810,15 @@ export class TaskAssignmentsService {
     }
     const assignmentDate = dto.assignmentDate as string;
     const machineId = dto.machineId as string;
+    let machineType: string | null = null;
 
     if (orgId !== null) {
       const machineCheck = (await this.drizzleProvider.db.execute(sql`
-        SELECT id FROM machines WHERE id = ${machineId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
-      `)) as unknown as { id: string }[];
+        SELECT id, machine_type FROM machines WHERE id = ${machineId}::uuid AND organization_id = ${orgId}::uuid AND deleted_at IS NULL LIMIT 1
+      `)) as unknown as { id: string; machine_type: string }[];
       if (!machineCheck.length)
         throw new ForbiddenException('Machine not found in your organization');
+      machineType = machineCheck[0].machine_type;
 
       if (dto.parcelId) {
         const parcelCheck = (await this.drizzleProvider.db.execute(sql`
@@ -655,6 +887,13 @@ export class TaskAssignmentsService {
     const newId = rows[0]?.id;
     if (newId) {
       await this.autoUpsertTripSafe(newId);
+    }
+
+    // A loader just got a parcel/depot for the day — sweep confirmed aux
+    // trucks that are still unplaced for this date in case this newly
+    // wired-up loader matches one of them.
+    if (dto.parcelId || dto.destinationId) {
+      await this.maybeSweepAfterLoaderWrite(orgId, machineId, assignmentDate, machineType);
     }
 
     return result;
@@ -799,6 +1038,21 @@ export class TaskAssignmentsService {
     // Re-sync trip whenever the wiring changes (truck, parent loader, or destination).
     if ('parentAssignmentId' in dto || 'destinationId' in dto || 'machineId' in dto) {
       await this.autoUpsertTripSafe(id);
+    }
+
+    // A loader's own parcel/depot just changed — sweep confirmed aux trucks
+    // still unplaced for that date, same as on create().
+    if ('parcelId' in dto || 'destinationId' in dto) {
+      const updatedRows = result as unknown as { machine_id: string; assignment_date: string }[];
+      const updatedRow = updatedRows[0];
+      if (updatedRow) {
+        await this.maybeSweepAfterLoaderWrite(
+          orgId,
+          updatedRow.machine_id,
+          updatedRow.assignment_date,
+          null,
+        );
+      }
     }
 
     return result;

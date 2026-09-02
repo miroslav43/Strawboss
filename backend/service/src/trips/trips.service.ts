@@ -3312,7 +3312,7 @@ export class TripsService implements OnModuleInit {
     if (!parentAssignmentId) return;
 
     const parentRows = (await this.drizzleProvider.db.execute(
-      sql`SELECT id, machine_id, parcel_id, assigned_user_id
+      sql`SELECT id, machine_id, parcel_id, destination_id, assigned_user_id
           FROM task_assignments
           WHERE id = ${parentAssignmentId} AND deleted_at IS NULL
           LIMIT 1`,
@@ -3320,12 +3320,17 @@ export class TripsService implements OnModuleInit {
       id: string;
       machine_id: string;
       parcel_id: string | null;
+      destination_id: string | null;
       assigned_user_id: string | null;
     }[];
     const parent = parentRows[0];
     if (!parent) return;
 
+    // The loader can be working a field OR a depot (00073_loader_depot_source) —
+    // without this, a depot-assigned loader minted an aux trip with NO pickup
+    // source at all, since only parcel_id was ever read here.
     const sourceParcelId = parent.parcel_id;
+    const sourceDepotId = parent.parcel_id ? null : parent.destination_id;
     const loaderMachineId = parent.machine_id;
     let loaderOperatorId: string | null = parent.assigned_user_id;
     if (!loaderOperatorId && loaderMachineId) {
@@ -3429,7 +3434,7 @@ export class TripsService implements OnModuleInit {
         const inserted = (await tx.execute(
           sql`INSERT INTO trips (
                 organization_id,
-                trip_number, status, source_parcel_id, truck_id, driver_id,
+                trip_number, status, source_parcel_id, source_depot_id, truck_id, driver_id,
                 loader_id, loader_operator_id,
                 destination_name, destination_address, destination_coords,
                 bale_count, source_parcel_auto,
@@ -3437,7 +3442,7 @@ export class TripsService implements OnModuleInit {
                 external_driver_email, trip_request_id
               ) VALUES (
                 ${orgId ? sql`${orgId}::uuid` : sql`NULL`},
-                ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId},
+                ${tripNumber}, ${TripStatus.planned}, ${sourceParcelId}, ${sourceDepotId},
                 ${machineId}, NULL,
                 ${loaderMachineId}, ${loaderOperatorId},
                 ${destName}, ${destAddress},
@@ -3464,6 +3469,7 @@ export class TripsService implements OnModuleInit {
         driverPhone: req.driver_phone,
         loaderOperatorId,
         sourceParcelId,
+        sourceDepotId,
         cropType: req.crop_type,
         tripId: newTripId,
         orgId,
@@ -3487,6 +3493,7 @@ export class TripsService implements OnModuleInit {
     await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
             source_parcel_id = ${sourceParcelId},
+            source_depot_id = ${sourceDepotId},
             loader_id = ${loaderMachineId},
             loader_operator_id = ${loaderOperatorId},
             destination_name = ${destName},
@@ -3510,6 +3517,7 @@ export class TripsService implements OnModuleInit {
     driverPhone: string | null;
     loaderOperatorId: string | null;
     sourceParcelId: string | null;
+    sourceDepotId?: string | null;
     cropType: string | null;
     tripId: string;
     orgId: string | null;
@@ -3543,6 +3551,21 @@ export class TripsService implements OnModuleInit {
         parcelName = p[0]?.name ?? null;
         locality = p[0]?.municipality ?? null;
         mapsUrl = fmtCoordsUrl(p[0]?.lat, p[0]?.lon);
+      } else if (args.sourceDepotId) {
+        const d = (await this.drizzleProvider.db.execute(
+          sql`SELECT name, address,
+                     ST_Y(coords) AS lat,
+                     ST_X(coords) AS lon
+              FROM delivery_destinations WHERE id = ${args.sourceDepotId}::uuid LIMIT 1`,
+        )) as unknown as {
+          name: string;
+          address: string | null;
+          lat: number | null;
+          lon: number | null;
+        }[];
+        parcelName = d[0]?.name ?? null;
+        locality = d[0]?.address ?? null;
+        mapsUrl = fmtCoordsUrl(d[0]?.lat, d[0]?.lon);
       }
       // Locale: this SMS goes to the auxiliary trip's external driver
       // (`sendDriverAssignedSms`, "SMS the external driver..." above) —

@@ -15,6 +15,7 @@ import { TripsModule } from '../trips/trips.module';
 import { BeneficiariesModule } from '../beneficiaries/beneficiaries.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { TaskAssignmentsModule } from '../task-assignments/task-assignments.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { DocumentsModule } from '../documents/documents.module';
     BeneficiariesModule,
     UploadsModule,
     DocumentsModule,
+    TaskAssignmentsModule,
     BullModule.registerQueue({ name: QUEUE_MESSAGE_SEND }, { name: QUEUE_COMANDA_GENERATION }),
   ],
   controllers: [TripRequestsController, PublicPortalController, BeneficiaryRecordsController],

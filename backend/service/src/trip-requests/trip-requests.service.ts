@@ -22,6 +22,7 @@ import { DocumentsService } from '../documents/documents.service';
 import { PinThrottleService } from './pin-throttle.service';
 import { FeaturesService } from '../features/features.service';
 import { SeasonsService } from '../seasons/seasons.service';
+import { TaskAssignmentsService } from '../task-assignments/task-assignments.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { QUEUE_MESSAGE_SEND, QUEUE_COMANDA_GENERATION } from '../jobs/queues';
@@ -244,6 +245,7 @@ export class TripRequestsService {
     private readonly pinThrottle: PinThrottleService,
     private readonly featuresService: FeaturesService,
     private readonly seasonsService: SeasonsService,
+    private readonly taskAssignmentsService: TaskAssignmentsService,
     @Inject(MESSAGING_SERVICE) private readonly messaging: IMessagingService,
     @InjectQueue(QUEUE_MESSAGE_SEND) private readonly messageQueue: Queue,
     @InjectQueue(QUEUE_COMANDA_GENERATION) private readonly comandaQueue: Queue,
@@ -431,6 +433,19 @@ export class TripRequestsService {
       machineId,
     });
 
+    // If a loader is already assigned to this pickup parcel/depot for the
+    // needed date, place the truck under it right away instead of leaving
+    // it to wait in "available trucks" on the truck board. Best-effort —
+    // never fails confirm() itself.
+    if (machineId) {
+      await this.taskAssignmentsService.tryAutoAssignAuxTruck(req.organizationId, {
+        machineId,
+        assignmentDate: updated[0]?.neededDate ?? null,
+        sourceParcelId: parcelId ?? null,
+        sourceDepotId: depotId ?? null,
+      });
+    }
+
     // Dispatch the detailed transport-confirmation email (driver + requester) and
     // the driver SMS asynchronously — the route/map/distance rendering happens in
     // the processor so confirm() stays fast.
@@ -577,8 +592,7 @@ export class TripRequestsService {
         stage,
         // Romanian safety net; the locale-correct text is resolved by
         // AllExceptionsFilter from `i18nKey`, same as assertSeasonWritable.
-        message:
-          'Această cursă a început deja sau este finalizată și nu mai poate fi modificată.',
+        message: 'Această cursă a început deja sau este finalizată și nu mai poate fi modificată.',
         i18nKey: 'errors.stageNotEditable',
       });
     }
