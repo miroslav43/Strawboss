@@ -48,12 +48,25 @@ export class MachinesService {
     const where = sql.join(conditions, sql` AND `);
     const result = await this.drizzleProvider.db.execute(
       sql`SELECT ${MACHINE_COLS},
+            -- These two read the SAME request and must keep the SAME ordering,
+            -- or a card could show one request's contact next to another
+            -- request's date. The created_at DESC tie-break is load-bearing:
+            -- several unconfirmed requests for one truck all have
+            -- confirmed_at IS NULL, so without it the pick is undefined.
+            -- Identical rule to autoUpsertAuxiliaryTrip and getByMachineType's
+            -- LATERAL -- four call sites, one rule.
             (SELECT tr.requester_name
                FROM trip_requests tr
               WHERE tr.machine_id = machines.id
                 AND tr.deleted_at IS NULL
-              ORDER BY tr.confirmed_at DESC NULLS LAST
+              ORDER BY tr.confirmed_at DESC NULLS LAST, tr.created_at DESC
               LIMIT 1) AS "primaryContactName",
+            (SELECT to_char(tr.needed_date, 'YYYY-MM-DD')
+               FROM trip_requests tr
+              WHERE tr.machine_id = machines.id
+                AND tr.deleted_at IS NULL
+              ORDER BY tr.confirmed_at DESC NULLS LAST, tr.created_at DESC
+              LIMIT 1) AS "requestNeededDate",
             (SELECT au.full_name
                FROM users au
               WHERE au.assigned_machine_id = machines.id

@@ -40,6 +40,13 @@ export interface Machine extends Timestamps, SoftDelete {
   /** Read-only enrichment, populated by the machines list() only: the primary
    *  contact (requester_name) of the aux truck's originating trip_request. */
   primaryContactName?: string | null;
+  /** Read-only enrichment (machines list() only): `needed_date` of the SAME
+   *  originating trip_request `primaryContactName` is read from — the day the
+   *  beneficiary asked for, as `YYYY-MM-DD`. Null for own-fleet machines, which
+   *  no request points at. The truck-plan board shows it in place of the
+   *  presence badge on aux trucks, whose external drivers are never in the
+   *  fleet and so always read "offline". */
+  requestNeededDate?: string | null;
   /** Read-only enrichment (machines list() only): full_name of the user
    *  permanently assigned to this machine (users.assigned_machine_id). */
   assignedOperatorName?: string | null;

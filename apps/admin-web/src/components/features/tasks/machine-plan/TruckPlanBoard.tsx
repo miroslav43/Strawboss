@@ -383,11 +383,38 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                         </>
                       )}
                     </div>
-                    <UserPresenceDot
-                      lastSeenAt={recordedAt}
-                      variant="badge"
-                      thresholdMs={MACHINE_ONLINE_MS}
-                    />
+                    {/*
+                      An aux truck is driven by an external driver who is not in
+                      the fleet, so its presence badge could only ever read
+                      "offline" — a permanently false-looking signal. Spend the
+                      slot on something true instead: the day the beneficiary
+                      asked for, amber when it is not the day of this board. Here
+                      it warns BEFORE the truck is placed, which is the moment
+                      that can still be corrected cheaply. Own-fleet trucks keep
+                      the badge — for them it means something.
+                    */}
+                    {m.isAuxiliary ? (
+                      m.requestNeededDate ? (
+                        <span
+                          className={cn(
+                            'flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-[11px]',
+                            m.requestNeededDate === date
+                              ? 'text-neutral-500'
+                              : 'bg-amber-50 font-medium text-amber-700',
+                          )}
+                          title={t('tasks.requestedDateHint')}
+                        >
+                          <CalendarDays className="h-3 w-3 shrink-0" />
+                          {m.requestNeededDate}
+                        </span>
+                      ) : null
+                    ) : (
+                      <UserPresenceDot
+                        lastSeenAt={recordedAt}
+                        variant="badge"
+                        thresholdMs={MACHINE_ONLINE_MS}
+                      />
+                    )}
                     <Plus className="h-4 w-4 text-green-400" />
                   </button>
                   {locality ? (
