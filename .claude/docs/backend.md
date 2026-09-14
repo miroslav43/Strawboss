@@ -2,7 +2,7 @@
 type: doc
 title: "Backend Service (backend/service)"
 created: 2026-04-16
-updated: 2026-08-18
+updated: 2026-09-14
 tags: [doc, backend, layer, nestjs, drizzle, bullmq]
 status: mature
 related:
@@ -144,6 +144,20 @@ a reflection of a real preference. See [[packages-types#Locale (locale.ts)]] and
 
 **Stale-plan auto-cancel** (`trips/stale-plan-sweep.processor.ts`, `750b2bf`): a `planned` own-fleet trip never reaches a terminal status on its own, and the sync pull force-includes every non-terminal trip (`sync.service` `versionFilter`), so an abandoned plan stayed glued to the driver's/loader's phone forever. A new BullMQ repeating job (`stale-plan-sweep`, queue `QUEUE_STALE_PLAN_SWEEP`, daily **00:15 Europe/Bucharest**) calls `TripsService.sweepStalePlannedTrips()`, which cancels own-fleet (`is_auxiliary = false`) `planned` trips whose planned day (latest live `task_assignments.assignment_date`, falling back to the trip's creation date in Romania tz) is strictly before today, and soft-deletes their still-live `task_assignments` so the truck drops off the tasks board. Auxiliary/external pickups are deliberately left untouched -- they may legitimately wait days for the external truck.
 
+**Removing a truck from the board: un-plan (aux) vs cancel (own-fleet), invariant fixed `16160bf`.** An auxiliary trip (`trips.is_auxiliary = true`) is the *execution* of a `trip_requests` row that still exists -- when the truck comes off the day's board, the transport is **de-planned**, never cancelled: soft-delete the trip + `trip_requests.trip_id = NULL`, and the request drops back to "Confirmată -- neplanificată", re-assignable to another truck. `cancelled` is a terminal status and must never be written onto an aux trip via this path, because it strands the request `confirmed` on top of a dead, unre-plannable trip. Own-fleet is the opposite: the trip *is* the plan, so removing the truck correctly means `cancel`. This one policy question has **three** independent decision points in `trips.service.ts` that must never disagree:
+
+| Call site | Correct since | Guard |
+|---|---|---|
+| `softDelete()` (`DELETE /trips/:id`, dispatcher-driven) | `be6847a` | branches on `trip.is_auxiliary`; aux -> soft-delete trip + task + null the request pointer (`DELETE_AUX_UNPLAN` flow event) |
+| `sweepStalePlannedTrips()` (daily 00:15 job, above) | `750b2bf` | `AND t.is_auxiliary = false` in the `stale` CTE -- aux trips are simply never selected |
+| `autoCancelForTruckTask()` (fired when a `task_assignments` row is deleted -- the "X" on the truck-plan board) | **`16160bf`** (2026-09-14) -- was unguarded until now | now reads `t.is_auxiliary` via a `LEFT JOIN trips`; aux branches to a new private `unplanAuxTripForTruckTask()` (soft-delete trip + null the request pointer, transactional, logged as `UNPLAN_AUX_FROM_TASK`); own-fleet keeps the pre-existing unconditional cancel (`AUTO_CANCEL_FROM_TASK`). Both branches only fire while the trip is still `planned` -- once work has started (loading+) the trip is left alone. |
+
+`autoCancelForTruckTask` dates back to `847bf12` (26.04), from a world with only own-fleet trucks on `task_assignments`; `db6276e` (20.06) put auxiliary trips on the same table without updating this hook, and the bug stayed latent -- removing an aux truck was a rare manual action -- until `e5f10bb` (02.09, auto-assignment of aux trucks) made "take a truck off the board" routine. On 2026-09-14 a dispatcher removed four auto-assigned aux trucks and cancelled four confirmed beneficiary transports (`TR-20260914-001`..`004`, four distinct requests) before the guard existed; they were repaired by hand in prod (soft-delete the dead trip, null the pointer -- the same fix this commit now does automatically), landing back on "Confirmată -- neplanificată" with 0 bale loads/loadings, so no history was lost. The admin-web confirm dialog for this action (`tasks.removeAuxTruckConfirm` vs `tasks.removeTruckConfirm`) is documented in [[admin-web#TruckPlanBoard]].
+
+**Requested-day mismatch on the truck-plan board (`0f21559`):** `TaskAssignmentsService.getByMachineType()` (`by-machine-type/:date/:machineType`) now returns `requestNeededDate` via a `LEFT JOIN LATERAL` onto `trip_requests` (`trip_requests.machine_id = task_assignments.machine_id`, most-recently-confirmed row: `ORDER BY tr.confirmed_at DESC NULLS LAST, tr.created_at DESC LIMIT 1`). **This is the exact same "which request owns this truck" rule `autoUpsertAuxiliaryTrip` uses** -- the two must never diverge, or the card would show a different transport than the trip actually minted. NULL for own-fleet trucks (no request ever points at them); the admin card then shows nothing, since the board's own date is their only date. See [[admin-web#TruckPlanBoard]] for the amber-mismatch UI.
+
+**"Manual is final" -- aux-truck auto-assignment never re-touches a human decision** (`task-assignments.service.ts`, confirmed product rule, unchanged by the two commits above but made visible in the UI by `0f21559`): `tryAutoAssignAuxTruck()`'s own re-check and `sweepUnassignedAuxTrucks()`'s `NOT EXISTS` both query `task_assignments` on `(machine_id, assignment_date)` **without** `AND deleted_at IS NULL`, deliberately. A soft-deleted row is a tombstone meaning "a human already decided" -- whether that decision was placing the truck (and later removing it) or nothing at all -- so the sweep never resurrects a truck a dispatcher deliberately took off. Cost accepted: this is a one-way door per (machine, day) -- once removed, the truck can only go back on the board manually, and the dispatcher must also (re-)set the loader parent, or `autoUpsertAuxiliaryTrip` exits at `if (!parentAssignmentId) return` and no trip is minted at all.
+
 ### CMR (`src/documents/cmr/cmr.controller.ts`)
 - `POST /trips/:tripId/generate-cmr` -- @Roles(admin, dispatcher) -- on-demand CMR PDF generation
 
@@ -280,7 +294,7 @@ Every query that turns `machine_location_events` rows into a track (`GET /locati
 - `GET /task-assignments` -- any authenticated -- list (filter by date, machineId, userId, status)
 - `GET /task-assignments/board/:date` -- any authenticated -- kanban board view
 - `GET /task-assignments/daily-plan/:date` -- any authenticated -- grouped daily plan (available / inProgress / done)
-- `GET /task-assignments/by-machine-type/:date/:machineType` -- any authenticated -- filtered by machine type
+- `GET /task-assignments/by-machine-type/:date/:machineType` -- any authenticated -- filtered by machine type. Rows also carry `requestNeededDate` (aux trucks only) -- see "Requested-day mismatch on the truck-plan board" in the Trips section above.
 - `POST /task-assignments` -- @Roles(admin, dispatcher) -- create single assignment
 - `POST /task-assignments/bulk` -- @Roles(admin, dispatcher) -- batch create (array validated via Zod)
 - `PATCH /task-assignments/:id/status` -- @Roles(admin, dispatcher) -- update status

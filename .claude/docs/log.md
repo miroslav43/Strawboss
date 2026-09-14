@@ -2,7 +2,7 @@
 type: meta
 title: "Doc Change Log"
 created: 2026-05-25
-updated: 2026-08-18
+updated: 2026-09-14
 tags: [meta, log, changelog]
 status: developing
 ---
@@ -115,3 +115,6 @@ Actions: `save` (update), `new doc` (created), `delete`, `rename`.
 [2026-08-18] save | `db-agent.md` — new design-pattern note: `users.locale` plain `TEXT`, no CHECK, app-level zod enum only (companion to the existing `machine_location_events.source` note) — zero migration needed to add a language
 [2026-08-18] save | `hot.md` — new "Hungarian (`hu`) as a third interface language" bullet (prepended); pruned the settled "Per-organization feature toggles, 57/57 wired" bullet down to its load-bearing facts; new "Locale SSOT" row in Where Things Live
 [2026-08-18] save | `_index.md` — new "i18n / locale" cross-cutting-topics bullet
+[2026-09-14] save | `backend.md` — new "Removing a truck from the board: un-plan (aux) vs cancel (own-fleet)" note under Trips (`16160bf`): the aux-vs-own-fleet invariant + a table of the three `trips.service.ts` decision points (`softDelete`/`DELETE_AUX_UNPLAN` since `be6847a`, `sweepStalePlannedTrips`'s `is_auxiliary = false` guard since `750b2bf`, `autoCancelForTruckTask` — unguarded until now, new private `unplanAuxTripForTruckTask()`) and the 2026-09-14 incident (TR-20260914-001..004); new "Requested-day mismatch on the truck-plan board" note under Task Assignments (`0f21559`): `getByMachineType` gains `requestNeededDate` via `LEFT JOIN LATERAL` on `trip_requests`, same request-selection rule as `autoUpsertAuxiliaryTrip`, NULL for own-fleet; new "Manual is final" note documenting `tryAutoAssignAuxTruck`/`sweepUnassignedAuxTrucks`'s deliberate omission of `deleted_at IS NULL` (undocumented until now)
+[2026-09-14] save | `admin-web.md` — TruckPlanBoard section: new "Remove-truck confirmation, un-plan vs cancel" note (`handleRemoveTruck` confirm gate, `tasks.removeAuxTruckConfirm`/`removeTruckConfirm` i18n keys, ro/en/hu) and new "Requested-day mismatch" note (`requestNeededDate` quiet-match/amber-mismatch card display); "Richer available-machine cards" section corrected for the `16160bf` layout tweak (aux card's primary heading is now the registration plate, not the internal code)
+[2026-09-14] save | `hot.md` — new "Aux truck off the board = un-plan, not cancel (Sep 2026, `16160bf`)" bullet (prepended) covering the invariant, the three-call-site agreement requirement, the 2026-09-14 incident, and the "manual is final" auto-assign rule

@@ -2,7 +2,7 @@
 type: doc
 title: "Admin Web (apps/admin-web)"
 created: 2026-04-16
-updated: 2026-08-18
+updated: 2026-09-14
 tags: [doc, frontend, layer, nextjs]
 status: mature
 related:
@@ -337,11 +337,15 @@ Truck-specific planner with multi-trip course support (Plan C):
 
 **Richer loader info panel (`LoaderPickMapModal`):** clicking a loader marker now shows the operator name, a live GPS status badge (`UserPresenceDot`), and the field(s) the loader is already assigned to today — not just the machine code/plate. The per-loader today's-fields map (`parcelsByLoaderMachineId: Map<machineId, string[]>`) is computed in `TruckPlanBoard` from the widened local `Assignment` type (now carrying `parcelId`/`parcelName`, which the backend already returned) and passed down as a prop.
 
+**Remove-truck confirmation, un-plan vs cancel (`16160bf`):** `handleRemoveTruck` now takes a `window.confirm()` gate with fleet-specific copy before calling `deleteAssignment.mutate()`, keyed on whether the machine is in `auxiliaryMachineIds` — `tasks.removeAuxTruckConfirm` ("the transport is UN-PLANNED, not cancelled... the request itself stays confirmed" +, since `0f21559`, "the truck will NOT come back to this day's board on its own") vs `tasks.removeTruckConfirm` ("the trip planned for today will be cancelled"), both in `ro`/`en`/`hu`. This exists because the backend distinguishes the two operations — see [[backend#Trips]] — and four confirmed beneficiary transports were cancelled silently on 2026-09-14 before this warning existed.
+
+**Requested-day mismatch (`0f21559`):** each assigned-truck card on the board now renders `assignment.requestNeededDate` (aux trucks only; NULL/absent for own-fleet, which have no request) — quietly (`tasks.requestedOn`, neutral grey) when it equals the board's own `date`, and loudly (`tasks.requestedOnMismatch`, amber background + `CalendarDays` icon) when it differs, since a truck planned on a day other than the one the beneficiary asked for previously had no signal in the UI (three aux trucks were found misdated by 1-2 days on 2026-09-02). Backend source: [[backend#Task Assignments]].
+
 ### Richer available-machine cards (loaders/balers/trucks left-hand panel, `MachinePlanBoard.tsx` + `TruckPlanBoard.tsx`)
 
 Each card now shows, beyond code + registration plate (em-dash fallback when blank):
 - **Own-fleet machine:** the assigned operator's name + their **real uploaded photo only** — `UserAvatar` with `hideFallback`, never a default/initials tile. Backend: `machines.list()` now returns `assignedOperatorName` / `assignedOperatorAvatarUrl` via subqueries (`packages/types` `Machine`).
-- **Aux truck** (`isAuxiliary`): company name + contact person shown directly on the card (`Building2`/`User` icons), sourced from data `useMachines` already returned.
+- **Aux truck** (`isAuxiliary`): company name + contact person shown directly on the card (`Building2`/`User` icons), sourced from data `useMachines` already returned. Since `16160bf` (an unrelated layout pass bundled into that fix's commit — same file), the aux card's primary heading is the **registration plate**, not the internal code — the internal code drops to a small grey footer line; own-fleet cards are unchanged (internal code stays primary). Same swap on the on-board assigned-truck header.
 - **"near `<locality>`"** line when the machine's last GPS fix is fresh (< 15 min, `MACHINE_ONLINE_MS`): clicking it opens `MachineLocationMapModal` — a read-only map centered on the machine (reuses `LeafletMap`'s `navigateToMachineId`). Locality comes from a new server-side reverse-geocode cache: `GeocodeService` (backend) resolves misses via Nominatim, caches by ~110 m-rounded coordinate key (`geocode_cache`, migration `00089`, service-role RLS only), rate-limited and resolved off the request path — a missing table or geocode error never breaks `/location/machines`. `MachineLastLocation.locality` carries it through.
 
 ### Shared context: `tasks-date-context.tsx`
