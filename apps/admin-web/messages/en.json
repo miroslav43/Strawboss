@@ -814,7 +814,9 @@
         "recallDeclined": "Loader did not recall",
         "idleAlert": "Truck idle for {{min}} min"
       }
-    }
+    },
+    "removeTruckConfirm": "Remove truck {label} from today's plan?\n\nThe trip planned for today will be cancelled.",
+    "removeAuxTruckConfirm": "Remove auxiliary truck {label} from today's plan?\n\nThe transport is UN-PLANNED, not cancelled: the trip goes away and the beneficiary's request returns to “Confirmed — unplanned”, ready to be re-assigned to another truck. The request itself stays confirmed."
   },
   "trips": {
     "title": "Trips",

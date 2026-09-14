@@ -201,16 +201,30 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
     [date, createAssignment],
   );
 
+  /**
+   * Taking a truck off the board is not the same act for both fleets, so the
+   * warning is not the same either. For an AUX truck this un-plans a
+   * beneficiary's CONFIRMED transport: the trip goes away and the request drops
+   * back to "Confirmată — neplanificată". Removing four auto-assigned aux trucks
+   * silently on 2026-09-14 is what killed TR-20260914-001..004, so the cost is
+   * spelled out before the click takes effect rather than after.
+   */
   const handleRemoveTruck = useCallback(
-    (assignmentId: string) => {
+    (assignmentId: string, machineId: string, label: string) => {
+      const isAux = auxiliaryMachineIds.has(machineId);
+      const message = isAux
+        ? t('tasks.removeAuxTruckConfirm', { label })
+        : t('tasks.removeTruckConfirm', { label });
+      if (typeof window !== 'undefined' && !window.confirm(message)) return;
       clientLogger.flow('Truck plan: remove truck assignment', {
         board: 'truck-plan',
         planDate: date,
         assignmentId,
+        isAuxiliary: isAux,
       });
       deleteAssignment.mutate(assignmentId);
     },
-    [date, deleteAssignment],
+    [date, deleteAssignment, auxiliaryMachineIds, t],
   );
 
   const handleSetLoader = useCallback(
@@ -298,55 +312,59 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                     className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-green-50 hover:shadow-sm"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-1.5 truncate text-sm font-medium text-neutral-800">
-                        {m.internalCode}
-                        {m.isAuxiliary ? (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                            {t('tripRequests.auxBadge')}
-                          </span>
-                        ) : null}
-                      </p>
-                      <p className="truncate text-xs text-neutral-400">
-                        {m.registrationPlate || '—'}
-                      </p>
                       {m.isAuxiliary ? (
-                        company || contact ? (
-                          <div className="mt-1 flex flex-col gap-0.5 text-xs text-neutral-500">
-                            {company ? (
-                              <span
-                                className="flex items-center gap-1.5"
-                                title={t('tasks.auxCompany')}
-                              >
-                                <Building2 className="h-3 w-3 shrink-0 text-neutral-400" />
-                                <span className="truncate font-medium text-neutral-700">
-                                  {company}
-                                </span>
-                              </span>
-                            ) : null}
-                            {contact ? (
-                              <span
-                                className="flex items-center gap-1.5"
-                                title={t('tasks.auxContact')}
-                              >
-                                <User className="h-3 w-3 shrink-0 text-neutral-400" />
-                                <span className="truncate">{contact}</span>
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null
-                      ) : m.assignedOperatorName ? (
-                        <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-500">
-                          <UserAvatar
-                            user={{
-                              fullName: m.assignedOperatorName,
-                              avatarUrl: m.assignedOperatorAvatarUrl,
-                            }}
-                            size="xs"
-                            hideFallback
-                          />
-                          <span className="truncate">{m.assignedOperatorName}</span>
-                        </div>
-                      ) : null}
+                        <>
+                          <p className="flex items-center gap-1.5 truncate text-base font-semibold text-neutral-900">
+                            {m.registrationPlate || '—'}
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                              {t('tripRequests.auxBadge')}
+                            </span>
+                          </p>
+                          {company ? (
+                            <span
+                              className="mt-0.5 flex items-center gap-1.5 truncate text-sm font-medium text-neutral-700"
+                              title={t('tasks.auxCompany')}
+                            >
+                              <Building2 className="h-3 w-3 shrink-0 text-neutral-400" />
+                              <span className="truncate">{company}</span>
+                            </span>
+                          ) : null}
+                          {contact ? (
+                            <span
+                              className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-neutral-500"
+                              title={t('tasks.auxContact')}
+                            >
+                              <User className="h-3 w-3 shrink-0 text-neutral-400" />
+                              <span className="truncate">{contact}</span>
+                            </span>
+                          ) : null}
+                          <p className="mt-0.5 truncate text-[11px] text-neutral-400">
+                            {m.internalCode}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="truncate text-sm font-medium text-neutral-800">
+                            {m.internalCode}
+                          </p>
+                          <p className="truncate text-xs text-neutral-400">
+                            {m.registrationPlate || '—'}
+                          </p>
+                          {m.assignedOperatorName ? (
+                            <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-500">
+                              <UserAvatar
+                                user={{
+                                  fullName: m.assignedOperatorName,
+                                  avatarUrl: m.assignedOperatorAvatarUrl,
+                                }}
+                                size="xs"
+                                hideFallback
+                              />
+                              <span className="truncate">{m.assignedOperatorName}</span>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </div>
                     <UserPresenceDot
                       lastSeenAt={recordedAt}
@@ -391,8 +409,14 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                 <div className="flex items-center justify-between rounded-t-lg bg-green-50 px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-                    <span className="font-medium text-neutral-800 text-sm">{code}</span>
-                    <span className="text-xs text-neutral-400">{plate}</span>
+                    {auxiliaryMachineIds.has(machineId) ? (
+                      <span className="font-semibold text-neutral-900 text-base">{plate}</span>
+                    ) : (
+                      <>
+                        <span className="font-medium text-neutral-800 text-sm">{code}</span>
+                        <span className="text-xs text-neutral-400">{plate}</span>
+                      </>
+                    )}
                     {auxiliaryMachineIds.has(machineId) ? (
                       <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                         {t('tripRequests.auxBadge')}
@@ -409,34 +433,40 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                     ) : null}
                   </div>
                   <button
-                    onClick={() => handleRemoveTruck(assignment.id)}
+                    onClick={() => handleRemoveTruck(assignment.id, machineId, plate || code)}
                     className="rounded p-1 text-neutral-300 hover:bg-red-50 hover:text-red-500"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
 
-                {/* Aux truck: company + primary contact, for a quick glance */}
+                {/* Aux truck: company + primary contact + aux code, for a quick glance */}
                 {auxiliaryMachineIds.has(machineId) &&
                   (() => {
                     const m = machineById.get(machineId);
                     const company = m?.ownerCompanyName?.trim();
                     const contact = m?.primaryContactName?.trim();
-                    if (!company && !contact) return null;
                     return (
-                      <div className="flex flex-col gap-0.5 border-t border-neutral-100 px-4 py-2 text-xs text-neutral-600">
+                      <div className="flex flex-col gap-0.5 border-t border-neutral-100 px-4 py-2">
                         {company && (
-                          <span className="flex items-center gap-1.5" title={t('tasks.auxCompany')}>
+                          <span
+                            className="flex items-center gap-1.5 text-sm font-medium text-neutral-700"
+                            title={t('tasks.auxCompany')}
+                          >
                             <Building2 className="h-3 w-3 shrink-0 text-neutral-400" />
-                            <span className="truncate font-medium text-neutral-700">{company}</span>
+                            <span className="truncate">{company}</span>
                           </span>
                         )}
                         {contact && (
-                          <span className="flex items-center gap-1.5" title={t('tasks.auxContact')}>
+                          <span
+                            className="flex items-center gap-1.5 text-xs text-neutral-500"
+                            title={t('tasks.auxContact')}
+                          >
                             <User className="h-3 w-3 shrink-0 text-neutral-400" />
                             <span className="truncate">{contact}</span>
                           </span>
                         )}
+                        <span className="truncate text-[11px] text-neutral-400">{code}</span>
                       </div>
                     );
                   })()}
@@ -453,11 +483,24 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                       className="min-w-0 flex-1 rounded-md border border-neutral-200 px-2.5 py-1.5 text-sm text-neutral-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                     >
                       <option value="">{t('tasks.noLoaderAssigned')}</option>
-                      {uniqueLoaders.map((la) => (
-                        <option key={la.id} value={la.id}>
-                          {la.machineCode} ({la.registrationPlate})
-                        </option>
-                      ))}
+                      {uniqueLoaders.map((la) => {
+                        const loaderMachine = machineById.get(la.machineId);
+                        const loaderName = loaderMachine
+                          ? `${loaderMachine.make} ${loaderMachine.model}`.trim()
+                          : '';
+                        const label = [
+                          loaderName,
+                          `${la.machineCode} (${la.registrationPlate})`,
+                          loaderMachine?.assignedOperatorName,
+                        ]
+                          .filter(Boolean)
+                          .join(' — ');
+                        return (
+                          <option key={la.id} value={la.id}>
+                            {label}
+                          </option>
+                        );
+                      })}
                     </select>
                     <button
                       type="button"

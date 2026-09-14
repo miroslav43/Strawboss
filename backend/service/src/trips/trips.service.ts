@@ -3719,16 +3719,48 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
-   * Cancel a Trip that was auto-created from a truck task_assignment,
-   * but only if the trip is still in `planned`. If work already started
-   * (loading+) we leave it so ops can finish the real transport.
+   * A truck task_assignment is being removed from the board. What that means for
+   * the linked trip depends on WHOSE trip it is — these are two genuinely
+   * different operations, not one operation with a flag:
+   *
+   *   OWN-FLEET → CANCEL (unchanged). The trip *is* the day's plan for our own
+   *     truck, so taking the truck off the board means the transport does not
+   *     happen. The terminal status is also what stops the sync pull from
+   *     force-including it on the driver's phone forever.
+   *
+   *   AUXILIARY → UN-PLAN, never cancel. An aux trip is the execution of a
+   *     `trip_request` commitment that STILL EXISTS. The truck leaving today's
+   *     board is a scheduling change ("not this truck, not today"), not the
+   *     beneficiary calling the transport off — so `cancelled`, a terminal
+   *     status, is the wrong verb. Worse, it stranded the request:
+   *     `trip_requests.trip_id` kept pointing at the dead trip, so the request
+   *     rendered as "confirmed" sitting on a CANCELLED trip and could not be
+   *     re-planned cleanly.
+   *
+   * The aux branch is deliberately identical to what `softDelete` already does
+   * for the SAME operation reached from the Trips page (`DELETE_AUX_UNPLAN`):
+   * one policy, two entry points. It used to live only on that one, which is how
+   * removing four auto-assigned aux trucks from the board on 2026-09-14 killed
+   * four confirmed beneficiary transports (TR-20260914-001..004).
+   *
+   * Both branches only fire while the trip is still `planned`. Once work has
+   * started (loading+) we leave it alone so ops can finish the real transport.
    */
   async autoCancelForTruckTask(taskId: string): Promise<void> {
     const rows = (await this.drizzleProvider.db.execute(
-      sql`SELECT trip_id FROM task_assignments WHERE id = ${taskId} LIMIT 1`,
-    )) as unknown as { trip_id: string | null }[];
+      sql`SELECT ta.trip_id, t.is_auxiliary
+            FROM task_assignments ta
+            LEFT JOIN trips t ON t.id = ta.trip_id
+           WHERE ta.id = ${taskId}
+           LIMIT 1`,
+    )) as unknown as { trip_id: string | null; is_auxiliary: boolean | null }[];
     const tripId = rows[0]?.trip_id ?? null;
     if (!tripId) return;
+
+    if (rows[0]?.is_auxiliary === true) {
+      await this.unplanAuxTripForTruckTask(tripId, taskId);
+      return;
+    }
 
     const result = (await this.drizzleProvider.db.execute(
       sql`UPDATE trips SET
@@ -3746,6 +3778,51 @@ export class TripsService implements OnModuleInit {
       this.winston.log(
         'flow',
         `Auto-cancel skipped: trip ${tripId} is already past planned (real transport in progress)`,
+        { context: 'TripsService', tripId, taskId },
+      );
+    }
+  }
+
+  /**
+   * Aux half of `autoCancelForTruckTask` — un-plan instead of cancel.
+   *
+   * Mirrors `softDelete`'s auxiliary branch, minus the task soft-delete: the
+   * caller (`TaskAssignmentsService.softDelete`) is already removing that row
+   * itself, immediately after this returns. So the two writes here are the whole
+   * job — kill the plan, hand the request back.
+   *
+   * Transactional on purpose: a cleared `trip_requests.trip_id` next to a live
+   * trip would duplicate the transport on the next re-plan (see the ADOPT note
+   * in `autoUpsertAuxiliaryTrip`), and a soft-deleted trip next to a dangling
+   * pointer is the exact stranding this method exists to prevent. Neither half
+   * is safe alone.
+   */
+  private async unplanAuxTripForTruckTask(tripId: string, taskId: string): Promise<void> {
+    const unplanned = await this.drizzleProvider.db.transaction(async (tx) => {
+      const deleted = (await tx.execute(
+        sql`UPDATE trips SET deleted_at = NOW(), updated_at = NOW()
+             WHERE id = ${tripId}
+               AND status = ${TripStatus.planned}
+               AND deleted_at IS NULL
+         RETURNING id`,
+      )) as unknown as { id: string }[];
+      if (!deleted.length) return false;
+
+      // The request drops back to "Confirmată — neplanificată" and the dispatcher
+      // can simply re-assign it on the truck board.
+      await tx.execute(
+        sql`UPDATE trip_requests SET trip_id = NULL, updated_at = NOW()
+             WHERE trip_id = ${tripId}::uuid AND deleted_at IS NULL`,
+      );
+      return true;
+    });
+
+    if (unplanned) {
+      this.logTripFlow(tripId, 'UNPLAN_AUX_FROM_TASK', TripStatus.planned, 'deleted');
+    } else {
+      this.winston.log(
+        'flow',
+        `Aux un-plan skipped: trip ${tripId} is already past planned (external truck is on the field)`,
         { context: 'TripsService', tripId, taskId },
       );
     }

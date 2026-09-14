@@ -814,7 +814,9 @@
         "recallDeclined": "A rakodógép elutasította a visszahívást",
         "idleAlert": "A kamion {{min}} perce vesztegel"
       }
-    }
+    },
+    "removeTruckConfirm": "Eltávolítod a(z) {label} teherautót a mai tervből?\n\nA mai napra tervezett fuvar visszavonásra kerül.",
+    "removeAuxTruckConfirm": "Eltávolítod a(z) {label} kisegítő teherautót a mai tervből?\n\nA szállítás TERVEZÉSE visszaáll, nem törlődik: a fuvar eltűnik, a kedvezményezett kérése pedig „Megerősítve — nincs betervezve” állapotba kerül, és másik teherautóra átütemezhető. Maga a kérés megerősített marad."
   },
   "trips": {
     "title": "Fuvarok",
