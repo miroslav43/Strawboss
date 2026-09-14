@@ -816,7 +816,10 @@
       }
     },
     "removeTruckConfirm": "Remove truck {label} from today's plan?\n\nThe trip planned for today will be cancelled.",
-    "removeAuxTruckConfirm": "Remove auxiliary truck {label} from today's plan?\n\nThe transport is UN-PLANNED, not cancelled: the trip goes away and the beneficiary's request returns to “Confirmed — unplanned”, ready to be re-assigned to another truck. The request itself stays confirmed."
+    "removeAuxTruckConfirm": "Remove auxiliary truck {label} from today's plan?\n\nThe transport is UN-PLANNED, not cancelled: the trip goes away and the beneficiary's request returns to “Confirmed — unplanned”, ready to be re-assigned to another truck. The request itself stays confirmed.\n\nThe truck will NOT come back to this day's board on its own — once removed, it has to be placed manually.",
+    "requestedDateHint": "The day the beneficiary asked for on the transport request.",
+    "requestedOn": "Requested for {date}",
+    "requestedOnMismatch": "Requested for {date} — a different day than this plan"
   },
   "trips": {
     "title": "Trips",

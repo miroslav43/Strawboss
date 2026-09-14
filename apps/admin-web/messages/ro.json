@@ -816,7 +816,10 @@
       }
     },
     "removeTruckConfirm": "Scoți camionul {label} din planul zilei?\n\nCursa planificată pentru azi se anulează.",
-    "removeAuxTruckConfirm": "Scoți camionul auxiliar {label} din planul zilei?\n\nTransportul se DE-PLANIFICĂ, nu se anulează: cursa dispare, iar solicitarea beneficiarului revine la „Confirmată — neplanificată” și poate fi replanificată pe alt camion. Solicitarea rămâne confirmată."
+    "removeAuxTruckConfirm": "Scoți camionul auxiliar {label} din planul zilei?\n\nTransportul se DE-PLANIFICĂ, nu se anulează: cursa dispare, iar solicitarea beneficiarului revine la „Confirmată — neplanificată” și poate fi replanificată pe alt camion. Solicitarea rămâne confirmată.\n\nCamionul NU revine singur pe tabla acestei zile — odată scos, trebuie pus manual.",
+    "requestedDateHint": "Ziua cerută de beneficiar în solicitarea de transport.",
+    "requestedOn": "Cerut pentru {date}",
+    "requestedOnMismatch": "Cerut pentru {date} — altă zi decât planul"
   },
   "trips": {
     "title": "Curse",

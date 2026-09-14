@@ -723,12 +723,31 @@ export class TaskAssignmentsService {
         u.last_seen_at as "assignedUserLastSeenAt",
         dd.name as "destinationName",
         dd.code as "destinationCode",
-        ta.trip_id as "tripId"
+        ta.trip_id as "tripId",
+        -- The day the BENEFICIARY asked for, which is not always the day of the
+        -- board this row sits on: an aux truck can be planned a day early or
+        -- late. The admin card shows it and flags the mismatch. NULL for
+        -- own-fleet trucks (no request points at them), and the card then shows
+        -- nothing — their only date is the board's own, already in the picker.
+        to_char(req.needed_date, 'YYYY-MM-DD') as "requestNeededDate"
       FROM task_assignments ta
       JOIN machines m ON ta.machine_id = m.id
       LEFT JOIN parcels p ON ta.parcel_id = p.id
       LEFT JOIN users u ON ta.assigned_user_id = u.id
       LEFT JOIN delivery_destinations dd ON ta.destination_id = dd.id
+      -- Same "which request owns this one-time truck" rule autoUpsertAuxiliaryTrip
+      -- uses, kept identical on purpose: the two must never disagree about which
+      -- request a truck belongs to, or the card would describe a different
+      -- transport than the trip it mints.
+      LEFT JOIN LATERAL (
+        SELECT tr.needed_date
+          FROM trip_requests tr
+         WHERE tr.machine_id = ta.machine_id
+           AND tr.deleted_at IS NULL
+           ${orgId !== null ? sql`AND tr.organization_id = ${orgId}::uuid` : sql``}
+         ORDER BY tr.confirmed_at DESC NULLS LAST, tr.created_at DESC
+         LIMIT 1
+      ) req ON TRUE
       WHERE ${where}
       ORDER BY ta.machine_id, ta.sequence_order ASC`,
     );

@@ -816,7 +816,10 @@
       }
     },
     "removeTruckConfirm": "Eltávolítod a(z) {label} teherautót a mai tervből?\n\nA mai napra tervezett fuvar visszavonásra kerül.",
-    "removeAuxTruckConfirm": "Eltávolítod a(z) {label} kisegítő teherautót a mai tervből?\n\nA szállítás TERVEZÉSE visszaáll, nem törlődik: a fuvar eltűnik, a kedvezményezett kérése pedig „Megerősítve — nincs betervezve” állapotba kerül, és másik teherautóra átütemezhető. Maga a kérés megerősített marad."
+    "removeAuxTruckConfirm": "Eltávolítod a(z) {label} kisegítő teherautót a mai tervből?\n\nA szállítás TERVEZÉSE visszaáll, nem törlődik: a fuvar eltűnik, a kedvezményezett kérése pedig „Megerősítve — nincs betervezve” állapotba kerül, és másik teherautóra átütemezhető. Maga a kérés megerősített marad.\n\nA teherautó NEM kerül vissza magától erre a napra — eltávolítás után kézzel kell betenni.",
+    "requestedDateHint": "A kedvezményezett által a fuvarkérésben megadott nap.",
+    "requestedOn": "Kért nap: {date}",
+    "requestedOnMismatch": "Kért nap: {date} — eltér a terv napjától"
   },
   "trips": {
     "title": "Fuvarok",

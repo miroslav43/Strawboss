@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, Loader2, X, MapPin, ChevronRight, Building2, User, RefreshCw } from 'lucide-react';
+import {
+  Plus,
+  Loader2,
+  X,
+  MapPin,
+  ChevronRight,
+  Building2,
+  User,
+  RefreshCw,
+  CalendarDays,
+} from 'lucide-react';
 import {
   useTasksByMachineType,
   useCreateTaskAssignment,
@@ -54,6 +64,13 @@ interface Assignment {
   iterations?: TripIteration[];
   parcelId?: string | null;
   parcelName?: string | null;
+  /**
+   * The day the beneficiary asked for (`trip_requests.needed_date`), which is
+   * NOT always the day of the board this card sits on — an aux truck can be
+   * planned a day early or late. Null for own-fleet trucks, whose only date is
+   * the board's own.
+   */
+  requestNeededDate?: string | null;
 }
 
 // Compact badge colors per trip status, used by the iteration list.
@@ -470,6 +487,39 @@ export function TruckPlanBoard({ date }: TruckPlanBoardProps) {
                       </div>
                     );
                   })()}
+
+                {/*
+                  The day the beneficiary asked for. Quiet when it matches this
+                  board's day (the common case — saying it twice would be noise),
+                  loud when it does not: a truck planned for a day other than the
+                  one requested is a real mismatch worth catching before it ships.
+                  Absent entirely for own-fleet trucks, which have no request.
+                */}
+                {assignment.requestNeededDate ? (
+                  <div className="border-t border-neutral-100 px-4 py-2">
+                    <span
+                      className={cn(
+                        'flex items-center gap-1.5 truncate text-xs',
+                        assignment.requestNeededDate === date
+                          ? 'text-neutral-500'
+                          : 'rounded bg-amber-50 px-1.5 py-1 font-medium text-amber-700',
+                      )}
+                      title={t('tasks.requestedDateHint')}
+                    >
+                      <CalendarDays
+                        className={cn(
+                          'h-3 w-3 shrink-0',
+                          assignment.requestNeededDate === date ? 'text-neutral-400' : '',
+                        )}
+                      />
+                      <span className="truncate">
+                        {assignment.requestNeededDate === date
+                          ? t('tasks.requestedOn', { date: assignment.requestNeededDate })
+                          : t('tasks.requestedOnMismatch', { date: assignment.requestNeededDate })}
+                      </span>
+                    </span>
+                  </div>
+                ) : null}
 
                 {/* Loader selector */}
                 <div className="border-t border-neutral-100 px-4 py-3 space-y-2">
