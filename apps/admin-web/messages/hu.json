@@ -2625,6 +2625,7 @@
     "title": "Időjárás (béta)",
     "loadError": "Az időjárási adatok nem tölthetők be.",
     "disclaimer": "Béta modell, nem kalibrált; alacsony megbízhatóság (2 modell); ajánlás, nem garancia.",
+    "pocPublicApi": "Próbaüzem: az adatok a nyilvános Open-Meteo API-ból jönnek (nem kereskedelmi feltételek). Élesben saját példányt használunk.",
     "noAccess": {
       "title": "Nincs hozzáférés",
       "body": "Ezt az oldalt csak adminisztrátorok és diszpécserek láthatják."

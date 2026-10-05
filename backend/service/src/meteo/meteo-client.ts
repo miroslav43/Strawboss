@@ -13,8 +13,16 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_CONCURRENT = 2;
 const META_BASE = 'https://openmeteo.s3.amazonaws.com/data';
 
-/** Open-Meteo's public API is non-commercial — the self-hosted instance only. */
+/**
+ * Open-Meteo's public API is non-commercial — production uses the self-hosted
+ * instance. METEO_ALLOW_PUBLIC_API=true (stack env only) lifts this for the
+ * internal proof of concept; the status endpoint then reports `publicApi`.
+ */
 const FORBIDDEN_HOST_SUFFIX = 'open-meteo.com';
+
+export function meteoPublicApiAllowed(): boolean {
+  return process.env.METEO_ALLOW_PUBLIC_API === 'true';
+}
 
 export interface RunMeta {
   initMs: number;
@@ -41,6 +49,8 @@ function numArray(v: unknown, len: number, scale = 1): (number | null)[] {
 @Injectable()
 export class MeteoClient {
   private readonly baseUrl: string | null;
+  /** True when OPEN_METEO_BASE_URL is the public API (POC mode). */
+  private usesPublicApi = false;
   private active = 0;
   private readonly waiters: Array<() => void> = [];
   private readonly inFlight = new Map<string, Promise<unknown>>();
@@ -54,12 +64,24 @@ export class MeteoClient {
     return this.baseUrl !== null;
   }
 
+  get publicApi(): boolean {
+    return this.usesPublicApi;
+  }
+
   private resolveBaseUrl(raw: string | undefined): string | null {
     const value = raw?.trim();
     if (!value) return null;
     try {
       const host = new URL(value).hostname.toLowerCase();
       if (host === FORBIDDEN_HOST_SUFFIX || host.endsWith(`.${FORBIDDEN_HOST_SUFFIX}`)) {
+        if (meteoPublicApiAllowed()) {
+          this.usesPublicApi = true;
+          this.winston.warn(
+            'Meteo POC mode: using the PUBLIC Open-Meteo API (non-commercial terms, ~10k calls/day). Switch to the self-hosted instance before production use.',
+            { context: 'MeteoClient', host },
+          );
+          return value.replace(/\/+$/, '');
+        }
         // Logged once (constructor runs once per process).
         this.winston.error(
           'OPEN_METEO_BASE_URL points at open-meteo.com — refused (non-commercial licence). Meteo disabled.',

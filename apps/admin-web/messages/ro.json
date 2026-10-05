@@ -2625,6 +2625,7 @@
     "title": "Meteo (beta)",
     "loadError": "Nu s-au putut încărca datele meteo.",
     "disclaimer": "Model beta, necalibrat; încredere redusă (2 modele); recomandare, nu garanție.",
+    "pocPublicApi": "POC: datele vin din API-ul public Open-Meteo (termeni necomerciali). În producție vom folosi instanța proprie.",
     "noAccess": {
       "title": "Fără acces",
       "body": "Doar administratorii și dispecerii pot vedea această pagină."

@@ -95,6 +95,8 @@ export interface MeteoDerivedStatus {
 export interface MeteoStatus {
   /** OPEN_METEO_BASE_URL is set and allowed. */
   configured: boolean;
+  /** Proof-of-concept mode: data comes from the public Open-Meteo API. */
+  publicApi: boolean;
   /** Background jobs run on this deployment (METEO_JOBS_ENABLED). */
   jobsEnabled: boolean;
   /** The caller's organization opted in (meteo_org_settings.enabled). */

@@ -127,6 +127,7 @@ export class MeteoService {
     `)) as unknown as Array<{ lastIngestAt: string | null }>;
     return {
       configured: this.client.configured,
+      publicApi: this.client.publicApi,
       jobsEnabled: meteoJobsEnabled(),
       enabled: (await this.access.isOptedIn(orgId)) && isFeatureEnabled(disabledFeatures, 'meteo'),
       lastIngestAt: rows[0]?.lastIngestAt ?? null,

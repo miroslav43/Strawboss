@@ -22,7 +22,9 @@
 
 services:
   strawboss-meteo:
-    image: ${METEO_IMAGE:?set METEO_IMAGE to a pinned ghcr.io/open-meteo/open-meteo@sha256 digest}
+    # Always set by `meteo:deploy` / `meteo:update` (pinned digest). No `:?message`
+    # form here: docker's interpolation mangles a message containing '/' or ':'.
+    image: ${METEO_IMAGE}
     environment:
       - REMOTE_DATA_DIRECTORY=https://openmeteo.s3.amazonaws.com/data/
       - CACHE_SIZE=20GB

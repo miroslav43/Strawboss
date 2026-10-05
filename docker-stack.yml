@@ -59,6 +59,9 @@ services:
       # *.open-meteo.com is refused by the client (non-commercial licence).
       - METEO_JOBS_ENABLED=${METEO_JOBS_ENABLED:-false}
       - OPEN_METEO_BASE_URL=${OPEN_METEO_BASE_URL:-http://strawboss-meteo:8080}
+      # Proof of concept only: lets OPEN_METEO_BASE_URL point at the public
+      # api.open-meteo.com (non-commercial terms). Default false = refused.
+      - METEO_ALLOW_PUBLIC_API=${METEO_ALLOW_PUBLIC_API:-false}
     volumes:
       - /srv/apps/Strawboss/logs:/app/logs
       - /srv/apps/Strawboss/uploads:/app/uploads

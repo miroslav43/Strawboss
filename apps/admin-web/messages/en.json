@@ -2625,6 +2625,7 @@
     "title": "Weather (beta)",
     "loadError": "Could not load the weather data.",
     "disclaimer": "Beta model, uncalibrated; low confidence (2 models); a recommendation, not a guarantee.",
+    "pocPublicApi": "Proof of concept: data comes from the public Open-Meteo API (non-commercial terms). Production will use our own instance.",
     "noAccess": {
       "title": "No access",
       "body": "Only administrators and dispatchers can see this page."
