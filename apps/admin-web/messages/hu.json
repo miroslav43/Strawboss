@@ -2809,6 +2809,7 @@
       "unavailable": "Nem elérhető",
       "loading": "Időjárás betöltése…",
       "loadError": "Nem sikerült betölteni a parcella időjárását.",
+      "upstreamDown": "Az időjárási adatforrás most nem válaszol. Néhány percen belül automatikusan újrapróbáljuk.",
       "noLocation": "A parcellának még nincs helye, így nincs megjeleníthető időjárás.",
       "today": "Ma",
       "updated": "Frissítve",

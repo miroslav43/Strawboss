@@ -55,6 +55,11 @@ export function ParcelWeatherSection({ parcelId }: { parcelId: string }) {
   if (!w.location) {
     return <Notice icon={<MapPinOff className="h-4 w-4" />} text={t('meteo.wx.noLocation')} />;
   }
+  // The backend answered but the weather source did not (nothing cached yet):
+  // one clear notice instead of a page of empty cards. Retried automatically.
+  if (!w.current && w.hourly.length === 0 && w.daily.length === 0) {
+    return <Notice icon={<CloudOff className="h-4 w-4" />} text={t('meteo.wx.upstreamDown')} />;
+  }
 
   return (
     <div className="space-y-4">

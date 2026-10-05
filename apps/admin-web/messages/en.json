@@ -2809,6 +2809,7 @@
       "unavailable": "Unavailable",
       "loading": "Loading weather…",
       "loadError": "Could not load the weather for this parcel.",
+      "upstreamDown": "The weather source is not answering right now. We retry automatically every few minutes.",
       "noLocation": "This parcel has no location yet, so there is no weather to show.",
       "today": "Today",
       "updated": "Updated",

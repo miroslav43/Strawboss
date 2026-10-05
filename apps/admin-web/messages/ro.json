@@ -2809,6 +2809,7 @@
       "unavailable": "Indisponibil",
       "loading": "Se încarcă vremea…",
       "loadError": "Nu s-a putut încărca vremea pentru această parcelă.",
+      "upstreamDown": "Sursa de date meteo nu răspunde acum. Reîncercăm automat în câteva minute.",
       "noLocation": "Parcela nu are încă o locație, deci nu există vreme de afișat.",
       "today": "Azi",
       "updated": "Actualizat",
