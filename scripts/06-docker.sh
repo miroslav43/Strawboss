@@ -197,3 +197,93 @@ cmd_stack__rm() {
   header "Removing Swarm stack '$STRAWBOSS_STACK'"
   docker stack rm "$STRAWBOSS_STACK"
 }
+
+# ============================================================================
+# Meteo — self-hosted Open-Meteo, its OWN Swarm stack (docker-stack.meteo.yml).
+# Fully separate from strawboss-app: stack:deploy / prod never touch it.
+# The backend reaches it on the overlay as http://strawboss-meteo:8080.
+# ============================================================================
+
+# @section "Meteo"
+
+STRAWBOSS_METEO_STACK="strawboss-meteo"
+# Pinned image (digest). Bump only via `meteo:update`, which canary-checks it.
+STRAWBOSS_METEO_IMAGE="ghcr.io/open-meteo/open-meteo@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da"
+
+# Request one hourly series for a fixed Banat coordinate from inside the running
+# task and require NUMBERS back — an HTTP 200 with null arrays is a failure
+# (the server answers 200 for models it has no data for).
+_meteo_canary() {
+  local cid
+  cid="$(docker ps -q -f "name=${STRAWBOSS_METEO_STACK}_strawboss-meteo" | head -1)"
+  if [ -z "$cid" ]; then
+    error "No running ${STRAWBOSS_METEO_STACK} task."
+    return 1
+  fi
+  local body
+  body="$(docker exec "$cid" curl -fsS -m 60 \
+    'http://127.0.0.1:8080/v1/forecast?latitude=45.75&longitude=21.23&models=ecmwf_ifs,icon_eu&hourly=temperature_2m&forecast_days=1' 2>&1)" || {
+    error "Canary request failed: $body"
+    return 1
+  }
+  if echo "$body" | grep -Eq '"temperature_2m_(ecmwf_ifs|icon_eu)":\[-?[0-9]'; then
+    success "Canary OK — numeric series returned."
+  else
+    error "Canary returned no numeric data: $(echo "$body" | head -c 300)"
+    return 1
+  fi
+}
+
+_meteo_deploy_image() {
+  local image="$1"
+  _ensure_swarm
+  info "Deploying $STRAWBOSS_METEO_STACK with $image"
+  METEO_IMAGE="$image" docker stack deploy \
+    -c "$STRAWBOSS_ROOT/docker-stack.meteo.yml" --resolve-image never "$STRAWBOSS_METEO_STACK"
+  info "Waiting for the task to become healthy (first start warms the S3 cache)..."
+  local i
+  for i in $(seq 1 30); do
+    if docker ps -f "name=${STRAWBOSS_METEO_STACK}_strawboss-meteo" --format '{{.Status}}' | grep -q '(healthy)'; then
+      break
+    fi
+    sleep 10
+  done
+  _meteo_canary
+}
+
+# @cmd meteo:deploy "Deploy the self-hosted Open-Meteo stack (pinned image) + canary check"
+cmd_meteo__deploy() {
+  header "Deploying Meteo stack '$STRAWBOSS_METEO_STACK'"
+  require_cmd docker
+  docker pull "$STRAWBOSS_METEO_IMAGE" >/dev/null
+  _meteo_deploy_image "$STRAWBOSS_METEO_IMAGE"
+}
+
+# @cmd meteo:update "Pull a new Open-Meteo image ref, deploy it, canary-check [ref, default :latest]"
+cmd_meteo__update() {
+  require_cmd docker
+  local ref="${1:-ghcr.io/open-meteo/open-meteo:latest}"
+  header "Updating Meteo stack to $ref"
+  docker pull "$ref" >/dev/null
+  local digest
+  digest="$(docker image inspect "$ref" --format '{{index .RepoDigests 0}}')"
+  _meteo_deploy_image "$digest" || {
+    warn "Canary failed — rolling back to the pinned image."
+    _meteo_deploy_image "$STRAWBOSS_METEO_IMAGE"
+    return 1
+  }
+  warn "Pin it: set STRAWBOSS_METEO_IMAGE=\"$digest\" in scripts/06-docker.sh and commit."
+}
+
+# @cmd meteo:status "Show the Meteo stack service + canary check"
+cmd_meteo__status() {
+  require_cmd docker
+  docker stack services "$STRAWBOSS_METEO_STACK"
+  _meteo_canary
+}
+
+# @cmd meteo:logs "Tail the self-hosted Open-Meteo log"
+cmd_meteo__logs() {
+  require_cmd docker
+  docker service logs -f "${STRAWBOSS_METEO_STACK}_strawboss-meteo"
+}

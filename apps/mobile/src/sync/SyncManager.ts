@@ -114,6 +114,9 @@ export class SyncManager {
         });
       });
 
+      // Offline-saved meteo readings are left `failed` by markFailed; put the transient ones back.
+      await this.syncQueueRepo.requeueTransientFailed(['meteo_reading_create']);
+
       const pushResult = await this.push();
       const pullResult = await this.pull();
 

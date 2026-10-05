@@ -198,6 +198,36 @@ export class SyncQueueRepo {
     );
   }
 
+  /**
+   * Put back to `pending` the transiently-failed rows of the given entity types,
+   * so a record saved offline is sent automatically on the next cycle (`dequeue`
+   * only selects `pending`, and `markFailed` leaves rows `failed`).
+   *
+   * Skips rows the server refused on merit (feature gate, terminal rejection,
+   * closed season) and legacy invalid-UUID rows, and caps at 10 attempts. Keeps
+   * `retry_count` so `purgeStale` still works, and keeps `next_retry_at` so
+   * `dequeue()` still honours markFailed's quadratic back-off — otherwise the
+   * 60–180 s GPS-piggyback syncs would burn the 10 attempts within minutes. Scoped by entity type on purpose:
+   * other types keep their existing manual-retry behaviour.
+   */
+  async requeueTransientFailed(entityTypes: string[]): Promise<void> {
+    if (entityTypes.length === 0) return;
+    const placeholders = entityTypes.map(() => '?').join(', ');
+    await this.db.runAsync(
+      `UPDATE sync_queue
+       SET status = 'pending', updated_at = datetime('now')
+       WHERE status = 'failed'
+         AND entity_type IN (${placeholders})
+         AND retry_count <= 10
+         AND (last_error IS NULL
+              OR (last_error NOT LIKE '%FEATURE_DISABLED%'
+                  AND last_error NOT LIKE '%TERMINAL_REJECTION%'
+                  AND last_error NOT LIKE '%SEASON_CLOSED%'
+                  AND last_error NOT LIKE 'invalid UUID%'))`,
+      entityTypes,
+    );
+  }
+
   async getFailedEntries(): Promise<SyncQueueEntry[]> {
     return this.db.getAllAsync<SyncQueueEntry>(
       `SELECT * FROM sync_queue WHERE status = 'failed' ORDER BY updated_at DESC`,

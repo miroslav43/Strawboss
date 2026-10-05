@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
@@ -16,6 +17,9 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyTasks, type MyTask } from '@/hooks/useMyTasks';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors, radii } from '@strawboss/ui-tokens';
+import { useMeteoAvailable } from '@/hooks/useMeteoAvailable';
 import { useTheme } from '@/lib/theme';
 import { useI18n } from '@/lib/i18n';
 
@@ -26,6 +30,7 @@ export default function BalerHomeScreen() {
   const { tasks, refetch: refetchTasks } = useMyTasks();
   // Same "Teren activ" card the loader has — GPS presence + distance to field.
   const parcel = useCurrentLoaderParcel();
+  const meteoAvailable = useMeteoAvailable();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
@@ -76,6 +81,16 @@ export default function BalerHomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <ActiveFieldCard parcel={parcel} onOpenParcel={openParcel} />
+        {meteoAvailable ? (
+          <TouchableOpacity
+            style={meteoStyles.btn}
+            onPress={() => router.push('/meteo/measure')}
+            accessibilityRole="button"
+          >
+            <MaterialCommunityIcons name="water-percent" size={24} color={colors.primary} />
+            <Text style={meteoStyles.btnText}>{t('meteo.button')}</Text>
+          </TouchableOpacity>
+        ) : null}
         <TaskList tasks={tasks} role="baler_operator" onTaskPress={handleBalerTaskPress} />
       </ScrollView>
     </View>
@@ -105,4 +120,18 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 16,
   },
+});
+
+const meteoStyles = StyleSheet.create({
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+  },
+  btnText: { fontSize: 16, fontWeight: '700', color: colors.primary },
 });

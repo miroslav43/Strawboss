@@ -4,3 +4,4 @@ export * from "./fraud-detection/index.js";
 export * from "./rules/index.js";
 export * from "./alerts/index.js";
 export * from "./utils/index.js";
+export * from "./meteo/index.js";

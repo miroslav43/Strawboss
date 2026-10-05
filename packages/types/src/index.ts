@@ -41,6 +41,7 @@ export * from './entities/device-push-token.js';
 export * from './entities/device.js';
 export * from './entities/geofence-event.js';
 export * from './entities/mobile-notification.js';
+export * from './entities/meteo.js';
 
 export * from './dtos/trip-create.dto.js';
 export * from './dtos/parcel-bale.dto.js';

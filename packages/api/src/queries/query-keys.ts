@@ -189,4 +189,14 @@ export const queryKeys = {
     connectedHours: (filters?: Record<string, unknown>) =>
       ['reports', 'connectedHours', filters] as const,
   },
+  meteo: {
+    all: ['meteo'] as const,
+    status: () => ['meteo', 'status'] as const,
+    settings: () => ['meteo', 'settings'] as const,
+    overview: () => ['meteo', 'overview'] as const,
+    parcel: (parcelId: string, hours: number) => ['meteo', 'parcel', parcelId, hours] as const,
+    readings: (parcelId: string) => ['meteo', 'readings', parcelId] as const,
+    fingerprints: (parcelId: string) => ['meteo', 'fingerprints', parcelId] as const,
+    fingerprint: (baleProductionId: string) => ['meteo', 'fingerprint', baleProductionId] as const,
+  },
 } as const;

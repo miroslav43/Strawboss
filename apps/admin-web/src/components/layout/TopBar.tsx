@@ -14,6 +14,7 @@ const BREADCRUMB_SEGMENT_KEYS: Record<string, string> = {
   trips: 'breadcrumb.trips',
   documents: 'breadcrumb.documents',
   reports: 'breadcrumb.reports',
+  meteo: 'breadcrumb.meteo',
   alerts: 'breadcrumb.alerts',
   map: 'breadcrumb.map',
   farms: 'breadcrumb.farms',

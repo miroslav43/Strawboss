@@ -52,7 +52,8 @@
     "tracks": "Nyomvonalak",
     "tripRequests": "Fuvarigények",
     "messages": "Üzenetek",
-    "beneficiaries": "Megrendelők"
+    "beneficiaries": "Megrendelők",
+    "meteo": "Időjárás (béta)"
   },
   "tracks": {
     "title": "Nyomvonalak",
@@ -106,7 +107,8 @@
     "alerts": "Riasztások",
     "machines": "Gépek",
     "deposits": "Raktárak",
-    "accounts": "Fiókok"
+    "accounts": "Fiókok",
+    "meteo": "Időjárás"
   },
   "login": {
     "title": "StrawBoss Admin",
@@ -2507,7 +2509,8 @@
       "portals": "Külső portálok",
       "messaging": "Üzenetküldés",
       "analytics": "Jelentések és riasztások",
-      "roles": "Fióktípusok"
+      "roles": "Fióktípusok",
+      "meteo": "Időjárás és bálázási ablak"
     },
     "item": {
       "bales": {
@@ -2577,6 +2580,11 @@
         "depot_manager": "Raktáros",
         "dispatcher": "Diszpécser",
         "transportator": "Fuvarozó"
+      },
+      "meteo": {
+        "window": "Bálázási ablak előrejelzése",
+        "moisture": "Nedvességmérések",
+        "fingerprint": "Bálák időjárási ujjlenyomata"
       }
     }
   },
@@ -2612,5 +2620,183 @@
     },
     "settingsTitle": "Szezon",
     "settingsDescription": "Zárja le a befejezett évet: a raktárkészlet átkerül, a statisztikák nulláról indulnak újra, és a lezárt szezon többé nem módosítható. Semmi nem törlődik — a felső sávból bármikor visszaválthat egy korábbi szezonra."
+  },
+  "meteo": {
+    "title": "Időjárás (béta)",
+    "loadError": "Az időjárási adatok nem tölthetők be.",
+    "disclaimer": "Béta modell, nem kalibrált; alacsony megbízhatóság (2 modell); ajánlás, nem garancia.",
+    "noAccess": {
+      "title": "Nincs hozzáférés",
+      "body": "Ezt az oldalt csak adminisztrátorok és diszpécserek láthatják."
+    },
+    "notConfigured": {
+      "title": "Az időjárás modul nincs beállítva",
+      "body": "Az időjárási adatforrás nincs beállítva ezen a kiszolgálón. Fordulj a platform üzemeltetőjéhez."
+    },
+    "beta": {
+      "title": "Béta modul",
+      "body": "A bálázási ablak előrejelzése parcellánként megmutatja, mikor elég száraz a szalma a bálázáshoz. Kísérleti, még nem kalibrált modell. A szervezeted még nem kapcsolta be.",
+      "activate": "Bekapcsolás",
+      "activateError": "A modul bekapcsolása nem sikerült.",
+      "adminOnly": "Kérj meg egy adminisztrátort a modul bekapcsolására."
+    },
+    "status": {
+      "green": "Most bálázható",
+      "yellow": "Hamarosan ablak",
+      "red": "Nincs ablak (48 óra)",
+      "grey": "Nincs adat"
+    },
+    "col": {
+      "parcel": "Parcella",
+      "crop": "Kultúra",
+      "harvestedAt": "Aratás ideje",
+      "moisture": "Nedvesség p50 [p10–p90]",
+      "window": "Ablak",
+      "message": "Üzenet",
+      "lastReading": "Utolsó mérés",
+      "dataAge": "Adatok kora"
+    },
+    "table": {
+      "empty": "Nem fut szárítási óra. Indíts egyet egy learatott parcellára."
+    },
+    "suggestions": {
+      "title": "Szárítási óra indítása",
+      "hint": "A szezon parcellái szárítási óra nélkül. Az aratás dátumát te hagyod jóvá az indítás előtt.",
+      "hintAt": "az állapot ekkor változott: {{at}}",
+      "start": "Óra indítása"
+    },
+    "event": {
+      "createTitle": "Szárítási óra indítása",
+      "editTitle": "Szárítási óra szerkesztése",
+      "help": "Az a pillanat, amikor a szalmát lekaszálták és a rendben hagyták. Az előrejelzés innen számolja a száradást.",
+      "hintNote": "A dátum az állapotelőzményekből van előtöltve. Ellenőrizd, és szükség esetén javítsd.",
+      "harvestedAt": "Aratás ideje",
+      "swath": "Rend típusa",
+      "dateRequired": "Adj meg érvényes dátumot és időt.",
+      "dateFuture": "A dátum nem lehet a jövőben.",
+      "dateTooOld": "A dátum nem lehet 28 napnál régebbi.",
+      "alreadyOpen": "Ennek a parcellának már van nyitott szárítási órája.",
+      "editOpen": "A nyitott szerkesztése",
+      "saveError": "A mentés nem sikerült.",
+      "close": "Óra lezárása",
+      "closeConfirm": "Lezárod ennek a parcellának a szárítási óráját?",
+      "start": "Indítás"
+    },
+    "swath": {
+      "narrow": "Keskeny",
+      "wide": "Széles",
+      "turned": "Forgatott"
+    },
+    "settings": {
+      "title": "Időjárás beállítások",
+      "threshold": "Nedvességküszöb (%)",
+      "thresholdHint": "Nedves bázis. Alapértelmezés 15 % a nagy hasáb alakú bálákhoz.",
+      "fracMin": "Egyetértő modellek (%)",
+      "fracMinHint": "A modellek hányadának kell a küszöb alatt lennie.",
+      "rainProb": "Esővalószínűségi határ (%)",
+      "rainProbHint": "Ettől a valószínűségtől az óra nem bálázható.",
+      "pressCapacity": "Bálázó kapacitása (ha/óra)",
+      "pressCapacityHint": "A parcellához szükséges órák becslésére szolgál.",
+      "minWindow": "Minimális ablak (óra)",
+      "minWindowHint": "A legrövidebb ablak, amelyet érdemes elindítani.",
+      "defaultMc0": "Kezdeti nedvesség (%)",
+      "defaultMc0Hint": "Mérés hiányában ezt feltételezzük.",
+      "activeDays": "Az óra élettartama (nap)",
+      "activeDaysHint": "Ennyi nap után a szárítási óra magától lezárul.",
+      "recompute": "Újraszámolás most",
+      "recomputeQueued": "Az újraszámolás sorba állítva.",
+      "saved": "Mentve.",
+      "error": "A művelet nem sikerült."
+    },
+    "detail": {
+      "title": "Parcella időjárása",
+      "dataAge": "Adatok kora",
+      "computedAt": "Számolva"
+    },
+    "chart": {
+      "noData": "Még nincs adat.",
+      "band": "Tartomány p10–p90",
+      "observed": "Becslés (múlt)",
+      "forecast": "Előrejelzés p50",
+      "threshold": "Küszöb",
+      "now": "Most",
+      "dew": "Harmat",
+      "readings": "Mérések",
+      "precip": "Eső (mm/óra)",
+      "rainProb": "Esővalószínűség (%)",
+      "moistureTitle": "A szalma nedvessége (nedves bázis)",
+      "rainTitle": "Eső",
+      "legendNote": "Zöld háttér: bálázható órák. Szürke háttér: múltbeli órák (összefűzött sorozat, nem előrejelzés)."
+    },
+    "reading": {
+      "title": "Nedvességmérés",
+      "value": "Nedvesség (%)",
+      "measuredAt": "Mérés ideje",
+      "kind": "Típus",
+      "kinds": {
+        "swath": "Rend",
+        "bale": "Bála"
+      },
+      "add": "Mérés hozzáadása",
+      "hint": "A rendből vett mérés nullázza a száradási modellt; a bálán mért érték csak az ujjlenyomatban marad meg.",
+      "valueInvalid": "Adj meg 0 és 100 % közötti értéket.",
+      "timeInvalid": "Adj meg érvényes dátumot és időt.",
+      "saveError": "A mérés mentése nem sikerült.",
+      "deleteConfirm": "Törlöd ezt a mérést?"
+    },
+    "fingerprint": {
+      "title": "Bálák időjárási ujjlenyomatai",
+      "hint": "A bálatermelési bejegyzés rögzítésének pillanatában lefagyasztva; utólag nem módosítható.",
+      "empty": "Ehhez a parcellához még nincs ujjlenyomat.",
+      "baledAt": "Bálázva",
+      "window": "Ablak",
+      "moisture": "Becsült nedvesség",
+      "rain": "Eső az aratás óta",
+      "dryingHours": "Száradási órák",
+      "integrity": "Integritás",
+      "measured": "mért",
+      "hashValid": "Érvényes hash",
+      "hashInvalid": "Érvénytelen hash",
+      "download": "JSON letöltése",
+      "source": {
+        "ok": "A forrás változatlan",
+        "modified": "A forrás módosult",
+        "deleted": "A forrás törölve"
+      }
+    },
+    "reason": {
+      "baleUntil": "Bálázhatsz eddig: {{until}}.",
+      "windowTooShort": "Az ablak {{hours}} óra, rövidebb a szükséges {{need}} óránál.",
+      "endsBy": {
+        "rain": "Az ablak ekkor zárul: {{at}}, ok: eső.",
+        "dew": "Az ablak ekkor zárul: {{at}}, ok: harmat.",
+        "access": "Az ablak ekkor zárul: {{at}}, ok: a talaj nem járható.",
+        "moisture": "Az ablak ekkor zárul: {{at}}, ok: a szalma túl nedves."
+      },
+      "baleableFrom": "Bálázni ettől lehet: {{from}}.",
+      "blockedNow": {
+        "rain": "Most nem: eső.",
+        "dew": "Most nem: harmat.",
+        "access": "Most nem: a talaj nem járható.",
+        "moisture": "Most nem: a szalma túl nedves."
+      },
+      "noWindow48h": "Nincs bálázható óra a következő 48 órában.",
+      "mainBlocker": {
+        "rain": "Fő akadály: az eső.",
+        "dew": "Fő akadály: a harmat.",
+        "access": "Fő akadály: a talaj megközelíthetősége.",
+        "moisture": "Fő akadály: a szalma túl nedves."
+      },
+      "notEnoughForParcel": "Nem elég a teljes parcellához: {{have}} óra áll rendelkezésre, {{need}} óra kell.",
+      "noData": "Még nincs időjárási adat.",
+      "staleData": "Az időjárási adatok elavultak.",
+      "noArea": "A parcellának nincs területe, ezért a szükséges órák nem becsülhetők.",
+      "noHistory": "Hiányoznak a korábbi időjárási adatok erre az időszakra.",
+      "noCoordinates": "A parcellának nincsenek koordinátái.",
+      "noForecast": "Nincs elérhető előrejelzés.",
+      "noPriorForecast": "Abban a pillanatban nem volt elérhető előrejelzés.",
+      "engineError": "A számítás nem sikerült ennél a parcellánál — a hiba naplózva lett.",
+      "noEvent": "Ehhez a parcellához nem fut szárítási óra."
+    }
   }
 }

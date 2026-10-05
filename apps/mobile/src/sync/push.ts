@@ -32,6 +32,9 @@ const DIRECT_ENDPOINT_TYPES = new Set([
   // any syncable table. Without it here, /sync/push would try to INSERT INTO
   // cmr_scan and fail forever.
   'cmr_scan',
+  // Meteo moisture reading: the Meteo module's own REST endpoint (idempotent on the
+  // client UUID, feature/opt-in gated server-side) — there is no local table.
+  'meteo_reading_create',
 ]);
 
 /**
@@ -289,6 +292,44 @@ function isUniqueViolationText(text: string): boolean {
   return /already exists/i.test(text) || /duplicate key/i.test(text);
 }
 
+/**
+ * Send a queued `meteo_reading_create` entry. Same contract as
+ * `sendDirectRestCreate` (409 replay = success, 403 gate = FEATURE_DISABLED), plus
+ * a 400 (validation / closed season) is a refusal on content: it becomes a
+ * terminal marker that `requeueTransientFailed` never puts back in the queue.
+ */
+async function sendMeteoReading(
+  entry: SyncQueueEntry,
+  apiClient: ApiClient,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(entry.payload) as Record<string, unknown>;
+  } catch (err) {
+    return {
+      ok: false,
+      error: `meteo_reading_create: payload not parsable (${
+        err instanceof Error ? err.message : String(err)
+      })`,
+    };
+  }
+  try {
+    await apiClient.post('/api/v1/meteo/readings', payload);
+    return { ok: true };
+  } catch (err) {
+    if (isFeatureDisabled(err)) return { ok: false, error: FEATURE_DISABLED_ERROR };
+    if (isIdempotentReplay(err)) return { ok: true };
+    if (err instanceof ApiError && err.status === 400) {
+      const body = JSON.stringify(err.data ?? '');
+      return {
+        ok: false,
+        error: /season_closed/i.test(body) ? SEASON_CLOSED_ERROR : TERMINAL_REJECTION_ERROR,
+      };
+    }
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 async function sendDirectRestCreate(
   entry: SyncQueueEntry,
   apiClient: ApiClient,
@@ -454,6 +495,8 @@ export async function pushMutations(
       res = await sendDirectRestCreate(entry, apiClient, '/api/v1/parcels');
     } else if (entry.entity_type === 'delivery_destination_create') {
       res = await sendDirectRestCreate(entry, apiClient, '/api/v1/delivery-destinations');
+    } else if (entry.entity_type === 'meteo_reading_create') {
+      res = await sendMeteoReading(entry, apiClient);
     } else {
       // Should not happen — DIRECT_ENDPOINT_TYPES is the authoritative list.
       res = { ok: false, error: `Unknown direct endpoint type: ${entry.entity_type}` };

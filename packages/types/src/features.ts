@@ -55,7 +55,7 @@
  * no longer matches anything. Add and deprecate; never rename.
  */
 
-/** The ten top-level modules. Each is also a FeatureKey in its own right. */
+/** The top-level modules. Each is also a FeatureKey in its own right. */
 export const FEATURE_MODULES = [
   'bales',
   'geo',
@@ -67,6 +67,7 @@ export const FEATURE_MODULES = [
   'messaging',
   'analytics',
   'roles',
+  'meteo',
 ] as const;
 
 export type FeatureModuleKey = (typeof FEATURE_MODULES)[number];
@@ -150,6 +151,7 @@ export const FEATURE_KEYS = [
   'messaging',
   'analytics',
   'roles',
+  'meteo',
   // bales
   'bales.production',
   'bales.load_register',
@@ -208,6 +210,11 @@ export const FEATURE_KEYS = [
   'roles.depot_manager',
   'roles.dispatcher',
   'roles.transportator',
+  // meteo — baling-window forecast. Off for an org until it opts in
+  // (meteo_org_settings.enabled); these keys are the operator's kill switch.
+  'meteo.window',
+  'meteo.moisture',
+  'meteo.fingerprint',
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -304,6 +311,15 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     // is never what an operator means. Anchor only.
     wired: true,
     uiSwitch: false,
+  },
+  meteo: {
+    module: 'meteo',
+    defaultEnabled: true,
+    dependsOn: [],
+    surfaces: ['web', 'mobile', 'api', 'jobs'],
+    gatesJobs: ['meteo-ingest', 'meteo-engine', 'meteo-housekeeping', 'meteo-fingerprint'],
+    wired: true,
+    uiSwitch: true,
   },
 
   // ── M1 bales — Baloți și producție ───────────────────────────────────────
@@ -734,9 +750,40 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     wired: true,
     uiSwitch: true,
   },
+
+  // ── meteo — Fereastră de balotare ────────────────────────────────────────
+  // Every org resolves these ON (defaultEnabled is the literal true), so the
+  // real opt-in is meteo_org_settings.enabled; switching a key off here stops
+  // its writes and its jobs for that org. Reads stay open (registry contract).
+  'meteo.window': {
+    module: 'meteo',
+    defaultEnabled: true,
+    dependsOn: ['meteo'],
+    surfaces: ['web', 'api', 'jobs'],
+    gatesJobs: ['meteo-ingest', 'meteo-engine', 'meteo-housekeeping'],
+    wired: true,
+    uiSwitch: true,
+  },
+  'meteo.moisture': {
+    module: 'meteo',
+    defaultEnabled: true,
+    dependsOn: ['meteo', 'meteo.window'],
+    surfaces: ['web', 'mobile', 'api'],
+    wired: true,
+    uiSwitch: true,
+  },
+  'meteo.fingerprint': {
+    module: 'meteo',
+    defaultEnabled: true,
+    dependsOn: ['meteo', 'meteo.window'],
+    surfaces: ['web', 'api', 'jobs'],
+    gatesJobs: ['meteo-fingerprint'],
+    wired: true,
+    uiSwitch: true,
+  },
 };
 
-/** True for the ten module rows, false for leaves. */
+/** True for the module rows, false for leaves. */
 export function isFeatureModuleKey(key: FeatureKey): key is FeatureModuleKey {
   return (FEATURE_MODULES as readonly string[]).includes(key);
 }

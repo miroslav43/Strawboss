@@ -18,6 +18,7 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { ActiveFieldCard } from '@/components/shared/ActiveFieldCard';
 import { useAuthStore } from '@/stores/auth-store';
 import { useCurrentLoaderParcel } from '@/hooks/useCurrentLoaderParcel';
+import { useMeteoAvailable } from '@/hooks/useMeteoAvailable';
 import { useLoaderBoard } from '@/hooks/useLoaderBoard';
 import { useAuxiliaryTrips } from '@/hooks/useAuxiliaryTrips';
 import type { AuxiliaryTrip } from '@/hooks/useAuxiliaryTrips';
@@ -39,6 +40,7 @@ export default function LoaderHomeScreen() {
   const { t } = useI18n();
   const assignedMachineId = useAuthStore((s) => s.assignedMachineId);
   const parcel = useCurrentLoaderParcel();
+  const meteoAvailable = useMeteoAvailable();
   const board = useLoaderBoard();
   const auxTrips = useAuxiliaryTrips();
   const [refreshing, setRefreshing] = useState(false);
@@ -153,6 +155,17 @@ export default function LoaderHomeScreen() {
         ) : null}
 
         <ActiveFieldCard parcel={parcel} onOpenParcel={openParcel} />
+
+        {meteoAvailable ? (
+          <TouchableOpacity
+            style={meteoStyles.btn}
+            onPress={() => router.push('/meteo/measure')}
+            accessibilityRole="button"
+          >
+            <MaterialCommunityIcons name="water-percent" size={24} color={colors.primary} />
+            <Text style={meteoStyles.btnText}>{t('meteo.button')}</Text>
+          </TouchableOpacity>
+        ) : null}
 
         {/* ─── Camioane de încărcat (asignate + auxiliare) ───────────────── */}
         <View style={styles.trucksHeader}>
@@ -663,4 +676,18 @@ const auxStyles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 3,
   },
+});
+
+const meteoStyles = StyleSheet.create({
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+  },
+  btnText: { fontSize: 16, fontWeight: '700', color: colors.primary },
 });

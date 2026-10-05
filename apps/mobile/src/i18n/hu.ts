@@ -315,6 +315,7 @@ export const hu = {
       consumableLogs: 'Fogyóeszköz',
       operations: 'Művelet',
       taskAssignments: 'Feladat',
+      meteoReading: 'Nedvességmérés',
     },
     actionLabel: {
       create: 'létrehozás',
@@ -1065,6 +1066,25 @@ export const hu = {
         'Termelt {produced}, felrakodott {loaded}. Hiányzik {missing} bála. A tábla nyitva marad — egy adminisztrátor értesítést kapott.',
       acknowledgeButton: 'Rendben',
     },
+  },
+
+  meteo: {
+    title: 'Nedvesség mérése',
+    button: 'Nedvesség mérése',
+    sub: 'A szalma vagy a bála nedvessége',
+    parcel: 'Parcella',
+    noParcel: 'Válassz parcellát',
+    noParcels: 'Nincs parcella a gyorsítótárban.',
+    value: 'Nedvesség (%)',
+    kind: 'Mit mérsz',
+    swath: 'Szalma a rendben',
+    bale: 'Bála',
+    save: 'Mérés mentése',
+    saved: 'Mérés elmentve',
+    savedOffline: 'Mérés elmentve, térerő esetén elküldjük',
+    invalid: 'Adj meg 0 és 100 közötti értéket (egy tizedes).',
+    saveFailed: 'A mérést nem sikerült menteni.',
+    errorTitle: 'Hiba',
   },
 
   numericPad: {

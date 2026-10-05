@@ -52,7 +52,8 @@
     "tracks": "Tracks",
     "tripRequests": "Trip Requests",
     "messages": "Messages",
-    "beneficiaries": "Beneficiaries"
+    "beneficiaries": "Beneficiaries",
+    "meteo": "Weather (beta)"
   },
   "tracks": {
     "title": "Tracks",
@@ -106,7 +107,8 @@
     "alerts": "Alerts",
     "machines": "Machines",
     "deposits": "Deposits",
-    "accounts": "Accounts"
+    "accounts": "Accounts",
+    "meteo": "Weather"
   },
   "login": {
     "title": "StrawBoss Admin",
@@ -2507,7 +2509,8 @@
       "portals": "External portals",
       "messaging": "Messaging",
       "analytics": "Reports & alerts",
-      "roles": "Account types"
+      "roles": "Account types",
+      "meteo": "Weather & baling window"
     },
     "item": {
       "bales": {
@@ -2577,6 +2580,11 @@
         "depot_manager": "Depot Manager",
         "dispatcher": "Dispatcher",
         "transportator": "Transporter"
+      },
+      "meteo": {
+        "window": "Baling window forecast",
+        "moisture": "Moisture readings",
+        "fingerprint": "Bale weather fingerprint"
       }
     }
   },
@@ -2612,5 +2620,183 @@
     },
     "settingsTitle": "Season",
     "settingsDescription": "Close the finished year: depot stock carries forward, statistics restart from zero, and the closed season can no longer be modified. Nothing is deleted — you can switch back to an older season from the top bar at any time."
+  },
+  "meteo": {
+    "title": "Weather (beta)",
+    "loadError": "Could not load the weather data.",
+    "disclaimer": "Beta model, uncalibrated; low confidence (2 models); a recommendation, not a guarantee.",
+    "noAccess": {
+      "title": "No access",
+      "body": "Only administrators and dispatchers can see this page."
+    },
+    "notConfigured": {
+      "title": "Weather module not configured",
+      "body": "The weather data source is not set up on this server. Contact the platform operator."
+    },
+    "beta": {
+      "title": "Beta module",
+      "body": "The baling-window forecast tells you, parcel by parcel, when the straw is dry enough to bale. It is an experimental model that is not yet calibrated. Your organization has not enabled it yet.",
+      "activate": "Enable",
+      "activateError": "Could not enable the module.",
+      "adminOnly": "Ask an administrator to enable this module."
+    },
+    "status": {
+      "green": "Bale now",
+      "yellow": "Window soon",
+      "red": "No window (48 h)",
+      "grey": "No data"
+    },
+    "col": {
+      "parcel": "Parcel",
+      "crop": "Crop",
+      "harvestedAt": "Harvested at",
+      "moisture": "Moisture p50 [p10–p90]",
+      "window": "Window",
+      "message": "Message",
+      "lastReading": "Last measurement",
+      "dataAge": "Data age"
+    },
+    "table": {
+      "empty": "No drying clock is running. Start one for a harvested parcel."
+    },
+    "suggestions": {
+      "title": "Start the drying clock",
+      "hint": "Parcels in the season without a drying clock. You confirm the harvest date before it starts.",
+      "hintAt": "status changed on {{at}}",
+      "start": "Start clock"
+    },
+    "event": {
+      "createTitle": "Start drying clock",
+      "editTitle": "Edit drying clock",
+      "help": "The moment the straw was cut and left in the swath. The forecast counts drying from here.",
+      "hintNote": "The date is pre-filled from the status history. Check it and correct it if needed.",
+      "harvestedAt": "Harvested at",
+      "swath": "Swath type",
+      "dateRequired": "Enter a valid date and time.",
+      "dateFuture": "The date cannot be in the future.",
+      "dateTooOld": "The date cannot be older than 28 days.",
+      "alreadyOpen": "This parcel already has an open drying clock.",
+      "editOpen": "Edit the open one",
+      "saveError": "Could not save.",
+      "close": "Close clock",
+      "closeConfirm": "Close the drying clock for this parcel?",
+      "start": "Start"
+    },
+    "swath": {
+      "narrow": "Narrow",
+      "wide": "Wide",
+      "turned": "Turned"
+    },
+    "settings": {
+      "title": "Weather settings",
+      "threshold": "Moisture threshold (%)",
+      "thresholdHint": "Wet basis. Default 15 % for large square bales.",
+      "fracMin": "Models in agreement (%)",
+      "fracMinHint": "Share of models that must be below the threshold.",
+      "rainProb": "Rain probability limit (%)",
+      "rainProbHint": "From this probability an hour is not baleable.",
+      "pressCapacity": "Baler capacity (ha/h)",
+      "pressCapacityHint": "Used to estimate the hours a parcel needs.",
+      "minWindow": "Minimum window (h)",
+      "minWindowHint": "Shortest window that is worth starting.",
+      "defaultMc0": "Initial moisture (%)",
+      "defaultMc0Hint": "Assumed when there is no measurement.",
+      "activeDays": "Clock lifetime (days)",
+      "activeDaysHint": "After this a drying clock closes by itself.",
+      "recompute": "Recompute now",
+      "recomputeQueued": "Recompute queued.",
+      "saved": "Saved.",
+      "error": "The action failed."
+    },
+    "detail": {
+      "title": "Parcel weather",
+      "dataAge": "Data age",
+      "computedAt": "Computed at"
+    },
+    "chart": {
+      "noData": "No data yet.",
+      "band": "Range p10–p90",
+      "observed": "Estimate (past)",
+      "forecast": "Forecast p50",
+      "threshold": "Threshold",
+      "now": "Now",
+      "dew": "Dew",
+      "readings": "Measurements",
+      "precip": "Rain (mm/h)",
+      "rainProb": "Rain probability (%)",
+      "moistureTitle": "Straw moisture (wet basis)",
+      "rainTitle": "Rain",
+      "legendNote": "Green background: baleable hours. Grey background: past hours (a stitched series, not a forecast)."
+    },
+    "reading": {
+      "title": "Moisture measurement",
+      "value": "Moisture (%)",
+      "measuredAt": "Measured at",
+      "kind": "Type",
+      "kinds": {
+        "swath": "Swath",
+        "bale": "Bale"
+      },
+      "add": "Add measurement",
+      "hint": "A swath reading resets the drying model; a bale reading is kept only in the fingerprint.",
+      "valueInvalid": "Enter a value between 0 and 100 %.",
+      "timeInvalid": "Enter a valid date and time.",
+      "saveError": "Could not save the measurement.",
+      "deleteConfirm": "Delete this measurement?"
+    },
+    "fingerprint": {
+      "title": "Bale weather fingerprints",
+      "hint": "Frozen at the moment a bale production entry is recorded; cannot be changed afterwards.",
+      "empty": "No fingerprints for this parcel yet.",
+      "baledAt": "Baled at",
+      "window": "Window",
+      "moisture": "Estimated moisture",
+      "rain": "Rain since harvest",
+      "dryingHours": "Drying hours",
+      "integrity": "Integrity",
+      "measured": "measured",
+      "hashValid": "Hash valid",
+      "hashInvalid": "Hash invalid",
+      "download": "Download JSON",
+      "source": {
+        "ok": "Source unchanged",
+        "modified": "Source modified",
+        "deleted": "Source deleted"
+      }
+    },
+    "reason": {
+      "baleUntil": "You can bale until {{until}}.",
+      "windowTooShort": "The window is {{hours}} h, shorter than the {{need}} h needed.",
+      "endsBy": {
+        "rain": "The window closes at {{at}}: rain.",
+        "dew": "The window closes at {{at}}: dew.",
+        "access": "The window closes at {{at}}: the ground is not passable.",
+        "moisture": "The window closes at {{at}}: the straw is too moist."
+      },
+      "baleableFrom": "Baling is possible from {{from}}.",
+      "blockedNow": {
+        "rain": "Not now: rain.",
+        "dew": "Not now: dew.",
+        "access": "Not now: the ground is not passable.",
+        "moisture": "Not now: the straw is too moist."
+      },
+      "noWindow48h": "No baleable hour in the next 48 h.",
+      "mainBlocker": {
+        "rain": "Main obstacle: rain.",
+        "dew": "Main obstacle: dew.",
+        "access": "Main obstacle: ground access.",
+        "moisture": "Main obstacle: the straw is too moist."
+      },
+      "notEnoughForParcel": "Not enough for the whole parcel: {{have}} h available, {{need}} h needed.",
+      "noData": "No weather data yet.",
+      "staleData": "The weather data is out of date.",
+      "noArea": "The parcel has no area, so the hours needed cannot be estimated.",
+      "noHistory": "Historical weather data is missing for this period.",
+      "noCoordinates": "The parcel has no coordinates.",
+      "noForecast": "No forecast available.",
+      "noPriorForecast": "No forecast was available at that moment.",
+      "engineError": "The calculation failed for this parcel — the team has been alerted in the logs.",
+      "noEvent": "No drying clock is running for this parcel."
+    }
   }
 }

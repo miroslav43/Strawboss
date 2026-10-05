@@ -24,6 +24,7 @@ import {
   MonitorDot,
   Building2,
   Mail,
+  CloudSun,
 } from 'lucide-react';
 import type { FeatureKey } from '@strawboss/types';
 import { cn } from '@/lib/utils';
@@ -119,6 +120,12 @@ function buildNavItems(slug: string) {
       icon: Package,
       labelKey: 'nav.consumableLogs' as const,
       feature: 'costs.consumables' as const,
+    },
+    {
+      href: `/${slug}/meteo`,
+      icon: CloudSun,
+      labelKey: 'nav.meteo' as const,
+      feature: 'meteo' as const,
     },
     { href: `/${slug}/accounts`, icon: Users, labelKey: 'nav.accounts' as const },
   ] as const;

@@ -52,7 +52,8 @@
     "tracks": "Trasee",
     "tripRequests": "Solicitări curse",
     "messages": "Mesaje",
-    "beneficiaries": "Beneficiari"
+    "beneficiaries": "Beneficiari",
+    "meteo": "Meteo (beta)"
   },
   "tracks": {
     "title": "Trasee",
@@ -106,7 +107,8 @@
     "alerts": "Alerte",
     "machines": "Mașini",
     "deposits": "Depozite",
-    "accounts": "Conturi"
+    "accounts": "Conturi",
+    "meteo": "Meteo"
   },
   "login": {
     "title": "StrawBoss Admin",
@@ -2507,7 +2509,8 @@
       "portals": "Portaluri externe",
       "messaging": "Mesagerie",
       "analytics": "Rapoarte și alerte",
-      "roles": "Tipuri de cont"
+      "roles": "Tipuri de cont",
+      "meteo": "Meteo și fereastră de balotare"
     },
     "item": {
       "bales": {
@@ -2577,6 +2580,11 @@
         "depot_manager": "Operator depozit",
         "dispatcher": "Dispecer",
         "transportator": "Transportator"
+      },
+      "meteo": {
+        "window": "Prognoza ferestrei de balotare",
+        "moisture": "Măsurători de umiditate",
+        "fingerprint": "Amprenta meteo a baloților"
       }
     }
   },
@@ -2612,5 +2620,183 @@
     },
     "settingsTitle": "Sezon",
     "settingsDescription": "Închide anul încheiat: stocul din depozite se reportează, statisticile repornesc de la zero, iar sezonul închis nu mai poate fi modificat. Nimic nu se șterge — poți oricând comuta înapoi pe un sezon vechi din bara de sus."
+  },
+  "meteo": {
+    "title": "Meteo (beta)",
+    "loadError": "Nu s-au putut încărca datele meteo.",
+    "disclaimer": "Model beta, necalibrat; încredere redusă (2 modele); recomandare, nu garanție.",
+    "noAccess": {
+      "title": "Fără acces",
+      "body": "Doar administratorii și dispecerii pot vedea această pagină."
+    },
+    "notConfigured": {
+      "title": "Modulul meteo nu este configurat",
+      "body": "Sursa de date meteo nu este configurată pe acest server. Contactează operatorul platformei."
+    },
+    "beta": {
+      "title": "Modul beta",
+      "body": "Prognoza ferestrei de balotare arată, parcelă cu parcelă, când paiele sunt destul de uscate pentru balotat. Este un model experimental, încă necalibrat. Organizația ta nu l-a activat încă.",
+      "activate": "Activează",
+      "activateError": "Nu s-a putut activa modulul.",
+      "adminOnly": "Cere unui administrator să activeze acest modul."
+    },
+    "status": {
+      "green": "De balotat acum",
+      "yellow": "Fereastră în curând",
+      "red": "Fără fereastră (48 h)",
+      "grey": "Fără date"
+    },
+    "col": {
+      "parcel": "Parcelă",
+      "crop": "Cultură",
+      "harvestedAt": "Recoltat la",
+      "moisture": "Umiditate p50 [p10–p90]",
+      "window": "Fereastră",
+      "message": "Mesaj",
+      "lastReading": "Ultima măsurătoare",
+      "dataAge": "Vechimea datelor"
+    },
+    "table": {
+      "empty": "Niciun ceas de uscare nu rulează. Pornește unul pentru o parcelă recoltată."
+    },
+    "suggestions": {
+      "title": "De pornit ceasul de uscare",
+      "hint": "Parcele din sezon fără ceas de uscare. Confirmi tu data recoltării înainte să pornească.",
+      "hintAt": "statusul s-a schimbat la {{at}}",
+      "start": "Pornește ceasul"
+    },
+    "event": {
+      "createTitle": "Pornește ceasul de uscare",
+      "editTitle": "Modifică ceasul de uscare",
+      "help": "Momentul în care paiele au fost tăiate și lăsate în brazdă. Prognoza numără uscarea de aici.",
+      "hintNote": "Data e pre-completată din istoricul de status. Verific-o și corect-o dacă e nevoie.",
+      "harvestedAt": "Recoltat la",
+      "swath": "Tip de brazdă",
+      "dateRequired": "Introdu o dată și o oră valide.",
+      "dateFuture": "Data nu poate fi în viitor.",
+      "dateTooOld": "Data nu poate fi mai veche de 28 de zile.",
+      "alreadyOpen": "Parcela are deja un ceas de uscare deschis.",
+      "editOpen": "Modifică-l pe cel deschis",
+      "saveError": "Nu s-a putut salva.",
+      "close": "Închide ceasul",
+      "closeConfirm": "Închizi ceasul de uscare al acestei parcele?",
+      "start": "Pornește"
+    },
+    "swath": {
+      "narrow": "Îngustă",
+      "wide": "Lată",
+      "turned": "Întoarsă"
+    },
+    "settings": {
+      "title": "Setări meteo",
+      "threshold": "Prag de umiditate (%)",
+      "thresholdHint": "Bază umedă. Implicit 15 % pentru baloți paralelipipedici.",
+      "fracMin": "Modele în acord (%)",
+      "fracMinHint": "Câte dintre modele trebuie să fie sub prag.",
+      "rainProb": "Limita probabilității de ploaie (%)",
+      "rainProbHint": "De la această probabilitate o oră nu mai e bună de balotat.",
+      "pressCapacity": "Capacitatea presei (ha/h)",
+      "pressCapacityHint": "Folosită ca să estimăm orele necesare unei parcele.",
+      "minWindow": "Fereastră minimă (h)",
+      "minWindowHint": "Cea mai scurtă fereastră care merită pornită.",
+      "defaultMc0": "Umiditate inițială (%)",
+      "defaultMc0Hint": "Se presupune când nu există nicio măsurătoare.",
+      "activeDays": "Durata ceasului (zile)",
+      "activeDaysHint": "După atâtea zile un ceas de uscare se închide singur.",
+      "recompute": "Recalculează acum",
+      "recomputeQueued": "Recalcularea a fost pusă în coadă.",
+      "saved": "Salvat.",
+      "error": "Acțiunea a eșuat."
+    },
+    "detail": {
+      "title": "Meteo parcelă",
+      "dataAge": "Vechimea datelor",
+      "computedAt": "Calculat la"
+    },
+    "chart": {
+      "noData": "Încă nu există date.",
+      "band": "Interval p10–p90",
+      "observed": "Estimare (trecut)",
+      "forecast": "Prognoză p50",
+      "threshold": "Prag",
+      "now": "Acum",
+      "dew": "Rouă",
+      "readings": "Măsurători",
+      "precip": "Ploaie (mm/h)",
+      "rainProb": "Probabilitate de ploaie (%)",
+      "moistureTitle": "Umiditatea paielor (bază umedă)",
+      "rainTitle": "Ploaie",
+      "legendNote": "Fundal verde: ore bune de balotat. Fundal gri: ore trecute (o serie cusută, nu o prognoză)."
+    },
+    "reading": {
+      "title": "Măsurătoare de umiditate",
+      "value": "Umiditate (%)",
+      "measuredAt": "Măsurat la",
+      "kind": "Tip",
+      "kinds": {
+        "swath": "Brazdă",
+        "bale": "Balot"
+      },
+      "add": "Adaugă măsurătoarea",
+      "hint": "O măsurătoare din brazdă resetează modelul de uscare; cea de pe balot rămâne doar în amprentă.",
+      "valueInvalid": "Introdu o valoare între 0 și 100 %.",
+      "timeInvalid": "Introdu o dată și o oră valide.",
+      "saveError": "Nu s-a putut salva măsurătoarea.",
+      "deleteConfirm": "Ștergi această măsurătoare?"
+    },
+    "fingerprint": {
+      "title": "Amprente meteo ale baloților",
+      "hint": "Înghețate în momentul înregistrării producției de baloți; nu se mai pot modifica.",
+      "empty": "Încă nu există amprente pentru această parcelă.",
+      "baledAt": "Balotat la",
+      "window": "Fereastră",
+      "moisture": "Umiditate estimată",
+      "rain": "Ploaie de la recoltare",
+      "dryingHours": "Ore de uscare",
+      "integrity": "Integritate",
+      "measured": "măsurat",
+      "hashValid": "Sumă de control validă",
+      "hashInvalid": "Sumă de control invalidă",
+      "download": "Descarcă JSON",
+      "source": {
+        "ok": "Sursă nemodificată",
+        "modified": "Sursă modificată",
+        "deleted": "Sursă ștearsă"
+      }
+    },
+    "reason": {
+      "baleUntil": "Poți balota până la {{until}}.",
+      "windowTooShort": "Fereastra are {{hours}} h, mai puțin decât cele {{need}} h necesare.",
+      "endsBy": {
+        "rain": "Fereastra se închide la {{at}}: ploaie.",
+        "dew": "Fereastra se închide la {{at}}: rouă.",
+        "access": "Fereastra se închide la {{at}}: terenul nu e practicabil.",
+        "moisture": "Fereastra se închide la {{at}}: paiele sunt prea umede."
+      },
+      "baleableFrom": "Se poate balota de la {{from}}.",
+      "blockedNow": {
+        "rain": "Nu acum: ploaie.",
+        "dew": "Nu acum: rouă.",
+        "access": "Nu acum: terenul nu e practicabil.",
+        "moisture": "Nu acum: paiele sunt prea umede."
+      },
+      "noWindow48h": "Nicio oră bună de balotat în următoarele 48 h.",
+      "mainBlocker": {
+        "rain": "Obstacol principal: ploaia.",
+        "dew": "Obstacol principal: roua.",
+        "access": "Obstacol principal: accesul pe teren.",
+        "moisture": "Obstacol principal: paiele sunt prea umede."
+      },
+      "notEnoughForParcel": "Nu ajunge pentru toată parcela: {{have}} h disponibile, {{need}} h necesare.",
+      "noData": "Încă nu există date meteo.",
+      "staleData": "Datele meteo sunt învechite.",
+      "noArea": "Parcela nu are suprafață, deci orele necesare nu pot fi estimate.",
+      "noHistory": "Lipsesc datele meteo istorice pentru această perioadă.",
+      "noCoordinates": "Parcela nu are coordonate.",
+      "noForecast": "Nu există prognoză.",
+      "noPriorForecast": "Nu exista nicio prognoză în acel moment.",
+      "engineError": "Calculul a eșuat pentru această parcelă — eroarea a fost înregistrată în loguri.",
+      "noEvent": "Pentru această parcelă nu rulează niciun ceas de uscare."
+    }
   }
 }

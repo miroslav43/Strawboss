@@ -271,3 +271,18 @@ export type {
   OperatorDistanceQuery,
   ConnectedHoursQuery,
 } from './dtos/reports.schema.js';
+export {
+  swathTypeSchema,
+  moistureReadingKindSchema,
+  updateMeteoSettingsSchema,
+  createHarvestEventSchema,
+  updateHarvestEventSchema,
+  createMoistureReadingSchema,
+  meteoParcelQuerySchema,
+} from './schemas/meteo.schema.js';
+export type {
+  UpdateMeteoSettingsInput,
+  CreateHarvestEventInput,
+  UpdateHarvestEventInput,
+  CreateMoistureReadingInput,
+} from './schemas/meteo.schema.js';

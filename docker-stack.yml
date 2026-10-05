@@ -51,6 +51,14 @@ services:
       # and the next `docker stack deploy` silently reverts it. The backend logs
       # the resolved value once at boot (search logs/web/ for "feature flags").
       - STRAWBOSS_ORG_FEATURE_FLAGS_ENABLED=${STRAWBOSS_ORG_FEATURE_FLAGS_ENABLED:-true}
+      # Meteo module. Declared HERE only — never in .env: dev and prod share .env
+      # and the production database, so METEO_JOBS_ENABLED=true in .env would let a
+      # dev backend run the ingest/engine jobs against prod data. Default off;
+      # set it in the shell that runs `stack:deploy` to turn the jobs on.
+      # OPEN_METEO_BASE_URL is the self-hosted instance (stack strawboss-meteo);
+      # *.open-meteo.com is refused by the client (non-commercial licence).
+      - METEO_JOBS_ENABLED=${METEO_JOBS_ENABLED:-false}
+      - OPEN_METEO_BASE_URL=${OPEN_METEO_BASE_URL:-http://strawboss-meteo:8080}
     volumes:
       - /srv/apps/Strawboss/logs:/app/logs
       - /srv/apps/Strawboss/uploads:/app/uploads

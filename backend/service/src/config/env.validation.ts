@@ -17,6 +17,11 @@ export const envSchema = z.object({
   // Yandex static maps (no key, Latin labels). The old openstreetmap.de host was
   // discontinued and no longer resolves, so route-map images shipped broken.
   STATICMAP_BASE_URL: z.string().default('https://static-maps.yandex.ru/1.x'),
+  // Meteo module — documentation only, intentionally NOT validated here. Both
+  // vars live in docker-stack.yml and must NOT be set in .env (dev and prod share
+  // .env and the prod DB): METEO_JOBS_ENABLED ('true' enables the meteo BullMQ
+  // jobs, default off) and OPEN_METEO_BASE_URL (self-hosted instance; the client
+  // refuses *.open-meteo.com). They are read straight from process.env.
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

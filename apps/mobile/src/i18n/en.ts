@@ -313,6 +313,7 @@ export const en = {
       consumableLogs: 'Consumable',
       operations: 'Operation',
       taskAssignments: 'Task',
+      meteoReading: 'Moisture reading',
     },
     actionLabel: {
       create: 'create',
@@ -1056,6 +1057,25 @@ export const en = {
         'Produced {produced}, loaded {loaded}. Missing {missing} bales. The field stays open — an administrator has been notified.',
       acknowledgeButton: 'Got it',
     },
+  },
+
+  meteo: {
+    title: 'Measure moisture',
+    button: 'Measure moisture',
+    sub: 'Moisture of the straw or of a bale',
+    parcel: 'Parcel',
+    noParcel: 'Choose a parcel',
+    noParcels: 'No parcels in the cache.',
+    value: 'Moisture (%)',
+    kind: 'What you measure',
+    swath: 'Straw in the swath',
+    bale: 'Bale',
+    save: 'Save reading',
+    saved: 'Reading saved',
+    savedOffline: 'Reading saved, it will be sent when you have signal',
+    invalid: 'Enter a value between 0 and 100 (one decimal).',
+    saveFailed: 'Could not save the reading.',
+    errorTitle: 'Error',
   },
 
   numericPad: {

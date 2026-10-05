@@ -1,0 +1,58 @@
+# Docker Swarm stack for the self-hosted Open-Meteo API used by the Meteo module.
+#
+# Deployed by `./strawboss.sh meteo:deploy` (scripts/06-docker.sh), SEPARATELY
+# from the app tier: `stack:deploy` / `prod` never touch this stack, and this
+# stack never touches strawboss-app.
+#
+#   METEO_IMAGE=ghcr.io/open-meteo/open-meteo@sha256:<digest> \
+#     docker stack deploy -c docker-stack.meteo.yml --resolve-image never strawboss-meteo
+#
+# Why self-hosted: the public api.open-meteo.com is non-commercial only. The
+# DATA (ECMWF, DWD) is CC BY 4.0 and may be used commercially with attribution;
+# the server code is AGPL-3.0 — we run the official image UNMODIFIED and talk to
+# it over HTTP only, so no AGPL code ends up in StrawBoss.
+#
+# How it gets data: REMOTE_DATA_DIRECTORY makes the server read the public
+# Open-Meteo S3 distribution lazily and keep what it touched in a local cache
+# bounded by CACHE_SIZE. Only the grid cells our parcels ask for are fetched.
+# The VM disk is shared and ~77% full — keep CACHE_SIZE conservative.
+#
+# Reachable ONLY on the overlay as http://strawboss-meteo:8080 — no published
+# port, no nginx route. The backend reads it via OPEN_METEO_BASE_URL.
+
+services:
+  strawboss-meteo:
+    image: ${METEO_IMAGE:?set METEO_IMAGE to a pinned ghcr.io/open-meteo/open-meteo@sha256 digest}
+    environment:
+      - REMOTE_DATA_DIRECTORY=https://openmeteo.s3.amazonaws.com/data/
+      - CACHE_SIZE=20GB
+    volumes:
+      - meteo-data:/app/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://127.0.0.1:8080/v1/forecast?latitude=45.75&longitude=21.23&hourly=temperature_2m&forecast_days=1']
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 60s
+    stop_grace_period: 20s
+    networks:
+      - strawboss-net
+    deploy:
+      replicas: 1
+      # stop-first: two tasks must never mmap the same cache volume at once.
+      update_config:
+        order: stop-first
+        failure_action: rollback
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          memory: 6G
+
+volumes:
+  meteo-data:
+
+networks:
+  strawboss-net:
+    external: true

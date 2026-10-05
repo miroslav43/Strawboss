@@ -261,3 +261,19 @@ export type {
   UpdateTailscaleSettingsInput,
   SendDeviceCommandInput,
 } from './use-fleet.js';
+export {
+  useMeteoStatus,
+  useMeteoSettings,
+  useUpdateMeteoSettings,
+  useMeteoOverview,
+  useMeteoParcel,
+  useCreateHarvestEvent,
+  useUpdateHarvestEvent,
+  useCloseHarvestEvent,
+  useMeteoReadings,
+  useCreateMeteoReading,
+  useDeleteMeteoReading,
+  useMeteoFingerprints,
+  useMeteoFingerprint,
+  useMeteoRecompute,
+} from './use-meteo.js';

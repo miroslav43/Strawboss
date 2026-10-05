@@ -290,6 +290,7 @@ export const ro = {
       consumableLogs: 'Consumabil',
       operations: 'Operațiune',
       taskAssignments: 'Sarcină',
+      meteoReading: 'Măsurătoare umiditate',
     },
     actionLabel: {
       create: 'creare',
@@ -1034,6 +1035,25 @@ export const ro = {
         'Produși {produced}, încărcați {loaded}. Lipsă {missing} baloți. Câmpul rămâne deschis — un administrator a fost anunțat.',
       acknowledgeButton: 'Am înțeles',
     },
+  },
+
+  meteo: {
+    title: 'Măsoară umiditatea',
+    button: 'Măsoară umiditatea',
+    sub: 'Umiditatea paielor sau a balotului',
+    parcel: 'Parcelă',
+    noParcel: 'Alege parcela',
+    noParcels: 'Nu există parcele în cache.',
+    value: 'Umiditate (%)',
+    kind: 'Ce măsori',
+    swath: 'Paie pe brazdă',
+    bale: 'Balot',
+    save: 'Salvează măsurătoarea',
+    saved: 'Măsurătoare salvată',
+    savedOffline: 'Măsurătoare salvată, se trimite când ai semnal',
+    invalid: 'Introdu o valoare între 0 și 100 (o zecimală).',
+    saveFailed: 'Nu s-a putut salva măsurătoarea.',
+    errorTitle: 'Eroare',
   },
 
   numericPad: {

@@ -25,6 +25,7 @@ const ENTITY_KEY: Record<string, string> = {
   consumable_logs: 'syncDetails.entityLabel.consumableLogs',
   operations: 'syncDetails.entityLabel.operations',
   task_assignments: 'syncDetails.entityLabel.taskAssignments',
+  meteo_reading_create: 'syncDetails.entityLabel.meteoReading',
 };
 
 const ACTION_KEY: Record<string, string> = {
