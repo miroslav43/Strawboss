@@ -18,6 +18,7 @@ import type { Farm, Parcel } from '@strawboss/types';
 import { useAssignParcelToFarm } from '@strawboss/api';
 import { apiClient } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { ParcelWeatherLink } from '@/components/features/meteo/ParcelWeatherLink';
 
 interface FilterableFarmListProps {
   farms: Farm[];
@@ -134,6 +135,7 @@ function ParcelActions({
   const { t } = useI18n();
   return (
     <>
+      <ParcelWeatherLink parcelId={parcel.id} from="map" size="sm" />
       {/* Navigate to parcel */}
       <button
         onClick={() => onNavigate(parcel)}

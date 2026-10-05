@@ -40,6 +40,18 @@ export const hu: CatalogShape<typeof en> = {
     stageChangedMidEdit: 'A fuvar közben rakodásba lépett. Töltsd újra az oldalt.',
   },
   push: {
+    meteoAlert: {
+      title: 'Időjárási riasztás: {type}',
+      body: '{severity} — {parcels}. Csúcs: {value}, kb. {when}.',
+    },
+    meteoAlertDigest: {
+      title: 'Időjárási riasztások',
+      body: '{count} új időjárási riasztás a parcelláidra. A részletekért nyisd meg a Meteo oldalt.',
+    },
+    meteoAlertDigestFinal: {
+      title: 'Időjárási riasztások (mai utolsó értesítés)',
+      body: '{count} aktív időjárási riasztás. Holnapig nem érkezik több időjárási értesítés.',
+    },
     common: {
       genericField: 'tábla',
       unknownCrop: 'ismeretlen termény',
@@ -149,6 +161,22 @@ export const hu: CatalogShape<typeof en> = {
     tripDisputed: {
       title: 'Vitatott fuvar',
       body: 'A fuvarja vitatottá vált. Vegye fel a kapcsolatot a diszpécserrel.',
+    },
+  },
+  meteo: {
+    alertType: {
+      frost: 'Fagy',
+      storm: 'Vihar / jégeső',
+      wind: 'Erős szél',
+      heavy_rain: 'Heves eső',
+      heat: 'Hőség',
+    },
+    severity: { warning: 'Figyelmeztetés', severe: 'Súlyos' },
+    email: {
+      subject: 'StrawBoss időjárási riasztások: {count}',
+      intro: 'A parcelláidra a következő időjárási riasztásokat adtuk ki:',
+      line: '{type} ({severity}) — {parcels} parcella, csúcs: {value}, {when}',
+      footer: 'Azért kapod ezt az e-mailt, mert a Meteo beállításokban be van kapcsolva az e-mailes időjárási riasztás.',
     },
   },
   /** PDF document labels (Task 6.3). See ro.ts / en.ts for the source layout. */

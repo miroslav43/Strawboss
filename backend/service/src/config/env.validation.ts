@@ -21,7 +21,8 @@ export const envSchema = z.object({
   // vars live in docker-stack.yml and must NOT be set in .env (dev and prod share
   // .env and the prod DB): METEO_JOBS_ENABLED ('true' enables the meteo BullMQ
   // jobs, default off) and OPEN_METEO_BASE_URL (self-hosted instance; the client
-  // refuses *.open-meteo.com). They are read straight from process.env.
+  // refuses *.open-meteo.com). OPEN_METEO_ARCHIVE_BASE_URL (ERA5 climate, empty =
+  // off) follows the same rules. All are read straight from process.env.
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

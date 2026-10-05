@@ -215,6 +215,9 @@ export const FEATURE_KEYS = [
   'meteo.window',
   'meteo.moisture',
   'meteo.fingerprint',
+  'meteo.forecast',
+  'meteo.climate',
+  'meteo.alerts',
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -317,7 +320,14 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     defaultEnabled: true,
     dependsOn: [],
     surfaces: ['web', 'mobile', 'api', 'jobs'],
-    gatesJobs: ['meteo-ingest', 'meteo-engine', 'meteo-housekeeping', 'meteo-fingerprint'],
+    gatesJobs: [
+      'meteo-ingest',
+      'meteo-engine',
+      'meteo-housekeeping',
+      'meteo-fingerprint',
+      'meteo-climate',
+      'meteo-alerts',
+    ],
     wired: true,
     uiSwitch: true,
   },
@@ -778,6 +788,35 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDef>> = {
     dependsOn: ['meteo', 'meteo.window'],
     surfaces: ['web', 'api', 'jobs'],
     gatesJobs: ['meteo-fingerprint'],
+    wired: true,
+    uiSwitch: true,
+  },
+  // Iteration 2. Each spends external (Open-Meteo) quota, so they are real
+  // commercial switches: forecast = per-parcel weather + farm map; climate =
+  // ERA5 normals/GDD; alerts = the hourly alert job + its push/email.
+  'meteo.forecast': {
+    module: 'meteo',
+    defaultEnabled: true,
+    dependsOn: ['meteo'],
+    surfaces: ['web', 'mobile', 'api'],
+    wired: true,
+    uiSwitch: true,
+  },
+  'meteo.climate': {
+    module: 'meteo',
+    defaultEnabled: true,
+    dependsOn: ['meteo'],
+    surfaces: ['web', 'api', 'jobs'],
+    gatesJobs: ['meteo-climate'],
+    wired: true,
+    uiSwitch: true,
+  },
+  'meteo.alerts': {
+    module: 'meteo',
+    defaultEnabled: true,
+    dependsOn: ['meteo', 'meteo.forecast'],
+    surfaces: ['web', 'mobile', 'api', 'jobs'],
+    gatesJobs: ['meteo-alerts'],
     wired: true,
     uiSwitch: true,
   },

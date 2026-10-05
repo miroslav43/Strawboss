@@ -33,6 +33,8 @@ export enum MessageKind {
   aviz_uploaded = 'aviz_uploaded',
   /** Aviz uploaded → short SMS with the aviz download link, to every recipient. */
   aviz_uploaded_sms = 'aviz_uploaded_sms',
+  /** Meteo alerts (frost/storm/wind/rain/heat) → digest email to org admins/dispatchers. */
+  meteo_alert_digest = 'meteo_alert_digest',
 }
 
 export interface OutboundMessage {

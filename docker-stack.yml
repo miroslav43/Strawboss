@@ -59,6 +59,10 @@ services:
       # *.open-meteo.com is refused by the client (non-commercial licence).
       - METEO_JOBS_ENABLED=${METEO_JOBS_ENABLED:-false}
       - OPEN_METEO_BASE_URL=${OPEN_METEO_BASE_URL:-http://strawboss-meteo:8080}
+      # ERA5 archive host for the climate card (normals + daily actuals). Empty =
+      # climate disabled (status climateConfigured=false). Same licence guard as
+      # above: archive-api.open-meteo.com needs METEO_ALLOW_PUBLIC_API=true (POC).
+      - OPEN_METEO_ARCHIVE_BASE_URL=${OPEN_METEO_ARCHIVE_BASE_URL:-}
       # Proof of concept only: lets OPEN_METEO_BASE_URL point at the public
       # api.open-meteo.com (non-commercial terms). Default false = refused.
       - METEO_ALLOW_PUBLIC_API=${METEO_ALLOW_PUBLIC_API:-false}

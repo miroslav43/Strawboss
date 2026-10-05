@@ -104,6 +104,13 @@ export interface MeteoStatus {
   lastIngestAt: string | null;
   attribution: string;
   modelVersion: string;
+  /** Iteration 2 — optional so older clients ignore them. */
+  forecastEnabled?: boolean;
+  /** OPEN_METEO_ARCHIVE_BASE_URL is set and allowed (climatology). */
+  climateConfigured?: boolean;
+  climateEnabled?: boolean;
+  /** Org has meteo.alerts on AND alerts_enabled in its settings. */
+  alertsEnabled?: boolean;
 }
 
 export interface MeteoOrgSettings {
@@ -270,3 +277,287 @@ export interface MeteoBaleFingerprint {
   baleCount: number | null;
   snapshotCanonical?: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Iteration 2 — premium parcel weather, agro indicators, climatology, farm map,
+// alerts. Same unit rules as above: fractions for percentages (rh, cloud cover,
+// probabilities), m/s for wind, mm, °C, ISO-8601 timestamps; daily `date` is a
+// local (Europe/Bucharest) YYYY-MM-DD.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Icon key computed SERVER-side from the WMO weather code + day/night. */
+export type MeteoWeatherIcon =
+  | 'clear'
+  | 'clear_night'
+  | 'partly_cloudy'
+  | 'partly_cloudy_night'
+  | 'overcast'
+  | 'fog'
+  | 'drizzle'
+  | 'freezing_drizzle'
+  | 'rain'
+  | 'heavy_rain'
+  | 'freezing_rain'
+  | 'snow'
+  | 'showers'
+  | 'snow_showers'
+  | 'thunderstorm'
+  | 'thunderstorm_hail'
+  | 'unknown';
+
+export interface MeteoWeatherCurrent {
+  time: string;
+  tempC: number | null;
+  apparentC: number | null;
+  rh: number | null;
+  precipMm: number | null;
+  weatherCode: number | null;
+  icon: MeteoWeatherIcon;
+  cloudCover: number | null;
+  windMs: number | null;
+  gustMs: number | null;
+  windDirDeg: number | null;
+  isDay: boolean | null;
+}
+
+export interface MeteoWeatherHour {
+  time: string;
+  tempC: number | null;
+  rh: number | null;
+  dewPointC: number | null;
+  precipMm: number | null;
+  precipProb: number | null;
+  weatherCode: number | null;
+  icon: MeteoWeatherIcon;
+  windMs: number | null;
+  gustMs: number | null;
+  windDirDeg: number | null;
+  soilTemp0C: number | null;
+  soilMoist0to1: number | null;
+  soilMoist3to9: number | null;
+  capeJkg: number | null;
+  vpdKPa: number | null;
+  leafWetProb: number | null;
+  isDay: boolean | null;
+  /** Spray conditions met this hour (null = not enough data to tell). */
+  sprayOk: boolean | null;
+}
+
+export interface MeteoWeatherDay {
+  date: string;
+  weatherCode: number | null;
+  icon: MeteoWeatherIcon;
+  tMaxC: number | null;
+  tMinC: number | null;
+  precipMm: number | null;
+  precipProbMax: number | null;
+  precipHours: number | null;
+  windMaxMs: number | null;
+  gustMaxMs: number | null;
+  windDirDeg: number | null;
+  radiationMJ: number | null;
+  sunshineH: number | null;
+  daylightH: number | null;
+  sunrise: string | null;
+  sunset: string | null;
+  et0Mm: number | null;
+  uvMax: number | null;
+}
+
+export type MeteoRiskLevel = 'none' | 'low' | 'moderate' | 'high';
+
+export interface MeteoSprayWindow {
+  start: string;
+  end: string;
+  hours: number;
+}
+
+/** Reason keys are rendered by the UI from `meteo.agro.reason.<key>`. */
+export interface MeteoAgroIndicators {
+  spray: {
+    windows: MeteoSprayWindow[];
+    next: MeteoSprayWindow | null;
+    nowOk: boolean | null;
+    nowReasons: string[];
+  };
+  workability: {
+    level: MeteoAccessLevel;
+    soilMoist: number | null;
+    rainPast48hMm: number | null;
+    rainNext24hMm: number | null;
+    reasons: string[];
+  };
+  frost: { level: MeteoRiskLevel; minAirC: number | null; minSoilC: number | null; at: string | null };
+  heat: { level: MeteoRiskLevel; tMaxC: number | null; date: string | null };
+  storm: { level: MeteoRiskLevel; maxCapeJkg: number | null; precipProb: number | null; at: string | null };
+  waterBalance: {
+    days: number;
+    et0Mm: number | null;
+    rainMm: number | null;
+    balanceMm: number | null;
+    deficit: boolean;
+  };
+}
+
+export interface MeteoParcelWeather {
+  parcelId: string;
+  parcelName: string | null;
+  parcelCode: string | null;
+  cropType: string | null;
+  /** null = the parcel has no geometry (no centroid, no boundary). */
+  location: { lat: number; lon: number; cellKey: string } | null;
+  fetchedAt: string | null;
+  dailyFetchedAt: string | null;
+  /** Served from a cache entry past its "fresh" age (upstream refresh failed/pending). */
+  stale: boolean;
+  publicApi: boolean;
+  current: MeteoWeatherCurrent | null;
+  /** Current hour .. +48 h. */
+  hourly: MeteoWeatherHour[];
+  /** 16 local days. */
+  daily: MeteoWeatherDay[];
+  agro: MeteoAgroIndicators | null;
+  attribution: string;
+}
+
+/** Small payload for the mobile parcel card. */
+export interface MeteoParcelWeatherCompact {
+  parcelId: string;
+  fetchedAt: string | null;
+  stale: boolean;
+  current: MeteoWeatherCurrent | null;
+  attribution: string;
+  next12h: Pick<MeteoWeatherHour, 'time' | 'tempC' | 'precipMm' | 'precipProb' | 'icon'>[];
+  days: MeteoWeatherDay[];
+  spray: MeteoSprayWindow | null;
+  frost: MeteoRiskLevel;
+  rain24hMm: number | null;
+}
+
+export interface MeteoParcelClimate {
+  status: 'ready' | 'pending' | 'not_configured' | 'no_location';
+  cellKey: string | null;
+  period: string;
+  monthlyNormals: { month: number; tmeanC: number; precipMm: number }[];
+  monthToDate: {
+    month: number;
+    days: number;
+    tmeanC: number | null;
+    normalTmeanC: number | null;
+    precipMm: number | null;
+    normalPrecipMm: number | null;
+    fullMonthNormalPrecipMm: number | null;
+  } | null;
+  last30: {
+    from: string;
+    to: string;
+    tmeanC: number | null;
+    normalTmeanC: number | null;
+    anomalyC: number | null;
+    precipMm: number | null;
+    normalPrecipMm: number | null;
+    precipPct: number | null;
+    daysCovered: number;
+  } | null;
+  gdd: {
+    cropType: string | null;
+    baseC: number;
+    start: string;
+    to: string;
+    basis: 'calendar_year';
+    value: number | null;
+    normal: number | null;
+    anomalyPct: number | null;
+    daysCovered: number;
+  } | null;
+  sourceNote: string;
+}
+
+export type MeteoFarmLayer = 'rain24h' | 'tempNow' | 'gust24h' | 'frost' | 'storm' | 'drying';
+
+export interface MeteoFarmCell {
+  key: string;
+  lat: number;
+  lon: number;
+  icon: MeteoWeatherIcon;
+  isDay: boolean | null;
+  tempNowC: number | null;
+  rain24hMm: number | null;
+  rainProbMax24h: number | null;
+  gustMax24hMs: number | null;
+  tMin48hC: number | null;
+  soilMin48hC: number | null;
+  frost: MeteoRiskLevel;
+  storm: MeteoRiskLevel;
+  heat: MeteoRiskLevel;
+}
+
+export interface MeteoFarmParcel {
+  parcelId: string;
+  name: string | null;
+  code: string | null;
+  cropType: string | null;
+  harvestStatus: string;
+  cellKey: string;
+  /** Simplified GeoJSON geometry, or null when only a centroid exists. */
+  boundary: unknown | null;
+  lat: number;
+  lon: number;
+}
+
+export interface MeteoFarmWeather {
+  fetchedAt: string | null;
+  stale: boolean;
+  cells: MeteoFarmCell[];
+  parcels: MeteoFarmParcel[];
+  /** Coverage cut by the parcel/cell caps (never silent). */
+  dropped: { parcels: number; cells: number };
+}
+
+export type MeteoAlertType = 'frost' | 'storm' | 'wind' | 'heavy_rain' | 'heat';
+export type MeteoAlertSeverity = 'warning' | 'severe';
+
+export interface MeteoAlert {
+  id: string;
+  alertType: MeteoAlertType;
+  severity: MeteoAlertSeverity;
+  cellKey: string;
+  localDay: string;
+  startsAt: string;
+  endsAt: string;
+  peakAt: string;
+  peakValue: number;
+  threshold: number;
+  parcelCount: number;
+  parcels: { id: string; name: string | null; code: string | null }[];
+  notifiedAt: string | null;
+  acknowledgedAt: string | null;
+  createdAt: string;
+}
+
+/** A candidate produced by a dry-run evaluation (nothing written). */
+export interface MeteoAlertCandidate {
+  alertType: MeteoAlertType;
+  severity: MeteoAlertSeverity;
+  cellKey: string;
+  localDay: string;
+  startsAt: string;
+  endsAt: string;
+  peakAt: string;
+  peakValue: number;
+  threshold: number;
+  parcelCount: number;
+}
+
+export interface MeteoAlertSettings {
+  alertsEnabled: boolean;
+  alertsEmail: boolean;
+  frostC: number;
+  heatC: number;
+  gustMs: number;
+  rainMm: number;
+  capeJkg: number;
+  lookaheadH: number;
+}
+
+export type UpdateMeteoAlertSettingsDto = Partial<MeteoAlertSettings>;

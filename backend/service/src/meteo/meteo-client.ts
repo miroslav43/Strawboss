@@ -8,10 +8,52 @@ import {
   type HourlyStore,
   type MeteoModelDef,
 } from './meteo.constants';
+import { Limiter } from './weather/limiter';
 
 const REQUEST_TIMEOUT_MS = 20_000;
+/** Background status requests (farm cells for alerts, ERA5 archive pulls) — larger payloads. */
+const BACKGROUND_STATUS_TIMEOUT_MS = 45_000;
 const MAX_CONCURRENT = 2;
 const META_BASE = 'https://openmeteo.s3.amazonaws.com/data';
+/** Interactive (user-facing) lane: own pool, short timeout that also covers the queue wait. */
+const INTERACTIVE_CONCURRENT = 3;
+const INTERACTIVE_TIMEOUT_MS = 8_000;
+/** Model for self-hosted weather requests (the public API uses best_match instead). */
+export const WEATHER_MODEL_SELF_HOSTED = 'ecmwf_ifs';
+/** One forecast request carries at most this many coordinates. */
+export const MAX_LOCATIONS_PER_REQUEST = 50;
+
+/** `interactive` = a user is waiting (own pool, 8 s); `background` = jobs / cache refresh. */
+export type MeteoLane = 'interactive' | 'background';
+
+export interface ForecastRequestSpec {
+  lats: number[];
+  lons: number[];
+  current?: readonly string[];
+  hourly?: readonly string[];
+  daily?: readonly string[];
+  pastHours?: number;
+  forecastHours?: number;
+  forecastDays?: number;
+  timezone?: string;
+  /** undefined = client default (best_match on the public API, ecmwf_ifs self-hosted); null = omit. */
+  models?: string | null;
+}
+
+export interface ArchiveRequestSpec {
+  lat: number;
+  lon: number;
+  startDate: string;
+  endDate: string;
+  daily: readonly string[];
+  timezone?: string;
+}
+
+export interface JsonStatus<T> {
+  /** HTTP status, null on a network error / timeout. */
+  status: number | null;
+  body: T | null;
+}
 
 /**
  * Open-Meteo's public API is non-commercial — production uses the self-hosted
@@ -49,14 +91,24 @@ function numArray(v: unknown, len: number, scale = 1): (number | null)[] {
 @Injectable()
 export class MeteoClient {
   private readonly baseUrl: string | null;
+  /** Archive (ERA5 climatology) host; same licence guard as baseUrl. */
+  private readonly archiveBaseUrl: string | null;
   /** True when OPEN_METEO_BASE_URL is the public API (POC mode). */
   private usesPublicApi = false;
   private active = 0;
   private readonly waiters: Array<() => void> = [];
   private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly interactive = new Limiter(INTERACTIVE_CONCURRENT);
+  private readonly inFlightStatus = new Map<string, Promise<JsonStatus<unknown>>>();
 
   constructor(@Inject(WINSTON_MODULE_PROVIDER) private readonly winston: Logger) {
-    this.baseUrl = this.resolveBaseUrl(process.env.OPEN_METEO_BASE_URL);
+    const forecast = this.resolveBaseUrl(process.env.OPEN_METEO_BASE_URL, 'OPEN_METEO_BASE_URL');
+    this.baseUrl = forecast.url;
+    this.usesPublicApi = forecast.isPublic;
+    this.archiveBaseUrl = this.resolveBaseUrl(
+      process.env.OPEN_METEO_ARCHIVE_BASE_URL,
+      'OPEN_METEO_ARCHIVE_BASE_URL',
+    ).url;
   }
 
   /** OPEN_METEO_BASE_URL is set and allowed. */
@@ -68,33 +120,41 @@ export class MeteoClient {
     return this.usesPublicApi;
   }
 
-  private resolveBaseUrl(raw: string | undefined): string | null {
+  /** OPEN_METEO_ARCHIVE_BASE_URL is set and allowed (climatology). */
+  get archiveConfigured(): boolean {
+    return this.archiveBaseUrl !== null;
+  }
+
+  /** Pure: never touches instance state (the archive URL must not flip the forecast flag). */
+  private resolveBaseUrl(
+    raw: string | undefined,
+    envName: string,
+  ): { url: string | null; isPublic: boolean } {
     const value = raw?.trim();
-    if (!value) return null;
+    if (!value) return { url: null, isPublic: false };
     try {
       const host = new URL(value).hostname.toLowerCase();
       if (host === FORBIDDEN_HOST_SUFFIX || host.endsWith(`.${FORBIDDEN_HOST_SUFFIX}`)) {
         if (meteoPublicApiAllowed()) {
-          this.usesPublicApi = true;
           this.winston.warn(
             'Meteo POC mode: using the PUBLIC Open-Meteo API (non-commercial terms, ~10k calls/day). Switch to the self-hosted instance before production use.',
-            { context: 'MeteoClient', host },
+            { context: 'MeteoClient', host, env: envName },
           );
-          return value.replace(/\/+$/, '');
+          return { url: value.replace(/\/+$/, ''), isPublic: true };
         }
         // Logged once (constructor runs once per process).
         this.winston.error(
-          'OPEN_METEO_BASE_URL points at open-meteo.com — refused (non-commercial licence). Meteo disabled.',
+          `${envName} points at open-meteo.com — refused (non-commercial licence). Meteo disabled.`,
           { context: 'MeteoClient' },
         );
-        return null;
+        return { url: null, isPublic: false };
       }
-      return value.replace(/\/+$/, '');
+      return { url: value.replace(/\/+$/, ''), isPublic: false };
     } catch {
-      this.winston.error('OPEN_METEO_BASE_URL is not a valid URL — Meteo disabled.', {
+      this.winston.error(`${envName} is not a valid URL — Meteo disabled.`, {
         context: 'MeteoClient',
       });
-      return null;
+      return { url: null, isPublic: false };
     }
   }
 
@@ -143,6 +203,123 @@ export class MeteoClient {
     });
     this.inFlight.set(url, p);
     return p;
+  }
+
+  /**
+   * JSON GET that reports the HTTP status (429 handling, 4xx vs 5xx) instead of
+   * collapsing every failure into null. In-flight de-duplicated by URL. The
+   * interactive lane's 8 s timeout covers the queue wait too.
+   */
+  async fetchJsonStatus<T>(url: string, lane: MeteoLane): Promise<JsonStatus<T>> {
+    const flightKey = `${lane}|${url}`;
+    const existing = this.inFlightStatus.get(flightKey);
+    if (existing) return existing as Promise<JsonStatus<T>>;
+    const p = (async (): Promise<JsonStatus<T>> => {
+      // Interactive: the deadline covers the queue wait (a user is waiting).
+      // Background: the shared ingest pool's wait is not abortable, so the
+      // deadline starts only once a slot is held — a long queue must not
+      // expire a request (e.g. the 30-year archive pull) before it is sent.
+      let signal: AbortSignal | null =
+        lane === 'interactive' ? AbortSignal.timeout(INTERACTIVE_TIMEOUT_MS) : null;
+      let acquired = false;
+      try {
+        if (lane === 'interactive') await this.interactive.acquire(signal as AbortSignal);
+        else await this.acquire();
+        acquired = true;
+        signal ??= AbortSignal.timeout(BACKGROUND_STATUS_TIMEOUT_MS);
+        const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+        if (!res.ok) {
+          this.winston.warn(`Meteo fetch HTTP ${res.status}`, { context: 'MeteoClient', url, lane });
+          return { status: res.status, body: null };
+        }
+        return { status: res.status, body: (await res.json()) as T };
+      } catch (err) {
+        this.winston.warn('Meteo fetch failed', {
+          context: 'MeteoClient',
+          url,
+          lane,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        return { status: null, body: null };
+      } finally {
+        if (acquired) {
+          if (lane === 'interactive') this.interactive.release();
+          else this.release();
+        }
+      }
+    })().finally(() => {
+      this.inFlightStatus.delete(flightKey);
+    });
+    this.inFlightStatus.set(flightKey, p);
+    return p;
+  }
+
+  /** Quota weight of a request: locations × max(1, vars/10 × max(1, days/14)). */
+  static estimateWeight(i: { nVars: number; nDays: number; nLocations: number }): number {
+    return i.nLocations * Math.max(1, (i.nVars / 10) * Math.max(1, i.nDays / 14));
+  }
+
+  /**
+   * /v1/forecast for one or several coordinates. The API answers an object for
+   * one location and an ARRAY for several — both are normalised to an array in
+   * request order.
+   */
+  async requestForecast(
+    spec: ForecastRequestSpec,
+    lane: MeteoLane,
+  ): Promise<{ status: number | null; locations: Array<Record<string, unknown>> | null }> {
+    if (!this.baseUrl || spec.lats.length === 0 || spec.lats.length !== spec.lons.length) {
+      return { status: null, locations: null };
+    }
+    const models =
+      spec.models === undefined
+        ? this.usesPublicApi
+          ? null
+          : WEATHER_MODEL_SELF_HOSTED
+        : spec.models;
+    const qs = new URLSearchParams({
+      latitude: spec.lats.map((v) => v.toFixed(4)).join(','),
+      longitude: spec.lons.map((v) => v.toFixed(4)).join(','),
+      wind_speed_unit: 'ms',
+      timezone: spec.timezone ?? 'Europe/Bucharest',
+      timeformat: 'unixtime',
+    });
+    if (models) qs.set('models', models);
+    if (spec.current?.length) qs.set('current', spec.current.join(','));
+    if (spec.hourly?.length) qs.set('hourly', spec.hourly.join(','));
+    if (spec.daily?.length) qs.set('daily', spec.daily.join(','));
+    if (spec.pastHours !== undefined) qs.set('past_hours', String(spec.pastHours));
+    if (spec.forecastHours !== undefined) qs.set('forecast_hours', String(spec.forecastHours));
+    if (spec.forecastDays !== undefined) qs.set('forecast_days', String(spec.forecastDays));
+    const { status, body } = await this.fetchJsonStatus<unknown>(
+      `${this.baseUrl}/v1/forecast?${qs.toString()}`,
+      lane,
+    );
+    if (body === null || typeof body !== 'object') return { status, locations: null };
+    const locations = (Array.isArray(body) ? body : [body]) as Array<Record<string, unknown>>;
+    return { status, locations };
+  }
+
+  /** /v1/archive (ERA5) daily series for one coordinate. */
+  async requestArchive(
+    spec: ArchiveRequestSpec,
+    lane: MeteoLane = 'background',
+  ): Promise<{ status: number | null; daily: Record<string, unknown> | null }> {
+    if (!this.archiveBaseUrl) return { status: null, daily: null };
+    const qs = new URLSearchParams({
+      latitude: spec.lat.toFixed(4),
+      longitude: spec.lon.toFixed(4),
+      start_date: spec.startDate,
+      end_date: spec.endDate,
+      daily: spec.daily.join(','),
+      timezone: spec.timezone ?? 'Europe/Bucharest',
+    });
+    const { status, body } = await this.fetchJsonStatus<{ daily?: Record<string, unknown> }>(
+      `${this.archiveBaseUrl}/v1/archive?${qs.toString()}`,
+      lane,
+    );
+    const daily = body?.daily;
+    return { status, daily: daily && Array.isArray(daily.time) ? daily : null };
   }
 
   /**

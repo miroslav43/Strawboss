@@ -55,6 +55,21 @@ export const en = {
     stageChangedMidEdit: 'The transport started loading in the meantime. Reload the page.',
   },
   push: {
+    /** meteo-alert-notifier.service.ts — ONE alert in this run. */
+    meteoAlert: {
+      title: 'Weather alert: {type}',
+      body: '{severity} — {parcels}. Peak {value} around {when}.',
+    },
+    /** Several alerts in this run. */
+    meteoAlertDigest: {
+      title: 'Weather alerts',
+      body: '{count} new weather alerts for your parcels. Open Meteo for details.',
+    },
+    /** The user's 3rd (last) weather push of the day. */
+    meteoAlertDigestFinal: {
+      title: 'Weather alerts (last notification today)',
+      body: '{count} weather alerts are active. No more weather notifications until tomorrow.',
+    },
     /**
      * Locale-correct fallback words substituted into a push body when the
      * live value (parcel name, crop, plate...) is missing. Kept as catalog
@@ -189,6 +204,22 @@ export const en = {
     tripDisputed: {
       title: 'Trip disputed',
       body: 'Your trip has entered dispute. Contact dispatch.',
+    },
+  },
+  meteo: {
+    alertType: {
+      frost: 'Frost',
+      storm: 'Storm / hail',
+      wind: 'Strong wind',
+      heavy_rain: 'Heavy rain',
+      heat: 'Heat',
+    },
+    severity: { warning: 'Warning', severe: 'Severe' },
+    email: {
+      subject: 'StrawBoss weather alerts: {count}',
+      intro: 'These weather alerts were issued for your parcels:',
+      line: '{type} ({severity}) — {parcels} parcel(s), peak {value} on {when}',
+      footer: 'You receive this email because weather alert emails are enabled in the Meteo settings.',
     },
   },
   /**

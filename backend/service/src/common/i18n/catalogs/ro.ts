@@ -44,6 +44,18 @@ export const ro: CatalogShape<typeof en> = {
     stageChangedMidEdit: 'Cursa a intrat în încărcare între timp. Reîncarcă pagina.',
   },
   push: {
+    meteoAlert: {
+      title: 'Alertă meteo: {type}',
+      body: '{severity} — {parcels}. Vârf {value} în jurul {when}.',
+    },
+    meteoAlertDigest: {
+      title: 'Alerte meteo',
+      body: '{count} alerte meteo noi pentru parcelele tale. Deschide Meteo pentru detalii.',
+    },
+    meteoAlertDigestFinal: {
+      title: 'Alerte meteo (ultima notificare de azi)',
+      body: '{count} alerte meteo active. Nu mai primești notificări meteo până mâine.',
+    },
     common: {
       genericField: 'câmp',
       unknownCrop: 'cultură necunoscută',
@@ -153,6 +165,22 @@ export const ro: CatalogShape<typeof en> = {
     tripDisputed: {
       title: 'Dispută transport',
       body: 'Transportul tău a intrat în dispută. Contactează dispeceratul.',
+    },
+  },
+  meteo: {
+    alertType: {
+      frost: 'Îngheț',
+      storm: 'Furtună / grindină',
+      wind: 'Vânt puternic',
+      heavy_rain: 'Ploaie torențială',
+      heat: 'Caniculă',
+    },
+    severity: { warning: 'Avertizare', severe: 'Sever' },
+    email: {
+      subject: 'Alerte meteo StrawBoss: {count}',
+      intro: 'Pentru parcelele tale au fost emise următoarele alerte meteo:',
+      line: '{type} ({severity}) — {parcels} parcele, vârf {value} pe {when}',
+      footer: 'Primești acest e-mail pentru că alertele meteo prin e-mail sunt activate în setările Meteo.',
     },
   },
   /**

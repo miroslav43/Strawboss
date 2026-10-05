@@ -85,3 +85,35 @@ export type UpdateMeteoSettingsInput = z.infer<typeof updateMeteoSettingsSchema>
 export type CreateHarvestEventInput = z.infer<typeof createHarvestEventSchema>;
 export type UpdateHarvestEventInput = z.infer<typeof updateHarvestEventSchema>;
 export type CreateMoistureReadingInput = z.infer<typeof createMoistureReadingSchema>;
+
+// ── Iteration 2 ─────────────────────────────────────────────────────────────
+
+export const meteoWeatherQuerySchema = z.object({
+  view: z.enum(["full", "compact"]).optional(),
+});
+
+export const meteoAlertsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(30).optional(),
+});
+
+/** Ranges are identical to meteo_org_settings_alerts_chk (migration 00101). */
+export const updateMeteoAlertSettingsSchema = z
+  .object({
+    alertsEnabled: z.boolean().optional(),
+    alertsEmail: z.boolean().optional(),
+    frostC: z.number().min(-10).max(5).optional(),
+    heatC: z.number().min(25).max(45).optional(),
+    gustMs: z.number().min(8).max(40).optional(),
+    rainMm: z.number().min(5).max(200).optional(),
+    capeJkg: z.number().int().min(300).max(5000).optional(),
+    lookaheadH: z.number().int().min(24).max(48).optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, { message: "nothing to update" });
+
+export const meteoAlertEvaluateQuerySchema = z.object({
+  dryRun: z.enum(["true", "false"]).optional(),
+});
+
+export type MeteoWeatherQuery = z.infer<typeof meteoWeatherQuerySchema>;
+export type UpdateMeteoAlertSettingsInput = z.infer<typeof updateMeteoAlertSettingsSchema>;

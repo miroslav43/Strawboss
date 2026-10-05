@@ -9,6 +9,8 @@ export const QUEUE_METEO_ENGINE = 'meteo-engine';
 export const QUEUE_METEO_HOUSEKEEPING = 'meteo-housekeeping';
 export const QUEUE_METEO_FINGERPRINT = 'meteo-fingerprint';
 export const QUEUE_METEO_RETENTION = 'meteo-retention';
+export const QUEUE_METEO_CLIMATE = 'meteo-climate';
+export const QUEUE_METEO_ALERTS = 'meteo-alerts';
 
 /** Debounce window for engine / targeted-ingest enqueues. */
 export const METEO_ENQUEUE_DEBOUNCE_MS = 30_000;

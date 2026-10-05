@@ -2584,7 +2584,10 @@
       "meteo": {
         "window": "Prognoza ferestrei de balotare",
         "moisture": "Măsurători de umiditate",
-        "fingerprint": "Amprenta meteo a baloților"
+        "fingerprint": "Amprenta meteo a baloților",
+        "forecast": "Prognoza meteo pe parcelă",
+        "climate": "Climatologie și grade-zile de creștere",
+        "alerts": "Alerte meteo (push / email)"
       }
     }
   },
@@ -2655,7 +2658,9 @@
       "window": "Fereastră",
       "message": "Mesaj",
       "lastReading": "Ultima măsurătoare",
-      "dataAge": "Vechimea datelor"
+      "dataAge": "Vechimea datelor",
+      "tempNow": "Temp. acum",
+      "rain24h": "Ploaie 24 h"
     },
     "table": {
       "empty": "Niciun ceas de uscare nu rulează. Pornește unul pentru o parcelă recoltată."
@@ -2798,6 +2803,202 @@
       "noPriorForecast": "Nu exista nicio prognoză în acel moment.",
       "engineError": "Calculul a eșuat pentru această parcelă — eroarea a fost înregistrată în loguri.",
       "noEvent": "Pentru această parcelă nu rulează niciun ceas de uscare."
+    },
+    "wx": {
+      "openWeather": "Deschide vremea",
+      "unavailable": "Indisponibil",
+      "loading": "Se încarcă vremea…",
+      "loadError": "Nu s-a putut încărca vremea pentru această parcelă.",
+      "noLocation": "Parcela nu are încă o locație, deci nu există vreme de afișat.",
+      "today": "Azi",
+      "updated": "Actualizat",
+      "stale": "Date vechi",
+      "agoNow": "chiar acum",
+      "agoMin": "acum {{count}} min",
+      "agoHours": "acum {{count}} h",
+      "feelsLike": "Se simte ca",
+      "wind": "Vânt",
+      "gusts": "Rafale",
+      "humidity": "Umiditate",
+      "clouds": "Nebulozitate",
+      "precipNow": "Ploaie acum",
+      "daylight": "Ore de lumină",
+      "sunrise": "Răsărit",
+      "sunset": "Apus",
+      "sunshine": "Soare",
+      "uv": "Indice UV",
+      "dryingDivider": "Uscare și balotare",
+      "code": {
+        "clear": "Senin",
+        "clear_night": "Noapte senină",
+        "partly_cloudy": "Parțial noros",
+        "partly_cloudy_night": "Parțial noros",
+        "overcast": "Înnorat",
+        "fog": "Ceață",
+        "drizzle": "Burniță",
+        "freezing_drizzle": "Burniță înghețată",
+        "rain": "Ploaie",
+        "heavy_rain": "Ploaie abundentă",
+        "freezing_rain": "Ploaie înghețată",
+        "snow": "Ninsoare",
+        "showers": "Averse de ploaie",
+        "snow_showers": "Averse de ninsoare",
+        "thunderstorm": "Furtună",
+        "thunderstorm_hail": "Furtună cu grindină",
+        "unknown": "Fără date"
+      },
+      "chart": {
+        "title": "Următoarele 48 de ore",
+        "temp": "Temperatură (°C)",
+        "gust": "Rafale (km/h)",
+        "legend": "Gri: noaptea. Banda verde: fereastră bună de stropit. Linia întreruptă: acum."
+      },
+      "daily": {
+        "title": "Prognoză pe 16 zile"
+      },
+      "soil": {
+        "title": "Sol și cultură",
+        "temp": "Temperatura solului (suprafață)",
+        "minTemp": "Minima solului, 48 h",
+        "moist0": "Umiditatea solului 0–1 cm",
+        "moist3": "Umiditatea solului 3–9 cm",
+        "vpd": "Deficit de presiune a vaporilor",
+        "leafWet": "Șansa de frunză udă"
+      },
+      "farm": {
+        "title": "Harta meteo a fermei",
+        "loadError": "Nu s-a putut încărca vremea fermei.",
+        "empty": "Nicio parcelă cu locație de afișat.",
+        "noClock": "Fără ceas de uscare",
+        "dropped": "Acoperirea este plafonată: {{cells}} celule meteo și {{parcels}} parcele nu sunt afișate.",
+        "layer": {
+          "rain24h": "Ploaie 24 h",
+          "tempNow": "Temperatura acum",
+          "gust24h": "Rafale 24 h",
+          "frost": "Îngheț",
+          "storm": "Furtuni",
+          "drying": "Uscare"
+        }
+      }
+    },
+    "agro": {
+      "title": "Indicatori agronomici",
+      "risk": {
+        "none": "Fără risc",
+        "low": "Scăzut",
+        "moderate": "Moderat",
+        "high": "Ridicat"
+      },
+      "spray": {
+        "title": "Stropit",
+        "ok": "Bun acum",
+        "no": "Nu acum",
+        "unknown": "Fără date",
+        "next": "Următoarea fereastră: {{from}} – {{to}} ({{hours}} h)",
+        "noWindow": "Nicio fereastră potrivită în următoarele 3 zile."
+      },
+      "workability": {
+        "title": "Lucrabilitatea terenului",
+        "ok": "Practicabil",
+        "marginal": "La limită",
+        "no_go": "Nu intra",
+        "unknown": "Fără date",
+        "hint": "Umiditatea solului și ploile recente permit lucrul pe câmp.",
+        "detail": "Sol {{soil}} · ploaie ultimele 48 h {{rain48}} · următoarele 24 h {{rain24}}"
+      },
+      "frost": {
+        "title": "Îngheț",
+        "line": "Minima aerului {{air}}, a solului {{soil}} (48 h)"
+      },
+      "heat": {
+        "title": "Stres termic",
+        "line": "Maxima zilei {{max}}"
+      },
+      "storm": {
+        "title": "Furtună / grindină",
+        "line": "CAPE maxim {{cape}}, șansă de ploaie {{prob}}"
+      },
+      "water": {
+        "title": "Bilanț hidric, {{days}} zile",
+        "ok": "Echilibrat",
+        "deficit": "Deficitar",
+        "unknown": "Fără date",
+        "line": "Evapotranspirație {{et0}} față de ploaie {{rain}}",
+        "balance": "Bilanț"
+      },
+      "reason": {
+        "wind": "Vânt prea puternic",
+        "gust": "Rafale prea puternice",
+        "calm": "Prea calm (risc de deriva)",
+        "rain_now": "Plouă acum",
+        "rain_soon": "Ploaie așteptată în câteva ore",
+        "too_cold": "Prea frig",
+        "too_hot": "Prea cald",
+        "leaf_wet": "Frunzele sunt ude",
+        "no_data": "Date insuficiente",
+        "soil_wet": "Sol prea umed",
+        "rain_recent": "Ploaie abundentă în ultimele 48 h",
+        "rain_coming": "Ploaie așteptată în următoarele 24 h"
+      }
+    },
+    "climate": {
+      "title": "Clima față de normal",
+      "pending": "Se calculează normalele climatice pentru această locație (o singură dată, durează câteva minute)…",
+      "monthToDate": "Luna aceasta până acum",
+      "last30": "Ultimele 30 de zile",
+      "gdd": "Grade-zile de creștere",
+      "daysCovered": "{{count}} zile cu date",
+      "vsNormal": "față de normală",
+      "normal": "normala",
+      "gddBasis": "Bază {{base}} °C, an calendaristic",
+      "gddTip": "Acumulate de la {{start}} (an calendaristic) peste o bază de {{base}} °C; nu se folosește data semănatului.",
+      "normalsChart": "Normale lunare (ploaie și temperatură medie)",
+      "normalsNote": "Perioada de referință {{period}}.",
+      "precipLabel": "Ploaie (mm / lună)"
+    },
+    "alerts": {
+      "title": "Alerte meteo",
+      "lastDays": "ultimele {{days}} zile",
+      "empty": "Nicio alertă meteo în ultimele 7 zile.",
+      "loadError": "Nu s-au putut încărca alertele.",
+      "ack": "Confirmă",
+      "acknowledged": "Confirmată",
+      "ackError": "Nu s-a putut confirma alerta.",
+      "valueVs": "{{value}} (prag {{threshold}})",
+      "type": {
+        "frost": "Îngheț",
+        "storm": "Furtună",
+        "wind": "Vânt puternic",
+        "heavy_rain": "Ploaie abundentă",
+        "heat": "Caniculă"
+      },
+      "severity": {
+        "warning": "Avertizare",
+        "severe": "Sever"
+      }
+    },
+    "alertSettings": {
+      "title": "Alerte meteo",
+      "intro": "Notificare push (și opțional email) către administratori și dispeceri când e prognozat un prag pe parcelele active. Maximum 3 notificări pe persoană pe zi; avertizările sunt amânate noaptea.",
+      "enabled": "Activează alertele meteo",
+      "enabledHint": "Evaluate din oră în oră pentru parcelele nerecoltate complet.",
+      "email": "Trimite și un rezumat zilnic pe email",
+      "emailHint": "Către administratorii care au adresă de email.",
+      "field": {
+        "frostC": "Îngheț sub",
+        "heatC": "Caniculă peste",
+        "gustMs": "Rafale peste",
+        "rainMm": "Ploaie pe zi peste",
+        "capeJkg": "Energie de furtună (CAPE) peste",
+        "lookaheadH": "Orizont de prognoză"
+      },
+      "default": "Implicit {{value}}",
+      "testNow": "Testează acum (simulare)",
+      "testResult": "{{count}} alerte ar fi emise chiar acum",
+      "testNone": "Nimic nu depășește pragurile în orizontul ales.",
+      "testNote": "Simulare: nu s-a salvat nimic și nu a fost notificat nimeni.",
+      "parcels": "{{count}} parcele",
+      "loadError": "Nu s-au putut încărca setările alertelor."
     }
   }
 }

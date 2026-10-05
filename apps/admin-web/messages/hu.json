@@ -2584,7 +2584,10 @@
       "meteo": {
         "window": "Bálázási ablak előrejelzése",
         "moisture": "Nedvességmérések",
-        "fingerprint": "Bálák időjárási ujjlenyomata"
+        "fingerprint": "Bálák időjárási ujjlenyomata",
+        "forecast": "Parcellánkénti időjárás-előrejelzés",
+        "climate": "Éghajlat és hőösszeg (GDD)",
+        "alerts": "Időjárási riasztások (push / e-mail)"
       }
     }
   },
@@ -2655,7 +2658,9 @@
       "window": "Ablak",
       "message": "Üzenet",
       "lastReading": "Utolsó mérés",
-      "dataAge": "Adatok kora"
+      "dataAge": "Adatok kora",
+      "tempNow": "Hőm. most",
+      "rain24h": "Eső 24 ó"
     },
     "table": {
       "empty": "Nem fut szárítási óra. Indíts egyet egy learatott parcellára."
@@ -2798,6 +2803,202 @@
       "noPriorForecast": "Abban a pillanatban nem volt elérhető előrejelzés.",
       "engineError": "A számítás nem sikerült ennél a parcellánál — a hiba naplózva lett.",
       "noEvent": "Ehhez a parcellához nem fut szárítási óra."
+    },
+    "wx": {
+      "openWeather": "Időjárás megnyitása",
+      "unavailable": "Nem elérhető",
+      "loading": "Időjárás betöltése…",
+      "loadError": "Nem sikerült betölteni a parcella időjárását.",
+      "noLocation": "A parcellának még nincs helye, így nincs megjeleníthető időjárás.",
+      "today": "Ma",
+      "updated": "Frissítve",
+      "stale": "Elavult adat",
+      "agoNow": "épp most",
+      "agoMin": "{{count}} perce",
+      "agoHours": "{{count}} órája",
+      "feelsLike": "Hőérzet",
+      "wind": "Szél",
+      "gusts": "Széllökés",
+      "humidity": "Páratartalom",
+      "clouds": "Felhőzet",
+      "precipNow": "Eső most",
+      "daylight": "Nappali órák",
+      "sunrise": "Napkelte",
+      "sunset": "Napnyugta",
+      "sunshine": "Napsütés",
+      "uv": "UV-index",
+      "dryingDivider": "Száradás és bálázás",
+      "code": {
+        "clear": "Derült",
+        "clear_night": "Derült éjszaka",
+        "partly_cloudy": "Részben felhős",
+        "partly_cloudy_night": "Részben felhős",
+        "overcast": "Borult",
+        "fog": "Köd",
+        "drizzle": "Szitálás",
+        "freezing_drizzle": "Ónos szitálás",
+        "rain": "Eső",
+        "heavy_rain": "Heves eső",
+        "freezing_rain": "Ónos eső",
+        "snow": "Havazás",
+        "showers": "Zápor",
+        "snow_showers": "Hózápor",
+        "thunderstorm": "Zivatar",
+        "thunderstorm_hail": "Zivatar jégesővel",
+        "unknown": "Nincs adat"
+      },
+      "chart": {
+        "title": "Következő 48 óra",
+        "temp": "Hőmérséklet (°C)",
+        "gust": "Széllökés (km/h)",
+        "legend": "Szürke: éjszaka. Zöld sáv: jó permetezési ablak. Szaggatott vonal: most."
+      },
+      "daily": {
+        "title": "16 napos előrejelzés"
+      },
+      "soil": {
+        "title": "Talaj és növény",
+        "temp": "Talajhőmérséklet (felszín)",
+        "minTemp": "Talaj minimuma, 48 ó",
+        "moist0": "Talajnedvesség 0–1 cm",
+        "moist3": "Talajnedvesség 3–9 cm",
+        "vpd": "Gőznyomáshiány",
+        "leafWet": "Nedves levél esélye"
+      },
+      "farm": {
+        "title": "Gazdaság időjárási térképe",
+        "loadError": "Nem sikerült betölteni a gazdaság időjárását.",
+        "empty": "Nincs megjeleníthető, helyadattal rendelkező parcella.",
+        "noClock": "Nincs száradási óra",
+        "dropped": "A lefedettség korlátozott: {{cells}} időjárási cella és {{parcels}} parcella nem látható.",
+        "layer": {
+          "rain24h": "Eső 24 ó",
+          "tempNow": "Hőmérséklet most",
+          "gust24h": "Széllökés 24 ó",
+          "frost": "Fagy",
+          "storm": "Viharok",
+          "drying": "Száradás"
+        }
+      }
+    },
+    "agro": {
+      "title": "Agronómiai mutatók",
+      "risk": {
+        "none": "Nincs kockázat",
+        "low": "Alacsony",
+        "moderate": "Mérsékelt",
+        "high": "Magas"
+      },
+      "spray": {
+        "title": "Permetezés",
+        "ok": "Most jó",
+        "no": "Most nem",
+        "unknown": "Nincs adat",
+        "next": "Következő ablak: {{from}} – {{to}} ({{hours}} ó)",
+        "noWindow": "A következő 3 napban nincs megfelelő ablak."
+      },
+      "workability": {
+        "title": "Terület művelhetősége",
+        "ok": "Járható",
+        "marginal": "Határeset",
+        "no_go": "Ne menj be",
+        "unknown": "Nincs adat",
+        "hint": "A talajnedvesség és a friss csapadék lehetővé teszi a munkát.",
+        "detail": "Talaj {{soil}} · eső az elmúlt 48 órában {{rain48}} · következő 24 óra {{rain24}}"
+      },
+      "frost": {
+        "title": "Fagy",
+        "line": "Levegő minimuma {{air}}, talaj {{soil}} (48 ó)"
+      },
+      "heat": {
+        "title": "Hőstressz",
+        "line": "Napi maximum {{max}}"
+      },
+      "storm": {
+        "title": "Vihar / jégeső",
+        "line": "Csúcs CAPE {{cape}}, esőesély {{prob}}"
+      },
+      "water": {
+        "title": "Vízmérleg, {{days}} nap",
+        "ok": "Kiegyensúlyozott",
+        "deficit": "Hiány",
+        "unknown": "Nincs adat",
+        "line": "Párolgás {{et0}} az eső {{rain}} ellenében",
+        "balance": "Mérleg"
+      },
+      "reason": {
+        "wind": "Túl szeles",
+        "gust": "Túl erős széllökések",
+        "calm": "Túl szélcsendes (elsodródás kockázata)",
+        "rain_now": "Most esik",
+        "rain_soon": "Órákon belül eső várható",
+        "too_cold": "Túl hideg",
+        "too_hot": "Túl meleg",
+        "leaf_wet": "Nedves a levél",
+        "no_data": "Nincs elég adat",
+        "soil_wet": "Túl nedves talaj",
+        "rain_recent": "Heves eső az elmúlt 48 órában",
+        "rain_coming": "Eső várható a következő 24 órában"
+      }
+    },
+    "climate": {
+      "title": "Éghajlat a normálhoz képest",
+      "pending": "A helyszín éghajlati normáljainak számítása (egyszeri, pár percig tarthat)…",
+      "monthToDate": "A hónap eddig",
+      "last30": "Az elmúlt 30 nap",
+      "gdd": "Hőösszeg (GDD)",
+      "daysCovered": "{{count}} nap adata",
+      "vsNormal": "a normálhoz képest",
+      "normal": "normál",
+      "gddBasis": "Alap {{base}} °C, naptári év",
+      "gddTip": "{{start}} naptól (naptári év) gyűjtve {{base}} °C alap felett; vetési dátumot nem használ.",
+      "normalsChart": "Havi normálok (csapadék és átlaghőmérséklet)",
+      "normalsNote": "Referencia-időszak: {{period}}.",
+      "precipLabel": "Csapadék (mm / hó)"
+    },
+    "alerts": {
+      "title": "Időjárási riasztások",
+      "lastDays": "az elmúlt {{days}} nap",
+      "empty": "Nincs időjárási riasztás az elmúlt 7 napban.",
+      "loadError": "Nem sikerült betölteni a riasztásokat.",
+      "ack": "Tudomásul veszem",
+      "acknowledged": "Tudomásul véve",
+      "ackError": "Nem sikerült tudomásul venni a riasztást.",
+      "valueVs": "{{value}} (küszöb: {{threshold}})",
+      "type": {
+        "frost": "Fagy",
+        "storm": "Vihar",
+        "wind": "Erős szél",
+        "heavy_rain": "Heves eső",
+        "heat": "Hőség"
+      },
+      "severity": {
+        "warning": "Figyelmeztetés",
+        "severe": "Súlyos"
+      }
+    },
+    "alertSettings": {
+      "title": "Időjárási riasztások",
+      "intro": "Push (és opcionálisan e-mail) értesítés az adminisztrátoroknak és diszpécsereknek, ha az aktív parcellákon küszöbérték várható. Személyenként napi legfeljebb 3 értesítés; a figyelmeztetések éjszaka visszatartva.",
+      "enabled": "Időjárási riasztások bekapcsolása",
+      "enabledHint": "Óránként értékeli a még nem teljesen betakarított parcellákat.",
+      "email": "Napi e-mailes összefoglaló is",
+      "emailHint": "E-mail-címmel rendelkező adminisztrátoroknak.",
+      "field": {
+        "frostC": "Fagy ez alatt",
+        "heatC": "Hőség ez felett",
+        "gustMs": "Széllökés ez felett",
+        "rainMm": "Napi eső ez felett",
+        "capeJkg": "Viharenergia (CAPE) ez felett",
+        "lookaheadH": "Előrejelzési horizont"
+      },
+      "default": "Alapérték: {{value}}",
+      "testNow": "Teszt most (próbafutás)",
+      "testResult": "{{count}} riasztás keletkezne most",
+      "testNone": "A kiválasztott horizonton semmi sem lépi túl a küszöböket.",
+      "testNote": "Próbafutás: nem mentett semmit, és senkit nem értesített.",
+      "parcels": "{{count}} parcella",
+      "loadError": "Nem sikerült betölteni a riasztási beállításokat."
     }
   }
 }

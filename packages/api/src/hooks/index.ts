@@ -276,4 +276,12 @@ export {
   useMeteoFingerprints,
   useMeteoFingerprint,
   useMeteoRecompute,
+  useMeteoParcelWeather,
+  useMeteoParcelClimate,
+  useMeteoFarmWeather,
+  useMeteoAlerts,
+  useAckMeteoAlert,
+  useMeteoAlertSettings,
+  useUpdateMeteoAlertSettings,
+  useEvaluateMeteoAlerts,
 } from './use-meteo.js';

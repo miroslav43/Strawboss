@@ -2584,7 +2584,10 @@
       "meteo": {
         "window": "Baling window forecast",
         "moisture": "Moisture readings",
-        "fingerprint": "Bale weather fingerprint"
+        "fingerprint": "Bale weather fingerprint",
+        "forecast": "Parcel weather forecast",
+        "climate": "Climatology & growing degree days",
+        "alerts": "Weather alerts (push / email)"
       }
     }
   },
@@ -2655,7 +2658,9 @@
       "window": "Window",
       "message": "Message",
       "lastReading": "Last measurement",
-      "dataAge": "Data age"
+      "dataAge": "Data age",
+      "tempNow": "Temp now",
+      "rain24h": "Rain 24 h"
     },
     "table": {
       "empty": "No drying clock is running. Start one for a harvested parcel."
@@ -2798,6 +2803,202 @@
       "noPriorForecast": "No forecast was available at that moment.",
       "engineError": "The calculation failed for this parcel — the team has been alerted in the logs.",
       "noEvent": "No drying clock is running for this parcel."
+    },
+    "wx": {
+      "openWeather": "Open weather",
+      "unavailable": "Unavailable",
+      "loading": "Loading weather…",
+      "loadError": "Could not load the weather for this parcel.",
+      "noLocation": "This parcel has no location yet, so there is no weather to show.",
+      "today": "Today",
+      "updated": "Updated",
+      "stale": "Stale data",
+      "agoNow": "just now",
+      "agoMin": "{{count}} min ago",
+      "agoHours": "{{count}} h ago",
+      "feelsLike": "Feels like",
+      "wind": "Wind",
+      "gusts": "Gusts",
+      "humidity": "Humidity",
+      "clouds": "Cloud cover",
+      "precipNow": "Rain now",
+      "daylight": "Daylight",
+      "sunrise": "Sunrise",
+      "sunset": "Sunset",
+      "sunshine": "Sunshine",
+      "uv": "UV index",
+      "dryingDivider": "Drying & baling",
+      "code": {
+        "clear": "Clear",
+        "clear_night": "Clear night",
+        "partly_cloudy": "Partly cloudy",
+        "partly_cloudy_night": "Partly cloudy",
+        "overcast": "Overcast",
+        "fog": "Fog",
+        "drizzle": "Drizzle",
+        "freezing_drizzle": "Freezing drizzle",
+        "rain": "Rain",
+        "heavy_rain": "Heavy rain",
+        "freezing_rain": "Freezing rain",
+        "snow": "Snow",
+        "showers": "Rain showers",
+        "snow_showers": "Snow showers",
+        "thunderstorm": "Thunderstorm",
+        "thunderstorm_hail": "Thunderstorm with hail",
+        "unknown": "No data"
+      },
+      "chart": {
+        "title": "Next 48 hours",
+        "temp": "Temperature (°C)",
+        "gust": "Gusts (km/h)",
+        "legend": "Shaded grey: night. Green band: good spraying window. Dashed line: now."
+      },
+      "daily": {
+        "title": "16-day forecast"
+      },
+      "soil": {
+        "title": "Soil & crop",
+        "temp": "Soil temperature (surface)",
+        "minTemp": "Soil minimum, 48 h",
+        "moist0": "Soil moisture 0–1 cm",
+        "moist3": "Soil moisture 3–9 cm",
+        "vpd": "Vapour pressure deficit",
+        "leafWet": "Leaf wetness chance"
+      },
+      "farm": {
+        "title": "Farm weather map",
+        "loadError": "Could not load the farm weather.",
+        "empty": "No parcels with a location to show.",
+        "noClock": "No drying clock",
+        "dropped": "Coverage is capped: {{cells}} weather cells and {{parcels}} parcels are not shown.",
+        "layer": {
+          "rain24h": "Rain 24 h",
+          "tempNow": "Temperature now",
+          "gust24h": "Gusts 24 h",
+          "frost": "Frost",
+          "storm": "Storms",
+          "drying": "Drying"
+        }
+      }
+    },
+    "agro": {
+      "title": "Agronomic indicators",
+      "risk": {
+        "none": "No risk",
+        "low": "Low",
+        "moderate": "Moderate",
+        "high": "High"
+      },
+      "spray": {
+        "title": "Spraying",
+        "ok": "Good now",
+        "no": "Not now",
+        "unknown": "No data",
+        "next": "Next window: {{from}} – {{to}} ({{hours}} h)",
+        "noWindow": "No suitable window in the next 3 days."
+      },
+      "workability": {
+        "title": "Field workability",
+        "ok": "Passable",
+        "marginal": "Marginal",
+        "no_go": "Do not enter",
+        "unknown": "No data",
+        "hint": "Soil moisture and recent rain allow field work.",
+        "detail": "Soil {{soil}} · rain past 48 h {{rain48}} · next 24 h {{rain24}}"
+      },
+      "frost": {
+        "title": "Frost",
+        "line": "Minimum air {{air}}, soil {{soil}} (48 h)"
+      },
+      "heat": {
+        "title": "Heat stress",
+        "line": "Daily maximum {{max}}"
+      },
+      "storm": {
+        "title": "Storm / hail",
+        "line": "Peak CAPE {{cape}}, rain chance {{prob}}"
+      },
+      "water": {
+        "title": "Water balance, {{days}} days",
+        "ok": "Balanced",
+        "deficit": "Deficit",
+        "unknown": "No data",
+        "line": "Evapotranspiration {{et0}} vs rain {{rain}}",
+        "balance": "Balance"
+      },
+      "reason": {
+        "wind": "Too windy",
+        "gust": "Gusts too strong",
+        "calm": "Too calm (drift risk)",
+        "rain_now": "Raining now",
+        "rain_soon": "Rain expected within hours",
+        "too_cold": "Too cold",
+        "too_hot": "Too hot",
+        "leaf_wet": "Leaves are wet",
+        "no_data": "Not enough data",
+        "soil_wet": "Soil too wet",
+        "rain_recent": "Heavy rain in the past 48 h",
+        "rain_coming": "Rain expected in the next 24 h"
+      }
+    },
+    "climate": {
+      "title": "Climate vs normal",
+      "pending": "Computing the climate normals for this location (one-time, can take a few minutes)…",
+      "monthToDate": "This month so far",
+      "last30": "Last 30 days",
+      "gdd": "Growing degree days",
+      "daysCovered": "{{count}} days of data",
+      "vsNormal": "vs normal",
+      "normal": "normal",
+      "gddBasis": "Base {{base}} °C, calendar year",
+      "gddTip": "Accumulated from {{start}} (calendar year) above a base of {{base}} °C; no sowing date is used.",
+      "normalsChart": "Monthly normals (rain and mean temperature)",
+      "normalsNote": "Reference period {{period}}.",
+      "precipLabel": "Rain (mm / month)"
+    },
+    "alerts": {
+      "title": "Weather alerts",
+      "lastDays": "last {{days}} days",
+      "empty": "No weather alerts in the last 7 days.",
+      "loadError": "Could not load the alerts.",
+      "ack": "Acknowledge",
+      "acknowledged": "Acknowledged",
+      "ackError": "Could not acknowledge the alert.",
+      "valueVs": "{{value}} (threshold {{threshold}})",
+      "type": {
+        "frost": "Frost",
+        "storm": "Storm",
+        "wind": "Strong wind",
+        "heavy_rain": "Heavy rain",
+        "heat": "Heat"
+      },
+      "severity": {
+        "warning": "Warning",
+        "severe": "Severe"
+      }
+    },
+    "alertSettings": {
+      "title": "Weather alerts",
+      "intro": "Push (and optionally email) to admins and dispatchers when a threshold is forecast on active parcels. Maximum 3 notifications per person per day; warnings are held back overnight.",
+      "enabled": "Enable weather alerts",
+      "enabledHint": "Evaluated hourly for parcels not yet fully harvested.",
+      "email": "Also send a daily email digest",
+      "emailHint": "To administrators with an email address.",
+      "field": {
+        "frostC": "Frost below",
+        "heatC": "Heat above",
+        "gustMs": "Wind gusts above",
+        "rainMm": "Rain per day above",
+        "capeJkg": "Storm energy (CAPE) above",
+        "lookaheadH": "Look-ahead"
+      },
+      "default": "Default {{value}}",
+      "testNow": "Test now (dry run)",
+      "testResult": "{{count}} alerts would be raised right now",
+      "testNone": "Nothing exceeds the thresholds in the look-ahead window.",
+      "testNote": "Dry run: nothing was saved and nobody was notified.",
+      "parcels": "{{count}} parcels",
+      "loadError": "Could not load the alert settings."
     }
   }
 }

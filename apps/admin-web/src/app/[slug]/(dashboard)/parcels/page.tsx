@@ -37,6 +37,7 @@ import { useLocaleFormat } from '@/lib/use-locale-format';
 import { normalizeList as normalize } from '@/lib/normalize-api-list';
 import { BaleOverrideModal } from '@/components/features/parcels/BaleOverrideModal';
 import { parseHa, fmtHa, remainingBales } from '@/lib/parcel-bales';
+import { ParcelWeatherLink } from '@/components/features/meteo/ParcelWeatherLink';
 
 const HARVEST_STATUS_OPTIONS = [
   HarvestStatus.planned,
@@ -838,6 +839,7 @@ export default function ParcelsPage() {
                     {/* Actions */}
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-1">
+                        <ParcelWeatherLink parcelId={p.id} from="parcels" />
                         <button
                           onClick={() => setEditParcel(p)}
                           className="rounded-lg p-1.5 text-neutral-400 hover:bg-primary/10 hover:text-primary transition-colors"

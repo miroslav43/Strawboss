@@ -120,7 +120,9 @@ export function HarvestEventEditor({
   const showGenericError = !!mutationError && !conflict;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+    // z-[2000]: this modal opens on a page with a Leaflet map (panes 400–1000);
+    // the repo convention for modals over a map (see map/page.tsx).
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"

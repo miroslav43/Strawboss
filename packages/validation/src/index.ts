@@ -279,10 +279,16 @@ export {
   updateHarvestEventSchema,
   createMoistureReadingSchema,
   meteoParcelQuerySchema,
+  meteoWeatherQuerySchema,
+  meteoAlertsQuerySchema,
+  updateMeteoAlertSettingsSchema,
+  meteoAlertEvaluateQuerySchema,
 } from './schemas/meteo.schema.js';
 export type {
   UpdateMeteoSettingsInput,
   CreateHarvestEventInput,
   UpdateHarvestEventInput,
   CreateMoistureReadingInput,
+  MeteoWeatherQuery,
+  UpdateMeteoAlertSettingsInput,
 } from './schemas/meteo.schema.js';

@@ -36,6 +36,7 @@ import { mobileApiClient } from '@/lib/api-client';
 import { getDatabase } from '@/lib/storage';
 import { ParcelsRepo, type LocalParcel } from '@/db/parcels-repo';
 import { useTheme } from '@/lib/theme';
+import { ParcelWeatherCard } from '@/components/features/meteo/ParcelWeatherCard';
 import { mobileLogger } from '@/lib/logger';
 import { openExternalNavigation, parseGeoPoint } from '@/lib/routing';
 import { useI18n } from '@/lib/i18n';
@@ -315,6 +316,8 @@ export function ParcelDetailView({ parcelId, onOpenMap, primaryAction }: ParcelD
             ) : null}
           </View>
         </View>
+
+        <ParcelWeatherCard parcelId={parcelId} />
 
         {/* Crop type — T9.1 */}
         <View style={styles.card}>

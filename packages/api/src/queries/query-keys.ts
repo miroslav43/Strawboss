@@ -198,5 +198,11 @@ export const queryKeys = {
     readings: (parcelId: string) => ['meteo', 'readings', parcelId] as const,
     fingerprints: (parcelId: string) => ['meteo', 'fingerprints', parcelId] as const,
     fingerprint: (baleProductionId: string) => ['meteo', 'fingerprint', baleProductionId] as const,
+    weather: (parcelId: string, view: 'full' | 'compact') =>
+      ['meteo', 'weather', parcelId, view] as const,
+    climate: (parcelId: string) => ['meteo', 'climate', parcelId] as const,
+    farm: () => ['meteo', 'farm'] as const,
+    alerts: (days: number) => ['meteo', 'alerts', days] as const,
+    alertSettings: () => ['meteo', 'alert-settings'] as const,
   },
 } as const;

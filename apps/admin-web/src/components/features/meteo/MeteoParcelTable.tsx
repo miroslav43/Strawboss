@@ -2,18 +2,27 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import type { MeteoOverviewRow } from '@strawboss/types';
+import type { MeteoFarmCell, MeteoOverviewRow } from '@strawboss/types';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { useI18n } from '@/lib/i18n';
 import { useOrgSlug } from '@/hooks/useOrgSlug';
 import { STATUS_STYLES, useMeteoFormat } from './format';
+import { useWeatherFormat } from './weather-format';
 
 interface MeteoRow extends MeteoOverviewRow, Record<string, unknown> {}
 
 /** Overview table. No default sort: the server order IS the status + urgency order. */
-export function MeteoParcelTable({ rows }: { rows: MeteoOverviewRow[] }) {
+export function MeteoParcelTable({
+  rows,
+  weatherByParcel,
+}: {
+  rows: MeteoOverviewRow[];
+  /** Farm-map cell per parcel (joined by cellKey in the page); absent = columns hidden. */
+  weatherByParcel?: Map<string, MeteoFarmCell>;
+}) {
   const { t } = useI18n();
   const f = useMeteoFormat();
+  const wf = useWeatherFormat();
   const router = useRouter();
   const slug = useOrgSlug();
 
@@ -87,6 +96,24 @@ export function MeteoParcelTable({ rows }: { rows: MeteoOverviewRow[] }) {
       render: (r) =>
         r.lastReadingAt ? `${f.pct(r.lastReadingWb)} · ${f.time(r.lastReadingAt)}` : '—',
     },
+    ...(weatherByParcel
+      ? ([
+          {
+            key: 'tempNow',
+            header: t('meteo.col.tempNow'),
+            sortable: true,
+            sortValue: (r) => weatherByParcel.get(r.parcelId)?.tempNowC ?? -999,
+            render: (r) => wf.temp(weatherByParcel.get(r.parcelId)?.tempNowC, 1),
+          },
+          {
+            key: 'rain24h',
+            header: t('meteo.col.rain24h'),
+            sortable: true,
+            sortValue: (r) => weatherByParcel.get(r.parcelId)?.rain24hMm ?? -1,
+            render: (r) => wf.mm(weatherByParcel.get(r.parcelId)?.rain24hMm),
+          },
+        ] satisfies Column<MeteoRow>[])
+      : []),
     {
       key: 'dataAgeH',
       header: t('meteo.col.dataAge'),

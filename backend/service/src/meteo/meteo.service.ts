@@ -20,6 +20,7 @@ import {
   isFeatureEnabled,
   type CreateHarvestEventDto,
   type CreateMoistureReadingDto,
+  type FeatureKey,
   type MeteoBaleFingerprint,
   type MeteoDerivedStatus,
   type MeteoHarvestEvent,
@@ -125,14 +126,30 @@ export class MeteoService {
     const rows = (await this.drizzleProvider.db.execute(sql`
       SELECT ${isoSql(sql`max(fetched_at)`)} AS "lastIngestAt" FROM meteo_forecast_latest
     `)) as unknown as Array<{ lastIngestAt: string | null }>;
+    const optedIn = await this.access.isOptedIn(orgId);
+    const on = (key: FeatureKey): boolean => optedIn && isFeatureEnabled(disabledFeatures, key);
+    // Only read the alert opt-in when the feature switches could make it matter.
+    const alertsOptIn =
+      on('meteo') && on('meteo.alerts')
+        ? (
+            (await this.drizzleProvider.db.execute(sql`
+              SELECT alerts_enabled FROM meteo_org_settings
+              WHERE organization_id = ${orgId}::uuid LIMIT 1
+            `)) as unknown as Array<{ alerts_enabled: boolean }>
+          )[0]?.alerts_enabled === true
+        : false;
     return {
       configured: this.client.configured,
       publicApi: this.client.publicApi,
       jobsEnabled: meteoJobsEnabled(),
-      enabled: (await this.access.isOptedIn(orgId)) && isFeatureEnabled(disabledFeatures, 'meteo'),
+      enabled: on('meteo'),
       lastIngestAt: rows[0]?.lastIngestAt ?? null,
       attribution: METEO_ATTRIBUTION,
       modelVersion: METEO_MODEL_VERSION,
+      forecastEnabled: on('meteo') && on('meteo.forecast'),
+      climateConfigured: this.client.archiveConfigured,
+      climateEnabled: on('meteo') && on('meteo.climate'),
+      alertsEnabled: alertsOptIn,
     };
   }
 

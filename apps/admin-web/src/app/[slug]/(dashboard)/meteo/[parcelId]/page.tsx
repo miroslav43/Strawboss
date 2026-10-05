@@ -1,10 +1,10 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Loader2, Pencil, Timer } from 'lucide-react';
-import { useMeteoParcel, useMeteoReadings } from '@strawboss/api';
+import { useMeteoParcel, useMeteoReadings, useMeteoStatus } from '@strawboss/api';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { LoggingErrorBoundary } from '@/components/shared/LoggingErrorBoundary';
 import { apiClient } from '@/lib/api';
@@ -17,6 +17,8 @@ import { RainChart } from '@/components/features/meteo/RainChart';
 import { HarvestEventEditor } from '@/components/features/meteo/HarvestEventEditor';
 import { MoistureReadingForm } from '@/components/features/meteo/MoistureReadingForm';
 import { FingerprintList } from '@/components/features/meteo/FingerprintList';
+import { ParcelWeatherSection } from '@/components/features/meteo/ParcelWeatherSection';
+import { ClimateCard } from '@/components/features/meteo/ClimateCard';
 import { MeteoFooter } from '@/components/features/meteo/MeteoFooter';
 import { STATUS_STYLES, useMeteoFormat } from '@/components/features/meteo/format';
 
@@ -24,6 +26,10 @@ function MeteoParcelContent({ parcelId }: { parcelId: string }) {
   const { t } = useI18n();
   const f = useMeteoFormat();
   const detail = useMeteoParcel(apiClient, parcelId);
+  const status = useMeteoStatus(apiClient);
+  const forecastOn = status.data?.forecastEnabled === true;
+  // Climatology is its own switch (meteo.climate) — independent of the forecast.
+  const climateOn = status.data?.climateEnabled === true && status.data?.climateConfigured === true;
   const readings = useMeteoReadings(apiClient, parcelId);
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null);
 
@@ -52,6 +58,16 @@ function MeteoParcelContent({ parcelId }: { parcelId: string }) {
 
   return (
     <div className="space-y-6">
+      {forecastOn && <ParcelWeatherSection parcelId={parcelId} />}
+      {climateOn && <ClimateCard parcelId={parcelId} />}
+
+      {(forecastOn || climateOn) && (
+        <div className="flex items-center gap-3 pt-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{t('meteo.wx.dryingDivider')}</h2>
+          <div className="h-px flex-1 bg-neutral-200" />
+        </div>
+      )}
+
       {/* Status headline */}
       <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -112,13 +128,29 @@ function MeteoParcelContent({ parcelId }: { parcelId: string }) {
   );
 }
 
+/** Back targets reachable via `?from=` — a whitelist, never a raw redirect. */
+const BACK_TARGETS: Record<string, string> = { parcels: 'parcels', map: 'map' };
+
+function MeteoParcelHeader({ parcelId }: { parcelId: string }) {
+  const { t } = useI18n();
+  const slug = useOrgSlug();
+  const from = useSearchParams().get('from');
+  // Same query key as the content → no extra request; falls back to the generic title.
+  const detail = useMeteoParcel(apiClient, parcelId);
+  const name = detail.data?.parcelName ?? detail.data?.parcelCode ?? null;
+  const backHref = from && BACK_TARGETS[from] ? `/${slug}/${BACK_TARGETS[from]}` : `/${slug}/meteo`;
+  return <PageHeader title={name ?? t('meteo.detail.title')} backHref={backHref} />;
+}
+
 export default function MeteoParcelPage() {
   const { t } = useI18n();
   const params = useParams<{ parcelId: string }>();
   const slug = useOrgSlug();
   return (
     <LoggingErrorBoundary>
-      <PageHeader title={t('meteo.detail.title')} backHref={`/${slug}/meteo`} />
+      <Suspense fallback={<PageHeader title={t('meteo.detail.title')} backHref={`/${slug}/meteo`} />}>
+        <MeteoParcelHeader parcelId={params.parcelId} />
+      </Suspense>
       <MeteoStatusGate>
         <MeteoParcelContent parcelId={params.parcelId} />
       </MeteoStatusGate>

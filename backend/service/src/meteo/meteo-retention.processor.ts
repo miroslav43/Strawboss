@@ -61,12 +61,45 @@ export class MeteoRetentionProcessor extends WorkerHost {
           LIMIT ${limit}
         )`,
     );
+    // Iteration 2 tables (alerts feed, notification ledger, climate daily, dead normals).
+    const alerts = await this.batched(
+      (limit) => sql`
+        DELETE FROM meteo_alerts WHERE id IN (
+          SELECT id FROM meteo_alerts WHERE local_day < current_date - 90 LIMIT ${limit}
+        )`,
+    );
+    const ledger = await this.batched(
+      (limit) => sql`
+        DELETE FROM meteo_alert_notifications WHERE (user_id, local_day) IN (
+          SELECT user_id, local_day FROM meteo_alert_notifications
+          WHERE local_day < current_date - 7 LIMIT ${limit}
+        )`,
+    );
+    const climateDaily = await this.batched(
+      (limit) => sql`
+        DELETE FROM meteo_climate_daily WHERE (cell_key, day) IN (
+          SELECT cell_key, day FROM meteo_climate_daily
+          WHERE day < make_date(extract(year FROM current_date)::int - 1, 1, 1) LIMIT ${limit}
+        )`,
+    );
+    const failedNormals = await this.batched(
+      (limit) => sql`
+        DELETE FROM meteo_climate_normals WHERE cell_key IN (
+          SELECT cell_key FROM meteo_climate_normals
+          WHERE status = 'failed' AND attempts >= 5 AND updated_at < now() - interval '60 days'
+          LIMIT ${limit}
+        )`,
+    );
     this.winston.log('flow', 'Meteo retention completed', {
       context: 'MeteoRetentionProcessor',
       jobId: job.id,
       snapshots,
       forecasts,
       history,
+      alerts,
+      ledger,
+      climateDaily,
+      failedNormals,
     });
   }
 
